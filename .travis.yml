@@ -3,56 +3,5 @@ dist: trusty
 language: cpp
 compiler: gcc
 
-# caching of the build dir (which is large, so large timeout (3 minute default))
-cache:
-  timeout: 1000
-  directories:
-  - ../root_build
-  - ../deps
-
-addons:
-  apt:
-    packages:
-      - libxpm-dev
-      - libgsl0-dev
-      - libfftw3-dev
-      - libafterimage-dev
-      - libftgl-dev
-      - libgl2ps-dev
-      - libglew-dev
-      - liblzma-dev
-
-# following http://stackoverflow.com/a/33203355/1199693 and https://github.com/Microsoft/GSL/blob/master/.travis.yml
-before_install:
-  - |
-    DEPS_DIR="${TRAVIS_BUILD_DIR}/../deps"
-    mkdir -p "${DEPS_DIR}"
-install:
-  - |
-    cd "${DEPS_DIR}"
-    if [[ -z "$(ls -A ${DEPS_DIR}/cmake/bin)" ]]; then
-      CMAKE_URL="https://cmake.org/files/v3.4/cmake-3.4.3-Linux-x86_64.tar.gz"
-      mkdir -p cmake && travis_retry wget --no-check-certificate --quiet -O - "${CMAKE_URL}" | tar --strip-components=1 -xz -C cmake
-    fi
-    export PATH="${DEPS_DIR}/cmake/bin:${PATH}"
-#  - cd "${TRAVIS_BUILD_DIR}"/.. && git clone http://root.cern.ch/git/roottest.git
-  - cd "${TRAVIS_BUILD_DIR}"/.. && git clone --depth=1 --branch=master https://github.com/root-mirror/roottest
-  - mkdir -p "${TRAVIS_BUILD_DIR}"/../root_build
-
 script:
-  - cd "${TRAVIS_BUILD_DIR}"/../root_build
-  - |
-    if [[ -f touch_order.txt ]]; then
-      while read fn; do
-        touch $fn
-      done < touch_order.txt
-    else
-      cmake ../root -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF #-Dccache=ON # -Dbuiltin_llvm=OFF
-    fi
-  - make -j4
-
-# Save the order of timestamps of the files so we can recreate it with touch in the next build.
-# N.B.: just tarring the build files doesn't work, since the git clone will still be newer.
-# The build tools (make at least) only care about order, not about absolute timestamps.
-before_cache:
-  - find . -type f -printf "%T+\t%p\n" | sort | cut -f 2 > touch_order.txt
+  - cmake --version
