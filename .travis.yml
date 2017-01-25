@@ -1,11 +1,10 @@
 language: cpp
 compiler: gcc
 
-# caching of the build dir (which is large, so large timeout (3 minute default))
 cache:
+  ccache
   timeout: 1000
   directories:
-  - ../root_build
   - ../deps
 
 # following http://genbattle.bitbucket.org/blog/2016/01/17/c++-travis-ci/
@@ -13,7 +12,6 @@ addons:
   apt:
     sources:
       - ubuntu-toolchain-r-test
-#      - llvm-toolchain-precise-3.9
     packages:
       - gcc-6
       - g++-6
@@ -25,7 +23,7 @@ addons:
       - libgl2ps-dev
       - libglew-dev
       - liblzma-dev
-#      - llvm-3.9-dev
+      - ccache
 
 # following http://stackoverflow.com/a/33203355/1199693 and https://github.com/Microsoft/GSL/blob/master/.travis.yml
 before_install:
@@ -40,24 +38,10 @@ install:
       mkdir -p cmake && travis_retry wget --no-check-certificate --quiet -O - "${CMAKE_URL}" | tar --strip-components=1 -xz -C cmake
     fi
     export PATH="${DEPS_DIR}/cmake/bin:${PATH}"
-#  - cd "${TRAVIS_BUILD_DIR}"/.. && git clone http://root.cern.ch/git/roottest.git
   - cd "${TRAVIS_BUILD_DIR}"/.. && git clone --depth=1 --branch=master https://github.com/root-mirror/roottest
   - mkdir -p "${TRAVIS_BUILD_DIR}"/../root_build
 
 script:
   - cd "${TRAVIS_BUILD_DIR}"/../root_build
-  - |
-    if [[ -f touch_order.txt ]]; then
-      while read fn; do
-        touch $fn
-      done < touch_order.txt
-    else
-      cmake ../root -DCMAKE_C_COMPILER=gcc-6 -DCMAKE_CXX_COMPILER=g++-6 -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF #-Dccache=ON # -Dbuiltin_llvm=OFF
-    fi
+  - cmake ../root -DCMAKE_C_COMPILER=gcc-6 -DCMAKE_CXX_COMPILER=g++-6 -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF -Dccache=ON # -Dbuiltin_llvm=OFF
   - make -j4
-
-# Save the order of timestamps of the files so we can recreate it with touch in the next build.
-# N.B.: just tarring the build files doesn't work, since the git clone will still be newer.
-# The build tools (make at least) only care about order, not about absolute timestamps.
-before_cache:
-  - find . -type f -printf "%T+\t%p\n" | sort | cut -f 2 > touch_order.txt
