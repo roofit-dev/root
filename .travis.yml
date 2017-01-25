@@ -15,6 +15,7 @@ addons:
       - ubuntu-toolchain-r-test
 #      - llvm-toolchain-precise-3.9
     packages:
+      - gcc-5
       - g++-5
       - libxpm-dev
       - libgsl0-dev
@@ -25,7 +26,9 @@ addons:
       - libglew-dev
       - liblzma-dev
 #      - llvm-3.9-dev
-env: COMPILER=g++-5
+env:
+  - CXX_COMPILER=g++-5
+  - C_COMPILER=gcc-5
 
 # following http://stackoverflow.com/a/33203355/1199693 and https://github.com/Microsoft/GSL/blob/master/.travis.yml
 before_install:
@@ -52,7 +55,7 @@ script:
         touch $fn
       done < touch_order.txt
     else
-      cmake ../root -DCMAKE_CXX_COMPILER=$COMPILER -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF #-Dccache=ON # -Dbuiltin_llvm=OFF
+      cmake ../root -DCMAKE_C_COMPILER=$C_COMPILER -DCMAKE_CXX_COMPILER=$CXX_COMPILER -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF #-Dccache=ON # -Dbuiltin_llvm=OFF
     fi
   - make -j4
 
