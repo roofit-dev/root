@@ -57,6 +57,7 @@ script:
         export PREVIOUS_GIT_COMMIT=0cef5a02238ab8f3a34706f869712fce535d92fe
         # REMOVE THIS MANUAL EXPORT as soon as a build based on this has been stored in cache!
       fi
+      echo "Previously cached Travis build based on git commit ${PREVIOUS_GIT_COMMIT}."
       cd "${TRAVIS_BUILD_DIR}"
       touch `git diff --name-only $PREVIOUS_GIT_COMMIT HEAD`
       cd "${TRAVIS_BUILD_DIR}"/../root_build
