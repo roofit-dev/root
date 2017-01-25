@@ -6,6 +6,7 @@ cache:
   timeout: 1000
   directories:
   - ../root_build
+  - ../deps
 
 # following http://genbattle.bitbucket.org/blog/2016/01/17/c++-travis-ci/
 addons:
@@ -14,7 +15,6 @@ addons:
       - ubuntu-toolchain-r-test
 #      - llvm-toolchain-precise-3.9
     packages:
-      - ninja-build
       - g++-5
       - libxpm-dev
       - libgsl0-dev
@@ -30,33 +30,22 @@ env: COMPILER=g++-5
 # following http://stackoverflow.com/a/33203355/1199693 and https://github.com/Microsoft/GSL/blob/master/.travis.yml
 before_install:
   - |
-    DEPS_DIR="${TRAVIS_BUILD_DIR}/deps"
+    DEPS_DIR="${TRAVIS_BUILD_DIR}/../deps"
     mkdir -p "${DEPS_DIR}"
 install:
   - |
     cd "${DEPS_DIR}"
     if [[ -z "$(ls -A ${DEPS_DIR}/cmake/bin)" ]]; then
-      CMAKE_URL="https://cmake.org/files/v3.7/cmake-3.7.2-Linux-x86_64.tar.gz"
+      CMAKE_URL="https://cmake.org/files/v3.4/cmake-3.4.3-Linux-x86_64.tar.gz"
       mkdir -p cmake && travis_retry wget --no-check-certificate --quiet -O - "${CMAKE_URL}" | tar --strip-components=1 -xz -C cmake
     fi
     export PATH="${DEPS_DIR}/cmake/bin:${PATH}"
-  - cd "${TRAVIS_BUILD_DIR}"/.. && git clone http://root.cern.ch/git/roottest.git
+#  - cd "${TRAVIS_BUILD_DIR}"/.. && git clone http://root.cern.ch/git/roottest.git
+  - cd "${TRAVIS_BUILD_DIR}"/.. && git clone --depth=1 --branch=master https://github.com/root-mirror/roottest
   - mkdir -p "${TRAVIS_BUILD_DIR}"/../root_build
 
 script:
   - cd "${TRAVIS_BUILD_DIR}"/../root_build
-#  - |
-#    if [[ ! -f CMakeCache.txt ]]; then
-#      cmake ../root -DCMAKE_CXX_COMPILER=$COMPILER -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF -Dccache=ON # -Dbuiltin_llvm=OFF
-#    fi
-#  - make VERBOSE=1 # don't do verbose right away, will slow it down too much, won't reach caching phase!
-#  - |
-#    if [[ -f build_cache.tar ]]; then
-#      tar xf build_cache.tar
-#      rm build_cache.tar
-#    else
-#      cmake -G Ninja ../root -DCMAKE_CXX_COMPILER=$COMPILER -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF #-Dccache=ON # -Dbuiltin_llvm=OFF
-#    fi
   - |
     if [[ -f touch_order.txt ]]; then
       while read fn; do
@@ -66,14 +55,6 @@ script:
       cmake ../root -DCMAKE_CXX_COMPILER=$COMPILER -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF #-Dccache=ON # -Dbuiltin_llvm=OFF
     fi
   - make -j4
-
-# tarring the build directory myself to preserve timestamps, which apparently doesn't work with travis cacher itself
-#before_cache:
-#  - |
-#    cd "${TRAVIS_BUILD_DIR}"/../root_build
-#    tar -cf ../build_cache.tar --atime-preserve .
-#    rm -r * .*
-#    mv ../build_cache.tar .
 
 # Save the order of timestamps of the files so we can recreate it with touch in the next build.
 # N.B.: just tarring the build files doesn't work, since the git clone will still be newer.
