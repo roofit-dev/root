@@ -341,6 +341,8 @@ Double_t RooAbsTestStatistic::evaluate() const
 
 Bool_t RooAbsTestStatistic::initialize()
 {
+  std::cout << "DEBUG (travis rebuild test)" << std::endl;
+
   if (_init) return kFALSE;
   
   if (MPMaster == _gofOpMode) {
