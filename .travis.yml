@@ -5,8 +5,9 @@ compiler: gcc
 cache:
   timeout: 1000
   directories:
-  - ../root_build
-  - ../deps
+  - ../root_build  # the build directory
+  - ../deps        # cmake
+  - files          # testing downloads some files to the git repo dir
 
 # following http://genbattle.bitbucket.org/blog/2016/01/17/c++-travis-ci/
 addons:
@@ -50,11 +51,14 @@ script:
       while read fn; do
         touch $fn
       done < touch_order.txt
+      # temporary manual rm for bootstrapping:
+      rm previous_git_commit.txt
+      # REMOVE THIS MANUAL RM as soon as a build based on this has been stored in cache!
       if [[ -f previous_git_commit.txt ]]; then
         read PREVIOUS_GIT_COMMIT < previous_git_commit.txt
       else
         # temporary manual previous commit for bootstrapping:
-        export PREVIOUS_GIT_COMMIT=0cef5a02238ab8f3a34706f869712fce535d92fe
+        export PREVIOUS_GIT_COMMIT="0cef5a02238ab8f3a34706f869712fce535d92fe"
         # REMOVE THIS MANUAL EXPORT as soon as a build based on this has been stored in cache!
       fi
       echo "Previously cached Travis build based on git commit ${PREVIOUS_GIT_COMMIT}."
