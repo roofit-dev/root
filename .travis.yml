@@ -15,8 +15,8 @@ addons:
       - ubuntu-toolchain-r-test
 #      - llvm-toolchain-precise-3.9
     packages:
-      - gcc-5
-      - g++-5
+      - gcc-6
+      - g++-6
       - libxpm-dev
       - libgsl0-dev
       - libfftw3-dev
@@ -52,7 +52,7 @@ script:
         touch $fn
       done < touch_order.txt
     else
-      cmake ../root -DCMAKE_C_COMPILER=gcc-5 -DCMAKE_CXX_COMPILER=g++-5 -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF #-Dccache=ON # -Dbuiltin_llvm=OFF
+      cmake ../root -DCMAKE_C_COMPILER=gcc-6 -DCMAKE_CXX_COMPILER=g++-6 -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF #-Dccache=ON # -Dbuiltin_llvm=OFF
     fi
   - make -j4
 
