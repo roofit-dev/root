@@ -57,7 +57,9 @@ script:
         export PREVIOUS_GIT_COMMIT=0cef5a02238ab8f3a34706f869712fce535d92fe
         # REMOVE THIS MANUAL EXPORT as soon as a build based on this has been stored in cache!
       fi
+      cd "${TRAVIS_BUILD_DIR}"
       touch `git diff --name-only $PREVIOUS_GIT_COMMIT HEAD`
+      cd "${TRAVIS_BUILD_DIR}"/../root_build
     else
       cmake ../root -DCMAKE_C_COMPILER=gcc-6 -DCMAKE_CXX_COMPILER=g++-6 -Droofit=ON -Dtesting=ON -Droottest=ON -Dminuit2=ON -Dbuiltin_afterimage=OFF -Dbuiltin_ftgl=OFF -Dbuiltin_glew=OFF #-Dccache=ON # -Dbuiltin_llvm=OFF
     fi
@@ -68,4 +70,4 @@ script:
 # The build tools (make at least) only care about order, not about absolute timestamps.
 before_cache:
   - find . -type f -printf "%T+\t%p\n" | sort | cut -f 2 > touch_order.txt
-  - git rev-parse HEAD > previous_git_commit.txt
+  - cd "${TRAVIS_BUILD_DIR}" && git rev-parse HEAD > ../root_build/previous_git_commit.txt
