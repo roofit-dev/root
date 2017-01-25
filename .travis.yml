@@ -2,7 +2,7 @@ language: cpp
 compiler: gcc
 
 cache:
-  ccache
+  ccache: true
   timeout: 1000
   directories:
   - ../deps
