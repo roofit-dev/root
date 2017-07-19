@@ -21,6 +21,7 @@
 #include "RooRealProxy.h"
 #include "TStopwatch.h"
 #include <string>
+#include "RooTimer.h"
 
 class RooArgSet ;
 class RooAbsData ;
