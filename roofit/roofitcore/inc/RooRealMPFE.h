@@ -112,7 +112,7 @@ private:
   void _time_communication_overhead() const;
 
   void setTimingNumInts(Bool_t flag = kTRUE);
-  std::map<std::string, double> collectTimingsFromServer(Bool_t clear_timings = kTRUE) const;
+  std::map<std::string, double> collectTimingsFromServer(const std::string &category, Bool_t clear_timings = kTRUE) const;
 
   void _initTiming();
 

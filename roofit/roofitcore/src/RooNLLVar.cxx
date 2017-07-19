@@ -28,6 +28,7 @@ In extended mode, a (Nexpect - Nobserved*log(NExpected) term is added
 **/
 
 #include <algorithm>
+#include <sstream>
 
 #include "RooFit.h"
 #include "Riostream.h"
@@ -43,6 +44,7 @@ In extended mode, a (Nexpect - Nobserved*log(NExpected) term is added
 #include "RooRealSumPdf.h"
 #include "RooRealVar.h"
 #include "RooProdPdf.h"
+#include "RooTimer.h"
 
 ClassImp(RooNLLVar)
 ;
@@ -248,6 +250,13 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
   // prevent loss of precision - this is a factor four more expensive than
   // straight addition, but since evaluating the PDF is usually much more
   // expensive than that, we tolerate the additional cost...
+  RooWallTimer timer;
+  RooCPUTimer ctimer;
+  if (timeEvaluatePartition()) {
+    timer.start();
+    ctimer.start();
+  }
+
   Int_t i ;
   Double_t result(0), carry(0);
 
@@ -390,6 +399,17 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
     Double_t t = result + y;
     carry = (t - result) - y;
     result = t;
+  }
+
+  if (timeEvaluatePartition()) {
+    ctimer.stop();
+    timer.stop();
+
+    std::stringstream partition_name;
+    partition_name << GetName() << "_" << firstEvent << "_" << lastEvent << "_" << stepSize;
+
+    timer.store_object_timing(partition_name.str(), "evaluate_partition");
+    ctimer.store_object_timing(partition_name.str(), "evaluate_partition");
   }
 
   //timer.Stop() ;

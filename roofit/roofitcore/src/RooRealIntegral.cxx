@@ -606,7 +606,7 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
   }
 
   // activate timing on numerical integrals
-  if (RooTrace::time_numInts()) {
+  if (RooTimer::time_numInts()) {
     activateTimingNumInts();
   }
 
@@ -1038,12 +1038,8 @@ Double_t RooRealIntegral::evaluate() const
 
   if (_timeNumInt) {
     timer->stop();
-    timer->store_timing_in_RooTrace(GetName());
+    timer->store_object_timing(GetName(), "numerical_integrals");
   }
-//  } else {
-//    std::cout << "did not time integral " << GetName() << " at " << this << " with _function.absArg() " << _function.absArg() << " which is a " << ClassName()
-//              << " on process " << getpid() << ", boohoo" << std::endl;
-//  }
 
   return retVal ;
 }

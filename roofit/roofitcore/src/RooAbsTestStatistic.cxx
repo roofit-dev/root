@@ -254,7 +254,7 @@ Double_t RooAbsTestStatistic::evaluate() const
   }
 
   if (SimMaster == _gofOpMode) {
-    if (RooTrace::timing_flag == 2) {
+    if (RooTimer::timing_flag() == 2) {
       timer.start();
     }
     // Evaluate array of owned GOF objects
@@ -285,7 +285,7 @@ Double_t RooAbsTestStatistic::evaluate() const
       _evalCarry /= norm;
     }
 
-    if (RooTrace::timing_flag == 2) {
+    if (RooTimer::timing_flag() == 2) {
       timer.stop();
       // set ppid to -1, to signify that this is not a slave process
       RooTimer::timing_outfiles[0] << timer.timing_s() << getpid() << -1 << "SimMaster";
@@ -294,10 +294,10 @@ Double_t RooAbsTestStatistic::evaluate() const
     return ret ;
 
   } else if (MPMaster == _gofOpMode) {
-    if (RooTrace::timing_flag == 2) {
+    if (RooTimer::timing_flag() == 2) {
       timer.start();
     }
-    if (RooTrace::timing_flag == 3) {
+    if (RooTimer::timing_flag() == 3) {
       RooTimer::timings.reserve(_nCPU);
     }
 
@@ -307,7 +307,7 @@ Double_t RooAbsTestStatistic::evaluate() const
     Double_t sum(0), carry = 0.;
 
     for (Int_t i = 0; i < _nCPU; ++i) {
-      if (RooTrace::timing_flag == 3) {
+      if (RooTimer::timing_flag() == 3) {
         timer.start();
       }
       Double_t y = _mpfeArray[i]->getValV();
@@ -316,13 +316,13 @@ Double_t RooAbsTestStatistic::evaluate() const
       const Double_t t = sum + y;
       carry = (t - sum) - y;
       sum = t;
-      if (RooTrace::timing_flag == 3) {
+      if (RooTimer::timing_flag() == 3) {
         timer.stop();
         RooTimer::timings[i] = timer.timing_s();
       }
     }
 
-    if (RooTrace::timing_flag == 3) {
+    if (RooTimer::timing_flag() == 3) {
       for (Int_t i = 0; i < _nCPU; ++i) {
         RooTimer::timing_outfiles[0] << RooTimer::timings[i] << i << getpid();
       }
@@ -331,20 +331,20 @@ Double_t RooAbsTestStatistic::evaluate() const
     Double_t ret = sum ;
     _evalCarry = carry;
 
-    if (RooTrace::timing_flag == 2) {
+    if (RooTimer::timing_flag() == 2) {
       timer.stop();
       // set ppid to -1, to signify that this is not a slave process
       RooTimer::timing_outfiles[0] << timer.timing_s() << getpid() << -1 << "MPMaster";
     }
 
-    if (RooTrace::time_numInts() == kTRUE) {
+    if (RooTimer::time_numInts() == kTRUE) {
       _collectNumIntTimings();
     }
 
     return ret ;
 
   } else {
-    if (RooTrace::timing_flag == 2) {
+    if (RooTimer::timing_flag() == 2) {
       timer.start();
     }
 
@@ -383,7 +383,7 @@ Double_t RooAbsTestStatistic::evaluate() const
       _evalCarry /= norm;
     }
 
-    if (RooTrace::timing_flag == 2) {
+    if (RooTimer::timing_flag() == 2) {
       timer.stop();
       int ppid;
       if (Slave == _gofOpMode) {
@@ -411,11 +411,11 @@ Bool_t RooAbsTestStatistic::initialize()
 {
   if (_init) return kFALSE;
 
-  if (RooTrace::timing_flag > 0) {
+  if (RooTimer::timing_flag() > 0) {
     _initTiming();
   }
 
-  if ((MPMaster != _gofOpMode) && (RooTrace::time_numInts() == kTRUE)) {
+  if ((MPMaster != _gofOpMode) && (RooTimer::time_numInts() == kTRUE)) {
     // in single-process mode, activate numerical integral timing on the local process
     // for multi-process mode, this is called from RooRealMPFE::setTimingNumInts in initMPMode
     _setNumIntTimingInPdfs();
@@ -439,7 +439,7 @@ void RooAbsTestStatistic::_initTiming() {
     RooTimer::timing_outfiles.emplace_back();
   }
 
-  switch (RooTrace::timing_flag) {
+  switch (RooTimer::timing_flag()) {
     case 2: {
       if (SimMaster == _gofOpMode) {
         RooTimer::timing_outfiles[0].open("timing_RATS_evaluate_full.json");
@@ -597,7 +597,7 @@ void RooAbsTestStatistic::initMPMode(RooAbsReal *real, RooAbsData *data, const R
       _mpfeArray[i]->setCpuAffinity(i);
     }
 
-    if (RooTrace::time_numInts() == kTRUE) {
+    if (RooTimer::time_numInts() == kTRUE) {
       _mpfeArray[i]->setTimingNumInts();
     }
   }
@@ -875,7 +875,7 @@ void RooAbsTestStatistic::_collectNumIntTimings(Bool_t clear_timings) const {
   if (MPMaster == _gofOpMode) {
     std::vector<std::string> member_names = {"wall_s", "name", "ix_cpu", "pid", "ppid"};
     for (Int_t i = 0; i < _nCPU; ++i) {
-      auto timings = _mpfeArray[i]->collectTimingsFromServer(clear_timings);
+      auto timings = _mpfeArray[i]->collectTimingsFromServer("numerical_integrals", clear_timings);
       if (timings.size() > 0) {
         RooJsonListFile timing_json("timings_numInts.json");
         timing_json.set_member_names(member_names.begin(), member_names.end());
@@ -890,18 +890,18 @@ void RooAbsTestStatistic::_collectNumIntTimings(Bool_t clear_timings) const {
     }
   } else {
     std::vector<std::string> member_names = {"wall_s", "name", "pid"};
-    if (RooTrace::objectTiming.size() > 0) {
+    if (RooTimer::objectTiming["numerical_integrals"].size() > 0) {
       RooJsonListFile timing_json("timings_numInts.json");
       timing_json.set_member_names(member_names.begin(), member_names.end());
 
       pid_t pid = getpid();
-      for (auto it = RooTrace::objectTiming.begin(); it != RooTrace::objectTiming.end(); ++it) {
+      for (auto it = RooTimer::objectTiming["numerical_integrals"].begin(); it != RooTimer::objectTiming["numerical_integrals"].end(); ++it) {
         std::string name = it->first;
         double timing_s = it->second;
         timing_json << timing_s << name << pid;
       }
       if (clear_timings == kTRUE) {
-        RooTrace::objectTiming.clear();
+        RooTimer::objectTiming["numerical_integrals"].clear();
       }
     }
   }

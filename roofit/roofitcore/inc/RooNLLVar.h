@@ -20,6 +20,7 @@
 #include "RooCmdArg.h"
 #include "RooAbsPdf.h"
 #include <vector>
+#include "RooTimer.h"
 
 class RooRealSumPdf ;
 
@@ -58,6 +59,8 @@ public:
   void applyWeightSquared(Bool_t flag) ;
 
   virtual Double_t defaultErrorLevel() const { return 0.5 ; }
+
+  Bool_t timeEvaluatePartition() const { return RooTimer::time_evaluate_partition(); }
 
 protected:
 

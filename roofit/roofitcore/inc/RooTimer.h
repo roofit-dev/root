@@ -5,7 +5,9 @@
 #include <ctime>
 #include <string>
 #include <vector>
+#include <map>
 #include "RooJsonListFile.h"
+#include "Rtypes.h"
 
 class RooTimer {
 public:
@@ -13,13 +15,29 @@ public:
   virtual void stop() = 0;
   double timing_s();
   void set_timing_s(double timing_s);
-  void store_timing_in_RooTrace(const std::string &name);
+  void store_object_timing(const std::string &name, const std::string &category);
+
+//  static std::map<std::string,double> objectTiming;
+  static std::map< std::string, std::map< std::string, double> > objectTiming;
 
   static std::vector<RooJsonListFile> timing_outfiles;
   static std::vector<double> timings;
 
+  static int timing_flag();
+  static void set_timing_flag(int flag);
+
+  static Bool_t time_numInts();
+  static void set_time_numInts(Bool_t flag);
+
+  static Bool_t time_evaluate_partition();
+  static void set_time_evaluate_partition(Bool_t flag);
+
 private:
   double _timing_s;
+
+  static int _timing_flag;
+  static Bool_t _time_numInts;
+  static Bool_t _time_evaluate_partition;
 };
 
 class RooWallTimer: public RooTimer {
