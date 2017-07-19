@@ -65,6 +65,8 @@ public:
   virtual Double_t offset() const { return _offset ; }
   virtual Double_t offsetCarry() const { return _offsetCarry; }
 
+  Bool_t timeEvaluatePartition() const { return RooTimer::time_evaluate_partition(); }
+
 protected:
 
   virtual void printCompactTreeHook(std::ostream& os, const char* indent="") ;

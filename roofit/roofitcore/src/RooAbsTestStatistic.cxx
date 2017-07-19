@@ -377,6 +377,12 @@ Double_t RooAbsTestStatistic::evaluate() const
 
     Double_t ret = evaluatePartition(nFirst,nLast,nStep);
 
+    if (timeEvaluatePartition()) {
+      std::stringstream partition_name;
+      partition_name << GetName() << "_" << nFirst << "_" << nLast << "_" << nStep;
+      std::cout << "evaluatePartition timing for partition " << partition_name.str() << ": " << RooTimer::objectTiming["evaluate_partition"][partition_name.str()] << " seconds" << std::endl;
+    }
+
     if (numSets()==1) {
       const Double_t norm = globalNormalization();
       ret /= norm;

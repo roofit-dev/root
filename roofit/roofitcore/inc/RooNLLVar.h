@@ -60,8 +60,6 @@ public:
 
   virtual Double_t defaultErrorLevel() const { return 0.5 ; }
 
-  Bool_t timeEvaluatePartition() const { return RooTimer::time_evaluate_partition(); }
-
 protected:
 
   virtual Bool_t processEmptyDataSets() const { return _extended ; }
