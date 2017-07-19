@@ -408,8 +408,8 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
     std::stringstream partition_name;
     partition_name << GetName() << "_" << firstEvent << "_" << lastEvent << "_" << stepSize;
 
-    timer.store_object_timing(partition_name.str(), "evaluate_partition");
-    ctimer.store_object_timing(partition_name.str(), "evaluate_partition");
+    timer.store_object_timing(partition_name.str(), "evaluate_partition_wall");
+    ctimer.store_object_timing(partition_name.str(), "evaluate_partition_cpu");
   }
 
   //timer.Stop() ;
