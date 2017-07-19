@@ -253,12 +253,13 @@ Double_t RooAbsTestStatistic::evaluate() const
     const_cast<RooAbsTestStatistic*>(this)->initialize() ;
   }
 
+  Double_t ret;
+
   if (SimMaster == _gofOpMode) {
     if (RooTimer::timing_flag() == 2) {
       timer.start();
     }
     // Evaluate array of owned GOF objects
-    Double_t ret = 0.;
 
     if (_mpinterl == RooFit::BulkPartition || _mpinterl == RooFit::Interleave ) {
       ret = combinedValue((RooAbsReal**)_gofArray,_nGof);
@@ -290,8 +291,6 @@ Double_t RooAbsTestStatistic::evaluate() const
       // set ppid to -1, to signify that this is not a slave process
       RooTimer::timing_outfiles[0] << timer.timing_s() << getpid() << -1 << "SimMaster";
     }
-
-    return ret ;
 
   } else if (MPMaster == _gofOpMode) {
     if (RooTimer::timing_flag() == 2) {
@@ -328,7 +327,7 @@ Double_t RooAbsTestStatistic::evaluate() const
       }
     }
 
-    Double_t ret = sum ;
+    ret = sum ;
     _evalCarry = carry;
 
     if (RooTimer::timing_flag() == 2) {
@@ -336,13 +335,6 @@ Double_t RooAbsTestStatistic::evaluate() const
       // set ppid to -1, to signify that this is not a slave process
       RooTimer::timing_outfiles[0] << timer.timing_s() << getpid() << -1 << "MPMaster";
     }
-
-    if (RooTimer::time_numInts() == kTRUE) {
-      _collectNumIntTimings();
-    }
-
-    return ret ;
-
   } else {
     if (RooTimer::timing_flag() == 2) {
       timer.start();
@@ -375,13 +367,7 @@ Double_t RooAbsTestStatistic::evaluate() const
       break ;
     }
 
-    Double_t ret = evaluatePartition(nFirst,nLast,nStep);
-
-    if (timeEvaluatePartition()) {
-      std::stringstream partition_name;
-      partition_name << GetName() << "_" << nFirst << "_" << nLast << "_" << nStep;
-      std::cout << "evaluatePartition timing for partition " << partition_name.str() << ": \twall = " << RooTimer::objectTiming["evaluate_partition_wall"][partition_name.str()] << " seconds,\tcpu = " << RooTimer::objectTiming["evaluate_partition_cpu"][partition_name.str()] << " seconds." << std::endl;
-    }
+    ret = evaluatePartition(nFirst,nLast,nStep);
 
     if (numSets()==1) {
       const Double_t norm = globalNormalization();
@@ -400,10 +386,17 @@ Double_t RooAbsTestStatistic::evaluate() const
       }
       RooTimer::timing_outfiles[0] << timer.timing_s() << getpid() << ppid << "other";
     }
-
-    return ret ;
-
   }
+
+  if (RooTimer::time_numInts() == kTRUE) {
+    _collectNumIntTimings();
+  }
+
+  if (timeEvaluatePartition()) {
+    _collectEvaluatePartitionTimings();
+  }
+
+  return ret;
 }
 
 
@@ -912,4 +905,52 @@ void RooAbsTestStatistic::_collectNumIntTimings(Bool_t clear_timings) const {
     }
   }
 
+}
+
+Bool_t RooAbsTestStatistic::timeEvaluatePartition() const {
+  return getAttribute("timeEvaluatePartition") || RooTimer::time_evaluate_partition();
+}
+
+void RooAbsTestStatistic::setTimeEvaluatePartition(Bool_t flag) {
+  setAttribute("timeEvaluatePartition", flag);
+}
+
+void RooAbsTestStatistic::_collectEvaluatePartitionTimings(Bool_t clear_timings) const {
+  for (std::string cpu_wall : {"cpu", "wall"}) {
+    std::string category = std::string("evaluate_partition_") + cpu_wall;
+    if (MPMaster == _gofOpMode) {
+      std::vector<std::string> member_names = {"time_s", "cpu/wall", "name", "ix_cpu", "pid", "ppid"};
+      for (Int_t i = 0; i < _nCPU; ++i) {
+        auto timings = _mpfeArray[i]->collectTimingsFromServer(category, clear_timings);
+        if (timings.size() > 0) {
+          RooJsonListFile timing_json("timings_evaluate_partitions.json");
+          timing_json.set_member_names(member_names.begin(), member_names.end());
+
+          pid_t pid = _mpfeArray[i]->getPIDFromServer();
+          for (auto it = timings.begin(); it != timings.end(); ++it) {
+            std::string name = it->first;
+            double timing_s = it->second;
+            timing_json << timing_s << cpu_wall << name << i << pid << getpid();
+          }
+        }
+      }
+    } else {
+      std::vector<std::string> member_names = {"time_s", "cpu/wall", "name", "pid"};
+      if (RooTimer::objectTiming[category].size() > 0) {
+        RooJsonListFile timing_json("timings_evaluate_partitions.json");
+        timing_json.set_member_names(member_names.begin(), member_names.end());
+
+        pid_t pid = getpid();
+        for (auto it = RooTimer::objectTiming[category].begin();
+             it != RooTimer::objectTiming[category].end(); ++it) {
+          std::string name = it->first;
+          double timing_s = it->second;
+          timing_json << timing_s << cpu_wall << name << pid;
+        }
+        if (clear_timings == kTRUE) {
+          RooTimer::objectTiming[category].clear();
+        }
+      }
+    }
+  }
 }

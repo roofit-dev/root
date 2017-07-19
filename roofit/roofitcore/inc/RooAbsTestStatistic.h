@@ -66,7 +66,8 @@ public:
   virtual Double_t offset() const { return _offset ; }
   virtual Double_t offsetCarry() const { return _offsetCarry; }
 
-  Bool_t timeEvaluatePartition() const { return RooTimer::time_evaluate_partition(); }
+  Bool_t timeEvaluatePartition() const;
+  void setTimeEvaluatePartition(Bool_t flag);
 
 protected:
 
@@ -156,6 +157,8 @@ private:
   void _collectNumIntTimings(Bool_t clear_timings = kTRUE) const;
 
   void _setNumIntTimingInPdfs(Bool_t flag = kTRUE);
+
+  void _collectEvaluatePartitionTimings(Bool_t clear_timings = kTRUE) const;
 
   void _initTiming();
 
