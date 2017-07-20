@@ -222,9 +222,9 @@ void RooRealMPFE::initialize()
   clearEvalErrorLog() ;
   // Fork server process and setup IPC
   _pipe = new BidirMMapPipe();
-//  if (RooTimer::timing_flag() > 0) {
-//    _initTiming();
-//  }
+  if (RooTimer::timing_flag() > 0) {
+    _initTiming();
+  }
 
   if (_pipe->isChild()) {
     // Start server loop
@@ -321,27 +321,12 @@ void RooRealMPFE::_initTiming() {
 
       case 7: {
         stringstream filename_ss;
+        filename_ss << "timing_RRMPFE_calculate_p" << proc_id << ".json";
+        RooTimer::timing_outfiles[_setNum].open(filename_ss.str().c_str());
 
-        if (_state==Initialize) {
-          filename_ss << "timing_RRMPFE_calculate_initialize_p" << proc_id << ".json";
-          RooTimer::timing_outfiles[_setNum].open(filename_ss.str().c_str());
-          std::string names[2] = {"RRMPFE_calculate_initialize_wall_s", "pid"};
-          RooTimer::timing_outfiles[_setNum].set_member_names(names, names + 2);
-        }
+        std::list<std::string> names = {"wall_s", "mpfe_state", "pid"};
+        RooTimer::timing_outfiles[_setNum].set_member_names(names.begin(), names.end());
 
-        if (_state==Inline) {
-          filename_ss << "timing_RRMPFE_calculate_inline_p" << proc_id << ".json";
-          RooTimer::timing_outfiles[_setNum].open(filename_ss.str().c_str());
-          std::string names[2] = {"RRMPFE_calculate_inline_wall_s", "pid"};
-          RooTimer::timing_outfiles[_setNum].set_member_names(names, names + 2);
-        }
-
-        if (_state==Client) {
-          filename_ss << "timing_RRMPFE_calculate_client_p" << proc_id << ".json";
-          RooTimer::timing_outfiles[_setNum].open(filename_ss.str().c_str());
-          std::string names[2] = {"RRMPFE_calculate_client_wall_s", "pid"};
-          RooTimer::timing_outfiles[_setNum].set_member_names(names, names + 2);
-        }
         break;
       }
 
@@ -771,7 +756,7 @@ void RooRealMPFE::calculate() const
 
     if (RooTimer::timing_flag() == 7) {
       timer.stop();
-      RooTimer::timing_outfiles[_setNum] << timer.timing_s() << getpid();
+      RooTimer::timing_outfiles[_setNum] << timer.timing_s() << "initialize" << getpid();
     }
   }
 
@@ -787,7 +772,7 @@ void RooRealMPFE::calculate() const
 
     if (RooTimer::timing_flag() == 7) {
       timer.stop();
-      RooTimer::timing_outfiles[_setNum] << timer.timing_s() << getpid();
+      RooTimer::timing_outfiles[_setNum] << timer.timing_s() << "inline" << getpid();
     }
   }
 
@@ -873,7 +858,7 @@ void RooRealMPFE::calculate() const
     // end timing
     if (RooTimer::timing_flag() == 7) {
       timer.stop();
-      RooTimer::timing_outfiles[_setNum] << timer.timing_s() << getpid();
+      RooTimer::timing_outfiles[_setNum] << timer.timing_s() << "client" << getpid();
     }
 
   } else if (_state!=Inline) {
