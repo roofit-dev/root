@@ -70,7 +70,9 @@ public:
     EnableTimingNumInts, DisableTimingNumInts,
     MeasureCommunicationTime,
     RetrieveTimings,
-    GetPID
+    GetPID,
+    EnableTimingEvaluatePartitions, DisableTimingEvaluatePartitions,
+    EnableTimingObjectEvaluatePartitions, DisableTimingObjectEvaluatePartitions
   };
 
   friend std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value);
@@ -105,9 +107,12 @@ public:
   pid_t getPIDFromServer() const;
   void setMPSet(Int_t inSetNum, Int_t inNumSets);
 
+  void setTimingEvaluatePartitions(Bool_t flag);
+  void setTimingEvaluatePartitions(const std::string &name, Bool_t flag);
+
 private:
-//  RooArgSet* _components = 0;
-//  RooAbsArg* _findComponent(std::string name);
+  RooArgSet* _components = nullptr;
+  RooAbsArg* _findComponent(std::string name);
 
   void _time_communication_overhead() const;
 

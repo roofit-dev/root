@@ -396,26 +396,26 @@ namespace RooFit {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Convenience function to find a named component of the PDF.
-//RooAbsArg* RooRealMPFE::_findComponent(std::string name) {
-//  if (!_components) {
-//    const RooAbsReal& true_arg = _arg.arg();
-//    _components = true_arg.getComponents();
-//  }
-//
-//  RooAbsArg* component = _components->find(name.c_str());
-//
-//  cout << "component: " << component <<endl << endl;
-//  cout << "components size: " << _components->getSize() << endl << endl;
-//
-//  RooFIter iter = _components->fwdIterator();
-//  RooAbsArg* node;
-//  int i = 0;
-//  while((node = iter.next())) {
-//    cout << "name of component " << i << ": " << node->GetName() << endl << endl;
-//    ++i;
-//  }
-//  return component;
-//}
+RooAbsArg* RooRealMPFE::_findComponent(std::string name) {
+  if (_components == nullptr) {
+    const RooAbsReal& true_arg = _arg.arg();
+    _components = true_arg.getComponents();
+  }
+
+  RooAbsArg* component = _components->find(name.c_str());
+
+  cout << "component: " << component <<endl << endl;
+  cout << "components size: " << _components->getSize() << endl << endl;
+
+  RooFIter iter = _components->fwdIterator();
+  RooAbsArg* node;
+  int i = 0;
+  while((node = iter.next())) {
+    cout << "name of component " << i << ": " << node->GetName() << endl << endl;
+    ++i;
+  }
+  return component;
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -633,6 +633,36 @@ void RooRealMPFE::serverLoop() {
         break;
       }
 
+      case EnableTimingEvaluatePartitions: {
+        // This must be done server-side, otherwise you have to copy all timing flags to server manually anyway
+        RooTimer::set_time_evaluate_partition(kTRUE);
+        break;
+      }
+
+      case DisableTimingEvaluatePartitions: {
+        RooTimer::set_time_evaluate_partition(kFALSE);
+        break;
+      }
+
+      case EnableTimingObjectEvaluatePartitions: {
+        std::string name;
+        *_pipe >> name;
+        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
+        if (object) {
+          object->setTimeEvaluatePartition(kTRUE);
+        }
+        break;
+      }
+
+      case DisableTimingObjectEvaluatePartitions: {
+        std::string name;
+        *_pipe >> name;
+        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
+        if (object) {
+          object->setTimeEvaluatePartition(kFALSE);
+        }
+        break;
+      }
 
       case MeasureCommunicationTime: {
         // Measure end time asap, since time of arrival at this case block is what we need to measure
@@ -709,6 +739,7 @@ void RooRealMPFE::serverLoop() {
 
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Activate or deactivate timing of numerical integrals on the server side.
 
 void RooRealMPFE::setTimingNumInts(Bool_t flag) {
   if (flag == kTRUE) {
@@ -1207,6 +1238,30 @@ void RooRealMPFE::_time_communication_overhead() const {
 }
 
 
+////////////////////////////////////////////////////////////////////////////////
+/// Activate or deactivate timing of evaluate_partition calls on the server side.
+
+void RooRealMPFE::setTimingEvaluatePartitions(Bool_t flag) {
+  if (flag == kTRUE) {
+    *_pipe << EnableTimingEvaluatePartitions;
+  } else {
+    *_pipe << DisableTimingEvaluatePartitions;
+  }
+}
+
+void RooRealMPFE::setTimingEvaluatePartitions(const std::string &name, Bool_t flag) {
+  if (flag == kTRUE) {
+    *_pipe << EnableTimingObjectEvaluatePartitions << name;
+  } else {
+    *_pipe << DisableTimingObjectEvaluatePartitions << name;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// For debugging purposes, this function makes printing to std::cout etc. more
+/// readable by printing the actual message name instead of its numerical value.
+/// The numerical value is not specified and can differ for each compilation.
+
 std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value){
   const char* s = 0;
 #define PROCESS_VAL(p) case(p): s = #p; break;
@@ -1229,6 +1284,10 @@ std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value){
     PROCESS_VAL(RooRealMPFE::EnableTimingNumInts);
     PROCESS_VAL(RooRealMPFE::DisableTimingNumInts);
     PROCESS_VAL(RooRealMPFE::GetPID);
+    PROCESS_VAL(RooRealMPFE::EnableTimingEvaluatePartitions);
+    PROCESS_VAL(RooRealMPFE::DisableTimingEvaluatePartitions);
+    PROCESS_VAL(RooRealMPFE::EnableTimingObjectEvaluatePartitions);
+    PROCESS_VAL(RooRealMPFE::DisableTimingObjectEvaluatePartitions);
     default: {
       s = "unknown Message!";
       break;
