@@ -111,7 +111,7 @@ public:
   void setTimingEvaluatePartitions(const std::string &name, Bool_t flag);
 
 private:
-  RooArgSet* _components = nullptr;
+  std::unique_ptr<RooArgSet> _components;
   RooAbsArg* _findComponent(std::string name);
 
   void _time_communication_overhead() const;

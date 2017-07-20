@@ -160,8 +160,6 @@ RooRealMPFE::~RooRealMPFE()
 {
   if (_state==Client) standby();
   _sentinel.remove(*this);
-
-//  delete _components;
 }
 
 
@@ -382,9 +380,10 @@ namespace RooFit {
 ////////////////////////////////////////////////////////////////////////////////
 /// Convenience function to find a named component of the PDF.
 RooAbsArg* RooRealMPFE::_findComponent(std::string name) {
-  if (_components == nullptr) {
+  if (!_components) {
     const RooAbsReal& true_arg = _arg.arg();
-    _components = true_arg.getComponents();
+    std::unique_ptr<RooArgSet> dummy(true_arg.getComponents());
+    _components = std::move(dummy);
   }
 
   RooAbsArg* component = _components->find(name.c_str());
