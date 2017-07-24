@@ -68,6 +68,7 @@ public:
 
   Bool_t timeEvaluatePartition() const;
   void setTimeEvaluatePartition(Bool_t flag);
+  void setTimeEvaluatePartition(const std::string & name, Bool_t flag);
 
 protected:
 

@@ -253,6 +253,7 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
   RooWallTimer timer;
   RooCPUTimer ctimer;
   if (timeEvaluatePartition()) {
+    cxcoutD(Eval) << "RooNLLVar::evaluatePartition(" << GetName() << ", pid" << getpid() << "): starting timers." << std::endl;
     timer.start();
     ctimer.start();
   }
@@ -404,6 +405,8 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
   if (timeEvaluatePartition()) {
     ctimer.stop();
     timer.stop();
+    cxcoutD(Eval) << "RooNLLVar::evaluatePartition(" << GetName() << ", pid" << getpid() << "): stopped timers." << std::endl;
+    cxcoutD(Eval) << "RooNLLVar::evaluatePartition(" << GetName() << ", pid" << getpid() << "): wall time = " << timer.timing_s() << "s, cpu time = " << ctimer.timing_s() << "s." << std::endl;
 
     std::stringstream partition_name;
     partition_name << GetName() << "_" << firstEvent << "_" << lastEvent << "_" << stepSize;

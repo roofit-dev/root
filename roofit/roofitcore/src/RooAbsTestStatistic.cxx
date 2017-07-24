@@ -915,6 +915,36 @@ void RooAbsTestStatistic::setTimeEvaluatePartition(Bool_t flag) {
   setAttribute("timeEvaluatePartition", flag);
 }
 
+void RooAbsTestStatistic::setTimeEvaluatePartition(const std::string & name, Bool_t flag) {
+  if (!_init) {
+    const_cast<RooAbsTestStatistic*>(this)->initialize() ;
+  }
+
+  if (MPMaster == _gofOpMode) {
+    for (Int_t i = 0; i < _nCPU; ++i) {
+      pRooRealMPFE mpfe = _mpfeArray[i];
+      const RooAbsTestStatistic *gof = dynamic_cast<const RooAbsTestStatistic *>(&(mpfe->_arg.arg()));
+      if (gof->_gofOpMode == SimMaster) {
+        auto mangled_name = Form("%s_GOF%d",GetName(),i);
+        mpfe->setTimingEvaluatePartitions(mangled_name, flag);
+      } else {
+        mpfe->setTimingEvaluatePartitions(name, flag);
+      }
+    }
+  } else if (SimMaster == _gofOpMode) {
+    for (Int_t i = 0 ; i < _nGof; ++i) {
+      cxcoutD(Optimization) << "RooAbsTestStatistic::setTimeEvaluatePartition(" << GetName() << "): in SimMaster mode, on pid" << getpid() << ", gofArray[" << i << "].name is " << _gofArray[i]->GetName() << ", and we're looking for " << name << std::endl;
+      if (_gofArray[i]->GetName() == name.c_str()) {
+        _gofArray[i]->setTimeEvaluatePartition(flag);
+        i = _nGof;
+      }
+    }
+  } else {
+    std::cout << "WARNING in RooAbsTestStatistic::setTimeEvaluatePartition (" << GetName() << "): no named simultaneous components to set in this pdf!" << std::endl;
+  }
+}
+
+
 void RooAbsTestStatistic::_collectEvaluatePartitionTimings(Bool_t clear_timings) const {
   for (std::string cpu_wall : {"cpu", "wall"}) {
     std::string category = std::string("evaluate_partition_") + cpu_wall;

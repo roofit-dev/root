@@ -384,6 +384,7 @@ RooAbsArg* RooRealMPFE::_findComponent(std::string name) {
     const RooAbsReal& true_arg = _arg.arg();
     std::unique_ptr<RooArgSet> dummy(true_arg.getComponents());
     _components = std::move(dummy);
+    _components->Print();
   }
 
   RooAbsArg* component = _components->find(name.c_str());
@@ -633,7 +634,7 @@ void RooRealMPFE::serverLoop() {
         *_pipe >> name;
         RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
         if (object) {
-          object->setTimeEvaluatePartition(kTRUE);
+          object->setTimeEvaluatePartition(name, kTRUE);
         }
         break;
       }
@@ -1240,6 +1241,11 @@ void RooRealMPFE::setTimingEvaluatePartitions(const std::string &name, Bool_t fl
     *_pipe << DisableTimingObjectEvaluatePartitions << name;
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Call client-side: return server-side simultaneous components
+//RooRealMPFE::
+//RooAbsReal ding = _arg.arg();
 
 ////////////////////////////////////////////////////////////////////////////////
 /// For debugging purposes, this function makes printing to std::cout etc. more
