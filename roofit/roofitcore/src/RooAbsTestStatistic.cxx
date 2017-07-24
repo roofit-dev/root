@@ -77,7 +77,7 @@ RooAbsTestStatistic::RooAbsTestStatistic() :
   _verbose(kFALSE), _init(kFALSE), _gofOpMode(Slave), _nEvents(0), _setNum(0),
   _numSets(0), _extSet(0), _nGof(0), _gofArray(0), _nCPU(1), _mpfeArray(0),
   _mpinterl(RooFit::BulkPartition), _CPUAffinity(1), _doOffset(kFALSE), _offset(0),
-  _offsetCarry(0), _evalCarry(0)
+  _offsetCarry(0), _evalCarry(0), _timeEvaluatePartition(kFALSE)
 {
 }
 
@@ -120,7 +120,8 @@ RooAbsTestStatistic::RooAbsTestStatistic(const char *name, const char *title, Ro
   _doOffset(kFALSE),
   _offset(0),
   _offsetCarry(0),
-  _evalCarry(0)
+  _evalCarry(0),
+  _timeEvaluatePartition(kFALSE)
 {
   // Register all parameters as servers
   RooArgSet* params = real.getParameters(&data) ;
@@ -180,7 +181,8 @@ RooAbsTestStatistic::RooAbsTestStatistic(const RooAbsTestStatistic& other, const
   _doOffset(other._doOffset),
   _offset(other._offset),
   _offsetCarry(other._offsetCarry),
-  _evalCarry(other._evalCarry)
+  _evalCarry(other._evalCarry),
+  _timeEvaluatePartition(other._timeEvaluatePartition)
 {
   // Our parameters are those of original
   _paramSet.add(other._paramSet) ;
@@ -250,6 +252,7 @@ Double_t RooAbsTestStatistic::evaluate() const
 
     // One-time Initialization
   if (!_init) {
+    // TODO: const_cast is not very pretty, change either 1) so that initialize is const and it changes mutable members only or 2) so that initialize is called from the ctors
     const_cast<RooAbsTestStatistic*>(this)->initialize() ;
   }
 
@@ -908,15 +911,18 @@ void RooAbsTestStatistic::_collectNumIntTimings(Bool_t clear_timings) const {
 }
 
 Bool_t RooAbsTestStatistic::timeEvaluatePartition() const {
-  return getAttribute("timeEvaluatePartition") || RooTimer::time_evaluate_partition();
+//  return getAttribute("timeEvaluatePartition") || RooTimer::time_evaluate_partition();
+  return _timeEvaluatePartition || RooTimer::time_evaluate_partition();
 }
 
-void RooAbsTestStatistic::setTimeEvaluatePartition(Bool_t flag) {
-  setAttribute("timeEvaluatePartition", flag);
+void RooAbsTestStatistic::setTimeEvaluatePartition(Bool_t flag) const {  // it's still const because _timeEvaluatePartition is mutable
+//  setAttribute("timeEvaluatePartition", flag);
+  _timeEvaluatePartition = flag;
 }
 
 void RooAbsTestStatistic::setTimeEvaluatePartition(const std::string & name, Bool_t flag) {
   if (!_init) {
+    // TODO: const_cast is not very pretty, change either 1) so that initialize is const and it changes mutable members only or 2) so that initialize is called from the ctors
     const_cast<RooAbsTestStatistic*>(this)->initialize() ;
   }
 
@@ -925,16 +931,18 @@ void RooAbsTestStatistic::setTimeEvaluatePartition(const std::string & name, Boo
       pRooRealMPFE mpfe = _mpfeArray[i];
       const RooAbsTestStatistic *gof = dynamic_cast<const RooAbsTestStatistic *>(&(mpfe->_arg.arg()));
       if (gof->_gofOpMode == SimMaster) {
-        auto mangled_name = Form("%s_GOF%d",GetName(),i);
-        mpfe->setTimingEvaluatePartitions(mangled_name, flag);
-      } else {
         mpfe->setTimingEvaluatePartitions(name, flag);
+//        auto mangled_name = Form("%s_GOF%d",GetName(),i);
+//        mpfe->setTimingEvaluatePartitions(mangled_name, flag);
+      } else {
+        mpfe->setTimingEvaluatePartitions(flag);
       }
     }
   } else if (SimMaster == _gofOpMode) {
     for (Int_t i = 0 ; i < _nGof; ++i) {
       cxcoutD(Optimization) << "RooAbsTestStatistic::setTimeEvaluatePartition(" << GetName() << "): in SimMaster mode, on pid" << getpid() << ", gofArray[" << i << "].name is " << _gofArray[i]->GetName() << ", and we're looking for " << name << std::endl;
-      if (_gofArray[i]->GetName() == name.c_str()) {
+      if (_gofArray[i]->GetName() == name) {
+        cxcoutD(Optimization) << "... match! Setting to " << flag << std::endl;
         _gofArray[i]->setTimeEvaluatePartition(flag);
         i = _nGof;
       }

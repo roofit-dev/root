@@ -629,7 +629,27 @@ void RooRealMPFE::serverLoop() {
         break;
       }
 
-      case EnableTimingObjectEvaluatePartitions: {
+//      case EnableTimingEvaluatePartitionsForGOF: {
+////        std::string name;
+////        *_pipe >> name;
+////        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
+////        if (object) {
+//        dynamic_cast<const RooAbsTestStatistic &>(_arg.arg()).setTimeEvaluatePartition(kTRUE);
+////        }
+//        break;
+//      }
+//
+//      case DisableTimingEvaluatePartitionsForGOF: {
+////        std::string name;
+////        *_pipe >> name;
+////        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
+////        if (object) {
+//        dynamic_cast<const RooAbsTestStatistic &>(_arg.arg()).setTimeEvaluatePartition(kFALSE);
+////        }
+//        break;
+//      }
+
+      case EnableTimingEvaluatePartitionsForNamedSimComponent: {
         std::string name;
         *_pipe >> name;
         RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
@@ -639,12 +659,12 @@ void RooRealMPFE::serverLoop() {
         break;
       }
 
-      case DisableTimingObjectEvaluatePartitions: {
+      case DisableTimingEvaluatePartitionsForNamedSimComponent: {
         std::string name;
         *_pipe >> name;
         RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
         if (object) {
-          object->setTimeEvaluatePartition(kFALSE);
+          object->setTimeEvaluatePartition(name, kFALSE);
         }
         break;
       }
@@ -1236,9 +1256,9 @@ void RooRealMPFE::setTimingEvaluatePartitions(Bool_t flag) {
 
 void RooRealMPFE::setTimingEvaluatePartitions(const std::string &name, Bool_t flag) {
   if (flag == kTRUE) {
-    *_pipe << EnableTimingObjectEvaluatePartitions << name;
+    *_pipe << EnableTimingEvaluatePartitionsForNamedSimComponent << name;
   } else {
-    *_pipe << DisableTimingObjectEvaluatePartitions << name;
+    *_pipe << DisableTimingEvaluatePartitionsForNamedSimComponent << name;
   }
 }
 
@@ -1276,8 +1296,8 @@ std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value){
     PROCESS_VAL(RooRealMPFE::GetPID);
     PROCESS_VAL(RooRealMPFE::EnableTimingEvaluatePartitions);
     PROCESS_VAL(RooRealMPFE::DisableTimingEvaluatePartitions);
-    PROCESS_VAL(RooRealMPFE::EnableTimingObjectEvaluatePartitions);
-    PROCESS_VAL(RooRealMPFE::DisableTimingObjectEvaluatePartitions);
+    PROCESS_VAL(RooRealMPFE::EnableTimingEvaluatePartitionsForNamedSimComponent);
+    PROCESS_VAL(RooRealMPFE::DisableTimingEvaluatePartitionsForNamedSimComponent);
     default: {
       s = "unknown Message!";
       break;

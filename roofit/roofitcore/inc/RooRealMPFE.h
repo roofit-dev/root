@@ -72,7 +72,8 @@ public:
     RetrieveTimings,
     GetPID,
     EnableTimingEvaluatePartitions, DisableTimingEvaluatePartitions,
-    EnableTimingObjectEvaluatePartitions, DisableTimingObjectEvaluatePartitions
+//    EnableTimingEvaluatePartitionsForGOF, DisableTimingEvaluatePartitionsForGOF,
+    EnableTimingEvaluatePartitionsForNamedSimComponent, DisableTimingEvaluatePartitionsForNamedSimComponent
   };
 
   friend std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value);

@@ -67,7 +67,7 @@ public:
   virtual Double_t offsetCarry() const { return _offsetCarry; }
 
   Bool_t timeEvaluatePartition() const;
-  void setTimeEvaluatePartition(Bool_t flag);
+  void setTimeEvaluatePartition(Bool_t flag) const;
   void setTimeEvaluatePartition(const std::string & name, Bool_t flag);
 
 protected:
@@ -162,6 +162,8 @@ private:
   void _collectEvaluatePartitionTimings(Bool_t clear_timings = kTRUE) const;
 
   void _initTiming();
+
+  mutable Bool_t _timeEvaluatePartition;  //! mutable so that it can be set from RooRealMPFE::_arg.arg(), which gives a const reference
 
   ClassDef(RooAbsTestStatistic,3) // Abstract base class for real-valued test statistics
 };
