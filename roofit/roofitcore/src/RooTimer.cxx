@@ -1,4 +1,5 @@
 #include "RooTimer.h"
+#include <iostream>
 
 double RooTimer::timing_s() {
   return _timing_s;
@@ -86,6 +87,7 @@ Bool_t RooTimer::time_evaluate_partition() {
 }
 
 void RooTimer::set_time_evaluate_partition(Bool_t flag) {
+  std::cout << "WARNING: RooTimer::set_time_evaluate_partition() is best set before using RooRealMPFE to fork to multiple processes. When resetting the flag value after forking, the new setting is not synchronized to other processes." << std::endl;
   _time_evaluate_partition = flag;
 }
 

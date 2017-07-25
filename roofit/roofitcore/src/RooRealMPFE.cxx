@@ -620,12 +620,14 @@ void RooRealMPFE::serverLoop() {
 
       case EnableTimingEvaluatePartitions: {
         // This must be done server-side, otherwise you have to copy all timing flags to server manually anyway
-        RooTimer::set_time_evaluate_partition(kTRUE);
+//        RooTimer::set_time_evaluate_partition(kTRUE);
+        dynamic_cast<RooAbsTestStatistic*>(_arg.absArg())->setTimeEvaluatePartition(kTRUE);
         break;
       }
 
       case DisableTimingEvaluatePartitions: {
-        RooTimer::set_time_evaluate_partition(kFALSE);
+//        RooTimer::set_time_evaluate_partition(kFALSE);
+        dynamic_cast<RooAbsTestStatistic*>(_arg.absArg())->setTimeEvaluatePartition(kFALSE);
         break;
       }
 
@@ -652,20 +654,22 @@ void RooRealMPFE::serverLoop() {
       case EnableTimingEvaluatePartitionsForNamedSimComponent: {
         std::string name;
         *_pipe >> name;
-        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
-        if (object) {
-          object->setTimeEvaluatePartition(name, kTRUE);
-        }
+//        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
+//        if (object) {
+//          object->setTimeEvaluatePartition(name, kTRUE);
+//        }
+        dynamic_cast<const RooAbsTestStatistic &>(_arg.arg()).setTimeEvaluatePartition(name, kTRUE);
         break;
       }
 
       case DisableTimingEvaluatePartitionsForNamedSimComponent: {
         std::string name;
         *_pipe >> name;
-        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
-        if (object) {
-          object->setTimeEvaluatePartition(name, kFALSE);
-        }
+//        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
+//        if (object) {
+//          object->setTimeEvaluatePartition(name, kFALSE);
+//        }
+        dynamic_cast<const RooAbsTestStatistic &>(_arg.arg()).setTimeEvaluatePartition(name, kFALSE);
         break;
       }
 

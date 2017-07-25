@@ -915,26 +915,52 @@ Bool_t RooAbsTestStatistic::timeEvaluatePartition() const {
   return _timeEvaluatePartition || RooTimer::time_evaluate_partition();
 }
 
-void RooAbsTestStatistic::setTimeEvaluatePartition(Bool_t flag) const {  // it's still const because _timeEvaluatePartition is mutable
-//  setAttribute("timeEvaluatePartition", flag);
+// This setTimeEvaluatePartition functions are const because _timeEvaluatePartition is mutable.
+// The initialize call makes their constness dubious, but initialize should in any case be moved to the
+// ctor(s) or be used to only modify mutable members.
+void RooAbsTestStatistic::setTimeEvaluatePartition(Bool_t flag) const {
+  if (!_init) {
+    // TODO: const_cast is not very pretty, change either 1) so that initialize is const and it changes mutable members only or 2) so that initialize is called from the ctors
+    const_cast<RooAbsTestStatistic*>(this)->initialize() ;
+  }
+
   _timeEvaluatePartition = flag;
+
+  if (MPMaster == _gofOpMode) {
+    cxcoutD(Optimization) << "RooAbsTestStatistic::setTimeEvaluatePartition(" << GetName() << "): in MPMaster mode, on pid" << getpid() << ", setting all MPFEs to " << flag << std::endl;
+    for (Int_t i = 0; i < _nCPU; ++i) {
+      pRooRealMPFE mpfe = _mpfeArray[i];
+      mpfe->setTimingEvaluatePartitions(flag);
+    }
+  } else if (SimMaster == _gofOpMode) {
+    for (Int_t i = 0 ; i < _nGof; ++i) {
+      cxcoutD(Optimization) << "RooAbsTestStatistic::setTimeEvaluatePartition(" << GetName() << "): in SimMaster mode, on pid" << getpid() << ", setting all simultaneous components to " << flag << std::endl;
+      _gofArray[i]->setTimeEvaluatePartition(flag);
+    }
+  }
 }
 
-void RooAbsTestStatistic::setTimeEvaluatePartition(const std::string & name, Bool_t flag) {
+// This setTimeEvaluatePartition functions are const because _timeEvaluatePartition is mutable.
+// The initialize call makes their constness dubious, but initialize should in any case be moved to the
+// ctor(s) or be used to only modify mutable members.
+void RooAbsTestStatistic::setTimeEvaluatePartition(const std::string & name, Bool_t flag) const {
   if (!_init) {
     // TODO: const_cast is not very pretty, change either 1) so that initialize is const and it changes mutable members only or 2) so that initialize is called from the ctors
     const_cast<RooAbsTestStatistic*>(this)->initialize() ;
   }
 
   if (MPMaster == _gofOpMode) {
+    cxcoutD(Optimization) << "RooAbsTestStatistic::setTimeEvaluatePartition(" << GetName() << "): in MPMaster mode, on pid" << getpid() << std::endl;
     for (Int_t i = 0; i < _nCPU; ++i) {
       pRooRealMPFE mpfe = _mpfeArray[i];
       const RooAbsTestStatistic *gof = dynamic_cast<const RooAbsTestStatistic *>(&(mpfe->_arg.arg()));
       if (gof->_gofOpMode == SimMaster) {
+        cxcoutD(Optimization) << "... passing on name " << name << " to MPFE subprocess " << i << "'s setTimingEvaluatePartitions(name, flag)" << std::endl;
         mpfe->setTimingEvaluatePartitions(name, flag);
 //        auto mangled_name = Form("%s_GOF%d",GetName(),i);
 //        mpfe->setTimingEvaluatePartitions(mangled_name, flag);
       } else {
+        cxcoutD(Optimization) << "... passing on to MPFE subprocess " << i << "'s setTimingEvaluatePartitions(flag)" << std::endl;
         mpfe->setTimingEvaluatePartitions(flag);
       }
     }

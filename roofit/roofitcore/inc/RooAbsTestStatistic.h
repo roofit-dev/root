@@ -67,8 +67,10 @@ public:
   virtual Double_t offsetCarry() const { return _offsetCarry; }
 
   Bool_t timeEvaluatePartition() const;
+  // This setTimeEvaluatePartition functions are const because _timeEvaluatePartition is mutable, but
+  // see implementation file for comment about setTimeEvaluatePartition(const std::string &, Bool_t)
   void setTimeEvaluatePartition(Bool_t flag) const;
-  void setTimeEvaluatePartition(const std::string & name, Bool_t flag);
+  void setTimeEvaluatePartition(const std::string & name, Bool_t flag) const;
 
 protected:
 
