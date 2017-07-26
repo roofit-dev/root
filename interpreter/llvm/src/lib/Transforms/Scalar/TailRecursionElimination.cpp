@@ -50,7 +50,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/Scalar/TailRecursionElimination.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -236,7 +235,7 @@ static bool markTails(Function &F, bool &AllCallsAreTailCalls) {
       if (!CI || CI->isTailCall())
         continue;
 
-      bool IsNoTail = CI->isNoTailCall() || CI->hasOperandBundles();
+      bool IsNoTail = CI->isNoTailCall();
 
       if (!IsNoTail && CI->doesNotAccessMemory()) {
         // A call to a readnone function whose arguments are all things computed
@@ -347,7 +346,7 @@ static bool canMoveAboveCall(Instruction *I, CallInst *CI) {
   // return value of the call, it must only use things that are defined before
   // the call, or movable instructions between the call and the instruction
   // itself.
-  return !is_contained(I->operands(), CI);
+  return std::find(I->op_begin(), I->op_end(), CI) == I->op_end();
 }
 
 /// Return true if the specified value is the same when the return would exit
@@ -492,10 +491,11 @@ static CallInst *findTRECandidate(Instruction *TI,
   return CI;
 }
 
-static bool
-eliminateRecursiveTailCall(CallInst *CI, ReturnInst *Ret, BasicBlock *&OldEntry,
-                           bool &TailCallsAreMarkedTail,
-                           SmallVectorImpl<PHINode *> &ArgumentPHIs) {
+static bool eliminateRecursiveTailCall(CallInst *CI, ReturnInst *Ret,
+                                       BasicBlock *&OldEntry,
+                                       bool &TailCallsAreMarkedTail,
+                                       SmallVectorImpl<PHINode *> &ArgumentPHIs,
+                                       bool CannotTailCallElimCallsMarkedTail) {
   // If we are introducing accumulator recursion to eliminate operations after
   // the call instruction that are both associative and commutative, the initial
   // value for the accumulator is placed in this variable.  If this value is set
@@ -706,7 +706,8 @@ static bool foldReturnAndProcessPred(BasicBlock *BB, ReturnInst *Ret,
         BB->eraseFromParent();
 
       eliminateRecursiveTailCall(CI, RI, OldEntry, TailCallsAreMarkedTail,
-                                 ArgumentPHIs);
+                                 ArgumentPHIs,
+                                 CannotTailCallElimCallsMarkedTail);
       ++NumRetDuped;
       Change = true;
     }
@@ -725,13 +726,11 @@ static bool processReturningBlock(ReturnInst *Ret, BasicBlock *&OldEntry,
     return false;
 
   return eliminateRecursiveTailCall(CI, Ret, OldEntry, TailCallsAreMarkedTail,
-                                    ArgumentPHIs);
+                                    ArgumentPHIs,
+                                    CannotTailCallElimCallsMarkedTail);
 }
 
 static bool eliminateTailRecursion(Function &F, const TargetTransformInfo *TTI) {
-  if (F.getFnAttribute("disable-tail-calls").getValueAsString() == "true")
-    return false;
-
   bool MadeChange = false;
   bool AllCallsAreTailCalls = false;
   MadeChange |= markTails(F, AllCallsAreTailCalls);
@@ -801,7 +800,8 @@ struct TailCallElim : public FunctionPass {
   }
 
   bool runOnFunction(Function &F) override {
-    if (skipFunction(F))
+    if (skipFunction(F) ||
+        F.getFnAttribute("disable-tail-calls").getValueAsString() == "true")
       return false;
 
     return eliminateTailRecursion(
@@ -820,18 +820,4 @@ INITIALIZE_PASS_END(TailCallElim, "tailcallelim", "Tail Call Elimination",
 // Public interface to the TailCallElimination pass
 FunctionPass *llvm::createTailCallEliminationPass() {
   return new TailCallElim();
-}
-
-PreservedAnalyses TailCallElimPass::run(Function &F,
-                                        FunctionAnalysisManager &AM) {
-
-  TargetTransformInfo &TTI = AM.getResult<TargetIRAnalysis>(F);
-
-  bool Changed = eliminateTailRecursion(F, &TTI);
-
-  if (!Changed)
-    return PreservedAnalyses::all();
-  PreservedAnalyses PA;
-  PA.preserve<GlobalsAA>();
-  return PA;
 }

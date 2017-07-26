@@ -7,7 +7,6 @@ add_llvm_library(LLVMVectorize
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms
-
-  DEPENDS
-  intrinsics_gen
   )
+
+add_dependencies(LLVMVectorize intrinsics_gen)

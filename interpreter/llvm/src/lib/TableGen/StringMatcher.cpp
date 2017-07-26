@@ -11,15 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/TableGen/StringMatcher.h"
-#include <cassert>
+#include "llvm/Support/raw_ostream.h"
 #include <map>
-#include <string>
-#include <utility>
-#include <vector>
-
 using namespace llvm;
 
 /// FindFirstNonCommonLetter - Find the first character in the keys of the
@@ -73,7 +67,7 @@ EmitStringMatcherForChar(const std::vector<const StringPair*> &Matches,
   }
   
   // Bucket the matches by the character we are comparing.
-  std::map<char, std::vector<const StringPair*>> MatchesByLetter;
+  std::map<char, std::vector<const StringPair*> > MatchesByLetter;
   
   for (unsigned i = 0, e = Matches.size(); i != e; ++i)
     MatchesByLetter[Matches[i]->first[CharNo]].push_back(Matches[i]);
@@ -97,7 +91,7 @@ EmitStringMatcherForChar(const std::vector<const StringPair*> &Matches,
       // FIXME: Need to escape general strings.
       OS << Indent << "if (memcmp(" << StrVariableName << ".data()+" << CharNo
          << ", \"" << Matches[0]->first.substr(CharNo, NumChars) << "\", "
-         << NumChars << ") != 0)\n";
+         << NumChars << "))\n";
       OS << Indent << "  break;\n";
     }
     
@@ -109,7 +103,7 @@ EmitStringMatcherForChar(const std::vector<const StringPair*> &Matches,
   OS << Indent << "switch (" << StrVariableName << "[" << CharNo << "]) {\n";
   OS << Indent << "default: break;\n";
   
-  for (std::map<char, std::vector<const StringPair*>>::iterator LI = 
+  for (std::map<char, std::vector<const StringPair*> >::iterator LI = 
        MatchesByLetter.begin(), E = MatchesByLetter.end(); LI != E; ++LI) {
     // TODO: escape hard stuff (like \n) if we ever care about it.
     OS << Indent << "case '" << LI->first << "':\t // "
@@ -124,6 +118,7 @@ EmitStringMatcherForChar(const std::vector<const StringPair*> &Matches,
   return true;
 }
 
+
 /// Emit - Top level entry point.
 ///
 void StringMatcher::Emit(unsigned Indent) const {
@@ -131,7 +126,7 @@ void StringMatcher::Emit(unsigned Indent) const {
   if (Matches.empty()) return;
   
   // First level categorization: group strings by length.
-  std::map<unsigned, std::vector<const StringPair*>> MatchesByLength;
+  std::map<unsigned, std::vector<const StringPair*> > MatchesByLength;
   
   for (unsigned i = 0, e = Matches.size(); i != e; ++i)
     MatchesByLength[Matches[i].first.size()].push_back(&Matches[i]);
@@ -141,7 +136,7 @@ void StringMatcher::Emit(unsigned Indent) const {
   OS.indent(Indent*2+2) << "switch (" << StrVariableName << ".size()) {\n";
   OS.indent(Indent*2+2) << "default: break;\n";
   
-  for (std::map<unsigned, std::vector<const StringPair*>>::iterator LI =
+  for (std::map<unsigned, std::vector<const StringPair*> >::iterator LI =
        MatchesByLength.begin(), E = MatchesByLength.end(); LI != E; ++LI) {
     OS.indent(Indent*2+2) << "case " << LI->first << ":\t // "
        << LI->second.size()

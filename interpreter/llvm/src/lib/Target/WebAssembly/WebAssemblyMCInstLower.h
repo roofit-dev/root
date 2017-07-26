@@ -20,7 +20,7 @@
 #include "llvm/Support/Compiler.h"
 
 namespace llvm {
-class WebAssemblyAsmPrinter;
+class AsmPrinter;
 class MCContext;
 class MCSymbol;
 class MachineInstr;
@@ -29,7 +29,7 @@ class MachineOperand;
 /// This class is used to lower an MachineInstr into an MCInst.
 class LLVM_LIBRARY_VISIBILITY WebAssemblyMCInstLower {
   MCContext &Ctx;
-  WebAssemblyAsmPrinter &Printer;
+  AsmPrinter &Printer;
 
   MCSymbol *GetGlobalAddressSymbol(const MachineOperand &MO) const;
   MCSymbol *GetExternalSymbolSymbol(const MachineOperand &MO) const;
@@ -37,7 +37,7 @@ class LLVM_LIBRARY_VISIBILITY WebAssemblyMCInstLower {
                                bool IsFunc) const;
 
 public:
-  WebAssemblyMCInstLower(MCContext &ctx, WebAssemblyAsmPrinter &printer)
+  WebAssemblyMCInstLower(MCContext &ctx, AsmPrinter &printer)
       : Ctx(ctx), Printer(printer) {}
   void Lower(const MachineInstr *MI, MCInst &OutMI) const;
 };

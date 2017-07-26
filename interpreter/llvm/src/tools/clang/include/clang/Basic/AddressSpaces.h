@@ -20,32 +20,24 @@ namespace clang {
 
 namespace LangAS {
 
-/// \brief Defines the address space values used by the address space qualifier
-/// of QualType.
+/// \brief Defines the set of possible language-specific address spaces.
 ///
+/// This uses a high starting offset so as not to conflict with any address
+/// space used by a target.
 enum ID {
-  // The default value 0 is the value used in QualType for the the situation
-  // where there is no address space qualifier. For most languages, this also
-  // corresponds to the situation where there is no address space qualifier in
-  // the source code, except for OpenCL, where the address space value 0 in
-  // QualType represents private address space in OpenCL source code.
-  Default = 0,
+  Offset = 0x7FFF00,
 
-  // OpenCL specific address spaces.
-  opencl_global,
+  opencl_global = Offset,
   opencl_local,
   opencl_constant,
   opencl_generic,
 
-  // CUDA specific address spaces.
   cuda_device,
   cuda_constant,
   cuda_shared,
 
-  // This denotes the count of language-specific address spaces and also
-  // the offset added to the target-specific address spaces, which are usually
-  // specified by address space attributes __attribute__(address_space(n))).
-  Count
+  Last,
+  Count = Last-Offset
 };
 
 /// The type of a lookup table which maps from language-specific address spaces

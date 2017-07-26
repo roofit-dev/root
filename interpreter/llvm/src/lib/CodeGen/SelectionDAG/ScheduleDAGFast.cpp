@@ -160,17 +160,18 @@ void ScheduleDAGFast::ReleasePred(SUnit *SU, SDep *PredEdge) {
 
 void ScheduleDAGFast::ReleasePredecessors(SUnit *SU, unsigned CurCycle) {
   // Bottom up: release predecessors
-  for (SDep &Pred : SU->Preds) {
-    ReleasePred(SU, &Pred);
-    if (Pred.isAssignedRegDep()) {
+  for (SUnit::pred_iterator I = SU->Preds.begin(), E = SU->Preds.end();
+       I != E; ++I) {
+    ReleasePred(SU, &*I);
+    if (I->isAssignedRegDep()) {
       // This is a physical register dependency and it's impossible or
       // expensive to copy the register. Make sure nothing that can
       // clobber the register is scheduled between the predecessor and
       // this node.
-      if (!LiveRegDefs[Pred.getReg()]) {
+      if (!LiveRegDefs[I->getReg()]) {
         ++NumLiveRegs;
-        LiveRegDefs[Pred.getReg()] = Pred.getSUnit();
-        LiveRegCycles[Pred.getReg()] = CurCycle;
+        LiveRegDefs[I->getReg()] = I->getSUnit();
+        LiveRegCycles[I->getReg()] = CurCycle;
       }
     }
   }
@@ -190,15 +191,16 @@ void ScheduleDAGFast::ScheduleNodeBottomUp(SUnit *SU, unsigned CurCycle) {
   ReleasePredecessors(SU, CurCycle);
 
   // Release all the implicit physical register defs that are live.
-  for (SDep &Succ : SU->Succs) {
-    if (Succ.isAssignedRegDep()) {
-      if (LiveRegCycles[Succ.getReg()] == Succ.getSUnit()->getHeight()) {
+  for (SUnit::succ_iterator I = SU->Succs.begin(), E = SU->Succs.end();
+       I != E; ++I) {
+    if (I->isAssignedRegDep()) {
+      if (LiveRegCycles[I->getReg()] == I->getSUnit()->getHeight()) {
         assert(NumLiveRegs > 0 && "NumLiveRegs is already zero!");
-        assert(LiveRegDefs[Succ.getReg()] == SU &&
+        assert(LiveRegDefs[I->getReg()] == SU &&
                "Physical register dependency violated?");
         --NumLiveRegs;
-        LiveRegDefs[Succ.getReg()] = nullptr;
-        LiveRegCycles[Succ.getReg()] = 0;
+        LiveRegDefs[I->getReg()] = nullptr;
+        LiveRegCycles[I->getReg()] = 0;
       }
     }
   }
@@ -280,20 +282,22 @@ SUnit *ScheduleDAGFast::CopyAndMoveSuccessors(SUnit *SU) {
     SmallVector<SDep, 4> LoadPreds;
     SmallVector<SDep, 4> NodePreds;
     SmallVector<SDep, 4> NodeSuccs;
-    for (SDep &Pred : SU->Preds) {
-      if (Pred.isCtrl())
-        ChainPred = Pred;
-      else if (Pred.getSUnit()->getNode() &&
-               Pred.getSUnit()->getNode()->isOperandOf(LoadNode))
-        LoadPreds.push_back(Pred);
+    for (SUnit::pred_iterator I = SU->Preds.begin(), E = SU->Preds.end();
+         I != E; ++I) {
+      if (I->isCtrl())
+        ChainPred = *I;
+      else if (I->getSUnit()->getNode() &&
+               I->getSUnit()->getNode()->isOperandOf(LoadNode))
+        LoadPreds.push_back(*I);
       else
-        NodePreds.push_back(Pred);
+        NodePreds.push_back(*I);
     }
-    for (SDep &Succ : SU->Succs) {
-      if (Succ.isCtrl())
-        ChainSuccs.push_back(Succ);
+    for (SUnit::succ_iterator I = SU->Succs.begin(), E = SU->Succs.end();
+         I != E; ++I) {
+      if (I->isCtrl())
+        ChainSuccs.push_back(*I);
       else
-        NodeSuccs.push_back(Succ);
+        NodeSuccs.push_back(*I);
     }
 
     if (ChainPred.getSUnit()) {
@@ -350,19 +354,21 @@ SUnit *ScheduleDAGFast::CopyAndMoveSuccessors(SUnit *SU) {
   NewSU = Clone(SU);
 
   // New SUnit has the exact same predecessors.
-  for (SDep &Pred : SU->Preds)
-    if (!Pred.isArtificial())
-      AddPred(NewSU, Pred);
+  for (SUnit::pred_iterator I = SU->Preds.begin(), E = SU->Preds.end();
+       I != E; ++I)
+    if (!I->isArtificial())
+      AddPred(NewSU, *I);
 
   // Only copy scheduled successors. Cut them from old node's successor
   // list and move them over.
   SmallVector<std::pair<SUnit *, SDep>, 4> DelDeps;
-  for (SDep &Succ : SU->Succs) {
-    if (Succ.isArtificial())
+  for (SUnit::succ_iterator I = SU->Succs.begin(), E = SU->Succs.end();
+       I != E; ++I) {
+    if (I->isArtificial())
       continue;
-    SUnit *SuccSU = Succ.getSUnit();
+    SUnit *SuccSU = I->getSUnit();
     if (SuccSU->isScheduled) {
-      SDep D = Succ;
+      SDep D = *I;
       D.setSUnit(NewSU);
       AddPred(SuccSU, D);
       D.setSUnit(SU);
@@ -393,15 +399,16 @@ void ScheduleDAGFast::InsertCopiesAndMoveSuccs(SUnit *SU, unsigned Reg,
   // Only copy scheduled successors. Cut them from old node's successor
   // list and move them over.
   SmallVector<std::pair<SUnit *, SDep>, 4> DelDeps;
-  for (SDep &Succ : SU->Succs) {
-    if (Succ.isArtificial())
+  for (SUnit::succ_iterator I = SU->Succs.begin(), E = SU->Succs.end();
+       I != E; ++I) {
+    if (I->isArtificial())
       continue;
-    SUnit *SuccSU = Succ.getSUnit();
+    SUnit *SuccSU = I->getSUnit();
     if (SuccSU->isScheduled) {
-      SDep D = Succ;
+      SDep D = *I;
       D.setSUnit(CopyToSU);
       AddPred(SuccSU, D);
-      DelDeps.push_back(std::make_pair(SuccSU, Succ));
+      DelDeps.push_back(std::make_pair(SuccSU, *I));
     }
   }
   for (unsigned i = 0, e = DelDeps.size(); i != e; ++i) {
@@ -472,9 +479,10 @@ bool ScheduleDAGFast::DelayForLiveRegsBottomUp(SUnit *SU,
 
   SmallSet<unsigned, 4> RegAdded;
   // If this node would clobber any "live" register, then it's not ready.
-  for (SDep &Pred : SU->Preds) {
-    if (Pred.isAssignedRegDep()) {
-      CheckForLiveRegDef(Pred.getSUnit(), Pred.getReg(), LiveRegDefs,
+  for (SUnit::pred_iterator I = SU->Preds.begin(), E = SU->Preds.end();
+       I != E; ++I) {
+    if (I->isAssignedRegDep()) {
+      CheckForLiveRegDef(I->getSUnit(), I->getReg(), LiveRegDefs,
                          RegAdded, LRegs, TRI);
     }
   }
@@ -747,8 +755,9 @@ void ScheduleDAGLinearize::Schedule() {
     // Glue user must be scheduled together with the glue operand. So other
     // users of the glue operand must be treated as its users.
     SDNode *ImmGUser = Glue->getGluedUser();
-    for (const SDNode *U : Glue->uses())
-      if (U == ImmGUser)
+    for (SDNode::use_iterator ui = Glue->use_begin(), ue = Glue->use_end();
+         ui != ue; ++ui)
+      if (*ui == ImmGUser)
         --Degree;
     GUser->setNodeId(UDegree + Degree);
     Glue->setNodeId(1);

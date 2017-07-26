@@ -27,9 +27,6 @@
 #include <initializer_list>
 #include <iterator>
 #include <memory>
-#include <new>
-#include <type_traits>
-#include <utility>
 
 namespace llvm {
 
@@ -57,8 +54,10 @@ public:
     return size_t((char*)CapacityX - (char*)BeginX);
   }
 
-  LLVM_NODISCARD bool empty() const { return BeginX == EndX; }
+  bool LLVM_ATTRIBUTE_UNUSED_RESULT empty() const { return BeginX == EndX; }
 };
+
+template <typename T, unsigned N> struct SmallVectorStorage;
 
 /// This is the part of SmallVectorTemplateBase which does not depend on whether
 /// the type T is a POD. The extra dummy template argument is used by ArrayRef
@@ -71,7 +70,7 @@ private:
   // Allocate raw space for N elements of type T.  If T has a ctor or dtor, we
   // don't want it to be automatically run, so we need to represent the space as
   // something else.  Use an array of char of sufficient alignment.
-  typedef AlignedCharArrayUnion<T> U;
+  typedef llvm::AlignedCharArrayUnion<T> U;
   U FirstEl;
   // Space after 'FirstEl' is clobbered, do not add any instance vars after it.
 
@@ -94,7 +93,6 @@ protected:
   }
 
   void setEnd(T *P) { this->EndX = P; }
-
 public:
   typedef size_t size_type;
   typedef ptrdiff_t difference_type;
@@ -119,12 +117,11 @@ public:
   iterator end() { return (iterator)this->EndX; }
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   const_iterator end() const { return (const_iterator)this->EndX; }
-
 protected:
   iterator capacity_ptr() { return (iterator)this->CapacityX; }
   const_iterator capacity_ptr() const { return (const_iterator)this->CapacityX;}
-
 public:
+
   // reverse iterator creation methods.
   reverse_iterator rbegin()            { return reverse_iterator(end()); }
   const_reverse_iterator rbegin() const{ return const_reverse_iterator(end()); }
@@ -301,7 +298,6 @@ protected:
   void grow(size_t MinSize = 0) {
     this->grow_pod(MinSize*sizeof(T), sizeof(T));
   }
-
 public:
   void push_back(const T &Elt) {
     if (LLVM_UNLIKELY(this->EndX >= this->CapacityX))
@@ -315,12 +311,14 @@ public:
   }
 };
 
+
 /// This class consists of common code factored out of the SmallVector class to
 /// reduce code duplication based on the SmallVector 'N' template parameter.
 template <typename T>
 class SmallVectorImpl : public SmallVectorTemplateBase<T, isPodLike<T>::value> {
   typedef SmallVectorTemplateBase<T, isPodLike<T>::value > SuperClass;
 
+  SmallVectorImpl(const SmallVectorImpl&) = delete;
 public:
   typedef typename SuperClass::iterator iterator;
   typedef typename SuperClass::const_iterator const_iterator;
@@ -333,8 +331,6 @@ protected:
   }
 
 public:
-  SmallVectorImpl(const SmallVectorImpl &) = delete;
-
   ~SmallVectorImpl() {
     // Destroy the constructed elements in the vector.
     this->destroy_range(this->begin(), this->end());
@@ -343,6 +339,7 @@ public:
     if (!this->isSmall())
       free(this->begin());
   }
+
 
   void clear() {
     this->destroy_range(this->begin(), this->end());
@@ -379,7 +376,7 @@ public:
       this->grow(N);
   }
 
-  LLVM_NODISCARD T pop_back_val() {
+  T LLVM_ATTRIBUTE_UNUSED_RESULT pop_back_val() {
     T Result = ::std::move(this->back());
     this->pop_back();
     return Result;
@@ -671,6 +668,7 @@ public:
   }
 };
 
+
 template <typename T>
 void SmallVectorImpl<T>::swap(SmallVectorImpl<T> &RHS) {
   if (this == &RHS) return;
@@ -843,7 +841,6 @@ template <typename T, unsigned N>
 class SmallVector : public SmallVectorImpl<T> {
   /// Inline space for elements which aren't stored in the base class.
   SmallVectorStorage<T, N> Storage;
-
 public:
   SmallVector() : SmallVectorImpl<T>(N) {
   }
@@ -859,7 +856,7 @@ public:
   }
 
   template <typename RangeTy>
-  explicit SmallVector(const iterator_range<RangeTy> &R)
+  explicit SmallVector(const llvm::iterator_range<RangeTy> R)
       : SmallVectorImpl<T>(N) {
     this->append(R.begin(), R.end());
   }
@@ -909,10 +906,9 @@ static inline size_t capacity_in_bytes(const SmallVector<T, N> &X) {
   return X.capacity_in_bytes();
 }
 
-} // end namespace llvm
+} // End llvm namespace
 
 namespace std {
-
   /// Implement std::swap in terms of SmallVector swap.
   template<typename T>
   inline void
@@ -926,7 +922,6 @@ namespace std {
   swap(llvm::SmallVector<T, N> &LHS, llvm::SmallVector<T, N> &RHS) {
     LHS.swap(RHS);
   }
+}
 
-} // end namespace std
-
-#endif // LLVM_ADT_SMALLVECTOR_H
+#endif

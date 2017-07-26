@@ -39,7 +39,6 @@ namespace clang {
   class Expr;
   class IdentifierInfo;
   class LabelDecl;
-  class ODRHash;
   class ParmVarDecl;
   class PrinterHelper;
   struct PrintingPolicy;
@@ -57,7 +56,7 @@ namespace clang {
 
 /// Stmt - This represents one statement.
 ///
-class alignas(void *) Stmt {
+class LLVM_ALIGNAS(LLVM_PTR_SIZE) Stmt {
 public:
   enum StmtClass {
     NoStmtClass = 0,
@@ -72,10 +71,10 @@ public:
 
   // Make vanilla 'new' and 'delete' illegal for Stmts.
 protected:
-  void *operator new(size_t bytes) noexcept {
+  void *operator new(size_t bytes) LLVM_NOEXCEPT {
     llvm_unreachable("Stmts cannot be allocated with regular 'new'.");
   }
-  void operator delete(void *data) noexcept {
+  void operator delete(void *data) LLVM_NOEXCEPT {
     llvm_unreachable("Stmts cannot be released with regular 'delete'.");
   }
 
@@ -127,13 +126,13 @@ protected:
     unsigned : NumStmtBits;
 
     unsigned ValueKind : 2;
-    unsigned ObjectKind : 3;
+    unsigned ObjectKind : 2;
     unsigned TypeDependent : 1;
     unsigned ValueDependent : 1;
     unsigned InstantiationDependent : 1;
     unsigned ContainsUnexpandedParameterPack : 1;
   };
-  enum { NumExprBits = 17 };
+  enum { NumExprBits = 16 };
 
   class CharacterLiteralBitfields {
     friend class CharacterLiteral;
@@ -253,14 +252,6 @@ protected:
     unsigned NumArgs : 32 - 8 - 1 - NumExprBits;
   };
 
-  class CoawaitExprBitfields {
-    friend class CoawaitExpr;
-
-    unsigned : NumExprBits;
-
-    unsigned IsImplicit : 1;
-  };
-
   union {
     StmtBitfields StmtBits;
     CompoundStmtBitfields CompoundStmtBits;
@@ -277,7 +268,6 @@ protected:
     ObjCIndirectCopyRestoreExprBitfields ObjCIndirectCopyRestoreExprBits;
     InitListExprBitfields InitListExprBits;
     TypeTraitExprBitfields TypeTraitExprBits;
-    CoawaitExprBitfields CoawaitBits;
   };
 
   friend class ASTStmtReader;
@@ -294,12 +284,12 @@ public:
     return operator new(bytes, *C, alignment);
   }
 
-  void *operator new(size_t bytes, void *mem) noexcept { return mem; }
+  void *operator new(size_t bytes, void *mem) LLVM_NOEXCEPT { return mem; }
 
-  void operator delete(void *, const ASTContext &, unsigned) noexcept {}
-  void operator delete(void *, const ASTContext *, unsigned) noexcept {}
-  void operator delete(void *, size_t) noexcept {}
-  void operator delete(void *, void *) noexcept {}
+  void operator delete(void *, const ASTContext &, unsigned) LLVM_NOEXCEPT {}
+  void operator delete(void *, const ASTContext *, unsigned) LLVM_NOEXCEPT {}
+  void operator delete(void *, size_t) LLVM_NOEXCEPT {}
+  void operator delete(void *, void *) LLVM_NOEXCEPT {}
 
 public:
   /// \brief A placeholder type used to construct an empty shell of a
@@ -350,9 +340,7 @@ protected:
 
 public:
   Stmt(StmtClass SC) {
-    static_assert(sizeof(*this) == sizeof(void *),
-                  "changing bitfields changed sizeof(Stmt)");
-    static_assert(sizeof(*this) % alignof(void *) == 0,
+    static_assert(sizeof(*this) % llvm::AlignOf<void *>::Alignment == 0,
                   "Insufficient alignment!");
     StmtBits.sClass = SC;
     if (StatisticsEnabled) Stmt::addStmtClass(SC);
@@ -399,9 +387,6 @@ public:
   /// Skip past any implicit AST nodes which might surround this
   /// statement, such as ExprWithCleanups or ImplicitCastExpr nodes.
   Stmt *IgnoreImplicit();
-  const Stmt *IgnoreImplicit() const {
-    return const_cast<Stmt *>(this)->IgnoreImplicit();
-  }
 
   /// \brief Skip no-op (attributed, compound) container stmts and skip captured
   /// stmt at the top, if \a IgnoreCaptured is true.
@@ -448,15 +433,6 @@ public:
   /// written in the source.
   void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
                bool Canonical) const;
-
-  /// \brief Calculate a unique representation for a statement that is
-  /// stable across compiler invocations.
-  ///
-  /// \param ID profile information will be stored in ID.
-  ///
-  /// \param Hash an ODRHash object which will be called where pointers would
-  /// have been used in the Profile function.
-  void ProcessODRHash(llvm::FoldingSetNodeID &ID, ODRHash& Hash) const;
 };
 
 /// DeclStmt - Adaptor class for mixing declarations with statements and
@@ -903,7 +879,7 @@ public:
 /// IfStmt - This represents an if/then/else.
 ///
 class IfStmt : public Stmt {
-  enum { INIT, VAR, COND, THEN, ELSE, END_EXPR };
+  enum { VAR, COND, THEN, ELSE, END_EXPR };
   Stmt* SubExprs[END_EXPR];
 
   SourceLocation IfLoc;
@@ -911,7 +887,7 @@ class IfStmt : public Stmt {
 
 public:
   IfStmt(const ASTContext &C, SourceLocation IL,
-         bool IsConstexpr, Stmt *init, VarDecl *var, Expr *cond,
+         bool IsConstexpr, VarDecl *var, Expr *cond,
          Stmt *then, SourceLocation EL = SourceLocation(),
          Stmt *elsev = nullptr);
 
@@ -935,9 +911,6 @@ public:
     return reinterpret_cast<DeclStmt*>(SubExprs[VAR]);
   }
 
-  Stmt *getInit() { return SubExprs[INIT]; }
-  const Stmt *getInit() const { return SubExprs[INIT]; }
-  void setInit(Stmt *S) { SubExprs[INIT] = S; }
   const Expr *getCond() const { return reinterpret_cast<Expr*>(SubExprs[COND]);}
   void setCond(Expr *E) { SubExprs[COND] = reinterpret_cast<Stmt *>(E); }
   const Stmt *getThen() const { return SubExprs[THEN]; }
@@ -956,8 +929,6 @@ public:
 
   bool isConstexpr() const { return IfStmtBits.IsConstexpr; }
   void setConstexpr(bool C) { IfStmtBits.IsConstexpr = C; }
-
-  bool isObjCAvailabilityCheck() const;
 
   SourceLocation getLocStart() const LLVM_READONLY { return IfLoc; }
   SourceLocation getLocEnd() const LLVM_READONLY {
@@ -982,7 +953,7 @@ public:
 ///
 class SwitchStmt : public Stmt {
   SourceLocation SwitchLoc;
-  enum { INIT, VAR, COND, BODY, END_EXPR };
+  enum { VAR, COND, BODY, END_EXPR };
   Stmt* SubExprs[END_EXPR];
   // This points to a linked list of case and default statements and, if the
   // SwitchStmt is a switch on an enum value, records whether all the enum
@@ -991,7 +962,7 @@ class SwitchStmt : public Stmt {
   llvm::PointerIntPair<SwitchCase *, 1, bool> FirstCase;
 
 public:
-  SwitchStmt(const ASTContext &C, Stmt *Init, VarDecl *Var, Expr *cond);
+  SwitchStmt(const ASTContext &C, VarDecl *Var, Expr *cond);
 
   /// \brief Build a empty switch statement.
   explicit SwitchStmt(EmptyShell Empty) : Stmt(SwitchStmtClass, Empty) { }
@@ -1014,9 +985,6 @@ public:
     return reinterpret_cast<DeclStmt*>(SubExprs[VAR]);
   }
 
-  Stmt *getInit() { return SubExprs[INIT]; }
-  const Stmt *getInit() const { return SubExprs[INIT]; }
-  void setInit(Stmt *S) { SubExprs[INIT] = S; }
   const Expr *getCond() const { return reinterpret_cast<Expr*>(SubExprs[COND]);}
   const Stmt *getBody() const { return SubExprs[BODY]; }
   const SwitchCase *getSwitchCaseList() const { return FirstCase.getPointer(); }

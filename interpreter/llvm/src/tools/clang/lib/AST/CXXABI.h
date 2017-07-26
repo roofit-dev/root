@@ -43,8 +43,7 @@ public:
   virtual bool isNearlyEmpty(const CXXRecordDecl *RD) const = 0;
 
   /// Returns a new mangling number context for this C++ ABI.
-  virtual std::unique_ptr<MangleNumberingContext>
-  createMangleNumberingContext() const = 0;
+  virtual MangleNumberingContext *createMangleNumberingContext() const = 0;
 
   /// Adds a mapping from class to copy constructor for this C++ ABI.
   virtual void addCopyConstructorForExceptionObject(CXXRecordDecl *,
@@ -53,6 +52,12 @@ public:
   /// Retrieves the mapping from class to copy constructor for this C++ ABI.
   virtual const CXXConstructorDecl *
   getCopyConstructorForExceptionObject(CXXRecordDecl *) = 0;
+
+  virtual void addDefaultArgExprForConstructor(const CXXConstructorDecl *CD,
+                                               unsigned ParmIdx, Expr *DAE) = 0;
+
+  virtual Expr *getDefaultArgExprForConstructor(const CXXConstructorDecl *CD,
+                                                unsigned ParmIdx) = 0;
 
   virtual void addTypedefNameForUnnamedTagDecl(TagDecl *TD,
                                                TypedefNameDecl *DD) = 0;

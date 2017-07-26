@@ -48,7 +48,6 @@ static CXTypeKind GetBuiltinTypeKind(const BuiltinType *BT) {
     BTCASE(Long);
     BTCASE(LongLong);
     BTCASE(Int128);
-    BTCASE(Half);
     BTCASE(Float);
     BTCASE(Double);
     BTCASE(LongDouble);
@@ -144,44 +143,7 @@ static inline CXTranslationUnit GetTU(CXType CT) {
   return static_cast<CXTranslationUnit>(CT.data[1]);
 }
 
-static Optional<ArrayRef<TemplateArgument>>
-GetTemplateArguments(QualType Type) {
-  assert(!Type.isNull());
-  if (const auto *Specialization = Type->getAs<TemplateSpecializationType>())
-    return Specialization->template_arguments();
-
-  if (const auto *RecordDecl = Type->getAsCXXRecordDecl()) {
-    const auto *TemplateDecl =
-      dyn_cast<ClassTemplateSpecializationDecl>(RecordDecl);
-    if (TemplateDecl)
-      return TemplateDecl->getTemplateArgs().asArray();
-  }
-
-  return None;
-}
-
-static Optional<QualType> TemplateArgumentToQualType(const TemplateArgument &A) {
-  if (A.getKind() == TemplateArgument::Type)
-    return A.getAsType();
-  return None;
-}
-
-static Optional<QualType>
-FindTemplateArgumentTypeAt(ArrayRef<TemplateArgument> TA, unsigned index) {
-  unsigned current = 0;
-  for (const auto &A : TA) {
-    if (A.getKind() == TemplateArgument::Pack) {
-      if (index < current + A.pack_size())
-        return TemplateArgumentToQualType(A.getPackAsArray()[index - current]);
-      current += A.pack_size();
-      continue;
-    }
-    if (current == index)
-      return TemplateArgumentToQualType(A);
-    current++;
-  }
-  return None;
-}
+extern "C" {
 
 CXType clang_getCursorType(CXCursor C) {
   using namespace cxcursor;
@@ -453,8 +415,7 @@ try_again:
     break;
 
   case Type::Auto:
-  case Type::DeducedTemplateSpecialization:
-    TP = cast<DeducedType>(TP)->getDeducedType().getTypePtrOrNull();
+    TP = cast<AutoType>(TP)->getDeducedType().getTypePtrOrNull();
     if (TP)
       goto try_again;
     break;
@@ -504,7 +465,6 @@ CXString clang_getTypeKindSpelling(enum CXTypeKind K) {
     TKIND(Long);
     TKIND(LongLong);
     TKIND(Int128);
-    TKIND(Half);
     TKIND(Float);
     TKIND(Double);
     TKIND(LongDouble);
@@ -571,7 +531,6 @@ CXCallingConv clang_getFunctionTypeCallingConv(CXType X) {
       TCALLINGCONV(X86FastCall);
       TCALLINGCONV(X86ThisCall);
       TCALLINGCONV(X86Pascal);
-      TCALLINGCONV(X86RegCall);
       TCALLINGCONV(X86VectorCall);
       TCALLINGCONV(X86_64Win64);
       TCALLINGCONV(X86_64SysV);
@@ -942,11 +901,12 @@ CXString clang_getDeclObjCTypeEncoding(CXCursor C) {
   std::string encoding;
 
   if (const ObjCMethodDecl *OMD = dyn_cast<ObjCMethodDecl>(D))  {
-    encoding = Ctx.getObjCEncodingForMethodDecl(OMD);
+    if (Ctx.getObjCEncodingForMethodDecl(OMD, encoding))
+      return cxstring::createRef("?");
   } else if (const ObjCPropertyDecl *OPD = dyn_cast<ObjCPropertyDecl>(D))
-    encoding = Ctx.getObjCEncodingForPropertyDecl(OPD, nullptr);
+    Ctx.getObjCEncodingForPropertyDecl(OPD, nullptr, encoding);
   else if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D))
-    encoding = Ctx.getObjCEncodingForFunctionDecl(FD);
+    Ctx.getObjCEncodingForFunctionDecl(FD, encoding);
   else {
     QualType Ty;
     if (const TypeDecl *TD = dyn_cast<TypeDecl>(D))
@@ -960,37 +920,38 @@ CXString clang_getDeclObjCTypeEncoding(CXCursor C) {
   return cxstring::createDup(encoding);
 }
 
-static unsigned GetTemplateArgumentArraySize(ArrayRef<TemplateArgument> TA) {
-  unsigned size = TA.size();
-  for (const auto &Arg : TA)
-    if (Arg.getKind() == TemplateArgument::Pack)
-      size += Arg.pack_size() - 1;
-  return size;
-}
-
 int clang_Type_getNumTemplateArguments(CXType CT) {
   QualType T = GetQualType(CT);
   if (T.isNull())
     return -1;
-
-  auto TA = GetTemplateArguments(T);
-  if (!TA)
+  const CXXRecordDecl *RecordDecl = T->getAsCXXRecordDecl();
+  if (!RecordDecl)
     return -1;
-
-  return GetTemplateArgumentArraySize(TA.getValue());
+  const ClassTemplateSpecializationDecl *TemplateDecl =
+      dyn_cast<ClassTemplateSpecializationDecl>(RecordDecl);
+  if (!TemplateDecl)
+    return -1;
+  return TemplateDecl->getTemplateArgs().size();
 }
 
-CXType clang_Type_getTemplateArgumentAsType(CXType CT, unsigned index) {
+CXType clang_Type_getTemplateArgumentAsType(CXType CT, unsigned i) {
   QualType T = GetQualType(CT);
   if (T.isNull())
     return MakeCXType(QualType(), GetTU(CT));
-
-  auto TA = GetTemplateArguments(T);
-  if (!TA)
+  const CXXRecordDecl *RecordDecl = T->getAsCXXRecordDecl();
+  if (!RecordDecl)
     return MakeCXType(QualType(), GetTU(CT));
-
-  Optional<QualType> QT = FindTemplateArgumentTypeAt(TA.getValue(), index);
-  return MakeCXType(QT.getValueOr(QualType()), GetTU(CT));
+  const ClassTemplateSpecializationDecl *TemplateDecl =
+      dyn_cast<ClassTemplateSpecializationDecl>(RecordDecl);
+  if (!TemplateDecl)
+    return MakeCXType(QualType(), GetTU(CT));
+  const TemplateArgumentList &TA = TemplateDecl->getTemplateArgs();
+  if (TA.size() <= i)
+    return MakeCXType(QualType(), GetTU(CT));
+  const TemplateArgument &A = TA.get(i);
+  if (A.getKind() != TemplateArgument::Type)
+    return MakeCXType(QualType(), GetTU(CT));
+  return MakeCXType(A.getAsType(), GetTU(CT));
 }
 
 unsigned clang_Type_visitFields(CXType PT,
@@ -1040,11 +1001,4 @@ CXType clang_Type_getNamedType(CXType CT){
   return MakeCXType(QualType(), GetTU(CT));
 }
 
-unsigned clang_Type_isTransparentTagTypedef(CXType TT){
-  QualType T = GetQualType(TT);
-  if (auto *TT = dyn_cast_or_null<TypedefType>(T.getTypePtrOrNull())) {
-    if (auto *D = TT->getDecl())
-      return D->isTransparentTag();
-  }
-  return false;
-}
+} // end: extern "C"

@@ -76,7 +76,9 @@ public:
   RABasic();
 
   /// Return the pass name.
-  StringRef getPassName() const override { return "Basic Register Allocator"; }
+  const char* getPassName() const override {
+    return "Basic Register Allocator";
+  }
 
   /// RABasic analysis usage.
   void getAnalysisUsage(AnalysisUsage &AU) const override;
@@ -102,11 +104,6 @@ public:
 
   /// Perform register allocation.
   bool runOnMachineFunction(MachineFunction &mf) override;
-
-  MachineFunctionProperties getRequiredProperties() const override {
-    return MachineFunctionProperties().set(
-        MachineFunctionProperties::Property::NoPHIs);
-  }
 
   // Helper for spilling all live virtual registers currently unified under preg
   // that interfere with the most recently queried lvr.  Return true if spilling
@@ -176,6 +173,8 @@ bool RABasic::spillInterferences(LiveInterval &VirtReg, unsigned PhysReg,
   for (MCRegUnitIterator Units(PhysReg, TRI); Units.isValid(); ++Units) {
     LiveIntervalUnion::Query &Q = Matrix->query(VirtReg, *Units);
     Q.collectInterferingVRegs();
+    if (Q.seenUnspillableVReg())
+      return false;
     for (unsigned i = Q.interferingVRegs().size(); i; --i) {
       LiveInterval *Intf = Q.interferingVRegs()[i - 1];
       if (!Intf->isSpillable() || Intf->weight > VirtReg.weight)

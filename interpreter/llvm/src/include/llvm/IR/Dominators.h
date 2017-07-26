@@ -15,82 +15,43 @@
 #ifndef LLVM_IR_DOMINATORS_H
 #define LLVM_IR_DOMINATORS_H
 
-#include "llvm/ADT/DenseMapInfo.h"
-#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/GraphTraits.h"
-#include "llvm/ADT/Hashing.h"
-#include "llvm/IR/BasicBlock.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/GenericDomTree.h"
-#include <utility>
 
 namespace llvm {
 
 class Function;
-class Instruction;
-class Module;
+class BasicBlock;
 class raw_ostream;
 
 extern template class DomTreeNodeBase<BasicBlock>;
 extern template class DominatorTreeBase<BasicBlock>;
 
 extern template void Calculate<Function, BasicBlock *>(
-    DominatorTreeBaseByGraphTraits<GraphTraits<BasicBlock *>> &DT, Function &F);
+    DominatorTreeBase<GraphTraits<BasicBlock *>::NodeType> &DT, Function &F);
 extern template void Calculate<Function, Inverse<BasicBlock *>>(
-    DominatorTreeBaseByGraphTraits<GraphTraits<Inverse<BasicBlock *>>> &DT,
+    DominatorTreeBase<GraphTraits<Inverse<BasicBlock *>>::NodeType> &DT,
     Function &F);
 
-using DomTreeNode = DomTreeNodeBase<BasicBlock>;
+typedef DomTreeNodeBase<BasicBlock> DomTreeNode;
 
 class BasicBlockEdge {
   const BasicBlock *Start;
   const BasicBlock *End;
-
 public:
   BasicBlockEdge(const BasicBlock *Start_, const BasicBlock *End_) :
-    Start(Start_), End(End_) {}
-
-  BasicBlockEdge(const std::pair<BasicBlock *, BasicBlock *> &Pair)
-      : Start(Pair.first), End(Pair.second) {}
-
-  BasicBlockEdge(const std::pair<const BasicBlock *, const BasicBlock *> &Pair)
-      : Start(Pair.first), End(Pair.second) {}
-
+    Start(Start_), End(End_) { }
   const BasicBlock *getStart() const {
     return Start;
   }
-
   const BasicBlock *getEnd() const {
     return End;
   }
-
   bool isSingleEdge() const;
-};
-
-template <> struct DenseMapInfo<BasicBlockEdge> {
-  using BBInfo = DenseMapInfo<const BasicBlock *>;
-
-  static unsigned getHashValue(const BasicBlockEdge *V);
-
-  static inline BasicBlockEdge getEmptyKey() {
-    return BasicBlockEdge(BBInfo::getEmptyKey(), BBInfo::getEmptyKey());
-  }
-
-  static inline BasicBlockEdge getTombstoneKey() {
-    return BasicBlockEdge(BBInfo::getTombstoneKey(), BBInfo::getTombstoneKey());
-  }
-
-  static unsigned getHashValue(const BasicBlockEdge &Edge) {
-    return hash_combine(BBInfo::getHashValue(Edge.getStart()),
-                        BBInfo::getHashValue(Edge.getEnd()));
-  }
-
-  static bool isEqual(const BasicBlockEdge &LHS, const BasicBlockEdge &RHS) {
-    return BBInfo::isEqual(LHS.getStart(), RHS.getStart()) &&
-           BBInfo::isEqual(LHS.getEnd(), RHS.getEnd());
-  }
 };
 
 /// \brief Concrete subclass of DominatorTreeBase that is used to compute a
@@ -113,24 +74,33 @@ template <> struct DenseMapInfo<BasicBlockEdge> {
 /// preceding statements; this is stated only to assist human understanding.
 class DominatorTree : public DominatorTreeBase<BasicBlock> {
 public:
-  using Base = DominatorTreeBase<BasicBlock>;
+  typedef DominatorTreeBase<BasicBlock> Base;
 
   DominatorTree() : DominatorTreeBase<BasicBlock>(false) {}
   explicit DominatorTree(Function &F) : DominatorTreeBase<BasicBlock>(false) {
     recalculate(F);
   }
 
-  /// Handle invalidation explicitly.
-  bool invalidate(Function &F, const PreservedAnalyses &PA,
-                  FunctionAnalysisManager::Invalidator &);
+  DominatorTree(DominatorTree &&Arg)
+      : Base(std::move(static_cast<Base &>(Arg))) {}
+  DominatorTree &operator=(DominatorTree &&RHS) {
+    Base::operator=(std::move(static_cast<Base &>(RHS)));
+    return *this;
+  }
 
   /// \brief Returns *false* if the other dominator tree matches this dominator
   /// tree.
   inline bool compare(const DominatorTree &Other) const {
     const DomTreeNode *R = getRootNode();
     const DomTreeNode *OtherR = Other.getRootNode();
-    return !R || !OtherR || R->getBlock() != OtherR->getBlock() ||
-           Base::compare(Other);
+
+    if (!R || !OtherR || R->getBlock() != OtherR->getBlock())
+      return true;
+
+    if (Base::compare(Other))
+      return true;
+
+    return false;
   }
 
   // Ensure base-class overloads are visible.
@@ -157,10 +127,6 @@ public:
   /// This should only be used for debugging as it aborts the program if the
   /// verification fails.
   void verifyDomTree() const;
-
-  // Pop up a GraphViz/gv window with the Dominator Tree rendered using `dot`.
-  void viewGraph(const Twine &Name, const Twine &Title);
-  void viewGraph();
 };
 
 //===-------------------------------------
@@ -168,19 +134,23 @@ public:
 // iterable by generic graph iterators.
 
 template <class Node, class ChildIterator> struct DomTreeGraphTraitsBase {
-  using NodeRef = Node *;
-  using ChildIteratorType = ChildIterator;
-  using nodes_iterator = df_iterator<Node *, df_iterator_default_set<Node*>>;
+  typedef Node NodeType;
+  typedef ChildIterator ChildIteratorType;
+  typedef df_iterator<Node *, SmallPtrSet<NodeType *, 8>> nodes_iterator;
 
-  static NodeRef getEntryNode(NodeRef N) { return N; }
-  static ChildIteratorType child_begin(NodeRef N) { return N->begin(); }
-  static ChildIteratorType child_end(NodeRef N) { return N->end(); }
+  static NodeType *getEntryNode(NodeType *N) { return N; }
+  static inline ChildIteratorType child_begin(NodeType *N) {
+    return N->begin();
+  }
+  static inline ChildIteratorType child_end(NodeType *N) { return N->end(); }
 
-  static nodes_iterator nodes_begin(NodeRef N) {
+  static nodes_iterator nodes_begin(NodeType *N) {
     return df_begin(getEntryNode(N));
   }
 
-  static nodes_iterator nodes_end(NodeRef N) { return df_end(getEntryNode(N)); }
+  static nodes_iterator nodes_end(NodeType *N) {
+    return df_end(getEntryNode(N));
+  }
 };
 
 template <>
@@ -194,7 +164,9 @@ struct GraphTraits<const DomTreeNode *>
 
 template <> struct GraphTraits<DominatorTree*>
   : public GraphTraits<DomTreeNode*> {
-  static NodeRef getEntryNode(DominatorTree *DT) { return DT->getRootNode(); }
+  static NodeType *getEntryNode(DominatorTree *DT) {
+    return DT->getRootNode();
+  }
 
   static nodes_iterator nodes_begin(DominatorTree *N) {
     return df_begin(getEntryNode(N));
@@ -208,14 +180,14 @@ template <> struct GraphTraits<DominatorTree*>
 /// \brief Analysis pass which computes a \c DominatorTree.
 class DominatorTreeAnalysis : public AnalysisInfoMixin<DominatorTreeAnalysis> {
   friend AnalysisInfoMixin<DominatorTreeAnalysis>;
-  static AnalysisKey Key;
+  static char PassID;
 
 public:
   /// \brief Provide the result typedef for this analysis pass.
-  using Result = DominatorTree;
+  typedef DominatorTree Result;
 
   /// \brief Run the analysis pass over a function and produce a dominator tree.
-  DominatorTree run(Function &F, FunctionAnalysisManager &);
+  DominatorTree run(Function &F, AnalysisManager<Function> &);
 };
 
 /// \brief Printer pass for the \c DominatorTree.
@@ -225,13 +197,12 @@ class DominatorTreePrinterPass
 
 public:
   explicit DominatorTreePrinterPass(raw_ostream &OS);
-
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
+  PreservedAnalyses run(Function &F, AnalysisManager<Function> &AM);
 };
 
 /// \brief Verifier pass for the \c DominatorTree.
 struct DominatorTreeVerifierPass : PassInfoMixin<DominatorTreeVerifierPass> {
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
+  PreservedAnalyses run(Function &F, AnalysisManager<Function> &AM);
 };
 
 /// \brief Legacy analysis pass which computes a \c DominatorTree.
@@ -261,6 +232,6 @@ public:
   void print(raw_ostream &OS, const Module *M = nullptr) const override;
 };
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_IR_DOMINATORS_H
+#endif

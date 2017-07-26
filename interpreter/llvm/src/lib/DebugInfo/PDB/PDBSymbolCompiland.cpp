@@ -19,9 +19,7 @@ using namespace llvm::pdb;
 
 PDBSymbolCompiland::PDBSymbolCompiland(const IPDBSession &PDBSession,
                                        std::unique_ptr<IPDBRawSymbol> Symbol)
-    : PDBSymbol(PDBSession, std::move(Symbol)) {
-  assert(RawSymbol->getSymTag() == PDB_SymType::Compiland);
-}
+    : PDBSymbol(PDBSession, std::move(Symbol)) {}
 
 void PDBSymbolCompiland::dump(PDBSymDumper &Dumper) const {
   Dumper.dump(*this);

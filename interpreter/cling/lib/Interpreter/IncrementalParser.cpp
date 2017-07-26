@@ -39,7 +39,6 @@
 #include "clang/CodeGen/ModuleBuilder.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Parse/Parser.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaDiagnostic.h"
@@ -50,6 +49,8 @@
 #include "llvm/Support/CrashRecoveryContext.h"
 #include "llvm/Support/MemoryBuffer.h"
 
+#include <iostream>
+#include <sstream>
 #include <stdio.h>
 
 using namespace clang;
@@ -163,11 +164,10 @@ namespace {
 } // unnamed namespace
 
 namespace cling {
-  IncrementalParser::IncrementalParser(Interpreter* interp, const char* llvmdir)
-      : m_Interpreter(interp),
-        m_CI(CIFactory::createCI("", interp->getOptions(), llvmdir,
-                                 m_Consumer = new cling::DeclCollector())),
-        m_ModuleNo(0) {
+  IncrementalParser::IncrementalParser(Interpreter* interp, const char* llvmdir):
+    m_Interpreter(interp),
+    m_CI(CIFactory::createCI("", interp->getOptions(), llvmdir)),
+    m_Consumer(nullptr), m_ModuleNo(0) {
 
     if (!m_CI) {
       cling::errs() << "Compiler instance could not be created.\n";
@@ -177,6 +177,7 @@ namespace cling {
     if (m_Interpreter->getOptions().CompilerOpts.HasOutput)
       return;
 
+    m_Consumer = dyn_cast<DeclCollector>(&m_CI->getSema().getASTConsumer());
     if (!m_Consumer) {
       cling::errs() << "No AST consumer available.\n";
       return;
@@ -185,13 +186,13 @@ namespace cling {
     DiagnosticsEngine& Diag = m_CI->getDiagnostics();
     if (m_CI->getFrontendOpts().ProgramAction != frontend::ParseSyntaxOnly) {
       m_CodeGen.reset(CreateLLVMCodeGen(
-          Diag, makeModuleName(), m_CI->getHeaderSearchOpts(),
+          Diag, "cling-module-0", m_CI->getHeaderSearchOpts(),
           m_CI->getPreprocessorOpts(), m_CI->getCodeGenOpts(),
           *m_Interpreter->getLLVMContext()));
+      m_Consumer->setContext(this, m_CodeGen.get());
+    } else {
+      m_Consumer->setContext(this, 0);
     }
-
-    // Initialize the DeclCollector and add callbacks keeping track of macros.
-    m_Consumer->Setup(this, m_CodeGen.get(), m_CI->getPreprocessor());
 
     m_DiagConsumer.reset(new FilteringDiagConsumer(Diag, false));
 
@@ -375,16 +376,6 @@ namespace cling {
     return ParseResultTransaction(T, ParseResult);
   }
 
-  std::string IncrementalParser::makeModuleName() {
-    return std::string("cling-module-") + std::to_string(m_ModuleNo++);
-  }
-
-  llvm::Module* IncrementalParser::StartModule() {
-    return getCodeGenerator()->StartModule(makeModuleName(),
-                                           *m_Interpreter->getLLVMContext(),
-                                           getCI()->getCodeGenOpts());
-  }
-
   void IncrementalParser::commitTransaction(ParseResultTransaction& PRT,
                                             bool ClearDiagClient) {
     Transaction* T = PRT.getPointer();
@@ -432,10 +423,14 @@ namespace cling {
       PRT.setInt(kFailed);
       m_Interpreter->unload(*T);
 
-      // Create a new module if necessary.
-      if (MustStartNewModule)
-        StartModule();
-
+      if (MustStartNewModule) {
+        // Create a new module.
+        stdstrstream ModuleName;
+        ModuleName << "cling-module-" << ++m_ModuleNo;
+        getCodeGenerator()->StartModule(ModuleName.str(),
+                                        *m_Interpreter->getLLVMContext(),
+                                        getCI()->getCodeGenOpts());
+      }
       return;
     }
 
@@ -531,9 +526,22 @@ namespace cling {
     if (!T->isNestedTransaction() && hasCodeGenerator()) {
       // The initializers are emitted to the symbol "_GLOBAL__sub_I_" + filename.
       // Make that unique!
+      ASTContext& Context = getCI()->getASTContext();
+      SourceManager &SM = Context.getSourceManager();
+      const FileEntry *MainFile = SM.getFileEntryForID(SM.getMainFileID());
+      FileEntry* NcMainFile = const_cast<FileEntry*>(MainFile);
+      // Hack to temporarily set the file entry's name to a unique name.
+      assert(MainFile->getName() == *(const char**)NcMainFile
+         && "FileEntry does not start with the name");
+      const char* &FileName = *(const char**)NcMainFile;
+      const char* OldName = FileName;
+      std::string ModName = getCodeGenerator()->GetModule()->getName().str();
+      FileName = ModName.c_str();
+
       deserT = beginTransaction(CompilationOptions());
       // Reset the module builder to clean up global initializers, c'tors, d'tors
-      getCodeGenerator()->HandleTranslationUnit(getCI()->getASTContext());
+      getCodeGenerator()->HandleTranslationUnit(Context);
+      FileName = OldName;
       auto PRT = endTransaction(deserT);
       commitTransaction(PRT);
       deserT = PRT.getPointer();
@@ -553,7 +561,11 @@ namespace cling {
       }
 
       // Create a new module.
-      StartModule();
+      smallstream ModuleName;
+      ModuleName << "cling-module-" << ++m_ModuleNo;
+      getCodeGenerator()->StartModule(ModuleName.str(),
+                                      *m_Interpreter->getLLVMContext(),
+                                      getCI()->getCodeGenOpts());
     }
   }
 
@@ -664,7 +676,7 @@ namespace cling {
     assert(PP.isIncrementalProcessingEnabled() && "Not in incremental mode!?");
     PP.enableIncrementalProcessing();
 
-    smallstream source_name;
+    std::ostringstream source_name;
     source_name << "input_line_" << (m_MemoryBuffers.size() + 1);
 
     // Create an uninitialized memory buffer, copy code in and append "\n"
@@ -675,7 +687,7 @@ namespace cling {
                                                    source_name.str()));
     char* MBStart = const_cast<char*>(MB->getBufferStart());
     memcpy(MBStart, input.data(), InputSize);
-    MBStart[InputSize] = '\n';
+    memcpy(MBStart + InputSize, "\n", 2);
 
     SourceManager& SM = getCI()->getSourceManager();
 
@@ -687,14 +699,20 @@ namespace cling {
 
     // Create FileID for the current buffer.
     FileID FID;
-    // Create FileEntry and FileID for the current buffer.
-    // Enabling the completion point only works on FileEntries.
-    const clang::FileEntry* FE
-      = SM.getFileManager().getVirtualFile(source_name.str(), InputSize,
-                                           0 /* mod time*/);
-    SM.overrideFileContents(FE, std::move(MB));
-    FID = SM.createFileID(FE, NewLoc, SrcMgr::C_User);
-    if (CO.CodeCompletionOffset != -1) {
+    if (CO.CodeCompletionOffset == -1)
+    {
+      FID = SM.createFileID(std::move(MB), SrcMgr::C_User,
+                                 /*LoadedID*/0,
+                                 /*LoadedOffset*/0, NewLoc);
+    } else {
+      // Create FileEntry and FileID for the current buffer.
+      // Enabling the completion point only works on FileEntries.
+      const clang::FileEntry* FE
+        = SM.getFileManager().getVirtualFile("vfile for " + source_name.str(),
+                                             InputSize, 0 /* mod time*/);
+      SM.overrideFileContents(FE, std::move(MB));
+      FID = SM.createFileID(FE, NewLoc, SrcMgr::C_User);
+
       // The completion point is set one a 1-based line/column numbering.
       // It relies on the implementation to account for the wrapper extra line.
       PP.SetCodeCompletionPoint(FE, 1/* start point 1-based line*/,

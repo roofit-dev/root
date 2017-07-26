@@ -65,9 +65,7 @@ private:
   std::unique_ptr<DebugMap> parseOneBinary(const MachOObjectFile &MainBinary,
                                            StringRef BinaryPath);
 
-  void
-  switchToNewDebugMapObject(StringRef Filename,
-                            sys::TimePoint<std::chrono::seconds> Timestamp);
+  void switchToNewDebugMapObject(StringRef Filename, sys::TimeValue Timestamp);
   void resetParserState();
   uint64_t getMainBinarySymbolAddress(StringRef Name);
   void loadMainBinarySymbols(const MachOObjectFile &MainBinary);
@@ -112,8 +110,8 @@ void MachODebugMapParser::resetParserState() {
 /// Create a new DebugMapObject. This function resets the state of the
 /// parser that was referring to the last object file and sets
 /// everything up to add symbols to the new one.
-void MachODebugMapParser::switchToNewDebugMapObject(
-    StringRef Filename, sys::TimePoint<std::chrono::seconds> Timestamp) {
+void MachODebugMapParser::switchToNewDebugMapObject(StringRef Filename,
+                                                    sys::TimeValue Timestamp) {
   resetParserState();
 
   SmallString<80> Path(PathPrefix);
@@ -287,17 +285,20 @@ void MachODebugMapParser::dumpOneBinaryStab(const MachOObjectFile &MainBinary,
 }
 
 static bool shouldLinkArch(SmallVectorImpl<StringRef> &Archs, StringRef Arch) {
-  if (Archs.empty() || is_contained(Archs, "all") || is_contained(Archs, "*"))
+  if (Archs.empty() ||
+      std::find(Archs.begin(), Archs.end(), "all") != Archs.end() ||
+      std::find(Archs.begin(), Archs.end(), "*") != Archs.end())
     return true;
 
-  if (Arch.startswith("arm") && Arch != "arm64" && is_contained(Archs, "arm"))
+  if (Arch.startswith("arm") && Arch != "arm64" &&
+      std::find(Archs.begin(), Archs.end(), "arm") != Archs.end())
     return true;
 
   SmallString<16> ArchName = Arch;
   if (Arch.startswith("thumb"))
     ArchName = ("arm" + Arch.substr(5)).str();
 
-  return is_contained(Archs, ArchName);
+  return std::find(Archs.begin(), Archs.end(), ArchName) != Archs.end();
 }
 
 bool MachODebugMapParser::dumpStab() {
@@ -345,8 +346,11 @@ void MachODebugMapParser::handleStabSymbolTableEntry(uint32_t StringIndex,
   const char *Name = &MainBinaryStrings.data()[StringIndex];
 
   // An N_OSO entry represents the start of a new object file description.
-  if (Type == MachO::N_OSO)
-    return switchToNewDebugMapObject(Name, sys::toTimePoint(Value));
+  if (Type == MachO::N_OSO) {
+    sys::TimeValue Timestamp;
+    Timestamp.fromEpochTime(Value);
+    return switchToNewDebugMapObject(Name, Timestamp);
+  }
 
   // If the last N_OSO object file wasn't found,
   // CurrentDebugMapObject will be null. Do not update anything
@@ -444,7 +448,7 @@ void MachODebugMapParser::loadMainBinarySymbols(
     }
     SymbolRef::Type Type = *TypeOrErr;
     // Skip undefined and STAB entries.
-    if ((Type == SymbolRef::ST_Debug) || (Type == SymbolRef::ST_Unknown))
+    if ((Type & SymbolRef::ST_Debug) || (Type & SymbolRef::ST_Unknown))
       continue;
     // The only symbols of interest are the global variables. These
     // are the only ones that need to be queried because the address

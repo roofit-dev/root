@@ -9,10 +9,9 @@
 // Cross over test inputs.
 //===----------------------------------------------------------------------===//
 
-#include "FuzzerDefs.h"
-#include "FuzzerMutate.h"
-#include "FuzzerRandom.h"
 #include <cstring>
+
+#include "FuzzerInternal.h"
 
 namespace fuzzer {
 

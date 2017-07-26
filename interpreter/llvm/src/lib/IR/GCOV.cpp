@@ -17,6 +17,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/MemoryObject.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -103,17 +104,11 @@ bool GCOVFile::readGCDA(GCOVBuffer &Buffer) {
   return true;
 }
 
-void GCOVFile::print(raw_ostream &OS) const {
-  for (const auto &FPtr : Functions)
-    FPtr->print(OS);
-}
-
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 /// dump - Dump GCOVFile content to dbgs() for debugging purposes.
 LLVM_DUMP_METHOD void GCOVFile::dump() const {
-  print(dbgs());
+  for (const auto &FPtr : Functions)
+    FPtr->dump();
 }
-#endif
 
 /// collectLineCounts - Collect line counts. This must be used after
 /// reading .gcno and .gcda files.
@@ -349,19 +344,13 @@ uint64_t GCOVFunction::getExitCount() const {
   return Blocks.back()->getCount();
 }
 
-void GCOVFunction::print(raw_ostream &OS) const {
-  OS << "===== " << Name << " (" << Ident << ") @ " << Filename << ":"
-     << LineNumber << "\n";
-  for (const auto &Block : Blocks)
-    Block->print(OS);
-}
-
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 /// dump - Dump GCOVFunction content to dbgs() for debugging purposes.
 LLVM_DUMP_METHOD void GCOVFunction::dump() const {
-  print(dbgs());
+  dbgs() << "===== " << Name << " (" << Ident << ") @ " << Filename << ":"
+         << LineNumber << "\n";
+  for (const auto &Block : Blocks)
+    Block->dump();
 }
-#endif
 
 /// collectLineCounts - Collect line counts. This must be used after
 /// reading .gcno and .gcda files.
@@ -412,34 +401,28 @@ void GCOVBlock::collectLineCounts(FileInfo &FI) {
     FI.addBlockLine(Parent.getFilename(), N, this);
 }
 
-void GCOVBlock::print(raw_ostream &OS) const {
-  OS << "Block : " << Number << " Counter : " << Counter << "\n";
-  if (!SrcEdges.empty()) {
-    OS << "\tSource Edges : ";
-    for (const GCOVEdge *Edge : SrcEdges)
-      OS << Edge->Src.Number << " (" << Edge->Count << "), ";
-    OS << "\n";
-  }
-  if (!DstEdges.empty()) {
-    OS << "\tDestination Edges : ";
-    for (const GCOVEdge *Edge : DstEdges)
-      OS << Edge->Dst.Number << " (" << Edge->Count << "), ";
-    OS << "\n";
-  }
-  if (!Lines.empty()) {
-    OS << "\tLines : ";
-    for (uint32_t N : Lines)
-      OS << (N) << ",";
-    OS << "\n";
-  }
-}
-
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 /// dump - Dump GCOVBlock content to dbgs() for debugging purposes.
 LLVM_DUMP_METHOD void GCOVBlock::dump() const {
-  print(dbgs());
+  dbgs() << "Block : " << Number << " Counter : " << Counter << "\n";
+  if (!SrcEdges.empty()) {
+    dbgs() << "\tSource Edges : ";
+    for (const GCOVEdge *Edge : SrcEdges)
+      dbgs() << Edge->Src.Number << " (" << Edge->Count << "), ";
+    dbgs() << "\n";
+  }
+  if (!DstEdges.empty()) {
+    dbgs() << "\tDestination Edges : ";
+    for (const GCOVEdge *Edge : DstEdges)
+      dbgs() << Edge->Dst.Number << " (" << Edge->Count << "), ";
+    dbgs() << "\n";
+  }
+  if (!Lines.empty()) {
+    dbgs() << "\tLines : ";
+    for (uint32_t N : Lines)
+      dbgs() << (N) << ",";
+    dbgs() << "\n";
+  }
 }
-#endif
 
 //===----------------------------------------------------------------------===//
 // FileInfo implementation.
@@ -589,12 +572,8 @@ FileInfo::openCoveragePath(StringRef CoveragePath) {
 /// print -  Print source files with collected line count information.
 void FileInfo::print(raw_ostream &InfoOS, StringRef MainFilename,
                      StringRef GCNOFile, StringRef GCDAFile) {
-  SmallVector<StringRef, 4> Filenames;
-  for (const auto &LI : LineInfo)
-    Filenames.push_back(LI.first());
-  std::sort(Filenames.begin(), Filenames.end());
-
-  for (StringRef Filename : Filenames) {
+  for (const auto &LI : LineInfo) {
+    StringRef Filename = LI.first();
     auto AllLines = LineConsumer(Filename);
 
     std::string CoveragePath = getCoveragePath(Filename, MainFilename);
@@ -607,7 +586,7 @@ void FileInfo::print(raw_ostream &InfoOS, StringRef MainFilename,
     CovOS << "        -:    0:Runs:" << RunCount << "\n";
     CovOS << "        -:    0:Programs:" << ProgramCount << "\n";
 
-    const LineData &Line = LineInfo[Filename];
+    const LineData &Line = LI.second;
     GCOVCoverage FileCoverage(Filename);
     for (uint32_t LineIndex = 0; LineIndex < Line.LastLine || !AllLines.empty();
          ++LineIndex) {

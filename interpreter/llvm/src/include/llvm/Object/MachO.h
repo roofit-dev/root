@@ -16,25 +16,10 @@
 #define LLVM_OBJECT_MACHO_H
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/iterator_range.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/MC/SubtargetFeature.h"
-#include "llvm/Object/Binary.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Object/SymbolicFile.h"
-#include "llvm/Support/Error.h"
-#include "llvm/Support/Format.h"
 #include "llvm/Support/MachO.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/raw_ostream.h"
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <system_error>
 
 namespace llvm {
 namespace object {
@@ -43,10 +28,11 @@ namespace object {
 /// data in code entry in the table in a Mach-O object file.
 class DiceRef {
   DataRefImpl DicePimpl;
-  const ObjectFile *OwningObject = nullptr;
+  const ObjectFile *OwningObject;
 
 public:
-  DiceRef() = default;
+  DiceRef() : OwningObject(nullptr) { }
+
   DiceRef(DataRefImpl DiceP, const ObjectFile *Owner);
 
   bool operator==(const DiceRef &Other) const;
@@ -61,7 +47,7 @@ public:
   DataRefImpl getRawDataRefImpl() const;
   const ObjectFile *getObjectFile() const;
 };
-using dice_iterator = content_iterator<DiceRef>;
+typedef content_iterator<DiceRef> dice_iterator;
 
 /// ExportEntry encapsulates the current-state-of-the-walk used when doing a
 /// non-recursive walk of the trie data structure.  This allows you to iterate
@@ -85,7 +71,6 @@ public:
 
 private:
   friend class MachOObjectFile;
-
   void moveToFirst();
   void moveToEnd();
   uint64_t readULEB128(const uint8_t *&p);
@@ -95,80 +80,38 @@ private:
   // Represents a node in the mach-o exports trie.
   struct NodeState {
     NodeState(const uint8_t *Ptr);
-
     const uint8_t *Start;
     const uint8_t *Current;
-    uint64_t Flags = 0;
-    uint64_t Address = 0;
-    uint64_t Other = 0;
-    const char *ImportName = nullptr;
-    unsigned ChildCount = 0;
-    unsigned NextChildIndex = 0;
-    unsigned ParentStringLength = 0;
-    bool IsExportNode = false;
+    uint64_t Flags;
+    uint64_t Address;
+    uint64_t Other;
+    const char *ImportName;
+    unsigned ChildCount;
+    unsigned NextChildIndex;
+    unsigned ParentStringLength;
+    bool IsExportNode;
   };
 
   ArrayRef<uint8_t> Trie;
   SmallString<256> CumulativeString;
   SmallVector<NodeState, 16> Stack;
-  bool Malformed = false;
-  bool Done = false;
+  bool Malformed;
+  bool Done;
 };
-using export_iterator = content_iterator<ExportEntry>;
-
-// Segment info so SegIndex/SegOffset pairs in a Mach-O Bind or Rebase entry
-// can be checked and translated.  Only the SegIndex/SegOffset pairs from
-// checked entries are to be used with the segmentName(), sectionName() and
-// address() methods below.
-class BindRebaseSegInfo {
-public:
-  BindRebaseSegInfo(const MachOObjectFile *Obj);
-
-  // Used to check a Mach-O Bind or Rebase entry for errors when iterating.
-  const char *checkSegAndOffset(int32_t SegIndex, uint64_t SegOffset,
-                                bool endInvalid);
-  const char *checkCountAndSkip(uint32_t Count, uint32_t Skip,
-                                uint8_t PointerSize, int32_t SegIndex,
-                                uint64_t SegOffset);
-  // Used with valid SegIndex/SegOffset values from checked entries.
-  StringRef segmentName(int32_t SegIndex);
-  StringRef sectionName(int32_t SegIndex, uint64_t SegOffset);
-  uint64_t address(uint32_t SegIndex, uint64_t SegOffset);
-
-private:
-  struct SectionInfo {
-    uint64_t Address;
-    uint64_t Size;
-    StringRef SectionName;
-    StringRef SegmentName;
-    uint64_t OffsetInSegment;
-    uint64_t SegmentStartAddress;
-    int32_t SegmentIndex;
-  };
-  const SectionInfo &findSection(int32_t SegIndex, uint64_t SegOffset);
-
-  SmallVector<SectionInfo, 32> Sections;
-  int32_t MaxSegIndex;
-};
+typedef content_iterator<ExportEntry> export_iterator;
 
 /// MachORebaseEntry encapsulates the current state in the decompression of
 /// rebasing opcodes. This allows you to iterate through the compressed table of
 /// rebasing using:
-///    Error Err;
-///    for (const llvm::object::MachORebaseEntry &Entry : Obj->rebaseTable(&Err)) {
+///    for (const llvm::object::MachORebaseEntry &Entry : Obj->rebaseTable()) {
 ///    }
-///    if (Err) { report error ...
 class MachORebaseEntry {
 public:
-  MachORebaseEntry(Error *Err, const MachOObjectFile *O,
-                   ArrayRef<uint8_t> opcodes, bool is64Bit);
+  MachORebaseEntry(ArrayRef<uint8_t> opcodes, bool is64Bit);
 
-  int32_t segmentIndex() const;
+  uint32_t segmentIndex() const;
   uint64_t segmentOffset() const;
   StringRef typeName() const;
-  StringRef segmentName() const;
-  StringRef sectionName() const;
-  uint64_t address() const;
 
   bool operator==(const MachORebaseEntry &) const;
 
@@ -176,40 +119,35 @@ public:
 
 private:
   friend class MachOObjectFile;
-
   void moveToFirst();
   void moveToEnd();
-  uint64_t readULEB128(const char **error);
+  uint64_t readULEB128();
 
-  Error *E;
-  const MachOObjectFile *O;
   ArrayRef<uint8_t> Opcodes;
   const uint8_t *Ptr;
-  uint64_t SegmentOffset = 0;
-  int32_t SegmentIndex = -1;
-  uint64_t RemainingLoopCount = 0;
-  uint64_t AdvanceAmount = 0;
-  uint8_t  RebaseType = 0;
+  uint64_t SegmentOffset;
+  uint32_t SegmentIndex;
+  uint64_t RemainingLoopCount;
+  uint64_t AdvanceAmount;
+  uint8_t  RebaseType;
   uint8_t  PointerSize;
-  bool     Done = false;
+  bool     Malformed;
+  bool     Done;
 };
-using rebase_iterator = content_iterator<MachORebaseEntry>;
+typedef content_iterator<MachORebaseEntry> rebase_iterator;
 
 /// MachOBindEntry encapsulates the current state in the decompression of
 /// binding opcodes. This allows you to iterate through the compressed table of
 /// bindings using:
-///    Error Err;
-///    for (const llvm::object::MachOBindEntry &Entry : Obj->bindTable(&Err)) {
+///    for (const llvm::object::MachOBindEntry &Entry : Obj->bindTable()) {
 ///    }
-///    if (Err) { report error ...
 class MachOBindEntry {
 public:
   enum class Kind { Regular, Lazy, Weak };
 
-  MachOBindEntry(Error *Err, const MachOObjectFile *O,
-                 ArrayRef<uint8_t> Opcodes, bool is64Bit, MachOBindEntry::Kind);
+  MachOBindEntry(ArrayRef<uint8_t> Opcodes, bool is64Bit, MachOBindEntry::Kind);
 
-  int32_t segmentIndex() const;
+  uint32_t segmentIndex() const;
   uint64_t segmentOffset() const;
   StringRef typeName() const;
   StringRef symbolName() const;
@@ -217,41 +155,34 @@ public:
   int64_t addend() const;
   int ordinal() const;
 
-  StringRef segmentName() const;
-  StringRef sectionName() const;
-  uint64_t address() const;
-
   bool operator==(const MachOBindEntry &) const;
 
   void moveNext();
 
 private:
   friend class MachOObjectFile;
-
   void moveToFirst();
   void moveToEnd();
-  uint64_t readULEB128(const char **error);
-  int64_t readSLEB128(const char **error);
+  uint64_t readULEB128();
+  int64_t readSLEB128();
 
-  Error *E;
-  const MachOObjectFile *O;
   ArrayRef<uint8_t> Opcodes;
   const uint8_t *Ptr;
-  uint64_t SegmentOffset = 0;
-  int32_t  SegmentIndex = -1;
+  uint64_t SegmentOffset;
+  uint32_t SegmentIndex;
   StringRef SymbolName;
-  bool     LibraryOrdinalSet = false;
-  int      Ordinal = 0;
-  uint32_t Flags = 0;
-  int64_t  Addend = 0;
-  uint64_t RemainingLoopCount = 0;
-  uint64_t AdvanceAmount = 0;
-  uint8_t  BindType = 0;
+  int      Ordinal;
+  uint32_t Flags;
+  int64_t  Addend;
+  uint64_t RemainingLoopCount;
+  uint64_t AdvanceAmount;
+  uint8_t  BindType;
   uint8_t  PointerSize;
   Kind     TableKind;
-  bool     Done = false;
+  bool     Malformed;
+  bool     Done;
 };
-using bind_iterator = content_iterator<MachOBindEntry>;
+typedef content_iterator<MachOBindEntry> bind_iterator;
 
 class MachOObjectFile : public ObjectFile {
 public:
@@ -259,12 +190,11 @@ public:
     const char *Ptr;      // Where in memory the load command is.
     MachO::load_command C; // The command itself.
   };
-  using LoadCommandList = SmallVector<LoadCommandInfo, 4>;
-  using load_command_iterator = LoadCommandList::const_iterator;
+  typedef SmallVector<LoadCommandInfo, 4> LoadCommandList;
+  typedef LoadCommandList::const_iterator load_command_iterator;
 
   static Expected<std::unique_ptr<MachOObjectFile>>
-  create(MemoryBufferRef Object, bool IsLittleEndian, bool Is64Bits,
-         uint32_t UniversalCputype = 0, uint32_t UniversalIndex = 0);
+  create(MemoryBufferRef Object, bool IsLittleEndian, bool Is64Bits);
 
   void moveSymbolNext(DataRefImpl &Symb) const override;
 
@@ -272,8 +202,6 @@ public:
   Expected<StringRef> getSymbolName(DataRefImpl Symb) const override;
 
   // MachO specific.
-  Error checkSymbolTable() const;
-
   std::error_code getIndirectName(DataRefImpl Symb, StringRef &Res) const;
   unsigned getSectionType(SectionRef Sec) const;
 
@@ -314,15 +242,14 @@ public:
 
   // MachO specific.
   std::error_code getLibraryShortNameByIndex(unsigned Index, StringRef &) const;
-  uint32_t getLibraryCount() const;
 
   section_iterator getRelocationRelocatedSection(relocation_iterator Rel) const;
 
   // TODO: Would be useful to have an iterator based version
   // of the load command interface too.
 
-  basic_symbol_iterator symbol_begin() const override;
-  basic_symbol_iterator symbol_end() const override;
+  basic_symbol_iterator symbol_begin_impl() const override;
+  basic_symbol_iterator symbol_end_impl() const override;
 
   // MachO specific.
   basic_symbol_iterator getSymbolByIndex(unsigned Index) const;
@@ -355,79 +282,26 @@ public:
   static iterator_range<export_iterator> exports(ArrayRef<uint8_t> Trie);
 
   /// For use iterating over all rebase table entries.
-  iterator_range<rebase_iterator> rebaseTable(Error &Err);
+  iterator_range<rebase_iterator> rebaseTable() const;
 
-  /// For use examining rebase opcodes in a MachOObjectFile.
-  static iterator_range<rebase_iterator> rebaseTable(Error &Err,
-                                                     MachOObjectFile *O,
-                                                     ArrayRef<uint8_t> Opcodes,
+  /// For use examining rebase opcodes not in a MachOObjectFile.
+  static iterator_range<rebase_iterator> rebaseTable(ArrayRef<uint8_t> Opcodes,
                                                      bool is64);
 
   /// For use iterating over all bind table entries.
-  iterator_range<bind_iterator> bindTable(Error &Err);
+  iterator_range<bind_iterator> bindTable() const;
 
   /// For use iterating over all lazy bind table entries.
-  iterator_range<bind_iterator> lazyBindTable(Error &Err);
+  iterator_range<bind_iterator> lazyBindTable() const;
 
-  /// For use iterating over all weak bind table entries.
-  iterator_range<bind_iterator> weakBindTable(Error &Err);
+  /// For use iterating over all lazy bind table entries.
+  iterator_range<bind_iterator> weakBindTable() const;
 
-  /// For use examining bind opcodes in a MachOObjectFile.
-  static iterator_range<bind_iterator> bindTable(Error &Err,
-                                                 MachOObjectFile *O,
-                                                 ArrayRef<uint8_t> Opcodes,
+  /// For use examining bind opcodes not in a MachOObjectFile.
+  static iterator_range<bind_iterator> bindTable(ArrayRef<uint8_t> Opcodes,
                                                  bool is64,
                                                  MachOBindEntry::Kind);
 
-  /// For use with a SegIndex,SegOffset pair in MachOBindEntry::moveNext() to
-  /// validate a MachOBindEntry.
-  const char *BindEntryCheckSegAndOffset(int32_t SegIndex, uint64_t SegOffset,
-                                         bool endInvalid) const {
-    return BindRebaseSectionTable->checkSegAndOffset(SegIndex, SegOffset,
-                                                     endInvalid);
-  }
-  /// For use in MachOBindEntry::moveNext() to validate a MachOBindEntry for
-  /// the BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB opcode.
-  const char *BindEntryCheckCountAndSkip(uint32_t Count, uint32_t Skip,
-                                         uint8_t PointerSize, int32_t SegIndex,
-                                         uint64_t SegOffset) const {
-    return BindRebaseSectionTable->checkCountAndSkip(Count, Skip, PointerSize,
-                                                     SegIndex, SegOffset);
-  }
-
-  /// For use with a SegIndex,SegOffset pair in MachORebaseEntry::moveNext() to
-  /// validate a MachORebaseEntry.
-  const char *RebaseEntryCheckSegAndOffset(int32_t SegIndex, uint64_t SegOffset,
-                                           bool endInvalid) const {
-    return BindRebaseSectionTable->checkSegAndOffset(SegIndex, SegOffset,
-                                                     endInvalid);
-  }
-  /// For use in MachORebaseEntry::moveNext() to validate a MachORebaseEntry for
-  /// the REBASE_OPCODE_DO_*_TIMES* opcodes.
-  const char *RebaseEntryCheckCountAndSkip(uint32_t Count, uint32_t Skip,
-                                         uint8_t PointerSize, int32_t SegIndex,
-                                         uint64_t SegOffset) const {
-    return BindRebaseSectionTable->checkCountAndSkip(Count, Skip, PointerSize,
-                                                     SegIndex, SegOffset);
-  }
-
-  /// For use with the SegIndex of a checked Mach-O Bind or Rebase entry to
-  /// get the segment name.
-  StringRef BindRebaseSegmentName(int32_t SegIndex) const {
-    return BindRebaseSectionTable->segmentName(SegIndex);
-  }
-
-  /// For use with a SegIndex,SegOffset pair from a checked Mach-O Bind or
-  /// Rebase entry to get the section name.
-  StringRef BindRebaseSectionName(uint32_t SegIndex, uint64_t SegOffset) const {
-    return BindRebaseSectionTable->sectionName(SegIndex, SegOffset);
-  }
-
-  /// For use with a SegIndex,SegOffset pair from a checked Mach-O Bind or
-  /// Rebase entry to get the address.
-  uint64_t BindRebaseAddress(uint32_t SegIndex, uint64_t SegOffset) const {
-    return BindRebaseSectionTable->address(SegIndex, SegOffset);
-  }
 
   // In a MachO file, sections have a segment name. This is used in the .o
   // files. They have a single segment, but this field specifies which segment
@@ -474,12 +348,6 @@ public:
   getLinkerOptionLoadCommand(const LoadCommandInfo &L) const;
   MachO::version_min_command
   getVersionMinLoadCommand(const LoadCommandInfo &L) const;
-  MachO::note_command
-  getNoteLoadCommand(const LoadCommandInfo &L) const;
-  MachO::build_version_command
-  getBuildVersionLoadCommand(const LoadCommandInfo &L) const;
-  MachO::build_tool_version
-  getBuildToolVersion(unsigned index) const;
   MachO::dylib_command
   getDylibIDLoadCommand(const LoadCommandInfo &L) const;
   MachO::dyld_info_command
@@ -542,8 +410,7 @@ public:
 
   static Triple::ArchType getArch(uint32_t CPUType);
   static Triple getArchTriple(uint32_t CPUType, uint32_t CPUSubType,
-                              const char **McpuDefault = nullptr,
-                              const char **ArchFlag = nullptr);
+                              const char **McpuDefault = nullptr);
   static bool isValidArch(StringRef ArchFlag);
   static Triple getHostArch();
 
@@ -573,50 +440,10 @@ public:
     return VersionOrSDK & 0xff;
   }
 
-  static std::string getBuildPlatform(uint32_t platform) {
-    switch (platform) {
-    case MachO::PLATFORM_MACOS: return "macos";
-    case MachO::PLATFORM_IOS: return "ios";
-    case MachO::PLATFORM_TVOS: return "tvos";
-    case MachO::PLATFORM_WATCHOS: return "watchos";
-    case MachO::PLATFORM_BRIDGEOS: return "bridgeos";
-    default:
-      std::string ret;
-      raw_string_ostream ss(ret);
-      ss << format_hex(platform, 8, true);
-      return ss.str();
-    }
-  }
-
-  static std::string getBuildTool(uint32_t tools) {
-    switch (tools) {
-    case MachO::TOOL_CLANG: return "clang";
-    case MachO::TOOL_SWIFT: return "swift";
-    case MachO::TOOL_LD: return "ld";
-    default:
-      std::string ret;
-      raw_string_ostream ss(ret);
-      ss << format_hex(tools, 8, true);
-      return ss.str();
-    }
-  }
-
-  static std::string getVersionString(uint32_t version) {
-    uint32_t major = (version >> 16) & 0xffff;
-    uint32_t minor = (version >> 8) & 0xff;
-    uint32_t update = version & 0xff;
-
-    SmallString<32> Version;
-    Version = utostr(major) + "." + utostr(minor);
-    if (update != 0)
-      Version += "." + utostr(update);
-    return Version.str();
-  }
-
 private:
+
   MachOObjectFile(MemoryBufferRef Object, bool IsLittleEndian, bool Is64Bits,
-                  Error &Err, uint32_t UniversalCputype = 0,
-                  uint32_t UniversalIndex = 0);
+                  Error &Err);
 
   uint64_t getSymbolValueImpl(DataRefImpl Symb) const override;
 
@@ -624,23 +451,20 @@ private:
     MachO::mach_header_64 Header64;
     MachO::mach_header Header;
   };
-  using SectionList = SmallVector<const char*, 1>;
+  typedef SmallVector<const char*, 1> SectionList;
   SectionList Sections;
-  using LibraryList = SmallVector<const char*, 1>;
+  typedef SmallVector<const char*, 1> LibraryList;
   LibraryList Libraries;
   LoadCommandList LoadCommands;
-  using LibraryShortName = SmallVector<StringRef, 1>;
-  using BuildToolList = SmallVector<const char*, 1>;
-  BuildToolList BuildTools;
+  typedef SmallVector<StringRef, 1> LibraryShortName;
   mutable LibraryShortName LibrariesShortNames;
-  std::unique_ptr<BindRebaseSegInfo> BindRebaseSectionTable;
-  const char *SymtabLoadCmd = nullptr;
-  const char *DysymtabLoadCmd = nullptr;
-  const char *DataInCodeLoadCmd = nullptr;
-  const char *LinkOptHintsLoadCmd = nullptr;
-  const char *DyldInfoLoadCmd = nullptr;
-  const char *UuidLoadCmd = nullptr;
-  bool HasPageZeroSegment = false;
+  const char *SymtabLoadCmd;
+  const char *DysymtabLoadCmd;
+  const char *DataInCodeLoadCmd;
+  const char *LinkOptHintsLoadCmd;
+  const char *DyldInfoLoadCmd;
+  const char *UuidLoadCmd;
+  bool HasPageZeroSegment;
 };
 
 /// DiceRef
@@ -697,7 +521,7 @@ inline const ObjectFile *DiceRef::getObjectFile() const {
   return OwningObject;
 }
 
-} // end namespace object
-} // end namespace llvm
+}
+}
 
-#endif // LLVM_OBJECT_MACHO_H
+#endif

@@ -28,9 +28,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitstreamReader.h"
 #include "llvm/Bitcode/LLVMBitCodes.h"
+#include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Format.h"
@@ -84,7 +84,7 @@ enum CurStreamTypeType {
 /// GetBlockName - Return a symbolic block name if known, otherwise return
 /// null.
 static const char *GetBlockName(unsigned BlockID,
-                                const BitstreamBlockInfo &BlockInfo,
+                                const BitstreamReader &StreamFile,
                                 CurStreamTypeType CurStreamType) {
   // Standard blocks for all bitcode files.
   if (BlockID < bitc::FIRST_APPLICATION_BLOCKID) {
@@ -94,8 +94,8 @@ static const char *GetBlockName(unsigned BlockID,
   }
 
   // Check to see if we have a blockinfo record for this block, with a name.
-  if (const BitstreamBlockInfo::BlockInfo *Info =
-          BlockInfo.getBlockInfo(BlockID)) {
+  if (const BitstreamReader::BlockInfo *Info =
+        StreamFile.getBlockInfo(BlockID)) {
     if (!Info->Name.empty())
       return Info->Name.c_str();
   }
@@ -122,14 +122,13 @@ static const char *GetBlockName(unsigned BlockID,
   case bitc::GLOBALVAL_SUMMARY_BLOCK_ID:
                                            return "GLOBALVAL_SUMMARY_BLOCK";
   case bitc::MODULE_STRTAB_BLOCK_ID:       return "MODULE_STRTAB_BLOCK";
-  case bitc::STRTAB_BLOCK_ID:              return "STRTAB_BLOCK";
   }
 }
 
 /// GetCodeName - Return a symbolic code name if known, otherwise return
 /// null.
 static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
-                               const BitstreamBlockInfo &BlockInfo,
+                               const BitstreamReader &StreamFile,
                                CurStreamTypeType CurStreamType) {
   // Standard blocks for all bitcode files.
   if (BlockID < bitc::FIRST_APPLICATION_BLOCKID) {
@@ -145,8 +144,8 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
   }
 
   // Check to see if we have a blockinfo record for this record, with a name.
-  if (const BitstreamBlockInfo::BlockInfo *Info =
-        BlockInfo.getBlockInfo(BlockID)) {
+  if (const BitstreamReader::BlockInfo *Info =
+        StreamFile.getBlockInfo(BlockID)) {
     for (unsigned i = 0, e = Info->RecordNames.size(); i != e; ++i)
       if (Info->RecordNames[i].first == CodeID)
         return Info->RecordNames[i].second.c_str();
@@ -172,6 +171,7 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
       STRINGIFY_CODE(MODULE_CODE, GLOBALVAR)
       STRINGIFY_CODE(MODULE_CODE, FUNCTION)
       STRINGIFY_CODE(MODULE_CODE, ALIAS)
+      STRINGIFY_CODE(MODULE_CODE, PURGEVALS)
       STRINGIFY_CODE(MODULE_CODE, GCNAME)
       STRINGIFY_CODE(MODULE_CODE, VSTOFFSET)
       STRINGIFY_CODE(MODULE_CODE, METADATA_VALUES_UNUSED)
@@ -311,12 +311,6 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
       STRINGIFY_CODE(FS, COMBINED_ALIAS)
       STRINGIFY_CODE(FS, COMBINED_ORIGINAL_NAME)
       STRINGIFY_CODE(FS, VERSION)
-      STRINGIFY_CODE(FS, TYPE_TESTS)
-      STRINGIFY_CODE(FS, TYPE_TEST_ASSUME_VCALLS)
-      STRINGIFY_CODE(FS, TYPE_CHECKED_LOAD_VCALLS)
-      STRINGIFY_CODE(FS, TYPE_TEST_ASSUME_CONST_VCALL)
-      STRINGIFY_CODE(FS, TYPE_CHECKED_LOAD_CONST_VCALL)
-      STRINGIFY_CODE(FS, VALUE_GUID)
     }
   case bitc::METADATA_ATTACHMENT_ID:
     switch(CodeID) {
@@ -327,15 +321,16 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
     switch(CodeID) {
     default:return nullptr;
       STRINGIFY_CODE(METADATA, STRING_OLD)
-      STRINGIFY_CODE(METADATA, VALUE)
-      STRINGIFY_CODE(METADATA, NODE)
+      STRINGIFY_CODE(METADATA, STRINGS)
       STRINGIFY_CODE(METADATA, NAME)
-      STRINGIFY_CODE(METADATA, DISTINCT_NODE)
       STRINGIFY_CODE(METADATA, KIND) // Older bitcode has it in a MODULE_BLOCK
-      STRINGIFY_CODE(METADATA, LOCATION)
+      STRINGIFY_CODE(METADATA, NODE)
+      STRINGIFY_CODE(METADATA, VALUE)
       STRINGIFY_CODE(METADATA, OLD_NODE)
       STRINGIFY_CODE(METADATA, OLD_FN_NODE)
       STRINGIFY_CODE(METADATA, NAMED_NODE)
+      STRINGIFY_CODE(METADATA, DISTINCT_NODE)
+      STRINGIFY_CODE(METADATA, LOCATION)
       STRINGIFY_CODE(METADATA, GENERIC_DEBUG)
       STRINGIFY_CODE(METADATA, SUBRANGE)
       STRINGIFY_CODE(METADATA, ENUMERATOR)
@@ -357,13 +352,6 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
       STRINGIFY_CODE(METADATA, OBJC_PROPERTY)
       STRINGIFY_CODE(METADATA, IMPORTED_ENTITY)
       STRINGIFY_CODE(METADATA, MODULE)
-      STRINGIFY_CODE(METADATA, MACRO)
-      STRINGIFY_CODE(METADATA, MACRO_FILE)
-      STRINGIFY_CODE(METADATA, STRINGS)
-      STRINGIFY_CODE(METADATA, GLOBAL_DECL_ATTACHMENT)
-      STRINGIFY_CODE(METADATA, GLOBAL_VAR_EXPR)
-      STRINGIFY_CODE(METADATA, INDEX_OFFSET)
-      STRINGIFY_CODE(METADATA, INDEX)
     }
   case bitc::METADATA_KIND_BLOCK_ID:
     switch (CodeID) {
@@ -382,11 +370,6 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
     switch(CodeID) {
     default: return nullptr;
     case bitc::OPERAND_BUNDLE_TAG: return "OPERAND_BUNDLE_TAG";
-    }
-  case bitc::STRTAB_BLOCK_ID:
-    switch(CodeID) {
-    default: return nullptr;
-    case bitc::STRTAB_BLOB: return "BLOB";
     }
   }
 #undef STRINGIFY_CODE
@@ -429,14 +412,14 @@ static std::map<unsigned, PerBlockIDStats> BlockIDStats;
 
 
 
-/// ReportError - All bitcode analysis errors go through this function, making this a
+/// Error - All bitcode analysis errors go through this function, making this a
 /// good place to breakpoint if debugging.
-static bool ReportError(const Twine &Err) {
+static bool Error(const Twine &Err) {
   errs() << Err << "\n";
   return true;
 }
 
-static bool decodeMetadataStringsBlob(StringRef Indent,
+static bool decodeMetadataStringsBlob(BitstreamReader &Reader, StringRef Indent,
                                       ArrayRef<uint64_t> Record,
                                       StringRef Blob) {
   if (Blob.empty())
@@ -450,15 +433,21 @@ static bool decodeMetadataStringsBlob(StringRef Indent,
   outs() << " num-strings = " << NumStrings << " {\n";
 
   StringRef Lengths = Blob.slice(0, StringsOffset);
-  SimpleBitstreamCursor R(Lengths);
+  SimpleBitstreamCursor R(Reader);
+  R.jumpToPointer(Lengths.begin());
+
+  // Ensure that Blob doesn't get invalidated, even if this is reading from a
+  // StreamingMemoryObject with corrupt data.
+  R.setArtificialByteLimit(R.getCurrentByteNo() + StringsOffset);
+
   StringRef Strings = Blob.drop_front(StringsOffset);
   do {
     if (R.AtEndOfStream())
-      return ReportError("bad length");
+      return Error("bad length");
 
     unsigned Size = R.ReadVBR(6);
     if (Strings.size() < Size)
-      return ReportError("truncated chars");
+      return Error("truncated chars");
 
     outs() << Indent << "    '";
     outs().write_escaped(Strings.slice(0, Size), /*hex=*/true);
@@ -470,20 +459,20 @@ static bool decodeMetadataStringsBlob(StringRef Indent,
   return false;
 }
 
-static bool decodeBlob(unsigned Code, unsigned BlockID, StringRef Indent,
-                       ArrayRef<uint64_t> Record, StringRef Blob) {
+static bool decodeBlob(unsigned Code, unsigned BlockID, BitstreamReader &Reader,
+                       StringRef Indent, ArrayRef<uint64_t> Record,
+                       StringRef Blob) {
   if (BlockID != bitc::METADATA_BLOCK_ID)
     return true;
   if (Code != bitc::METADATA_STRINGS)
     return true;
 
-  return decodeMetadataStringsBlob(Indent, Record, Blob);
+  return decodeMetadataStringsBlob(Reader, Indent, Record, Blob);
 }
 
 /// ParseBlock - Read a block, updating statistics, etc.
-static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
-                       unsigned BlockID, unsigned IndentLevel,
-                       CurStreamTypeType CurStreamType) {
+static bool ParseBlock(BitstreamCursor &Stream, unsigned BlockID,
+                       unsigned IndentLevel, CurStreamTypeType CurStreamType) {
   std::string Indent(IndentLevel*2, ' ');
   uint64_t BlockBitStart = Stream.GetCurrentBitNo();
 
@@ -496,19 +485,15 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
   bool DumpRecords = Dump;
   if (BlockID == bitc::BLOCKINFO_BLOCK_ID) {
     if (Dump) outs() << Indent << "<BLOCKINFO_BLOCK/>\n";
-    Optional<BitstreamBlockInfo> NewBlockInfo =
-        Stream.ReadBlockInfoBlock(/*ReadBlockInfoNames=*/true);
-    if (!NewBlockInfo)
-      return ReportError("Malformed BlockInfoBlock");
-    BlockInfo = std::move(*NewBlockInfo);
-    Stream.JumpToBit(BlockBitStart);
+    if (BitstreamCursor(Stream).ReadBlockInfoBlock())
+      return Error("Malformed BlockInfoBlock");
     // It's not really interesting to dump the contents of the blockinfo block.
     DumpRecords = false;
   }
 
   unsigned NumWords = 0;
   if (Stream.EnterSubBlock(BlockID, &NumWords))
-    return ReportError("Malformed block record");
+    return Error("Malformed block record");
 
   // Keep it for later, when we see a MODULE_HASH record
   uint64_t BlockEntryPos = Stream.getCurrentByteNo();
@@ -516,7 +501,8 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
   const char *BlockName = nullptr;
   if (DumpRecords) {
     outs() << Indent << "<";
-    if ((BlockName = GetBlockName(BlockID, BlockInfo, CurStreamType)))
+    if ((BlockName = GetBlockName(BlockID, *Stream.getBitStreamReader(),
+                                  CurStreamType)))
       outs() << BlockName;
     else
       outs() << "UnknownBlock" << BlockID;
@@ -530,13 +516,10 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
 
   SmallVector<uint64_t, 64> Record;
 
-  // Keep the offset to the metadata index if seen.
-  uint64_t MetadataIndexOffset = 0;
-
   // Read all the records for this block.
   while (1) {
     if (Stream.AtEndOfStream())
-      return ReportError("Premature end of bitstream");
+      return Error("Premature end of bitstream");
 
     uint64_t RecordStartBit = Stream.GetCurrentBitNo();
 
@@ -545,7 +528,7 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
     
     switch (Entry.Kind) {
     case BitstreamEntry::Error:
-      return ReportError("malformed bitcode file");
+      return Error("malformed bitcode file");
     case BitstreamEntry::EndBlock: {
       uint64_t BlockBitEnd = Stream.GetCurrentBitNo();
       BlockStats.NumBits += BlockBitEnd-BlockBitStart;
@@ -561,8 +544,7 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
         
     case BitstreamEntry::SubBlock: {
       uint64_t SubBlockBitStart = Stream.GetCurrentBitNo();
-      if (ParseBlock(Stream, BlockInfo, Entry.ID, IndentLevel + 1,
-                     CurStreamType))
+      if (ParseBlock(Stream, Entry.ID, IndentLevel+1, CurStreamType))
         return true;
       ++BlockStats.NumSubBlocks;
       uint64_t SubBlockBitEnd = Stream.GetCurrentBitNo();
@@ -587,7 +569,7 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
     ++BlockStats.NumRecords;
 
     StringRef Blob;
-    unsigned CurrentRecordPos = Stream.GetCurrentBitNo();
+    unsigned CurrentRecordPos = Stream.getCurrentByteNo();
     unsigned Code = Stream.readRecord(Entry.ID, Record, &Blob);
 
     // Increment the # occurrences of this code.
@@ -604,11 +586,14 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
     if (DumpRecords) {
       outs() << Indent << "  <";
       if (const char *CodeName =
-              GetCodeName(Code, BlockID, BlockInfo, CurStreamType))
+            GetCodeName(Code, BlockID, *Stream.getBitStreamReader(),
+                        CurStreamType))
         outs() << CodeName;
       else
         outs() << "UnknownCode" << Code;
-      if (NonSymbolic && GetCodeName(Code, BlockID, BlockInfo, CurStreamType))
+      if (NonSymbolic &&
+          GetCodeName(Code, BlockID, *Stream.getBitStreamReader(),
+                      CurStreamType))
         outs() << " codeid=" << Code;
       const BitCodeAbbrev *Abbv = nullptr;
       if (Entry.ID != bitc::UNABBREV_RECORD) {
@@ -619,27 +604,6 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
       for (unsigned i = 0, e = Record.size(); i != e; ++i)
         outs() << " op" << i << "=" << (int64_t)Record[i];
 
-      // If we found a metadata index, let's verify that we had an offset before
-      // and validate its forward reference offset was correct!
-      if (BlockID == bitc::METADATA_BLOCK_ID) {
-        if (Code == bitc::METADATA_INDEX_OFFSET) {
-          if (Record.size() != 2)
-            outs() << "(Invalid record)";
-          else {
-            auto Offset = Record[0] + (Record[1] << 32);
-            MetadataIndexOffset = Stream.GetCurrentBitNo() + Offset;
-          }
-        }
-        if (Code == bitc::METADATA_INDEX) {
-          outs() << " (offset ";
-          if (MetadataIndexOffset == RecordStartBit)
-            outs() << "match)";
-          else
-            outs() << "mismatch: " << MetadataIndexOffset << " vs "
-                   << RecordStartBit << ")";
-        }
-      }
-
       // If we found a module hash, let's verify that it matches!
       if (BlockID == bitc::MODULE_BLOCK_ID && Code == bitc::MODULE_CODE_HASH) {
         if (Record.size() != 5)
@@ -649,7 +613,7 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
           SHA1 Hasher;
           StringRef Hash;
           {
-            int BlockSize = (CurrentRecordPos / 8) - BlockEntryPos;
+            int BlockSize = CurrentRecordPos - BlockEntryPos;
             auto Ptr = Stream.getPointerToByte(BlockEntryPos, BlockSize);
             Hasher.update(ArrayRef<uint8_t>(Ptr, BlockSize));
             Hash = Hasher.result();
@@ -694,7 +658,8 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
         }
       }
 
-      if (Blob.data() && decodeBlob(Code, BlockID, Indent, Record, Blob)) {
+      if (Blob.data() && decodeBlob(Code, BlockID, *Stream.getBitStreamReader(),
+                                    Indent, Record, Blob)) {
         outs() << " blob data = ";
         if (ShowBinaryBlobs) {
           outs() << "'";
@@ -716,10 +681,6 @@ static bool ParseBlock(BitstreamCursor &Stream, BitstreamBlockInfo &BlockInfo,
 
       outs() << "\n";
     }
-
-    // Make sure that we can skip the current record.
-    Stream.JumpToBit(CurrentRecordPos);
-    Stream.skipRecord(Entry.ID);
   }
 }
 
@@ -733,17 +694,18 @@ static void PrintSize(uint64_t Bits) {
 
 static bool openBitcodeFile(StringRef Path,
                             std::unique_ptr<MemoryBuffer> &MemBuf,
+                            BitstreamReader &StreamFile,
                             BitstreamCursor &Stream,
                             CurStreamTypeType &CurStreamType) {
   // Read the input file.
   ErrorOr<std::unique_ptr<MemoryBuffer>> MemBufOrErr =
       MemoryBuffer::getFileOrSTDIN(Path);
   if (std::error_code EC = MemBufOrErr.getError())
-    return ReportError(Twine("ReportError reading '") + Path + "': " + EC.message());
+    return Error(Twine("Error reading '") + Path + "': " + EC.message());
   MemBuf = std::move(MemBufOrErr.get());
 
   if (MemBuf->getBufferSize() & 3)
-    return ReportError("Bitcode stream should be a multiple of 4 bytes in length");
+    return Error("Bitcode stream should be a multiple of 4 bytes in length");
 
   const unsigned char *BufPtr = (const unsigned char *)MemBuf->getBufferStart();
   const unsigned char *EndBufPtr = BufPtr + MemBuf->getBufferSize();
@@ -752,7 +714,7 @@ static bool openBitcodeFile(StringRef Path,
   // The magic number is 0x0B17C0DE stored in little endian.
   if (isBitcodeWrapper(BufPtr, EndBufPtr)) {
     if (MemBuf->getBufferSize() < BWH_HeaderSize)
-      return ReportError("Invalid bitcode wrapper header");
+      return Error("Invalid bitcode wrapper header");
 
     if (Dump) {
       unsigned Magic = support::endian::read32le(&BufPtr[BWH_MagicField]);
@@ -770,10 +732,12 @@ static bool openBitcodeFile(StringRef Path,
     }
 
     if (SkipBitcodeWrapperHeader(BufPtr, EndBufPtr, true))
-      return ReportError("Invalid bitcode wrapper header");
+      return Error("Invalid bitcode wrapper header");
   }
 
-  Stream = BitstreamCursor(ArrayRef<uint8_t>(BufPtr, EndBufPtr));
+  StreamFile = BitstreamReader(BufPtr, EndBufPtr);
+  Stream = BitstreamCursor(StreamFile);
+  StreamFile.CollectBlockInfoNames();
 
   // Read the stream signature.
   char Signature[6];
@@ -797,40 +761,40 @@ static bool openBitcodeFile(StringRef Path,
 /// AnalyzeBitcode - Analyze the bitcode file specified by InputFilename.
 static int AnalyzeBitcode() {
   std::unique_ptr<MemoryBuffer> StreamBuffer;
+  BitstreamReader StreamFile;
   BitstreamCursor Stream;
-  BitstreamBlockInfo BlockInfo;
   CurStreamTypeType CurStreamType;
-  if (openBitcodeFile(InputFilename, StreamBuffer, Stream, CurStreamType))
+  if (openBitcodeFile(InputFilename, StreamBuffer, StreamFile, Stream,
+                      CurStreamType))
     return true;
-  Stream.setBlockInfo(&BlockInfo);
 
   // Read block info from BlockInfoFilename, if specified.
   // The block info must be a top-level block.
   if (!BlockInfoFilename.empty()) {
     std::unique_ptr<MemoryBuffer> BlockInfoBuffer;
+    BitstreamReader BlockInfoFile;
     BitstreamCursor BlockInfoCursor;
     CurStreamTypeType BlockInfoStreamType;
-    if (openBitcodeFile(BlockInfoFilename, BlockInfoBuffer, BlockInfoCursor,
-                        BlockInfoStreamType))
+    if (openBitcodeFile(BlockInfoFilename, BlockInfoBuffer, BlockInfoFile,
+                        BlockInfoCursor, BlockInfoStreamType))
       return true;
 
     while (!BlockInfoCursor.AtEndOfStream()) {
       unsigned Code = BlockInfoCursor.ReadCode();
       if (Code != bitc::ENTER_SUBBLOCK)
-        return ReportError("Invalid record at top-level in block info file");
+        return Error("Invalid record at top-level in block info file");
 
       unsigned BlockID = BlockInfoCursor.ReadSubBlockID();
       if (BlockID == bitc::BLOCKINFO_BLOCK_ID) {
-        Optional<BitstreamBlockInfo> NewBlockInfo =
-            BlockInfoCursor.ReadBlockInfoBlock(/*ReadBlockInfoNames=*/true);
-        if (!NewBlockInfo)
-          return ReportError("Malformed BlockInfoBlock in block info file");
-        BlockInfo = std::move(*NewBlockInfo);
+        if (BlockInfoCursor.ReadBlockInfoBlock())
+          return Error("Malformed BlockInfoBlock in block info file");
         break;
       }
 
       BlockInfoCursor.SkipBlock();
     }
+
+    StreamFile.takeBlockInfo(std::move(BlockInfoFile));
   }
 
   unsigned NumTopBlocks = 0;
@@ -839,18 +803,18 @@ static int AnalyzeBitcode() {
   while (!Stream.AtEndOfStream()) {
     unsigned Code = Stream.ReadCode();
     if (Code != bitc::ENTER_SUBBLOCK)
-      return ReportError("Invalid record at top-level");
+      return Error("Invalid record at top-level");
 
     unsigned BlockID = Stream.ReadSubBlockID();
 
-    if (ParseBlock(Stream, BlockInfo, BlockID, 0, CurStreamType))
+    if (ParseBlock(Stream, BlockID, 0, CurStreamType))
       return true;
     ++NumTopBlocks;
   }
 
   if (Dump) outs() << "\n\n";
 
-  uint64_t BufferSizeBits = Stream.getBitcodeBytes().size() * CHAR_BIT;
+  uint64_t BufferSizeBits = StreamFile.getBitcodeBytes().getExtent() * CHAR_BIT;
   // Print a summary of the read file.
   outs() << "Summary of " << InputFilename << ":\n";
   outs() << "         Total size: ";
@@ -869,8 +833,8 @@ static int AnalyzeBitcode() {
   for (std::map<unsigned, PerBlockIDStats>::iterator I = BlockIDStats.begin(),
        E = BlockIDStats.end(); I != E; ++I) {
     outs() << "  Block ID #" << I->first;
-    if (const char *BlockName =
-            GetBlockName(I->first, BlockInfo, CurStreamType))
+    if (const char *BlockName = GetBlockName(I->first, StreamFile,
+                                             CurStreamType))
       outs() << " (" << BlockName << ")";
     outs() << ":\n";
 
@@ -934,8 +898,9 @@ static int AnalyzeBitcode() {
           outs() << "        ";
 
         outs() << "  ";
-        if (const char *CodeName = GetCodeName(FreqPairs[i].second, I->first,
-                                               BlockInfo, CurStreamType))
+        if (const char *CodeName =
+              GetCodeName(FreqPairs[i].second, I->first, StreamFile,
+                          CurStreamType))
           outs() << CodeName << "\n";
         else
           outs() << "UnknownCode" << FreqPairs[i].second << "\n";

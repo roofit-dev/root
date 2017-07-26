@@ -21,7 +21,7 @@ using namespace llvm;
 
 static const ManagedStaticBase *StaticList = nullptr;
 static sys::Mutex *ManagedStaticMutex = nullptr;
-static llvm::once_flag mutex_init_flag;
+LLVM_DEFINE_ONCE_FLAG(mutex_init_flag);
 
 static void initializeMutex() {
   ManagedStaticMutex = new sys::Mutex();

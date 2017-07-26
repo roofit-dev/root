@@ -45,7 +45,6 @@ LLVMContextImpl::LLVMContextImpl(LLVMContext &C)
   DiagnosticHandler = nullptr;
   DiagnosticContext = nullptr;
   RespectDiagnosticFilters = false;
-  DiagnosticHotnessRequested = false;
   YieldCallback = nullptr;
   YieldOpaqueHandle = nullptr;
   NamedStructTypesUniqueID = 0;
@@ -94,13 +93,12 @@ LLVMContextImpl::~LLVMContextImpl() {
   ArrayConstants.freeConstants();
   StructConstants.freeConstants();
   VectorConstants.freeConstants();
+  DeleteContainerSeconds(CAZConstants);
+  DeleteContainerSeconds(CPNConstants);
+  DeleteContainerSeconds(UVConstants);
   InlineAsms.freeConstants();
-
-  CAZConstants.clear();
-  CPNConstants.clear();
-  UVConstants.clear();
-  IntConstants.clear();
-  FPConstants.clear();
+  DeleteContainerSeconds(IntConstants);
+  DeleteContainerSeconds(FPConstants);
 
   for (auto &CDSConstant : CDSConstants)
     delete CDSConstant.second;
@@ -114,10 +112,9 @@ LLVMContextImpl::~LLVMContextImpl() {
   }
 
   // Destroy attribute lists.
-  for (FoldingSetIterator<AttributeListImpl> I = AttrsLists.begin(),
-                                             E = AttrsLists.end();
-       I != E;) {
-    FoldingSetIterator<AttributeListImpl> Elem = I++;
+  for (FoldingSetIterator<AttributeSetImpl> I = AttrsLists.begin(),
+         E = AttrsLists.end(); I != E; ) {
+    FoldingSetIterator<AttributeSetImpl> Elem = I++;
     delete &*Elem;
   }
 

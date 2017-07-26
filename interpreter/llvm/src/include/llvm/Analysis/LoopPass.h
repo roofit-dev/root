@@ -107,7 +107,9 @@ public:
   // LPPassManager needs LoopInfo.
   void getAnalysisUsage(AnalysisUsage &Info) const override;
 
-  StringRef getPassName() const override { return "Loop Pass Manager"; }
+  const char *getPassName() const override {
+    return "Loop Pass Manager";
+  }
 
   PMDataManager *getAsPMDataManager() override { return this; }
   Pass *getAsPass() override { return this; }
@@ -153,22 +155,6 @@ private:
   std::deque<Loop *> LQ;
   LoopInfo *LI;
   Loop *CurrentLoop;
-};
-
-// This pass is required by the LCSSA transformation. It is used inside
-// LPPassManager to check if current pass preserves LCSSA form, and if it does
-// pass manager calls lcssa verification for the current loop.
-struct LCSSAVerificationPass : public FunctionPass {
-  static char ID;
-  LCSSAVerificationPass() : FunctionPass(ID) {
-    initializeLCSSAVerificationPassPass(*PassRegistry::getPassRegistry());
-  }
-
-  bool runOnFunction(Function &F) override { return false; }
-
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.setPreservesAll();
-  }
 };
 
 } // End llvm namespace

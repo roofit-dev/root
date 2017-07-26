@@ -71,7 +71,7 @@ namespace {
 
     void getAnalysisUsage(AnalysisUsage &AU) const override;
 
-    StringRef getPassName() const override {
+    const char *getPassName() const override {
       return "Exception handling preparation";
     }
   };

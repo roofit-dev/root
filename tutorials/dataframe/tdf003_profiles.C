@@ -11,6 +11,7 @@
 /// \author Danilo Piparo
 
 #include "TFile.h"
+#include "TH1F.h"
 #include "TRandom.h"
 #include "TTree.h"
 

@@ -25,7 +25,6 @@
 #include "ROOT/TExecutor.hxx"
 #include "ROOT/TPoolManager.hxx"
 #include "TROOT.h"
-#include "TError.h"
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -184,7 +183,7 @@ namespace ROOT {
 
    //////////////////////////////////////////////////////////////////////////
    /// Execute func (with no arguments) nTimes in parallel.
-   /// Divides and groups the executions in nChunks (if it doesn't make sense will reduce the number of chunks) with partial reduction;
+   ///Divides and groups the executions in nChunks with partial reduction;
    /// A vector containg partial reductions' results is returned.
    template<class F, class R, class Cond>
    auto TThreadExecutor::Map(F func, unsigned nTimes, R redfunc, unsigned nChunks) -> std::vector<typename std::result_of<F()>::type> {
@@ -193,17 +192,12 @@ namespace ROOT {
          return Map(func, nTimes);
       }
 
-      unsigned step = (nTimes + nChunks - 1) / nChunks;
-      // Avoid empty chunks
-      unsigned actualChunks = (nTimes + step - 1) / step;
-      if(actualChunks != nChunks){
-          Warning("ROOT::TThreadExecutor::Map", "The number of chunks has been reduced to %d to avoid empty chunks", actualChunks);
-      }
       using retType = decltype(func());
-      std::vector<retType> reslist(actualChunks);
+      std::vector<retType> reslist(nChunks);
+      unsigned step = (nTimes + nChunks - 1) / nChunks;
       auto lambda = [&](unsigned int i)
       {
-         std::vector<retType> partialResults(std::min(nTimes-i, step));
+         std::vector<retType> partialResults(step);
          for (unsigned j = 0; j < step && (i + j) < nTimes; j++) {
             partialResults[j] = func();
          }
@@ -240,8 +234,7 @@ namespace ROOT {
 
    //////////////////////////////////////////////////////////////////////////
    /// Execute func in parallel, taking an element of a
-   /// sequence as argument.
-   /// Divides and groups the executions in nChunks (if it doesn't make sense will reduce the number of chunks) with partial reduction\n
+   /// sequence as argument. Divides and groups the executions in nChunks with partial reduction;
    /// A vector containg partial reductions' results is returned.
    template<class F, class INTEGER, class R, class Cond>
    auto TThreadExecutor::Map(F func, ROOT::TSeq<INTEGER> args, R redfunc, unsigned nChunks) -> std::vector<typename std::result_of<F(INTEGER)>::type> {
@@ -254,17 +247,12 @@ namespace ROOT {
       unsigned end = *args.end();
       unsigned seqStep = args.step();
       unsigned step = (end - start + nChunks - 1) / nChunks; //ceiling the division
-      // Avoid empty chunks
-      unsigned actualChunks = (end - start + step - 1) / step;
-      if(actualChunks != nChunks){
-          Warning("ROOT::TThreadExecutor::Map", "The number of chunks has been reduced to %d to avoid empty chunks", actualChunks);
-      }
 
       using retType = decltype(func(start));
       std::vector<retType> reslist(nChunks);
       auto lambda = [&](unsigned int i)
       {
-         std::vector<retType> partialResults(std::min(end-i, step));
+         std::vector<retType> partialResults(step);
          for (unsigned j = 0; j < step && (i + j) < end; j+=seqStep) {
             partialResults[j] = func(i + j);
          }
@@ -278,8 +266,7 @@ namespace ROOT {
 /// \cond
     //////////////////////////////////////////////////////////////////////////
    /// Execute func in parallel, taking an element of an
-   /// std::vector as argument. Divides and groups the executions in nChunks with partial reduction.
-   /// If it doesn't make sense will reduce the number of chunks.\n
+   /// std::vector as argument. Divides and groups the executions in nChunks with partial reduction;
    /// A vector containg partial reductions' results is returned.
    template<class F, class T, class R, class Cond>
    auto TThreadExecutor::Map(F func, std::vector<T> &args, R redfunc, unsigned nChunks) -> std::vector<typename std::result_of<F(T)>::type> {
@@ -293,11 +280,6 @@ namespace ROOT {
       unsigned int nToProcess = args.size();
       std::vector<retType> reslist(nChunks);
       unsigned step = (nToProcess + nChunks - 1) / nChunks; //ceiling the division
-      // Avoid empty chunks
-      unsigned actualChunks = (nToProcess + step - 1) / step;
-      if(actualChunks != nChunks){
-          Warning("ROOT::TThreadExecutor::Map", "The number of chunks has been reduced to %d to avoid empty chunks", actualChunks);
-      }
 
       auto lambda = [&](unsigned int i)
       {
@@ -315,8 +297,7 @@ namespace ROOT {
 
     //////////////////////////////////////////////////////////////////////////
    /// Execute func in parallel, taking an element of an
-   /// std::initializer_list as an argument. Divides and groups the executions in nChunks with partial reduction.
-   /// If it doesn't make sense will reduce the number of chunks.\n
+   /// std::initializer_list as an argument. Divides and groups the executions in nChunks with partial reduction;
    /// A vector containg partial reductions' results is returned.
    template<class F, class T, class R, class Cond>
    auto TThreadExecutor::Map(F func, std::initializer_list<T> args, R redfunc, unsigned nChunks) -> std::vector<typename std::result_of<F(T)>::type> {

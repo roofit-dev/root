@@ -1,4 +1,4 @@
-//===- DWARFDebugRangesList.cpp -------------------------------------------===//
+//===-- DWARFDebugRangesList.cpp ------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,13 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugRangeList.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cinttypes>
-#include <cstdint>
-#include <utility>
 
 using namespace llvm;
 
@@ -23,8 +19,7 @@ void DWARFDebugRangeList::clear() {
   Entries.clear();
 }
 
-bool DWARFDebugRangeList::extract(DataExtractor data, uint32_t *offset_ptr,
-                                  const RelocAddrMap &Relocs) {
+bool DWARFDebugRangeList::extract(DataExtractor data, uint32_t *offset_ptr) {
   clear();
   if (!data.isValidOffset(*offset_ptr))
     return false;
@@ -35,11 +30,8 @@ bool DWARFDebugRangeList::extract(DataExtractor data, uint32_t *offset_ptr,
   while (true) {
     RangeListEntry entry;
     uint32_t prev_offset = *offset_ptr;
-    entry.StartAddress =
-        getRelocatedValue(data, AddressSize, offset_ptr, &Relocs);
-    entry.EndAddress =
-        getRelocatedValue(data, AddressSize, offset_ptr, &Relocs);
-
+    entry.StartAddress = data.getAddress(offset_ptr);
+    entry.EndAddress = data.getAddress(offset_ptr);
     // Check that both values were extracted correctly.
     if (*offset_ptr != prev_offset + 2 * AddressSize) {
       clear();

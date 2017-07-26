@@ -83,7 +83,7 @@ public:
                                              const CFGBlock *DstF) = 0;
 
   /// Called by CoreEngine.  Used to processing branching behavior
-  /// at static initializers.
+  /// at static initalizers.
   virtual void processStaticInitializer(const DeclStmt *DS,
                                         NodeBuilderContext& BuilderCtx,
                                         ExplodedNode *Pred,
@@ -109,8 +109,7 @@ public:
   /// Called by CoreEngine.  Used to notify checkers that processing a
   /// function has ended. Called for both inlined and and top-level functions.
   virtual void processEndOfFunction(NodeBuilderContext& BC,
-                                    ExplodedNode *Pred,
-                                    const ReturnStmt *RS = nullptr) = 0;
+                                    ExplodedNode *Pred) = 0;
 
   // Generate the entry node of the callee.
   virtual void processCallEnter(NodeBuilderContext& BC, CallEnter CE,
@@ -124,6 +123,10 @@ public:
   virtual ProgramStateRef processAssume(ProgramStateRef state,
                                        SVal cond, bool assumption) = 0;
 
+  /// wantsRegionChangeUpdate - Called by ProgramStateManager to determine if a
+  ///  region change should trigger a processRegionChanges update.
+  virtual bool wantsRegionChangeUpdate(ProgramStateRef state) = 0;
+
   /// processRegionChanges - Called by ProgramStateManager whenever a change is
   /// made to the store. Used to update checkers that track region values.
   virtual ProgramStateRef 
@@ -131,19 +134,17 @@ public:
                        const InvalidatedSymbols *invalidated,
                        ArrayRef<const MemRegion *> ExplicitRegions,
                        ArrayRef<const MemRegion *> Regions,
-                       const LocationContext *LCtx,
                        const CallEvent *Call) = 0;
 
 
   inline ProgramStateRef 
   processRegionChange(ProgramStateRef state,
-                      const MemRegion* MR,
-                      const LocationContext *LCtx) {
-    return processRegionChanges(state, nullptr, MR, MR, LCtx, nullptr);
+                      const MemRegion* MR) {
+    return processRegionChanges(state, nullptr, MR, MR, nullptr);
   }
 
   virtual ProgramStateRef
-  processPointerEscapedOnBind(ProgramStateRef State, SVal Loc, SVal Val, const LocationContext *LCtx) = 0;
+  processPointerEscapedOnBind(ProgramStateRef State, SVal Loc, SVal Val) = 0;
 
   virtual ProgramStateRef
   notifyCheckersOfPointerEscape(ProgramStateRef State,

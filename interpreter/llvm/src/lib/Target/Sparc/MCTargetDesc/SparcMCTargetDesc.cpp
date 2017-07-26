@@ -128,12 +128,11 @@ static MCInstPrinter *createSparcMCInstPrinter(const Triple &T,
 
 extern "C" void LLVMInitializeSparcTargetMC() {
   // Register the MC asm info.
-  RegisterMCAsmInfoFn X(getTheSparcTarget(), createSparcMCAsmInfo);
-  RegisterMCAsmInfoFn Y(getTheSparcV9Target(), createSparcV9MCAsmInfo);
-  RegisterMCAsmInfoFn Z(getTheSparcelTarget(), createSparcMCAsmInfo);
+  RegisterMCAsmInfoFn X(TheSparcTarget, createSparcMCAsmInfo);
+  RegisterMCAsmInfoFn Y(TheSparcV9Target, createSparcV9MCAsmInfo);
+  RegisterMCAsmInfoFn Z(TheSparcelTarget, createSparcMCAsmInfo);
 
-  for (Target *T :
-       {&getTheSparcTarget(), &getTheSparcV9Target(), &getTheSparcelTarget()}) {
+  for (Target *T : {&TheSparcTarget, &TheSparcV9Target, &TheSparcelTarget}) {
     // Register the MC instruction info.
     TargetRegistry::RegisterMCInstrInfo(*T, createSparcMCInstrInfo);
 
@@ -161,10 +160,10 @@ extern "C" void LLVMInitializeSparcTargetMC() {
   }
 
   // Register the MC codegen info.
-  TargetRegistry::registerMCAdjustCodeGenOpts(getTheSparcTarget(),
+  TargetRegistry::registerMCAdjustCodeGenOpts(TheSparcTarget,
                                               adjustCodeGenOpts);
-  TargetRegistry::registerMCAdjustCodeGenOpts(getTheSparcV9Target(),
+  TargetRegistry::registerMCAdjustCodeGenOpts(TheSparcV9Target,
                                               adjustCodeGenOptsV9);
-  TargetRegistry::registerMCAdjustCodeGenOpts(getTheSparcelTarget(),
+  TargetRegistry::registerMCAdjustCodeGenOpts(TheSparcelTarget,
                                               adjustCodeGenOpts);
 }

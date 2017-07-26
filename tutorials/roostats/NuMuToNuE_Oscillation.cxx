@@ -14,6 +14,8 @@
 #include <math.h>
 #include "TMath.h"
 
+// ClassImp(NuMuToNuE_Oscillation)
+
  NuMuToNuE_Oscillation::NuMuToNuE_Oscillation(const char *name, const char *title,
                         RooAbsReal& _L,
                         RooAbsReal& _E,

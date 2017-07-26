@@ -18,7 +18,6 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DependentDiagnostic.h"
 #include "clang/CodeGen/ModuleBuilder.h"
-#include "clang/Frontend/CompilerInstance.h"
 #include "clang/Sema/Sema.h"
 
 using namespace clang;
@@ -135,10 +134,6 @@ namespace cling {
       T->setState(Transaction::kRolledBack);
     else
       T->setState(Transaction::kRolledBackWithErrors);
-
-    // Release the input_line_X file unless verifying diagnostics.
-    if (!m_Interp->getCI()->getDiagnosticOpts().VerifyDiagnostics)
-      m_Sema->getSourceManager().invalidateCache(T->getBufferFID());
 
     return Successful;
   }

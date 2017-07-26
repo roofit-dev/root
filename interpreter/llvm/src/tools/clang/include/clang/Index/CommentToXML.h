@@ -22,7 +22,12 @@ class HTMLTagComment;
 }
 
 namespace index {
+class SimpleFormatContext;
+
 class CommentToXMLConverter {
+  std::unique_ptr<SimpleFormatContext> FormatContext;
+  unsigned FormatInMemoryUniqueId;
+
 public:
   CommentToXMLConverter();
   ~CommentToXMLConverter();

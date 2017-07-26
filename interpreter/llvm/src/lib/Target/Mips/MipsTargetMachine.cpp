@@ -11,30 +11,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MCTargetDesc/MipsABIInfo.h"
-#include "MCTargetDesc/MipsMCTargetDesc.h"
-#include "Mips.h"
-#include "Mips16ISelDAGToDAG.h"
-#include "MipsSEISelDAGToDAG.h"
-#include "MipsSubtarget.h"
-#include "MipsTargetObjectFile.h"
 #include "MipsTargetMachine.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
+#include "Mips.h"
+#include "Mips16FrameLowering.h"
+#include "Mips16ISelDAGToDAG.h"
+#include "Mips16ISelLowering.h"
+#include "Mips16InstrInfo.h"
+#include "MipsFrameLowering.h"
+#include "MipsInstrInfo.h"
+#include "MipsSEFrameLowering.h"
+#include "MipsSEISelDAGToDAG.h"
+#include "MipsSEISelLowering.h"
+#include "MipsSEInstrInfo.h"
+#include "MipsTargetObjectFile.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/CodeGen/BasicTTIImpl.h"
-#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
-#include "llvm/IR/Attributes.h"
-#include "llvm/IR/Function.h"
-#include "llvm/Support/CodeGen.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetOptions.h"
-#include <string>
+#include "llvm/Transforms/Scalar.h"
 
 using namespace llvm;
 
@@ -42,16 +39,16 @@ using namespace llvm;
 
 extern "C" void LLVMInitializeMipsTarget() {
   // Register the target.
-  RegisterTargetMachine<MipsebTargetMachine> X(getTheMipsTarget());
-  RegisterTargetMachine<MipselTargetMachine> Y(getTheMipselTarget());
-  RegisterTargetMachine<MipsebTargetMachine> A(getTheMips64Target());
-  RegisterTargetMachine<MipselTargetMachine> B(getTheMips64elTarget());
+  RegisterTargetMachine<MipsebTargetMachine> X(TheMipsTarget);
+  RegisterTargetMachine<MipselTargetMachine> Y(TheMipselTarget);
+  RegisterTargetMachine<MipsebTargetMachine> A(TheMips64Target);
+  RegisterTargetMachine<MipselTargetMachine> B(TheMips64elTarget);
 }
 
 static std::string computeDataLayout(const Triple &TT, StringRef CPU,
                                      const TargetOptions &Options,
                                      bool isLittle) {
-  std::string Ret;
+  std::string Ret = "";
   MipsABIInfo ABI = MipsABIInfo::computeTargetABI(TT, CPU, Options.MCOptions);
 
   // There are both little and big endian mips.
@@ -60,10 +57,7 @@ static std::string computeDataLayout(const Triple &TT, StringRef CPU,
   else
     Ret += "E";
 
-  if (ABI.IsO32())
-    Ret += "-m:m";
-  else
-    Ret += "-m:e";
+  Ret += "-m:m";
 
   // Pointers are 32 bit on some ABIs.
   if (!ABI.IsN64())
@@ -105,7 +99,7 @@ MipsTargetMachine::MipsTargetMachine(const Target &T, const Triple &TT,
     : LLVMTargetMachine(T, computeDataLayout(TT, CPU, Options, isLittle), TT,
                         CPU, FS, Options, getEffectiveRelocModel(CM, RM), CM,
                         OL),
-      isLittle(isLittle), TLOF(llvm::make_unique<MipsTargetObjectFile>()),
+      isLittle(isLittle), TLOF(make_unique<MipsTargetObjectFile>()),
       ABI(MipsABIInfo::computeTargetABI(TT, CPU, Options.MCOptions)),
       Subtarget(nullptr), DefaultSubtarget(TT, CPU, FS, isLittle, *this),
       NoMips16Subtarget(TT, CPU, FS.empty() ? "-mips16" : FS.str() + ",-mips16",
@@ -116,9 +110,9 @@ MipsTargetMachine::MipsTargetMachine(const Target &T, const Triple &TT,
   initAsmInfo();
 }
 
-MipsTargetMachine::~MipsTargetMachine() = default;
+MipsTargetMachine::~MipsTargetMachine() {}
 
-void MipsebTargetMachine::anchor() {}
+void MipsebTargetMachine::anchor() { }
 
 MipsebTargetMachine::MipsebTargetMachine(const Target &T, const Triple &TT,
                                          StringRef CPU, StringRef FS,
@@ -128,7 +122,7 @@ MipsebTargetMachine::MipsebTargetMachine(const Target &T, const Triple &TT,
                                          CodeGenOpt::Level OL)
     : MipsTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {}
 
-void MipselTargetMachine::anchor() {}
+void MipselTargetMachine::anchor() { }
 
 MipselTargetMachine::MipselTargetMachine(const Target &T, const Triple &TT,
                                          StringRef CPU, StringRef FS,
@@ -185,10 +179,10 @@ void MipsTargetMachine::resetSubtarget(MachineFunction *MF) {
 
   Subtarget = const_cast<MipsSubtarget *>(getSubtargetImpl(*MF->getFunction()));
   MF->setSubtarget(Subtarget);
+  return;
 }
 
 namespace {
-
 /// Mips Code Generator Pass Configuration Options.
 class MipsPassConfig : public TargetPassConfig {
 public:
@@ -211,11 +205,13 @@ public:
 
   void addIRPasses() override;
   bool addInstSelector() override;
+  void addMachineSSAOptimization() override;
   void addPreEmitPass() override;
-  void addPreRegAlloc() override;
-};
 
-} // end anonymous namespace
+  void addPreRegAlloc() override;
+
+};
+} // namespace
 
 TargetPassConfig *MipsTargetMachine::createPassConfig(PassManagerBase &PM) {
   return new MipsPassConfig(this, PM);
@@ -233,13 +229,19 @@ void MipsPassConfig::addIRPasses() {
 // the ISelDag to gen Mips code.
 bool MipsPassConfig::addInstSelector() {
   addPass(createMipsModuleISelDagPass(getMipsTargetMachine()));
-  addPass(createMips16ISelDag(getMipsTargetMachine(), getOptLevel()));
-  addPass(createMipsSEISelDag(getMipsTargetMachine(), getOptLevel()));
+  addPass(createMips16ISelDag(getMipsTargetMachine()));
+  addPass(createMipsSEISelDag(getMipsTargetMachine()));
   return false;
 }
 
-void MipsPassConfig::addPreRegAlloc() {
+void MipsPassConfig::addMachineSSAOptimization() {
   addPass(createMipsOptimizePICCallPass(getMipsTargetMachine()));
+  TargetPassConfig::addMachineSSAOptimization();
+}
+
+void MipsPassConfig::addPreRegAlloc() {
+  if (getOptLevel() == CodeGenOpt::None)
+    addPass(createMipsOptimizePICCallPass(getMipsTargetMachine()));
 }
 
 TargetIRAnalysis MipsTargetMachine::getTargetIRAnalysis() {
@@ -260,7 +262,6 @@ TargetIRAnalysis MipsTargetMachine::getTargetIRAnalysis() {
 // print out the code after the passes.
 void MipsPassConfig::addPreEmitPass() {
   MipsTargetMachine &TM = getMipsTargetMachine();
-  addPass(createMicroMipsSizeReductionPass());
 
   // The delay slot filler pass can potientially create forbidden slot (FS)
   // hazards for MIPSR6 which the hazard schedule pass (HSP) will fix. Any

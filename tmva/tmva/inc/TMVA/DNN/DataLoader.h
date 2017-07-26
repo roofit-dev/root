@@ -31,7 +31,8 @@ namespace DNN  {
 //
 // Input Data Types
 //______________________________________________________________________________
-using MatrixInput_t = std::tuple<const TMatrixT<Double_t> &, const TMatrixT<Double_t> &, const TMatrixT<Double_t> &>;
+using MatrixInput_t    = std::pair<const TMatrixT<Double_t> &,
+                                   const TMatrixT<Double_t> &>;
 using TMVAInput_t      = std::vector<Event*>;
 
 using IndexIterator_t = typename std::vector<size_t>::iterator;
@@ -54,21 +55,19 @@ private:
 
    Matrix_t fInputMatrix;
    Matrix_t fOutputMatrix;
-   Matrix_t fWeightMatrix;
 
 public:
-   TBatch(Matrix_t &, Matrix_t &, Matrix_t &);
+
+   TBatch(Matrix_t &, Matrix_t &);
    TBatch(const TBatch  &) = default;
    TBatch(      TBatch &&) = default;
    TBatch & operator=(const TBatch  &) = default;
    TBatch & operator=(      TBatch &&) = default;
 
    /** Return the matrix representing the input data. */
-   Matrix_t &GetInput() { return fInputMatrix; }
+   Matrix_t & GetInput()  {return fInputMatrix;}
    /** Return the matrix representing the output data. */
-   Matrix_t &GetOutput() { return fOutputMatrix; }
-   /** Return the matrix holding the event weights. */
-   Matrix_t &GetWeights() { return fWeightMatrix; }
+   Matrix_t & GetOutput() {return fOutputMatrix;}
 };
 
 template<typename Data_t, typename AArchitecture> class TDataLoader;
@@ -158,9 +157,6 @@ public:
    /** Copy output matrix into the given host buffer. Function to be specialized
     * by the architecture-spcific backend. */
    void CopyOutput(HostBuffer_t &buffer, IndexIterator_t begin, size_t batchSize);
-   /** Copy weight matrix into the given host buffer. Function to be specialized
-    * by the architecture-spcific backend. */
-   void CopyWeights(HostBuffer_t &buffer, IndexIterator_t begin, size_t batchSize);
 
    BatchIterator_t begin() {return TBatchIterator<Data_t, AArchitecture>(*this);}
    BatchIterator_t end()
@@ -183,9 +179,9 @@ public:
 //
 // TBatch Class.
 //______________________________________________________________________________
-template <typename AArchitecture>
-TBatch<AArchitecture>::TBatch(Matrix_t &inputMatrix, Matrix_t &outputMatrix, Matrix_t &weightMatrix)
-   : fInputMatrix(inputMatrix), fOutputMatrix(outputMatrix), fWeightMatrix(weightMatrix)
+template<typename AArchitecture>
+TBatch<AArchitecture>::TBatch(Matrix_t & inputMatrix, Matrix_t & outputMatrix)
+    : fInputMatrix(inputMatrix), fOutputMatrix(outputMatrix)
 {
     // Nothing to do here.
 }
@@ -204,12 +200,11 @@ TDataLoader<Data_t, AArchitecture>::TDataLoader(
 {
    size_t inputMatrixSize  = fBatchSize * fNInputFeatures;
    size_t outputMatrixSize = fBatchSize * fNOutputFeatures;
-   size_t weightMatrixSize = fBatchSize;
 
    for (size_t i = 0; i < fNStreams; i++)
    {
-      fHostBuffers.push_back(HostBuffer_t(inputMatrixSize + outputMatrixSize + weightMatrixSize));
-      fDeviceBuffers.push_back(DeviceBuffer_t(inputMatrixSize + outputMatrixSize + weightMatrixSize));
+      fHostBuffers.push_back(HostBuffer_t(inputMatrixSize + outputMatrixSize));
+      fDeviceBuffers.push_back(DeviceBuffer_t(inputMatrixSize + outputMatrixSize));
    }
 
    fSampleIndices.reserve(fNSamples);
@@ -227,7 +222,6 @@ TBatch<AArchitecture> TDataLoader<Data_t, AArchitecture>::GetBatch()
 
    size_t inputMatrixSize  = fBatchSize * fNInputFeatures;
    size_t outputMatrixSize = fBatchSize * fNOutputFeatures;
-   size_t weightMatrixSize = fBatchSize;
 
    size_t streamIndex = fBatchIndex % fNStreams;
    HostBuffer_t   & hostBuffer   = fHostBuffers[streamIndex];
@@ -236,27 +230,22 @@ TBatch<AArchitecture> TDataLoader<Data_t, AArchitecture>::GetBatch()
    HostBuffer_t inputHostBuffer  = hostBuffer.GetSubBuffer(0, inputMatrixSize);
    HostBuffer_t outputHostBuffer = hostBuffer.GetSubBuffer(inputMatrixSize,
                                                            outputMatrixSize);
-   HostBuffer_t weightHostBuffer = hostBuffer.GetSubBuffer(inputMatrixSize + outputMatrixSize, weightMatrixSize);
 
    DeviceBuffer_t inputDeviceBuffer  = deviceBuffer.GetSubBuffer(0, inputMatrixSize);
    DeviceBuffer_t outputDeviceBuffer = deviceBuffer.GetSubBuffer(inputMatrixSize,
                                                                  outputMatrixSize);
-   DeviceBuffer_t weightDeviceBuffer = deviceBuffer.GetSubBuffer(inputMatrixSize + outputMatrixSize, weightMatrixSize);
-
    size_t sampleIndex = fBatchIndex * fBatchSize;
    IndexIterator_t sampleIndexIterator = fSampleIndices.begin() + sampleIndex;
 
    CopyInput(inputHostBuffer,   sampleIndexIterator, fBatchSize);
    CopyOutput(outputHostBuffer, sampleIndexIterator, fBatchSize);
-   CopyWeights(weightHostBuffer, sampleIndexIterator, fBatchSize);
 
    deviceBuffer.CopyFrom(hostBuffer);
    Matrix_t  inputMatrix(inputDeviceBuffer,  fBatchSize, fNInputFeatures);
    Matrix_t outputMatrix(outputDeviceBuffer, fBatchSize, fNOutputFeatures);
-   Matrix_t weightMatrix(weightDeviceBuffer, fBatchSize, fNOutputFeatures);
 
    fBatchIndex++;
-   return TBatch<AArchitecture>(inputMatrix, outputMatrix, weightMatrix);
+   return TBatch<AArchitecture>(inputMatrix, outputMatrix);
 }
 
 //______________________________________________________________________________

@@ -4,7 +4,6 @@ SET(CMAKE_SYSTEM_NAME Darwin)
 SET(CMAKE_SYSTEM_VERSION 13)
 SET(CMAKE_CXX_COMPILER_WORKS True)
 SET(CMAKE_C_COMPILER_WORKS True)
-SET(IOS True)
 
 if(NOT CMAKE_OSX_SYSROOT)
   execute_process(COMMAND xcodebuild -version -sdk iphoneos Path

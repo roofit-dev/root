@@ -32,7 +32,7 @@ class Printer : public FunctionPass {
 public:
   explicit Printer(raw_ostream &OS) : FunctionPass(ID), OS(OS) {}
 
-  StringRef getPassName() const override;
+  const char *getPassName() const override;
   void getAnalysisUsage(AnalysisUsage &AU) const override;
 
   bool runOnFunction(Function &F) override;
@@ -87,7 +87,7 @@ FunctionPass *llvm::createGCInfoPrinter(raw_ostream &OS) {
   return new Printer(OS);
 }
 
-StringRef Printer::getPassName() const {
+const char *Printer::getPassName() const {
   return "Print Garbage Collector Information";
 }
 

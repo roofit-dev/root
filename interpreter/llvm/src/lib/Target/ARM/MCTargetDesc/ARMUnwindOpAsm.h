@@ -16,8 +16,8 @@
 #define LLVM_LIB_TARGET_ARM_MCTARGETDESC_ARMUNWINDOPASM_H
 
 #include "llvm/ADT/SmallVector.h"
-#include <cstddef>
-#include <cstdint>
+#include "llvm/Support/ARMEHABI.h"
+#include "llvm/Support/DataTypes.h"
 
 namespace llvm {
 
@@ -25,12 +25,13 @@ class MCSymbol;
 
 class UnwindOpcodeAssembler {
 private:
-  SmallVector<uint8_t, 32> Ops;
-  SmallVector<unsigned, 8> OpBegins;
-  bool HasPersonality = false;
+  llvm::SmallVector<uint8_t, 32> Ops;
+  llvm::SmallVector<unsigned, 8> OpBegins;
+  bool HasPersonality;
 
 public:
-  UnwindOpcodeAssembler() {
+  UnwindOpcodeAssembler()
+      : HasPersonality(0) {
     OpBegins.push_back(0);
   }
 
@@ -39,12 +40,12 @@ public:
     Ops.clear();
     OpBegins.clear();
     OpBegins.push_back(0);
-    HasPersonality = false;
+    HasPersonality = 0;
   }
 
   /// Set the personality
   void setPersonality(const MCSymbol *Per) {
-    HasPersonality = true;
+    HasPersonality = 1;
   }
 
   /// Emit unwind opcodes for .save directives
@@ -87,6 +88,6 @@ private:
   }
 };
 
-} // end namespace llvm
+} // namespace llvm
 
-#endif // LLVM_LIB_TARGET_ARM_MCTARGETDESC_ARMUNWINDOPASM_H
+#endif

@@ -1,4 +1,4 @@
-//===- LiveIntervalUnion.cpp - Live interval union data structure ---------===//
+//===-- LiveIntervalUnion.cpp - Live interval union data structure --------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,18 +13,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/SparseBitVector.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/CodeGen/LiveInterval.h"
 #include "llvm/CodeGen/LiveIntervalUnion.h"
+#include "llvm/ADT/SparseBitVector.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include <cassert>
-#include <cstdlib>
+#include <algorithm>
 
 using namespace llvm;
 
 #define DEBUG_TYPE "regalloc"
+
 
 // Merge a LiveInterval's segments. Guarantee no overlaps.
 void LiveIntervalUnion::unify(LiveInterval &VirtReg, const LiveRange &Range) {
@@ -64,7 +63,7 @@ void LiveIntervalUnion::extract(LiveInterval &VirtReg, const LiveRange &Range) {
   LiveRange::const_iterator RegEnd = Range.end();
   SegmentIter SegPos = Segments.find(RegPos->start);
 
-  while (true) {
+  for (;;) {
     assert(SegPos.value() == &VirtReg && "Inconsistent LiveInterval");
     SegPos.erase();
     if (!SegPos.valid())
@@ -103,7 +102,9 @@ void LiveIntervalUnion::verify(LiveVirtRegBitSet& VisitedVRegs) {
 // Scan the vector of interfering virtual registers in this union. Assume it's
 // quite small.
 bool LiveIntervalUnion::Query::isSeenInterference(LiveInterval *VirtReg) const {
-  return is_contained(InterferingVRegs, VirtReg);
+  SmallVectorImpl<LiveInterval*>::const_iterator I =
+    std::find(InterferingVRegs.begin(), InterferingVRegs.end(), VirtReg);
+  return I != InterferingVRegs.end();
 }
 
 // Collect virtual registers in this union that interfere with this
@@ -126,24 +127,25 @@ collectInterferingVRegs(unsigned MaxInterferingRegs) {
     CheckedFirstInterference = true;
 
     // Quickly skip interference check for empty sets.
-    if (LR->empty() || LiveUnion->empty()) {
+    if (VirtReg->empty() || LiveUnion->empty()) {
       SeenAllInterferences = true;
       return 0;
     }
 
-    // In most cases, the union will start before LR.
-    LRI = LR->begin();
+    // In most cases, the union will start before VirtReg.
+    VirtRegI = VirtReg->begin();
     LiveUnionI.setMap(LiveUnion->getMap());
-    LiveUnionI.find(LRI->start);
+    LiveUnionI.find(VirtRegI->start);
   }
 
-  LiveRange::const_iterator LREnd = LR->end();
+  LiveInterval::iterator VirtRegEnd = VirtReg->end();
   LiveInterval *RecentReg = nullptr;
   while (LiveUnionI.valid()) {
-    assert(LRI != LREnd && "Reached end of LR");
+    assert(VirtRegI != VirtRegEnd && "Reached end of VirtReg");
 
     // Check for overlapping interference.
-    while (LRI->start < LiveUnionI.stop() && LRI->end > LiveUnionI.start()) {
+    while (VirtRegI->start < LiveUnionI.stop() &&
+           VirtRegI->end > LiveUnionI.start()) {
       // This is an overlap, record the interfering register.
       LiveInterval *VReg = LiveUnionI.value();
       if (VReg != RecentReg && !isSeenInterference(VReg)) {
@@ -160,20 +162,20 @@ collectInterferingVRegs(unsigned MaxInterferingRegs) {
     }
 
     // The iterators are now not overlapping, LiveUnionI has been advanced
-    // beyond LRI.
-    assert(LRI->end <= LiveUnionI.start() && "Expected non-overlap");
+    // beyond VirtRegI.
+    assert(VirtRegI->end <= LiveUnionI.start() && "Expected non-overlap");
 
     // Advance the iterator that ends first.
-    LRI = LR->advanceTo(LRI, LiveUnionI.start());
-    if (LRI == LREnd)
+    VirtRegI = VirtReg->advanceTo(VirtRegI, LiveUnionI.start());
+    if (VirtRegI == VirtRegEnd)
       break;
 
     // Detect overlap, handle above.
-    if (LRI->start < LiveUnionI.stop())
+    if (VirtRegI->start < LiveUnionI.stop())
       continue;
 
     // Still not overlapping. Catch up LiveUnionI.
-    LiveUnionI.advanceTo(LRI->start);
+    LiveUnionI.advanceTo(VirtRegI->start);
   }
   SeenAllInterferences = true;
   return InterferingVRegs.size();

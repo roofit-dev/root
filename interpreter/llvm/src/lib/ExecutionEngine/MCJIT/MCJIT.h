@@ -26,22 +26,23 @@ class MCJIT;
 // functions across modules that it owns.  It aggregates the memory manager
 // that is passed in to the MCJIT constructor and defers most functionality
 // to that object.
-class LinkingSymbolResolver : public JITSymbolResolver {
+class LinkingSymbolResolver : public RuntimeDyld::SymbolResolver {
 public:
   LinkingSymbolResolver(MCJIT &Parent,
-                        std::shared_ptr<JITSymbolResolver> Resolver)
+                        std::shared_ptr<RuntimeDyld::SymbolResolver> Resolver)
     : ParentEngine(Parent), ClientResolver(std::move(Resolver)) {}
 
-  JITSymbol findSymbol(const std::string &Name) override;
+  RuntimeDyld::SymbolInfo findSymbol(const std::string &Name) override;
 
-  // MCJIT doesn't support logical dylibs.
-  JITSymbol findSymbolInLogicalDylib(const std::string &Name) override {
-    return nullptr;
+  // Defer to the client resolver for lookup in logical dylibs.
+  RuntimeDyld::SymbolInfo
+  findSymbolInLogicalDylib(const std::string &Name) override {
+    return ClientResolver->findSymbolInLogicalDylib(Name);
   }
 
 private:
   MCJIT &ParentEngine;
-  std::shared_ptr<JITSymbolResolver> ClientResolver;
+  std::shared_ptr<RuntimeDyld::SymbolResolver> ClientResolver;
 };
 
 // About Module states: added->loaded->finalized.
@@ -67,7 +68,7 @@ private:
 class MCJIT : public ExecutionEngine {
   MCJIT(std::unique_ptr<Module> M, std::unique_ptr<TargetMachine> tm,
         std::shared_ptr<MCJITMemoryManager> MemMgr,
-        std::shared_ptr<JITSymbolResolver> Resolver);
+        std::shared_ptr<RuntimeDyld::SymbolResolver> Resolver);
 
   typedef llvm::SmallPtrSet<Module *, 4> ModulePtrSet;
 
@@ -194,11 +195,11 @@ class MCJIT : public ExecutionEngine {
   // perform lookup of pre-compiled code to avoid re-compilation.
   ObjectCache *ObjCache;
 
-  Function *FindFunctionNamedInModulePtrSet(StringRef FnName,
+  Function *FindFunctionNamedInModulePtrSet(const char *FnName,
                                             ModulePtrSet::iterator I,
                                             ModulePtrSet::iterator E);
 
-  GlobalVariable *FindGlobalVariableNamedInModulePtrSet(StringRef Name,
+  GlobalVariable *FindGlobalVariableNamedInModulePtrSet(const char *Name,
                                                         bool AllowInternal,
                                                         ModulePtrSet::iterator I,
                                                         ModulePtrSet::iterator E);
@@ -221,12 +222,12 @@ public:
   /// FindFunctionNamed - Search all of the active modules to find the function that
   /// defines FnName.  This is very slow operation and shouldn't be used for
   /// general code.
-  Function *FindFunctionNamed(StringRef FnName) override;
+  Function *FindFunctionNamed(const char *FnName) override;
 
   /// FindGlobalVariableNamed - Search all of the active modules to find the
   /// global variable that defines Name.  This is very slow operation and
   /// shouldn't be used for general code.
-  GlobalVariable *FindGlobalVariableNamed(StringRef Name,
+  GlobalVariable *FindGlobalVariableNamed(const char *Name,
                                           bool AllowInternal = false) override;
 
   /// Sets the object manager that MCJIT should use to avoid compilation.
@@ -304,22 +305,16 @@ public:
   createJIT(std::unique_ptr<Module> M,
             std::string *ErrorStr,
             std::shared_ptr<MCJITMemoryManager> MemMgr,
-            std::shared_ptr<JITSymbolResolver> Resolver,
+            std::shared_ptr<RuntimeDyld::SymbolResolver> Resolver,
             std::unique_ptr<TargetMachine> TM);
 
   // @}
 
-  // Takes a mangled name and returns the corresponding JITSymbol (if a
-  // definition of that mangled name has been added to the JIT).
-  JITSymbol findSymbol(const std::string &Name, bool CheckFunctionsOnly);
-
+  RuntimeDyld::SymbolInfo findSymbol(const std::string &Name,
+                                     bool CheckFunctionsOnly);
   // DEPRECATED - Please use findSymbol instead.
-  //
   // This is not directly exposed via the ExecutionEngine API, but it is
   // used by the LinkingMemoryManager.
-  //
-  // getSymbolAddress takes an unmangled name and returns the corresponding
-  // JITSymbol if a definition of the name has been added to the JIT.
   uint64_t getSymbolAddress(const std::string &Name,
                             bool CheckFunctionsOnly);
 
@@ -335,8 +330,9 @@ protected:
                            const RuntimeDyld::LoadedObjectInfo &L);
   void NotifyFreeingObject(const object::ObjectFile& Obj);
 
-  JITSymbol findExistingSymbol(const std::string &Name);
-  Module *findModuleForSymbol(const std::string &Name, bool CheckFunctionsOnly);
+  RuntimeDyld::SymbolInfo findExistingSymbol(const std::string &Name);
+  Module *findModuleForSymbol(const std::string &Name,
+                              bool CheckFunctionsOnly);
 };
 
 } // end llvm namespace

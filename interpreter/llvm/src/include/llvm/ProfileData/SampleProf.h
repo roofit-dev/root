@@ -1,4 +1,4 @@
-//===- SampleProf.h - Sampling profiling format support ---------*- C++ -*-===//
+//=-- SampleProf.h - Sampling profiling format support --------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,29 +12,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_PROFILEDATA_SAMPLEPROF_H
-#define LLVM_PROFILEDATA_SAMPLEPROF_H
+#ifndef LLVM_PROFILEDATA_SAMPLEPROF_H_
+#define LLVM_PROFILEDATA_SAMPLEPROF_H_
 
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/GlobalValue.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorOr.h"
-#include "llvm/Support/MathExtras.h"
-#include <algorithm>
-#include <cstdint>
+#include "llvm/Support/raw_ostream.h"
+
 #include <map>
-#include <string>
 #include <system_error>
-#include <utility>
 
 namespace llvm {
-
-class raw_ostream;
 
 const std::error_category &sampleprof_category();
 
@@ -69,13 +59,12 @@ inline sampleprof_error MergeResult(sampleprof_error &Accumulator,
 } // end namespace llvm
 
 namespace std {
-
 template <>
 struct is_error_code_enum<llvm::sampleprof_error> : std::true_type {};
-
-} // end namespace std
+}
 
 namespace llvm {
+
 namespace sampleprof {
 
 static inline uint64_t SPMagic() {
@@ -98,10 +87,8 @@ static inline uint64_t SPVersion() { return 103; }
 /// (e.g., the two post-increment instructions in "if (p) x++; else y++;").
 struct LineLocation {
   LineLocation(uint32_t L, uint32_t D) : LineOffset(L), Discriminator(D) {}
-
   void print(raw_ostream &OS) const;
   void dump() const;
-
   bool operator<(const LineLocation &O) const {
     return LineOffset < O.LineOffset ||
            (LineOffset == O.LineOffset && Discriminator < O.Discriminator);
@@ -127,7 +114,7 @@ class SampleRecord {
 public:
   typedef StringMap<uint64_t> CallTargetMap;
 
-  SampleRecord() = default;
+  SampleRecord() : NumSamples(0), CallTargets() {}
 
   /// Increment the number of samples for this record by \p S.
   /// Optionally scale sample count \p S by \p Weight.
@@ -157,7 +144,7 @@ public:
   }
 
   /// Return true if this sample record contains function calls.
-  bool hasCalls() const { return !CallTargets.empty(); }
+  bool hasCalls() const { return CallTargets.size() > 0; }
 
   uint64_t getSamples() const { return NumSamples; }
   const CallTargetMap &getCallTargets() const { return CallTargets; }
@@ -176,7 +163,7 @@ public:
   void dump() const;
 
 private:
-  uint64_t NumSamples = 0;
+  uint64_t NumSamples;
   CallTargetMap CallTargets;
 };
 
@@ -184,8 +171,7 @@ raw_ostream &operator<<(raw_ostream &OS, const SampleRecord &Sample);
 
 typedef std::map<LineLocation, SampleRecord> BodySampleMap;
 class FunctionSamples;
-typedef StringMap<FunctionSamples> FunctionSamplesMap;
-typedef std::map<LineLocation, FunctionSamplesMap> CallsiteSampleMap;
+typedef std::map<LineLocation, FunctionSamples> CallsiteSampleMap;
 
 /// Representation of the samples collected for a function.
 ///
@@ -194,11 +180,9 @@ typedef std::map<LineLocation, FunctionSamplesMap> CallsiteSampleMap;
 /// within the body of the function.
 class FunctionSamples {
 public:
-  FunctionSamples() = default;
-
+  FunctionSamples() : Name(), TotalSamples(0), TotalHeadSamples(0) {}
   void print(raw_ostream &OS = dbgs(), unsigned Indent = 0) const;
   void dump() const;
-
   sampleprof_error addTotalSamples(uint64_t Num, uint64_t Weight = 1) {
     bool Overflowed;
     TotalSamples =
@@ -206,7 +190,6 @@ public:
     return Overflowed ? sampleprof_error::counter_overflow
                       : sampleprof_error::success;
   }
-
   sampleprof_error addHeadSamples(uint64_t Num, uint64_t Weight = 1) {
     bool Overflowed;
     TotalHeadSamples =
@@ -214,13 +197,11 @@ public:
     return Overflowed ? sampleprof_error::counter_overflow
                       : sampleprof_error::success;
   }
-
   sampleprof_error addBodySamples(uint32_t LineOffset, uint32_t Discriminator,
                                   uint64_t Num, uint64_t Weight = 1) {
     return BodySamples[LineLocation(LineOffset, Discriminator)].addSamples(
         Num, Weight);
   }
-
   sampleprof_error addCalledTargetSamples(uint32_t LineOffset,
                                           uint32_t Discriminator,
                                           const std::string &FName,
@@ -241,53 +222,19 @@ public:
       return ret->second.getSamples();
   }
 
-  /// Returns the call target map collected at a given location.
-  /// Each location is specified by \p LineOffset and \p Discriminator.
-  /// If the location is not found in profile, return error.
-  ErrorOr<SampleRecord::CallTargetMap>
-  findCallTargetMapAt(uint32_t LineOffset, uint32_t Discriminator) const {
-    const auto &ret = BodySamples.find(LineLocation(LineOffset, Discriminator));
-    if (ret == BodySamples.end())
-      return std::error_code();
-    return ret->second.getCallTargets();
-  }
-
   /// Return the function samples at the given callsite location.
-  FunctionSamplesMap &functionSamplesAt(const LineLocation &Loc) {
+  FunctionSamples &functionSamplesAt(const LineLocation &Loc) {
     return CallsiteSamples[Loc];
   }
 
-  /// Returns the FunctionSamplesMap at the given \p Loc.
-  const FunctionSamplesMap *
-  findFunctionSamplesMapAt(const LineLocation &Loc) const {
+  /// Return a pointer to function samples at the given callsite location.
+  const FunctionSamples *findFunctionSamplesAt(const LineLocation &Loc) const {
     auto iter = CallsiteSamples.find(Loc);
-    if (iter == CallsiteSamples.end())
+    if (iter == CallsiteSamples.end()) {
       return nullptr;
-    return &iter->second;
-  }
-
-  /// Returns a pointer to FunctionSamples at the given callsite location \p Loc
-  /// with callee \p CalleeName. If no callsite can be found, relax the
-  /// restriction to return the FunctionSamples at callsite location \p Loc
-  /// with the maximum total sample count.
-  const FunctionSamples *findFunctionSamplesAt(const LineLocation &Loc,
-                                               StringRef CalleeName) const {
-    auto iter = CallsiteSamples.find(Loc);
-    if (iter == CallsiteSamples.end())
-      return nullptr;
-    auto FS = iter->second.find(CalleeName);
-    if (FS != iter->second.end())
-      return &FS->getValue();
-    // If we cannot find exact match of the callee name, return the FS with
-    // the max total count.
-    uint64_t MaxTotalSamples = 0;
-    const FunctionSamples *R = nullptr;
-    for (const auto &NameFS : iter->second)
-      if (NameFS.second.getTotalSamples() >= MaxTotalSamples) {
-        MaxTotalSamples = NameFS.second.getTotalSamples();
-        R = &NameFS.second;
-      }
-    return R;
+    } else {
+      return &iter->second;
+    }
   }
 
   bool empty() const { return TotalSamples == 0; }
@@ -321,26 +268,10 @@ public:
     }
     for (const auto &I : Other.getCallsiteSamples()) {
       const LineLocation &Loc = I.first;
-      FunctionSamplesMap &FSMap = functionSamplesAt(Loc);
-      for (const auto &Rec : I.second)
-        MergeResult(Result, FSMap[Rec.first()].merge(Rec.second, Weight));
+      const FunctionSamples &Rec = I.second;
+      MergeResult(Result, functionSamplesAt(Loc).merge(Rec, Weight));
     }
     return Result;
-  }
-
-  /// Recursively traverses all children, if the corresponding function is
-  /// not defined in module \p M, and its total sample is no less than
-  /// \p Threshold, add its corresponding GUID to \p S.
-  void findImportedFunctions(DenseSet<GlobalValue::GUID> &S, const Module *M,
-                             uint64_t Threshold) const {
-    if (TotalSamples <= Threshold)
-      return;
-    Function *F = M->getFunction(Name);
-    if (!F || !F->getSubprogram())
-      S.insert(Function::getGUID(Name));
-    for (auto CS : CallsiteSamples)
-      for (const auto &NameFS : CS.second)
-        NameFS.second.findImportedFunctions(S, M, Threshold);
   }
 
   /// Set the name of the function.
@@ -357,12 +288,12 @@ private:
   ///
   /// Samples are cumulative, they include all the samples collected
   /// inside this function and all its inlined callees.
-  uint64_t TotalSamples = 0;
+  uint64_t TotalSamples;
 
   /// Total number of samples collected at the head of the function.
   /// This is an approximation of the number of calls made to this function
   /// at runtime.
-  uint64_t TotalHeadSamples = 0;
+  uint64_t TotalHeadSamples;
 
   /// Map instruction locations to collected samples.
   ///
@@ -409,7 +340,6 @@ public:
                        return A->first < B->first;
                      });
   }
-
   const SamplesWithLocList &get() const { return V; }
 
 private:
@@ -417,6 +347,7 @@ private:
 };
 
 } // end namespace sampleprof
+
 } // end namespace llvm
 
-#endif // LLVM_PROFILEDATA_SAMPLEPROF_H
+#endif // LLVM_PROFILEDATA_SAMPLEPROF_H_

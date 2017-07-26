@@ -18,12 +18,12 @@ namespace {
 // deal with the Error value directly, rather than converting to error_code.
 class _obj2yaml_error_category : public std::error_category {
 public:
-  const char *name() const noexcept override;
+  const char *name() const LLVM_NOEXCEPT override;
   std::string message(int ev) const override;
 };
 } // namespace
 
-const char *_obj2yaml_error_category::name() const noexcept {
+const char *_obj2yaml_error_category::name() const LLVM_NOEXCEPT {
   return "obj2yaml";
 }
 

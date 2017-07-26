@@ -260,7 +260,9 @@ if (UNIX)
 
   # In modules builds we 'mount' our own stl modulemap for libstdc++. In order to do this,
   # we need to know where is ROOT/cling STL.
-  set_property(GLOBAL PROPERTY ROOT_CLING_CXX_HEADERS_LOCATION "${CLING_CXX_HEADERS}")
+  if (cxxmodules)
+    set_property(GLOBAL PROPERTY ROOT_CLING_CXX_HEADERS_LOCATION "${CLING_CXX_HEADERS}")
+  endif(cxxmodules)
 
   if (CLING_CXX_PATH)
     MESSAGE(STATUS "And if not found, will invoke: '${CLING_CXX_PATH}' for them.")

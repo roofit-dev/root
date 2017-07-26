@@ -34,9 +34,9 @@ required_libraries =
  CodeGen
  Core
  LanaiAsmParser
- LanaiDesc
+ LanaiMCTargetDesc
  LanaiInfo
- LanaiAsmPrinter
+ LanaiInstPrinter
  MC
  SelectionDAG
  Support

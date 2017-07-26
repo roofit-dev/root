@@ -1,4 +1,4 @@
-//===- MipsOptionRecord.h - Abstraction for storing information -*- C++ -*-===//
+//===-- MipsOptionRecord.h - Abstraction for storing information ----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -23,16 +23,14 @@
 #include "MCTargetDesc/MipsMCTargetDesc.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCRegisterInfo.h"
-#include <cstdint>
 
 namespace llvm {
-
 class MipsELFStreamer;
+class MCSubtargetInfo;
 
 class MipsOptionRecord {
 public:
-  virtual ~MipsOptionRecord() = default;
-
+  virtual ~MipsOptionRecord(){};
   virtual void EmitMipsOptionRecord() = 0;
 };
 
@@ -55,8 +53,7 @@ public:
     COP2RegClass = &(TRI->getRegClass(Mips::COP2RegClassID));
     COP3RegClass = &(TRI->getRegClass(Mips::COP3RegClassID));
   }
-
-  ~MipsRegInfoRecord() override = default;
+  ~MipsRegInfoRecord() override {}
 
   void EmitMipsOptionRecord() override;
   void SetPhysRegUsed(unsigned Reg, const MCRegisterInfo *MCRegInfo);
@@ -77,7 +74,5 @@ private:
   uint32_t ri_cprmask[4];
   int64_t ri_gp_value;
 };
-
-} // end namespace llvm
-
-#endif // LLVM_LIB_TARGET_MIPS_MIPSOPTIONRECORD_H
+} // namespace llvm
+#endif

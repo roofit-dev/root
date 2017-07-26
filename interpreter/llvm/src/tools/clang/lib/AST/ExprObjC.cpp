@@ -278,7 +278,7 @@ ObjCMessageExpr *ObjCMessageExpr::alloc(const ASTContext &C, unsigned NumArgs,
                                         unsigned NumStoredSelLocs) {
   return (ObjCMessageExpr *)C.Allocate(
       totalSizeToAlloc<void *, SourceLocation>(NumArgs + 1, NumStoredSelLocs),
-      alignof(ObjCMessageExpr));
+      llvm::AlignOf<ObjCMessageExpr>::Alignment);
 }
 
 void ObjCMessageExpr::getSelectorLocs(

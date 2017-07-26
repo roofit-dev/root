@@ -9,6 +9,8 @@
 //
 //  This file implements the operating system DynamicLibrary concept.
 //
+// FIXME: This file leaks ExplicitSymbols and OpenedHandles!
+//
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/DynamicLibrary.h"
@@ -39,7 +41,7 @@ char llvm::sys::DynamicLibrary::Invalid = 0;
 
 #else
 
-#if defined(HAVE_DLFCN_H) && defined(HAVE_DLOPEN)
+#if HAVE_DLFCN_H
 #include <dlfcn.h>
 using namespace llvm;
 using namespace llvm::sys;
@@ -49,7 +51,7 @@ using namespace llvm::sys;
 //===          independent code.
 //===----------------------------------------------------------------------===//
 
-static llvm::ManagedStatic<DenseSet<void *> > OpenedHandles;
+static DenseSet<void *> *OpenedHandles = nullptr;
 
 DynamicLibrary DynamicLibrary::getPermanentLibrary(const char *filename,
                                                    std::string *errMsg) {
@@ -67,23 +69,17 @@ DynamicLibrary DynamicLibrary::getPermanentLibrary(const char *filename,
   if (!filename)
     handle = RTLD_DEFAULT;
 #endif
+  return addPermanentLibrary(handle);
+}
+
+DynamicLibrary DynamicLibrary::addPermanentLibrary(void *handle) {
+  if (!OpenedHandles)
+    OpenedHandles = new DenseSet<void *>();
 
   // If we've already loaded this library, dlclose() the handle in order to
   // keep the internal refcount at +1.
   if (!OpenedHandles->insert(handle).second)
     dlclose(handle);
-
-  return DynamicLibrary(handle);
-}
-
-DynamicLibrary DynamicLibrary::addPermanentLibrary(void *handle,
-                                                   std::string *errMsg) {
-  SmartScopedLock<true> lock(*SymbolsMutex);
-  // If we've already loaded this library, tell the caller.
-  if (!OpenedHandles->insert(handle).second) {
-    if (errMsg) *errMsg = "Library already loaded";
-    return DynamicLibrary();
-  }
 
   return DynamicLibrary(handle);
 }
@@ -126,9 +122,9 @@ void* DynamicLibrary::SearchForAddressOfSymbol(const char *symbolName) {
       return i->second;
   }
 
-#if defined(HAVE_DLFCN_H) && defined(HAVE_DLOPEN)
+#if HAVE_DLFCN_H
   // Now search the libraries.
-  if (OpenedHandles.isConstructed()) {
+  if (OpenedHandles) {
     for (DenseSet<void *>::iterator I = OpenedHandles->begin(),
          E = OpenedHandles->end(); I != E; ++I) {
       //lt_ptr ptr = lt_dlsym(*I, symbolName);
@@ -193,3 +189,4 @@ void *LLVMSearchForAddressOfSymbol(const char *symbolName) {
 void LLVMAddSymbol(const char *symbolName, void *symbolValue) {
   return llvm::sys::DynamicLibrary::AddSymbol(symbolName, symbolValue);
 }
+

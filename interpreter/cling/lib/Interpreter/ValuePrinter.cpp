@@ -154,7 +154,7 @@ bool canParseTypeName(cling::Interpreter& Interp, llvm::StringRef typenam) {
     = Interp.declare("namespace { void* cling_printValue_Failure_Typename_check"
                      " = (void*)" + typenam.str() + "nullptr; }");
   if (Res != cling::Interpreter::kSuccess)
-    cling::errs() << "ERROR in cling::canParseTypeName(): "
+    cling::errs() << "ERROR in cling::executePrintValue(): "
                      "this typename cannot be spelled.\n";
   return Res == cling::Interpreter::kSuccess;
 }
@@ -208,6 +208,9 @@ static std::string printQualType(clang::ASTContext& Ctx, clang::QualType QT) {
   return ValueTyStr + ")";
 }
 
+} // anonymous namespace
+
+
 static std::string printAddress(const void* Ptr, const char Prfx = 0) {
   if (!Ptr)
     return kNullPtrStr;
@@ -220,8 +223,6 @@ static std::string printAddress(const void* Ptr, const char Prfx = 0) {
     Strm << kInvalidAddr;
   return Strm.str();
 }
-
-} // anonymous namespace
 
 namespace cling {
 
@@ -415,12 +416,7 @@ namespace cling {
   }
 
 #ifdef LLVM_UTF8
-  using llvm::ConversionResult;
-  using llvm::ConversionFlags;
-  using llvm::lenientConversion;
-  using llvm::UTF8;
-  using llvm::UTF16;
-  using llvm::UTF32;
+
   template <class T> struct CharTraits;
   template <> struct CharTraits<char16_t> {
     static ConversionResult convert(const char16_t** begin, const char16_t* end,
@@ -523,13 +519,7 @@ namespace cling {
   template <>
   std::string toUTF8<wchar_t>(const wchar_t* const Str, size_t N,
                               const char Prefix) {
-    static_assert(sizeof(wchar_t) == sizeof(char16_t) ||
-                  sizeof(wchar_t) == sizeof(char32_t), "Bad wchar_t size");
-
-    if (sizeof(wchar_t) == sizeof(char32_t))
-      return toUTF8(reinterpret_cast<const char32_t * const>(Str), N, Prefix);
-
-    return toUTF8(reinterpret_cast<const char16_t * const>(Str), N, Prefix);
+    return utf8Value(Str, N, Prefix, encodeUTF8);
   }
 
   template <>
@@ -586,40 +576,56 @@ namespace cling {
   }
 } // end namespace cling
 
-namespace {
 
-static std::string callPrintValue(const Value& V, const void* Val) {
-  Interpreter *Interp = V.getInterpreter();
-  Value printValueV;
+template<typename T, bool> struct ExecutePrintValue;
 
-  {
-    // Use an llvm::raw_ostream to prepend '0x' in front of the pointer value.
+template<typename T>
+struct ExecutePrintValue<T, false> {
+  std::string operator()(const Value &V, const T &val) {
+    Interpreter *Interp = V.getInterpreter();
+    Value printValueV;
 
-    cling::ostrstream Strm;
-    Strm << "cling::printValue(";
-    Strm << getTypeString(V);
-    Strm << &Val;
-    Strm << ");";
+    {
+      // Use an llvm::raw_ostream to prepend '0x' in front of the pointer value.
 
-    // We really don't care about protected types here (ROOT-7426)
-    AccessCtrlRAII_t AccessCtrlRAII(*Interp);
-    Interp->evaluate(Strm.str(), printValueV);
+      cling::ostrstream Strm;
+      Strm << "cling::printValue(";
+      Strm << getTypeString(V);
+      Strm << (const void*) &val;
+      Strm << ");";
+
+      // We really don't care about protected types here (ROOT-7426)
+      AccessCtrlRAII_t AccessCtrlRAII(*Interp);
+      clang::DiagnosticsEngine& Diag = Interp->getDiagnostics();
+      bool oldSuppDiags = Diag.getSuppressAllDiagnostics();
+      Diag.setSuppressAllDiagnostics(true);
+      Interp->evaluate(Strm.str(), printValueV);
+      Diag.setSuppressAllDiagnostics(oldSuppDiags);
+    }
+
+    if (printValueV.isValid() && printValueV.getPtr())
+      return *(std::string *) printValueV.getPtr();
+
+    // That didn't work. We probably diagnosed the issue as part of evaluate().
+    cling::errs() <<"ERROR in cling::executePrintValue(): cannot pass value!\n";
+
+    // Check that the issue comes from an unparsable type name: lambdas, unnamed
+    // namespaces, types declared inside functions etc. Assert on everything
+    // else.
+    assert(!canParseTypeName(*Interp, getTypeString(V))
+           && "printValue failed on a valid type name.");
+
+    return "ERROR in cling::executePrintValue(): missing value string.";
   }
+};
 
-  if (printValueV.isValid() && printValueV.getPtr())
-    return *(std::string *) printValueV.getPtr();
 
-  // That didn't work. We probably diagnosed the issue as part of evaluate().
-  cling::errs() <<"ERROR in cling's callPrintValue(): cannot pass value!\n";
-
-  // Check that the issue comes from an unparsable type name: lambdas, unnamed
-  // namespaces, types declared inside functions etc. Assert on everything
-  // else.
-  assert(!canParseTypeName(*Interp, getTypeString(V))
-         && "printValue failed on a valid type name.");
-
-  return "ERROR in cling's callPrintValue(): missing value string.";
-}
+template<typename T>
+struct ExecutePrintValue<T, true> {
+  std::string operator()(const Value &V, const T &val) {
+    return printValue(&val);
+  }
+};
 
 template <typename T>
 class HasExplicitPrintValue {
@@ -631,16 +637,9 @@ public:
     static constexpr bool value = decltype(test<T>(0))::value;
 };
 
-template <typename T> static
-typename std::enable_if<!HasExplicitPrintValue<const T>::value, std::string>::type
-executePrintValue(const Value& V, const T& val) {
-  return callPrintValue(V, &val);
-}
-
-template <typename T> static
-typename std::enable_if<HasExplicitPrintValue<const T>::value, std::string>::type
-executePrintValue(const Value& V, const T& val) {
-  return printValue(&val);
+template <typename T>
+std::string executePrintValue(const Value &V, const T &val) {
+  return ExecutePrintValue<T, HasExplicitPrintValue<const T>::value>()(V, val);
 }
 
 
@@ -750,22 +749,6 @@ static std::string printFunctionValue(const Value &V, const void *ptr, clang::Qu
   return o.str();
 }
 
-static std::string printStringType(const Value &V, const clang::Type* Type) {
-  switch (V.getInterpreter()->getLookupHelper().getStringType(Type)) {
-    case LookupHelper::kStdString:
-      return executePrintValue<std::string>(V, *(std::string*)V.getPtr());
-    case LookupHelper::kWCharString:
-      return executePrintValue<std::wstring>(V, *(std::wstring*)V.getPtr());
-    case LookupHelper::kUTF16Str:
-      return executePrintValue<std::u16string>(V, *(std::u16string*)V.getPtr());
-    case LookupHelper::kUTF32Str:
-      return executePrintValue<std::u32string>(V, *(std::u32string*)V.getPtr());
-    default:
-      break;
-  }
-  return "";
-}
-
 static std::string printUnpackedClingValue(const Value &V) {
   // Find the Type for `std::string`. We are guaranteed to have that declared
   // when this function is called; RuntimePrintValue.h #includes it.
@@ -788,10 +771,9 @@ static std::string printUnpackedClingValue(const Value &V) {
   } else if (clang::CXXRecordDecl *CXXRD = Ty->getAsCXXRecordDecl()) {
     if (CXXRD->isLambda())
       return printAddress(V.getPtr(), '@');
-
-    std::string Str = printStringType(V, CXXRD->getTypeForDecl());
-    if (!Str.empty())
-      return Str;
+    LookupHelper& LH= V.getInterpreter()->getLookupHelper();
+    if (C.hasSameType(CXXRD->getTypeForDecl(), LH.getStringType()))
+      return executePrintValue<std::string>(V, *(std::string*)V.getPtr());
   } else if (const clang::BuiltinType *BT
       = llvm::dyn_cast<clang::BuiltinType>(Td.getCanonicalType().getTypePtr())) {
     switch (BT->getKind()) {
@@ -843,10 +825,8 @@ static std::string printUnpackedClingValue(const Value &V) {
   // Print all the other cases by calling into runtime 'cling::printValue()'.
   // Ty->isPointerType() || Ty->isReferenceType() || Ty->isArrayType()
   // Ty->isObjCObjectPointerType()
-  return callPrintValue(V, V.getPtr());
+  return ExecutePrintValue<void*, false>()(V, V.getPtr());
 }
-
-} // anonymous namespace
 
 namespace cling {
   // cling::Value

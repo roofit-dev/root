@@ -30,7 +30,9 @@ namespace {
 
     Mips16HardFloat(MipsTargetMachine &TM_) : ModulePass(ID), TM(TM_) {}
 
-    StringRef getPassName() const override { return "MIPS16 Hard Float Pass"; }
+    const char *getPassName() const override {
+      return "MIPS16 Hard Float Pass";
+    }
 
     bool runOnModule(Module &M) override;
 
@@ -405,7 +407,7 @@ static bool fixupFPReturnAndCall(Function &F, Module *M,
           "__mips16_ret_dc"
         };
         const char *Name = Helper[RV];
-        AttributeList A;
+        AttributeSet A;
         Value *Params[] = {RVal};
         Modified = true;
         //
@@ -414,13 +416,13 @@ static bool fixupFPReturnAndCall(Function &F, Module *M,
         // during call setup, the proper call lowering to the helper
         // functions will take place.
         //
-        A = A.addAttribute(C, AttributeList::FunctionIndex,
+        A = A.addAttribute(C, AttributeSet::FunctionIndex,
                            "__Mips16RetHelper");
-        A = A.addAttribute(C, AttributeList::FunctionIndex,
+        A = A.addAttribute(C, AttributeSet::FunctionIndex,
                            Attribute::ReadNone);
-        A = A.addAttribute(C, AttributeList::FunctionIndex,
+        A = A.addAttribute(C, AttributeSet::FunctionIndex,
                            Attribute::NoInline);
-        Value *F = (M->getOrInsertFunction(Name, A, MyVoid, T));
+        Value *F = (M->getOrInsertFunction(Name, A, MyVoid, T, nullptr));
         CallInst::Create(F, Params, "", &I);
       } else if (const CallInst *CI = dyn_cast<CallInst>(&I)) {
         FunctionType *FT = CI->getFunctionType();
@@ -490,14 +492,15 @@ static void createFPFnStub(Function *F, Module *M, FPParamVariant PV,
 // remove the use-soft-float attribute
 //
 static void removeUseSoftFloat(Function &F) {
-  AttrBuilder B;
+  AttributeSet A;
   DEBUG(errs() << "removing -use-soft-float\n");
-  B.addAttribute("use-soft-float", "false");
-  F.removeAttributes(AttributeList::FunctionIndex, B);
+  A = A.addAttribute(F.getContext(), AttributeSet::FunctionIndex,
+                     "use-soft-float", "false");
+  F.removeAttributes(AttributeSet::FunctionIndex, A);
   if (F.hasFnAttribute("use-soft-float")) {
     DEBUG(errs() << "still has -use-soft-float\n");
   }
-  F.addAttributes(AttributeList::FunctionIndex, B);
+  F.addAttributes(AttributeSet::FunctionIndex, A);
 }
 
 

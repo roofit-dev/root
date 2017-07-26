@@ -264,7 +264,7 @@ namespace cling {
     ///
     void CollectFilesToUncache(clang::SourceLocation Loc);
 
-    constexpr static bool isDefinition(void*) { return false; }
+    LLVM_CONSTEXPR static bool isDefinition(void*) { return false; }
     static bool isDefinition(clang::TagDecl* R);
 
     static void resetDefinitionData(void*) {

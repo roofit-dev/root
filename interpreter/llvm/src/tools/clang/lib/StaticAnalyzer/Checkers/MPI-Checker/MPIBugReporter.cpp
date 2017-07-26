@@ -85,11 +85,9 @@ void MPIBugReporter::reportUnmatchedWait(
   BReporter.emitReport(std::move(Report));
 }
 
-std::shared_ptr<PathDiagnosticPiece>
-MPIBugReporter::RequestNodeVisitor::VisitNode(const ExplodedNode *N,
-                                              const ExplodedNode *PrevN,
-                                              BugReporterContext &BRC,
-                                              BugReport &BR) {
+PathDiagnosticPiece *MPIBugReporter::RequestNodeVisitor::VisitNode(
+    const ExplodedNode *N, const ExplodedNode *PrevN, BugReporterContext &BRC,
+    BugReport &BR) {
 
   if (IsNodeFound)
     return nullptr;
@@ -106,7 +104,7 @@ MPIBugReporter::RequestNodeVisitor::VisitNode(const ExplodedNode *N,
     PathDiagnosticLocation L =
         PathDiagnosticLocation::create(P, BRC.getSourceManager());
 
-    return std::make_shared<PathDiagnosticEventPiece>(L, ErrorText);
+    return new PathDiagnosticEventPiece(L, ErrorText);
   }
 
   return nullptr;

@@ -11,12 +11,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CodeGenFunction.h"
 #include "CGCall.h"
 #include "CGRecordLayout.h"
-#include "CodeGenFunction.h"
 #include "CodeGenModule.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Operator.h"
@@ -307,8 +308,7 @@ static RValue emitAtomicLibcall(CodeGenFunction &CGF,
     CGF.CGM.getTypes().arrangeBuiltinFunctionCall(resultType, args);
   llvm::FunctionType *fnTy = CGF.CGM.getTypes().GetFunctionType(fnInfo);
   llvm::Constant *fn = CGF.CGM.CreateRuntimeFunction(fnTy, fnName);
-  auto callee = CGCallee::forDirect(fn);
-  return CGF.EmitCall(fnInfo, callee, ReturnValueSlot(), args);
+  return CGF.EmitCall(fnInfo, fn, ReturnValueSlot(), args);
 }
 
 /// Does a store of the given IR type modify the full expected width?
@@ -1181,7 +1181,7 @@ RValue AtomicInfo::convertAtomicTempToRValue(Address addr,
   if (LVal.isBitField())
     return CGF.EmitLoadOfBitfieldLValue(
         LValue::MakeBitfield(addr, LVal.getBitFieldInfo(), LVal.getType(),
-                             LVal.getAlignmentSource()), loc);
+                             LVal.getAlignmentSource()));
   if (LVal.isVectorElt())
     return CGF.EmitLoadOfLValue(
         LValue::MakeVectorElt(addr, LVal.getVectorIdx(), LVal.getType(),

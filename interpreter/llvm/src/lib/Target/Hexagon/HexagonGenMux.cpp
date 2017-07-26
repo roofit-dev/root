@@ -22,60 +22,36 @@
 
 #define DEBUG_TYPE "hexmux"
 
-#include "HexagonInstrInfo.h"
-#include "HexagonRegisterInfo.h"
-#include "HexagonSubtarget.h"
-#include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
-#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
-#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineOperand.h"
-#include "llvm/IR/DebugLoc.h"
-#include "llvm/MC/MCInstrDesc.h"
-#include "llvm/MC/MCRegisterInfo.h"
-#include "llvm/Pass.h"
-#include "llvm/Support/MathExtras.h"
-#include <algorithm>
-#include <limits>
-#include <iterator>
-#include <utility>
+#include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "HexagonTargetMachine.h"
 
 using namespace llvm;
 
 namespace llvm {
-
   FunctionPass *createHexagonGenMux();
   void initializeHexagonGenMuxPass(PassRegistry& Registry);
-
-} // end namespace llvm
+}
 
 namespace {
-
   class HexagonGenMux : public MachineFunctionPass {
   public:
     static char ID;
-
-    HexagonGenMux() : MachineFunctionPass(ID), HII(nullptr), HRI(nullptr) {
+    HexagonGenMux() : MachineFunctionPass(ID), HII(0), HRI(0) {
       initializeHexagonGenMuxPass(*PassRegistry::getPassRegistry());
     }
-
-    StringRef getPassName() const override {
+    const char *getPassName() const override {
       return "Hexagon generate mux instructions";
     }
-
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       MachineFunctionPass::getAnalysisUsage(AU);
     }
-
     bool runOnMachineFunction(MachineFunction &MF) override;
-
     MachineFunctionProperties getRequiredProperties() const override {
       return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::NoVRegs);
+          MachineFunctionProperties::Property::AllVRegsAllocated);
     }
 
   private:
@@ -83,33 +59,26 @@ namespace {
     const HexagonRegisterInfo *HRI;
 
     struct CondsetInfo {
-      unsigned PredR = 0;
-      unsigned TrueX = std::numeric_limits<unsigned>::max();
-      unsigned FalseX = std::numeric_limits<unsigned>::max();
-
-      CondsetInfo() = default;
+      unsigned PredR;
+      unsigned TrueX, FalseX;
+      CondsetInfo() : PredR(0), TrueX(UINT_MAX), FalseX(UINT_MAX) {}
     };
-
     struct DefUseInfo {
       BitVector Defs, Uses;
-
-      DefUseInfo() = default;
+      DefUseInfo() : Defs(), Uses() {}
       DefUseInfo(const BitVector &D, const BitVector &U) : Defs(D), Uses(U) {}
     };
-
     struct MuxInfo {
       MachineBasicBlock::iterator At;
       unsigned DefR, PredR;
       MachineOperand *SrcT, *SrcF;
       MachineInstr *Def1, *Def2;
-
       MuxInfo(MachineBasicBlock::iterator It, unsigned DR, unsigned PR,
-              MachineOperand *TOp, MachineOperand *FOp, MachineInstr &D1,
-              MachineInstr &D2)
-          : At(It), DefR(DR), PredR(PR), SrcT(TOp), SrcF(FOp), Def1(&D1),
-            Def2(&D2) {}
+            MachineOperand *TOp, MachineOperand *FOp,
+            MachineInstr *D1, MachineInstr *D2)
+        : At(It), DefR(DR), PredR(PR), SrcT(TOp), SrcF(FOp), Def1(D1),
+          Def2(D2) {}
     };
-
     typedef DenseMap<MachineInstr*,unsigned> InstrIndexMap;
     typedef DenseMap<unsigned,DefUseInfo> DefUseInfoMap;
     typedef SmallVector<MuxInfo,4> MuxInfoList;
@@ -117,7 +86,6 @@ namespace {
     bool isRegPair(unsigned Reg) const {
       return Hexagon::DoubleRegsRegClass.contains(Reg);
     }
-
     void getSubRegs(unsigned Reg, BitVector &SRs) const;
     void expandReg(unsigned Reg, BitVector &Set) const;
     void getDefsUses(const MachineInstr *MI, BitVector &Defs,
@@ -131,16 +99,17 @@ namespace {
   };
 
   char HexagonGenMux::ID = 0;
-
-} // end anonymous namespace
+}
 
 INITIALIZE_PASS(HexagonGenMux, "hexagon-mux",
   "Hexagon generate mux instructions", false, false)
+
 
 void HexagonGenMux::getSubRegs(unsigned Reg, BitVector &SRs) const {
   for (MCSubRegIterator I(Reg, HRI); I.isValid(); ++I)
     SRs[*I] = true;
 }
+
 
 void HexagonGenMux::expandReg(unsigned Reg, BitVector &Set) const {
   if (isRegPair(Reg))
@@ -148,6 +117,7 @@ void HexagonGenMux::expandReg(unsigned Reg, BitVector &Set) const {
   else
     Set[Reg] = true;
 }
+
 
 void HexagonGenMux::getDefsUses(const MachineInstr *MI, BitVector &Defs,
       BitVector &Uses) const {
@@ -162,14 +132,15 @@ void HexagonGenMux::getDefsUses(const MachineInstr *MI, BitVector &Defs,
       expandReg(*R++, Uses);
 
   // Look over all operands, and collect explicit defs and uses.
-  for (const MachineOperand &MO : MI->operands()) {
-    if (!MO.isReg() || MO.isImplicit())
+  for (ConstMIOperands Mo(*MI); Mo.isValid(); ++Mo) {
+    if (!Mo->isReg() || Mo->isImplicit())
       continue;
-    unsigned R = MO.getReg();
-    BitVector &Set = MO.isDef() ? Defs : Uses;
+    unsigned R = Mo->getReg();
+    BitVector &Set = Mo->isDef() ? Defs : Uses;
     expandReg(R, Set);
   }
 }
+
 
 void HexagonGenMux::buildMaps(MachineBasicBlock &B, InstrIndexMap &I2X,
       DefUseInfoMap &DUM) {
@@ -188,6 +159,7 @@ void HexagonGenMux::buildMaps(MachineBasicBlock &B, InstrIndexMap &I2X,
   }
 }
 
+
 bool HexagonGenMux::isCondTransfer(unsigned Opc) const {
   switch (Opc) {
     case Hexagon::A2_tfrt:
@@ -198,6 +170,7 @@ bool HexagonGenMux::isCondTransfer(unsigned Opc) const {
   }
   return false;
 }
+
 
 unsigned HexagonGenMux::getMuxOpcode(const MachineOperand &Src1,
       const MachineOperand &Src2) const {
@@ -214,6 +187,7 @@ unsigned HexagonGenMux::getMuxOpcode(const MachineOperand &Src1,
 
   return 0;
 }
+
 
 bool HexagonGenMux::genMuxInBlock(MachineBasicBlock &B) {
   bool Changed = false;
@@ -257,8 +231,7 @@ bool HexagonGenMux::genMuxInBlock(MachineBasicBlock &B) {
       CI.TrueX = Idx;
     else
       CI.FalseX = Idx;
-    if (CI.TrueX == std::numeric_limits<unsigned>::max() ||
-        CI.FalseX == std::numeric_limits<unsigned>::max())
+    if (CI.TrueX == UINT_MAX || CI.FalseX == UINT_MAX)
       continue;
 
     // There is now a complete definition of DR, i.e. we have the predicate
@@ -289,8 +262,8 @@ bool HexagonGenMux::genMuxInBlock(MachineBasicBlock &B) {
     MachineBasicBlock::iterator It1 = B.begin(), It2 = B.begin();
     std::advance(It1, MinX);
     std::advance(It2, MaxX);
-    MachineInstr &Def1 = *It1, &Def2 = *It2;
-    MachineOperand *Src1 = &Def1.getOperand(2), *Src2 = &Def2.getOperand(2);
+    MachineInstr *Def1 = It1, *Def2 = It2;
+    MachineOperand *Src1 = &Def1->getOperand(2), *Src2 = &Def2->getOperand(2);
     unsigned SR1 = Src1->isReg() ? Src1->getReg() : 0;
     unsigned SR2 = Src2->isReg() ? Src2->getReg() : 0;
     bool Failure = false, CanUp = true, CanDown = true;
@@ -324,9 +297,9 @@ bool HexagonGenMux::genMuxInBlock(MachineBasicBlock &B) {
     if (!MxOpc)
       continue;
     BuildMI(B, MX.At, DL, HII->get(MxOpc), MX.DefR)
-        .addReg(MX.PredR)
-        .add(*MX.SrcT)
-        .add(*MX.SrcF);
+      .addReg(MX.PredR)
+      .addOperand(*MX.SrcT)
+      .addOperand(*MX.SrcF);
     B.erase(MX.Def1);
     B.erase(MX.Def2);
     Changed = true;

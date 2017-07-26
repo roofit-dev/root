@@ -223,7 +223,6 @@ namespace cling {
                                       clang::CXXDependentScopeMemberExpr* Node);
     ASTNodeInfo VisitExpr(clang::Expr* Node);
     ASTNodeInfo VisitBinaryOperator(clang::BinaryOperator* Node);
-    ASTNodeInfo VisitArraySubscriptExpr(clang::ArraySubscriptExpr* ASE);
     ASTNodeInfo VisitCallExpr(clang::CallExpr* E);
     ASTNodeInfo VisitDeclRefExpr(clang::DeclRefExpr* DRE);
     ASTNodeInfo VisitDependentScopeDeclRefExpr(

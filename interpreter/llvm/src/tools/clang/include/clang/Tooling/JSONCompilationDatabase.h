@@ -55,7 +55,6 @@ namespace tooling {
 ///
 /// JSON compilation databases can for example be generated in CMake projects
 /// by setting the flag -DCMAKE_EXPORT_COMPILE_COMMANDS.
-enum class JSONCommandLineSyntax { Windows, Gnu, AutoDetect };
 class JSONCompilationDatabase : public CompilationDatabase {
 public:
   /// \brief Loads a JSON compilation database from the specified file.
@@ -63,17 +62,15 @@ public:
   /// Returns NULL and sets ErrorMessage if the database could not be
   /// loaded from the given file.
   static std::unique_ptr<JSONCompilationDatabase>
-  loadFromFile(StringRef FilePath, std::string &ErrorMessage,
-               JSONCommandLineSyntax Syntax);
+  loadFromFile(StringRef FilePath, std::string &ErrorMessage);
 
   /// \brief Loads a JSON compilation database from a data buffer.
   ///
   /// Returns NULL and sets ErrorMessage if the database could not be loaded.
   static std::unique_ptr<JSONCompilationDatabase>
-  loadFromBuffer(StringRef DatabaseString, std::string &ErrorMessage,
-                 JSONCommandLineSyntax Syntax);
+  loadFromBuffer(StringRef DatabaseString, std::string &ErrorMessage);
 
-  /// \brief Returns all compile commands in which the specified file was
+  /// \brief Returns all compile comamnds in which the specified file was
   /// compiled.
   ///
   /// FIXME: Currently FilePath must be an absolute path inside the
@@ -92,9 +89,8 @@ public:
 
 private:
   /// \brief Constructs a JSON compilation database on a memory buffer.
-  JSONCompilationDatabase(std::unique_ptr<llvm::MemoryBuffer> Database,
-                          JSONCommandLineSyntax Syntax)
-      : Database(std::move(Database)), Syntax(Syntax),
+  JSONCompilationDatabase(std::unique_ptr<llvm::MemoryBuffer> Database)
+      : Database(std::move(Database)),
         YAMLStream(this->Database->getBuffer(), SM) {}
 
   /// \brief Parses the database file and creates the index.
@@ -103,17 +99,15 @@ private:
   /// failed.
   bool parse(std::string &ErrorMessage);
 
-  // Tuple (directory, filename, commandline, output) where 'commandline'
-  // points to the corresponding scalar nodes in the YAML stream.
+  // Tuple (directory, filename, commandline) where 'commandline' points to the
+  // corresponding scalar nodes in the YAML stream.
   // If the command line contains a single argument, it is a shell-escaped
   // command line.
   // Otherwise, each entry in the command line vector is a literal
   // argument to the compiler.
-  // The output field may be a nullptr.
   typedef std::tuple<llvm::yaml::ScalarNode *,
                      llvm::yaml::ScalarNode *,
-                     std::vector<llvm::yaml::ScalarNode *>,
-                     llvm::yaml::ScalarNode *> CompileCommandRef;
+                    std::vector<llvm::yaml::ScalarNode *>> CompileCommandRef;
 
   /// \brief Converts the given array of CompileCommandRefs to CompileCommands.
   void getCommands(ArrayRef<CompileCommandRef> CommandsRef,
@@ -129,7 +123,6 @@ private:
   FileMatchTrie MatchTrie;
 
   std::unique_ptr<llvm::MemoryBuffer> Database;
-  JSONCommandLineSyntax Syntax;
   llvm::SourceMgr SM;
   llvm::yaml::Stream YAMLStream;
 };

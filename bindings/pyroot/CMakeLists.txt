@@ -3,7 +3,7 @@
 ############################################################################
 include_directories(${PYTHON_INCLUDE_DIRS})
 
-ROOT_GENERATE_DICTIONARY(G__PyROOT *.h MODULE PyROOT LINKDEF LinkDef.h OPTIONS "-writeEmptyRootPCM" DEPENDENCIES Core MathCore)
+ROOT_GENERATE_DICTIONARY(G__PyROOT *.h MODULE PyROOT LINKDEF LinkDef.h OPTIONS "-writeEmptyRootPCM")
 
 ROOT_ADD_CXX_FLAG(CMAKE_CXX_FLAGS -fno-strict-aliasing)
 ROOT_ADD_CXX_FLAG(CMAKE_CXX_FLAGS -Wno-parentheses-equality)
@@ -39,7 +39,7 @@ foreach(pyfile ${pyfiles})
   if(IS_ABSOLUTE ${runtimedir})
     set(absruntimedir ${runtimedir})
   else()
-    set(absruntimedir \${CMAKE_INSTALL_PREFIX}/${runtimedir})
+    set(absruntimedir ${CMAKE_INSTALL_PREFIX}/${runtimedir})
   endif()
   install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -m py_compile \$ENV{DESTDIR}${absruntimedir}/${pyfile})")
   install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -O -m py_compile \$ENV{DESTDIR}${absruntimedir}/${pyfile})")

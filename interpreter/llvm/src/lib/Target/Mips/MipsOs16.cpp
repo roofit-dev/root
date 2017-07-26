@@ -35,7 +35,9 @@ namespace {
 
     MipsOs16() : ModulePass(ID) {}
 
-    StringRef getPassName() const override { return "MIPS Os16 Optimization"; }
+    const char *getPassName() const override {
+      return "MIPS Os16 Optimization";
+    }
 
     bool runOnModule(Module &M) override;
   };
@@ -57,7 +59,7 @@ static  bool needsFPFromSig(Function &F) {
     ;
   }
   if (F.arg_size() >=1) {
-    Argument &Arg = *F.arg_begin();
+    Argument &Arg = F.getArgumentList().front();
     switch (Arg.getType()->getTypeID()) {
     case Type::FloatTyID:
     case Type::DoubleTyID:

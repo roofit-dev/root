@@ -2,7 +2,4 @@ add_llvm_utility(KillTheDoctor
   KillTheDoctor.cpp
   )
 
-target_link_libraries(KillTheDoctor
-  LLVMSupport
-  psapi
-  )
+target_link_libraries(KillTheDoctor LLVMSupport)

@@ -208,7 +208,7 @@ namespace ROOT {
 
       if ( fpTmpCoordErrorVector )
       {
-        delete[] fpTmpCoordErrorVector;
+        delete fpTmpCoordErrorVector;
         fpTmpCoordErrorVector = NULL;
       }
     }
@@ -236,7 +236,7 @@ namespace ROOT {
 
       if ( fpTmpCoordErrorVector )
       {
-        delete[] fpTmpCoordErrorVector;
+        delete fpTmpCoordErrorVector;
         fpTmpCoordErrorVector = NULL;
       }
 
@@ -627,14 +627,8 @@ namespace ROOT {
 
     void BinData::InitDataVector ()
     {
-#ifdef R__HAS_VECCORE
-       // Add padding to be a multiple of SIMD vector size and help looping
-       auto extraP = vecCore::VectorSize<ROOT::Double_v>() - ((fMaxPoints) % vecCore::VectorSize<ROOT::Double_v>());
-       fData.resize(fMaxPoints + extraP);
-#else
-       fData.resize(fMaxPoints);
-#endif
-       fDataPtr = &fData.front();
+      fData.resize( fMaxPoints );
+      fDataPtr = &fData.front();
     }
 
     void BinData::InitializeErrors()
@@ -644,7 +638,7 @@ namespace ROOT {
 
       if ( fpTmpCoordErrorVector )
       {
-        delete[] fpTmpCoordErrorVector;
+        delete fpTmpCoordErrorVector;
         fpTmpCoordErrorVector = NULL;
       }
 

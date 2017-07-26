@@ -27,19 +27,16 @@ namespace llvm {
 /// by the rest of the mid-level optimizer.
 class SimplifyCFGPass : public PassInfoMixin<SimplifyCFGPass> {
   int BonusInstThreshold;
-  bool LateSimplifyCFG;
 
 public:
-  /// \brief Construct a pass with the default thresholds
-  /// and switch optimizations.
+  /// \brief Construct a pass with the default thresholds.
   SimplifyCFGPass();
 
-  /// \brief Construct a pass with a specific bonus threshold
-  /// and optional switch optimizations.
-  SimplifyCFGPass(int BonusInstThreshold, bool LateSimplifyCFG);
+  /// \brief Construct a pass with a specific bonus threshold.
+  SimplifyCFGPass(int BonusInstThreshold);
 
   /// \brief Run the pass over the function.
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
+  PreservedAnalyses run(Function &F, AnalysisManager<Function> &AM);
 };
 
 }

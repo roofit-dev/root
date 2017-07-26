@@ -1474,8 +1474,7 @@ static void HandleDefinition() {
     Function *LF = F->Codegen();
     if (LF && VerboseOutput) {
       fprintf(stderr, "Read function definition:");
-      LF->print(errs());
-      fprintf(stderr, "\n");
+      LF->dump();
     }
   } else {
     // Skip token for error recovery.
@@ -1488,8 +1487,7 @@ static void HandleExtern() {
     Function *F = P->Codegen();
     if (F && VerboseOutput) {
       fprintf(stderr, "Read extern: ");
-      F->print(errs());
-      fprintf(stderr, "\n");
+      F->dump();
     }
   } else {
     // Skip token for error recovery.

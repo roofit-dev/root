@@ -22,7 +22,7 @@
 
 #include "RConfig.h"
 
-#include <stddef.h> // size_t, NULL
+#include <stddef.h>
 
 //---- Tag used by rootcling to determine constructor used for I/O.
 
@@ -83,6 +83,10 @@ typedef float          Angle_t;     //Graphics angle (float)
 typedef float          Size_t;      //Attribute size (float)
 
 //---- constants ---------------------------------------------------------------
+
+#ifndef NULL
+#define NULL 0
+#endif
 
 const Bool_t kTRUE  = true;
 const Bool_t kFALSE = false;

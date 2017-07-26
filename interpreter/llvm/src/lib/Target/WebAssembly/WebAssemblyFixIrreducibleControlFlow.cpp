@@ -47,7 +47,7 @@ using namespace llvm;
 
 namespace {
 class WebAssemblyFixIrreducibleControlFlow final : public MachineFunctionPass {
-  StringRef getPassName() const override {
+  const char *getPassName() const override {
     return "WebAssembly Fix Irreducible Control Flow";
   }
 

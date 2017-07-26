@@ -20,14 +20,15 @@
 #include "llvm/Support/Mutex.h"
 
 namespace llvm {
+using namespace sys;
 
-sys::MutexImpl::MutexImpl(bool /*recursive*/)
+MutexImpl::MutexImpl(bool /*recursive*/)
 {
   data_ = new CRITICAL_SECTION;
   InitializeCriticalSection((LPCRITICAL_SECTION)data_);
 }
 
-sys::MutexImpl::~MutexImpl()
+MutexImpl::~MutexImpl()
 {
   DeleteCriticalSection((LPCRITICAL_SECTION)data_);
   delete (LPCRITICAL_SECTION)data_;
@@ -35,21 +36,21 @@ sys::MutexImpl::~MutexImpl()
 }
 
 bool
-sys::MutexImpl::acquire()
+MutexImpl::acquire()
 {
   EnterCriticalSection((LPCRITICAL_SECTION)data_);
   return true;
 }
 
 bool
-sys::MutexImpl::release()
+MutexImpl::release()
 {
   LeaveCriticalSection((LPCRITICAL_SECTION)data_);
   return true;
 }
 
 bool
-sys::MutexImpl::tryacquire()
+MutexImpl::tryacquire()
 {
   return TryEnterCriticalSection((LPCRITICAL_SECTION)data_);
 }

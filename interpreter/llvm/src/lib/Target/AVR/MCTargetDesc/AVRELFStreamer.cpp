@@ -1,7 +1,5 @@
 #include "AVRELFStreamer.h"
 
-#include "llvm/MC/MCSubtargetInfo.h"
-#include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/FormattedStream.h"
 

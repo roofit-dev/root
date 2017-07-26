@@ -28,11 +28,19 @@ class InstCombineWorklist {
   SmallVector<Instruction*, 256> Worklist;
   DenseMap<Instruction*, unsigned> WorklistMap;
 
+  void operator=(const InstCombineWorklist&RHS) = delete;
+  InstCombineWorklist(const InstCombineWorklist&) = delete;
 public:
-  InstCombineWorklist() = default;
+  InstCombineWorklist() {}
 
-  InstCombineWorklist(InstCombineWorklist &&) = default;
-  InstCombineWorklist &operator=(InstCombineWorklist &&) = default;
+  InstCombineWorklist(InstCombineWorklist &&Arg)
+      : Worklist(std::move(Arg.Worklist)),
+        WorklistMap(std::move(Arg.WorklistMap)) {}
+  InstCombineWorklist &operator=(InstCombineWorklist &&RHS) {
+    Worklist = std::move(RHS.Worklist);
+    WorklistMap = std::move(RHS.WorklistMap);
+    return *this;
+  }
 
   bool isEmpty() const { return Worklist.empty(); }
 

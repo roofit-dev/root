@@ -17,6 +17,7 @@
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/MutexGuard.h"
+#include "llvm/Support/TimeValue.h"
 #if HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
@@ -59,14 +60,22 @@
 using namespace llvm;
 using namespace sys;
 
-static std::pair<std::chrono::microseconds, std::chrono::microseconds> getRUsageTimes() {
+static std::pair<TimeValue, TimeValue> getRUsageTimes() {
 #if defined(HAVE_GETRUSAGE)
   struct rusage RU;
   ::getrusage(RUSAGE_SELF, &RU);
-  return { toDuration(RU.ru_utime), toDuration(RU.ru_stime) };
+  return std::make_pair(
+      TimeValue(
+          static_cast<TimeValue::SecondsType>(RU.ru_utime.tv_sec),
+          static_cast<TimeValue::NanoSecondsType>(
+              RU.ru_utime.tv_usec * TimeValue::NANOSECONDS_PER_MICROSECOND)),
+      TimeValue(
+          static_cast<TimeValue::SecondsType>(RU.ru_stime.tv_sec),
+          static_cast<TimeValue::NanoSecondsType>(
+              RU.ru_stime.tv_usec * TimeValue::NANOSECONDS_PER_MICROSECOND)));
 #else
 #warning Cannot get usage times on this platform
-  return { std::chrono::microseconds::zero(), std::chrono::microseconds::zero() };
+  return std::make_pair(TimeValue(), TimeValue());
 #endif
 }
 
@@ -112,9 +121,9 @@ size_t Process::GetMallocUsage() {
 #endif
 }
 
-void Process::GetTimeUsage(TimePoint<> &elapsed, std::chrono::nanoseconds &user_time,
-                           std::chrono::nanoseconds &sys_time) {
-  elapsed = std::chrono::system_clock::now();
+void Process::GetTimeUsage(TimeValue &elapsed, TimeValue &user_time,
+                           TimeValue &sys_time) {
+  elapsed = TimeValue::now();
   std::tie(user_time, sys_time) = getRUsageTimes();
 }
 
@@ -347,7 +356,7 @@ static bool terminalHasColors(int fd) {
   MutexGuard G(*TermColorMutex);
 
   int errret = 0;
-  if (setupterm(nullptr, fd, &errret) != 0)
+  if (setupterm((char *)nullptr, fd, &errret) != 0)
     // Regardless of why, if we can't get terminfo, we shouldn't try to print
     // colors.
     return false;
@@ -369,7 +378,7 @@ static bool terminalHasColors(int fd) {
 
   // Now extract the structure allocated by setupterm and free its memory
   // through a really silly dance.
-  struct term *termp = set_curterm(nullptr);
+  struct term *termp = set_curterm((struct term *)nullptr);
   (void)del_curterm(termp); // Drop any errors here.
 
   // Return true if we found a color capabilities for the current terminal.
@@ -420,7 +429,7 @@ const char *Process::ResetColor() {
   return "\033[0m";
 }
 
-#if !HAVE_DECL_ARC4RANDOM
+#if !defined(HAVE_DECL_ARC4RANDOM) || !HAVE_DECL_ARC4RANDOM
 static unsigned GetRandomNumberSeed() {
   // Attempt to get the initial seed from /dev/urandom, if possible.
   int urandomFD = open("/dev/urandom", O_RDONLY);
@@ -440,13 +449,13 @@ static unsigned GetRandomNumberSeed() {
 
   // Otherwise, swizzle the current time and the process ID to form a reasonable
   // seed.
-  const auto Now = std::chrono::high_resolution_clock::now();
-  return hash_combine(Now.time_since_epoch().count(), ::getpid());
+  TimeValue Now = TimeValue::now();
+  return hash_combine(Now.seconds(), Now.nanoseconds(), ::getpid());
 }
 #endif
 
 unsigned llvm::sys::Process::GetRandomNumber() {
-#if HAVE_DECL_ARC4RANDOM
+#if defined(HAVE_DECL_ARC4RANDOM) && HAVE_DECL_ARC4RANDOM
   return arc4random();
 #else
   static int x = (static_cast<void>(::srand(GetRandomNumberSeed())), 0);

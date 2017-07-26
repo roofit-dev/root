@@ -20,7 +20,7 @@ using namespace clang;
 using namespace sema;
 
 DelayedDiagnostic
-DelayedDiagnostic::makeAvailability(AvailabilityResult AR,
+DelayedDiagnostic::makeAvailability(Sema::AvailabilityDiagnostic AD,
                                     SourceLocation Loc,
                                     const NamedDecl *D,
                                     const ObjCInterfaceDecl *UnknownObjCClass,
@@ -28,33 +28,42 @@ DelayedDiagnostic::makeAvailability(AvailabilityResult AR,
                                     StringRef Msg,
                                     bool ObjCPropertyAccess) {
   DelayedDiagnostic DD;
-  DD.Kind = Availability;
+  switch (AD) {
+    case Sema::AD_Deprecation:
+      DD.Kind = Deprecation;
+      break;
+    case Sema::AD_Unavailable:
+      DD.Kind = Unavailable;
+      break;
+    case Sema::AD_Partial:
+      llvm_unreachable("AD_Partial diags should not be delayed");
+  }
   DD.Triggered = false;
   DD.Loc = Loc;
-  DD.AvailabilityData.Decl = D;
-  DD.AvailabilityData.UnknownObjCClass = UnknownObjCClass;
-  DD.AvailabilityData.ObjCProperty = ObjCProperty;
+  DD.DeprecationData.Decl = D;
+  DD.DeprecationData.UnknownObjCClass = UnknownObjCClass;
+  DD.DeprecationData.ObjCProperty = ObjCProperty;
   char *MessageData = nullptr;
   if (Msg.size()) {
     MessageData = new char [Msg.size()];
     memcpy(MessageData, Msg.data(), Msg.size());
   }
 
-  DD.AvailabilityData.Message = MessageData;
-  DD.AvailabilityData.MessageLen = Msg.size();
-  DD.AvailabilityData.AR = AR;
-  DD.AvailabilityData.ObjCPropertyAccess = ObjCPropertyAccess;
+  DD.DeprecationData.Message = MessageData;
+  DD.DeprecationData.MessageLen = Msg.size();
+  DD.DeprecationData.ObjCPropertyAccess = ObjCPropertyAccess;
   return DD;
 }
 
 void DelayedDiagnostic::Destroy() {
-  switch (Kind) {
+  switch (static_cast<DDKind>(Kind)) {
   case Access: 
     getAccessData().~AccessedEntity(); 
     break;
 
-  case Availability:
-    delete[] AvailabilityData.Message;
+  case Deprecation:
+  case Unavailable:
+    delete [] DeprecationData.Message;
     break;
 
   case ForbiddenType:

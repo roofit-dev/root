@@ -155,7 +155,7 @@ public:
       // resource ... and both SetParams and Execute ends up taking the lock
       // individually anyway ...
 
-      R__LOCKGUARD(gInterpreterMutex);
+      R__LOCKGUARD2(gInterpreterMutex);
       fCallEnv->SetParams(params...);
 
       Long_t ret;

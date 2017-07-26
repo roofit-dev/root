@@ -86,7 +86,7 @@ ParamCommandComment *Sema::actOnParamCommandStart(
       new (Allocator) ParamCommandComment(LocBegin, LocEnd, CommandID,
                                           CommandMarker);
 
-  if (!isFunctionDecl() && !isFunctionOrBlockPointerVarLikeDecl())
+  if (!isFunctionDecl())
     Diag(Command->getLocation(),
          diag::warn_doc_param_not_attached_to_a_function_decl)
       << CommandMarker
@@ -584,11 +584,7 @@ void Sema::checkReturnsCommand(const BlockCommandComment *Command) {
 
   assert(ThisDeclInfo && "should not call this check on a bare comment");
 
-  // We allow the return command for all @properties because it can be used
-  // to document the value that the property getter returns.
-  if (isObjCPropertyDecl())
-    return;
-  if (isFunctionDecl() || isFunctionOrBlockPointerVarLikeDecl()) {
+  if (isFunctionDecl()) {
     if (ThisDeclInfo->ReturnType->isVoidType()) {
       unsigned DiagKind;
       switch (ThisDeclInfo->CommentDecl->getKind()) {
@@ -614,6 +610,8 @@ void Sema::checkReturnsCommand(const BlockCommandComment *Command) {
     }
     return;
   }
+  else if (isObjCPropertyDecl())
+    return;
 
   Diag(Command->getLocation(),
        diag::warn_doc_returns_not_attached_to_a_function_decl)
@@ -846,30 +844,6 @@ bool Sema::isFunctionPointerVarDecl() {
   return false;
 }
 
-bool Sema::isFunctionOrBlockPointerVarLikeDecl() {
-  if (!ThisDeclInfo)
-    return false;
-  if (!ThisDeclInfo->IsFilled)
-    inspectThisDecl();
-  if (ThisDeclInfo->getKind() != DeclInfo::VariableKind ||
-      !ThisDeclInfo->CurrentDecl)
-    return false;
-  QualType QT;
-  if (const auto *VD = dyn_cast<DeclaratorDecl>(ThisDeclInfo->CurrentDecl))
-    QT = VD->getType();
-  else if (const auto *PD =
-               dyn_cast<ObjCPropertyDecl>(ThisDeclInfo->CurrentDecl))
-    QT = PD->getType();
-  else
-    return false;
-  // We would like to warn about the 'returns'/'param' commands for
-  // variables that don't directly specify the function type, so type aliases
-  // can be ignored.
-  if (QT->getAs<TypedefType>())
-    return false;
-  return QT->isFunctionPointerType() || QT->isBlockPointerType();
-}
-
 bool Sema::isObjCPropertyDecl() {
   if (!ThisDeclInfo)
     return false;
@@ -976,19 +950,20 @@ unsigned Sema::resolveParmVarReference(StringRef Name,
 
 namespace {
 class SimpleTypoCorrector {
-  const NamedDecl *BestDecl;
-
   StringRef Typo;
   const unsigned MaxEditDistance;
 
+  const NamedDecl *BestDecl;
   unsigned BestEditDistance;
   unsigned BestIndex;
   unsigned NextIndex;
 
 public:
-  explicit SimpleTypoCorrector(StringRef Typo)
-      : BestDecl(nullptr), Typo(Typo), MaxEditDistance((Typo.size() + 2) / 3),
-        BestEditDistance(MaxEditDistance + 1), BestIndex(0), NextIndex(0) {}
+  SimpleTypoCorrector(StringRef Typo) :
+      Typo(Typo), MaxEditDistance((Typo.size() + 2) / 3),
+      BestDecl(nullptr), BestEditDistance(MaxEditDistance + 1),
+      BestIndex(0), NextIndex(0)
+  { }
 
   void addDecl(const NamedDecl *ND);
 

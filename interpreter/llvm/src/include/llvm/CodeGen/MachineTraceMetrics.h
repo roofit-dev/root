@@ -49,59 +49,54 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/TargetSchedule.h"
 
 namespace llvm {
 
-class AnalysisUsage;
+class InstrItineraryData;
 class MachineBasicBlock;
-class MachineFunction;
 class MachineInstr;
 class MachineLoop;
 class MachineLoopInfo;
 class MachineRegisterInfo;
-struct MCSchedClassDesc;
-class raw_ostream;
 class TargetInstrInfo;
 class TargetRegisterInfo;
+class raw_ostream;
 
 class MachineTraceMetrics : public MachineFunctionPass {
-  const MachineFunction *MF = nullptr;
-  const TargetInstrInfo *TII = nullptr;
-  const TargetRegisterInfo *TRI = nullptr;
-  const MachineRegisterInfo *MRI = nullptr;
-  const MachineLoopInfo *Loops = nullptr;
+  const MachineFunction *MF;
+  const TargetInstrInfo *TII;
+  const TargetRegisterInfo *TRI;
+  const MachineRegisterInfo *MRI;
+  const MachineLoopInfo *Loops;
   TargetSchedModel SchedModel;
 
 public:
-  friend class Ensemble;
-  friend class Trace;
-
   class Ensemble;
-
+  class Trace;
   static char ID;
-
   MachineTraceMetrics();
-
   void getAnalysisUsage(AnalysisUsage&) const override;
   bool runOnMachineFunction(MachineFunction&) override;
   void releaseMemory() override;
   void verifyAnalysis() const override;
+
+  friend class Ensemble;
+  friend class Trace;
 
   /// Per-basic block information that doesn't depend on the trace through the
   /// block.
   struct FixedBlockInfo {
     /// The number of non-trivial instructions in the block.
     /// Doesn't count PHI and COPY instructions that are likely to be removed.
-    unsigned InstrCount = ~0u;
+    unsigned InstrCount;
 
     /// True when the block contains calls.
-    bool HasCalls = false;
+    bool HasCalls;
 
-    FixedBlockInfo() = default;
+    FixedBlockInfo() : InstrCount(~0u), HasCalls(false) {}
 
     /// Returns true when resource information for this block has been computed.
     bool hasResources() const { return InstrCount != ~0u; }
@@ -139,11 +134,11 @@ public:
   struct TraceBlockInfo {
     /// Trace predecessor, or NULL for the first block in the trace.
     /// Valid when hasValidDepth().
-    const MachineBasicBlock *Pred = nullptr;
+    const MachineBasicBlock *Pred;
 
     /// Trace successor, or NULL for the last block in the trace.
     /// Valid when hasValidHeight().
-    const MachineBasicBlock *Succ = nullptr;
+    const MachineBasicBlock *Succ;
 
     /// The block number of the head of the trace. (When hasValidDepth()).
     unsigned Head;
@@ -153,13 +148,16 @@ public:
 
     /// Accumulated number of instructions in the trace above this block.
     /// Does not include instructions in this block.
-    unsigned InstrDepth = ~0u;
+    unsigned InstrDepth;
 
     /// Accumulated number of instructions in the trace below this block.
     /// Includes instructions in this block.
-    unsigned InstrHeight = ~0u;
+    unsigned InstrHeight;
 
-    TraceBlockInfo() = default;
+    TraceBlockInfo() :
+      Pred(nullptr), Succ(nullptr),
+      InstrDepth(~0u), InstrHeight(~0u),
+      HasValidInstrDepths(false), HasValidInstrHeights(false) {}
 
     /// Returns true if the depth resources have been computed from the trace
     /// above this block.
@@ -201,10 +199,10 @@ public:
     // itinerary data.
 
     /// Instruction depths have been computed. This implies hasValidDepth().
-    bool HasValidInstrDepths = false;
+    bool HasValidInstrDepths;
 
     /// Instruction heights have been computed. This implies hasValidHeight().
-    bool HasValidInstrHeights = false;
+    bool HasValidInstrHeights;
 
     /// Critical path length. This is the number of cycles in the longest data
     /// dependency chain through the trace. This is only valid when both
@@ -244,7 +242,6 @@ public:
 
   public:
     explicit Trace(Ensemble &te, TraceBlockInfo &tbi) : TE(te), TBI(tbi) {}
-
     void print(raw_ostream&) const;
 
     /// Compute the total number of instructions in the trace.
@@ -303,12 +300,11 @@ public:
   /// strategy, for example 'minimum resource height'. There is one trace for
   /// every block in the function.
   class Ensemble {
-    friend class Trace;
-
     SmallVector<TraceBlockInfo, 4> BlockInfo;
     DenseMap<const MachineInstr*, InstrCycles> Cycles;
     SmallVector<unsigned, 0> ProcResourceDepths;
     SmallVector<unsigned, 0> ProcResourceHeights;
+    friend class Trace;
 
     void computeTrace(const MachineBasicBlock*);
     void computeDepthResources(const MachineBasicBlock*);
@@ -321,11 +317,9 @@ public:
 
   protected:
     MachineTraceMetrics &MTM;
-
-    explicit Ensemble(MachineTraceMetrics*);
-
     virtual const MachineBasicBlock *pickTracePred(const MachineBasicBlock*) =0;
     virtual const MachineBasicBlock *pickTraceSucc(const MachineBasicBlock*) =0;
+    explicit Ensemble(MachineTraceMetrics*);
     const MachineLoop *getLoopFor(const MachineBasicBlock*) const;
     const TraceBlockInfo *getDepthResources(const MachineBasicBlock*) const;
     const TraceBlockInfo *getHeightResources(const MachineBasicBlock*) const;
@@ -334,8 +328,7 @@ public:
 
   public:
     virtual ~Ensemble();
-
-    virtual const char *getName() const = 0;
+    virtual const char *getName() const =0;
     void print(raw_ostream&) const;
     void invalidate(const MachineBasicBlock *MBB);
     void verify() const;
@@ -401,7 +394,6 @@ inline raw_ostream &operator<<(raw_ostream &OS,
   En.print(OS);
   return OS;
 }
-
 } // end namespace llvm
 
-#endif // LLVM_CODEGEN_MACHINETRACEMETRICS_H
+#endif

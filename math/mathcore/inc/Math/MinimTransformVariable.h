@@ -87,7 +87,7 @@ public:
       fFix(rhs.fFix), fLowBound(rhs.fLowBound), fUpBound(rhs.fUpBound), fBounds(rhs.fBounds),
       fLower(rhs.fLower), fUpper(rhs.fUpper)
    {
-      // swap unique_ptr
+      // swap auto_ptr
       fTransform.swap( const_cast<MinimTransformVariable &>( rhs).fTransform) ;
    }
 
@@ -100,7 +100,7 @@ public:
       fBounds   = rhs.fBounds;
       fLower = rhs.fLower;  fUpper = rhs.fUpper;
 
-      // swap unique_ptr
+      // swap auto_ptr
       fTransform.swap( const_cast<MinimTransformVariable &>( rhs).fTransform) ;
       return *this;
    }

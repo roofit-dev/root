@@ -91,7 +91,7 @@ protected:
   bool Has64BitSupport;
   bool Use64BitRegs;
   bool UseCRBits;
-  bool HasHardFloat;
+  bool UseSoftFloat;
   bool IsPPC64;
   bool HasAltivec;
   bool HasSPE;
@@ -132,7 +132,6 @@ protected:
   bool HasFusion;
   bool HasFloat128;
   bool IsISA3_0;
-  bool UseLongCalls;
 
   POPCNTDKind HasPOPCNTD;
 
@@ -205,7 +204,7 @@ public:
   /// instructions, regardless of whether we are in 32-bit or 64-bit mode.
   bool has64BitSupport() const { return Has64BitSupport; }
   // useSoftFloat - Return true if soft-float option is turned on.
-  bool useSoftFloat() const { return !HasHardFloat; }
+  bool useSoftFloat() const { return UseSoftFloat; }
 
   /// use64BitRegs - Return true if in 64-bit mode or if we should use 64-bit
   /// registers in 32-bit mode when possible.  This can only true if
@@ -276,10 +275,6 @@ public:
   bool hasFusion() const { return HasFusion; }
   bool hasFloat128() const { return HasFloat128; }
   bool isISA3_0() const { return IsISA3_0; }
-  bool useLongCalls() const { return UseLongCalls; }
-  bool needsSwapsForVSXMemOps() const {
-    return hasVSX() && isLittleEndian() && !hasP9Vector();
-  }
 
   POPCNTDKind hasPOPCNTD() const { return HasPOPCNTD; }
 
@@ -298,9 +293,7 @@ public:
   bool isSVR4ABI() const { return !isDarwinABI(); }
   bool isELFv2ABI() const;
 
-  /// Originally, this function return hasISEL(). Now we always enable it,
-  /// but may expand the ISEL instruction later.
-  bool enableEarlyIfConversion() const override { return true; }
+  bool enableEarlyIfConversion() const override { return hasISEL(); }
 
   // Scheduling customization.
   bool enableMachineScheduler() const override;
@@ -318,8 +311,6 @@ public:
   /// classifyGlobalReference - Classify a global variable reference for the
   /// current subtarget accourding to how we should reference it.
   unsigned char classifyGlobalReference(const GlobalValue *GV) const;
-
-  bool isXRaySupported() const override { return IsPPC64 && IsLittleEndian; }
 };
 } // End llvm namespace
 

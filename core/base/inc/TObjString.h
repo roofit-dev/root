@@ -35,7 +35,6 @@ public:
    TObjString(const TObjString &s) : TObject(), fString(s.fString) { }
    ~TObjString() { }
    Int_t       Compare(const TObject *obj) const;
-   TString     CopyString() const { return fString; }
    const char *GetName() const { return fString; }
    ULong_t     Hash() const { return fString.Hash(); }
    void        FillBuffer(char *&buffer) { fString.FillBuffer(buffer); }
@@ -44,7 +43,7 @@ public:
    Bool_t      IsEqual(const TObject *obj) const;
    void        ReadBuffer(char *&buffer) { fString.ReadBuffer(buffer); }
    void        SetString(const char *s) { fString = s; }
-   const TString &GetString() const { return fString; }
+   TString     GetString() const { return fString; }
    Int_t       Sizeof() const { return fString.Sizeof(); }
    TString    &String() { return fString; }
 

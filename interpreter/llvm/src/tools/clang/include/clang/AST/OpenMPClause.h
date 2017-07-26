@@ -76,17 +76,10 @@ class OMPClauseWithPreInit {
   friend class OMPClauseReader;
   /// Pre-initialization statement for the clause.
   Stmt *PreInit;
-  /// Region that captures the associated stmt.
-  OpenMPDirectiveKind CaptureRegion;
-
 protected:
   /// Set pre-initialization statement for the clause.
-  void setPreInitStmt(Stmt *S, OpenMPDirectiveKind ThisRegion = OMPD_unknown) {
-    PreInit = S;
-    CaptureRegion = ThisRegion;
-  }
-  OMPClauseWithPreInit(const OMPClause *This)
-      : PreInit(nullptr), CaptureRegion(OMPD_unknown) {
+  void setPreInitStmt(Stmt *S) { PreInit = S; }
+  OMPClauseWithPreInit(const OMPClause *This) : PreInit(nullptr) {
     assert(get(This) && "get is not tuned for pre-init.");
   }
 
@@ -95,8 +88,6 @@ public:
   const Stmt *getPreInitStmt() const { return PreInit; }
   /// Get pre-initialization statement for the clause.
   Stmt *getPreInitStmt() { return PreInit; }
-  /// Get capture region for the stmt in the clause.
-  OpenMPDirectiveKind getCaptureRegion() { return CaptureRegion; }
   static OMPClauseWithPreInit *get(OMPClause *C);
   static const OMPClauseWithPreInit *get(const OMPClause *C);
 };
@@ -203,7 +194,7 @@ public:
 /// In this example directive '#pragma omp parallel' has simple 'if' clause with
 /// condition 'a > 5' and directive name modifier 'parallel'.
 ///
-class OMPIfClause : public OMPClause, public OMPClauseWithPreInit {
+class OMPIfClause : public OMPClause {
   friend class OMPClauseReader;
   /// \brief Location of '('.
   SourceLocation LParenLoc;
@@ -234,31 +225,26 @@ public:
   ///
   /// \param NameModifier [OpenMP 4.1] Directive name modifier of clause.
   /// \param Cond Condition of the clause.
-  /// \param HelperCond Helper condition for the clause.
-  /// \param CaptureRegion Innermost OpenMP region where expressions in this
-  /// clause must be captured.
   /// \param StartLoc Starting location of the clause.
   /// \param LParenLoc Location of '('.
   /// \param NameModifierLoc Location of directive name modifier.
   /// \param ColonLoc [OpenMP 4.1] Location of ':'.
   /// \param EndLoc Ending location of the clause.
   ///
-  OMPIfClause(OpenMPDirectiveKind NameModifier, Expr *Cond, Stmt *HelperCond,
-              OpenMPDirectiveKind CaptureRegion, SourceLocation StartLoc,
-              SourceLocation LParenLoc, SourceLocation NameModifierLoc,
-              SourceLocation ColonLoc, SourceLocation EndLoc)
-      : OMPClause(OMPC_if, StartLoc, EndLoc), OMPClauseWithPreInit(this),
-        LParenLoc(LParenLoc), Condition(Cond), ColonLoc(ColonLoc),
-        NameModifier(NameModifier), NameModifierLoc(NameModifierLoc) {
-    setPreInitStmt(HelperCond, CaptureRegion);
-  }
+  OMPIfClause(OpenMPDirectiveKind NameModifier, Expr *Cond,
+              SourceLocation StartLoc, SourceLocation LParenLoc,
+              SourceLocation NameModifierLoc, SourceLocation ColonLoc,
+              SourceLocation EndLoc)
+      : OMPClause(OMPC_if, StartLoc, EndLoc), LParenLoc(LParenLoc),
+        Condition(Cond), ColonLoc(ColonLoc), NameModifier(NameModifier),
+        NameModifierLoc(NameModifierLoc) {}
 
   /// \brief Build an empty clause.
   ///
   OMPIfClause()
-      : OMPClause(OMPC_if, SourceLocation(), SourceLocation()),
-        OMPClauseWithPreInit(this), LParenLoc(), Condition(nullptr), ColonLoc(),
-        NameModifier(OMPD_unknown), NameModifierLoc() {}
+      : OMPClause(OMPC_if, SourceLocation(), SourceLocation()), LParenLoc(),
+        Condition(nullptr), ColonLoc(), NameModifier(OMPD_unknown),
+        NameModifierLoc() {}
 
   /// \brief Sets the location of '('.
   void setLParenLoc(SourceLocation Loc) { LParenLoc = Loc; }
@@ -345,7 +331,7 @@ public:
 /// In this example directive '#pragma omp parallel' has simple 'num_threads'
 /// clause with number of threads '6'.
 ///
-class OMPNumThreadsClause : public OMPClause, public OMPClauseWithPreInit {
+class OMPNumThreadsClause : public OMPClause {
   friend class OMPClauseReader;
   /// \brief Location of '('.
   SourceLocation LParenLoc;
@@ -360,29 +346,20 @@ public:
   /// \brief Build 'num_threads' clause with condition \a NumThreads.
   ///
   /// \param NumThreads Number of threads for the construct.
-  /// \param HelperNumThreads Helper Number of threads for the construct.
-  /// \param CaptureRegion Innermost OpenMP region where expressions in this
-  /// clause must be captured.
   /// \param StartLoc Starting location of the clause.
   /// \param LParenLoc Location of '('.
   /// \param EndLoc Ending location of the clause.
   ///
-  OMPNumThreadsClause(Expr *NumThreads, Stmt *HelperNumThreads,
-                      OpenMPDirectiveKind CaptureRegion,
-                      SourceLocation StartLoc, SourceLocation LParenLoc,
-                      SourceLocation EndLoc)
-      : OMPClause(OMPC_num_threads, StartLoc, EndLoc),
-        OMPClauseWithPreInit(this), LParenLoc(LParenLoc),
-        NumThreads(NumThreads) {
-    setPreInitStmt(HelperNumThreads, CaptureRegion);
-  }
+  OMPNumThreadsClause(Expr *NumThreads, SourceLocation StartLoc,
+                      SourceLocation LParenLoc, SourceLocation EndLoc)
+      : OMPClause(OMPC_num_threads, StartLoc, EndLoc), LParenLoc(LParenLoc),
+        NumThreads(NumThreads) {}
 
   /// \brief Build an empty clause.
   ///
   OMPNumThreadsClause()
       : OMPClause(OMPC_num_threads, SourceLocation(), SourceLocation()),
-        OMPClauseWithPreInit(this), LParenLoc(SourceLocation()),
-        NumThreads(nullptr) {}
+        LParenLoc(SourceLocation()), NumThreads(nullptr) {}
 
   /// \brief Sets the location of '('.
   void setLParenLoc(SourceLocation Loc) { LParenLoc = Loc; }
@@ -3479,7 +3456,7 @@ public:
 /// In this example directive '#pragma omp teams' has clause 'num_teams'
 /// with single expression 'n'.
 ///
-class OMPNumTeamsClause : public OMPClause, public OMPClauseWithPreInit {
+class OMPNumTeamsClause : public OMPClause {
   friend class OMPClauseReader;
   /// \brief Location of '('.
   SourceLocation LParenLoc;
@@ -3495,27 +3472,20 @@ public:
   /// \brief Build 'num_teams' clause.
   ///
   /// \param E Expression associated with this clause.
-  /// \param HelperE Helper Expression associated with this clause.
-  /// \param CaptureRegion Innermost OpenMP region where expressions in this
-  /// clause must be captured.
   /// \param StartLoc Starting location of the clause.
   /// \param LParenLoc Location of '('.
   /// \param EndLoc Ending location of the clause.
   ///
-  OMPNumTeamsClause(Expr *E, Stmt *HelperE, OpenMPDirectiveKind CaptureRegion,
-                    SourceLocation StartLoc, SourceLocation LParenLoc,
+  OMPNumTeamsClause(Expr *E, SourceLocation StartLoc, SourceLocation LParenLoc,
                     SourceLocation EndLoc)
-      : OMPClause(OMPC_num_teams, StartLoc, EndLoc), OMPClauseWithPreInit(this),
-        LParenLoc(LParenLoc), NumTeams(E) {
-    setPreInitStmt(HelperE, CaptureRegion);
-  }
+      : OMPClause(OMPC_num_teams, StartLoc, EndLoc), LParenLoc(LParenLoc), 
+        NumTeams(E) {}
 
   /// \brief Build an empty clause.
   ///
   OMPNumTeamsClause()
-      : OMPClause(OMPC_num_teams, SourceLocation(), SourceLocation()),
-        OMPClauseWithPreInit(this), LParenLoc(SourceLocation()),
-        NumTeams(nullptr) {}
+      : OMPClause(OMPC_num_teams, SourceLocation(), SourceLocation()), 
+        LParenLoc(SourceLocation()), NumTeams(nullptr) {}
   /// \brief Sets the location of '('.
   void setLParenLoc(SourceLocation Loc) { LParenLoc = Loc; }
   /// \brief Returns the location of '('.
@@ -3541,7 +3511,7 @@ public:
 /// In this example directive '#pragma omp teams' has clause 'thread_limit'
 /// with single expression 'n'.
 ///
-class OMPThreadLimitClause : public OMPClause, public OMPClauseWithPreInit {
+class OMPThreadLimitClause : public OMPClause {
   friend class OMPClauseReader;
   /// \brief Location of '('.
   SourceLocation LParenLoc;
@@ -3557,28 +3527,20 @@ public:
   /// \brief Build 'thread_limit' clause.
   ///
   /// \param E Expression associated with this clause.
-  /// \param HelperE Helper Expression associated with this clause.
-  /// \param CaptureRegion Innermost OpenMP region where expressions in this
-  /// clause must be captured.
   /// \param StartLoc Starting location of the clause.
   /// \param LParenLoc Location of '('.
   /// \param EndLoc Ending location of the clause.
   ///
-  OMPThreadLimitClause(Expr *E, Stmt *HelperE,
-                       OpenMPDirectiveKind CaptureRegion,
-                       SourceLocation StartLoc, SourceLocation LParenLoc,
-                       SourceLocation EndLoc)
-      : OMPClause(OMPC_thread_limit, StartLoc, EndLoc),
-        OMPClauseWithPreInit(this), LParenLoc(LParenLoc), ThreadLimit(E) {
-    setPreInitStmt(HelperE, CaptureRegion);
-  }
+  OMPThreadLimitClause(Expr *E, SourceLocation StartLoc,
+                       SourceLocation LParenLoc, SourceLocation EndLoc)
+      : OMPClause(OMPC_thread_limit, StartLoc, EndLoc), LParenLoc(LParenLoc),
+        ThreadLimit(E) {}
 
   /// \brief Build an empty clause.
   ///
   OMPThreadLimitClause()
       : OMPClause(OMPC_thread_limit, SourceLocation(), SourceLocation()),
-        OMPClauseWithPreInit(this), LParenLoc(SourceLocation()),
-        ThreadLimit(nullptr) {}
+        LParenLoc(SourceLocation()), ThreadLimit(nullptr) {}
   /// \brief Sets the location of '('.
   void setLParenLoc(SourceLocation Loc) { LParenLoc = Loc; }
   /// \brief Returns the location of '('.
@@ -4253,283 +4215,6 @@ public:
   child_range children() {
     return child_range(reinterpret_cast<Stmt **>(varlist_begin()),
                        reinterpret_cast<Stmt **>(varlist_end()));
-  }
-};
-
-/// This represents clause 'use_device_ptr' in the '#pragma omp ...'
-/// directives.
-///
-/// \code
-/// #pragma omp target data use_device_ptr(a,b)
-/// \endcode
-/// In this example directive '#pragma omp target data' has clause
-/// 'use_device_ptr' with the variables 'a' and 'b'.
-///
-class OMPUseDevicePtrClause final
-    : public OMPMappableExprListClause<OMPUseDevicePtrClause>,
-      private llvm::TrailingObjects<
-          OMPUseDevicePtrClause, Expr *, ValueDecl *, unsigned,
-          OMPClauseMappableExprCommon::MappableComponent> {
-  friend TrailingObjects;
-  friend OMPVarListClause;
-  friend OMPMappableExprListClause;
-  friend class OMPClauseReader;
-
-  /// Define the sizes of each trailing object array except the last one. This
-  /// is required for TrailingObjects to work properly.
-  size_t numTrailingObjects(OverloadToken<Expr *>) const {
-    return 3 * varlist_size();
-  }
-  size_t numTrailingObjects(OverloadToken<ValueDecl *>) const {
-    return getUniqueDeclarationsNum();
-  }
-  size_t numTrailingObjects(OverloadToken<unsigned>) const {
-    return getUniqueDeclarationsNum() + getTotalComponentListNum();
-  }
-
-  /// Build clause with number of variables \a NumVars.
-  ///
-  /// \param StartLoc Starting location of the clause.
-  /// \param EndLoc Ending location of the clause.
-  /// \param NumVars Number of expressions listed in this clause.
-  /// \param NumUniqueDeclarations Number of unique base declarations in this
-  /// clause.
-  /// \param NumComponentLists Number of component lists in this clause.
-  /// \param NumComponents Total number of expression components in the clause.
-  ///
-  explicit OMPUseDevicePtrClause(SourceLocation StartLoc,
-                                 SourceLocation LParenLoc,
-                                 SourceLocation EndLoc, unsigned NumVars,
-                                 unsigned NumUniqueDeclarations,
-                                 unsigned NumComponentLists,
-                                 unsigned NumComponents)
-      : OMPMappableExprListClause(OMPC_use_device_ptr, StartLoc, LParenLoc,
-                                  EndLoc, NumVars, NumUniqueDeclarations,
-                                  NumComponentLists, NumComponents) {}
-
-  /// Build an empty clause.
-  ///
-  /// \param NumVars Number of expressions listed in this clause.
-  /// \param NumUniqueDeclarations Number of unique base declarations in this
-  /// clause.
-  /// \param NumComponentLists Number of component lists in this clause.
-  /// \param NumComponents Total number of expression components in the clause.
-  ///
-  explicit OMPUseDevicePtrClause(unsigned NumVars,
-                                 unsigned NumUniqueDeclarations,
-                                 unsigned NumComponentLists,
-                                 unsigned NumComponents)
-      : OMPMappableExprListClause(OMPC_use_device_ptr, SourceLocation(),
-                                  SourceLocation(), SourceLocation(), NumVars,
-                                  NumUniqueDeclarations, NumComponentLists,
-                                  NumComponents) {}
-
-  /// Sets the list of references to private copies with initializers for new
-  /// private variables.
-  /// \param VL List of references.
-  void setPrivateCopies(ArrayRef<Expr *> VL);
-
-  /// Gets the list of references to private copies with initializers for new
-  /// private variables.
-  MutableArrayRef<Expr *> getPrivateCopies() {
-    return MutableArrayRef<Expr *>(varlist_end(), varlist_size());
-  }
-  ArrayRef<const Expr *> getPrivateCopies() const {
-    return llvm::makeArrayRef(varlist_end(), varlist_size());
-  }
-
-  /// Sets the list of references to initializer variables for new private
-  /// variables.
-  /// \param VL List of references.
-  void setInits(ArrayRef<Expr *> VL);
-
-  /// Gets the list of references to initializer variables for new private
-  /// variables.
-  MutableArrayRef<Expr *> getInits() {
-    return MutableArrayRef<Expr *>(getPrivateCopies().end(), varlist_size());
-  }
-  ArrayRef<const Expr *> getInits() const {
-    return llvm::makeArrayRef(getPrivateCopies().end(), varlist_size());
-  }
-
-public:
-  /// Creates clause with a list of variables \a Vars.
-  ///
-  /// \param C AST context.
-  /// \param StartLoc Starting location of the clause.
-  /// \param EndLoc Ending location of the clause.
-  /// \param Vars The original expression used in the clause.
-  /// \param PrivateVars Expressions referring to private copies.
-  /// \param Inits Expressions referring to private copy initializers.
-  /// \param Declarations Declarations used in the clause.
-  /// \param ComponentLists Component lists used in the clause.
-  ///
-  static OMPUseDevicePtrClause *
-  Create(const ASTContext &C, SourceLocation StartLoc, SourceLocation LParenLoc,
-         SourceLocation EndLoc, ArrayRef<Expr *> Vars,
-         ArrayRef<Expr *> PrivateVars, ArrayRef<Expr *> Inits,
-         ArrayRef<ValueDecl *> Declarations,
-         MappableExprComponentListsRef ComponentLists);
-
-  /// Creates an empty clause with the place for \a NumVars variables.
-  ///
-  /// \param C AST context.
-  /// \param NumVars Number of expressions listed in the clause.
-  /// \param NumUniqueDeclarations Number of unique base declarations in this
-  /// clause.
-  /// \param NumComponentLists Number of unique base declarations in this
-  /// clause.
-  /// \param NumComponents Total number of expression components in the clause.
-  ///
-  static OMPUseDevicePtrClause *CreateEmpty(const ASTContext &C,
-                                            unsigned NumVars,
-                                            unsigned NumUniqueDeclarations,
-                                            unsigned NumComponentLists,
-                                            unsigned NumComponents);
-
-  typedef MutableArrayRef<Expr *>::iterator private_copies_iterator;
-  typedef ArrayRef<const Expr *>::iterator private_copies_const_iterator;
-  typedef llvm::iterator_range<private_copies_iterator> private_copies_range;
-  typedef llvm::iterator_range<private_copies_const_iterator>
-      private_copies_const_range;
-
-  private_copies_range private_copies() {
-    return private_copies_range(getPrivateCopies().begin(),
-                                getPrivateCopies().end());
-  }
-  private_copies_const_range private_copies() const {
-    return private_copies_const_range(getPrivateCopies().begin(),
-                                      getPrivateCopies().end());
-  }
-
-  typedef MutableArrayRef<Expr *>::iterator inits_iterator;
-  typedef ArrayRef<const Expr *>::iterator inits_const_iterator;
-  typedef llvm::iterator_range<inits_iterator> inits_range;
-  typedef llvm::iterator_range<inits_const_iterator> inits_const_range;
-
-  inits_range inits() {
-    return inits_range(getInits().begin(), getInits().end());
-  }
-  inits_const_range inits() const {
-    return inits_const_range(getInits().begin(), getInits().end());
-  }
-
-  child_range children() {
-    return child_range(reinterpret_cast<Stmt **>(varlist_begin()),
-                       reinterpret_cast<Stmt **>(varlist_end()));
-  }
-
-  static bool classof(const OMPClause *T) {
-    return T->getClauseKind() == OMPC_use_device_ptr;
-  }
-};
-
-/// This represents clause 'is_device_ptr' in the '#pragma omp ...'
-/// directives.
-///
-/// \code
-/// #pragma omp target is_device_ptr(a,b)
-/// \endcode
-/// In this example directive '#pragma omp target' has clause
-/// 'is_device_ptr' with the variables 'a' and 'b'.
-///
-class OMPIsDevicePtrClause final
-    : public OMPMappableExprListClause<OMPIsDevicePtrClause>,
-      private llvm::TrailingObjects<
-          OMPIsDevicePtrClause, Expr *, ValueDecl *, unsigned,
-          OMPClauseMappableExprCommon::MappableComponent> {
-  friend TrailingObjects;
-  friend OMPVarListClause;
-  friend OMPMappableExprListClause;
-  friend class OMPClauseReader;
-
-  /// Define the sizes of each trailing object array except the last one. This
-  /// is required for TrailingObjects to work properly.
-  size_t numTrailingObjects(OverloadToken<Expr *>) const {
-    return varlist_size();
-  }
-  size_t numTrailingObjects(OverloadToken<ValueDecl *>) const {
-    return getUniqueDeclarationsNum();
-  }
-  size_t numTrailingObjects(OverloadToken<unsigned>) const {
-    return getUniqueDeclarationsNum() + getTotalComponentListNum();
-  }
-  /// Build clause with number of variables \a NumVars.
-  ///
-  /// \param StartLoc Starting location of the clause.
-  /// \param EndLoc Ending location of the clause.
-  /// \param NumVars Number of expressions listed in this clause.
-  /// \param NumUniqueDeclarations Number of unique base declarations in this
-  /// clause.
-  /// \param NumComponentLists Number of component lists in this clause.
-  /// \param NumComponents Total number of expression components in the clause.
-  ///
-  explicit OMPIsDevicePtrClause(SourceLocation StartLoc,
-                                SourceLocation LParenLoc, SourceLocation EndLoc,
-                                unsigned NumVars,
-                                unsigned NumUniqueDeclarations,
-                                unsigned NumComponentLists,
-                                unsigned NumComponents)
-      : OMPMappableExprListClause(OMPC_is_device_ptr, StartLoc, LParenLoc,
-                                  EndLoc, NumVars, NumUniqueDeclarations,
-                                  NumComponentLists, NumComponents) {}
-
-  /// Build an empty clause.
-  ///
-  /// \param NumVars Number of expressions listed in this clause.
-  /// \param NumUniqueDeclarations Number of unique base declarations in this
-  /// clause.
-  /// \param NumComponentLists Number of component lists in this clause.
-  /// \param NumComponents Total number of expression components in the clause.
-  ///
-  explicit OMPIsDevicePtrClause(unsigned NumVars,
-                                unsigned NumUniqueDeclarations,
-                                unsigned NumComponentLists,
-                                unsigned NumComponents)
-      : OMPMappableExprListClause(OMPC_is_device_ptr, SourceLocation(),
-                                  SourceLocation(), SourceLocation(), NumVars,
-                                  NumUniqueDeclarations, NumComponentLists,
-                                  NumComponents) {}
-
-public:
-  /// Creates clause with a list of variables \a Vars.
-  ///
-  /// \param C AST context.
-  /// \param StartLoc Starting location of the clause.
-  /// \param EndLoc Ending location of the clause.
-  /// \param Vars The original expression used in the clause.
-  /// \param Declarations Declarations used in the clause.
-  /// \param ComponentLists Component lists used in the clause.
-  ///
-  static OMPIsDevicePtrClause *
-  Create(const ASTContext &C, SourceLocation StartLoc, SourceLocation LParenLoc,
-         SourceLocation EndLoc, ArrayRef<Expr *> Vars,
-         ArrayRef<ValueDecl *> Declarations,
-         MappableExprComponentListsRef ComponentLists);
-
-  /// Creates an empty clause with the place for \a NumVars variables.
-  ///
-  /// \param C AST context.
-  /// \param NumVars Number of expressions listed in the clause.
-  /// \param NumUniqueDeclarations Number of unique base declarations in this
-  /// clause.
-  /// \param NumComponentLists Number of unique base declarations in this
-  /// clause.
-  /// \param NumComponents Total number of expression components in the clause.
-  ///
-  static OMPIsDevicePtrClause *CreateEmpty(const ASTContext &C,
-                                           unsigned NumVars,
-                                           unsigned NumUniqueDeclarations,
-                                           unsigned NumComponentLists,
-                                           unsigned NumComponents);
-
-  child_range children() {
-    return child_range(reinterpret_cast<Stmt **>(varlist_begin()),
-                       reinterpret_cast<Stmt **>(varlist_end()));
-  }
-
-  static bool classof(const OMPClause *T) {
-    return T->getClauseKind() == OMPC_is_device_ptr;
   }
 };
 } // end namespace clang

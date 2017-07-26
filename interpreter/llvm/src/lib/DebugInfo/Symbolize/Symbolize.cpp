@@ -20,7 +20,6 @@
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/DebugInfo/PDB/PDB.h"
 #include "llvm/DebugInfo/PDB/PDBContext.h"
-#include "llvm/Object/COFF.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/MachOUniversal.h"
@@ -391,10 +390,10 @@ LLVMSymbolizer::getOrCreateModuleInfo(const std::string &ModuleName) {
   // If this is a COFF object containing PDB info, use a PDBContext to
   // symbolize. Otherwise, use DWARF.
   if (auto CoffObject = dyn_cast<COFFObjectFile>(Objects.first)) {
-    const codeview::DebugInfo *DebugInfo;
+    const debug_pdb_info *PDBInfo;
     StringRef PDBFileName;
-    auto EC = CoffObject->getDebugPDBInfo(DebugInfo, PDBFileName);
-    if (!EC && DebugInfo != nullptr && !PDBFileName.empty()) {
+    auto EC = CoffObject->getDebugPDBInfo(PDBInfo, PDBFileName);
+    if (!EC && PDBInfo != nullptr) {
       using namespace pdb;
       std::unique_ptr<IPDBSession> Session;
       if (auto Err = loadDataForEXE(PDB_ReaderType::DIA,
@@ -461,9 +460,8 @@ extern "C" char *__cxa_demangle(const char *mangled_name, char *output_buffer,
                                 size_t *length, int *status);
 #endif
 
-std::string
-LLVMSymbolizer::DemangleName(const std::string &Name,
-                             const SymbolizableModule *DbiModuleDescriptor) {
+std::string LLVMSymbolizer::DemangleName(const std::string &Name,
+                                         const SymbolizableModule *ModInfo) {
 #if !defined(_MSC_VER)
   // We can spoil names of symbols with C linkage, so use an heuristic
   // approach to check if the name should be demangled.
@@ -491,7 +489,7 @@ LLVMSymbolizer::DemangleName(const std::string &Name,
     return (result == 0) ? Name : std::string(DemangledName);
   }
 #endif
-  if (DbiModuleDescriptor && DbiModuleDescriptor->isWin32Module())
+  if (ModInfo && ModInfo->isWin32Module())
     return std::string(demanglePE32ExternCFunc(Name));
   return Name;
 }

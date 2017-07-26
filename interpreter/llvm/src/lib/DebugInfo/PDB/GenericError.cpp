@@ -20,7 +20,7 @@ namespace {
 // deal with the Error value directly, rather than converting to error_code.
 class GenericErrorCategory : public std::error_category {
 public:
-  const char *name() const noexcept override { return "llvm.pdb"; }
+  const char *name() const LLVM_NOEXCEPT override { return "llvm.pdb"; }
 
   std::string message(int Condition) const override {
     switch (static_cast<generic_error_code>(Condition)) {
@@ -45,10 +45,11 @@ char GenericError::ID = 0;
 
 GenericError::GenericError(generic_error_code C) : GenericError(C, "") {}
 
-GenericError::GenericError(StringRef Context)
+GenericError::GenericError(const std::string &Context)
     : GenericError(generic_error_code::unspecified, Context) {}
 
-GenericError::GenericError(generic_error_code C, StringRef Context) : Code(C) {
+GenericError::GenericError(generic_error_code C, const std::string &Context)
+    : Code(C) {
   ErrMsg = "PDB Error: ";
   std::error_code EC = convertToErrorCode();
   if (Code != generic_error_code::unspecified)
@@ -59,7 +60,7 @@ GenericError::GenericError(generic_error_code C, StringRef Context) : Code(C) {
 
 void GenericError::log(raw_ostream &OS) const { OS << ErrMsg << "\n"; }
 
-StringRef GenericError::getErrorMessage() const { return ErrMsg; }
+const std::string &GenericError::getErrorMessage() const { return ErrMsg; }
 
 std::error_code GenericError::convertToErrorCode() const {
   return std::error_code(static_cast<int>(Code), *Category);

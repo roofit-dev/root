@@ -70,8 +70,13 @@ template <typename T> class ArrayRef;
   /// itelf.
   class Dependence {
   protected:
-    Dependence(Dependence &&) = default;
-    Dependence &operator=(Dependence &&) = default;
+    Dependence(const Dependence &) = default;
+
+    // FIXME: When we move to MSVC 2015 as the base compiler for Visual Studio
+    // support, uncomment this line to allow a defaulted move constructor for
+    // Dependence. Currently, FullDependence relies on the copy constructor, but
+    // that is acceptable given the triviality of the class.
+    // Dependence(Dependence &&) = default;
 
   public:
     Dependence(Instruction *Source,
@@ -216,6 +221,11 @@ template <typename T> class ArrayRef;
   public:
     FullDependence(Instruction *Src, Instruction *Dst, bool LoopIndependent,
                    unsigned Levels);
+
+    FullDependence(FullDependence &&RHS)
+        : Dependence(std::move(RHS)), Levels(RHS.Levels),
+          LoopIndependent(RHS.LoopIndependent), Consistent(RHS.Consistent),
+          DV(std::move(RHS.DV)) {}
 
     /// isLoopIndependent - Returns true if this is a loop-independent
     /// dependence.
@@ -921,7 +931,7 @@ template <typename T> class ArrayRef;
     Result run(Function &F, FunctionAnalysisManager &FAM);
 
   private:
-    static AnalysisKey Key;
+    static char PassID;
     friend struct AnalysisInfoMixin<DependenceAnalysis>;
   }; // class DependenceAnalysis
 

@@ -27,7 +27,7 @@ void NVPTXMCAsmInfo::anchor() {}
 
 NVPTXMCAsmInfo::NVPTXMCAsmInfo(const Triple &TheTriple) {
   if (TheTriple.getArch() == Triple::nvptx64) {
-    CodePointerSize = CalleeSaveStackSlotSize = 8;
+    PointerSize = CalleeSaveStackSlotSize = 8;
   }
 
   CommentString = "//";

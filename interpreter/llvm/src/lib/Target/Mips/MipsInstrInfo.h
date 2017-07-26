@@ -50,27 +50,25 @@ public:
   static const MipsInstrInfo *create(MipsSubtarget &STI);
 
   /// Branch Analysis
-  bool analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
+  bool AnalyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
                      MachineBasicBlock *&FBB,
                      SmallVectorImpl<MachineOperand> &Cond,
                      bool AllowModify) const override;
 
-  unsigned removeBranch(MachineBasicBlock &MBB,
-                        int *BytesRemoved = nullptr) const override;
+  unsigned RemoveBranch(MachineBasicBlock &MBB) const override;
 
-  unsigned insertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
+  unsigned InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
                         MachineBasicBlock *FBB, ArrayRef<MachineOperand> Cond,
-                        const DebugLoc &DL,
-                        int *BytesAdded = nullptr) const override;
+                        const DebugLoc &DL) const override;
 
   bool
-  reverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const override;
+  ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const override;
 
-  BranchType analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
+  BranchType AnalyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
                            MachineBasicBlock *&FBB,
                            SmallVectorImpl<MachineOperand> &Cond,
                            bool AllowModify,
-                           SmallVectorImpl<MachineInstr *> &BranchInstrs) const;
+                           SmallVectorImpl<MachineInstr*> &BranchInstrs) const;
 
   /// Determine the opcode of a non-delay slot form for a branch if one exists.
   unsigned getEquivalentCompactForm(const MachineBasicBlock::iterator I) const;
@@ -94,7 +92,7 @@ public:
   virtual unsigned getOppositeBranchOpc(unsigned Opc) const = 0;
 
   /// Return the number of bytes of code the specified instruction may be.
-  unsigned getInstSizeInBytes(const MachineInstr &MI) const override;
+  unsigned GetInstSizeInBytes(const MachineInstr *MI) const;
 
   void storeRegToStackSlot(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator MBBI,
@@ -135,14 +133,11 @@ public:
   MachineInstrBuilder genInstrWithNewOpc(unsigned NewOpc,
                                          MachineBasicBlock::iterator I) const;
 
-  bool findCommutedOpIndices(MachineInstr &MI, unsigned &SrcOpIdx1,
-                             unsigned &SrcOpIdx2) const override;
-
 protected:
   bool isZeroImm(const MachineOperand &op) const;
 
   MachineMemOperand *GetMemOperand(MachineBasicBlock &MBB, int FI,
-                                   MachineMemOperand::Flags Flags) const;
+                                   unsigned Flag) const;
 
 private:
   virtual unsigned getAnalyzableBrOpc(unsigned Opc) const = 0;

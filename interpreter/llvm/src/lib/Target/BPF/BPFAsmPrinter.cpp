@@ -38,7 +38,7 @@ public:
   explicit BPFAsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer)
       : AsmPrinter(TM, std::move(Streamer)) {}
 
-  StringRef getPassName() const override { return "BPF Assembly Printer"; }
+  const char *getPassName() const override { return "BPF Assembly Printer"; }
 
   void EmitInstruction(const MachineInstr *MI) override;
 };
@@ -55,7 +55,7 @@ void BPFAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
 // Force static initialization.
 extern "C" void LLVMInitializeBPFAsmPrinter() {
-  RegisterAsmPrinter<BPFAsmPrinter> X(getTheBPFleTarget());
-  RegisterAsmPrinter<BPFAsmPrinter> Y(getTheBPFbeTarget());
-  RegisterAsmPrinter<BPFAsmPrinter> Z(getTheBPFTarget());
+  RegisterAsmPrinter<BPFAsmPrinter> X(TheBPFleTarget);
+  RegisterAsmPrinter<BPFAsmPrinter> Y(TheBPFbeTarget);
+  RegisterAsmPrinter<BPFAsmPrinter> Z(TheBPFTarget);
 }

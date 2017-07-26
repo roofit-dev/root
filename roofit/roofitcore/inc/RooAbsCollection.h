@@ -157,8 +157,6 @@ public:
 
   void sort(Bool_t ascend=kTRUE) { _list.Sort(ascend) ; }
 
-  virtual void RecursiveRemove(TObject *obj);
-
 protected:
 
   friend class RooMultiCatIter ;

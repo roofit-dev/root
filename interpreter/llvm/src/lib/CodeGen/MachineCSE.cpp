@@ -177,7 +177,8 @@ MachineCSE::isPhysDefTriviallyDead(unsigned Reg,
   unsigned LookAheadLeft = LookAheadLimit;
   while (LookAheadLeft) {
     // Skip over dbg_value's.
-    I = skipDebugInstructionsForward(I, E);
+    while (I != E && I->isDebugValue())
+      ++I;
 
     if (I == E)
       // Reached end of block, register is obviously dead.
@@ -226,7 +227,7 @@ bool MachineCSE::hasLivePhysRegDefUses(const MachineInstr *MI,
     if (TargetRegisterInfo::isVirtualRegister(Reg))
       continue;
     // Reading constant physregs is ok.
-    if (!MRI->isConstantPhysReg(Reg))
+    if (!MRI->isConstantPhysReg(Reg, *MBB->getParent()))
       for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
         PhysRefs.insert(*AI);
   }
@@ -345,7 +346,7 @@ bool MachineCSE::isCSECandidate(MachineInstr *MI) {
     // Okay, this instruction does a load. As a refinement, we allow the target
     // to decide whether the loaded value is actually a constant. If so, we can
     // actually use it as a load.
-    if (!MI->isDereferenceableInvariantLoad(AA))
+    if (!MI->isInvariantLoad(AA))
       // FIXME: we should be able to hoist loads with no other side effects if
       // there are no other instructions which can change memory in this loop.
       // This is a trivial form of alias analysis.

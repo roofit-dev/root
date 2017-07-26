@@ -369,12 +369,6 @@ namespace X86Disassembler {
   ENTRY(CR14)         \
   ENTRY(CR15)
 
-#define REGS_BOUND    \
-  ENTRY(BND0)         \
-  ENTRY(BND1)         \
-  ENTRY(BND2)         \
-  ENTRY(BND3)
-
 #define ALL_EA_BASES  \
   EA_BASES_16BIT      \
   EA_BASES_32BIT      \
@@ -397,7 +391,6 @@ namespace X86Disassembler {
   REGS_SEGMENT        \
   REGS_DEBUG          \
   REGS_CONTROL        \
-  REGS_BOUND          \
   ENTRY(RIP)
 
 /// \brief All possible values of the base field for effective-address
@@ -674,7 +667,7 @@ int decodeInstruction(InternalInstruction *insn,
 /// \param s    The message to print.
 void Debug(const char *file, unsigned line, const char *s);
 
-StringRef GetInstrName(unsigned Opcode, const void *mii);
+const char *GetInstrName(unsigned Opcode, const void *mii);
 
 } // namespace X86Disassembler
 } // namespace llvm

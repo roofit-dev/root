@@ -74,7 +74,6 @@ namespace TMVA {
    class DataSetInfo;
    class DataSetManager;
    class DataLoader;
-   class ROCCurve;
    class VariableTransformBase;
    
 
@@ -149,9 +148,9 @@ namespace TMVA {
 
       Bool_t IsSilentFile();
       Bool_t IsModelPersistence();
-
-      Double_t GetROCIntegral(DataLoader *loader, TString theMethodName, UInt_t iClass = 0);
-      Double_t GetROCIntegral(TString datasetname, TString theMethodName, UInt_t iClass = 0);
+      
+      Double_t GetROCIntegral(DataLoader *loader,TString theMethodName);
+      Double_t GetROCIntegral(TString  datasetname,TString theMethodName);
 
       // Methods to get a TGraph for an indicated method in dataset.
       // Optional title and axis added with fLegend=kTRUE.
@@ -180,13 +179,7 @@ namespace TMVA {
       TH1F* EvaluateImportanceRandom( DataLoader *loader,UInt_t nseeds, Types::EMVA theMethod,  TString methodTitle, const char *theOption = "" );
       
       TH1F* GetImportance(const int nbits,std::vector<Double_t> importances,std::vector<TString> varNames);
-
-      // Helpers for public facing ROC methods
-      ROCCurve *GetROC(DataLoader *loader, TString theMethodName, UInt_t iClass = 0,
-                       Types::ETreeType type = Types::kTesting);
-      ROCCurve *GetROC(TString datasetname, TString theMethodName, UInt_t iClass = 0,
-                       Types::ETreeType type = Types::kTesting);
-
+      
       void WriteDataInformation(DataSetInfo&     fDataSetInfo);
 
       void SetInputTreesFromEventAssignTrees();

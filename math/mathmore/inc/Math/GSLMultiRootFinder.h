@@ -231,9 +231,7 @@ namespace Math {
     /// Return the status of last root finding
     int Status() const { return fStatus; }
 
-    /// Return the algorithm name used for solving
-    /// Note the name is available only after having called solved
-    /// Otherwise an empyty string is returned
+    /// Return the algorithm name
     const char * Name() const;
 
     /*

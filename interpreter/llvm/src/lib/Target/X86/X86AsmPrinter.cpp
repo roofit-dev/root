@@ -57,10 +57,10 @@ bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   SetupMachineFunction(MF);
 
   if (Subtarget->isTargetCOFF()) {
-    bool Local = MF.getFunction()->hasLocalLinkage();
+    bool Intrn = MF.getFunction()->hasInternalLinkage();
     OutStreamer->BeginCOFFSymbolDef(CurrentFnSym);
-    OutStreamer->EmitCOFFSymbolStorageClass(
-        Local ? COFF::IMAGE_SYM_CLASS_STATIC : COFF::IMAGE_SYM_CLASS_EXTERNAL);
+    OutStreamer->EmitCOFFSymbolStorageClass(Intrn ? COFF::IMAGE_SYM_CLASS_STATIC
+                                            : COFF::IMAGE_SYM_CLASS_EXTERNAL);
     OutStreamer->EmitCOFFSymbolType(COFF::IMAGE_SYM_DTYPE_FUNCTION
                                                << COFF::SCT_COMPLEX_TYPE_SHIFT);
     OutStreamer->EndCOFFSymbolDef();
@@ -68,9 +68,6 @@ bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
 
   // Emit the rest of the function body.
   EmitFunctionBody();
-
-  // Emit the XRay table for this function.
-  emitXRayTable();
 
   // We didn't modify anything.
   return false;
@@ -627,11 +624,11 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
     raw_string_ostream FlagsOS(Flags);
 
     for (const auto &Function : M)
-      TLOFCOFF.emitLinkerFlagsForGlobal(FlagsOS, &Function);
+      TLOFCOFF.emitLinkerFlagsForGlobal(FlagsOS, &Function, *Mang);
     for (const auto &Global : M.globals())
-      TLOFCOFF.emitLinkerFlagsForGlobal(FlagsOS, &Global);
+      TLOFCOFF.emitLinkerFlagsForGlobal(FlagsOS, &Global, *Mang);
     for (const auto &Alias : M.aliases())
-      TLOFCOFF.emitLinkerFlagsForGlobal(FlagsOS, &Alias);
+      TLOFCOFF.emitLinkerFlagsForGlobal(FlagsOS, &Alias, *Mang);
 
     FlagsOS.flush();
 
@@ -656,6 +653,6 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
 
 // Force static initialization.
 extern "C" void LLVMInitializeX86AsmPrinter() {
-  RegisterAsmPrinter<X86AsmPrinter> X(getTheX86_32Target());
-  RegisterAsmPrinter<X86AsmPrinter> Y(getTheX86_64Target());
+  RegisterAsmPrinter<X86AsmPrinter> X(TheX86_32Target);
+  RegisterAsmPrinter<X86AsmPrinter> Y(TheX86_64Target);
 }

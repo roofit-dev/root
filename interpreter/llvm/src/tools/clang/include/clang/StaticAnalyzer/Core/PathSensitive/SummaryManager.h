@@ -15,6 +15,9 @@
 #ifndef LLVM_CLANG_GR_SUMMARY
 #define LLVM_CLANG_GR_SUMMARY
 
+#include "llvm/ADT/FoldingSet.h"
+#include "llvm/Support/Allocator.h"
+
 namespace clang {
 
 namespace ento {

@@ -18,20 +18,13 @@
 #ifndef LLVM_BITCODE_BITCODES_H
 #define LLVM_BITCODE_BITCODES_H
 
+#include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <cassert>
 
 namespace llvm {
-/// Offsets of the 32-bit fields of bitcode wrapper header.
-static const unsigned BWH_MagicField = 0 * 4;
-static const unsigned BWH_VersionField = 1 * 4;
-static const unsigned BWH_OffsetField = 2 * 4;
-static const unsigned BWH_SizeField = 3 * 4;
-static const unsigned BWH_CPUTypeField = 4 * 4;
-static const unsigned BWH_HeaderSize = 5 * 4;
-
 namespace bitc {
   enum StandardWidths {
     BlockIDWidth   = 8,  // We use VBR-8 for block IDs.
@@ -165,8 +158,11 @@ template <> struct isPodLike<BitCodeAbbrevOp> { static const bool value=true; };
 /// BitCodeAbbrev - This class represents an abbreviation record.  An
 /// abbreviation allows a complex record that has redundancy to be stored in a
 /// specialized format instead of the fully-general, fully-vbr, format.
-class BitCodeAbbrev {
+class BitCodeAbbrev : public RefCountedBase<BitCodeAbbrev> {
   SmallVector<BitCodeAbbrevOp, 32> OperandList;
+  // Only RefCountedBase is allowed to delete.
+  ~BitCodeAbbrev() = default;
+  friend class RefCountedBase<BitCodeAbbrev>;
 
 public:
   unsigned getNumOperandInfos() const {

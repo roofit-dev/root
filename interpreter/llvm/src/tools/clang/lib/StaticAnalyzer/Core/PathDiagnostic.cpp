@@ -29,10 +29,11 @@ using namespace clang;
 using namespace ento;
 
 bool PathDiagnosticMacroPiece::containsEvent() const {
-  for (auto &P : subPieces) {
-    if (isa<PathDiagnosticEventPiece>(*P))
+  for (PathPieces::const_iterator I = subPieces.begin(), E = subPieces.end();
+       I!=E; ++I) {
+    if (isa<PathDiagnosticEventPiece>(*I))
       return true;
-    if (auto *MP = dyn_cast<PathDiagnosticMacroPiece>(P.get()))
+    if (PathDiagnosticMacroPiece *MP = dyn_cast<PathDiagnosticMacroPiece>(*I))
       if (MP->containsEvent())
         return true;
   }
@@ -59,37 +60,41 @@ PathDiagnosticEventPiece::~PathDiagnosticEventPiece() {}
 PathDiagnosticCallPiece::~PathDiagnosticCallPiece() {}
 PathDiagnosticControlFlowPiece::~PathDiagnosticControlFlowPiece() {}
 PathDiagnosticMacroPiece::~PathDiagnosticMacroPiece() {}
-PathDiagnosticNotePiece::~PathDiagnosticNotePiece() {}
 
 void PathPieces::flattenTo(PathPieces &Primary, PathPieces &Current,
                            bool ShouldFlattenMacros) const {
-  for (auto &Piece : *this) {
+  for (PathPieces::const_iterator I = begin(), E = end(); I != E; ++I) {
+    PathDiagnosticPiece *Piece = I->get();
+
     switch (Piece->getKind()) {
     case PathDiagnosticPiece::Call: {
-      auto &Call = cast<PathDiagnosticCallPiece>(*Piece);
-      if (auto CallEnter = Call.getCallEnterEvent())
-        Current.push_back(std::move(CallEnter));
-      Call.path.flattenTo(Primary, Primary, ShouldFlattenMacros);
-      if (auto callExit = Call.getCallExitEvent())
-        Current.push_back(std::move(callExit));
+      PathDiagnosticCallPiece *Call = cast<PathDiagnosticCallPiece>(Piece);
+      IntrusiveRefCntPtr<PathDiagnosticEventPiece> CallEnter =
+        Call->getCallEnterEvent();
+      if (CallEnter)
+        Current.push_back(CallEnter);
+      Call->path.flattenTo(Primary, Primary, ShouldFlattenMacros);
+      IntrusiveRefCntPtr<PathDiagnosticEventPiece> callExit =
+        Call->getCallExitEvent();
+      if (callExit)
+        Current.push_back(callExit);
       break;
     }
     case PathDiagnosticPiece::Macro: {
-      auto &Macro = cast<PathDiagnosticMacroPiece>(*Piece);
+      PathDiagnosticMacroPiece *Macro = cast<PathDiagnosticMacroPiece>(Piece);
       if (ShouldFlattenMacros) {
-        Macro.subPieces.flattenTo(Primary, Primary, ShouldFlattenMacros);
+        Macro->subPieces.flattenTo(Primary, Primary, ShouldFlattenMacros);
       } else {
         Current.push_back(Piece);
         PathPieces NewPath;
-        Macro.subPieces.flattenTo(Primary, NewPath, ShouldFlattenMacros);
+        Macro->subPieces.flattenTo(Primary, NewPath, ShouldFlattenMacros);
         // FIXME: This probably shouldn't mutate the original path piece.
-        Macro.subPieces = NewPath;
+        Macro->subPieces = NewPath;
       }
       break;
     }
     case PathDiagnosticPiece::Event:
     case PathDiagnosticPiece::ControlFlow:
-    case PathDiagnosticPiece::Note:
       Current.push_back(Piece);
       break;
     }
@@ -136,7 +141,7 @@ getFirstStackedCallToHeaderFile(PathDiagnosticCallPiece *CP,
   // Check if the last piece in the callee path is a call to a function outside
   // of the main file.
   if (PathDiagnosticCallPiece *CPInner =
-          dyn_cast<PathDiagnosticCallPiece>(Path.back().get())) {
+      dyn_cast<PathDiagnosticCallPiece>(Path.back())) {
     return getFirstStackedCallToHeaderFile(CPInner, SMgr);
   }
 
@@ -206,12 +211,6 @@ void PathDiagnosticConsumer::HandlePathDiagnostic(
     const SourceManager &SMgr = D->path.front()->getLocation().getManager();
     SmallVector<const PathPieces *, 5> WorkList;
     WorkList.push_back(&D->path);
-    SmallString<128> buf;
-    llvm::raw_svector_ostream warning(buf);
-    warning << "warning: Path diagnostic report is not generated. Current "
-            << "output format does not support diagnostics that cross file "
-            << "boundaries. Refer to --analyzer-output for valid output "
-            << "formats\n";
 
     while (!WorkList.empty()) {
       const PathPieces &path = *WorkList.pop_back_val();
@@ -223,25 +222,19 @@ void PathDiagnosticConsumer::HandlePathDiagnostic(
 
         if (FID.isInvalid()) {
           FID = SMgr.getFileID(L);
-        } else if (SMgr.getFileID(L) != FID) {
-          llvm::errs() << warning.str();
-          return;
-        }
+        } else if (SMgr.getFileID(L) != FID)
+          return; // FIXME: Emit a warning?
 
         // Check the source ranges.
         ArrayRef<SourceRange> Ranges = piece->getRanges();
         for (ArrayRef<SourceRange>::iterator I = Ranges.begin(),
                                              E = Ranges.end(); I != E; ++I) {
           SourceLocation L = SMgr.getExpansionLoc(I->getBegin());
-          if (!L.isFileID() || SMgr.getFileID(L) != FID) {
-            llvm::errs() << warning.str();
-            return;
-          }
+          if (!L.isFileID() || SMgr.getFileID(L) != FID)
+            return; // FIXME: Emit a warning?
           L = SMgr.getExpansionLoc(I->getEnd());
-          if (!L.isFileID() || SMgr.getFileID(L) != FID) {
-            llvm::errs() << warning.str();
-            return;
-          }
+          if (!L.isFileID() || SMgr.getFileID(L) != FID)
+            return; // FIXME: Emit a warning?
         }
 
         if (const PathDiagnosticCallPiece *call =
@@ -349,16 +342,15 @@ static Optional<bool> comparePiece(const PathDiagnosticPiece &X,
   }
 
   switch (X.getKind()) {
-    case PathDiagnosticPiece::ControlFlow:
+    case clang::ento::PathDiagnosticPiece::ControlFlow:
       return compareControlFlow(cast<PathDiagnosticControlFlowPiece>(X),
                                 cast<PathDiagnosticControlFlowPiece>(Y));
-    case PathDiagnosticPiece::Event:
-    case PathDiagnosticPiece::Note:
+    case clang::ento::PathDiagnosticPiece::Event:
       return None;
-    case PathDiagnosticPiece::Macro:
+    case clang::ento::PathDiagnosticPiece::Macro:
       return compareMacro(cast<PathDiagnosticMacroPiece>(X),
                           cast<PathDiagnosticMacroPiece>(Y));
-    case PathDiagnosticPiece::Call:
+    case clang::ento::PathDiagnosticPiece::Call:
       return compareCall(cast<PathDiagnosticCallPiece>(X),
                          cast<PathDiagnosticCallPiece>(Y));
   }
@@ -883,26 +875,24 @@ void PathDiagnosticLocation::flatten() {
 // Manipulation of PathDiagnosticCallPieces.
 //===----------------------------------------------------------------------===//
 
-std::shared_ptr<PathDiagnosticCallPiece>
-PathDiagnosticCallPiece::construct(const ExplodedNode *N, const CallExitEnd &CE,
+PathDiagnosticCallPiece *
+PathDiagnosticCallPiece::construct(const ExplodedNode *N,
+                                   const CallExitEnd &CE,
                                    const SourceManager &SM) {
   const Decl *caller = CE.getLocationContext()->getDecl();
   PathDiagnosticLocation pos = getLocationForCaller(CE.getCalleeContext(),
                                                     CE.getLocationContext(),
                                                     SM);
-  return std::shared_ptr<PathDiagnosticCallPiece>(
-      new PathDiagnosticCallPiece(caller, pos));
+  return new PathDiagnosticCallPiece(caller, pos);
 }
 
 PathDiagnosticCallPiece *
 PathDiagnosticCallPiece::construct(PathPieces &path,
                                    const Decl *caller) {
-  std::shared_ptr<PathDiagnosticCallPiece> C(
-      new PathDiagnosticCallPiece(path, caller));
+  PathDiagnosticCallPiece *C = new PathDiagnosticCallPiece(path, caller);
   path.clear();
-  auto *R = C.get();
-  path.push_front(std::move(C));
-  return R;
+  path.push_front(C);
+  return C;
 }
 
 void PathDiagnosticCallPiece::setCallee(const CallEnter &CE,
@@ -984,7 +974,7 @@ static bool describeCodeDecl(raw_ostream &Out, const Decl *D,
   return true;
 }
 
-std::shared_ptr<PathDiagnosticEventPiece>
+IntrusiveRefCntPtr<PathDiagnosticEventPiece>
 PathDiagnosticCallPiece::getCallEnterEvent() const {
   if (!Callee)
     return nullptr;
@@ -996,10 +986,10 @@ PathDiagnosticCallPiece::getCallEnterEvent() const {
   describeCodeDecl(Out, Callee, /*ExtendedDescription=*/true);
 
   assert(callEnter.asLocation().isValid());
-  return std::make_shared<PathDiagnosticEventPiece>(callEnter, Out.str());
+  return new PathDiagnosticEventPiece(callEnter, Out.str());
 }
 
-std::shared_ptr<PathDiagnosticEventPiece>
+IntrusiveRefCntPtr<PathDiagnosticEventPiece>
 PathDiagnosticCallPiece::getCallEnterWithinCallerEvent() const {
   if (!callEnterWithin.asLocation().isValid())
     return nullptr;
@@ -1015,10 +1005,10 @@ PathDiagnosticCallPiece::getCallEnterWithinCallerEvent() const {
   Out << "Entered call";
   describeCodeDecl(Out, Caller, /*ExtendedDescription=*/false, " from ");
 
-  return std::make_shared<PathDiagnosticEventPiece>(callEnterWithin, Out.str());
+  return new PathDiagnosticEventPiece(callEnterWithin, Out.str());
 }
 
-std::shared_ptr<PathDiagnosticEventPiece>
+IntrusiveRefCntPtr<PathDiagnosticEventPiece>
 PathDiagnosticCallPiece::getCallExitEvent() const {
   if (NoExit)
     return nullptr;
@@ -1037,7 +1027,7 @@ PathDiagnosticCallPiece::getCallExitEvent() const {
   }
 
   assert(callReturn.asLocation().isValid());
-  return std::make_shared<PathDiagnosticEventPiece>(callReturn, Out.str());
+  return new PathDiagnosticEventPiece(callReturn, Out.str());
 }
 
 static void compute_path_size(const PathPieces &pieces, unsigned &size) {
@@ -1106,10 +1096,6 @@ void PathDiagnosticMacroPiece::Profile(llvm::FoldingSetNodeID &ID) const {
   for (PathPieces::const_iterator I = subPieces.begin(), E = subPieces.end();
        I != E; ++I)
     ID.Add(**I);
-}
-
-void PathDiagnosticNotePiece::Profile(llvm::FoldingSetNodeID &ID) const {
-  PathDiagnosticSpotPiece::Profile(ID);
 }
 
 void PathDiagnostic::Profile(llvm::FoldingSetNodeID &ID) const {

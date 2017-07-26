@@ -1,4 +1,4 @@
-//===- ScoreboardHazardRecognizer.cpp - Scheduler Support -----------------===//
+//===----- ScoreboardHazardRecognizer.cpp - Scheduler Support -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,13 +15,11 @@
 
 #include "llvm/CodeGen/ScoreboardHazardRecognizer.h"
 #include "llvm/CodeGen/ScheduleDAG.h"
-#include "llvm/MC/MCInstrDesc.h"
 #include "llvm/MC/MCInstrItineraries.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
-#include <cassert>
 
 using namespace llvm;
 
@@ -31,7 +29,8 @@ ScoreboardHazardRecognizer::ScoreboardHazardRecognizer(
     const InstrItineraryData *II, const ScheduleDAG *SchedDAG,
     const char *ParentDebugType)
     : ScheduleHazardRecognizer(), DebugType(ParentDebugType), ItinData(II),
-      DAG(SchedDAG) {
+      DAG(SchedDAG), IssueWidth(0), IssueCount(0) {
+
   // Determine the maximum depth of any itinerary. This determines the depth of
   // the scoreboard. We always make the scoreboard at least 1 cycle deep to
   // avoid dealing with the boundary condition.
@@ -146,7 +145,7 @@ ScoreboardHazardRecognizer::getHazardType(SUnit *SU, int Stalls) {
       case InstrStage::Required:
         // Required FUs conflict with both reserved and required ones
         freeUnits &= ~ReservedScoreboard[StageCycle];
-        LLVM_FALLTHROUGH;
+        // FALLTHROUGH
       case InstrStage::Reserved:
         // Reserved FUs can conflict only with required ones.
         freeUnits &= ~RequiredScoreboard[StageCycle];
@@ -198,7 +197,7 @@ void ScoreboardHazardRecognizer::EmitInstruction(SUnit *SU) {
       case InstrStage::Required:
         // Required FUs conflict with both reserved and required ones
         freeUnits &= ~ReservedScoreboard[cycle + i];
-        LLVM_FALLTHROUGH;
+        // FALLTHROUGH
       case InstrStage::Reserved:
         // Reserved FUs can conflict only with required ones.
         freeUnits &= ~RequiredScoreboard[cycle + i];

@@ -19,14 +19,6 @@
 #include "R600RegisterInfo.h"
 
 namespace llvm {
-
-namespace R600InstrFlags {
-enum : uint64_t {
- REGISTER_STORE = UINT64_C(1) << 62,
- REGISTER_LOAD = UINT64_C(1) << 63
-};
-}
-
 class AMDGPUTargetMachine;
 class DFAPacketizer;
 class MachineFunction;
@@ -76,6 +68,8 @@ public:
   bool isLegalToSplitMBBAt(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator MBBI) const override;
 
+  bool isTrig(const MachineInstr &MI) const;
+  bool isPlaceHolderOpcode(unsigned opcode) const;
   bool isReductionOp(unsigned opcode) const;
   bool isCubeOp(unsigned opcode) const;
 
@@ -83,6 +77,7 @@ public:
   bool isALUInstr(unsigned Opcode) const;
   bool hasInstrModifiers(unsigned Opcode) const;
   bool isLDSInstr(unsigned Opcode) const;
+  bool isLDSNoRetInstr(unsigned Opcode) const;
   bool isLDSRetInstr(unsigned Opcode) const;
 
   /// \returns true if this \p Opcode represents an ALU instruction or an
@@ -105,6 +100,9 @@ public:
   bool definesAddressRegister(MachineInstr &MI) const;
   bool readsLDSSrcReg(const MachineInstr &MI) const;
 
+  /// \returns The operand index for the given source number.  Legal values
+  /// for SrcNum are 0, 1, and 2.
+  int getSrcIdx(unsigned Opcode, unsigned SrcNum) const;
   /// \returns The operand Index for the Sel operand given an index to one
   /// of the instruction's src operands.
   int getSelIdx(unsigned Opcode, unsigned SrcIdx) const;
@@ -159,30 +157,29 @@ public:
   DFAPacketizer *
   CreateTargetScheduleState(const TargetSubtargetInfo &) const override;
 
-  bool reverseBranchCondition(
+  bool ReverseBranchCondition(
     SmallVectorImpl<MachineOperand> &Cond) const override;
 
-  bool analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
+  bool AnalyzeBranch(MachineBasicBlock &MBB,
+                     MachineBasicBlock *&TBB,
                      MachineBasicBlock *&FBB,
                      SmallVectorImpl<MachineOperand> &Cond,
                      bool AllowModify) const override;
 
-  unsigned insertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
+  unsigned InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
                         MachineBasicBlock *FBB, ArrayRef<MachineOperand> Cond,
-                        const DebugLoc &DL,
-                        int *BytesAdded = nullptr) const override;
+                        const DebugLoc &DL) const override;
 
-  unsigned removeBranch(MachineBasicBlock &MBB,
-                        int *BytesRemvoed = nullptr) const override;
+  unsigned RemoveBranch(MachineBasicBlock &MBB) const override;
 
   bool isPredicated(const MachineInstr &MI) const override;
 
-  bool isPredicable(const MachineInstr &MI) const override;
+  bool isPredicable(MachineInstr &MI) const override;
 
-  bool isProfitableToDupForIfCvt(MachineBasicBlock &MBB, unsigned NumCycles,
+  bool isProfitableToDupForIfCvt(MachineBasicBlock &MBB, unsigned NumCyles,
                                  BranchProbability Probability) const override;
 
-  bool isProfitableToIfCvt(MachineBasicBlock &MBB, unsigned NumCycles,
+  bool isProfitableToIfCvt(MachineBasicBlock &MBB, unsigned NumCyles,
                            unsigned ExtraPredCycles,
                            BranchProbability Probability) const override ;
 
@@ -195,6 +192,9 @@ public:
   bool DefinesPredicate(MachineInstr &MI,
                         std::vector<MachineOperand> &Pred) const override;
 
+  bool SubsumesPredicate(ArrayRef<MachineOperand> Pred1,
+                         ArrayRef<MachineOperand> Pred2) const override;
+
   bool isProfitableToUnpredicate(MachineBasicBlock &TMBB,
                                  MachineBasicBlock &FMBB) const override;
 
@@ -206,6 +206,9 @@ public:
   unsigned int getInstrLatency(const InstrItineraryData *ItinData,
                                const MachineInstr &MI,
                                unsigned *PredCost = nullptr) const override;
+
+  int getInstrLatency(const InstrItineraryData *ItinData,
+                      SDNode *Node) const override { return 1;}
 
   bool expandPostRAPseudo(MachineInstr &MI) const override;
 
@@ -223,17 +226,7 @@ public:
   unsigned calculateIndirectAddress(unsigned RegIndex, unsigned Channel) const;
 
 
-  /// \returns The register class to be used for loading and storing values
-  /// from an "Indirect Address" .
-  const TargetRegisterClass *getIndirectAddrRegClass() const;
-
-  /// \returns the smallest register index that will be accessed by an indirect
-  /// read or write or -1 if indirect addressing is not used by this program.
-  int getIndirectIndexBegin(const MachineFunction &MF) const;
-
-  /// \returns the largest register index that will be accessed by an indirect
-  /// read or write or -1 if indirect addressing is not used by this program.
-  int getIndirectIndexEnd(const MachineFunction &MF) const;
+  const TargetRegisterClass *getIndirectAddrRegClass() const override;
 
   /// \brief Build instruction(s) for an indirect register write.
   ///
@@ -294,6 +287,9 @@ public:
   /// \brief Helper function for setting instruction flag values.
   void setImmOperand(MachineInstr &MI, unsigned Op, int64_t Imm) const;
 
+  /// \returns true if this instruction has an operand for storing target flags.
+  bool hasFlagOperand(const MachineInstr &MI) const;
+
   ///\brief Add one of the MO_FLAG* flags to the specified \p Operand.
   void addFlag(MachineInstr &MI, unsigned Operand, unsigned Flag) const;
 
@@ -311,13 +307,8 @@ public:
   void clearFlag(MachineInstr &MI, unsigned Operand, unsigned Flag) const;
 
   // Helper functions that check the opcode for status information
-  bool isRegisterStore(const MachineInstr &MI) const {
-    return get(MI.getOpcode()).TSFlags & R600InstrFlags::REGISTER_STORE;
-  }
-
-  bool isRegisterLoad(const MachineInstr &MI) const {
-    return get(MI.getOpcode()).TSFlags & R600InstrFlags::REGISTER_LOAD;
-  }
+  bool isRegisterStore(const MachineInstr &MI) const;
+  bool isRegisterLoad(const MachineInstr &MI) const;
 };
 
 namespace AMDGPU {

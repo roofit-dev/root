@@ -29,9 +29,6 @@
 // It could be transformed into a ld2 intrinsic in AArch64 backend or a vld2
 // intrinsic in ARM backend.
 //
-// In X86, this can be further optimized into a set of target
-// specific loads followed by an optimized sequence of shuffles.
-//
 // E.g. An interleaved store (Factor = 3):
 //        %i.vec = shuffle <8 x i32> %v0, <8 x i32> %v1,
 //                                    <0, 4, 8, 1, 5, 9, 2, 6, 10, 3, 7, 11>
@@ -40,8 +37,6 @@
 // It could be transformed into a st3 intrinsic in AArch64 backend or a vst3
 // intrinsic in ARM backend.
 //
-// Similarly, a set of interleaved stores can be transformed into an optimized
-// sequence of shuffles followed by a set of target specific stores for X86.
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/Passes.h"
@@ -62,6 +57,8 @@ static cl::opt<bool> LowerInterleavedAccesses(
     cl::desc("Enable lowering interleaved accesses to intrinsics"),
     cl::init(true), cl::Hidden);
 
+static unsigned MaxFactor; // The maximum supported interleave factor.
+
 namespace {
 
 class InterleavedAccess : public FunctionPass {
@@ -73,7 +70,7 @@ public:
     initializeInterleavedAccessPass(*PassRegistry::getPassRegistry());
   }
 
-  StringRef getPassName() const override { return "Interleaved Access Pass"; }
+  const char *getPassName() const override { return "Interleaved Access Pass"; }
 
   bool runOnFunction(Function &F) override;
 
@@ -86,9 +83,6 @@ private:
   DominatorTree *DT;
   const TargetMachine *TM;
   const TargetLowering *TLI;
-
-  /// The maximum supported interleave factor.
-  unsigned MaxFactor;
 
   /// \brief Transform an interleaved load into target specific intrinsics.
   bool lowerInterleavedLoad(LoadInst *LI,
@@ -150,7 +144,7 @@ static bool isDeInterleaveMaskOfFactor(ArrayRef<int> Mask, unsigned Factor,
 ///     <0, 2, 4, 6>    (mask of index 0 to extract even elements)
 ///     <1, 3, 5, 7>    (mask of index 1 to extract odd elements)
 static bool isDeInterleaveMask(ArrayRef<int> Mask, unsigned &Factor,
-                               unsigned &Index, unsigned MaxFactor) {
+                               unsigned &Index) {
   if (Mask.size() < 2)
     return false;
 
@@ -162,19 +156,13 @@ static bool isDeInterleaveMask(ArrayRef<int> Mask, unsigned &Factor,
   return false;
 }
 
-/// \brief Check if the mask can be used in an interleaved store.
-//
-/// It checks for a more general pattern than the RE-interleave mask.
-/// I.e. <x, y, ... z, x+1, y+1, ...z+1, x+2, y+2, ...z+2, ...>
-/// E.g. For a Factor of 2 (LaneLen=4): <4, 32, 5, 33, 6, 34, 7, 35>
-/// E.g. For a Factor of 3 (LaneLen=4): <4, 32, 16, 5, 33, 17, 6, 34, 18, 7, 35, 19>
-/// E.g. For a Factor of 4 (LaneLen=2): <8, 2, 12, 4, 9, 3, 13, 5>
+/// \brief Check if the mask is RE-interleave mask for an interleaved store.
 ///
-/// The particular case of an RE-interleave mask is:
-/// I.e. <0, LaneLen, ... , LaneLen*(Factor - 1), 1, LaneLen + 1, ...>
-/// E.g. For a Factor of 2 (LaneLen=4): <0, 4, 1, 5, 2, 6, 3, 7>
-static bool isReInterleaveMask(ArrayRef<int> Mask, unsigned &Factor,
-                               unsigned MaxFactor, unsigned OpNumElts) {
+/// I.e. <0, NumSubElts, ... , NumSubElts*(Factor - 1), 1, NumSubElts + 1, ...>
+///
+/// E.g. The RE-interleave mask (Factor = 2) could be:
+///     <0, 4, 1, 5, 2, 6, 3, 7>
+static bool isReInterleaveMask(ArrayRef<int> Mask, unsigned &Factor) {
   unsigned NumElts = Mask.size();
   if (NumElts < 4)
     return false;
@@ -184,75 +172,21 @@ static bool isReInterleaveMask(ArrayRef<int> Mask, unsigned &Factor,
     if (NumElts % Factor)
       continue;
 
-    unsigned LaneLen = NumElts / Factor;
-    if (!isPowerOf2_32(LaneLen))
+    unsigned NumSubElts = NumElts / Factor;
+    if (!isPowerOf2_32(NumSubElts))
       continue;
 
-    // Check whether each element matches the general interleaved rule.
-    // Ignore undef elements, as long as the defined elements match the rule.
-    // Outer loop processes all factors (x, y, z in the above example)
-    unsigned I = 0, J;
-    for (; I < Factor; I++) {
-      unsigned SavedLaneValue;
-      unsigned SavedNoUndefs = 0;
-
-      // Inner loop processes consecutive accesses (x, x+1... in the example)
-      for (J = 0; J < LaneLen - 1; J++) {
-        // Lane computes x's position in the Mask
-        unsigned Lane = J * Factor + I;
-        unsigned NextLane = Lane + Factor;
-        int LaneValue = Mask[Lane];
-        int NextLaneValue = Mask[NextLane];
-
-        // If both are defined, values must be sequential
-        if (LaneValue >= 0 && NextLaneValue >= 0 &&
-            LaneValue + 1 != NextLaneValue)
-          break;
-
-        // If the next value is undef, save the current one as reference
-        if (LaneValue >= 0 && NextLaneValue < 0) {
-          SavedLaneValue = LaneValue;
-          SavedNoUndefs = 1;
-        }
-
-        // Undefs are allowed, but defined elements must still be consecutive:
-        // i.e.: x,..., undef,..., x + 2,..., undef,..., undef,..., x + 5, ....
-        // Verify this by storing the last non-undef followed by an undef
-        // Check that following non-undef masks are incremented with the
-        // corresponding distance.
-        if (SavedNoUndefs > 0 && LaneValue < 0) {
-          SavedNoUndefs++;
-          if (NextLaneValue >= 0 &&
-              SavedLaneValue + SavedNoUndefs != (unsigned)NextLaneValue)
-            break;
-        }
-      }
-
-      if (J < LaneLen - 1)
+    // Check whether each element matchs the RE-interleaved rule. Ignore undef
+    // elements.
+    unsigned i = 0;
+    for (; i < NumElts; i++)
+      if (Mask[i] >= 0 &&
+          static_cast<unsigned>(Mask[i]) !=
+              (i % Factor) * NumSubElts + i / Factor)
         break;
 
-      int StartMask = 0;
-      if (Mask[I] >= 0) {
-        // Check that the start of the I range (J=0) is greater than 0
-        StartMask = Mask[I];
-      } else if (Mask[(LaneLen - 1) * Factor + I] >= 0) {
-        // StartMask defined by the last value in lane
-        StartMask = Mask[(LaneLen - 1) * Factor + I] - J;
-      } else if (SavedNoUndefs > 0) {
-        // StartMask defined by some non-zero value in the j loop
-        StartMask = SavedLaneValue - (LaneLen - 1 - SavedNoUndefs);
-      }
-      // else StartMask remains set to 0, i.e. all elements are undefs
-
-      if (StartMask < 0)
-        break;
-      // We must stay within the vectors; This case can happen with undefs.
-      if (StartMask + LaneLen > OpNumElts*2)
-        break;
-    }
-
-    // Found an interleaved mask of current factor.
-    if (I == Factor)
+    // Find a RE-interleaved mask of current factor.
+    if (i == NumElts)
       return true;
   }
 
@@ -290,8 +224,7 @@ bool InterleavedAccess::lowerInterleavedLoad(
   unsigned Factor, Index;
 
   // Check if the first shufflevector is DE-interleave shuffle.
-  if (!isDeInterleaveMask(Shuffles[0]->getShuffleMask(), Factor, Index,
-                          MaxFactor))
+  if (!isDeInterleaveMask(Shuffles[0]->getShuffleMask(), Factor, Index))
     return false;
 
   // Holds the corresponding index for each DE-interleave shuffle.
@@ -409,8 +342,7 @@ bool InterleavedAccess::lowerInterleavedStore(
 
   // Check if the shufflevector is RE-interleave shuffle.
   unsigned Factor;
-  unsigned OpNumElts = SVI->getOperand(0)->getType()->getVectorNumElements();
-  if (!isReInterleaveMask(SVI->getShuffleMask(), Factor, MaxFactor, OpNumElts))
+  if (!isReInterleaveMask(SVI->getShuffleMask(), Factor))
     return false;
 
   DEBUG(dbgs() << "IA: Found an interleaved store: " << *SI << "\n");

@@ -60,8 +60,6 @@ private:
                                                   bool IsInsideLoad) const;
   StringRef getSubsectionStartingAt(StringRef Name) const;
 
-  Optional<uint64_t> getSectionLoadAddress(void *LocalAddr) const;
-
   void registerSection(StringRef FilePath, unsigned SectionID);
   void registerStubMap(StringRef FilePath, unsigned SectionID,
                        const RuntimeDyldImpl::StubMap &RTDyldStubs);

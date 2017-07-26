@@ -121,20 +121,23 @@ private:
   /// Declaration for objc_retainAutoreleaseReturnValue().
   Constant *RetainAutoreleaseRV;
 
-  Constant *getVoidRetI8XEntryPoint(Constant *&Decl, StringRef Name) {
+  Constant *getVoidRetI8XEntryPoint(Constant *&Decl,
+                                    const char *Name) {
     if (Decl)
       return Decl;
 
     LLVMContext &C = TheModule->getContext();
     Type *Params[] = { PointerType::getUnqual(Type::getInt8Ty(C)) };
-    AttributeList Attr = AttributeList().addAttribute(
-        C, AttributeList::FunctionIndex, Attribute::NoUnwind);
+    AttributeSet Attr =
+      AttributeSet().addAttribute(C, AttributeSet::FunctionIndex,
+                                  Attribute::NoUnwind);
     FunctionType *Fty = FunctionType::get(Type::getVoidTy(C), Params,
                                           /*isVarArg=*/false);
     return Decl = TheModule->getOrInsertFunction(Name, Fty, Attr);
   }
 
-  Constant *getI8XRetI8XEntryPoint(Constant *&Decl, StringRef Name,
+  Constant *getI8XRetI8XEntryPoint(Constant *& Decl,
+                                   const char *Name,
                                    bool NoUnwind = false) {
     if (Decl)
       return Decl;
@@ -143,16 +146,17 @@ private:
     Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
     Type *Params[] = { I8X };
     FunctionType *Fty = FunctionType::get(I8X, Params, /*isVarArg=*/false);
-    AttributeList Attr = AttributeList();
+    AttributeSet Attr = AttributeSet();
 
     if (NoUnwind)
-      Attr = Attr.addAttribute(C, AttributeList::FunctionIndex,
+      Attr = Attr.addAttribute(C, AttributeSet::FunctionIndex,
                                Attribute::NoUnwind);
 
     return Decl = TheModule->getOrInsertFunction(Name, Fty, Attr);
   }
 
-  Constant *getI8XRetI8XXI8XEntryPoint(Constant *&Decl, StringRef Name) {
+  Constant *getI8XRetI8XXI8XEntryPoint(Constant *&Decl,
+                                       const char *Name) {
     if (Decl)
       return Decl;
 
@@ -161,9 +165,10 @@ private:
     Type *I8XX = PointerType::getUnqual(I8X);
     Type *Params[] = { I8XX, I8X };
 
-    AttributeList Attr = AttributeList().addAttribute(
-        C, AttributeList::FunctionIndex, Attribute::NoUnwind);
-    Attr = Attr.addParamAttribute(C, 0, Attribute::NoCapture);
+    AttributeSet Attr =
+      AttributeSet().addAttribute(C, AttributeSet::FunctionIndex,
+                                  Attribute::NoUnwind);
+    Attr = Attr.addAttribute(C, 1, Attribute::NoCapture);
 
     FunctionType *Fty = FunctionType::get(Type::getVoidTy(C), Params,
                                           /*isVarArg=*/false);

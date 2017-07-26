@@ -24,6 +24,7 @@
 #endif
 
 namespace llvm {
+using namespace sys;
 
 //===----------------------------------------------------------------------===//
 //=== WARNING: Implementation here must contain only Win32 specific code
@@ -32,7 +33,7 @@ namespace llvm {
 
 typedef BOOL (WINAPI *fpEnumerateLoadedModules)(HANDLE,PENUMLOADED_MODULES_CALLBACK64,PVOID);
 static fpEnumerateLoadedModules fEnumerateLoadedModules;
-static llvm::ManagedStatic<DenseSet<HMODULE> > OpenedHandles;
+static DenseSet<HMODULE> *OpenedHandles;
 
 static bool loadDebugHelp(void) {
   HMODULE hLib = ::LoadLibraryW(L"Dbghelp.dll");
@@ -50,13 +51,15 @@ ELM_Callback(PCSTR ModuleName, DWORD64 ModuleBase,
   return TRUE;
 }
 
-sys::DynamicLibrary
-sys::DynamicLibrary::getPermanentLibrary(const char *filename,
-                                         std::string *errMsg) {
+DynamicLibrary DynamicLibrary::getPermanentLibrary(const char *filename,
+                                                   std::string *errMsg) {
   SmartScopedLock<true> lock(*SymbolsMutex);
 
   if (!filename) {
     // When no file is specified, enumerate all DLLs and EXEs in the process.
+    if (OpenedHandles == 0)
+      OpenedHandles = new DenseSet<HMODULE>();
+
     if (!fEnumerateLoadedModules) {
       if (!loadDebugHelp()) {
         assert(false && "These APIs should always be available");
@@ -76,7 +79,7 @@ sys::DynamicLibrary::getPermanentLibrary(const char *filename,
     MakeErrMsg(errMsg, std::string(filename) + ": Can't convert to UTF-16");
     return DynamicLibrary();
   }
-
+  
   HMODULE a_handle = LoadLibraryW(filenameUnicode.data());
 
   if (a_handle == 0) {
@@ -84,24 +87,15 @@ sys::DynamicLibrary::getPermanentLibrary(const char *filename,
     return DynamicLibrary();
   }
 
+  if (OpenedHandles == 0)
+    OpenedHandles = new DenseSet<HMODULE>();
+
   // If we've already loaded this library, FreeLibrary() the handle in order to
   // keep the internal refcount at +1.
   if (!OpenedHandles->insert(a_handle).second)
     FreeLibrary(a_handle);
 
   return DynamicLibrary(a_handle);
-}
-
-sys::DynamicLibrary
-sys::DynamicLibrary::addPermanentLibrary(void *handle, std::string *errMsg) {
-  SmartScopedLock<true> lock(*SymbolsMutex);
-  // If we've already loaded this library, tell the caller.
-  if (!OpenedHandles->insert((HMODULE)handle).second) {
-    MakeErrMsg(errMsg, "Library already loaded");
-    return DynamicLibrary();
-  }
-
-  return DynamicLibrary(handle);
 }
 
 // Stack probing routines are in the support library (e.g. libgcc), but we don't
@@ -129,7 +123,7 @@ sys::DynamicLibrary::addPermanentLibrary(void *handle, std::string *errMsg) {
 #undef INLINE_DEF_SYMBOL1
 #undef INLINE_DEF_SYMBOL2
 
-void *sys::DynamicLibrary::SearchForAddressOfSymbol(const char *symbolName) {
+void* DynamicLibrary::SearchForAddressOfSymbol(const char* symbolName) {
   SmartScopedLock<true> Lock(*SymbolsMutex);
 
   // First check symbols added via AddSymbol().
@@ -141,7 +135,7 @@ void *sys::DynamicLibrary::SearchForAddressOfSymbol(const char *symbolName) {
   }
 
   // Now search the libraries.
-  if (OpenedHandles.isConstructed()) {
+  if (OpenedHandles) {
     for (DenseSet<HMODULE>::iterator I = OpenedHandles->begin(),
          E = OpenedHandles->end(); I != E; ++I) {
       FARPROC ptr = GetProcAddress((HMODULE)*I, symbolName);
@@ -177,12 +171,25 @@ void *sys::DynamicLibrary::SearchForAddressOfSymbol(const char *symbolName) {
   return 0;
 }
 
-void *sys::DynamicLibrary::getAddressOfSymbol(const char *symbolName) {
+void *DynamicLibrary::getAddressOfSymbol(const char *symbolName) {
   if (!isValid())
     return NULL;
   if (Data == &OpenedHandles)
     return SearchForAddressOfSymbol(symbolName);
   return (void *)(intptr_t)GetProcAddress((HMODULE)Data, symbolName);
 }
+
+DynamicLibrary DynamicLibrary::addPermanentLibrary(void *handle) {
+  if (OpenedHandles == 0)
+    OpenedHandles = new DenseSet<HMODULE>();
+
+  // If we've already loaded this library, dlclose() the handle in order to
+  // keep the internal refcount at +1.
+  if (!OpenedHandles->insert((const HMODULE)handle).second)
+    FreeLibrary((HMODULE)handle);
+
+  return DynamicLibrary((HMODULE)handle);
+}
+
 
 }

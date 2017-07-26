@@ -17,24 +17,18 @@
 #define LLVM_SUPPORT_SOURCEMGR_H
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
-#include <algorithm>
-#include <cassert>
-#include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
 namespace llvm {
-
-class raw_ostream;
-class SMDiagnostic;
-class SMFixIt;
+  class SourceMgr;
+  class SMDiagnostic;
+  class SMFixIt;
+  class Twine;
+  class raw_ostream;
 
 /// This owns the files read by a parser, handles include stacks,
 /// and handles diagnostic wrangling.
@@ -50,7 +44,6 @@ public:
   /// register a function pointer+context as a diagnostic handler.
   /// It gets called each time PrintMessage is invoked.
   typedef void (*DiagHandlerTy)(const SMDiagnostic &, void *Context);
-
 private:
   struct SrcBuffer {
     /// The memory buffer for the file.
@@ -58,6 +51,11 @@ private:
 
     /// This is the location of the parent include, or null if at the top level.
     SMLoc IncludeLoc;
+
+    SrcBuffer() {}
+
+    SrcBuffer(SrcBuffer &&O)
+        : Buffer(std::move(O.Buffer)), IncludeLoc(O.IncludeLoc) {}
   };
 
   /// This is all of the buffers that we are reading from.
@@ -68,17 +66,18 @@ private:
 
   /// This is a cache for line number queries, its implementation is really
   /// private to SourceMgr.cpp.
-  mutable void *LineNoCache = nullptr;
+  mutable void *LineNoCache;
 
-  DiagHandlerTy DiagHandler = nullptr;
-  void *DiagContext = nullptr;
+  DiagHandlerTy DiagHandler;
+  void *DiagContext;
 
   bool isValidBufferID(unsigned i) const { return i && i <= Buffers.size(); }
 
+  SourceMgr(const SourceMgr&) = delete;
+  void operator=(const SourceMgr&) = delete;
 public:
-  SourceMgr() = default;
-  SourceMgr(const SourceMgr &) = delete;
-  SourceMgr &operator=(const SourceMgr &) = delete;
+  SourceMgr()
+    : LineNoCache(nullptr), DiagHandler(nullptr), DiagContext(nullptr) {}
   ~SourceMgr();
 
   void setIncludeDirs(const std::vector<std::string> &Dirs) {
@@ -196,6 +195,7 @@ public:
   void PrintIncludeStack(SMLoc IncludeLoc, raw_ostream &OS) const;
 };
 
+
 /// Represents a single fixit, a replacement of one range of text with another.
 class SMFixIt {
   SMRange Range;
@@ -227,31 +227,33 @@ public:
   }
 };
 
+
 /// Instances of this class encapsulate one diagnostic report, allowing
 /// printing to a raw_ostream as a caret diagnostic.
 class SMDiagnostic {
-  const SourceMgr *SM = nullptr;
+  const SourceMgr *SM;
   SMLoc Loc;
   std::string Filename;
-  int LineNo = 0;
-  int ColumnNo = 0;
-  SourceMgr::DiagKind Kind = SourceMgr::DK_Error;
+  int LineNo, ColumnNo;
+  SourceMgr::DiagKind Kind;
   std::string Message, LineContents;
-  std::vector<std::pair<unsigned, unsigned>> Ranges;
+  std::vector<std::pair<unsigned, unsigned> > Ranges;
   SmallVector<SMFixIt, 4> FixIts;
 
 public:
   // Null diagnostic.
-  SMDiagnostic() = default;
+  SMDiagnostic()
+    : SM(nullptr), LineNo(0), ColumnNo(0), Kind(SourceMgr::DK_Error) {}
   // Diagnostic with no location (e.g. file not found, command line arg error).
   SMDiagnostic(StringRef filename, SourceMgr::DiagKind Knd, StringRef Msg)
-    : Filename(filename), LineNo(-1), ColumnNo(-1), Kind(Knd), Message(Msg) {}
+    : SM(nullptr), Filename(filename), LineNo(-1), ColumnNo(-1), Kind(Knd),
+      Message(Msg) {}
 
   // Diagnostic with a location.
   SMDiagnostic(const SourceMgr &sm, SMLoc L, StringRef FN,
                int Line, int Col, SourceMgr::DiagKind Kind,
                StringRef Msg, StringRef LineStr,
-               ArrayRef<std::pair<unsigned,unsigned>> Ranges,
+               ArrayRef<std::pair<unsigned,unsigned> > Ranges,
                ArrayRef<SMFixIt> FixIts = None);
 
   const SourceMgr *getSourceMgr() const { return SM; }
@@ -262,7 +264,9 @@ public:
   SourceMgr::DiagKind getKind() const { return Kind; }
   StringRef getMessage() const { return Message; }
   StringRef getLineContents() const { return LineContents; }
-  ArrayRef<std::pair<unsigned, unsigned>> getRanges() const { return Ranges; }
+  ArrayRef<std::pair<unsigned, unsigned> > getRanges() const {
+    return Ranges;
+  }
 
   void addFixIt(const SMFixIt &Hint) {
     FixIts.push_back(Hint);
@@ -276,6 +280,6 @@ public:
              bool ShowKindLabel = true) const;
 };
 
-} // end namespace llvm
+}  // end llvm namespace
 
-#endif // LLVM_SUPPORT_SOURCEMGR_H
+#endif

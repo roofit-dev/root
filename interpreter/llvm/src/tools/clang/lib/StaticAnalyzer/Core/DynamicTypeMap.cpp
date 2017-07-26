@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 //
 //  This file defines APIs that track and query dynamic type information. This
-//  information can be used to devirtualize calls during the symbolic execution
+//  information can be used to devirtualize calls during the symbolic exection
 //  or do type checking.
 //
 //===----------------------------------------------------------------------===//

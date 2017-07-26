@@ -111,29 +111,24 @@ ProgramStateManager::removeDeadBindings(ProgramStateRef state,
   return ConstraintMgr->removeDeadBindings(Result, SymReaper);
 }
 
-ProgramStateRef ProgramState::bindLoc(Loc LV,
-                                      SVal V,
-                                      const LocationContext *LCtx,
-                                      bool notifyChanges) const {
+ProgramStateRef ProgramState::bindLoc(Loc LV, SVal V, bool notifyChanges) const {
   ProgramStateManager &Mgr = getStateManager();
   ProgramStateRef newState = makeWithStore(Mgr.StoreMgr->Bind(getStore(),
                                                              LV, V));
   const MemRegion *MR = LV.getAsRegion();
   if (MR && Mgr.getOwningEngine() && notifyChanges)
-    return Mgr.getOwningEngine()->processRegionChange(newState, MR, LCtx);
+    return Mgr.getOwningEngine()->processRegionChange(newState, MR);
 
   return newState;
 }
 
-ProgramStateRef ProgramState::bindDefault(SVal loc,
-                                          SVal V,
-                                          const LocationContext *LCtx) const {
+ProgramStateRef ProgramState::bindDefault(SVal loc, SVal V) const {
   ProgramStateManager &Mgr = getStateManager();
   const MemRegion *R = loc.castAs<loc::MemRegionVal>().getRegion();
   const StoreRef &newStore = Mgr.StoreMgr->BindDefault(getStore(), R, V);
   ProgramStateRef new_state = makeWithStore(newStore);
   return Mgr.getOwningEngine() ?
-           Mgr.getOwningEngine()->processRegionChange(new_state, R, LCtx) :
+           Mgr.getOwningEngine()->processRegionChange(new_state, R) :
            new_state;
 }
 
@@ -207,7 +202,7 @@ ProgramState::invalidateRegionsImpl(ValueList Values,
     }
 
     return Eng->processRegionChanges(newState, IS, TopLevelInvalidated,
-                                     Invalidated, LCtx, Call);
+                                     Invalidated, Call);
   }
 
   const StoreRef &newStore =
@@ -532,17 +527,32 @@ bool ScanReachableSymbols::scan(nonloc::CompoundVal val) {
 }
 
 bool ScanReachableSymbols::scan(const SymExpr *sym) {
-  for (SymExpr::symbol_iterator SI = sym->symbol_begin(),
-                                SE = sym->symbol_end();
-       SI != SE; ++SI) {
-    bool wasVisited = !visited.insert(*SI).second;
-    if (wasVisited)
-      continue;
+  bool wasVisited = !visited.insert(sym).second;
+  if (wasVisited)
+    return true;
 
-    if (!visitor.VisitSymbol(*SI))
-      return false;
+  if (!visitor.VisitSymbol(sym))
+    return false;
+
+  // TODO: should be rewritten using SymExpr::symbol_iterator.
+  switch (sym->getKind()) {
+    case SymExpr::SymbolRegionValueKind:
+    case SymExpr::SymbolConjuredKind:
+    case SymExpr::SymbolDerivedKind:
+    case SymExpr::SymbolExtentKind:
+    case SymExpr::SymbolMetadataKind:
+      break;
+    case SymExpr::SymbolCastKind:
+      return scan(cast<SymbolCast>(sym)->getOperand());
+    case SymExpr::SymIntExprKind:
+      return scan(cast<SymIntExpr>(sym)->getLHS());
+    case SymExpr::IntSymExprKind:
+      return scan(cast<IntSymExpr>(sym)->getRHS());
+    case SymExpr::SymSymExprKind: {
+      const SymSymExpr *x = cast<SymSymExpr>(sym);
+      return scan(x->getLHS()) && scan(x->getRHS());
+    }
   }
-
   return true;
 }
 

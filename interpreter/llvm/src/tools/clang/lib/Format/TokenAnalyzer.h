@@ -31,6 +31,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 
+#define DEBUG_TYPE "format-formatter"
+
 namespace clang {
 namespace format {
 
@@ -55,12 +57,15 @@ public:
 
   FileID getFileID() const { return ID; }
 
+  StringRef getFileName() const { return FileName; }
+
   ArrayRef<CharSourceRange> getCharRanges() const { return CharRanges; }
 
   const SourceManager &getSourceManager() const { return SM; }
 
 private:
   FileID ID;
+  StringRef FileName;
   SmallVector<CharSourceRange, 8> CharRanges;
   SourceManager &SM;
 
@@ -82,7 +87,7 @@ protected:
   virtual tooling::Replacements
   analyze(TokenAnnotator &Annotator,
           SmallVectorImpl<AnnotatedLine *> &AnnotatedLines,
-          FormatTokenLexer &Tokens) = 0;
+          FormatTokenLexer &Tokens, tooling::Replacements &Result) = 0;
 
   void consumeUnwrappedLine(const UnwrappedLine &TheLine) override;
 

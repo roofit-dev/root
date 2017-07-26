@@ -18,12 +18,11 @@
 namespace llvm {
 
 AVRMCAsmInfo::AVRMCAsmInfo(const Triple &TT) {
-  CodePointerSize = 2;
+  PointerSize = 2;
   CalleeSaveStackSlotSize = 2;
   CommentString = ";";
   PrivateGlobalPrefix = ".L";
   UsesELFSectionDirectiveForBSS = true;
-  UseIntegratedAssembler = true;
 }
 
 } // end of namespace llvm

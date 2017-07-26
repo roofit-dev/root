@@ -7,14 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCELFSTREAMER_H
-#define LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCELFSTREAMER_H
+#ifndef HEXAGONMCELFSTREAMER_H
+#define HEXAGONMCELFSTREAMER_H
 
+#include "MCTargetDesc/HexagonMCCodeEmitter.h"
+#include "MCTargetDesc/HexagonMCInstrInfo.h"
 #include "MCTargetDesc/HexagonMCTargetDesc.h"
 #include "llvm/MC/MCELFStreamer.h"
-#include "llvm/MC/MCInstrInfo.h"
-#include <cstdint>
-#include <memory>
+#include "HexagonTargetStreamer.h"
 
 namespace llvm {
 
@@ -27,15 +27,8 @@ public:
       : MCELFStreamer(Context, TAB, OS, Emitter),
         MCII(createHexagonMCInstrInfo()) {}
 
-  HexagonMCELFStreamer(MCContext &Context,
-                       MCAsmBackend &TAB,
-                       raw_pwrite_stream &OS, MCCodeEmitter *Emitter,
-                       MCAssembler *Assembler) :
-  MCELFStreamer(Context, TAB, OS, Emitter),
-  MCII (createHexagonMCInstrInfo()) {}
-
-  void EmitInstruction(const MCInst &Inst, const MCSubtargetInfo &STI,
-                       bool) override;
+  virtual void EmitInstruction(const MCInst &Inst,
+                               const MCSubtargetInfo &STI) override;
   void EmitSymbol(const MCInst &Inst);
   void HexagonMCEmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                       unsigned ByteAlignment,
@@ -44,10 +37,9 @@ public:
                                  unsigned ByteAlignment, unsigned AccessSize);
 };
 
-MCStreamer *createHexagonELFStreamer(Triple const &TT, MCContext &Context,
-                                     MCAsmBackend &MAB, raw_pwrite_stream &OS,
-                                     MCCodeEmitter *CE);
+MCStreamer *createHexagonELFStreamer(MCContext &Context, MCAsmBackend &MAB,
+                                     raw_pwrite_stream &OS, MCCodeEmitter *CE);
 
-} // end namespace llvm
+} // namespace llvm
 
-#endif // LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCELFSTREAMER_H
+#endif

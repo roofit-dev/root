@@ -44,7 +44,6 @@
 #include "llvm/Transforms/Utils/CtorUtils.h"
 #include "llvm/Transforms/Utils/Evaluator.h"
 #include "llvm/Transforms/Utils/GlobalStatus.h"
-#include "llvm/Transforms/Utils/Local.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -239,7 +238,7 @@ static bool CleanupConstantGlobalUsers(Value *V, Constant *Init,
   // we delete a constant array, we may also be holding pointer to one of its
   // elements (or an element of one of its elements if we're dealing with an
   // array of arrays) in the worklist.
-  SmallVector<WeakTrackingVH, 8> WorkList(V->user_begin(), V->user_end());
+  SmallVector<WeakVH, 8> WorkList(V->user_begin(), V->user_end());
   while (!WorkList.empty()) {
     Value *UV = WorkList.pop_back_val();
     if (!UV)
@@ -371,14 +370,14 @@ static bool IsUserOfGlobalSafeForSRA(User *U, GlobalValue *GV) {
   ++GEPI;  // Skip over the pointer index.
 
   // If this is a use of an array allocation, do a bit more checking for sanity.
-  if (GEPI.isSequential()) {
+  if (ArrayType *AT = dyn_cast<ArrayType>(*GEPI)) {
+    uint64_t NumElements = AT->getNumElements();
     ConstantInt *Idx = cast<ConstantInt>(U->getOperand(2));
 
     // Check to make sure that index falls within the array.  If not,
     // something funny is going on, so we won't do the optimization.
     //
-    if (GEPI.isBoundedSequential() &&
-        Idx->getZExtValue() >= GEPI.getSequentialNumElements())
+    if (Idx->getZExtValue() >= NumElements)
       return false;
 
     // We cannot scalar repl this level of the array unless any array
@@ -391,13 +390,19 @@ static bool IsUserOfGlobalSafeForSRA(User *U, GlobalValue *GV) {
     for (++GEPI; // Skip array index.
          GEPI != E;
          ++GEPI) {
-      if (GEPI.isStruct())
+      uint64_t NumElements;
+      if (ArrayType *SubArrayTy = dyn_cast<ArrayType>(*GEPI))
+        NumElements = SubArrayTy->getNumElements();
+      else if (VectorType *SubVectorTy = dyn_cast<VectorType>(*GEPI))
+        NumElements = SubVectorTy->getNumElements();
+      else {
+        assert((*GEPI)->isStructTy() &&
+               "Indexed GEP type is not array, vector, or struct!");
         continue;
+      }
 
       ConstantInt *IdxVal = dyn_cast<ConstantInt>(GEPI.getOperand());
-      if (!IdxVal ||
-          (GEPI.isBoundedSequential() &&
-           IdxVal->getZExtValue() >= GEPI.getSequentialNumElements()))
+      if (!IdxVal || IdxVal->getZExtValue() >= NumElements)
         return false;
     }
   }
@@ -467,7 +472,12 @@ static GlobalVariable *SRAGlobal(GlobalVariable *GV, const DataLayout &DL) {
         NGV->setAlignment(NewAlign);
     }
   } else if (SequentialType *STy = dyn_cast<SequentialType>(Ty)) {
-    unsigned NumElements = STy->getNumElements();
+    unsigned NumElements = 0;
+    if (ArrayType *ATy = dyn_cast<ArrayType>(STy))
+      NumElements = ATy->getNumElements();
+    else
+      NumElements = cast<VectorType>(STy)->getNumElements();
+
     if (NumElements > 16 && GV->hasNUsesOrMore(16))
       return nullptr; // It's not worth it.
     NewGlobals.reserve(NumElements);
@@ -769,8 +779,7 @@ static void ConstantPropUsersOf(Value *V, const DataLayout &DL,
         // Instructions could multiply use V.
         while (UI != E && *UI == I)
           ++UI;
-        if (isInstructionTriviallyDead(I, TLI))
-          I->eraseFromParent();
+        I->eraseFromParent();
       }
 }
 
@@ -1642,7 +1651,7 @@ static bool deleteIfDead(GlobalValue &GV,
                          SmallSet<const Comdat *, 8> &NotDiscardableComdats) {
   GV.removeDeadConstantUsers();
 
-  if (!GV.isDiscardableIfUnused() && !GV.isDeclaration())
+  if (!GV.isDiscardableIfUnused())
     return false;
 
   if (const Comdat *C = GV.getComdat())
@@ -1651,7 +1660,7 @@ static bool deleteIfDead(GlobalValue &GV,
 
   bool Dead;
   if (auto *F = dyn_cast<Function>(&GV))
-    Dead = (F->isDeclaration() && F->use_empty()) || F->isDefTriviallyDead();
+    Dead = F->isDefTriviallyDead();
   else
     Dead = GV.use_empty();
   if (!Dead)
@@ -1726,7 +1735,7 @@ static bool isPointerValueDeadOnEntryToFunction(
 
   for (auto *L : Loads) {
     auto *LTy = L->getType();
-    if (none_of(Stores, [&](const StoreInst *S) {
+    if (!std::any_of(Stores.begin(), Stores.end(), [&](StoreInst *S) {
           auto *STy = S->getValueOperand()->getType();
           // The load is only dominated by the store if DomTree says so
           // and the number of bits loaded in L is less than or equal to
@@ -1792,9 +1801,7 @@ static void makeAllConstantUsesInstructions(Constant *C) {
       NewU->insertBefore(UI);
       UI->replaceUsesOfWith(U, NewU);
     }
-    // We've replaced all the uses, so destroy the constant. (destroyConstant
-    // will update value handles and metadata.)
-    U->destroyConstant();
+    U->dropAllReferences();
   }
 }
 
@@ -1821,14 +1828,12 @@ static bool processInternalGlobal(
       GS.AccessingFunction->doesNotRecurse() &&
       isPointerValueDeadOnEntryToFunction(GS.AccessingFunction, GV,
                                           LookupDomTree)) {
-    const DataLayout &DL = GV->getParent()->getDataLayout();
-
     DEBUG(dbgs() << "LOCALIZING GLOBAL: " << *GV << "\n");
     Instruction &FirstI = const_cast<Instruction&>(*GS.AccessingFunction
                                                    ->getEntryBlock().begin());
     Type *ElemTy = GV->getValueType();
     // FIXME: Pass Global's alignment when globals have alignment
-    AllocaInst *Alloca = new AllocaInst(ElemTy, DL.getAllocaAddrSpace(), nullptr,
+    AllocaInst *Alloca = new AllocaInst(ElemTy, nullptr,
                                         GV->getName(), &FirstI);
     if (!isa<UndefValue>(GV->getInitializer()))
       new StoreInst(GV->getInitializer(), Alloca, &FirstI);
@@ -1981,11 +1986,16 @@ static void ChangeCalleesToFastCall(Function *F) {
   }
 }
 
-static AttributeList StripNest(LLVMContext &C, AttributeList Attrs) {
-  // There can be at most one attribute set with a nest attribute.
-  unsigned NestIndex;
-  if (Attrs.hasAttrSomewhere(Attribute::Nest, &NestIndex))
-    return Attrs.removeAttribute(C, NestIndex, Attribute::Nest);
+static AttributeSet StripNest(LLVMContext &C, const AttributeSet &Attrs) {
+  for (unsigned i = 0, e = Attrs.getNumSlots(); i != e; ++i) {
+    unsigned Index = Attrs.getSlotIndex(i);
+    if (!Attrs.getSlotAttributes(i).hasAttribute(Index, Attribute::Nest))
+      continue;
+
+    // There can be only one.
+    return Attrs.removeAttribute(C, Index, Attribute::Nest);
+  }
+
   return Attrs;
 }
 
@@ -2067,10 +2077,10 @@ OptimizeGlobalVars(Module &M, TargetLibraryInfo *TLI,
       GV->setLinkage(GlobalValue::InternalLinkage);
     // Simplify the initializer.
     if (GV->hasInitializer())
-      if (auto *C = dyn_cast<Constant>(GV->getInitializer())) {
+      if (ConstantExpr *CE = dyn_cast<ConstantExpr>(GV->getInitializer())) {
         auto &DL = M.getDataLayout();
-        Constant *New = ConstantFoldConstant(C, DL, TLI);
-        if (New && New != C)
+        Constant *New = ConstantFoldConstantExpression(CE, DL, TLI);
+        if (New && New != CE)
           GV->setInitializer(New);
       }
 
@@ -2113,7 +2123,12 @@ static Constant *EvaluateStoreInto(Constant *Init, Constant *Val,
 
   ConstantInt *CI = cast<ConstantInt>(Addr->getOperand(OpNo));
   SequentialType *InitTy = cast<SequentialType>(Init->getType());
-  uint64_t NumElts = InitTy->getNumElements();
+
+  uint64_t NumElts;
+  if (ArrayType *ATy = dyn_cast<ArrayType>(InitTy))
+    NumElts = ATy->getNumElements();
+  else
+    NumElts = InitTy->getVectorNumElements();
 
   // Break up the array into elements.
   for (uint64_t i = 0, e = NumElts; i != e; ++i)
@@ -2386,7 +2401,7 @@ OptimizeGlobalAliases(Module &M,
 }
 
 static Function *FindCXAAtExit(Module &M, TargetLibraryInfo *TLI) {
-  LibFunc F = LibFunc_cxa_atexit;
+  LibFunc::Func F = LibFunc::cxa_atexit;
   if (!TLI->has(F))
     return nullptr;
 
@@ -2395,7 +2410,7 @@ static Function *FindCXAAtExit(Module &M, TargetLibraryInfo *TLI) {
     return nullptr;
 
   // Make sure that the function has the correct prototype.
-  if (!TLI->getLibFunc(*Fn, F) || F != LibFunc_cxa_atexit)
+  if (!TLI->getLibFunc(*Fn, F) || F != LibFunc::cxa_atexit)
     return nullptr;
 
   return Fn;
@@ -2548,7 +2563,7 @@ static bool optimizeGlobalsInModule(
   return Changed;
 }
 
-PreservedAnalyses GlobalOptPass::run(Module &M, ModuleAnalysisManager &AM) {
+PreservedAnalyses GlobalOptPass::run(Module &M, AnalysisManager<Module> &AM) {
     auto &DL = M.getDataLayout();
     auto &TLI = AM.getResult<TargetLibraryAnalysis>(M);
     auto &FAM =

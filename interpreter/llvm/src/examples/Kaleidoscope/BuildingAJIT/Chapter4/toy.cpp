@@ -7,15 +7,16 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/Error.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
 #include "KaleidoscopeJIT.h"
-#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <cstdint>
@@ -139,8 +140,7 @@ static int gettok() {
 /// ExprAST - Base class for all expression nodes.
 class ExprAST {
 public:
-  virtual ~ExprAST() = default;
-
+  virtual ~ExprAST() {}
   virtual Value *codegen() = 0;
 };
 
@@ -150,7 +150,6 @@ class NumberExprAST : public ExprAST {
 
 public:
   NumberExprAST(double Val) : Val(Val) {}
-
   Value *codegen() override;
 };
 
@@ -160,9 +159,8 @@ class VariableExprAST : public ExprAST {
 
 public:
   VariableExprAST(const std::string &Name) : Name(Name) {}
-
-  Value *codegen() override;
   const std::string &getName() const { return Name; }
+  Value *codegen() override;
 };
 
 /// UnaryExprAST - Expression class for a unary operator.
@@ -173,7 +171,6 @@ class UnaryExprAST : public ExprAST {
 public:
   UnaryExprAST(char Opcode, std::unique_ptr<ExprAST> Operand)
       : Opcode(Opcode), Operand(std::move(Operand)) {}
-
   Value *codegen() override;
 };
 
@@ -186,7 +183,6 @@ public:
   BinaryExprAST(char Op, std::unique_ptr<ExprAST> LHS,
                 std::unique_ptr<ExprAST> RHS)
       : Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
-
   Value *codegen() override;
 };
 
@@ -199,7 +195,6 @@ public:
   CallExprAST(const std::string &Callee,
               std::vector<std::unique_ptr<ExprAST>> Args)
       : Callee(Callee), Args(std::move(Args)) {}
-
   Value *codegen() override;
 };
 
@@ -211,7 +206,6 @@ public:
   IfExprAST(std::unique_ptr<ExprAST> Cond, std::unique_ptr<ExprAST> Then,
             std::unique_ptr<ExprAST> Else)
       : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
-
   Value *codegen() override;
 };
 
@@ -226,7 +220,6 @@ public:
              std::unique_ptr<ExprAST> Body)
       : VarName(VarName), Start(std::move(Start)), End(std::move(End)),
         Step(std::move(Step)), Body(std::move(Body)) {}
-
   Value *codegen() override;
 };
 
@@ -240,7 +233,6 @@ public:
       std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames,
       std::unique_ptr<ExprAST> Body)
       : VarNames(std::move(VarNames)), Body(std::move(Body)) {}
-
   Value *codegen() override;
 };
 
@@ -258,7 +250,6 @@ public:
                bool IsOperator = false, unsigned Prec = 0)
       : Name(Name), Args(std::move(Args)), IsOperator(IsOperator),
         Precedence(Prec) {}
-
   Function *codegen();
   const std::string &getName() const { return Name; }
 
@@ -1126,8 +1117,7 @@ static void HandleExtern() {
   if (auto ProtoAST = ParseExtern()) {
     if (auto *FnIR = ProtoAST->codegen()) {
       fprintf(stderr, "Read extern: ");
-      FnIR->print(errs());
-      fprintf(stderr, "\n");
+      FnIR->dump();
       FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
     }
   } else {

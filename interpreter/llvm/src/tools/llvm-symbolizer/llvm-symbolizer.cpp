@@ -46,7 +46,8 @@ static cl::opt<FunctionNameKind> ClPrintFunctions(
                clEnumValN(FunctionNameKind::ShortName, "short",
                           "print short function name"),
                clEnumValN(FunctionNameKind::LinkageName, "linkage",
-                          "print function linkage name")));
+                          "print function linkage name"),
+               clEnumValEnd));
 
 static cl::opt<bool>
     ClUseRelativeAddress("relative-address", cl::init(false),
@@ -84,9 +85,6 @@ static cl::opt<bool>
 static cl::opt<int> ClPrintSourceContextLines(
     "print-source-context-lines", cl::init(0),
     cl::desc("Print N number of source file context"));
-
-static cl::opt<bool> ClVerbose("verbose", cl::init(false),
-                               cl::desc("Print verbose line info"));
 
 template<typename T>
 static bool error(Expected<T> &ResOrErr) {
@@ -163,7 +161,7 @@ int main(int argc, char **argv) {
   LLVMSymbolizer Symbolizer(Opts);
 
   DIPrinter Printer(outs(), ClPrintFunctions != FunctionNameKind::None,
-                    ClPrettyPrint, ClPrintSourceContextLines, ClVerbose);
+                    ClPrettyPrint, ClPrintSourceContextLines);
 
   const int kMaxInputStringLength = 1024;
   char InputString[kMaxInputStringLength];

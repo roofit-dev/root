@@ -1,4 +1,4 @@
-//===- Binary.cpp - A generic binary file ---------------------------------===//
+//===- Binary.cpp - A generic binary file -----------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,25 +11,21 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Object/Archive.h"
 #include "llvm/Object/Binary.h"
-#include "llvm/Object/Error.h"
-#include "llvm/Object/MachOUniversal.h"
-#include "llvm/Object/ObjectFile.h"
-#include "llvm/Support/Error.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ErrorOr.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include <algorithm>
-#include <memory>
-#include <system_error>
+#include "llvm/Support/Path.h"
+
+// Include headers for createBinary.
+#include "llvm/Object/Archive.h"
+#include "llvm/Object/MachOUniversal.h"
+#include "llvm/Object/ObjectFile.h"
 
 using namespace llvm;
 using namespace object;
 
-Binary::~Binary() = default;
+Binary::~Binary() {}
 
 Binary::Binary(unsigned int Type, MemoryBufferRef Source)
     : TypeID(Type), Data(Source) {}
@@ -67,12 +63,10 @@ Expected<std::unique_ptr<Binary>> object::createBinary(MemoryBufferRef Buffer,
     case sys::fs::file_magic::coff_import_library:
     case sys::fs::file_magic::pecoff_executable:
     case sys::fs::file_magic::bitcode:
-    case sys::fs::file_magic::wasm_object:
       return ObjectFile::createSymbolicFile(Buffer, Type, Context);
     case sys::fs::file_magic::macho_universal_binary:
       return MachOUniversalBinary::create(Buffer);
     case sys::fs::file_magic::unknown:
-    case sys::fs::file_magic::coff_cl_gl_object:
     case sys::fs::file_magic::windows_resource:
       // Unrecognized object file format.
       return errorCodeToError(object_error::invalid_file_type);

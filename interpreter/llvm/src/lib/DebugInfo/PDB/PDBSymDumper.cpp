@@ -20,7 +20,7 @@ using namespace llvm::pdb;
 PDBSymDumper::PDBSymDumper(bool ShouldRequireImpl)
     : RequireImpl(ShouldRequireImpl) {}
 
-PDBSymDumper::~PDBSymDumper() = default;
+PDBSymDumper::~PDBSymDumper() {}
 
 void PDBSymDumper::dump(const PDBSymbolAnnotation &Symbol) {
   PDB_SYMDUMP_UNREACHABLE(PDBSymbolAnnotation)

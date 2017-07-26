@@ -17,14 +17,15 @@
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
-#include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/JITSymbolFlags.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/RuntimeDyld.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
+#include "llvm/ExecutionEngine/Orc/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
-#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/DynamicLibrary.h"
@@ -40,7 +41,7 @@ namespace orc {
 
 class KaleidoscopeJIT {
 public:
-  typedef RTDyldObjectLinkingLayer<> ObjLayerT;
+  typedef ObjectLinkingLayer<> ObjLayerT;
   typedef IRCompileLayer<ObjLayerT> CompileLayerT;
   typedef CompileLayerT::ModuleSetHandleT ModuleHandleT;
 
@@ -59,8 +60,8 @@ public:
     auto Resolver = createLambdaResolver(
         [&](const std::string &Name) {
           if (auto Sym = findMangledSymbol(Name))
-            return Sym;
-          return JITSymbol(nullptr);
+            return Sym.toRuntimeDyldSymbol();
+          return RuntimeDyld::SymbolInfo(nullptr);
         },
         [](const std::string &S) { return nullptr; });
     auto H = CompileLayer.addModuleSet(singletonSet(std::move(M)),
@@ -72,7 +73,8 @@ public:
   }
 
   void removeModule(ModuleHandleT H) {
-    ModuleHandles.erase(find(ModuleHandles, H));
+    ModuleHandles.erase(
+        std::find(ModuleHandles.begin(), ModuleHandles.end(), H));
     CompileLayer.removeModuleSet(H);
   }
 
@@ -97,39 +99,16 @@ private:
   }
 
   JITSymbol findMangledSymbol(const std::string &Name) {
-#ifdef LLVM_ON_WIN32
-    // The symbol lookup of ObjectLinkingLayer uses the SymbolRef::SF_Exported
-    // flag to decide whether a symbol will be visible or not, when we call
-    // IRCompileLayer::findSymbolIn with ExportedSymbolsOnly set to true.
-    //
-    // But for Windows COFF objects, this flag is currently never set.
-    // For a potential solution see: https://reviews.llvm.org/rL258665
-    // For now, we allow non-exported symbols on Windows as a workaround.
-    const bool ExportedSymbolsOnly = false;
-#else
-    const bool ExportedSymbolsOnly = true;
-#endif
-
     // Search modules in reverse order: from last added to first added.
     // This is the opposite of the usual search order for dlsym, but makes more
     // sense in a REPL where we want to bind to the newest available definition.
     for (auto H : make_range(ModuleHandles.rbegin(), ModuleHandles.rend()))
-      if (auto Sym = CompileLayer.findSymbolIn(H, Name, ExportedSymbolsOnly))
+      if (auto Sym = CompileLayer.findSymbolIn(H, Name, true))
         return Sym;
 
     // If we can't find the symbol in the JIT, try looking in the host process.
     if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name))
       return JITSymbol(SymAddr, JITSymbolFlags::Exported);
-
-#ifdef LLVM_ON_WIN32
-    // For Windows retry without "_" at begining, as RTDyldMemoryManager uses
-    // GetProcAddress and standard libraries like msvcrt.dll use names
-    // with and without "_" (for example "_itoa" but "sin").
-    if (Name.length() > 2 && Name[0] == '_')
-      if (auto SymAddr =
-              RTDyldMemoryManager::getSymbolAddressInProcess(Name.substr(1)))
-        return JITSymbol(SymAddr, JITSymbolFlags::Exported);
-#endif
 
     return nullptr;
   }

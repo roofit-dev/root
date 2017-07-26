@@ -1,4 +1,4 @@
-//===- llvm/IR/Statepoint.h - gc.statepoint utilities -----------*- C++ -*-===//
+//===-- llvm/IR/Statepoint.h - gc.statepoint utilities ------ --*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -19,43 +19,28 @@
 
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/Optional.h"
-#include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/MathExtras.h"
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <vector>
 
 namespace llvm {
-
 /// The statepoint intrinsic accepts a set of flags as its third argument.
 /// Valid values come out of this set.
 enum class StatepointFlags {
   None = 0,
   GCTransition = 1, ///< Indicates that this statepoint is a transition from
                     ///< GC-aware code to code that is not GC-aware.
-  /// Mark the deopt arguments associated with the statepoint as only being
-  /// "live-in". By default, deopt arguments are "live-through".  "live-through"
-  /// requires that they the value be live on entry, on exit, and at any point
-  /// during the call.  "live-in" only requires the value be available at the
-  /// start of the call.  In particular, "live-in" values can be placed in
-  /// unused argument registers or other non-callee saved registers.
-  DeoptLiveIn = 2,
 
-  MaskAll = 3 ///< A bitmask that includes all valid flags.
+  MaskAll = GCTransition ///< A bitmask that includes all valid flags.
 };
 
 class GCRelocateInst;
 class GCResultInst;
+class ImmutableStatepoint;
 
 bool isStatepoint(ImmutableCallSite CS);
 bool isStatepoint(const Value *V);
@@ -74,6 +59,8 @@ template <typename FunTy, typename InstructionTy, typename ValueTy,
           typename CallSiteTy>
 class StatepointBase {
   CallSiteTy StatepointCS;
+  void *operator new(size_t, unsigned) = delete;
+  void *operator new(size_t s) = delete;
 
 protected:
   explicit StatepointBase(InstructionTy *I) {
@@ -82,14 +69,13 @@ protected:
       assert(StatepointCS && "isStatepoint implies CallSite");
     }
   }
-
   explicit StatepointBase(CallSiteTy CS) {
     if (isStatepoint(CS))
       StatepointCS = CS;
   }
 
 public:
-  using arg_iterator = typename CallSiteTy::arg_iterator;
+  typedef typename CallSiteTy::arg_iterator arg_iterator;
 
   enum {
     IDPos = 0,
@@ -99,9 +85,6 @@ public:
     FlagsPos = 4,
     CallArgsBeginPos = 5,
   };
-
-  void *operator new(size_t, unsigned) = delete;
-  void *operator new(size_t s) = delete;
 
   explicit operator bool() const {
     // We do not assign non-statepoint CallSites to StatepointCS.
@@ -302,9 +285,8 @@ public:
 class ImmutableStatepoint
     : public StatepointBase<const Function, const Instruction, const Value,
                             ImmutableCallSite> {
-  using Base =
-      StatepointBase<const Function, const Instruction, const Value,
-                     ImmutableCallSite>;
+  typedef StatepointBase<const Function, const Instruction, const Value,
+                         ImmutableCallSite> Base;
 
 public:
   explicit ImmutableStatepoint(const Instruction *I) : Base(I) {}
@@ -315,7 +297,7 @@ public:
 /// to a gc.statepoint.
 class Statepoint
     : public StatepointBase<Function, Instruction, Value, CallSite> {
-  using Base = StatepointBase<Function, Instruction, Value, CallSite>;
+  typedef StatepointBase<Function, Instruction, Value, CallSite> Base;
 
 public:
   explicit Statepoint(Instruction *I) : Base(I) {}
@@ -330,7 +312,6 @@ public:
     return I->getIntrinsicID() == Intrinsic::experimental_gc_relocate ||
       I->getIntrinsicID() == Intrinsic::experimental_gc_result;
   }
-
   static inline bool classof(const Value *V) {
     return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
   }
@@ -373,7 +354,6 @@ public:
   static inline bool classof(const IntrinsicInst *I) {
     return I->getIntrinsicID() == Intrinsic::experimental_gc_relocate;
   }
-
   static inline bool classof(const Value *V) {
     return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
   }
@@ -408,7 +388,6 @@ public:
   static inline bool classof(const IntrinsicInst *I) {
     return I->getIntrinsicID() == Intrinsic::experimental_gc_result;
   }
-
   static inline bool classof(const Value *V) {
     return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
   }
@@ -460,12 +439,11 @@ struct StatepointDirectives {
 
 /// Parse out statepoint directives from the function attributes present in \p
 /// AS.
-StatepointDirectives parseStatepointDirectivesFromAttrs(AttributeList AS);
+StatepointDirectives parseStatepointDirectivesFromAttrs(AttributeSet AS);
 
 /// Return \c true if the the \p Attr is an attribute that is a statepoint
 /// directive.
 bool isStatepointDirectiveAttr(Attribute Attr);
+}
 
-} // end namespace llvm
-
-#endif // LLVM_IR_STATEPOINT_H
+#endif

@@ -1,4 +1,4 @@
-//===- InlineAsm.cpp - Implement the InlineAsm class ----------------------===//
+//===-- InlineAsm.cpp - Implement the InlineAsm class ---------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,38 +11,18 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/IR/InlineAsm.h"
 #include "ConstantsContext.h"
 #include "LLVMContextImpl.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/InlineAsm.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Value.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/Compiler.h"
 #include <algorithm>
-#include <cassert>
 #include <cctype>
-#include <cstddef>
-#include <cstdlib>
-
 using namespace llvm;
-
-InlineAsm::InlineAsm(FunctionType *FTy, const std::string &asmString,
-                     const std::string &constraints, bool hasSideEffects,
-                     bool isAlignStack, AsmDialect asmDialect)
-    : Value(PointerType::getUnqual(FTy), Value::InlineAsmVal),
-      AsmString(asmString), Constraints(constraints), FTy(FTy),
-      HasSideEffects(hasSideEffects), IsAlignStack(isAlignStack),
-      Dialect(asmDialect) {
-  // Do various checks on the constraint string and type.
-  assert(Verify(getFunctionType(), constraints) &&
-         "Function type not legal for constraints!");
-}
 
 // Implement the first virtual method in this class in this file so the
 // InlineAsm vtable is emitted here.
-InlineAsm::~InlineAsm() = default;
+InlineAsm::~InlineAsm() {
+}
 
 InlineAsm *InlineAsm::get(FunctionType *FTy, StringRef AsmString,
                           StringRef Constraints, bool hasSideEffects,
@@ -51,6 +31,19 @@ InlineAsm *InlineAsm::get(FunctionType *FTy, StringRef AsmString,
                        isAlignStack, asmDialect);
   LLVMContextImpl *pImpl = FTy->getContext().pImpl;
   return pImpl->InlineAsms.getOrCreate(PointerType::getUnqual(FTy), Key);
+}
+
+InlineAsm::InlineAsm(FunctionType *FTy, const std::string &asmString,
+                     const std::string &constraints, bool hasSideEffects,
+                     bool isAlignStack, AsmDialect asmDialect)
+    : Value(PointerType::getUnqual(FTy), Value::InlineAsmVal),
+      AsmString(asmString), Constraints(constraints), FTy(FTy),
+      HasSideEffects(hasSideEffects), IsAlignStack(isAlignStack),
+      Dialect(asmDialect) {
+
+  // Do various checks on the constraint string and type.
+  assert(Verify(getFunctionType(), constraints) &&
+         "Function type not legal for constraints!");
 }
 
 void InlineAsm::destroyConstant() {
@@ -62,6 +55,14 @@ FunctionType *InlineAsm::getFunctionType() const {
   return FTy;
 }
     
+///Default constructor.
+InlineAsm::ConstraintInfo::ConstraintInfo() :
+  Type(isInput), isEarlyClobber(false),
+  MatchingInput(-1), isCommutative(false),
+  isIndirect(false), isMultipleAlternative(false),
+  currentAlternativeIndex(0) {
+}
+
 /// Parse - Analyze the specified string (e.g. "==&{eax}") and fill in the
 /// fields in this structure.  If the constraint string is not understood,
 /// return true, otherwise return false.
@@ -264,7 +265,7 @@ bool InlineAsm::Verify(FunctionType *Ty, StringRef ConstStr) {
         break;
       }
       ++NumIndirect;
-      LLVM_FALLTHROUGH; // We fall through for Indirect Outputs.
+      // FALLTHROUGH for Indirect Outputs.
     case InlineAsm::isInput:
       if (NumClobbers) return false;               // inputs before clobbers.
       ++NumInputs;

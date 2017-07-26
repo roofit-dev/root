@@ -166,40 +166,41 @@ bool DeadArgumentEliminationPass::DeleteDeadVarargs(Function &Fn) {
     Args.assign(CS.arg_begin(), CS.arg_begin() + NumArgs);
 
     // Drop any attributes that were on the vararg arguments.
-    AttributeList PAL = CS.getAttributes();
-    if (!PAL.isEmpty()) {
-      SmallVector<AttributeSet, 8> ArgAttrs;
-      for (unsigned ArgNo = 0; ArgNo < NumArgs; ++ArgNo)
-        ArgAttrs.push_back(PAL.getParamAttributes(ArgNo));
-      PAL = AttributeList::get(Fn.getContext(), PAL.getFnAttributes(),
-                               PAL.getRetAttributes(), ArgAttrs);
+    AttributeSet PAL = CS.getAttributes();
+    if (!PAL.isEmpty() && PAL.getSlotIndex(PAL.getNumSlots() - 1) > NumArgs) {
+      SmallVector<AttributeSet, 8> AttributesVec;
+      for (unsigned i = 0; PAL.getSlotIndex(i) <= NumArgs; ++i)
+        AttributesVec.push_back(PAL.getSlotAttributes(i));
+      if (PAL.hasAttributes(AttributeSet::FunctionIndex))
+        AttributesVec.push_back(AttributeSet::get(Fn.getContext(),
+                                                  PAL.getFnAttributes()));
+      PAL = AttributeSet::get(Fn.getContext(), AttributesVec);
     }
 
     SmallVector<OperandBundleDef, 1> OpBundles;
     CS.getOperandBundlesAsDefs(OpBundles);
 
-    CallSite NewCS;
+    Instruction *New;
     if (InvokeInst *II = dyn_cast<InvokeInst>(Call)) {
-      NewCS = InvokeInst::Create(NF, II->getNormalDest(), II->getUnwindDest(),
-                                 Args, OpBundles, "", Call);
+      New = InvokeInst::Create(NF, II->getNormalDest(), II->getUnwindDest(),
+                               Args, OpBundles, "", Call);
+      cast<InvokeInst>(New)->setCallingConv(CS.getCallingConv());
+      cast<InvokeInst>(New)->setAttributes(PAL);
     } else {
-      NewCS = CallInst::Create(NF, Args, OpBundles, "", Call);
-      cast<CallInst>(NewCS.getInstruction())
-          ->setTailCallKind(cast<CallInst>(Call)->getTailCallKind());
+      New = CallInst::Create(NF, Args, OpBundles, "", Call);
+      cast<CallInst>(New)->setCallingConv(CS.getCallingConv());
+      cast<CallInst>(New)->setAttributes(PAL);
+      if (cast<CallInst>(Call)->isTailCall())
+        cast<CallInst>(New)->setTailCall();
     }
-    NewCS.setCallingConv(CS.getCallingConv());
-    NewCS.setAttributes(PAL);
-    NewCS->setDebugLoc(Call->getDebugLoc());
-    uint64_t W;
-    if (Call->extractProfTotalWeight(W))
-      NewCS->setProfWeight(W);
+    New->setDebugLoc(Call->getDebugLoc());
 
     Args.clear();
 
     if (!Call->use_empty())
-      Call->replaceAllUsesWith(NewCS.getInstruction());
+      Call->replaceAllUsesWith(New);
 
-    NewCS->takeName(Call);
+    New->takeName(Call);
 
     // Finally, remove the old call from the program, reducing the use-count of
     // F.
@@ -269,7 +270,7 @@ bool DeadArgumentEliminationPass::RemoveDeadArgumentsFromCallers(Function &Fn) {
 
   SmallVector<unsigned, 8> UnusedArgs;
   for (Argument &Arg : Fn.args()) {
-    if (!Arg.hasSwiftErrorAttr() && Arg.use_empty() && !Arg.hasByValOrInAllocaAttr())
+    if (Arg.use_empty() && !Arg.hasByValOrInAllocaAttr())
       UnusedArgs.push_back(Arg.getArgNo());
   }
 
@@ -680,8 +681,8 @@ bool DeadArgumentEliminationPass::RemoveDeadStuffFromFunction(Function *F) {
   bool HasLiveReturnedArg = false;
 
   // Set up to build a new list of parameter attributes.
-  SmallVector<AttributeSet, 8> ArgAttrVec;
-  const AttributeList &PAL = F->getAttributes();
+  SmallVector<AttributeSet, 8> AttributesVec;
+  const AttributeSet &PAL = F->getAttributes();
 
   // Remember which arguments are still alive.
   SmallVector<bool, 10> ArgAlive(FTy->getNumParams(), false);
@@ -695,8 +696,16 @@ bool DeadArgumentEliminationPass::RemoveDeadStuffFromFunction(Function *F) {
     if (LiveValues.erase(Arg)) {
       Params.push_back(I->getType());
       ArgAlive[i] = true;
-      ArgAttrVec.push_back(PAL.getParamAttributes(i));
-      HasLiveReturnedArg |= PAL.hasParamAttribute(i, Attribute::Returned);
+
+      // Get the original parameter attributes (skipping the first one, that is
+      // for the return value.
+      if (PAL.hasAttributes(i + 1)) {
+        AttrBuilder B(PAL, i + 1);
+        if (B.contains(Attribute::Returned))
+          HasLiveReturnedArg = true;
+        AttributesVec.
+          push_back(AttributeSet::get(F->getContext(), Params.size(), B));
+      }
     } else {
       ++NumArgumentsEliminated;
       DEBUG(dbgs() << "DeadArgumentEliminationPass - Removing argument " << i
@@ -770,24 +779,30 @@ bool DeadArgumentEliminationPass::RemoveDeadStuffFromFunction(Function *F) {
   assert(NRetTy && "No new return type found?");
 
   // The existing function return attributes.
-  AttrBuilder RAttrs(PAL.getRetAttributes());
+  AttributeSet RAttrs = PAL.getRetAttributes();
 
   // Remove any incompatible attributes, but only if we removed all return
   // values. Otherwise, ensure that we don't have any conflicting attributes
   // here. Currently, this should not be possible, but special handling might be
   // required when new return value attributes are added.
   if (NRetTy->isVoidTy())
-    RAttrs.remove(AttributeFuncs::typeIncompatible(NRetTy));
+    RAttrs = RAttrs.removeAttributes(NRetTy->getContext(),
+                                     AttributeSet::ReturnIndex,
+                                     AttributeFuncs::typeIncompatible(NRetTy));
   else
-    assert(!RAttrs.overlaps(AttributeFuncs::typeIncompatible(NRetTy)) &&
+    assert(!AttrBuilder(RAttrs, AttributeSet::ReturnIndex).
+             overlaps(AttributeFuncs::typeIncompatible(NRetTy)) &&
            "Return attributes no longer compatible?");
 
-  AttributeSet RetAttrs = AttributeSet::get(F->getContext(), RAttrs);
+  if (RAttrs.hasAttributes(AttributeSet::ReturnIndex))
+    AttributesVec.push_back(AttributeSet::get(NRetTy->getContext(), RAttrs));
+
+  if (PAL.hasAttributes(AttributeSet::FunctionIndex))
+    AttributesVec.push_back(AttributeSet::get(F->getContext(),
+                                              PAL.getFnAttributes()));
 
   // Reconstruct the AttributesList based on the vector we constructed.
-  assert(ArgAttrVec.size() == Params.size());
-  AttributeList NewPAL = AttributeList::get(
-      F->getContext(), PAL.getFnAttributes(), RetAttrs, ArgAttrVec);
+  AttributeSet NewPAL = AttributeSet::get(F->getContext(), AttributesVec);
 
   // Create the new function type based on the recomputed parameters.
   FunctionType *NFTy = FunctionType::get(NRetTy, Params, FTy->isVarArg());
@@ -814,14 +829,18 @@ bool DeadArgumentEliminationPass::RemoveDeadStuffFromFunction(Function *F) {
     CallSite CS(F->user_back());
     Instruction *Call = CS.getInstruction();
 
-    ArgAttrVec.clear();
-    const AttributeList &CallPAL = CS.getAttributes();
+    AttributesVec.clear();
+    const AttributeSet &CallPAL = CS.getAttributes();
 
-    // Adjust the call return attributes in case the function was changed to
-    // return void.
-    AttrBuilder RAttrs(CallPAL.getRetAttributes());
-    RAttrs.remove(AttributeFuncs::typeIncompatible(NRetTy));
-    AttributeSet RetAttrs = AttributeSet::get(F->getContext(), RAttrs);
+    // The call return attributes.
+    AttributeSet RAttrs = CallPAL.getRetAttributes();
+
+    // Adjust in case the function was changed to return void.
+    RAttrs = RAttrs.removeAttributes(NRetTy->getContext(),
+                                     AttributeSet::ReturnIndex,
+                        AttributeFuncs::typeIncompatible(NF->getReturnType()));
+    if (RAttrs.hasAttributes(AttributeSet::ReturnIndex))
+      AttributesVec.push_back(AttributeSet::get(NF->getContext(), RAttrs));
 
     // Declare these outside of the loops, so we can reuse them for the second
     // loop, which loops the varargs.
@@ -833,55 +852,57 @@ bool DeadArgumentEliminationPass::RemoveDeadStuffFromFunction(Function *F) {
       if (ArgAlive[i]) {
         Args.push_back(*I);
         // Get original parameter attributes, but skip return attributes.
-        AttributeSet Attrs = CallPAL.getParamAttributes(i);
-        if (NRetTy != RetTy && Attrs.hasAttribute(Attribute::Returned)) {
+        if (CallPAL.hasAttributes(i + 1)) {
+          AttrBuilder B(CallPAL, i + 1);
           // If the return type has changed, then get rid of 'returned' on the
           // call site. The alternative is to make all 'returned' attributes on
           // call sites keep the return value alive just like 'returned'
-          // attributes on function declaration but it's less clearly a win and
-          // this is not an expected case anyway
-          ArgAttrVec.push_back(AttributeSet::get(
-              F->getContext(),
-              AttrBuilder(Attrs).removeAttribute(Attribute::Returned)));
-        } else {
-          // Otherwise, use the original attributes.
-          ArgAttrVec.push_back(Attrs);
+          // attributes on function declaration but it's less clearly a win
+          // and this is not an expected case anyway
+          if (NRetTy != RetTy && B.contains(Attribute::Returned))
+            B.removeAttribute(Attribute::Returned);
+          AttributesVec.
+            push_back(AttributeSet::get(F->getContext(), Args.size(), B));
         }
       }
 
     // Push any varargs arguments on the list. Don't forget their attributes.
     for (CallSite::arg_iterator E = CS.arg_end(); I != E; ++I, ++i) {
       Args.push_back(*I);
-      ArgAttrVec.push_back(CallPAL.getParamAttributes(i));
+      if (CallPAL.hasAttributes(i + 1)) {
+        AttrBuilder B(CallPAL, i + 1);
+        AttributesVec.
+          push_back(AttributeSet::get(F->getContext(), Args.size(), B));
+      }
     }
 
+    if (CallPAL.hasAttributes(AttributeSet::FunctionIndex))
+      AttributesVec.push_back(AttributeSet::get(Call->getContext(),
+                                                CallPAL.getFnAttributes()));
+
     // Reconstruct the AttributesList based on the vector we constructed.
-    assert(ArgAttrVec.size() == Args.size());
-    AttributeList NewCallPAL = AttributeList::get(
-        F->getContext(), CallPAL.getFnAttributes(), RetAttrs, ArgAttrVec);
+    AttributeSet NewCallPAL = AttributeSet::get(F->getContext(), AttributesVec);
 
     SmallVector<OperandBundleDef, 1> OpBundles;
     CS.getOperandBundlesAsDefs(OpBundles);
 
-    CallSite NewCS;
+    Instruction *New;
     if (InvokeInst *II = dyn_cast<InvokeInst>(Call)) {
-      NewCS = InvokeInst::Create(NF, II->getNormalDest(), II->getUnwindDest(),
-                                 Args, OpBundles, "", Call->getParent());
+      New = InvokeInst::Create(NF, II->getNormalDest(), II->getUnwindDest(),
+                               Args, OpBundles, "", Call->getParent());
+      cast<InvokeInst>(New)->setCallingConv(CS.getCallingConv());
+      cast<InvokeInst>(New)->setAttributes(NewCallPAL);
     } else {
-      NewCS = CallInst::Create(NF, Args, OpBundles, "", Call);
-      cast<CallInst>(NewCS.getInstruction())
-          ->setTailCallKind(cast<CallInst>(Call)->getTailCallKind());
+      New = CallInst::Create(NF, Args, OpBundles, "", Call);
+      cast<CallInst>(New)->setCallingConv(CS.getCallingConv());
+      cast<CallInst>(New)->setAttributes(NewCallPAL);
+      if (cast<CallInst>(Call)->isTailCall())
+        cast<CallInst>(New)->setTailCall();
     }
-    NewCS.setCallingConv(CS.getCallingConv());
-    NewCS.setAttributes(NewCallPAL);
-    NewCS->setDebugLoc(Call->getDebugLoc());
-    uint64_t W;
-    if (Call->extractProfTotalWeight(W))
-      NewCS->setProfWeight(W);
-    Args.clear();
-    ArgAttrVec.clear();
+    New->setDebugLoc(Call->getDebugLoc());
 
-    Instruction *New = NewCS.getInstruction();
+    Args.clear();
+
     if (!Call->use_empty()) {
       if (New->getType() == Call->getType()) {
         // Return type not changed? Just replace users then.

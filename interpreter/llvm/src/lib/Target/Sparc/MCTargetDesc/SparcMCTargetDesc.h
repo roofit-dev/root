@@ -24,23 +24,21 @@ class MCInstrInfo;
 class MCObjectWriter;
 class MCRegisterInfo;
 class MCSubtargetInfo;
-class MCTargetOptions;
 class Target;
 class Triple;
 class StringRef;
 class raw_pwrite_stream;
 class raw_ostream;
 
-Target &getTheSparcTarget();
-Target &getTheSparcV9Target();
-Target &getTheSparcelTarget();
+extern Target TheSparcTarget;
+extern Target TheSparcV9Target;
+extern Target TheSparcelTarget;
 
 MCCodeEmitter *createSparcMCCodeEmitter(const MCInstrInfo &MCII,
                                         const MCRegisterInfo &MRI,
                                         MCContext &Ctx);
 MCAsmBackend *createSparcAsmBackend(const Target &T, const MCRegisterInfo &MRI,
-                                    const Triple &TT, StringRef CPU,
-                                    const MCTargetOptions &Options);
+                                    const Triple &TT, StringRef CPU);
 MCObjectWriter *createSparcELFObjectWriter(raw_pwrite_stream &OS, bool Is64Bit,
                                            bool IsLIttleEndian, uint8_t OSABI);
 } // End llvm namespace

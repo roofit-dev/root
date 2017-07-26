@@ -17,7 +17,6 @@
 #include "clang/AST/AttrIterator.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/Basic/Specifiers.h"
-#include "clang/Basic/VersionTuple.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/ADT/iterator_range.h"
@@ -33,7 +32,6 @@ class DeclContext;
 class DeclarationName;
 class DependentDiagnostic;
 class EnumDecl;
-class ExportDecl;
 class FunctionDecl;
 class FunctionType;
 enum Linkage : unsigned char;
@@ -568,10 +566,6 @@ public:
     return NextInContextAndBits.getInt() & ModulePrivateFlag;
   }
 
-  /// \brief Whether this declaration is exported (by virtue of being lexically
-  /// within an ExportDecl or by being a NamespaceDecl).
-  bool isExported() const;
-
   /// Return true if this declaration has an attribute which acts as
   /// definition of the entity, such as 'alias' or 'ifunc'.
   bool hasDefiningAttr() const;
@@ -609,20 +603,7 @@ public:
   /// AR_Available, will be set to a (possibly empty) message
   /// describing why the declaration has not been introduced, is
   /// deprecated, or is unavailable.
-  ///
-  /// \param EnclosingVersion The version to compare with. If empty, assume the
-  /// deployment target version.
-  AvailabilityResult
-  getAvailability(std::string *Message = nullptr,
-                  VersionTuple EnclosingVersion = VersionTuple()) const;
-
-  /// \brief Retrieve the version of the target platform in which this
-  /// declaration was introduced.
-  ///
-  /// \returns An empty version tuple if this declaration has no 'introduced'
-  /// availability attributes, or the version tuple that's specified in the
-  /// attribute otherwise.
-  VersionTuple getVersionIntroduced() const;
+  AvailabilityResult getAvailability(std::string *Message = nullptr) const;
 
   /// \brief Determine whether this declaration is marked 'deprecated'.
   ///
@@ -662,19 +643,20 @@ public:
   /// a precompiled header or module) rather than having been parsed.
   bool isFromASTFile() const { return FromASTFile; }
 
-  /// \brief Retrieve the global declaration ID associated with this
-  /// declaration, which specifies where this Decl was loaded from.
-  unsigned getGlobalID() const {
+  /// \brief Retrieve the global declaration ID associated with this 
+  /// declaration, which specifies where in the 
+  unsigned getGlobalID() const { 
     if (isFromASTFile())
       return *((const unsigned*)this - 1);
     return 0;
   }
-
+  
   /// \brief Retrieve the global ID of the module that owns this particular
   /// declaration.
   unsigned getOwningModuleID() const {
     if (isFromASTFile())
       return *((const unsigned*)this - 2);
+    
     return 0;
   }
 
@@ -704,20 +686,6 @@ public:
     assert(!isFromASTFile() && Hidden && hasLocalOwningModuleStorage() &&
            "should not have a cached owning module");
     reinterpret_cast<Module **>(this)[-1] = M;
-  }
-
-  Module *getOwningModule() const {
-    return isFromASTFile() ? getImportedOwningModule() : getLocalOwningModule();
-  }
-
-  /// \brief Determine whether this declaration is hidden from name lookup.
-  bool isHidden() const { return Hidden; }
-
-  /// \brief Set whether this declaration is hidden from name lookup.
-  void setHidden(bool Hide) {
-    assert((!Hide || isFromASTFile() || hasLocalOwningModuleStorage()) &&
-           "declaration with no owning module can't be hidden");
-    Hidden = Hide;
   }
 
   unsigned getIdentifierNamespace() const {
@@ -1051,7 +1019,7 @@ public:
   void dump() const;
   // Same as dump(), but forces color printing.
   void dumpColor() const;
-  void dump(raw_ostream &Out, bool Deserialize = false) const;
+  void dump(raw_ostream &Out) const;
 
   /// \brief Looks through the Decl's underlying type to extract a FunctionType
   /// when possible. Will return null if the type underlying the Decl does not
@@ -1161,7 +1129,6 @@ public:
 ///   ObjCMethodDecl
 ///   ObjCContainerDecl
 ///   LinkageSpecDecl
-///   ExportDecl
 ///   BlockDecl
 ///   OMPDeclareReductionDecl
 ///
@@ -1306,8 +1273,7 @@ public:
 
   /// \brief Test whether the context supports looking up names.
   bool isLookupContext() const {
-    return !isFunctionOrMethod() && DeclKind != Decl::LinkageSpec &&
-           DeclKind != Decl::Export;
+    return !isFunctionOrMethod() && DeclKind != Decl::LinkageSpec;
   }
 
   bool isFileContext() const {
@@ -1354,9 +1320,6 @@ public:
   /// \brief Determines whether this context or some of its ancestors is a
   /// linkage specification context that specifies C linkage.
   bool isExternCContext() const;
-
-  /// \brief Retrieve the nearest enclosing C linkage specification context.
-  const LinkageSpecDecl *getExternCContext() const;
 
   /// \brief Determines whether this context or some of its ancestors is a
   /// linkage specification context that specifies C++ linkage.
@@ -1832,8 +1795,7 @@ public:
 
   void dumpDeclContext() const;
   void dumpLookups() const;
-  void dumpLookups(llvm::raw_ostream &OS, bool DumpDecls = false,
-                   bool Deserialize = false) const;
+  void dumpLookups(llvm::raw_ostream &OS, bool DumpDecls = false) const;
 
 private:
   void reconcileExternalVisibleStorage() const;

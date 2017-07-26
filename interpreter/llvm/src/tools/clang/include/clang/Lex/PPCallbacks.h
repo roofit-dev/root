@@ -17,12 +17,14 @@
 
 #include "clang/Basic/DiagnosticIDs.h"
 #include "clang/Basic/SourceLocation.h"
-#include "clang/Basic/SourceManager.h"
+#include "clang/Lex/DirectoryLookup.h"
 #include "clang/Lex/ModuleLoader.h"
 #include "clang/Lex/Pragma.h"
 #include "llvm/ADT/StringRef.h"
+#include <string>
 
 namespace clang {
+  class SourceLocation;
   class Token;
   class IdentifierInfo;
   class MacroDefinition;
@@ -247,14 +249,10 @@ public:
   }
 
   /// \brief Hook called whenever a macro \#undef is seen.
-  /// \param MacroNameTok The active Token
-  /// \param MD A MacroDefinition for the named macro.
-  /// \param Undef New MacroDirective if the macro was defined, null otherwise.
   ///
   /// MD is released immediately following this callback.
   virtual void MacroUndefined(const Token &MacroNameTok,
-                              const MacroDefinition &MD,
-                              const MacroDirective *Undef) {
+                              const MacroDefinition &MD) {
   }
   
   /// \brief Hook called whenever the 'defined' operator is seen.
@@ -443,17 +441,15 @@ public:
     Second->MacroExpands(MacroNameTok, MD, Range, Args);
   }
 
-  void MacroDefined(const Token &MacroNameTok,
-                    const MacroDirective *MD) override {
+  void MacroDefined(const Token &MacroNameTok, const MacroDirective *MD) override {
     First->MacroDefined(MacroNameTok, MD);
     Second->MacroDefined(MacroNameTok, MD);
   }
 
   void MacroUndefined(const Token &MacroNameTok,
-                      const MacroDefinition &MD,
-                      const MacroDirective *Undef) override {
-    First->MacroUndefined(MacroNameTok, MD, Undef);
-    Second->MacroUndefined(MacroNameTok, MD, Undef);
+                      const MacroDefinition &MD) override {
+    First->MacroUndefined(MacroNameTok, MD);
+    Second->MacroUndefined(MacroNameTok, MD);
   }
 
   void Defined(const Token &MacroNameTok, const MacroDefinition &MD,

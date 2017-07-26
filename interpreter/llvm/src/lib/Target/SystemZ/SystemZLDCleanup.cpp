@@ -33,7 +33,7 @@ public:
   SystemZLDCleanup(const SystemZTargetMachine &tm)
     : MachineFunctionPass(ID), TII(nullptr), MF(nullptr) {}
 
-  StringRef getPassName() const override {
+  const char *getPassName() const override {
     return "SystemZ Local Dynamic TLS Access Clean-up";
   }
 
@@ -95,9 +95,9 @@ bool SystemZLDCleanup::VisitNode(MachineDomTreeNode *Node,
     switch (I->getOpcode()) {
       case SystemZ::TLS_LDCALL:
         if (TLSBaseAddrReg)
-          I = ReplaceTLSCall(&*I, TLSBaseAddrReg);
+          I = ReplaceTLSCall(I, TLSBaseAddrReg);
         else
-          I = SetRegister(&*I, &TLSBaseAddrReg);
+          I = SetRegister(I, &TLSBaseAddrReg);
         Changed = true;
         break;
       default:

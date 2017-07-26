@@ -233,16 +233,19 @@ void NilArgChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
     if (StringSelectors.empty()) {
       ASTContext &Ctx = C.getASTContext();
       Selector Sels[] = {
-          getKeywordSelector(Ctx, "caseInsensitiveCompare"),
-          getKeywordSelector(Ctx, "compare"),
-          getKeywordSelector(Ctx, "compare", "options"),
-          getKeywordSelector(Ctx, "compare", "options", "range"),
-          getKeywordSelector(Ctx, "compare", "options", "range", "locale"),
-          getKeywordSelector(Ctx, "componentsSeparatedByCharactersInSet"),
-          getKeywordSelector(Ctx, "initWithFormat"),
-          getKeywordSelector(Ctx, "localizedCaseInsensitiveCompare"),
-          getKeywordSelector(Ctx, "localizedCompare"),
-          getKeywordSelector(Ctx, "localizedStandardCompare"),
+        getKeywordSelector(Ctx, "caseInsensitiveCompare", nullptr),
+        getKeywordSelector(Ctx, "compare", nullptr),
+        getKeywordSelector(Ctx, "compare", "options", nullptr),
+        getKeywordSelector(Ctx, "compare", "options", "range", nullptr),
+        getKeywordSelector(Ctx, "compare", "options", "range", "locale",
+                           nullptr),
+        getKeywordSelector(Ctx, "componentsSeparatedByCharactersInSet",
+                           nullptr),
+        getKeywordSelector(Ctx, "initWithFormat",
+                           nullptr),
+        getKeywordSelector(Ctx, "localizedCaseInsensitiveCompare", nullptr),
+        getKeywordSelector(Ctx, "localizedCompare", nullptr),
+        getKeywordSelector(Ctx, "localizedStandardCompare", nullptr),
       };
       for (Selector KnownSel : Sels)
         StringSelectors[KnownSel] = 0;
@@ -259,15 +262,16 @@ void NilArgChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
 
     if (ArrayWithObjectSel.isNull()) {
       ASTContext &Ctx = C.getASTContext();
-      ArrayWithObjectSel = getKeywordSelector(Ctx, "arrayWithObject");
-      AddObjectSel = getKeywordSelector(Ctx, "addObject");
+      ArrayWithObjectSel = getKeywordSelector(Ctx, "arrayWithObject", nullptr);
+      AddObjectSel = getKeywordSelector(Ctx, "addObject", nullptr);
       InsertObjectAtIndexSel =
-          getKeywordSelector(Ctx, "insertObject", "atIndex");
+        getKeywordSelector(Ctx, "insertObject", "atIndex", nullptr);
       ReplaceObjectAtIndexWithObjectSel =
-          getKeywordSelector(Ctx, "replaceObjectAtIndex", "withObject");
+        getKeywordSelector(Ctx, "replaceObjectAtIndex", "withObject", nullptr);
       SetObjectAtIndexedSubscriptSel =
-          getKeywordSelector(Ctx, "setObject", "atIndexedSubscript");
-      ArrayByAddingObjectSel = getKeywordSelector(Ctx, "arrayByAddingObject");
+        getKeywordSelector(Ctx, "setObject", "atIndexedSubscript", nullptr);
+      ArrayByAddingObjectSel =
+        getKeywordSelector(Ctx, "arrayByAddingObject", nullptr);
     }
 
     if (S == ArrayWithObjectSel || S == AddObjectSel ||
@@ -288,11 +292,13 @@ void NilArgChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
     if (DictionaryWithObjectForKeySel.isNull()) {
       ASTContext &Ctx = C.getASTContext();
       DictionaryWithObjectForKeySel =
-          getKeywordSelector(Ctx, "dictionaryWithObject", "forKey");
-      SetObjectForKeySel = getKeywordSelector(Ctx, "setObject", "forKey");
+        getKeywordSelector(Ctx, "dictionaryWithObject", "forKey", nullptr);
+      SetObjectForKeySel =
+        getKeywordSelector(Ctx, "setObject", "forKey", nullptr);
       SetObjectForKeyedSubscriptSel =
-          getKeywordSelector(Ctx, "setObject", "forKeyedSubscript");
-      RemoveObjectForKeySel = getKeywordSelector(Ctx, "removeObjectForKey");
+        getKeywordSelector(Ctx, "setObject", "forKeyedSubscript", nullptr);
+      RemoveObjectForKeySel =
+        getKeywordSelector(Ctx, "removeObjectForKey", nullptr);
     }
 
     if (S == DictionaryWithObjectForKeySel || S == SetObjectForKeySel) {
@@ -330,15 +336,15 @@ void NilArgChecker::checkPostStmt(const ObjCDictionaryLiteral *DL,
 }
 
 //===----------------------------------------------------------------------===//
-// Checking for mismatched types passed to CFNumberCreate/CFNumberGetValue.
+// Error reporting.
 //===----------------------------------------------------------------------===//
 
 namespace {
-class CFNumberChecker : public Checker< check::PreStmt<CallExpr> > {
+class CFNumberCreateChecker : public Checker< check::PreStmt<CallExpr> > {
   mutable std::unique_ptr<APIMisuse> BT;
-  mutable IdentifierInfo *ICreate, *IGetValue;
+  mutable IdentifierInfo* II;
 public:
-  CFNumberChecker() : ICreate(nullptr), IGetValue(nullptr) {}
+  CFNumberCreateChecker() : II(nullptr) {}
 
   void checkPreStmt(const CallExpr *CE, CheckerContext &C) const;
 
@@ -419,7 +425,7 @@ static const char* GetCFNumberTypeStr(uint64_t i) {
 }
 #endif
 
-void CFNumberChecker::checkPreStmt(const CallExpr *CE,
+void CFNumberCreateChecker::checkPreStmt(const CallExpr *CE,
                                          CheckerContext &C) const {
   ProgramStateRef state = C.getState();
   const FunctionDecl *FD = C.getCalleeDecl(CE);
@@ -427,12 +433,10 @@ void CFNumberChecker::checkPreStmt(const CallExpr *CE,
     return;
 
   ASTContext &Ctx = C.getASTContext();
-  if (!ICreate) {
-    ICreate = &Ctx.Idents.get("CFNumberCreate");
-    IGetValue = &Ctx.Idents.get("CFNumberGetValue");
-  }
-  if (!(FD->getIdentifier() == ICreate || FD->getIdentifier() == IGetValue) ||
-      CE->getNumArgs() != 3)
+  if (!II)
+    II = &Ctx.Idents.get("CFNumberCreate");
+
+  if (FD->getIdentifier() != II || CE->getNumArgs() != 3)
     return;
 
   // Get the value of the "theType" argument.
@@ -446,13 +450,13 @@ void CFNumberChecker::checkPreStmt(const CallExpr *CE,
     return;
 
   uint64_t NumberKind = V->getValue().getLimitedValue();
-  Optional<uint64_t> OptCFNumberSize = GetCFNumberSize(Ctx, NumberKind);
+  Optional<uint64_t> OptTargetSize = GetCFNumberSize(Ctx, NumberKind);
 
   // FIXME: In some cases we can emit an error.
-  if (!OptCFNumberSize)
+  if (!OptTargetSize)
     return;
 
-  uint64_t CFNumberSize = *OptCFNumberSize;
+  uint64_t TargetSize = *OptTargetSize;
 
   // Look at the value of the integer being passed by reference.  Essentially
   // we want to catch cases where the value passed in is not equal to the
@@ -477,44 +481,39 @@ void CFNumberChecker::checkPreStmt(const CallExpr *CE,
   if (!T->isIntegralOrEnumerationType())
     return;
 
-  uint64_t PrimitiveTypeSize = Ctx.getTypeSize(T);
+  uint64_t SourceSize = Ctx.getTypeSize(T);
 
-  if (PrimitiveTypeSize == CFNumberSize)
+  // CHECK: is SourceSize == TargetSize
+  if (SourceSize == TargetSize)
     return;
 
+  // Generate an error.  Only generate a sink error node
+  // if 'SourceSize < TargetSize'; otherwise generate a non-fatal error node.
+  //
   // FIXME: We can actually create an abstract "CFNumber" object that has
   //  the bits initialized to the provided values.
-  ExplodedNode *N = C.generateNonFatalErrorNode();
+  //
+  ExplodedNode *N = SourceSize < TargetSize ? C.generateErrorNode()
+                                            : C.generateNonFatalErrorNode();
   if (N) {
     SmallString<128> sbuf;
     llvm::raw_svector_ostream os(sbuf);
-    bool isCreate = (FD->getIdentifier() == ICreate);
 
-    if (isCreate) {
-      os << (PrimitiveTypeSize == 8 ? "An " : "A ")
-         << PrimitiveTypeSize << "-bit integer is used to initialize a "
-         << "CFNumber object that represents "
-         << (CFNumberSize == 8 ? "an " : "a ")
-         << CFNumberSize << "-bit integer; ";
-    } else {
-      os << "A CFNumber object that represents "
-         << (CFNumberSize == 8 ? "an " : "a ")
-         << CFNumberSize << "-bit integer is used to initialize "
-         << (PrimitiveTypeSize == 8 ? "an " : "a ")
-         << PrimitiveTypeSize << "-bit integer; ";
-    }
+    os << (SourceSize == 8 ? "An " : "A ")
+       << SourceSize << " bit integer is used to initialize a CFNumber "
+                        "object that represents "
+       << (TargetSize == 8 ? "an " : "a ")
+       << TargetSize << " bit integer. ";
 
-    if (PrimitiveTypeSize < CFNumberSize)
-      os << (CFNumberSize - PrimitiveTypeSize)
-      << " bits of the CFNumber value will "
-      << (isCreate ? "be garbage." : "overwrite adjacent storage.");
+    if (SourceSize < TargetSize)
+      os << (TargetSize - SourceSize)
+      << " bits of the CFNumber value will be garbage." ;
     else
-      os << (PrimitiveTypeSize - CFNumberSize)
-      << " bits of the integer value will be "
-      << (isCreate ? "lost." : "garbage.");
+      os << (SourceSize - TargetSize)
+      << " bits of the input integer will be lost.";
 
     if (!BT)
-      BT.reset(new APIMisuse(this, "Bad use of CFNumber APIs"));
+      BT.reset(new APIMisuse(this, "Bad use of CFNumberCreate"));
 
     auto report = llvm::make_unique<BugReport>(*BT, os.str(), N);
     report->addRange(CE->getArg(2)->getSourceRange());
@@ -1273,8 +1272,8 @@ void ento::registerNilArgChecker(CheckerManager &mgr) {
   mgr.registerChecker<NilArgChecker>();
 }
 
-void ento::registerCFNumberChecker(CheckerManager &mgr) {
-  mgr.registerChecker<CFNumberChecker>();
+void ento::registerCFNumberCreateChecker(CheckerManager &mgr) {
+  mgr.registerChecker<CFNumberCreateChecker>();
 }
 
 void ento::registerCFRetainReleaseChecker(CheckerManager &mgr) {

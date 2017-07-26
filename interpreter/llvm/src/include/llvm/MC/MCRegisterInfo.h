@@ -1,4 +1,4 @@
-//===- MC/MCRegisterInfo.h - Target Register Description --------*- C++ -*-===//
+//=== MC/MCRegisterInfo.h - Target Register Description ---------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -17,23 +17,20 @@
 #define LLVM_MC_MCREGISTERINFO_H
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/iterator_range.h"
-#include "llvm/MC/LaneBitmask.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <cassert>
-#include <cstdint>
-#include <utility>
 
 namespace llvm {
 
 /// An unsigned integer type large enough to represent all physical registers,
 /// but not necessarily virtual registers.
-using MCPhysReg = uint16_t;
+typedef uint16_t MCPhysReg;
 
 /// MCRegisterClass - Base class of TargetRegisterClass.
 class MCRegisterClass {
 public:
-  using iterator = const MCPhysReg*;
-  using const_iterator = const MCPhysReg*;
+  typedef const MCPhysReg* iterator;
+  typedef const MCPhysReg* const_iterator;
 
   const iterator RegsBegin;
   const uint8_t *const RegSet;
@@ -41,7 +38,7 @@ public:
   const uint16_t RegsSize;
   const uint16_t RegSetSize;
   const uint16_t ID;
-  const uint16_t PhysRegSize;
+  const uint16_t RegSize, Alignment; // Size & Alignment of register in bytes
   const int8_t CopyCost;
   const bool Allocatable;
 
@@ -80,10 +77,13 @@ public:
     return contains(Reg1) && contains(Reg2);
   }
 
-  /// Return the size of the physical register in bytes.
-  unsigned getPhysRegSize() const { return PhysRegSize; }
-  /// Temporary function to allow out-of-tree targets to switch.
-  unsigned getSize() const { return getPhysRegSize(); }
+  /// getSize - Return the size of the register in bytes, which is also the size
+  /// of a stack slot allocated to hold a spilled copy of this register.
+  unsigned getSize() const { return RegSize; }
+
+  /// getAlignment - Return the minimum required alignment for a register of
+  /// this class.
+  unsigned getAlignment() const { return Alignment; }
 
   /// getCopyCost - Return the cost of copying a value between two registers in
   /// this class. A negative number means the register class is very expensive
@@ -134,7 +134,7 @@ struct MCRegisterDesc {
 ///
 class MCRegisterInfo {
 public:
-  using regclass_iterator = const MCRegisterClass *;
+  typedef const MCRegisterClass *regclass_iterator;
 
   /// DwarfLLVMRegPair - Emitted by tablegen so Dwarf<->LLVM reg mappings can be
   /// performed with a binary search.
@@ -151,7 +151,6 @@ public:
     uint16_t Offset;
     uint16_t Size;
   };
-
 private:
   const MCRegisterDesc *Desc;                 // Pointer to the descriptor array
   unsigned NumRegs;                           // Number of entries in the array
@@ -162,7 +161,7 @@ private:
   unsigned NumRegUnits;                       // Number of regunits.
   const MCPhysReg (*RegUnitRoots)[2];         // Pointer to regunit root table.
   const MCPhysReg *DiffLists;                 // Pointer to the difflists array
-  const LaneBitmask *RegUnitMaskSequences;    // Pointer to lane mask sequences
+  const unsigned *RegUnitMaskSequences;       // Pointer to lane mask sequences
                                               // for register units.
   const char *RegStrings;                     // Pointer to the string table.
   const char *RegClassStrings;                // Pointer to the class strings.
@@ -191,12 +190,12 @@ public:
   /// Don't use this class directly, use one of the specialized sub-classes
   /// defined below.
   class DiffListIterator {
-    uint16_t Val = 0;
-    const MCPhysReg *List = nullptr;
+    uint16_t Val;
+    const MCPhysReg *List;
 
   protected:
     /// Create an invalid iterator. Call init() to point to something useful.
-    DiffListIterator() = default;
+    DiffListIterator() : Val(0), List(nullptr) {}
 
     /// init - Point the iterator to InitVal, decoding subsequent values from
     /// DiffList. The iterator will initially point to InitVal, sub-classes are
@@ -217,6 +216,7 @@ public:
     }
 
   public:
+
     /// isValid - returns true if this iterator is not yet at the end.
     bool isValid() const { return List; }
 
@@ -248,7 +248,7 @@ public:
                           const MCPhysReg (*RURoots)[2],
                           unsigned NRU,
                           const MCPhysReg *DL,
-                          const LaneBitmask *RUMS,
+                          const unsigned *RUMS,
                           const char *Strings,
                           const char *ClassStrings,
                           const uint16_t *SubIndices,
@@ -271,16 +271,6 @@ public:
     NumSubRegIndices = NumIndices;
     SubRegIdxRanges = SubIdxRanges;
     RegEncodingTable = RET;
-
-    // Initialize DWARF register mapping variables
-    EHL2DwarfRegs = nullptr;
-    EHL2DwarfRegsSize = 0;
-    L2DwarfRegs = nullptr;
-    L2DwarfRegsSize = 0;
-    EHDwarf2LRegs = nullptr;
-    EHDwarf2LRegsSize = 0;
-    Dwarf2LRegs = nullptr;
-    Dwarf2LRegsSize = 0;
   }
 
   /// \brief Used to initialize LLVM register to Dwarf
@@ -417,9 +407,6 @@ public:
 
   regclass_iterator regclass_begin() const { return Classes; }
   regclass_iterator regclass_end() const { return Classes+NumClasses; }
-  iterator_range<regclass_iterator> regclasses() const {
-    return make_range(regclass_begin(), regclass_end());
-  }
 
   unsigned getNumRegClasses() const {
     return (unsigned)(regclass_end()-regclass_begin());
@@ -494,7 +481,6 @@ public:
 class MCSubRegIndexIterator {
   MCSubRegIterator SRIter;
   const uint16_t *SRIndex;
-
 public:
   /// Constructs an iterator that traverses subregisters and their
   /// associated subregister indices.
@@ -507,7 +493,6 @@ public:
   unsigned getSubReg() const {
     return *SRIter;
   }
-
   /// Returns sub-register index of the current sub-register.
   unsigned getSubRegIndex() const {
     return *SRIndex;
@@ -527,8 +512,7 @@ public:
 /// If IncludeSelf is set, Reg itself is included in the list.
 class MCSuperRegIterator : public MCRegisterInfo::DiffListIterator {
 public:
-  MCSuperRegIterator() = default;
-
+  MCSuperRegIterator() {}
   MCSuperRegIterator(unsigned Reg, const MCRegisterInfo *MCRI,
                      bool IncludeSelf = false) {
     init(Reg, MCRI->DiffLists + MCRI->get(Reg).SuperRegs);
@@ -565,8 +549,7 @@ class MCRegUnitIterator : public MCRegisterInfo::DiffListIterator {
 public:
   /// MCRegUnitIterator - Create an iterator that traverses the register units
   /// in Reg.
-  MCRegUnitIterator() = default;
-
+  MCRegUnitIterator() {}
   MCRegUnitIterator(unsigned Reg, const MCRegisterInfo *MCRI) {
     assert(Reg && "Null register has no regunits");
     // Decode the RegUnits MCRegisterDesc field.
@@ -586,16 +569,13 @@ public:
   }
 };
 
-/// MCRegUnitMaskIterator enumerates a list of register units and their
-/// associated lane masks for Reg. The register units are in ascending
-/// numerical order.
+/// MCRegUnitIterator enumerates a list of register units and their associated
+/// lane masks for Reg. The register units are in ascending numerical order.
 class MCRegUnitMaskIterator {
   MCRegUnitIterator RUIter;
-  const LaneBitmask *MaskListIter;
-
+  const unsigned *MaskListIter;
 public:
-  MCRegUnitMaskIterator() = default;
-
+  MCRegUnitMaskIterator() {}
   /// Constructs an iterator that traverses the register units and their
   /// associated LaneMasks in Reg.
   MCRegUnitMaskIterator(unsigned Reg, const MCRegisterInfo *MCRI)
@@ -605,7 +585,7 @@ public:
   }
 
   /// Returns a (RegUnit, LaneMask) pair.
-  std::pair<unsigned,LaneBitmask> operator*() const {
+  std::pair<unsigned,unsigned> operator*() const {
     return std::make_pair(*RUIter, *MaskListIter);
   }
 
@@ -630,12 +610,10 @@ public:
 
 /// MCRegUnitRootIterator enumerates the root registers of a register unit.
 class MCRegUnitRootIterator {
-  uint16_t Reg0 = 0;
-  uint16_t Reg1 = 0;
-
+  uint16_t Reg0;
+  uint16_t Reg1;
 public:
-  MCRegUnitRootIterator() = default;
-
+  MCRegUnitRootIterator() : Reg0(0), Reg1(0) {}
   MCRegUnitRootIterator(unsigned RegUnit, const MCRegisterInfo *MCRI) {
     assert(RegUnit < MCRI->getNumRegUnits() && "Invalid register unit");
     Reg0 = MCRI->RegUnitRoots[RegUnit][0];
@@ -672,11 +650,11 @@ private:
   MCRegUnitIterator RI;
   MCRegUnitRootIterator RRI;
   MCSuperRegIterator SI;
-
 public:
   MCRegAliasIterator(unsigned Reg, const MCRegisterInfo *MCRI,
                      bool IncludeSelf)
     : Reg(Reg), MCRI(MCRI), IncludeSelf(IncludeSelf) {
+
     // Initialize the iterators.
     for (RI = MCRegUnitIterator(Reg, MCRI); RI.isValid(); ++RI) {
       for (RRI = MCRegUnitRootIterator(*RI, MCRI); RRI.isValid(); ++RRI) {
@@ -691,7 +669,7 @@ public:
   bool isValid() const { return RI.isValid(); }
 
   unsigned operator*() const {
-    assert(SI.isValid() && "Cannot dereference an invalid iterator.");
+    assert (SI.isValid() && "Cannot dereference an invalid iterator.");
     return *SI;
   }
 
@@ -720,6 +698,6 @@ public:
   }
 };
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_MC_MCREGISTERINFO_H
+#endif

@@ -7,27 +7,19 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/MC/MCParser/MCAsmParserExtension.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
-#include "llvm/MC/MCDirectives.h"
+#include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCParser/MCAsmLexer.h"
-#include "llvm/MC/MCParser/MCAsmParserExtension.h"
 #include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSectionCOFF.h"
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/SectionKind.h"
 #include "llvm/Support/COFF.h"
-#include "llvm/Support/SMLoc.h"
-#include <cassert>
-#include <cstdint>
-#include <limits>
-#include <utility>
-
 using namespace llvm;
 
 namespace {
@@ -49,8 +41,7 @@ class COFFAsmParser : public MCAsmParserExtension {
                           COFF::COMDATType Type);
 
   bool ParseSectionName(StringRef &SectionName);
-  bool ParseSectionFlags(StringRef SectionName, StringRef FlagsString,
-                         unsigned *Flags);
+  bool ParseSectionFlags(StringRef FlagsString, unsigned* Flags);
 
   void Initialize(MCAsmParser &Parser) override {
     // Call the base implementation.
@@ -106,14 +97,12 @@ class COFFAsmParser : public MCAsmParserExtension {
                             | COFF::IMAGE_SCN_MEM_READ,
                               SectionKind::getText());
   }
-
   bool ParseSectionDirectiveData(StringRef, SMLoc) {
     return ParseSectionSwitch(".data", COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
                                            COFF::IMAGE_SCN_MEM_READ |
                                            COFF::IMAGE_SCN_MEM_WRITE,
                               SectionKind::getData());
   }
-
   bool ParseSectionDirectiveBSS(StringRef, SMLoc) {
     return ParseSectionSwitch(".bss",
                               COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA
@@ -151,9 +140,8 @@ class COFFAsmParser : public MCAsmParserExtension {
   bool ParseAtUnwindOrAtExcept(bool &unwind, bool &except);
   bool ParseSEHRegisterNumber(unsigned &RegNo);
   bool ParseDirectiveSymbolAttribute(StringRef Directive, SMLoc);
-
 public:
-  COFFAsmParser() = default;
+  COFFAsmParser() {}
 };
 
 } // end annonomous namespace.
@@ -167,19 +155,17 @@ static SectionKind computeSectionKind(unsigned Flags) {
   return SectionKind::getData();
 }
 
-bool COFFAsmParser::ParseSectionFlags(StringRef SectionName,
-                                      StringRef FlagsString, unsigned *Flags) {
+bool COFFAsmParser::ParseSectionFlags(StringRef FlagsString, unsigned* Flags) {
   enum {
-    None        = 0,
-    Alloc       = 1 << 0,
-    Code        = 1 << 1,
-    Load        = 1 << 2,
-    InitData    = 1 << 3,
-    Shared      = 1 << 4,
-    NoLoad      = 1 << 5,
-    NoRead      = 1 << 6,
-    NoWrite     = 1 << 7,
-    Discardable = 1 << 8,
+    None      = 0,
+    Alloc     = 1 << 0,
+    Code      = 1 << 1,
+    Load      = 1 << 2,
+    InitData  = 1 << 3,
+    Shared    = 1 << 4,
+    NoLoad    = 1 << 5,
+    NoRead    = 1 << 6,
+    NoWrite  =  1 << 7
   };
 
   bool ReadOnlyRemoved = false;
@@ -210,10 +196,6 @@ bool COFFAsmParser::ParseSectionFlags(StringRef SectionName,
     case 'n': // section is not loaded
       SecFlags |= NoLoad;
       SecFlags &= ~Load;
-      break;
-
-    case 'D': // discardable
-      SecFlags |= Discardable;
       break;
 
     case 'r': // read-only
@@ -267,9 +249,6 @@ bool COFFAsmParser::ParseSectionFlags(StringRef SectionName,
     *Flags |= COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA;
   if (SecFlags & NoLoad)
     *Flags |= COFF::IMAGE_SCN_LNK_REMOVE;
-  if ((SecFlags & Discardable) ||
-      MCSectionCOFF::isImplicitlyDiscardable(SectionName))
-    *Flags |= COFF::IMAGE_SCN_MEM_DISCARDABLE;
   if ((SecFlags & NoRead) == 0)
     *Flags |= COFF::IMAGE_SCN_MEM_READ;
   if ((SecFlags & NoWrite) == 0)
@@ -288,7 +267,7 @@ bool COFFAsmParser::ParseDirectiveSymbolAttribute(StringRef Directive, SMLoc) {
     .Default(MCSA_Invalid);
   assert(Attr != MCSA_Invalid && "unexpected symbol attribute directive!");
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
-    while (true) {
+    for (;;) {
       StringRef Name;
 
       if (getParser().parseIdentifier(Name))
@@ -347,8 +326,7 @@ bool COFFAsmParser::ParseSectionName(StringRef &SectionName) {
 //   a: Ignored.
 //   b: BSS section (uninitialized data)
 //   d: data section (initialized data)
-//   n: "noload" section (removed by linker)
-//   D: Discardable section
+//   n: Discardable section
 //   r: Readable section
 //   s: Shared section
 //   w: Writable section
@@ -375,7 +353,7 @@ bool COFFAsmParser::ParseDirectiveSection(StringRef, SMLoc) {
     StringRef FlagsStr = getTok().getStringContents();
     Lex();
 
-    if (ParseSectionFlags(SectionName, FlagsStr, &Flags))
+    if (ParseSectionFlags(FlagsStr, &Flags))
       return true;
   }
 
@@ -466,27 +444,13 @@ bool COFFAsmParser::ParseDirectiveSecRel32(StringRef, SMLoc) {
   if (getParser().parseIdentifier(SymbolID))
     return TokError("expected identifier in directive");
 
-  int64_t Offset = 0;
-  SMLoc OffsetLoc;
-  if (getLexer().is(AsmToken::Plus)) {
-    OffsetLoc = getLexer().getLoc();
-    if (getParser().parseAbsoluteExpression(Offset))
-      return true;
-  }
-
   if (getLexer().isNot(AsmToken::EndOfStatement))
     return TokError("unexpected token in directive");
-
-  if (Offset < 0 || Offset > std::numeric_limits<uint32_t>::max())
-    return Error(
-        OffsetLoc,
-        "invalid '.secrel32' directive offset, can't be less "
-        "than zero or greater than std::numeric_limits<uint32_t>::max()");
 
   MCSymbol *Symbol = getContext().getOrCreateSymbol(SymbolID);
 
   Lex();
-  getStreamer().EmitCOFFSecRel32(Symbol, Offset);
+  getStreamer().EmitCOFFSecRel32(Symbol);
   return false;
 }
 
@@ -550,8 +514,8 @@ bool COFFAsmParser::ParseDirectiveLinkOnce(StringRef, SMLoc Loc) {
     if (parseCOMDATType(Type))
       return true;
 
-  const MCSectionCOFF *Current =
-      static_cast<const MCSectionCOFF *>(getStreamer().getCurrentSectionOnly());
+  const MCSectionCOFF *Current = static_cast<const MCSectionCOFF*>(
+                                       getStreamer().getCurrentSection().first);
 
   if (Type == COFF::IMAGE_COMDAT_SELECT_ASSOCIATIVE)
     return Error(Loc, "cannot make section associative with .linkonce");
@@ -829,4 +793,4 @@ MCAsmParserExtension *createCOFFAsmParser() {
   return new COFFAsmParser;
 }
 
-} // end namespace llvm
+}

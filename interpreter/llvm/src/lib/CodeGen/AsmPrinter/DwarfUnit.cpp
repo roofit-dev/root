@@ -12,34 +12,28 @@
 //===----------------------------------------------------------------------===//
 
 #include "DwarfUnit.h"
-#include "AddressPool.h"
+#include "DwarfAccelTable.h"
 #include "DwarfCompileUnit.h"
 #include "DwarfDebug.h"
 #include "DwarfExpression.h"
 #include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/iterator_range.h"
-#include "llvm/ADT/None.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/GlobalValue.h"
-#include "llvm/IR/Metadata.h"
-#include "llvm/MC/MachineLocation.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/MC/MCAsmInfo.h"
-#include "llvm/MC/MCDwarf.h"
+#include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
-#include <cassert>
-#include <cstdint>
-#include <string>
-#include <utility>
 
 using namespace llvm;
 
@@ -52,21 +46,18 @@ GenerateDwarfTypeUnits("generate-type-units", cl::Hidden,
 
 DIEDwarfExpression::DIEDwarfExpression(const AsmPrinter &AP, DwarfUnit &DU,
                                        DIELoc &DIE)
-    : DwarfExpression(AP.getDwarfVersion()), AP(AP), DU(DU),
+    : DwarfExpression(AP.getDwarfDebug()->getDwarfVersion()), AP(AP), DU(DU),
       DIE(DIE) {}
 
-void DIEDwarfExpression::emitOp(uint8_t Op, const char* Comment) {
+void DIEDwarfExpression::EmitOp(uint8_t Op, const char* Comment) {
   DU.addUInt(DIE, dwarf::DW_FORM_data1, Op);
 }
-
-void DIEDwarfExpression::emitSigned(int64_t Value) {
+void DIEDwarfExpression::EmitSigned(int64_t Value) {
   DU.addSInt(DIE, dwarf::DW_FORM_sdata, Value);
 }
-
-void DIEDwarfExpression::emitUnsigned(uint64_t Value) {
+void DIEDwarfExpression::EmitUnsigned(uint64_t Value) {
   DU.addUInt(DIE, dwarf::DW_FORM_udata, Value);
 }
-
 bool DIEDwarfExpression::isFrameRegister(const TargetRegisterInfo &TRI,
                                          unsigned MachineReg) {
   return MachineReg == TRI.getFrameRegister(*AP.MF);
@@ -74,8 +65,10 @@ bool DIEDwarfExpression::isFrameRegister(const TargetRegisterInfo &TRI,
 
 DwarfUnit::DwarfUnit(dwarf::Tag UnitTag, const DICompileUnit *Node,
                      AsmPrinter *A, DwarfDebug *DW, DwarfFile *DWU)
-    : DIEUnit(A->getDwarfVersion(), A->MAI->getCodePointerSize(), UnitTag),
-      CUNode(Node), Asm(A), DD(DW), DU(DWU), IndexTyDie(nullptr) {
+    : CUNode(Node), UnitDie(*DIE::get(DIEValueAllocator, UnitTag)), Asm(A),
+      DD(DW), DU(DWU), IndexTyDie(nullptr), Section(nullptr) {
+  assert(UnitTag == dwarf::DW_TAG_compile_unit ||
+         UnitTag == dwarf::DW_TAG_type_unit);
 }
 
 DwarfTypeUnit::DwarfTypeUnit(DwarfCompileUnit &CU, AsmPrinter *A,
@@ -84,7 +77,7 @@ DwarfTypeUnit::DwarfTypeUnit(DwarfCompileUnit &CU, AsmPrinter *A,
     : DwarfUnit(dwarf::DW_TAG_type_unit, CU.getCUNode(), A, DW, DWU), CU(CU),
       SplitLineTable(SplitLineTable) {
   if (SplitLineTable)
-    addSectionOffset(getUnitDie(), dwarf::DW_AT_stmt_list, 0);
+    addSectionOffset(UnitDie, dwarf::DW_AT_stmt_list, 0);
 }
 
 DwarfUnit::~DwarfUnit() {
@@ -99,35 +92,25 @@ int64_t DwarfUnit::getDefaultLowerBound() const {
   default:
     break;
 
-  // The languages below have valid values in all DWARF versions.
-  case dwarf::DW_LANG_C:
   case dwarf::DW_LANG_C89:
+  case dwarf::DW_LANG_C99:
+  case dwarf::DW_LANG_C:
   case dwarf::DW_LANG_C_plus_plus:
+  case dwarf::DW_LANG_ObjC:
+  case dwarf::DW_LANG_ObjC_plus_plus:
     return 0;
 
   case dwarf::DW_LANG_Fortran77:
   case dwarf::DW_LANG_Fortran90:
+  case dwarf::DW_LANG_Fortran95:
     return 1;
 
-  // The languages below have valid values only if the DWARF version >= 3.
-  case dwarf::DW_LANG_C99:
-  case dwarf::DW_LANG_ObjC:
-  case dwarf::DW_LANG_ObjC_plus_plus:
-    if (DD->getDwarfVersion() >= 3)
-      return 0;
-    break;
-
-  case dwarf::DW_LANG_Fortran95:
-    if (DD->getDwarfVersion() >= 3)
-      return 1;
-    break;
-
-  // Starting with DWARF v4, all defined languages have valid values.
-  case dwarf::DW_LANG_D:
+  // The languages below have valid values only if the DWARF version >= 4.
   case dwarf::DW_LANG_Java:
   case dwarf::DW_LANG_Python:
   case dwarf::DW_LANG_UPC:
-    if (DD->getDwarfVersion() >= 4)
+  case dwarf::DW_LANG_D:
+    if (dwarf::DWARF_VERSION >= 4)
       return 0;
     break;
 
@@ -138,33 +121,31 @@ int64_t DwarfUnit::getDefaultLowerBound() const {
   case dwarf::DW_LANG_Modula2:
   case dwarf::DW_LANG_Pascal83:
   case dwarf::DW_LANG_PLI:
-    if (DD->getDwarfVersion() >= 4)
+    if (dwarf::DWARF_VERSION >= 4)
       return 1;
     break;
 
-  // The languages below are new in DWARF v5.
-  case dwarf::DW_LANG_BLISS:
-  case dwarf::DW_LANG_C11:
-  case dwarf::DW_LANG_C_plus_plus_03:
-  case dwarf::DW_LANG_C_plus_plus_11:
-  case dwarf::DW_LANG_C_plus_plus_14:
-  case dwarf::DW_LANG_Dylan:
+  // The languages below have valid values only if the DWARF version >= 5.
+  case dwarf::DW_LANG_OpenCL:
   case dwarf::DW_LANG_Go:
   case dwarf::DW_LANG_Haskell:
+  case dwarf::DW_LANG_C_plus_plus_03:
+  case dwarf::DW_LANG_C_plus_plus_11:
   case dwarf::DW_LANG_OCaml:
-  case dwarf::DW_LANG_OpenCL:
-  case dwarf::DW_LANG_RenderScript:
   case dwarf::DW_LANG_Rust:
+  case dwarf::DW_LANG_C11:
   case dwarf::DW_LANG_Swift:
-    if (DD->getDwarfVersion() >= 5)
+  case dwarf::DW_LANG_Dylan:
+  case dwarf::DW_LANG_C_plus_plus_14:
+    if (dwarf::DWARF_VERSION >= 5)
       return 0;
     break;
 
+  case dwarf::DW_LANG_Modula3:
+  case dwarf::DW_LANG_Julia:
   case dwarf::DW_LANG_Fortran03:
   case dwarf::DW_LANG_Fortran08:
-  case dwarf::DW_LANG_Julia:
-  case dwarf::DW_LANG_Modula3:
-    if (DD->getDwarfVersion() >= 5)
+    if (dwarf::DWARF_VERSION >= 5)
       return 1;
     break;
   }
@@ -173,7 +154,7 @@ int64_t DwarfUnit::getDefaultLowerBound() const {
 }
 
 /// Check whether the DIE for this MDNode can be shared across CUs.
-bool DwarfUnit::isShareableAcrossCUs(const DINode *D) const {
+static bool isShareableAcrossCUs(const DINode *D) {
   // When the MDNode can be part of the type system, the DIE can be shared
   // across CUs.
   // Combining type units and cross-CU DIE sharing is lower value (since
@@ -181,8 +162,6 @@ bool DwarfUnit::isShareableAcrossCUs(const DINode *D) const {
   // level already) but may be implementable for some value in projects
   // building multiple independent libraries with LTO and then linking those
   // together.
-  if (isDwoUnit() && !DD->shareAcrossDWOCUs())
-    return false;
   return (isa<DIType>(D) ||
           (isa<DISubprogram>(D) && !cast<DISubprogram>(D)->isDefinition())) &&
          !GenerateDwarfTypeUnits;
@@ -215,8 +194,6 @@ void DwarfUnit::addUInt(DIEValueList &Die, dwarf::Attribute Attribute,
                         Optional<dwarf::Form> Form, uint64_t Integer) {
   if (!Form)
     Form = DIEInteger::BestForm(false, Integer);
-  assert(Form != dwarf::DW_FORM_implicit_const &&
-         "DW_FORM_implicit_const is used only for signed integers");
   Die.addValue(DIEValueAllocator, Attribute, *Form, DIEInteger(Integer));
 }
 
@@ -300,17 +277,24 @@ void DwarfUnit::addDIETypeSignature(DIE &Die, uint64_t Signature) {
                dwarf::DW_FORM_ref_sig8, DIEInteger(Signature));
 }
 
+void DwarfUnit::addDIETypeSignature(DIE &Die, dwarf::Attribute Attribute,
+                                    StringRef Identifier) {
+  uint64_t Signature = DD->makeTypeSignature(Identifier);
+  Die.addValue(DIEValueAllocator, Attribute, dwarf::DW_FORM_ref_sig8,
+               DIEInteger(Signature));
+}
+
 void DwarfUnit::addDIEEntry(DIE &Die, dwarf::Attribute Attribute,
                             DIEEntry Entry) {
-  const DIEUnit *CU = Die.getUnit();
-  const DIEUnit *EntryCU = Entry.getEntry().getUnit();
-  if (!CU)
+  const DIE *DieCU = Die.getUnitOrNull();
+  const DIE *EntryCU = Entry.getEntry().getUnitOrNull();
+  if (!DieCU)
     // We assume that Die belongs to this CU, if it is not linked to any CU yet.
-    CU = getUnitDie().getUnit();
+    DieCU = &getUnitDie();
   if (!EntryCU)
-    EntryCU = getUnitDie().getUnit();
+    EntryCU = &getUnitDie();
   Die.addValue(DIEValueAllocator, Attribute,
-               EntryCU == CU ? dwarf::DW_FORM_ref4 : dwarf::DW_FORM_ref_addr,
+               EntryCU == DieCU ? dwarf::DW_FORM_ref4 : dwarf::DW_FORM_ref_addr,
                Entry);
 }
 
@@ -375,6 +359,25 @@ void DwarfUnit::addSourceLine(DIE &Die, const DIObjCProperty *Ty) {
   assert(Ty);
 
   addSourceLine(Die, Ty->getLine(), Ty->getFilename(), Ty->getDirectory());
+}
+
+void DwarfUnit::addSourceLine(DIE &Die, const DINamespace *NS) {
+  addSourceLine(Die, NS->getLine(), NS->getFilename(), NS->getDirectory());
+}
+
+bool DwarfUnit::addRegisterOpPiece(DIELoc &TheDie, unsigned Reg,
+                                   unsigned SizeInBits, unsigned OffsetInBits) {
+  DIEDwarfExpression Expr(*Asm, *this, TheDie);
+  Expr.AddMachineRegPiece(*Asm->MF->getSubtarget().getRegisterInfo(), Reg,
+                          SizeInBits, OffsetInBits);
+  return true;
+}
+
+bool DwarfUnit::addRegisterOffset(DIELoc &TheDie, unsigned Reg,
+                                  int64_t Offset) {
+  DIEDwarfExpression Expr(*Asm, *this, TheDie);
+  return Expr.AddMachineRegIndirect(*Asm->MF->getSubtarget().getRegisterInfo(),
+                                    Reg, Offset);
 }
 
 /* Byref variables, in Blocks, are declared by the programmer as "SomeType
@@ -469,48 +472,43 @@ void DwarfUnit::addBlockByrefAddress(const DbgVariable &DV, DIE &Die,
   // Decode the original location, and use that as the start of the byref
   // variable's location.
   DIELoc *Loc = new (DIEValueAllocator) DIELoc;
-  DIEDwarfExpression DwarfExpr(*Asm, *this, *Loc);
-  if (Location.isIndirect())
-    DwarfExpr.setMemoryLocationKind();
 
-  SmallVector<uint64_t, 9> Ops;
-  if (Location.isIndirect() && Location.getOffset()) {
-    Ops.push_back(dwarf::DW_OP_plus);
-    Ops.push_back(Location.getOffset());
-  }
+  bool validReg;
+  if (Location.isReg())
+    validReg = addRegisterOpPiece(*Loc, Location.getReg());
+  else
+    validReg = addRegisterOffset(*Loc, Location.getReg(), Location.getOffset());
+
+  if (!validReg)
+    return;
+
   // If we started with a pointer to the __Block_byref... struct, then
   // the first thing we need to do is dereference the pointer (DW_OP_deref).
   if (isPointer)
-    Ops.push_back(dwarf::DW_OP_deref);
+    addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_deref);
 
   // Next add the offset for the '__forwarding' field:
   // DW_OP_plus_uconst ForwardingFieldOffset.  Note there's no point in
   // adding the offset if it's 0.
   if (forwardingFieldOffset > 0) {
-    Ops.push_back(dwarf::DW_OP_plus);
-    Ops.push_back(forwardingFieldOffset);
+    addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_plus_uconst);
+    addUInt(*Loc, dwarf::DW_FORM_udata, forwardingFieldOffset);
   }
 
   // Now dereference the __forwarding field to get to the real __Block_byref
   // struct:  DW_OP_deref.
-  Ops.push_back(dwarf::DW_OP_deref);
+  addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_deref);
 
   // Now that we've got the real __Block_byref... struct, add the offset
   // for the variable's field to get to the location of the actual variable:
   // DW_OP_plus_uconst varFieldOffset.  Again, don't add if it's 0.
   if (varFieldOffset > 0) {
-    Ops.push_back(dwarf::DW_OP_plus);
-    Ops.push_back(varFieldOffset);
+    addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_plus_uconst);
+    addUInt(*Loc, dwarf::DW_FORM_udata, varFieldOffset);
   }
 
-  DIExpressionCursor Cursor(Ops);
-  const TargetRegisterInfo &TRI = *Asm->MF->getSubtarget().getRegisterInfo();
-  if (!DwarfExpr.addMachineRegExpression(TRI, Cursor, Location.getReg()))
-    return;
-  DwarfExpr.addExpression(std::move(Cursor));
-
   // Now attach the location information to the DIE.
-  addBlock(Die, Attribute, DwarfExpr.finalize());
+  addBlock(Die, Attribute, Loc);
 }
 
 /// Return true if type encoding is unsigned.
@@ -540,7 +538,7 @@ static bool isUnsignedDIType(DwarfDebug *DD, const DIType *Ty) {
       return true;
     assert(T == dwarf::DW_TAG_typedef || T == dwarf::DW_TAG_const_type ||
            T == dwarf::DW_TAG_volatile_type ||
-           T == dwarf::DW_TAG_restrict_type || T == dwarf::DW_TAG_atomic_type);
+           T == dwarf::DW_TAG_restrict_type);
     DITypeRef Deriv = DTy->getBaseType();
     assert(Deriv && "Expected valid base type");
     return isUnsignedDIType(DD, DD->resolve(Deriv));
@@ -561,6 +559,32 @@ static bool isUnsignedDIType(DwarfDebug *DD, const DIType *Ty) {
          Encoding == dwarf::DW_ATE_unsigned_char ||
          Encoding == dwarf::DW_ATE_UTF || Encoding == dwarf::DW_ATE_boolean ||
          Ty->getTag() == dwarf::DW_TAG_unspecified_type;
+}
+
+/// If this type is derived from a base type then return base type size.
+static uint64_t getBaseTypeSize(DwarfDebug *DD, const DIDerivedType *Ty) {
+  unsigned Tag = Ty->getTag();
+
+  if (Tag != dwarf::DW_TAG_member && Tag != dwarf::DW_TAG_typedef &&
+      Tag != dwarf::DW_TAG_const_type && Tag != dwarf::DW_TAG_volatile_type &&
+      Tag != dwarf::DW_TAG_restrict_type)
+    return Ty->getSizeInBits();
+
+  auto *BaseType = DD->resolve(Ty->getBaseType());
+
+  assert(BaseType && "Unexpected invalid base type");
+
+  // If this is a derived type, go ahead and get the base type, unless it's a
+  // reference then it's just the size of the field. Pointer types have no need
+  // of this since they're a different type of qualification on the type.
+  if (BaseType->getTag() == dwarf::DW_TAG_reference_type ||
+      BaseType->getTag() == dwarf::DW_TAG_rvalue_reference_type)
+    return Ty->getSizeInBits();
+
+  if (auto *DT = dyn_cast<DIDerivedType>(BaseType))
+    return getBaseTypeSize(DD, DT);
+
+  return BaseType->getSizeInBits();
 }
 
 void DwarfUnit::addConstantFPValue(DIE &Die, const MachineOperand &MO) {
@@ -660,14 +684,6 @@ void DwarfUnit::addTemplateParams(DIE &Buffer, DINodeArray TParams) {
   }
 }
 
-/// Add thrown types.
-void DwarfUnit::addThrownTypes(DIE &Die, DINodeArray ThrownTypes) {
-  for (const auto *Ty : ThrownTypes) {
-    DIE &TT = createAndAddDIE(dwarf::DW_TAG_thrown_type, Die);
-    addType(TT, cast<DIType>(Ty));
-  }
-}
-
 DIE *DwarfUnit::getOrCreateContextDIE(const DIScope *Context) {
   if (!Context || isa<DIFile>(Context))
     return &getUnitDie();
@@ -682,7 +698,7 @@ DIE *DwarfUnit::getOrCreateContextDIE(const DIScope *Context) {
   return getDIE(Context);
 }
 
-DIE *DwarfTypeUnit::createTypeDIE(const DICompositeType *Ty) {
+DIE *DwarfUnit::createTypeDIE(const DICompositeType *Ty) {
   auto *Context = resolve(Ty->getScope());
   DIE *ContextDIE = getOrCreateContextDIE(Context);
 
@@ -694,7 +710,8 @@ DIE *DwarfTypeUnit::createTypeDIE(const DICompositeType *Ty) {
 
   constructTypeDIE(TyDIE, cast<DICompositeType>(Ty));
 
-  updateAcceleratorTables(Context, Ty, TyDIE);
+  if (!Ty->isExternalTypeRef())
+    updateAcceleratorTables(Context, Ty, TyDIE);
   return &TyDIE;
 }
 
@@ -706,10 +723,6 @@ DIE *DwarfUnit::getOrCreateTypeDIE(const MDNode *TyNode) {
 
   // DW_TAG_restrict_type is not supported in DWARF2
   if (Ty->getTag() == dwarf::DW_TAG_restrict_type && DD->getDwarfVersion() <= 2)
-    return getOrCreateTypeDIE(resolve(cast<DIDerivedType>(Ty)->getBaseType()));
-
-  // DW_TAG_atomic_type is not supported in DWARF < 5
-  if (Ty->getTag() == dwarf::DW_TAG_atomic_type && DD->getDwarfVersion() < 5)
     return getOrCreateTypeDIE(resolve(cast<DIDerivedType>(Ty)->getBaseType()));
 
   // Construct the context before querying for the existence of the DIE in case
@@ -748,7 +761,7 @@ DIE *DwarfUnit::getOrCreateTypeDIE(const MDNode *TyNode) {
 void DwarfUnit::updateAcceleratorTables(const DIScope *Context,
                                         const DIType *Ty, const DIE &TyDIE) {
   if (!Ty->getName().empty() && !Ty->isForwardDecl()) {
-    bool IsImplementation = false;
+    bool IsImplementation = 0;
     if (auto *CT = dyn_cast<DICompositeType>(Ty)) {
       // A runtime language of 0 actually means C/C++ and that any
       // non-negative value is some version of Objective-C/C++.
@@ -850,13 +863,6 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const DIDerivedType *DTy) {
   // Add source line info if available and TyDesc is not a forward declaration.
   if (!DTy->isForwardDecl())
     addSourceLine(Buffer, DTy);
-
-  // If DWARF address space value is other than None, add it for pointer and
-  // reference types as DW_AT_address_class.
-  if (DTy->getDWARFAddressSpace() && (Tag == dwarf::DW_TAG_pointer_type ||
-                                      Tag == dwarf::DW_TAG_reference_type))
-    addUInt(Buffer, dwarf::DW_AT_address_class, dwarf::DW_FORM_data4,
-            DTy->getDWARFAddressSpace().getValue());
 }
 
 void DwarfUnit::constructSubprogramArguments(DIE &Buffer, DITypeRefArray Args) {
@@ -908,6 +914,13 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const DISubroutineType *CTy) {
 }
 
 void DwarfUnit::constructTypeDIE(DIE &Buffer, const DICompositeType *CTy) {
+  if (CTy->isExternalTypeRef()) {
+    StringRef Identifier = CTy->getIdentifier();
+    assert(!Identifier.empty() && "external type ref without identifier");
+    addFlag(Buffer, dwarf::DW_AT_declaration);
+    return addDIETypeSignature(Buffer, dwarf::DW_AT_signature, Identifier);
+  }
+
   // Add name if not anonymous or intermediate type.
   StringRef Name = CTy->getName();
 
@@ -1012,11 +1025,6 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const DICompositeType *CTy) {
     if (RLang)
       addUInt(Buffer, dwarf::DW_AT_APPLE_runtime_class, dwarf::DW_FORM_data1,
               RLang);
-
-    // Add align info if available.
-    if (uint32_t AlignInBytes = CTy->getAlignInBytes())
-      addUInt(Buffer, dwarf::DW_AT_alignment, dwarf::DW_FORM_udata,
-              AlignInBytes);
   }
 }
 
@@ -1045,18 +1053,14 @@ void DwarfUnit::constructTemplateValueParameterDIE(
     if (ConstantInt *CI = mdconst::dyn_extract<ConstantInt>(Val))
       addConstantValue(ParamDIE, CI, resolve(VP->getType()));
     else if (GlobalValue *GV = mdconst::dyn_extract<GlobalValue>(Val)) {
-      // We cannot describe the location of dllimport'd entities: the
-      // computation of their address requires loads from the IAT.
-      if (!GV->hasDLLImportStorageClass()) {
-        // For declaration non-type template parameters (such as global values
-        // and functions)
-        DIELoc *Loc = new (DIEValueAllocator) DIELoc;
-        addOpAddress(*Loc, Asm->getSymbol(GV));
-        // Emit DW_OP_stack_value to use the address as the immediate value of
-        // the parameter, rather than a pointer to it.
-        addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_stack_value);
-        addBlock(ParamDIE, dwarf::DW_AT_location, Loc);
-      }
+      // For declaration non-type template parameters (such as global values and
+      // functions)
+      DIELoc *Loc = new (DIEValueAllocator) DIELoc;
+      addOpAddress(*Loc, Asm->getSymbol(GV));
+      // Emit DW_OP_stack_value to use the address as the immediate value of the
+      // parameter, rather than a pointer to it.
+      addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_stack_value);
+      addBlock(ParamDIE, dwarf::DW_AT_location, Loc);
     } else if (VP->getTag() == dwarf::DW_TAG_GNU_template_template_param) {
       assert(isa<MDString>(Val));
       addString(ParamDIE, dwarf::DW_AT_GNU_template_name,
@@ -1083,8 +1087,7 @@ DIE *DwarfUnit::getOrCreateNameSpace(const DINamespace *NS) {
     Name = "(anonymous namespace)";
   DD->addAccelNamespace(Name, NDie);
   addGlobalName(Name, NDie, NS->getScope());
-  if (NS->getExportSymbols())
-    addFlag(NDie, dwarf::DW_AT_export_symbols);
+  addSourceLine(NDie, NS);
   return &NDie;
 }
 
@@ -1152,9 +1155,7 @@ bool DwarfUnit::applySubprogramDefinitionAttributes(const DISubprogram *SP,
     assert(DeclDie && "This DIE should've already been constructed when the "
                       "definition DIE was created in "
                       "getOrCreateSubprogramDIE");
-    // Look at the Decl's linkage name only if we emitted it.
-    if (DD->useAllLinkageNames())
-      DeclLinkageName = SPDecl->getLinkageName();
+    DeclLinkageName = SPDecl->getLinkageName();
     unsigned DeclID =
         getOrCreateSourceID(SPDecl->getFilename(), SPDecl->getDirectory());
     unsigned DefID = getOrCreateSourceID(SP->getFilename(), SP->getDirectory());
@@ -1188,12 +1189,8 @@ bool DwarfUnit::applySubprogramDefinitionAttributes(const DISubprogram *SP,
 }
 
 void DwarfUnit::applySubprogramAttributes(const DISubprogram *SP, DIE &SPDie,
-                                          bool SkipSPAttributes) {
-  // If -fdebug-info-for-profiling is enabled, need to emit the subprogram
-  // and its source location.
-  bool SkipSPSourceLocation = SkipSPAttributes &&
-                              !CUNode->getDebugInfoForProfiling();
-  if (!SkipSPSourceLocation)
+                                          bool Minimal) {
+  if (!Minimal)
     if (applySubprogramDefinitionAttributes(SP, SPDie))
       return;
 
@@ -1201,12 +1198,11 @@ void DwarfUnit::applySubprogramAttributes(const DISubprogram *SP, DIE &SPDie,
   if (!SP->getName().empty())
     addString(SPDie, dwarf::DW_AT_name, SP->getName());
 
-  if (!SkipSPSourceLocation)
-    addSourceLine(SPDie, SP);
-
   // Skip the rest of the attributes under -gmlt to save space.
-  if (SkipSPAttributes)
+  if (Minimal)
     return;
+
+  addSourceLine(SPDie, SP);
 
   // Add the prototype if we have a prototype and we have a C like
   // language.
@@ -1254,8 +1250,6 @@ void DwarfUnit::applySubprogramAttributes(const DISubprogram *SP, DIE &SPDie,
     constructSubprogramArguments(SPDie, Args);
   }
 
-  addThrownTypes(SPDie, SP->getThrownTypes());
-
   if (SP->isArtificial())
     addFlag(SPDie, dwarf::DW_AT_artificial);
 
@@ -1276,9 +1270,6 @@ void DwarfUnit::applySubprogramAttributes(const DISubprogram *SP, DIE &SPDie,
   if (SP->isRValueReference())
     addFlag(SPDie, dwarf::DW_AT_rvalue_reference);
 
-  if (SP->isNoReturn())
-    addFlag(SPDie, dwarf::DW_AT_noreturn);
-
   if (SP->isProtected())
     addUInt(SPDie, dwarf::DW_AT_accessibility, dwarf::DW_FORM_data1,
             dwarf::DW_ACCESS_protected);
@@ -1291,9 +1282,6 @@ void DwarfUnit::applySubprogramAttributes(const DISubprogram *SP, DIE &SPDie,
 
   if (SP->isExplicit())
     addFlag(SPDie, dwarf::DW_AT_explicit);
-
-  if (SP->isMainSubprogram())
-    addFlag(SPDie, dwarf::DW_AT_main_subprogram);
 }
 
 void DwarfUnit::constructSubrangeDIE(DIE &Buffer, const DISubrange *SR,
@@ -1322,7 +1310,7 @@ DIE *DwarfUnit::getIndexTyDie() {
   if (IndexTyDie)
     return IndexTyDie;
   // Construct an integer type to use for indexes.
-  IndexTyDie = &createAndAddDIE(dwarf::DW_TAG_base_type, getUnitDie());
+  IndexTyDie = &createAndAddDIE(dwarf::DW_TAG_base_type, UnitDie);
   addString(*IndexTyDie, dwarf::DW_AT_name, "sizetype");
   addUInt(*IndexTyDie, dwarf::DW_AT_byte_size, None, sizeof(int64_t));
   addUInt(*IndexTyDie, dwarf::DW_AT_encoding, dwarf::DW_FORM_data1,
@@ -1416,8 +1404,7 @@ void DwarfUnit::constructMemberDIE(DIE &Buffer, const DIDerivedType *DT) {
     addBlock(MemberDie, dwarf::DW_AT_data_member_location, VBaseLocationDie);
   } else {
     uint64_t Size = DT->getSizeInBits();
-    uint64_t FieldSize = DD->getBaseTypeSize(DT);
-    uint32_t AlignInBytes = DT->getAlignInBytes();
+    uint64_t FieldSize = getBaseTypeSize(DD, DT);
     uint64_t OffsetInBytes;
 
     bool IsBitfield = FieldSize && Size != FieldSize;
@@ -1428,11 +1415,8 @@ void DwarfUnit::constructMemberDIE(DIE &Buffer, const DIDerivedType *DT) {
       addUInt(MemberDie, dwarf::DW_AT_bit_size, None, Size);
 
       uint64_t Offset = DT->getOffsetInBits();
-      // We can't use DT->getAlignInBits() here: AlignInBits for member type
-      // is non-zero if and only if alignment was forced (e.g. _Alignas()),
-      // which can't be done with bitfields. Thus we use FieldSize here.
-      uint32_t AlignInBits = FieldSize;
-      uint32_t AlignMask = ~(AlignInBits - 1);
+      uint64_t Align = DT->getAlignInBits() ? DT->getAlignInBits() : FieldSize;
+      uint64_t AlignMask = ~(Align - 1);
       // The bits from the start of the storage unit to the start of the field.
       uint64_t StartBitOffset = Offset - (Offset & AlignMask);
       // The byte offset of the field's aligned storage unit inside the struct.
@@ -1455,9 +1439,6 @@ void DwarfUnit::constructMemberDIE(DIE &Buffer, const DIDerivedType *DT) {
     } else {
       // This is not a bitfield.
       OffsetInBytes = DT->getOffsetInBits() / 8;
-      if (AlignInBytes)
-        addUInt(MemberDie, dwarf::DW_AT_alignment, dwarf::DW_FORM_udata,
-                AlignInBytes);
     }
 
     if (DD->getDwarfVersion() <= 2) {
@@ -1534,34 +1515,21 @@ DIE *DwarfUnit::getOrCreateStaticMemberDIE(const DIDerivedType *DT) {
   if (const ConstantFP *CFP = dyn_cast_or_null<ConstantFP>(DT->getConstant()))
     addConstantFPValue(StaticMemberDIE, CFP);
 
-  if (uint32_t AlignInBytes = DT->getAlignInBytes())
-    addUInt(StaticMemberDIE, dwarf::DW_AT_alignment, dwarf::DW_FORM_udata,
-            AlignInBytes);
-
   return &StaticMemberDIE;
 }
 
-void DwarfUnit::emitCommonHeader(bool UseOffsets, dwarf::UnitType UT) {
+void DwarfUnit::emitHeader(bool UseOffsets) {
   // Emit size of content not including length itself
   Asm->OutStreamer->AddComment("Length of Unit");
-  Asm->EmitInt32(getHeaderSize() + getUnitDie().getSize());
+  Asm->EmitInt32(getHeaderSize() + UnitDie.getSize());
 
   Asm->OutStreamer->AddComment("DWARF version number");
-  unsigned Version = DD->getDwarfVersion();
-  Asm->EmitInt16(Version);
-
-  // DWARF v5 reorders the address size and adds a unit type.
-  if (Version >= 5) {
-    Asm->OutStreamer->AddComment("DWARF Unit Type");
-    Asm->EmitInt8(UT);
-    Asm->OutStreamer->AddComment("Address Size (in bytes)");
-    Asm->EmitInt8(Asm->MAI->getCodePointerSize());
-  }
+  Asm->EmitInt16(DD->getDwarfVersion());
+  Asm->OutStreamer->AddComment("Offset Into Abbrev. Section");
 
   // We share one abbreviations table across all units so it's always at the
   // start of the section. Use a relocatable offset where needed to ensure
   // linking doesn't invalidate that offset.
-  Asm->OutStreamer->AddComment("Offset Into Abbrev. Section");
   const TargetLoweringObjectFile &TLOF = Asm->getObjFileLowering();
   if (UseOffsets)
     Asm->EmitInt32(0);
@@ -1569,16 +1537,17 @@ void DwarfUnit::emitCommonHeader(bool UseOffsets, dwarf::UnitType UT) {
     Asm->emitDwarfSymbolReference(
         TLOF.getDwarfAbbrevSection()->getBeginSymbol(), false);
 
-  if (Version <= 4) {
-    Asm->OutStreamer->AddComment("Address Size (in bytes)");
-    Asm->EmitInt8(Asm->MAI->getCodePointerSize());
-  }
+  Asm->OutStreamer->AddComment("Address Size (in bytes)");
+  Asm->EmitInt8(Asm->getDataLayout().getPointerSize());
+}
+
+void DwarfUnit::initSection(MCSection *Section) {
+  assert(!this->Section);
+  this->Section = Section;
 }
 
 void DwarfTypeUnit::emitHeader(bool UseOffsets) {
-  DwarfUnit::emitCommonHeader(UseOffsets, 
-                              DD->useSplitDwarf() ? dwarf::DW_UT_split_type
-                                                  : dwarf::DW_UT_type);
+  DwarfUnit::emitHeader(UseOffsets);
   Asm->OutStreamer->AddComment("Type Signature");
   Asm->OutStreamer->EmitIntValue(TypeSignature, sizeof(TypeSignature));
   Asm->OutStreamer->AddComment("Type DIE Offset");
@@ -1591,22 +1560,4 @@ bool DwarfTypeUnit::isDwoUnit() const {
   // Since there are no skeleton type units, all type units are dwo type units
   // when split DWARF is being used.
   return DD->useSplitDwarf();
-}
-
-void DwarfTypeUnit::addGlobalName(StringRef Name, const DIE &Die,
-                                  const DIScope *Context) {
-  getCU().addGlobalNameForTypeUnit(Name, Context);
-}
-
-void DwarfTypeUnit::addGlobalType(const DIType *Ty, const DIE &Die,
-                                  const DIScope *Context) {
-  getCU().addGlobalTypeUnitType(Ty, Context);
-}
-
-const MCSymbol *DwarfUnit::getCrossSectionRelativeBaseAddress() const {
-  if (!Asm->MAI->doesDwarfUseRelocationsAcrossSections())
-    return nullptr;
-  if (isDwoUnit())
-    return nullptr;
-  return getSection()->getBeginSymbol();
 }

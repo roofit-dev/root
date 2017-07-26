@@ -14,25 +14,12 @@
 
 #include "clang/Lex/LiteralSupport.h"
 #include "clang/Basic/CharInfo.h"
-#include "clang/Basic/LangOptions.h"
-#include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/LexDiagnostic.h"
-#include "clang/Lex/Lexer.h"
 #include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/Token.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/ErrorHandling.h"
-#include <algorithm>
-#include <cassert>
-#include <cstddef>
-#include <cstdint> 
-#include <cstring>
-#include <string>
 
 using namespace clang;
 
@@ -147,7 +134,7 @@ static unsigned ProcessCharEscape(const char *ThisTokBegin,
       if (Diags)
         Diag(Diags, Features, Loc, ThisTokBegin, EscapeBegin, ThisTokBuf,
              diag::err_hex_escape_no_digits) << "x";
-      HadError = true;
+      HadError = 1;
       break;
     }
 
@@ -402,7 +389,7 @@ static void EncodeUCNEscape(const char *ThisTokBegin, const char *&ThisTokBuf,
   if (CharByteWidth == 4) {
     // FIXME: Make the type of the result buffer correct instead of
     // using reinterpret_cast.
-    llvm::UTF32 *ResultPtr = reinterpret_cast<llvm::UTF32*>(ResultBuf);
+    UTF32 *ResultPtr = reinterpret_cast<UTF32*>(ResultBuf);
     *ResultPtr = UcnVal;
     ResultBuf += 4;
     return;
@@ -411,7 +398,7 @@ static void EncodeUCNEscape(const char *ThisTokBegin, const char *&ThisTokBuf,
   if (CharByteWidth == 2) {
     // FIXME: Make the type of the result buffer correct instead of
     // using reinterpret_cast.
-    llvm::UTF16 *ResultPtr = reinterpret_cast<llvm::UTF16*>(ResultBuf);
+    UTF16 *ResultPtr = reinterpret_cast<UTF16*>(ResultBuf);
 
     if (UcnVal <= (UTF32)0xFFFF) {
       *ResultPtr = UcnVal;
@@ -464,6 +451,7 @@ static void EncodeUCNEscape(const char *ThisTokBegin, const char *&ThisTokBuf,
   // Update the buffer.
   ResultBuf += bytesToWrite;
 }
+
 
 ///       integer-constant: [C99 6.4.4.1]
 ///         decimal-constant integer-suffix
@@ -997,6 +985,7 @@ NumericLiteralParser::GetFloatValue(llvm::APFloat &Result) {
   return Result.convertFromString(Str, APFloat::rmNearestTiesToEven);
 }
 
+
 /// \verbatim
 ///       user-defined-character-literal: [C++11 lex.ext]
 ///         character-literal ud-suffix
@@ -1114,11 +1103,11 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
 
       char const *tmp_in_start = start;
       uint32_t *tmp_out_start = buffer_begin;
-      llvm::ConversionResult res =
-          llvm::ConvertUTF8toUTF32(reinterpret_cast<llvm::UTF8 const **>(&start),
-                             reinterpret_cast<llvm::UTF8 const *>(begin),
-                             &buffer_begin, buffer_end, llvm::strictConversion);
-      if (res != llvm::conversionOK) {
+      ConversionResult res =
+          ConvertUTF8toUTF32(reinterpret_cast<UTF8 const **>(&start),
+                             reinterpret_cast<UTF8 const *>(begin),
+                             &buffer_begin, buffer_end, strictConversion);
+      if (res != conversionOK) {
         // If we see bad encoding for unprefixed character literals, warn and
         // simply copy the byte values, for compatibility with gcc and
         // older versions of clang.
@@ -1510,13 +1499,13 @@ void StringLiteralParser::init(ArrayRef<Token> StringToks){
         if (CharByteWidth == 4) {
           // FIXME: Make the type of the result buffer correct instead of
           // using reinterpret_cast.
-          llvm::UTF32 *ResultWidePtr = reinterpret_cast<llvm::UTF32*>(ResultPtr);
+          UTF32 *ResultWidePtr = reinterpret_cast<UTF32*>(ResultPtr);
           *ResultWidePtr = ResultChar;
           ResultPtr += 4;
         } else if (CharByteWidth == 2) {
           // FIXME: Make the type of the result buffer correct instead of
           // using reinterpret_cast.
-          llvm::UTF16 *ResultWidePtr = reinterpret_cast<llvm::UTF16*>(ResultPtr);
+          UTF16 *ResultWidePtr = reinterpret_cast<UTF16*>(ResultPtr);
           *ResultWidePtr = ResultChar & 0xFFFF;
           ResultPtr += 2;
         } else {
@@ -1531,12 +1520,12 @@ void StringLiteralParser::init(ArrayRef<Token> StringToks){
     if (CharByteWidth == 4) {
       // FIXME: Make the type of the result buffer correct instead of
       // using reinterpret_cast.
-      llvm::UTF32 *ResultWidePtr = reinterpret_cast<llvm::UTF32*>(ResultBuf.data());
+      UTF32 *ResultWidePtr = reinterpret_cast<UTF32*>(ResultBuf.data());
       ResultWidePtr[0] = GetNumStringChars() - 1;
     } else if (CharByteWidth == 2) {
       // FIXME: Make the type of the result buffer correct instead of
       // using reinterpret_cast.
-      llvm::UTF16 *ResultWidePtr = reinterpret_cast<llvm::UTF16*>(ResultBuf.data());
+      UTF16 *ResultWidePtr = reinterpret_cast<UTF16*>(ResultBuf.data());
       ResultWidePtr[0] = GetNumStringChars() - 1;
     } else {
       assert(CharByteWidth == 1 && "Unexpected char width");
@@ -1570,7 +1559,7 @@ void StringLiteralParser::init(ArrayRef<Token> StringToks){
 static const char *resyncUTF8(const char *Err, const char *End) {
   if (Err == End)
     return End;
-  End = Err + std::min<unsigned>(llvm::getNumBytesForUTF8(*Err), End-Err);
+  End = Err + std::min<unsigned>(getNumBytesForUTF8(*Err), End-Err);
   while (++Err != End && (*Err & 0xC0) == 0x80)
     ;
   return Err;
@@ -1582,7 +1571,7 @@ static const char *resyncUTF8(const char *Err, const char *End) {
 bool StringLiteralParser::CopyStringFragment(const Token &Tok,
                                              const char *TokBegin,
                                              StringRef Fragment) {
-  const llvm::UTF8 *ErrorPtrTmp;
+  const UTF8 *ErrorPtrTmp;
   if (ConvertUTF8toWide(CharByteWidth, Fragment, ResultPtr, ErrorPtrTmp))
     return false;
 
@@ -1707,13 +1696,4 @@ unsigned StringLiteralParser::getOffsetOfStringByte(const Token &Tok,
   }
 
   return SpellingPtr-SpellingStart;
-}
-
-/// Determine whether a suffix is a valid ud-suffix. We avoid treating reserved
-/// suffixes as ud-suffixes, because the diagnostic experience is better if we
-/// treat it as an invalid suffix.
-bool StringLiteralParser::isValidUDSuffix(const LangOptions &LangOpts,
-                                          StringRef Suffix) {
-  return NumericLiteralParser::isValidUDSuffix(LangOpts, Suffix) ||
-         Suffix == "sv";
 }

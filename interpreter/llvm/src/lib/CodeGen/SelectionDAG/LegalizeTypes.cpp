@@ -27,7 +27,7 @@ using namespace llvm;
 static cl::opt<bool>
 EnableExpensiveChecks("enable-legalize-types-checking", cl::Hidden);
 
-/// Do extensive, expensive, sanity checking.
+/// PerformExpensiveChecks - Do extensive, expensive, sanity checking.
 void DAGTypeLegalizer::PerformExpensiveChecks() {
   // If a node is not processed, then none of its values should be mapped by any
   // of PromotedIntegers, ExpandedIntegers, ..., ReplacedValues.
@@ -117,8 +117,6 @@ void DAGTypeLegalizer::PerformExpensiveChecks() {
         Mapped |= 64;
       if (WidenedVectors.find(Res) != WidenedVectors.end())
         Mapped |= 128;
-      if (PromotedFloats.find(Res) != PromotedFloats.end())
-        Mapped |= 256;
 
       if (Node.getNodeId() != Processed) {
         // Since we allow ReplacedValues to map deleted nodes, it may map nodes
@@ -161,8 +159,6 @@ void DAGTypeLegalizer::PerformExpensiveChecks() {
           dbgs() << " SplitVectors";
         if (Mapped & 128)
           dbgs() << " WidenedVectors";
-        if (Mapped & 256)
-          dbgs() << " PromotedFloats";
         dbgs() << "\n";
         llvm_unreachable(nullptr);
       }
@@ -178,9 +174,9 @@ void DAGTypeLegalizer::PerformExpensiveChecks() {
   }
 }
 
-/// This is the main entry point for the type legalizer. This does a top-down
-/// traversal of the dag, legalizing types as it goes. Returns "true" if it made
-/// any changes.
+/// run - This is the main entry point for the type legalizer.  This does a
+/// top-down traversal of the dag, legalizing types as it goes.  Returns "true"
+/// if it made any changes.
 bool DAGTypeLegalizer::run() {
   bool Changed = false;
 
@@ -199,7 +195,8 @@ bool DAGTypeLegalizer::run() {
   // non-leaves.
   for (SDNode &Node : DAG.allnodes()) {
     if (Node.getNumOperands() == 0) {
-      AddToWorklist(&Node);
+      Node.setNodeId(ReadyToProcess);
+      Worklist.push_back(&Node);
     } else {
       Node.setNodeId(Unanalyzed);
     }
@@ -330,12 +327,6 @@ ScanOperands:
     // to the worklist etc.
     if (NeedsReanalyzing) {
       assert(N->getNodeId() == ReadyToProcess && "Node ID recalculated?");
-
-      // Remove any result values from SoftenedFloats as N will be revisited
-      // again.
-      for (unsigned i = 0, NumResults = N->getNumValues(); i < NumResults; ++i)
-        SoftenedFloats.erase(SDValue(N, i));
-
       N->setNodeId(NewNode);
       // Recompute the NodeId and correct processed operands, adding the node to
       // the worklist if ready.
@@ -470,10 +461,11 @@ NodeDone:
   return Changed;
 }
 
-/// The specified node is the root of a subtree of potentially new nodes.
-/// Correct any processed operands (this may change the node) and calculate the
-/// NodeId. If the node itself changes to a processed node, it is not remapped -
-/// the caller needs to take care of this. Returns the potentially changed node.
+/// AnalyzeNewNode - The specified node is the root of a subtree of potentially
+/// new nodes.  Correct any processed operands (this may change the node) and
+/// calculate the NodeId.  If the node itself changes to a processed node, it
+/// is not remapped - the caller needs to take care of this.
+/// Returns the potentially changed node.
 SDNode *DAGTypeLegalizer::AnalyzeNewNode(SDNode *N) {
   // If this was an existing node that is already done, we're done.
   if (N->getNodeId() != NewNode && N->getNodeId() != Unanalyzed)
@@ -493,7 +485,7 @@ SDNode *DAGTypeLegalizer::AnalyzeNewNode(SDNode *N) {
   // updated after all operands have been analyzed.  Since this is rare,
   // the code tries to minimize overhead in the non-morphing case.
 
-  std::vector<SDValue> NewOps;
+  SmallVector<SDValue, 8> NewOps;
   unsigned NumProcessed = 0;
   for (unsigned i = 0, e = N->getNumOperands(); i != e; ++i) {
     SDValue OrigOp = N->getOperand(i);
@@ -509,7 +501,7 @@ SDNode *DAGTypeLegalizer::AnalyzeNewNode(SDNode *N) {
       NewOps.push_back(Op);
     } else if (Op != OrigOp) {
       // This is the first operand to change - add all operands so far.
-      NewOps.insert(NewOps.end(), N->op_begin(), N->op_begin() + i);
+      NewOps.append(N->op_begin(), N->op_begin() + i);
       NewOps.push_back(Op);
     }
   }
@@ -544,7 +536,7 @@ SDNode *DAGTypeLegalizer::AnalyzeNewNode(SDNode *N) {
   return N;
 }
 
-/// Call AnalyzeNewNode, updating the node in Val if needed.
+/// AnalyzeNewValue - Call AnalyzeNewNode, updating the node in Val if needed.
 /// If the node changes to a processed node, then remap it.
 void DAGTypeLegalizer::AnalyzeNewValue(SDValue &Val) {
   Val.setNode(AnalyzeNewNode(Val.getNode()));
@@ -553,7 +545,7 @@ void DAGTypeLegalizer::AnalyzeNewValue(SDValue &Val) {
     RemapValue(Val);
 }
 
-/// If N has a bogus mapping in ReplacedValues, eliminate it.
+/// ExpungeNode - If N has a bogus mapping in ReplacedValues, eliminate it.
 /// This can occur when a node is deleted then reallocated as a new node -
 /// the mapping in ReplacedValues applies to the deleted node, not the new
 /// one.
@@ -634,7 +626,7 @@ void DAGTypeLegalizer::ExpungeNode(SDNode *N) {
     ReplacedValues.erase(SDValue(N, i));
 }
 
-/// If the specified value was already legalized to another value,
+/// RemapValue - If the specified value was already legalized to another value,
 /// replace it by that value.
 void DAGTypeLegalizer::RemapValue(SDValue &N) {
   DenseMap<SDValue, SDValue>::iterator I = ReplacedValues.find(N);
@@ -651,8 +643,8 @@ void DAGTypeLegalizer::RemapValue(SDValue &N) {
 }
 
 namespace {
-  /// This class is a DAGUpdateListener that listens for updates to nodes and
-  /// recomputes their ready state.
+  /// NodeUpdateListener - This class is a DAGUpdateListener that listens for
+  /// updates to nodes and recomputes their ready state.
   class NodeUpdateListener : public SelectionDAG::DAGUpdateListener {
     DAGTypeLegalizer &DTL;
     SmallSetVector<SDNode*, 16> &NodesToAnalyze;
@@ -697,8 +689,9 @@ namespace {
 }
 
 
-/// The specified value was legalized to the specified other value.
-/// Update the DAG and NodeIds replacing any uses of From to use To instead.
+/// ReplaceValueWith - The specified value was legalized to the specified other
+/// value.  Update the DAG and NodeIds replacing any uses of From to use To
+/// instead.
 void DAGTypeLegalizer::ReplaceValueWith(SDValue From, SDValue To) {
   assert(From.getNode() != To.getNode() && "Potential legalization loop!");
 
@@ -754,8 +747,6 @@ void DAGTypeLegalizer::ReplaceValueWith(SDValue From, SDValue To) {
     // new uses of From due to CSE. If this happens, replace the new uses of
     // From with To.
   } while (!From.use_empty());
-
-  SoftenedFloats.erase(From);
 }
 
 void DAGTypeLegalizer::SetPromotedInteger(SDValue Op, SDValue Result) {
@@ -805,7 +796,8 @@ void DAGTypeLegalizer::SetScalarizedVector(SDValue Op, SDValue Result) {
   // Note that in some cases vector operation operands may be greater than
   // the vector element type. For example BUILD_VECTOR of type <1 x i1> with
   // a constant i8 operand.
-  assert(Result.getValueSizeInBits() >= Op.getScalarValueSizeInBits() &&
+  assert(Result.getValueType().getSizeInBits() >=
+         Op.getValueType().getVectorElementType().getSizeInBits() &&
          "Invalid type for scalarized vector");
   AnalyzeNewValue(Result);
 
@@ -913,21 +905,22 @@ void DAGTypeLegalizer::SetWidenedVector(SDValue Op, SDValue Result) {
 // Utilities.
 //===----------------------------------------------------------------------===//
 
-/// Convert to an integer of the same size.
+/// BitConvertToInteger - Convert to an integer of the same size.
 SDValue DAGTypeLegalizer::BitConvertToInteger(SDValue Op) {
-  unsigned BitWidth = Op.getValueSizeInBits();
+  unsigned BitWidth = Op.getValueType().getSizeInBits();
   return DAG.getNode(ISD::BITCAST, SDLoc(Op),
                      EVT::getIntegerVT(*DAG.getContext(), BitWidth), Op);
 }
 
-/// Convert to a vector of integers of the same size.
+/// BitConvertVectorToIntegerVector - Convert to a vector of integers of the
+/// same size.
 SDValue DAGTypeLegalizer::BitConvertVectorToIntegerVector(SDValue Op) {
   assert(Op.getValueType().isVector() && "Only applies to vectors!");
-  unsigned EltWidth = Op.getScalarValueSizeInBits();
+  unsigned EltWidth = Op.getValueType().getVectorElementType().getSizeInBits();
   EVT EltNVT = EVT::getIntegerVT(*DAG.getContext(), EltWidth);
-  auto EltCnt = Op.getValueType().getVectorElementCount();
+  unsigned NumElts = Op.getValueType().getVectorNumElements();
   return DAG.getNode(ISD::BITCAST, SDLoc(Op),
-                     EVT::getVectorVT(*DAG.getContext(), EltNVT, EltCnt), Op);
+                     EVT::getVectorVT(*DAG.getContext(), EltNVT, NumElts), Op);
 }
 
 SDValue DAGTypeLegalizer::CreateStackStoreLoad(SDValue Op,
@@ -937,14 +930,15 @@ SDValue DAGTypeLegalizer::CreateStackStoreLoad(SDValue Op,
   // the source and destination types.
   SDValue StackPtr = DAG.CreateStackTemporary(Op.getValueType(), DestVT);
   // Emit a store to the stack slot.
-  SDValue Store =
-      DAG.getStore(DAG.getEntryNode(), dl, Op, StackPtr, MachinePointerInfo());
+  SDValue Store = DAG.getStore(DAG.getEntryNode(), dl, Op, StackPtr,
+                               MachinePointerInfo(), false, false, 0);
   // Result is a load from the stack slot.
-  return DAG.getLoad(DestVT, dl, Store, StackPtr, MachinePointerInfo());
+  return DAG.getLoad(DestVT, dl, Store, StackPtr, MachinePointerInfo(),
+                     false, false, false, 0);
 }
 
-/// Replace the node's results with custom code provided by the target and
-/// return "true", or do nothing and return "false".
+/// CustomLowerNode - Replace the node's results with custom code provided
+/// by the target and return "true", or do nothing and return "false".
 /// The last parameter is FALSE if we are dealing with a node with legal
 /// result types and illegal operand. The second parameter denotes the type of
 /// illegal OperandNo in that case.
@@ -987,8 +981,8 @@ bool DAGTypeLegalizer::CustomLowerNode(SDNode *N, EVT VT, bool LegalizeResult) {
 }
 
 
-/// Widen the node's results with custom code provided by the target and return
-/// "true", or do nothing and return "false".
+/// CustomWidenLowerNode - Widen the node's results with custom code provided
+/// by the target and return "true", or do nothing and return "false".
 bool DAGTypeLegalizer::CustomWidenLowerNode(SDNode *N, EVT VT) {
   // See if the target wants to custom lower this node.
   if (TLI.getOperationAction(N->getOpcode(), VT) != TargetLowering::Custom)
@@ -998,7 +992,7 @@ bool DAGTypeLegalizer::CustomWidenLowerNode(SDNode *N, EVT VT) {
   TLI.ReplaceNodeResults(N, Results, DAG);
 
   if (Results.empty())
-    // The target didn't want to custom widen lower its result after all.
+    // The target didn't want to custom widen lower its result  after all.
     return false;
 
   // Update the widening map.
@@ -1016,8 +1010,8 @@ SDValue DAGTypeLegalizer::DisintegrateMERGE_VALUES(SDNode *N, unsigned ResNo) {
   return SDValue(N->getOperand(ResNo));
 }
 
-/// Use ISD::EXTRACT_ELEMENT nodes to extract the low and high parts of the
-/// given value.
+/// GetPairElements - Use ISD::EXTRACT_ELEMENT nodes to extract the low and
+/// high parts of the given value.
 void DAGTypeLegalizer::GetPairElements(SDValue Pair,
                                        SDValue &Lo, SDValue &Hi) {
   SDLoc dl(Pair);
@@ -1028,7 +1022,23 @@ void DAGTypeLegalizer::GetPairElements(SDValue Pair,
                    DAG.getIntPtrConstant(1, dl));
 }
 
-/// Build an integer with low bits Lo and high bits Hi.
+SDValue DAGTypeLegalizer::GetVectorElementPointer(SDValue VecPtr, EVT EltVT,
+                                                  SDValue Index) {
+  SDLoc dl(Index);
+  // Make sure the index type is big enough to compute in.
+  Index = DAG.getZExtOrTrunc(Index, dl, TLI.getPointerTy(DAG.getDataLayout()));
+
+  // Calculate the element offset and add it to the pointer.
+  unsigned EltSize = EltVT.getSizeInBits() / 8; // FIXME: should be ABI size.
+  assert(EltSize * 8 == EltVT.getSizeInBits() &&
+         "Converting bits to bytes lost precision");
+
+  Index = DAG.getNode(ISD::MUL, dl, Index.getValueType(), Index,
+                      DAG.getConstant(EltSize, dl, Index.getValueType()));
+  return DAG.getNode(ISD::ADD, dl, Index.getValueType(), Index, VecPtr);
+}
+
+/// JoinIntegers - Build an integer with low bits Lo and high bits Hi.
 SDValue DAGTypeLegalizer::JoinIntegers(SDValue Lo, SDValue Hi) {
   // Arbitrarily use dlHi for result SDLoc
   SDLoc dlHi(Hi);
@@ -1046,7 +1056,7 @@ SDValue DAGTypeLegalizer::JoinIntegers(SDValue Lo, SDValue Hi) {
   return DAG.getNode(ISD::OR, dlHi, NVT, Lo, Hi);
 }
 
-/// Convert the node into a libcall with the same prototype.
+/// LibCallify - Convert the node into a libcall with the same prototype.
 SDValue DAGTypeLegalizer::LibCallify(RTLIB::Libcall LC, SDNode *N,
                                      bool isSigned) {
   unsigned NumOps = N->getNumOperands();
@@ -1070,11 +1080,12 @@ SDValue DAGTypeLegalizer::LibCallify(RTLIB::Libcall LC, SDNode *N,
   return TLI.makeLibCall(DAG, LC, N->getValueType(0), Ops, isSigned, dl).first;
 }
 
-/// Expand a node into a call to a libcall. Similar to ExpandLibCall except that
-/// the first operand is the in-chain.
+// ExpandChainLibCall - Expand a node into a call to a libcall. Similar to
+// ExpandLibCall except that the first operand is the in-chain.
 std::pair<SDValue, SDValue>
-DAGTypeLegalizer::ExpandChainLibCall(RTLIB::Libcall LC, SDNode *Node,
-                                     bool isSigned) {
+DAGTypeLegalizer::ExpandChainLibCall(RTLIB::Libcall LC,
+                                         SDNode *Node,
+                                         bool isSigned) {
   SDValue InChain = Node->getOperand(0);
 
   TargetLowering::ArgListTy Args;
@@ -1084,8 +1095,8 @@ DAGTypeLegalizer::ExpandChainLibCall(RTLIB::Libcall LC, SDNode *Node,
     Type *ArgTy = ArgVT.getTypeForEVT(*DAG.getContext());
     Entry.Node = Node->getOperand(i);
     Entry.Ty = ArgTy;
-    Entry.IsSExt = isSigned;
-    Entry.IsZExt = !isSigned;
+    Entry.isSExt = isSigned;
+    Entry.isZExt = !isSigned;
     Args.push_back(Entry);
   }
   SDValue Callee = DAG.getExternalSymbol(TLI.getLibcallName(LC),
@@ -1094,21 +1105,18 @@ DAGTypeLegalizer::ExpandChainLibCall(RTLIB::Libcall LC, SDNode *Node,
   Type *RetTy = Node->getValueType(0).getTypeForEVT(*DAG.getContext());
 
   TargetLowering::CallLoweringInfo CLI(DAG);
-  CLI.setDebugLoc(SDLoc(Node))
-      .setChain(InChain)
-      .setLibCallee(TLI.getLibcallCallingConv(LC), RetTy, Callee,
-                    std::move(Args))
-      .setSExtResult(isSigned)
-      .setZExtResult(!isSigned);
+  CLI.setDebugLoc(SDLoc(Node)).setChain(InChain)
+    .setCallee(TLI.getLibcallCallingConv(LC), RetTy, Callee, std::move(Args))
+    .setSExtResult(isSigned).setZExtResult(!isSigned);
 
   std::pair<SDValue, SDValue> CallInfo = TLI.LowerCallTo(CLI);
 
   return CallInfo;
 }
 
-/// Promote the given target boolean to a target boolean of the given type.
-/// A target boolean is an integer value, not necessarily of type i1, the bits
-/// of which conform to getBooleanContents.
+/// PromoteTargetBoolean - Promote the given target boolean to a target boolean
+/// of the given type.  A target boolean is an integer value, not necessarily of
+/// type i1, the bits of which conform to getBooleanContents.
 ///
 /// ValVT is the type of values that produced the boolean.
 SDValue DAGTypeLegalizer::PromoteTargetBoolean(SDValue Bool, EVT ValVT) {
@@ -1119,9 +1127,9 @@ SDValue DAGTypeLegalizer::PromoteTargetBoolean(SDValue Bool, EVT ValVT) {
   return DAG.getNode(ExtendCode, dl, BoolVT, Bool);
 }
 
-/// Widen the given target boolean to a target boolean of the given type.
-/// The boolean vector is widened and then promoted to match the target boolean
-/// type of the given ValVT.
+/// WidenTargetBoolean - Widen the given target boolean to a target boolean
+/// of the given type. The boolean vector is widened and then promoted to match
+/// the target boolean type of the given ValVT.
 SDValue DAGTypeLegalizer::WidenTargetBoolean(SDValue Bool, EVT ValVT,
                                              bool WithZeroes) {
   SDLoc dl(Bool);
@@ -1136,13 +1144,14 @@ SDValue DAGTypeLegalizer::WidenTargetBoolean(SDValue Bool, EVT ValVT,
   return PromoteTargetBoolean(Bool, ValVT);
 }
 
-/// Return the lower LoVT bits of Op in Lo and the upper HiVT bits in Hi.
+/// SplitInteger - Return the lower LoVT bits of Op in Lo and the upper HiVT
+/// bits in Hi.
 void DAGTypeLegalizer::SplitInteger(SDValue Op,
                                     EVT LoVT, EVT HiVT,
                                     SDValue &Lo, SDValue &Hi) {
   SDLoc dl(Op);
   assert(LoVT.getSizeInBits() + HiVT.getSizeInBits() ==
-         Op.getValueSizeInBits() && "Invalid integer splitting!");
+         Op.getValueType().getSizeInBits() && "Invalid integer splitting!");
   Lo = DAG.getNode(ISD::TRUNCATE, dl, LoVT, Op);
   Hi = DAG.getNode(ISD::SRL, dl, Op.getValueType(), Op,
                    DAG.getConstant(LoVT.getSizeInBits(), dl,
@@ -1150,12 +1159,12 @@ void DAGTypeLegalizer::SplitInteger(SDValue Op,
   Hi = DAG.getNode(ISD::TRUNCATE, dl, HiVT, Hi);
 }
 
-/// Return the lower and upper halves of Op's bits in a value type half the
-/// size of Op's.
+/// SplitInteger - Return the lower and upper halves of Op's bits in a value
+/// type half the size of Op's.
 void DAGTypeLegalizer::SplitInteger(SDValue Op,
                                     SDValue &Lo, SDValue &Hi) {
-  EVT HalfVT =
-      EVT::getIntegerVT(*DAG.getContext(), Op.getValueSizeInBits() / 2);
+  EVT HalfVT = EVT::getIntegerVT(*DAG.getContext(),
+                                 Op.getValueType().getSizeInBits()/2);
   SplitInteger(Op, HalfVT, HalfVT, Lo, Hi);
 }
 
@@ -1164,8 +1173,9 @@ void DAGTypeLegalizer::SplitInteger(SDValue Op,
 //  Entry Point
 //===----------------------------------------------------------------------===//
 
-/// This transforms the SelectionDAG into a SelectionDAG that only uses types
-/// natively supported by the target. Returns "true" if it made any changes.
+/// LegalizeTypes - This transforms the SelectionDAG into a SelectionDAG that
+/// only uses types natively supported by the target.  Returns "true" if it made
+/// any changes.
 ///
 /// Note that this is an involved process that may invalidate pointers into
 /// the graph.

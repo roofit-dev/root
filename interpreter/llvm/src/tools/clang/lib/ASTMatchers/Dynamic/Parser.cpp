@@ -16,6 +16,7 @@
 #include "clang/ASTMatchers/Dynamic/Registry.h"
 #include "clang/Basic/CharInfo.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/ManagedStatic.h"
 #include <string>
 #include <vector>

@@ -19,8 +19,8 @@
 namespace llvm {
 class Target;
 
-Target &getTheNVPTXTarget32();
-Target &getTheNVPTXTarget64();
+extern Target TheNVPTXTarget32;
+extern Target TheNVPTXTarget64;
 
 } // End llvm namespace
 

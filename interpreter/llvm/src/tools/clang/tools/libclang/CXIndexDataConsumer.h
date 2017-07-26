@@ -16,6 +16,7 @@
 #include "clang/AST/DeclGroup.h"
 #include "clang/AST/DeclObjC.h"
 #include "llvm/ADT/DenseSet.h"
+#include <deque>
 
 namespace clang {
   class FileEntry;
@@ -342,7 +343,7 @@ public:
   CXTranslationUnit getCXTU() const { return CXTU; }
 
   void setASTContext(ASTContext &ctx);
-  void setPreprocessor(std::shared_ptr<Preprocessor> PP);
+  void setPreprocessor(Preprocessor &PP);
 
   bool shouldSuppressRefs() const {
     return IndexOptions & CXIndexOpt_SuppressRedundantRefs;
@@ -418,7 +419,7 @@ public:
   bool handleObjCCategory(const ObjCCategoryDecl *D);
   bool handleObjCCategoryImpl(const ObjCCategoryImplDecl *D);
 
-  bool handleObjCMethod(const ObjCMethodDecl *D, SourceLocation Loc);
+  bool handleObjCMethod(const ObjCMethodDecl *D);
 
   bool handleSynthesizedObjCProperty(const ObjCPropertyImplDecl *D);
   bool handleSynthesizedObjCMethod(const ObjCMethodDecl *D, SourceLocation Loc,

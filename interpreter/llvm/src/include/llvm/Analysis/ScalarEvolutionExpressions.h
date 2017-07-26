@@ -537,57 +537,13 @@ namespace llvm {
     T.visitAll(Root);
   }
 
-  /// Return true if any node in \p Root satisfies the predicate \p Pred.
-  template <typename PredTy>
-  bool SCEVExprContains(const SCEV *Root, PredTy Pred) {
-    struct FindClosure {
-      bool Found = false;
-      PredTy Pred;
-
-      FindClosure(PredTy Pred) : Pred(Pred) {}
-
-      bool follow(const SCEV *S) {
-        if (!Pred(S))
-          return true;
-
-        Found = true;
-        return false;
-      }
-
-      bool isDone() const { return Found; }
-    };
-
-    FindClosure FC(Pred);
-    visitAll(Root, FC);
-    return FC.Found;
-  }
-
-  /// This visitor recursively visits a SCEV expression and re-writes it.
-  /// The result from each visit is cached, so it will return the same
-  /// SCEV for the same input.
+  /// Recursively visits a SCEV expression and re-writes it.
   template<typename SC>
   class SCEVRewriteVisitor : public SCEVVisitor<SC, const SCEV *> {
   protected:
     ScalarEvolution &SE;
-    // Memoize the result of each visit so that we only compute once for
-    // the same input SCEV. This is to avoid redundant computations when
-    // a SCEV is referenced by multiple SCEVs. Without memoization, this
-    // visit algorithm would have exponential time complexity in the worst
-    // case, causing the compiler to hang on certain tests.
-    DenseMap<const SCEV *, const SCEV *> RewriteResults;
-
   public:
     SCEVRewriteVisitor(ScalarEvolution &SE) : SE(SE) {}
-
-    const SCEV *visit(const SCEV *S) {
-      auto It = RewriteResults.find(S);
-      if (It != RewriteResults.end())
-        return It->second;
-      auto* Visited = SCEVVisitor<SC, const SCEV *>::visit(S);
-      auto Result = RewriteResults.try_emplace(S, Visited);
-      assert(Result.second && "Should insert a new entry");
-      return Result.first->second;
-    }
 
     const SCEV *visitConstant(const SCEVConstant *Constant) {
       return Constant;
@@ -595,82 +551,58 @@ namespace llvm {
 
     const SCEV *visitTruncateExpr(const SCEVTruncateExpr *Expr) {
       const SCEV *Operand = ((SC*)this)->visit(Expr->getOperand());
-      return Operand == Expr->getOperand()
-                 ? Expr
-                 : SE.getTruncateExpr(Operand, Expr->getType());
+      return SE.getTruncateExpr(Operand, Expr->getType());
     }
 
     const SCEV *visitZeroExtendExpr(const SCEVZeroExtendExpr *Expr) {
       const SCEV *Operand = ((SC*)this)->visit(Expr->getOperand());
-      return Operand == Expr->getOperand()
-                 ? Expr
-                 : SE.getZeroExtendExpr(Operand, Expr->getType());
+      return SE.getZeroExtendExpr(Operand, Expr->getType());
     }
 
     const SCEV *visitSignExtendExpr(const SCEVSignExtendExpr *Expr) {
       const SCEV *Operand = ((SC*)this)->visit(Expr->getOperand());
-      return Operand == Expr->getOperand()
-                 ? Expr
-                 : SE.getSignExtendExpr(Operand, Expr->getType());
+      return SE.getSignExtendExpr(Operand, Expr->getType());
     }
 
     const SCEV *visitAddExpr(const SCEVAddExpr *Expr) {
       SmallVector<const SCEV *, 2> Operands;
-      bool Changed = false;
-      for (auto *Op : Expr->operands()) {
-        Operands.push_back(((SC*)this)->visit(Op));
-        Changed |= Op != Operands.back();
-      }
-      return !Changed ? Expr : SE.getAddExpr(Operands);
+      for (int i = 0, e = Expr->getNumOperands(); i < e; ++i)
+        Operands.push_back(((SC*)this)->visit(Expr->getOperand(i)));
+      return SE.getAddExpr(Operands);
     }
 
     const SCEV *visitMulExpr(const SCEVMulExpr *Expr) {
       SmallVector<const SCEV *, 2> Operands;
-      bool Changed = false;
-      for (auto *Op : Expr->operands()) {
-        Operands.push_back(((SC*)this)->visit(Op));
-        Changed |= Op != Operands.back();
-      }
-      return !Changed ? Expr : SE.getMulExpr(Operands);
+      for (int i = 0, e = Expr->getNumOperands(); i < e; ++i)
+        Operands.push_back(((SC*)this)->visit(Expr->getOperand(i)));
+      return SE.getMulExpr(Operands);
     }
 
     const SCEV *visitUDivExpr(const SCEVUDivExpr *Expr) {
-      auto *LHS = ((SC *)this)->visit(Expr->getLHS());
-      auto *RHS = ((SC *)this)->visit(Expr->getRHS());
-      bool Changed = LHS != Expr->getLHS() || RHS != Expr->getRHS();
-      return !Changed ? Expr : SE.getUDivExpr(LHS, RHS);
+      return SE.getUDivExpr(((SC*)this)->visit(Expr->getLHS()),
+                            ((SC*)this)->visit(Expr->getRHS()));
     }
 
     const SCEV *visitAddRecExpr(const SCEVAddRecExpr *Expr) {
       SmallVector<const SCEV *, 2> Operands;
-      bool Changed = false;
-      for (auto *Op : Expr->operands()) {
-        Operands.push_back(((SC*)this)->visit(Op));
-        Changed |= Op != Operands.back();
-      }
-      return !Changed ? Expr
-                      : SE.getAddRecExpr(Operands, Expr->getLoop(),
-                                         Expr->getNoWrapFlags());
+      for (int i = 0, e = Expr->getNumOperands(); i < e; ++i)
+        Operands.push_back(((SC*)this)->visit(Expr->getOperand(i)));
+      return SE.getAddRecExpr(Operands, Expr->getLoop(),
+                              Expr->getNoWrapFlags());
     }
 
     const SCEV *visitSMaxExpr(const SCEVSMaxExpr *Expr) {
       SmallVector<const SCEV *, 2> Operands;
-      bool Changed = false;
-      for (auto *Op : Expr->operands()) {
-        Operands.push_back(((SC *)this)->visit(Op));
-        Changed |= Op != Operands.back();
-      }
-      return !Changed ? Expr : SE.getSMaxExpr(Operands);
+      for (int i = 0, e = Expr->getNumOperands(); i < e; ++i)
+        Operands.push_back(((SC*)this)->visit(Expr->getOperand(i)));
+      return SE.getSMaxExpr(Operands);
     }
 
     const SCEV *visitUMaxExpr(const SCEVUMaxExpr *Expr) {
       SmallVector<const SCEV *, 2> Operands;
-      bool Changed = false;
-      for (auto *Op : Expr->operands()) {
-        Operands.push_back(((SC*)this)->visit(Op));
-        Changed |= Op != Operands.back();
-      }
-      return !Changed ? Expr : SE.getUMaxExpr(Operands);
+      for (int i = 0, e = Expr->getNumOperands(); i < e; ++i)
+        Operands.push_back(((SC*)this)->visit(Expr->getOperand(i)));
+      return SE.getUMaxExpr(Operands);
     }
 
     const SCEV *visitUnknown(const SCEVUnknown *Expr) {

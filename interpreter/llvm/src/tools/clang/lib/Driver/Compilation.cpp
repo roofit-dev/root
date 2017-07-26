@@ -37,9 +37,11 @@ Compilation::~Compilation() {
   delete Args;
 
   // Free any derived arg lists.
-  for (auto Arg : TCArgs)
-    if (Arg.second != TranslatedArgs)
-      delete Arg.second;
+  for (llvm::DenseMap<std::pair<const ToolChain*, const char*>,
+                      DerivedArgList*>::iterator it = TCArgs.begin(),
+         ie = TCArgs.end(); it != ie; ++it)
+    if (it->second != TranslatedArgs)
+      delete it->second;
 
   // Free redirections of stdout/stderr.
   if (Redirects) {
@@ -50,15 +52,14 @@ Compilation::~Compilation() {
   }
 }
 
-const DerivedArgList &
-Compilation::getArgsForToolChain(const ToolChain *TC, StringRef BoundArch,
-                                 Action::OffloadKind DeviceOffloadKind) {
+const DerivedArgList &Compilation::getArgsForToolChain(const ToolChain *TC,
+                                                       const char *BoundArch) {
   if (!TC)
     TC = &DefaultToolChain;
 
-  DerivedArgList *&Entry = TCArgs[{TC, BoundArch, DeviceOffloadKind}];
+  DerivedArgList *&Entry = TCArgs[std::make_pair(TC, BoundArch)];
   if (!Entry) {
-    Entry = TC->TranslateArgs(*TranslatedArgs, BoundArch, DeviceOffloadKind);
+    Entry = TC->TranslateArgs(*TranslatedArgs, BoundArch);
     if (!Entry)
       Entry = TranslatedArgs;
   }

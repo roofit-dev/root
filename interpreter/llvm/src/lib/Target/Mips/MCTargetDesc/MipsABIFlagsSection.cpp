@@ -1,4 +1,4 @@
-//===- MipsABIFlagsSection.cpp - Mips ELF ABI Flags Section ---------------===//
+//===-- MipsABIFlagsSection.cpp - Mips ELF ABI Flags Section ---*- C++ -*--===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,11 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MCTargetDesc/MipsABIFlagsSection.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/MC/MCStreamer.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/MipsABIFlags.h"
+#include "MipsABIFlagsSection.h"
 
 using namespace llvm;
 
@@ -55,7 +51,6 @@ uint8_t MipsABIFlagsSection::getCPR1SizeValue() {
 }
 
 namespace llvm {
-
 MCStreamer &operator<<(MCStreamer &OS, MipsABIFlagsSection &ABIFlagsSection) {
   // Write out a Elf_Internal_ABIFlags_v0 struct
   OS.EmitIntValue(ABIFlagsSection.getVersionValue(), 2);      // version
@@ -71,5 +66,4 @@ MCStreamer &operator<<(MCStreamer &OS, MipsABIFlagsSection &ABIFlagsSection) {
   OS.EmitIntValue(ABIFlagsSection.getFlags2Value(), 4);       // flags2
   return OS;
 }
-
-} // end namespace llvm
+}

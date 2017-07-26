@@ -175,8 +175,8 @@ StringRef RawComment::getRawTextSlow(const SourceManager &SourceMgr) const {
 }
 
 const char *RawComment::extractBriefText(const ASTContext &Context) const {
-  // Lazily initialize RawText using the accessor before using it.
-  (void)getRawText(Context.getSourceManager());
+  // Make sure that RawText is valid.
+  getRawText(Context.getSourceManager());
 
   // Since we will be copying the resulting text, all allocations made during
   // parsing are garbage after resulting string is formed.  Thus we can use
@@ -202,8 +202,8 @@ const char *RawComment::extractBriefText(const ASTContext &Context) const {
 comments::FullComment *RawComment::parse(const ASTContext &Context,
                                          const Preprocessor *PP,
                                          const Decl *D) const {
-  // Lazily initialize RawText using the accessor before using it.
-  (void)getRawText(Context.getSourceManager());
+  // Make sure that RawText is valid.
+  getRawText(Context.getSourceManager());
 
   comments::Lexer L(Context.getAllocator(), Context.getDiagnostics(),
                     Context.getCommentCommandTraits(),
@@ -334,3 +334,4 @@ void RawCommentList::addDeserializedComments(ArrayRef<RawComment *> Deserialized
              BeforeThanCompare<RawComment>(SourceMgr));
   std::swap(Comments, MergedComments);
 }
+

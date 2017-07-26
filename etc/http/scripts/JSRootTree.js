@@ -4,22 +4,20 @@
 
 (function( factory ) {
    if ( typeof define === "function" && define.amd ) {
+      // AMD. Register as an anonymous module.
       define( ['JSRootCore', 'JSRootIOEvolution', 'JSRootMath'], factory );
-   } else
-   if (typeof exports === 'object' && typeof module !== 'undefined') {
-      factory(require("./JSRootCore.js"), require("./JSRootIOEvolution.js"), require("./JSRootMath.js"));
    } else {
+
       if (typeof JSROOT == 'undefined')
          throw new Error('JSROOT is not defined', 'JSRootTree.js');
 
       if (typeof JSROOT.IO != 'object')
          throw new Error('JSROOT.IO not defined', 'JSRootTree.js');
 
+      // Browser globals
       factory(JSROOT);
    }
 } (function(JSROOT) {
-
-   JSROOT.sources.push("tree");
 
    JSROOT.BranchType = { kLeafNode: 0, kBaseClassNode: 1, kObjectNode: 2, kClonesNode: 3,
                          kSTLNode: 4, kClonesMemberNode: 31, kSTLMemberNode: 41 };
@@ -37,7 +35,7 @@
       // class to read data from TTree
       this.branches = []; // list of branches to read
       this.names = []; // list of member names for each branch in tgtobj
-      this.directs = []; // indication if only branch without any children should be read
+      this.directs = []; // indication if only branch without any childs should be read
       this.break_execution = 0;
       this.tgtobj = {};
    }
@@ -237,7 +235,7 @@
 
       this.code = "";
       this.brindex = []; // index of used branches from selector
-      this.branches = []; // names of branches in target object
+      this.branches = []; // names of bracnhes in target object
       this.brarray = []; // array specifier for each branch
       this.func = null; // generic function for variable calculation
 
@@ -338,7 +336,7 @@
                // this is looks like function call - do not need to extract member with
                if (code[pos2]=="(") { pos2 = prev-1; break; }
 
-               // this is selection of member, but probably we need to activate iterator for ROOT collection
+               // this is selection of member, but probably we need to actiavte iterator for ROOT collection
                if ((arriter.length===0) && br) {
                   // TODO: if selected member is simple data type - no need to make other checks - just break here
                   if ((br.fType === JSROOT.BranchType.kClonesNode) || (br.fType === JSROOT.BranchType.kSTLNode)) {
@@ -465,7 +463,7 @@
       }
 
       if (usearrlen == 0) {
-         // empty array - no any histogram should be filled
+         // empty array - no any histogram should be fillied
          this.length = 0;
          this.value = 0;
          return;
@@ -495,7 +493,7 @@
    }
 
    JSROOT.TDrawVariable.prototype.AppendArray = function(tgtarr) {
-      // append array to the buffer
+      // appeand array to the buffer
 
       this.buf = this.buf.concat(tgtarr[this.branches[0]]);
    }
@@ -506,7 +504,7 @@
       JSROOT.TSelector.call(this);
 
       this.ndim = 0;
-      this.vars = []; // array of expression variables
+      this.vars = []; // array of expression varibles
       this.cut = null; // cut variable
       this.hist = null;
       this.histo_callback = callback;
@@ -703,18 +701,13 @@
 
       this.monitoring = args.monitoring;
 
-      if (args.dump) {
-         this.dump_values = true;
-         args.reallocate_objects = true;
-      }
-
       if (this.dump_values) {
 
          this.hist = []; // array of dump objects
 
          this.leaf = args.leaf;
 
-         // branch object remains, therefore we need to copy fields to see them all
+         // branch object remains, threrefore we need to copy fields to see them all
          this.copy_fields = ((args.branch.fLeaves && (args.branch.fLeaves.arr.length > 1)) ||
                               (args.branch.fBranches && (args.branch.fBranches.arr.length > 0))) && !args.leaf;
 
@@ -746,7 +739,7 @@
    JSROOT.TDrawSelector.prototype.ShowProgress = function(value) {
       // this function should be defined not here
 
-      if (typeof document == 'undefined' || !JSROOT.progress) return;
+      if ((document === undefined) || (JSROOT.progress===undefined)) return;
 
       if ((value===undefined) || isNaN(value)) return JSROOT.progress();
 
@@ -1057,7 +1050,7 @@
    }
 
    JSROOT.TDrawSelector.prototype.ProcessArraysFunc = function(entry) {
-      // function used when all branches can be read as array
+      // function used when all bracnhes can be read as array
       // most typical usage - histogramming of single branch
 
 
@@ -1065,7 +1058,7 @@
          var var0 = this.vars[0], len = this.tgtarr.br0.length,
              var1 = this.vars[1], var2 = this.vars[2];
          if ((var0.buf.length===0) && (len>=this.arr_limit)) {
-            // special use case - first array large enough to create histogram directly base on it
+            // special usecase - first arraya large enough to create histogram directly base on it
             var0.buf = this.tgtarr.br0;
             if (var1) var1.buf = this.tgtarr.br1;
             if (var2) var2.buf = this.tgtarr.br2;
@@ -1565,7 +1558,7 @@
                if (br.fName.indexOf(match_prefix)===0) {
                   subname = subname.substr(match_prefix.length);
                } else {
-                  if (chld_kind>0) continue; // for defined children names prefix must be present
+                  if (chld_kind>0) continue; // for defined childs names prefix must be present
                }
 
                var p = subname.indexOf('[');
@@ -1639,7 +1632,7 @@
           if ((object_class = JSROOT.IO.GetBranchObjectClass(branch, handle.tree))) {
 
              if (read_mode === true) {
-                console.warn('Object branch ' + object_class + ' can not have data to be read directly');
+                console.warn('Object branch ' + object_class + ' can not have data to be readed directly');
                 return null;
              }
 
@@ -1761,7 +1754,7 @@
                    return obj1;
                 }
              } else {
-                // very complex task - we need to reconstruct several embedded members with their types
+                // very complex task - we need to reconstuct several embeded members with their types
                 // try our best - but not all data types can be reconstructed correctly
                 // while classname is not enough - there can be different versions
 
@@ -2000,7 +1993,7 @@
 
       if ((typeof selector.ProcessArrays === 'function') && handle.simple_read) {
          // this is indication that selector can process arrays of values
-         // only strictly-matched tree structure can be used for that
+         // only streactly-matched tree structure can be used for that
 
          for (var k=0;k<handle.arr.length;++k) {
             var elem = handle.arr[k];
@@ -2008,7 +2001,7 @@
          }
 
          if (handle.process_arrays) {
-            // create other members for fast processing
+            // create other members for fast processings
 
             selector.tgtarr = {}; // object with arrays
 
@@ -2112,7 +2105,7 @@
                   }
                }
 
-               bitems[k].raw = buf; // here already unpacked buffer
+               bitems[k].raw = buf; // here already unpacket buffer
 
                if (bitems[k].branch.fEntryOffsetLen > 0)
                   buf.ReadBasketEntryOffset(basket, buf.raw_shift);
@@ -2244,7 +2237,7 @@
 
             var loopentries = 100000000, min_curr = handle.process_max, n, elem;
 
-            // first loop used to check if all required data exists
+            // firt loop used to check if all required data exists
             for (n=0;n<handle.arr.length;++n) {
 
                elem = handle.arr[n];
@@ -2321,7 +2314,7 @@
                for (n=0;n<handle.arr.length;++n) {
                   elem = handle.arr[n];
 
-                  // locate buffer offset at proper place
+                  // locate buffer offest at proper place
                   elem.GetEntry(handle.current_entry);
 
                   elem.member.func(elem.raw, elem.GetTarget(handle.selector.tgtobj));
@@ -2354,6 +2347,7 @@
       var top_search = false, search = name, res = null;
 
       if (lst===undefined) {
+
          top_search = true;
          lst = this.fBranches;
          var pos = search.indexOf("[");
@@ -2402,7 +2396,7 @@
    }
 
    JSROOT.TreeMethods.Draw = function(args, result_callback) {
-      // this is JSROOT implementation of TTree::Draw
+      // this is JSROOT implementaion of TTree::Draw
       // in callback returns histogram and draw options
       // following arguments allowed in args
       //    expr       - draw expression
@@ -2521,8 +2515,8 @@
          // skip_branch = args.nchilds[args.nbr]>1;
 
          if (skip_branch || (num<=0)) {
-            // ignore empty branches or objects with too-many subbranch
-            // if (object_class) console.log('Ignore branch', br.fName, 'class', object_class, 'with', args.nchilds[args.nbr],'subbranches');
+            // ignore empty branches or objects with too-many subbrancn
+            // if (object_class) console.log('Ignore branch', br.fName, 'class', object_class, 'with', args.nchilds[args.nbr],'subbrnaches');
             selector.Terminate("ignore");
          } else {
 
@@ -2670,9 +2664,7 @@
       // just envelope for real TTree::Draw method which do the main job
       // Can be also used for the branch and leaf object
 
-      var painter = new JSROOT.TObjectPainter(obj);
-
-      var tree = obj, args = opt;
+      var tree = obj, args = opt, painter = this;
 
       if (obj._typename == "TBranchFunc") {
          // fictional object, created only in browser
@@ -2718,11 +2710,11 @@
 
       if (!tree) {
          console.error('No TTree object available for TTree::Draw');
-         return painter.DrawingReady();
+         return this.DrawingReady();
       }
 
-      var callback = painter.DrawingReady.bind(painter);
-      painter._return_res_painter = true; // indicate that TTree::Draw painter returns not itself but drawing of result object
+      var callback = this.DrawingReady.bind(this);
+      this._return_res_painter = true; // indicate that TTree::Draw painter returns not itself but drawing of result object
 
       JSROOT.cleanup(divid);
 
@@ -2751,8 +2743,9 @@
          });
       });
 
-      return painter;
+      return this;
    }
+
 
    return JSROOT;
 

@@ -422,7 +422,7 @@ def DD   : RegisterClass<"AArch64", [untyped], 64, (add DSeqPairs)> {
   let Size = 128;
 }
 def DDD  : RegisterClass<"AArch64", [untyped], 64, (add DSeqTriples)> {
-  let Size = 192;
+  let Size = 196;
 }
 def DDDD : RegisterClass<"AArch64", [untyped], 64, (add DSeqQuads)> {
   let Size = 256;

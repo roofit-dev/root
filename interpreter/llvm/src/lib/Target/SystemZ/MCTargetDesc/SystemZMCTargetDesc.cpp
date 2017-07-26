@@ -109,13 +109,6 @@ const unsigned SystemZMC::VR128Regs[32] = {
   SystemZ::V28, SystemZ::V29, SystemZ::V30, SystemZ::V31
 };
 
-const unsigned SystemZMC::AR32Regs[16] = {
-  SystemZ::A0, SystemZ::A1, SystemZ::A2, SystemZ::A3,
-  SystemZ::A4, SystemZ::A5, SystemZ::A6, SystemZ::A7,
-  SystemZ::A8, SystemZ::A9, SystemZ::A10, SystemZ::A11,
-  SystemZ::A12, SystemZ::A13, SystemZ::A14, SystemZ::A15
-};
-
 unsigned SystemZMC::getFirstReg(unsigned Reg) {
   static unsigned Map[SystemZ::NUM_TARGET_REGS];
   static bool Initialized = false;
@@ -126,7 +119,6 @@ unsigned SystemZMC::getFirstReg(unsigned Reg) {
       Map[GR64Regs[I]] = I;
       Map[GR128Regs[I]] = I;
       Map[FP128Regs[I]] = I;
-      Map[AR32Regs[I]] = I;
     }
     for (unsigned I = 0; I < 32; ++I) {
       Map[VR32Regs[I]] = I;
@@ -213,34 +205,34 @@ static MCInstPrinter *createSystemZMCInstPrinter(const Triple &T,
 
 extern "C" void LLVMInitializeSystemZTargetMC() {
   // Register the MCAsmInfo.
-  TargetRegistry::RegisterMCAsmInfo(getTheSystemZTarget(),
+  TargetRegistry::RegisterMCAsmInfo(TheSystemZTarget,
                                     createSystemZMCAsmInfo);
 
   // Register the adjustCodeGenOpts.
-  TargetRegistry::registerMCAdjustCodeGenOpts(getTheSystemZTarget(),
+  TargetRegistry::registerMCAdjustCodeGenOpts(TheSystemZTarget,
                                               adjustCodeGenOpts);
 
   // Register the MCCodeEmitter.
-  TargetRegistry::RegisterMCCodeEmitter(getTheSystemZTarget(),
+  TargetRegistry::RegisterMCCodeEmitter(TheSystemZTarget,
                                         createSystemZMCCodeEmitter);
 
   // Register the MCInstrInfo.
-  TargetRegistry::RegisterMCInstrInfo(getTheSystemZTarget(),
+  TargetRegistry::RegisterMCInstrInfo(TheSystemZTarget,
                                       createSystemZMCInstrInfo);
 
   // Register the MCRegisterInfo.
-  TargetRegistry::RegisterMCRegInfo(getTheSystemZTarget(),
+  TargetRegistry::RegisterMCRegInfo(TheSystemZTarget,
                                     createSystemZMCRegisterInfo);
 
   // Register the MCSubtargetInfo.
-  TargetRegistry::RegisterMCSubtargetInfo(getTheSystemZTarget(),
+  TargetRegistry::RegisterMCSubtargetInfo(TheSystemZTarget,
                                           createSystemZMCSubtargetInfo);
 
   // Register the MCAsmBackend.
-  TargetRegistry::RegisterMCAsmBackend(getTheSystemZTarget(),
+  TargetRegistry::RegisterMCAsmBackend(TheSystemZTarget,
                                        createSystemZMCAsmBackend);
 
   // Register the MCInstPrinter.
-  TargetRegistry::RegisterMCInstPrinter(getTheSystemZTarget(),
+  TargetRegistry::RegisterMCInstPrinter(TheSystemZTarget,
                                         createSystemZMCInstPrinter);
 }

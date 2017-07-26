@@ -63,13 +63,7 @@ void SanitizerMetadata::reportGlobalToASan(llvm::GlobalVariable *GV,
   std::string QualName;
   llvm::raw_string_ostream OS(QualName);
   D.printQualifiedName(OS);
-
-  bool IsBlacklisted = false;
-  for (auto Attr : D.specific_attrs<NoSanitizeAttr>())
-    if (Attr->getMask() & SanitizerKind::Address)
-      IsBlacklisted = true;
-  reportGlobalToASan(GV, D.getLocation(), OS.str(), D.getType(), IsDynInit,
-                     IsBlacklisted);
+  reportGlobalToASan(GV, D.getLocation(), OS.str(), D.getType(), IsDynInit);
 }
 
 void SanitizerMetadata::disableSanitizerForGlobal(llvm::GlobalVariable *GV) {

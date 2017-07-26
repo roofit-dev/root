@@ -17,26 +17,44 @@ namespace cling {
              != m_ParenStack.end();
   }
 
-  static bool findBlockCommentEnd(const char* startPos, const char* endPos) {
-    // Find '*/', searching from endPos to startPos.
+  static int findNestedBlockComments(const char* startPos, const char* endPos) {
     // While probably not standard compliant, it should work fine for the indent
-    // Let the real parser error if the balancing is incorrect.
+    // Let the real parser error if the balancing is incorrect
 
+    // search forward for //, then backward for block comments
+    // */ last, comment has ended, doesn't matter how many /* before
+    // /* last, comment has begun, doesn't matter if priors ended or not
     char commentTok = 0;
-    while (endPos > startPos) {
-      switch (*endPos--) {
-        case '/':
-          commentTok = '*';
-          break;
-        case '*':
-          if (commentTok == '*')
-            return true;
-        default:
-          commentTok = 0;
-          break;
-      }
+    while (startPos < endPos) {
+      if (*startPos == '/') {
+        if (++commentTok == 2) {
+          while (endPos > startPos) {
+            switch (*endPos) {
+              case '*':
+                if (commentTok == '*')
+                  return -1;
+                else
+                  commentTok = '/';
+                break;
+              case '/':
+                if (commentTok == '/')
+                  return 1;
+                else
+                  commentTok = '*';
+                break;
+              default:
+                commentTok = 0;
+                break;
+            }
+            --endPos;
+          }
+          return 0;
+        }
+      } else if (commentTok)
+        commentTok = 0; // need a new start to double slash
+      ++startPos;
     }
-    return false;
+    return 0;
   }
 
   static void unwindTokens(std::deque<int>& queue, int tok) {
@@ -56,7 +74,6 @@ namespace cling {
     const char* curPos = line.data();
     bool multilineComment = inBlockComment();
     int commentTok = multilineComment ? tok::asterik : tok::slash;
-    int lastKind;
 
     if (!multilineComment && m_ParenStack.empty()) {
       // Only check for 'template' if we're not already indented
@@ -71,8 +88,6 @@ namespace cling {
     }
 
     do {
-      lastKind = int(Tok.getKind());
-
       const char* prevStart = curPos;
       MetaLexer::LexPunctuatorAndAdvance(curPos, Tok);
       const int kind = (int)Tok.getKind();
@@ -115,9 +130,12 @@ namespace cling {
         // we gonna have to wait for another asterik first
         if (multilineComment) {
           if (kind == tok::eof) {
-            if (findBlockCommentEnd(prevStart, curPos))
-              unwindTokens(m_ParenStack, tok::slash);
-
+            switch (findNestedBlockComments(prevStart, curPos)) {
+              case -1: unwindTokens(m_ParenStack, tok::slash);
+              case  1:
+              case  0: break;
+              default: assert(0 && "Nested block comment count"); break;
+            }
             // eof, were done anyway
             break;
           }
@@ -127,10 +145,6 @@ namespace cling {
             if (kind != tok::asterik)
               commentTok = tok::asterik;
           }
-        } else if (commentTok == tok::asterik) {
-          // Was wating for an asterik, but found something else.
-          // Go back to looking for a slash.
-          commentTok = tok::slash;
         }
 
         if (kind >= (int)tok::l_square && kind <= (int)tok::r_brace) {
@@ -183,8 +197,7 @@ namespace cling {
       }
     } while (Tok.isNot(tok::eof));
 
-    const bool Continue = lastKind == tok::backslash || lastKind == tok::comma;
-    if (Continue || (!m_ParenStack.empty() && Res != kMismatch))
+    if (!m_ParenStack.empty() && Res != kMismatch)
       Res = kIncomplete;
 
     if (!m_Input.empty()) {

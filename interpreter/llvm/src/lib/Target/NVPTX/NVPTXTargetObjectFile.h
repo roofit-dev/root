@@ -11,13 +11,14 @@
 #define LLVM_LIB_TARGET_NVPTX_NVPTXTARGETOBJECTFILE_H
 
 #include "NVPTXSection.h"
-#include "llvm/MC/MCSection.h"
-#include "llvm/MC/SectionKind.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 
 namespace llvm {
+class GlobalVariable;
+class Module;
 
 class NVPTXTargetObjectFile : public TargetLoweringObjectFile {
+
 public:
   NVPTXTargetObjectFile() {
     TextSection = nullptr;
@@ -42,7 +43,7 @@ public:
     DwarfMacinfoSection = nullptr;
   }
 
-  ~NVPTXTargetObjectFile() override;
+  virtual ~NVPTXTargetObjectFile();
 
   void Initialize(MCContext &ctx, const TargetMachine &TM) override {
     TargetLoweringObjectFile::Initialize(ctx, TM);
@@ -51,6 +52,7 @@ public:
     BSSSection = new NVPTXSection(MCSection::SV_ELF, SectionKind::getBSS());
     ReadOnlySection =
         new NVPTXSection(MCSection::SV_ELF, SectionKind::getReadOnly());
+
     StaticCtorSection =
         new NVPTXSection(MCSection::SV_ELF, SectionKind::getMetadata());
     StaticDtorSection =
@@ -89,15 +91,17 @@ public:
     return ReadOnlySection;
   }
 
-  MCSection *getExplicitSectionGlobal(const GlobalObject *GO, SectionKind Kind,
+  MCSection *getExplicitSectionGlobal(const GlobalValue *GV, SectionKind Kind,
+                                      Mangler &Mang,
                                       const TargetMachine &TM) const override {
     return DataSection;
   }
 
-  MCSection *SelectSectionForGlobal(const GlobalObject *GO, SectionKind Kind,
+  MCSection *SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
+                                    Mangler &Mang,
                                     const TargetMachine &TM) const override;
 };
 
 } // end namespace llvm
 
-#endif // LLVM_LIB_TARGET_NVPTX_NVPTXTARGETOBJECTFILE_H
+#endif

@@ -25,16 +25,17 @@ public:
 
   DECLARE_PDB_SYMBOL_CONCRETE_TYPE(PDB_SymType::ArrayType)
 
-  void dump(PDBSymDumper &Dumper) const override;
-  void dumpRight(PDBSymDumper &Dumper) const override;
+  std::unique_ptr<PDBSymbol> getElementType() const;
 
-  FORWARD_SYMBOL_ID_METHOD(getArrayIndexType)
+  void dump(PDBSymDumper &Dumper) const override;
+
+  FORWARD_SYMBOL_METHOD(getArrayIndexTypeId)
   FORWARD_SYMBOL_METHOD(isConstType)
   FORWARD_SYMBOL_METHOD(getCount)
   FORWARD_SYMBOL_METHOD(getLength)
-  FORWARD_SYMBOL_ID_METHOD(getLexicalParent)
+  FORWARD_SYMBOL_METHOD(getLexicalParentId)
   FORWARD_SYMBOL_METHOD(getRank)
-  FORWARD_SYMBOL_ID_METHOD_WITH_NAME(getType, getElementType)
+  FORWARD_SYMBOL_METHOD(getTypeId)
   FORWARD_SYMBOL_METHOD(isUnalignedType)
   FORWARD_SYMBOL_METHOD(isVolatileType)
 };

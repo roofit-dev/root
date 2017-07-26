@@ -72,12 +72,11 @@ public:
     const ConstantFP *getConstantFP() const { return Constant.CFP; }
     const ConstantInt *getConstantInt() const { return Constant.CIP; }
     MachineLocation getLoc() const { return Loc; }
-    bool isFragment() const { return getExpression()->isFragment(); }
+    bool isBitPiece() const { return getExpression()->isBitPiece(); }
     const DIExpression *getExpression() const { return Expression; }
     friend bool operator==(const Value &, const Value &);
     friend bool operator<(const Value &, const Value &);
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-    LLVM_DUMP_METHOD void dump() const {
+    void dump() const {
       if (isLocation()) {
         llvm::dbgs() << "Loc = { reg=" << Loc.getReg() << " ";
         if (Loc.isIndirect())
@@ -91,7 +90,6 @@ public:
       if (Expression)
         Expression->dump();
     }
-#endif
   };
 
 private:
@@ -130,8 +128,8 @@ public:
   void addValues(ArrayRef<DebugLocEntry::Value> Vals) {
     Values.append(Vals.begin(), Vals.end());
     sortUniqueValues();
-    assert(all_of(Values, [](DebugLocEntry::Value V) {
-          return V.isFragment();
+    assert(std::all_of(Values.begin(), Values.end(), [](DebugLocEntry::Value V){
+          return V.isBitPiece();
         }) && "value must be a piece");
   }
 
@@ -174,11 +172,11 @@ inline bool operator==(const DebugLocEntry::Value &A,
   llvm_unreachable("unhandled EntryKind");
 }
 
-/// Compare two fragments based on their offset.
+/// \brief Compare two pieces based on their offset.
 inline bool operator<(const DebugLocEntry::Value &A,
                       const DebugLocEntry::Value &B) {
-  return A.getExpression()->getFragmentInfo()->OffsetInBits <
-         B.getExpression()->getFragmentInfo()->OffsetInBits;
+  return A.getExpression()->getBitPieceOffset() <
+         B.getExpression()->getBitPieceOffset();
 }
 
 }

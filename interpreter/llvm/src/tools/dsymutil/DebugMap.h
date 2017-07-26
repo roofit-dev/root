@@ -26,10 +26,10 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Support/Chrono.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/TimeValue.h"
 #include "llvm/Support/YAMLTraits.h"
 #include <vector>
 
@@ -92,9 +92,8 @@ public:
 
   /// This function adds an DebugMapObject to the list owned by this
   /// debug map.
-  DebugMapObject &
-  addDebugMapObject(StringRef ObjectFilePath,
-                    sys::TimePoint<std::chrono::seconds> Timestamp);
+  DebugMapObject &addDebugMapObject(StringRef ObjectFilePath,
+                                    sys::TimeValue Timestamp);
 
   const Triple &getTriple() const { return BinaryTriple; }
 
@@ -131,7 +130,6 @@ public:
     SymbolMapping() = default;
   };
 
-  typedef std::pair<std::string, SymbolMapping> YAMLSymbolMapping;
   typedef StringMapEntry<SymbolMapping> DebugMapEntry;
 
   /// \brief Adds a symbol mapping to this DebugMapObject.
@@ -150,9 +148,7 @@ public:
 
   llvm::StringRef getObjectFilename() const { return Filename; }
 
-  sys::TimePoint<std::chrono::seconds> getTimestamp() const {
-    return Timestamp;
-  }
+  sys::TimeValue getTimestamp() const { return Timestamp; }
 
   iterator_range<StringMap<SymbolMapping>::const_iterator> symbols() const {
     return make_range(Symbols.begin(), Symbols.end());
@@ -165,23 +161,35 @@ public:
 private:
   friend class DebugMap;
   /// DebugMapObjects can only be constructed by the owning DebugMap.
-  DebugMapObject(StringRef ObjectFilename,
-                 sys::TimePoint<std::chrono::seconds> Timestamp);
+  DebugMapObject(StringRef ObjectFilename, sys::TimeValue Timestamp);
 
   std::string Filename;
-  sys::TimePoint<std::chrono::seconds> Timestamp;
+  sys::TimeValue Timestamp;
   StringMap<SymbolMapping> Symbols;
   DenseMap<uint64_t, DebugMapEntry *> AddressToMapping;
 
   /// For YAMLIO support.
   ///@{
+  typedef std::pair<std::string, SymbolMapping> YAMLSymbolMapping;
   friend yaml::MappingTraits<dsymutil::DebugMapObject>;
   friend yaml::SequenceTraits<std::vector<std::unique_ptr<DebugMapObject>>>;
+  friend yaml::SequenceTraits<std::vector<YAMLSymbolMapping>>;
   DebugMapObject() = default;
 
 public:
-  DebugMapObject(DebugMapObject &&) = default;
-  DebugMapObject &operator=(DebugMapObject &&) = default;
+  DebugMapObject &operator=(DebugMapObject RHS) {
+    std::swap(Filename, RHS.Filename);
+    std::swap(Timestamp, RHS.Timestamp);
+    std::swap(Symbols, RHS.Symbols);
+    std::swap(AddressToMapping, RHS.AddressToMapping);
+    return *this;
+  }
+  DebugMapObject(DebugMapObject &&RHS) {
+    Filename = std::move(RHS.Filename);
+    Timestamp = std::move(RHS.Timestamp);
+    Symbols = std::move(RHS.Symbols);
+    AddressToMapping = std::move(RHS.AddressToMapping);
+  }
   ///@}
 };
 }

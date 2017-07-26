@@ -15,12 +15,9 @@
 #define LLVM_SUPPORT_HOST_H
 
 #include "llvm/ADT/StringMap.h"
-#include "llvm/Support/MemoryBuffer.h"
 
 #if defined(__linux__) || defined(__GNU__) || defined(__HAIKU__)
 #include <endian.h>
-#elif defined(_AIX)
-#include <sys/machine.h>
 #else
 #if !defined(BYTE_ORDER) && !defined(LLVM_ON_WIN32)
 #include <machine/endian.h>
@@ -33,9 +30,9 @@ namespace llvm {
 namespace sys {
 
 #if defined(BYTE_ORDER) && defined(BIG_ENDIAN) && BYTE_ORDER == BIG_ENDIAN
-constexpr bool IsBigEndianHost = true;
+  static const bool IsBigEndianHost = true;
 #else
-constexpr bool IsBigEndianHost = false;
+  static const bool IsBigEndianHost = false;
 #endif
 
   static const bool IsLittleEndianHost = !IsBigEndianHost;
@@ -71,18 +68,6 @@ constexpr bool IsBigEndianHost = false;
   ///
   /// \return - True on success.
   bool getHostCPUFeatures(StringMap<bool> &Features);
-
-  /// Get the number of physical cores (as opposed to logical cores returned
-  /// from thread::hardware_concurrency(), which includes hyperthreads).
-  /// Returns -1 if unknown for the current host system.
-  int getHostNumPhysicalCores();
-
-  namespace detail {
-  /// Helper functions to extract HostCPUName from /proc/cpuinfo on linux.
-  StringRef getHostCPUNameForPowerPC(const StringRef &ProcCpuinfoContent);
-  StringRef getHostCPUNameForARM(const StringRef &ProcCpuinfoContent);
-  StringRef getHostCPUNameForS390x(const StringRef &ProcCpuinfoContent);
-  }
 }
 }
 

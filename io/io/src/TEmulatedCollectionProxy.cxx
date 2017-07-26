@@ -111,7 +111,7 @@ void TEmulatedCollectionProxy::DeleteArray(void* p, Bool_t dtorOnly) const
 TGenCollectionProxy *TEmulatedCollectionProxy::InitializeEx(Bool_t silent)
 {
    // Proxy initializer
-   R__LOCKGUARD(gInterpreterMutex);
+   R__LOCKGUARD2(gInterpreterMutex);
    if (fClass) return this;
 
 

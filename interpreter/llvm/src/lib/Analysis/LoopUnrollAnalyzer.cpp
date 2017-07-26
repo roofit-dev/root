@@ -115,19 +115,13 @@ bool UnrolledInstAnalyzer::visitLoad(LoadInst &I) {
   // We might have a vector load from an array. FIXME: for now we just bail
   // out in this case, but we should be able to resolve and simplify such
   // loads.
-  if (CDS->getElementType() != I.getType())
+  if(CDS->getElementType() != I.getType())
     return false;
 
-  unsigned ElemSize = CDS->getElementType()->getPrimitiveSizeInBits() / 8U;
-  if (SimplifiedAddrOp->getValue().getActiveBits() > 64)
+  int ElemSize = CDS->getElementType()->getPrimitiveSizeInBits() / 8U;
+  if (SimplifiedAddrOp->getValue().getActiveBits() >= 64)
     return false;
-  int64_t SimplifiedAddrOpV = SimplifiedAddrOp->getSExtValue();
-  if (SimplifiedAddrOpV < 0) {
-    // FIXME: For now we conservatively ignore out of bound accesses, but
-    // we're allowed to perform the optimization in this case.
-    return false;
-  }
-  uint64_t Index = static_cast<uint64_t>(SimplifiedAddrOpV) / ElemSize;
+  int64_t Index = SimplifiedAddrOp->getSExtValue() / ElemSize;
   if (Index >= CDS->getNumElements()) {
     // FIXME: For now we conservatively ignore out of bound accesses, but
     // we're allowed to perform the optimization in this case.

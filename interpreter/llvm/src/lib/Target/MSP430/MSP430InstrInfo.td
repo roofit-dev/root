@@ -23,8 +23,7 @@ class SDTCisI16<int OpNum> : SDTCisVT<OpNum, i16>;
 // Type Profiles.
 //===----------------------------------------------------------------------===//
 def SDT_MSP430Call         : SDTypeProfile<0, -1, [SDTCisVT<0, iPTR>]>;
-def SDT_MSP430CallSeqStart : SDCallSeqStart<[SDTCisVT<0, i16>,
-                                             SDTCisVT<1, i16>]>;
+def SDT_MSP430CallSeqStart : SDCallSeqStart<[SDTCisVT<0, i16>]>;
 def SDT_MSP430CallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i16>, SDTCisVT<1, i16>]>;
 def SDT_MSP430Wrapper      : SDTypeProfile<1, 1, [SDTCisSameAs<0, 1>,
                                                   SDTCisPtrTy<0>]>;
@@ -114,16 +113,15 @@ def and_su : PatFrag<(ops node:$lhs, node:$rhs), (and node:$lhs, node:$rhs), [{
 // Pessimistically assume ADJCALLSTACKDOWN / ADJCALLSTACKUP will become
 // sub / add which can clobber SR.
 let Defs = [SP, SR], Uses = [SP] in {
-def ADJCALLSTACKDOWN : Pseudo<(outs), (ins i16imm:$amt1, i16imm:$amt2),
+def ADJCALLSTACKDOWN : Pseudo<(outs), (ins i16imm:$amt),
                               "#ADJCALLSTACKDOWN",
-                              [(MSP430callseq_start timm:$amt1, timm:$amt2)]>;
+                              [(MSP430callseq_start timm:$amt)]>;
 def ADJCALLSTACKUP   : Pseudo<(outs), (ins i16imm:$amt1, i16imm:$amt2),
                               "#ADJCALLSTACKUP",
                               [(MSP430callseq_end timm:$amt1, timm:$amt2)]>;
 }
 
 let usesCustomInserter = 1 in {
-  let Uses = [SR] in {
   def Select8  : Pseudo<(outs GR8:$dst), (ins GR8:$src, GR8:$src2, i8imm:$cc),
                         "# Select8 PSEUDO",
                         [(set GR8:$dst,
@@ -132,7 +130,6 @@ let usesCustomInserter = 1 in {
                         "# Select16 PSEUDO",
                         [(set GR16:$dst,
                           (MSP430selectcc GR16:$src, GR16:$src2, imm:$cc))]>;
-  }
   let Defs = [SR] in {
   def Shl8     : Pseudo<(outs GR8:$dst), (ins GR8:$src, GR8:$cnt),
                         "# Shl8 PSEUDO",
@@ -210,7 +207,7 @@ let isCall = 1 in
   // a use to prevent stack-pointer assignments that appear immediately
   // before calls from potentially appearing dead. Uses for argument
   // registers are added manually.
-  let Defs = [R11, R12, R13, R14, R15, SR],
+  let Defs = [R12, R13, R14, R15, SR],
       Uses = [SP] in {
     def CALLi     : II16i<0x0,
                           (outs), (ins i16imm:$dst),

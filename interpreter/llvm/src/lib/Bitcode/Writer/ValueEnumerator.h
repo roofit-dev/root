@@ -36,7 +36,7 @@ class LocalAsMetadata;
 class MDNode;
 class MDOperand;
 class NamedMDNode;
-class AttributeList;
+class AttributeSet;
 class ValueSymbolTable;
 class MDSymbolTable;
 class raw_ostream;
@@ -47,10 +47,6 @@ public:
 
   // For each value, we remember its Value* and occurrence frequency.
   typedef std::vector<std::pair<const Value*, unsigned> > ValueList;
-
-  /// Attribute groups as encoded in bitcode are almost AttributeSets, but they
-  /// include the AttributeList index, so we have to track that in our map.
-  typedef std::pair<unsigned, AttributeSet> IndexAndAttrSet;
 
   UseListOrderStack UseListOrders;
 
@@ -99,20 +95,20 @@ private:
     /// Number of strings in the prefix of the metadata range.
     unsigned NumStrings = 0;
 
-    MDRange() {}
+    MDRange() = default;
     explicit MDRange(unsigned First) : First(First) {}
   };
   SmallDenseMap<unsigned, MDRange, 1> FunctionMDInfo;
 
   bool ShouldPreserveUseListOrder;
 
-  typedef DenseMap<IndexAndAttrSet, unsigned> AttributeGroupMapType;
+  typedef DenseMap<AttributeSet, unsigned> AttributeGroupMapType;
   AttributeGroupMapType AttributeGroupMap;
-  std::vector<IndexAndAttrSet> AttributeGroups;
+  std::vector<AttributeSet> AttributeGroups;
 
-  typedef DenseMap<AttributeList, unsigned> AttributeListMapType;
-  AttributeListMapType AttributeListMap;
-  std::vector<AttributeList> AttributeLists;
+  typedef DenseMap<AttributeSet, unsigned> AttributeMapType;
+  AttributeMapType AttributeMap;
+  std::vector<AttributeSet> Attribute;
 
   /// GlobalBasicBlockIDs - This map memoizes the basic block ID's referenced by
   /// the "getGlobalBasicBlockID" method.
@@ -170,17 +166,16 @@ public:
   unsigned getInstructionID(const Instruction *I) const;
   void setInstructionID(const Instruction *I);
 
-  unsigned getAttributeListID(AttributeList PAL) const {
+  unsigned getAttributeID(AttributeSet PAL) const {
     if (PAL.isEmpty()) return 0;  // Null maps to zero.
-    AttributeListMapType::const_iterator I = AttributeListMap.find(PAL);
-    assert(I != AttributeListMap.end() && "Attribute not in ValueEnumerator!");
+    AttributeMapType::const_iterator I = AttributeMap.find(PAL);
+    assert(I != AttributeMap.end() && "Attribute not in ValueEnumerator!");
     return I->second;
   }
 
-  unsigned getAttributeGroupID(IndexAndAttrSet Group) const {
-    if (!Group.second.hasAttributes())
-      return 0; // Null maps to zero.
-    AttributeGroupMapType::const_iterator I = AttributeGroupMap.find(Group);
+  unsigned getAttributeGroupID(AttributeSet PAL) const {
+    if (PAL.isEmpty()) return 0;  // Null maps to zero.
+    AttributeGroupMapType::const_iterator I = AttributeGroupMap.find(PAL);
     assert(I != AttributeGroupMap.end() && "Attribute not in ValueEnumerator!");
     return I->second;
   }
@@ -211,8 +206,10 @@ public:
   const std::vector<const BasicBlock*> &getBasicBlocks() const {
     return BasicBlocks;
   }
-  const std::vector<AttributeList> &getAttributeLists() const { return AttributeLists; }
-  const std::vector<IndexAndAttrSet> &getAttributeGroups() const {
+  const std::vector<AttributeSet> &getAttributes() const {
+    return Attribute;
+  }
+  const std::vector<AttributeSet> &getAttributeGroups() const {
     return AttributeGroups;
   }
 
@@ -286,7 +283,7 @@ private:
   void EnumerateValue(const Value *V);
   void EnumerateType(Type *T);
   void EnumerateOperandType(const Value *V);
-  void EnumerateAttributes(AttributeList PAL);
+  void EnumerateAttributes(AttributeSet PAL);
 
   void EnumerateValueSymbolTable(const ValueSymbolTable &ST);
   void EnumerateNamedMetadata(const Module &M);

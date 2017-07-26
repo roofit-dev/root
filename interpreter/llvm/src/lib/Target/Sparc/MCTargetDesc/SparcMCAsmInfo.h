@@ -1,4 +1,4 @@
-//===- SparcMCAsmInfo.h - Sparc asm properties -----------------*- C++ -*--===//
+//===-- SparcMCAsmInfo.h - Sparc asm properties ----------------*- C++ -*--===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -17,7 +17,6 @@
 #include "llvm/MC/MCAsmInfoELF.h"
 
 namespace llvm {
-
 class Triple;
 
 class SparcELFMCAsmInfo : public MCAsmInfoELF {
@@ -25,7 +24,6 @@ class SparcELFMCAsmInfo : public MCAsmInfoELF {
 
 public:
   explicit SparcELFMCAsmInfo(const Triple &TheTriple);
-
   const MCExpr*
   getExprForPersonalitySymbol(const MCSymbol *Sym, unsigned Encoding,
                               MCStreamer &Streamer) const override;
@@ -35,6 +33,6 @@ public:
 
 };
 
-} // end namespace llvm
+} // namespace llvm
 
-#endif // LLVM_LIB_TARGET_SPARC_MCTARGETDESC_SPARCMCASMINFO_H
+#endif

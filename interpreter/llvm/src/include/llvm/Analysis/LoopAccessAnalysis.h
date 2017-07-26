@@ -20,9 +20,7 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AliasSetTracker.h"
-#include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
-#include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
@@ -36,7 +34,40 @@ class Loop;
 class SCEV;
 class SCEVUnionPredicate;
 class LoopAccessInfo;
-class OptimizationRemarkEmitter;
+
+/// Optimization analysis message produced during vectorization. Messages inform
+/// the user why vectorization did not occur.
+class LoopAccessReport {
+  std::string Message;
+  const Instruction *Instr;
+
+protected:
+  LoopAccessReport(const Twine &Message, const Instruction *I)
+      : Message(Message.str()), Instr(I) {}
+
+public:
+  LoopAccessReport(const Instruction *I = nullptr) : Instr(I) {}
+
+  template <typename A> LoopAccessReport &operator<<(const A &Value) {
+    raw_string_ostream Out(Message);
+    Out << Value;
+    return *this;
+  }
+
+  const Instruction *getInstr() const { return Instr; }
+
+  std::string &str() { return Message; }
+  const std::string &str() const { return Message; }
+  operator Twine() { return Message; }
+
+  /// \brief Emit an analysis note for \p PassName with the debug location from
+  /// the instruction in \p Message if available.  Otherwise use the location of
+  /// \p TheLoop.
+  static void emitAnalysis(const LoopAccessReport &Message,
+                           const Function *TheFunction,
+                           const Loop *TheLoop,
+                           const char *PassName);
+};
 
 /// \brief Collection of parameters shared beetween the Loop Vectorizer and the
 /// Loop Access Analysis.
@@ -93,7 +124,7 @@ struct VectorizerParams {
 class MemoryDepChecker {
 public:
   typedef PointerIntPair<Value *, 1, bool> MemAccessInfo;
-  typedef SmallVector<MemAccessInfo, 8> MemAccessInfoList;
+  typedef SmallPtrSet<MemAccessInfo, 8> MemAccessInfoSet;
   /// \brief Set of potential dependent memory accesses.
   typedef EquivalenceClasses<MemAccessInfo> DepCandidates;
 
@@ -188,7 +219,7 @@ public:
   /// \brief Check whether the dependencies between the accesses are safe.
   ///
   /// Only checks sets with elements in \p CheckDeps.
-  bool areDepsSafe(DepCandidates &AccessSets, MemAccessInfoList &CheckDeps,
+  bool areDepsSafe(DepCandidates &AccessSets, MemAccessInfoSet &CheckDeps,
                    const ValueToValueMap &Strides);
 
   /// \brief No memory dependence was encountered that would inhibit
@@ -197,7 +228,7 @@ public:
 
   /// \brief The maximum number of bytes of a vector register we can vectorize
   /// the accesses safely with.
-  uint64_t getMaxSafeDepDistBytes() { return MaxSafeDepDistBytes; }
+  unsigned getMaxSafeDepDistBytes() { return MaxSafeDepDistBytes; }
 
   /// \brief In same cases when the dependency check fails we can still
   /// vectorize the loop with a dynamic array access check.
@@ -253,7 +284,7 @@ private:
   unsigned AccessIdx;
 
   // We can access this many bytes in parallel safely.
-  uint64_t MaxSafeDepDistBytes;
+  unsigned MaxSafeDepDistBytes;
 
   /// \brief If we see a non-constant dependence distance we can still try to
   /// vectorize this loop with runtime checks.
@@ -293,7 +324,7 @@ private:
   ///
   /// \return false if we shouldn't vectorize at all or avoid larger
   /// vectorization factors by limiting MaxSafeDepDistBytes.
-  bool couldPreventStoreLoadForward(uint64_t Distance, uint64_t TypeByteSize);
+  bool couldPreventStoreLoadForward(unsigned Distance, unsigned TypeByteSize);
 };
 
 /// \brief Holds information about the memory runtime legality checks to verify
@@ -303,11 +334,9 @@ public:
   struct PointerInfo {
     /// Holds the pointer value that we need to check.
     TrackingVH<Value> PointerValue;
-    /// Holds the smallest byte address accessed by the pointer throughout all
-    /// iterations of the loop.
+    /// Holds the pointer value at the beginning of the loop.
     const SCEV *Start;
-    /// Holds the largest byte address accessed by the pointer throughout all
-    /// iterations of the loop, plus 1.
+    /// Holds the pointer value at the end of the loop.
     const SCEV *End;
     /// Holds the information if this pointer is used for writing to memory.
     bool IsWritePtr;
@@ -482,8 +511,47 @@ private:
 /// PSE must be emitted in order for the results of this analysis to be valid.
 class LoopAccessInfo {
 public:
-  LoopAccessInfo(Loop *L, ScalarEvolution *SE, const TargetLibraryInfo *TLI,
-                 AliasAnalysis *AA, DominatorTree *DT, LoopInfo *LI);
+  LoopAccessInfo(Loop *L, ScalarEvolution *SE, const DataLayout &DL,
+                 const TargetLibraryInfo *TLI, AliasAnalysis *AA,
+                 DominatorTree *DT, LoopInfo *LI);
+
+  // FIXME:
+  // Hack for MSVC 2013 which sems like it can't synthesize this even 
+  // with default keyword:
+  // LoopAccessInfo(LoopAccessInfo &&LAI) = default;
+  LoopAccessInfo(LoopAccessInfo &&LAI)
+      : PSE(std::move(LAI.PSE)), PtrRtChecking(std::move(LAI.PtrRtChecking)),
+        DepChecker(std::move(LAI.DepChecker)), TheLoop(LAI.TheLoop), DL(LAI.DL),
+        TLI(LAI.TLI), AA(LAI.AA), DT(LAI.DT), LI(LAI.LI),
+        NumLoads(LAI.NumLoads), NumStores(LAI.NumStores),
+        MaxSafeDepDistBytes(LAI.MaxSafeDepDistBytes), CanVecMem(LAI.CanVecMem),
+        StoreToLoopInvariantAddress(LAI.StoreToLoopInvariantAddress),
+        Report(std::move(LAI.Report)),
+        SymbolicStrides(std::move(LAI.SymbolicStrides)),
+        StrideSet(std::move(LAI.StrideSet)) {}
+  // LoopAccessInfo &operator=(LoopAccessInfo &&LAI) = default;
+  LoopAccessInfo &operator=(LoopAccessInfo &&LAI) {
+    assert(this != &LAI);
+
+    PSE = std::move(LAI.PSE);
+    PtrRtChecking = std::move(LAI.PtrRtChecking);
+    DepChecker = std::move(LAI.DepChecker);
+    TheLoop = LAI.TheLoop;
+    DL = LAI.DL;
+    TLI = LAI.TLI;
+    AA = LAI.AA;
+    DT = LAI.DT;
+    LI = LAI.LI;
+    NumLoads = LAI.NumLoads;
+    NumStores = LAI.NumStores;
+    MaxSafeDepDistBytes = LAI.MaxSafeDepDistBytes;
+    CanVecMem = LAI.CanVecMem;
+    StoreToLoopInvariantAddress = LAI.StoreToLoopInvariantAddress;
+    Report = std::move(LAI.Report);
+    SymbolicStrides = std::move(LAI.SymbolicStrides);
+    StrideSet = std::move(LAI.StrideSet);
+    return *this;
+  }
 
   /// Return true we can analyze the memory accesses in the loop and there are
   /// no memory dependence cycles.
@@ -507,7 +575,7 @@ public:
   /// Returns true if the value V is uniform within the loop.
   bool isUniform(Value *V) const;
 
-  uint64_t getMaxSafeDepDistBytes() const { return MaxSafeDepDistBytes; }
+  unsigned getMaxSafeDepDistBytes() const { return MaxSafeDepDistBytes; }
   unsigned getNumStores() const { return NumStores; }
   unsigned getNumLoads() const { return NumLoads;}
 
@@ -531,7 +599,7 @@ public:
 
   /// \brief The diagnostics report generated for the analysis.  E.g. why we
   /// couldn't analyze the loop.
-  const OptimizationRemarkAnalysis *getReport() const { return Report.get(); }
+  const Optional<LoopAccessReport> &getReport() const { return Report; }
 
   /// \brief the Memory Dependence Checker which can determine the
   /// loop-independent and loop-carried dependences between memory accesses.
@@ -570,20 +638,13 @@ public:
 
 private:
   /// \brief Analyze the loop.
-  void analyzeLoop(AliasAnalysis *AA, LoopInfo *LI,
-                   const TargetLibraryInfo *TLI, DominatorTree *DT);
+  void analyzeLoop();
 
   /// \brief Check if the structure of the loop allows it to be analyzed by this
   /// pass.
   bool canAnalyzeLoop();
 
-  /// \brief Save the analysis remark.
-  ///
-  /// LAA does not directly emits the remarks.  Instead it stores it which the
-  /// client can retrieve and presents as its own analysis
-  /// (e.g. -Rpass-analysis=loop-vectorize).
-  OptimizationRemarkAnalysis &recordAnalysis(StringRef RemarkName,
-                                             Instruction *Instr = nullptr);
+  void emitAnalysis(LoopAccessReport &Message);
 
   /// \brief Collect memory access with loop invariant strides.
   ///
@@ -602,11 +663,16 @@ private:
   std::unique_ptr<MemoryDepChecker> DepChecker;
 
   Loop *TheLoop;
+  const DataLayout *DL;
+  const TargetLibraryInfo *TLI;
+  AliasAnalysis *AA;
+  DominatorTree *DT;
+  LoopInfo *LI;
 
   unsigned NumLoads;
   unsigned NumStores;
 
-  uint64_t MaxSafeDepDistBytes;
+  unsigned MaxSafeDepDistBytes;
 
   /// \brief Cache the result of analyzeLoop.
   bool CanVecMem;
@@ -617,7 +683,7 @@ private:
 
   /// \brief The diagnostics report generated for the analysis.  E.g. why we
   /// couldn't analyze the loop.
-  std::unique_ptr<OptimizationRemarkAnalysis> Report;
+  Optional<LoopAccessReport> Report;
 
   /// \brief If an access has a symbolic strides, this maps the pointer value to
   /// the stride symbol.
@@ -653,9 +719,9 @@ const SCEV *replaceSymbolicStrideSCEV(PredicatedScalarEvolution &PSE,
 /// to \p PtrToStride and therefore add further predicates to \p PSE.
 /// The \p Assume parameter indicates if we are allowed to make additional
 /// run-time assumptions.
-int64_t getPtrStride(PredicatedScalarEvolution &PSE, Value *Ptr, const Loop *Lp,
-                     const ValueToValueMap &StridesMap = ValueToValueMap(),
-                     bool Assume = false, bool ShouldCheckWrap = true);
+int getPtrStride(PredicatedScalarEvolution &PSE, Value *Ptr, const Loop *Lp,
+                 const ValueToValueMap &StridesMap = ValueToValueMap(),
+                 bool Assume = false);
 
 /// \brief Returns true if the memory operations \p A and \p B are consecutive.
 /// This is a simple API that does not depend on the analysis pass. 
@@ -669,12 +735,12 @@ bool isConsecutiveAccess(Value *A, Value *B, const DataLayout &DL,
 /// querying the loop access info via LAA::getInfo.  getInfo return a
 /// LoopAccessInfo object.  See this class for the specifics of what information
 /// is provided.
-class LoopAccessLegacyAnalysis : public FunctionPass {
+class LoopAccessAnalysis : public FunctionPass {
 public:
   static char ID;
 
-  LoopAccessLegacyAnalysis() : FunctionPass(ID) {
-    initializeLoopAccessLegacyAnalysisPass(*PassRegistry::getPassRegistry());
+  LoopAccessAnalysis() : FunctionPass(ID) {
+    initializeLoopAccessAnalysisPass(*PassRegistry::getPassRegistry());
   }
 
   bool runOnFunction(Function &F) override;
@@ -706,22 +772,26 @@ private:
   LoopInfo *LI;
 };
 
-/// \brief This analysis provides dependence information for the memory
-/// accesses of a loop.
-///
-/// It runs the analysis for a loop on demand.  This can be initiated by
-/// querying the loop access info via AM.getResult<LoopAccessAnalysis>. 
-/// getResult return a LoopAccessInfo object.  See this class for the
-/// specifics of what information is provided.
-class LoopAccessAnalysis
-    : public AnalysisInfoMixin<LoopAccessAnalysis> {
-  friend AnalysisInfoMixin<LoopAccessAnalysis>;
-  static AnalysisKey Key;
+/// \brief LoopAccessInfoAnalysis
+class LoopAccessInfoAnalysis
+    : public AnalysisInfoMixin<LoopAccessInfoAnalysis> {
+  friend AnalysisInfoMixin<LoopAccessInfoAnalysis>;
+  static char PassID;
 
 public:
   typedef LoopAccessInfo Result;
+  Result run(Loop &, AnalysisManager<Loop> &);
+  static StringRef name() { return "LoopAccessInfoAnalysis"; }
+};
 
-  Result run(Loop &L, LoopAnalysisManager &AM, LoopStandardAnalysisResults &AR);
+/// \brief Printer pass for the \c LoopAccessInfo results.
+class LoopAccessInfoPrinterPass
+    : public PassInfoMixin<LoopAccessInfoPrinterPass> {
+  raw_ostream &OS;
+
+public:
+  explicit LoopAccessInfoPrinterPass(raw_ostream &OS) : OS(OS) {}
+  PreservedAnalyses run(Loop &L, AnalysisManager<Loop> &AM);
 };
 
 inline Instruction *MemoryDepChecker::Dependence::getSource(

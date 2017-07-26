@@ -44,10 +44,7 @@ class SymbolRegionValue : public SymbolData {
 
 public:
   SymbolRegionValue(SymbolID sym, const TypedValueRegion *r)
-      : SymbolData(SymbolRegionValueKind, sym), R(r) {
-    assert(r);
-    assert(isValidTypeForSymbol(r->getValueType()));
-  }
+    : SymbolData(SymbolRegionValueKind, sym), R(r) {}
 
   const TypedValueRegion* getRegion() const { return R; }
 
@@ -61,7 +58,6 @@ public:
   }
 
   void dumpToStream(raw_ostream &os) const override;
-  const MemRegion *getOriginRegion() const override { return getRegion(); }
 
   QualType getType() const override;
 
@@ -84,15 +80,7 @@ public:
   SymbolConjured(SymbolID sym, const Stmt *s, const LocationContext *lctx,
                  QualType t, unsigned count, const void *symbolTag)
       : SymbolData(SymbolConjuredKind, sym), S(s), T(t), Count(count),
-        LCtx(lctx), SymbolTag(symbolTag) {
-    // FIXME: 's' might be a nullptr if we're conducting invalidation
-    // that was caused by a destructor call on a temporary object,
-    // which has no statement associated with it.
-    // Due to this, we might be creating the same invalidation symbol for
-    // two different invalidation passes (for two different temporaries).
-    assert(lctx);
-    assert(isValidTypeForSymbol(t));
-  }
+        LCtx(lctx), SymbolTag(symbolTag) {}
 
   const Stmt *getStmt() const { return S; }
   unsigned getCount() const { return Count; }
@@ -131,11 +119,7 @@ class SymbolDerived : public SymbolData {
 
 public:
   SymbolDerived(SymbolID sym, SymbolRef parent, const TypedValueRegion *r)
-      : SymbolData(SymbolDerivedKind, sym), parentSymbol(parent), R(r) {
-    assert(parent);
-    assert(r);
-    assert(isValidTypeForSymbol(r->getValueType()));
-  }
+    : SymbolData(SymbolDerivedKind, sym), parentSymbol(parent), R(r) {}
 
   SymbolRef getParentSymbol() const { return parentSymbol; }
   const TypedValueRegion *getRegion() const { return R; }
@@ -143,7 +127,6 @@ public:
   QualType getType() const override;
 
   void dumpToStream(raw_ostream &os) const override;
-  const MemRegion *getOriginRegion() const override { return getRegion(); }
 
   static void Profile(llvm::FoldingSetNodeID& profile, SymbolRef parent,
                       const TypedValueRegion *r) {
@@ -170,9 +153,7 @@ class SymbolExtent : public SymbolData {
   
 public:
   SymbolExtent(SymbolID sym, const SubRegion *r)
-      : SymbolData(SymbolExtentKind, sym), R(r) {
-    assert(r);
-  }
+  : SymbolData(SymbolExtentKind, sym), R(r) {}
 
   const SubRegion *getRegion() const { return R; }
 
@@ -203,24 +184,15 @@ class SymbolMetadata : public SymbolData {
   const MemRegion* R;
   const Stmt *S;
   QualType T;
-  const LocationContext *LCtx;
   unsigned Count;
   const void *Tag;
 public:
   SymbolMetadata(SymbolID sym, const MemRegion* r, const Stmt *s, QualType t,
-                 const LocationContext *LCtx, unsigned count, const void *tag)
-  : SymbolData(SymbolMetadataKind, sym), R(r), S(s), T(t), LCtx(LCtx),
-    Count(count), Tag(tag) {
-      assert(r);
-      assert(s);
-      assert(isValidTypeForSymbol(t));
-      assert(LCtx);
-      assert(tag);
-    }
+                 unsigned count, const void *tag)
+  : SymbolData(SymbolMetadataKind, sym), R(r), S(s), T(t), Count(count), Tag(tag) {}
 
   const MemRegion *getRegion() const { return R; }
   const Stmt *getStmt() const { return S; }
-  const LocationContext *getLocationContext() const { return LCtx; }
   unsigned getCount() const { return Count; }
   const void *getTag() const { return Tag; }
 
@@ -229,19 +201,18 @@ public:
   void dumpToStream(raw_ostream &os) const override;
 
   static void Profile(llvm::FoldingSetNodeID& profile, const MemRegion *R,
-                      const Stmt *S, QualType T, const LocationContext *LCtx,
-                      unsigned Count, const void *Tag) {
+                      const Stmt *S, QualType T, unsigned Count,
+                      const void *Tag) {
     profile.AddInteger((unsigned) SymbolMetadataKind);
     profile.AddPointer(R);
     profile.AddPointer(S);
     profile.Add(T);
-    profile.AddPointer(LCtx);
     profile.AddInteger(Count);
     profile.AddPointer(Tag);
   }
 
   void Profile(llvm::FoldingSetNodeID& profile) override {
-    Profile(profile, R, S, T, LCtx, Count, Tag);
+    Profile(profile, R, S, T, Count, Tag);
   }
 
   // Implement isa<T> support.
@@ -259,13 +230,8 @@ class SymbolCast : public SymExpr {
   QualType ToTy;
 
 public:
-  SymbolCast(const SymExpr *In, QualType From, QualType To)
-      : SymExpr(SymbolCastKind), Operand(In), FromTy(From), ToTy(To) {
-    assert(In);
-    assert(isValidTypeForSymbol(From));
-    // FIXME: GenericTaintChecker creates symbols of void type.
-    // Otherwise, 'To' should also be a valid type.
-  }
+  SymbolCast(const SymExpr *In, QualType From, QualType To) :
+    SymExpr(SymbolCastKind), Operand(In), FromTy(From), ToTy(To) { }
 
   QualType getType() const override { return ToTy; }
 
@@ -298,10 +264,7 @@ class BinarySymExpr : public SymExpr {
 
 protected:
   BinarySymExpr(Kind k, BinaryOperator::Opcode op, QualType t)
-      : SymExpr(k), Op(op), T(t) {
-    assert(classof(this));
-    assert(isValidTypeForSymbol(t));
-  }
+    : SymExpr(k), Op(op), T(t) {}
 
 public:
   // FIXME: We probably need to make this out-of-line to avoid redundant
@@ -324,10 +287,8 @@ class SymIntExpr : public BinarySymExpr {
 
 public:
   SymIntExpr(const SymExpr *lhs, BinaryOperator::Opcode op,
-             const llvm::APSInt &rhs, QualType t)
-      : BinarySymExpr(SymIntExprKind, op, t), LHS(lhs), RHS(rhs) {
-    assert(lhs);
-  }
+             const llvm::APSInt& rhs, QualType t)
+    : BinarySymExpr(SymIntExprKind, op, t), LHS(lhs), RHS(rhs) {}
 
   void dumpToStream(raw_ostream &os) const override;
 
@@ -360,11 +321,9 @@ class IntSymExpr : public BinarySymExpr {
   const SymExpr *RHS;
 
 public:
-  IntSymExpr(const llvm::APSInt &lhs, BinaryOperator::Opcode op,
+  IntSymExpr(const llvm::APSInt& lhs, BinaryOperator::Opcode op,
              const SymExpr *rhs, QualType t)
-      : BinarySymExpr(IntSymExprKind, op, t), LHS(lhs), RHS(rhs) {
-    assert(rhs);
-  }
+    : BinarySymExpr(IntSymExprKind, op, t), LHS(lhs), RHS(rhs) {}
 
   void dumpToStream(raw_ostream &os) const override;
 
@@ -399,10 +358,7 @@ class SymSymExpr : public BinarySymExpr {
 public:
   SymSymExpr(const SymExpr *lhs, BinaryOperator::Opcode op, const SymExpr *rhs,
              QualType t)
-      : BinarySymExpr(SymSymExprKind, op, t), LHS(lhs), RHS(rhs) {
-    assert(lhs);
-    assert(rhs);
-  }
+    : BinarySymExpr(SymSymExprKind, op, t), LHS(lhs), RHS(rhs) {}
 
   const SymExpr *getLHS() const { return LHS; }
   const SymExpr *getRHS() const { return RHS; }
@@ -477,9 +433,7 @@ public:
   /// VisitCount can be used to differentiate regions corresponding to
   /// different loop iterations, thus, making the symbol path-dependent.
   const SymbolMetadata *getMetadataSymbol(const MemRegion *R, const Stmt *S,
-                                          QualType T,
-                                          const LocationContext *LCtx,
-                                          unsigned VisitCount,
+                                          QualType T, unsigned VisitCount,
                                           const void *SymbolTag = nullptr);
 
   const SymbolCast* getCastSymbol(const SymExpr *Operand,

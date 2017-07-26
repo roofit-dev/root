@@ -70,10 +70,6 @@ namespace {
 
     unsigned foundErrors;
 
-    // Avoid querying the MachineFunctionProperties for each operand.
-    bool isFunctionRegBankSelected;
-    bool isFunctionSelected;
-
     typedef SmallVector<unsigned, 16> RegVector;
     typedef SmallVector<const uint32_t*, 4> RegMaskVector;
     typedef DenseSet<unsigned> RegSet;
@@ -188,9 +184,8 @@ namespace {
       return Reg < regsReserved.size() && regsReserved.test(Reg);
     }
 
-    bool isAllocatable(unsigned Reg) const {
-      return Reg < TRI->getNumRegs() && TRI->isInAllocatableClass(Reg) &&
-        !regsReserved.test(Reg);
+    bool isAllocatable(unsigned Reg) {
+      return Reg < TRI->getNumRegs() && MRI->isAllocatable(Reg);
     }
 
     // Analysis information if available
@@ -209,13 +204,16 @@ namespace {
     void visitMachineBasicBlockAfter(const MachineBasicBlock *MBB);
     void visitMachineFunctionAfter();
 
+    template <typename T> void report(const char *msg, ilist_iterator<T> I) {
+      report(msg, &*I);
+    }
     void report(const char *msg, const MachineFunction *MF);
     void report(const char *msg, const MachineBasicBlock *MBB);
     void report(const char *msg, const MachineInstr *MI);
     void report(const char *msg, const MachineOperand *MO, unsigned MONum);
 
     void report_context(const LiveInterval &LI) const;
-    void report_context(const LiveRange &LR, unsigned VRegUnit,
+    void report_context(const LiveRange &LR, unsigned Reg,
                         LaneBitmask LaneMask) const;
     void report_context(const LiveRange::Segment &S) const;
     void report_context(const VNInfo &VNI) const;
@@ -230,10 +228,10 @@ namespace {
     void checkLiveness(const MachineOperand *MO, unsigned MONum);
     void checkLivenessAtUse(const MachineOperand *MO, unsigned MONum,
                             SlotIndex UseIdx, const LiveRange &LR, unsigned Reg,
-                            LaneBitmask LaneMask = LaneBitmask::getNone());
+                            LaneBitmask LaneMask = 0);
     void checkLivenessAtDef(const MachineOperand *MO, unsigned MONum,
                             SlotIndex DefIdx, const LiveRange &LR, unsigned Reg,
-                            LaneBitmask LaneMask = LaneBitmask::getNone());
+                            LaneBitmask LaneMask = 0);
 
     void markReachable(const MachineBasicBlock *MBB);
     void calcRegsPassed();
@@ -244,12 +242,11 @@ namespace {
     void verifyLiveIntervals();
     void verifyLiveInterval(const LiveInterval&);
     void verifyLiveRangeValue(const LiveRange&, const VNInfo*, unsigned,
-                              LaneBitmask);
+                              unsigned);
     void verifyLiveRangeSegment(const LiveRange&,
                                 const LiveRange::const_iterator I, unsigned,
-                                LaneBitmask);
-    void verifyLiveRange(const LiveRange&, unsigned,
-                         LaneBitmask LaneMask = LaneBitmask::getNone());
+                                unsigned);
+    void verifyLiveRange(const LiveRange&, unsigned, LaneBitmask LaneMask = 0);
 
     void verifyStackFrame();
 
@@ -261,8 +258,8 @@ namespace {
     static char ID; // Pass ID, replacement for typeid
     const std::string Banner;
 
-    MachineVerifierPass(std::string banner = std::string())
-      : MachineFunctionPass(ID), Banner(std::move(banner)) {
+    MachineVerifierPass(const std::string &banner = nullptr)
+      : MachineFunctionPass(ID), Banner(banner) {
         initializeMachineVerifierPassPass(*PassRegistry::getPassRegistry());
       }
 
@@ -313,12 +310,15 @@ void MachineVerifier::verifySlotIndexes() const {
 
 void MachineVerifier::verifyProperties(const MachineFunction &MF) {
   // If a pass has introduced virtual registers without clearing the
-  // NoVRegs property (or set it without allocating the vregs)
+  // AllVRegsAllocated property (or set it without allocating the vregs)
   // then report an error.
   if (MF.getProperties().hasProperty(
-          MachineFunctionProperties::Property::NoVRegs) &&
-      MRI->getNumVirtRegs())
-    report("Function has NoVRegs property but there are VReg operands", &MF);
+          MachineFunctionProperties::Property::AllVRegsAllocated) &&
+      MRI->getNumVirtRegs()) {
+    report(
+        "Function has AllVRegsAllocated property but there are VReg operands",
+        &MF);
+  }
 }
 
 unsigned MachineVerifier::verify(MachineFunction &MF) {
@@ -329,11 +329,6 @@ unsigned MachineVerifier::verify(MachineFunction &MF) {
   TII = MF.getSubtarget().getInstrInfo();
   TRI = MF.getSubtarget().getRegisterInfo();
   MRI = &MF.getRegInfo();
-
-  isFunctionRegBankSelected = MF.getProperties().hasProperty(
-      MachineFunctionProperties::Property::RegBankSelected);
-  isFunctionSelected = MF.getProperties().hasProperty(
-      MachineFunctionProperties::Property::Selected);
 
   LiveVars = nullptr;
   LiveInts = nullptr;
@@ -364,7 +359,7 @@ unsigned MachineVerifier::verify(MachineFunction &MF) {
     for (MachineBasicBlock::const_instr_iterator MBBI = MFI->instr_begin(),
            MBBE = MFI->instr_end(); MBBI != MBBE; ++MBBI) {
       if (MBBI->getParent() != &*MFI) {
-        report("Bad instruction parent pointer", &*MFI);
+        report("Bad instruction parent pointer", MFI);
         errs() << "Instruction: " << *MBBI;
         continue;
       }
@@ -386,7 +381,7 @@ unsigned MachineVerifier::verify(MachineFunction &MF) {
         CurBundle = &*MBBI;
         visitMachineBundleBefore(CurBundle);
       } else if (!CurBundle)
-        report("No bundle header", &*MBBI);
+        report("No bundle header", MBBI);
       visitMachineInstrBefore(&*MBBI);
       for (unsigned I = 0, E = MBBI->getNumOperands(); I != E; ++I) {
         const MachineInstr &MI = *MBBI;
@@ -479,11 +474,11 @@ void MachineVerifier::report_context(const LiveInterval &LI) const {
   errs() << "- interval:    " << LI << '\n';
 }
 
-void MachineVerifier::report_context(const LiveRange &LR, unsigned VRegUnit,
+void MachineVerifier::report_context(const LiveRange &LR, unsigned Reg,
                                      LaneBitmask LaneMask) const {
   report_context_liverange(LR);
-  report_context_vreg_regunit(VRegUnit);
-  if (LaneMask.any())
+  errs() << "- register:    " << PrintReg(Reg, TRI) << '\n';
+  if (LaneMask != 0)
     report_context_lanemask(LaneMask);
 }
 
@@ -527,11 +522,19 @@ void MachineVerifier::markReachable(const MachineBasicBlock *MBB) {
 
 void MachineVerifier::visitMachineFunctionBefore() {
   lastIndex = SlotIndex();
-  regsReserved = MRI->reservedRegsFrozen() ? MRI->getReservedRegs()
-                                           : TRI->getReservedRegs(*MF);
+  regsReserved = MRI->getReservedRegs();
 
-  if (!MF->empty())
-    markReachable(&MF->front());
+  // A sub-register of a reserved register is also reserved
+  for (int Reg = regsReserved.find_first(); Reg>=0;
+       Reg = regsReserved.find_next(Reg)) {
+    for (MCSubRegIterator SubRegs(Reg, TRI); SubRegs.isValid(); ++SubRegs) {
+      // FIXME: This should probably be:
+      // assert(regsReserved.test(*SubRegs) && "Non-reserved sub-register");
+      regsReserved.set(*SubRegs);
+    }
+  }
+
+  markReachable(&MF->front());
 
   // Build a set of the basic blocks in the function.
   FunctionBlocks.clear();
@@ -551,8 +554,7 @@ void MachineVerifier::visitMachineFunctionBefore() {
   // Check that the register use lists are sane.
   MRI->verifyUseLists();
 
-  if (!MF->empty())
-    verifyStackFrame();
+  verifyStackFrame();
 }
 
 // Does iterator point to a and b as the first two elements?
@@ -569,14 +571,13 @@ void
 MachineVerifier::visitMachineBasicBlockBefore(const MachineBasicBlock *MBB) {
   FirstTerminator = nullptr;
 
-  if (!MF->getProperties().hasProperty(
-      MachineFunctionProperties::Property::NoPHIs) && MRI->tracksLiveness()) {
+  if (MRI->isSSA()) {
     // If this block has allocatable physical registers live-in, check that
     // it is an entry block or landing pad.
     for (const auto &LI : MBB->liveins()) {
       if (isAllocatable(LI.PhysReg) && !MBB->isEHPad() &&
           MBB->getIterator() != MBB->getParent()->begin()) {
-        report("MBB has allocatable live-in, but isn't entry or landing-pad.", MBB);
+        report("MBB has allocable live-in, but isn't entry or landing-pad.", MBB);
       }
     }
   }
@@ -621,8 +622,8 @@ MachineVerifier::visitMachineBasicBlockBefore(const MachineBasicBlock *MBB) {
   // Call AnalyzeBranch. If it succeeds, there several more conditions to check.
   MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
   SmallVector<MachineOperand, 4> Cond;
-  if (!TII->analyzeBranch(*const_cast<MachineBasicBlock *>(MBB), TBB, FBB,
-                          Cond)) {
+  if (!TII->AnalyzeBranch(*const_cast<MachineBasicBlock *>(MBB),
+                          TBB, FBB, Cond)) {
     // Ok, AnalyzeBranch thinks it knows what's going on with this block. Let's
     // check whether its answers match up with reality.
     if (!TBB && !FBB) {
@@ -745,21 +746,20 @@ MachineVerifier::visitMachineBasicBlockBefore(const MachineBasicBlock *MBB) {
   }
 
   regsLive.clear();
-  if (MRI->tracksLiveness()) {
-    for (const auto &LI : MBB->liveins()) {
-      if (!TargetRegisterInfo::isPhysicalRegister(LI.PhysReg)) {
-        report("MBB live-in list contains non-physical register", MBB);
-        continue;
-      }
-      for (MCSubRegIterator SubRegs(LI.PhysReg, TRI, /*IncludeSelf=*/true);
-           SubRegs.isValid(); ++SubRegs)
-        regsLive.insert(*SubRegs);
+  for (const auto &LI : MBB->liveins()) {
+    if (!TargetRegisterInfo::isPhysicalRegister(LI.PhysReg)) {
+      report("MBB live-in list contains non-physical register", MBB);
+      continue;
     }
+    for (MCSubRegIterator SubRegs(LI.PhysReg, TRI, /*IncludeSelf=*/true);
+         SubRegs.isValid(); ++SubRegs)
+      regsLive.insert(*SubRegs);
   }
   regsLiveInButUnused = regsLive;
 
-  const MachineFrameInfo &MFI = MF->getFrameInfo();
-  BitVector PR = MFI.getPristineRegs(*MF);
+  const MachineFrameInfo *MFI = MF->getFrameInfo();
+  assert(MFI && "Function has no frame info");
+  BitVector PR = MFI->getPristineRegs(*MF);
   for (int I = PR.find_first(); I>0; I = PR.find_next(I)) {
     for (MCSubRegIterator SubRegs(I, TRI, /*IncludeSelf=*/true);
          SubRegs.isValid(); ++SubRegs)
@@ -850,10 +850,6 @@ void MachineVerifier::visitMachineInstrBefore(const MachineInstr *MI) {
         << MI->getNumOperands() << " given.\n";
   }
 
-  if (MI->isPHI() && MF->getProperties().hasProperty(
-          MachineFunctionProperties::Property::NoPHIs))
-    report("Found PHI instruction with NoPHIs property set", MI);
-
   // Check the tied operands.
   if (MI->isInlineAsm())
     verifyInlineAsm(MI);
@@ -882,43 +878,6 @@ void MachineVerifier::visitMachineInstrBefore(const MachineInstr *MI) {
         report("Missing slot index", MI);
     }
   }
-
-  // Check types.
-  if (isPreISelGenericOpcode(MCID.getOpcode())) {
-    if (isFunctionSelected)
-      report("Unexpected generic instruction in a Selected function", MI);
-
-    // Generic instructions specify equality constraints between some
-    // of their operands. Make sure these are consistent.
-    SmallVector<LLT, 4> Types;
-    for (unsigned i = 0; i < MCID.getNumOperands(); ++i) {
-      if (!MCID.OpInfo[i].isGenericType())
-        continue;
-      size_t TypeIdx = MCID.OpInfo[i].getGenericTypeIndex();
-      Types.resize(std::max(TypeIdx + 1, Types.size()));
-
-      LLT OpTy = MRI->getType(MI->getOperand(i).getReg());
-      if (Types[TypeIdx].isValid() && Types[TypeIdx] != OpTy)
-        report("type mismatch in generic instruction", MI);
-      Types[TypeIdx] = OpTy;
-    }
-  }
-
-  // Generic opcodes must not have physical register operands.
-  if (isPreISelGenericOpcode(MCID.getOpcode())) {
-    for (auto &Op : MI->operands()) {
-      if (Op.isReg() && TargetRegisterInfo::isPhysicalRegister(Op.getReg()))
-        report("Generic instruction cannot have physical register", MI);
-    }
-  }
-
-  // Generic loads and stores must have a single MachineMemOperand
-  // describing that access.
-  if ((MI->getOpcode() == TargetOpcode::G_LOAD ||
-       MI->getOpcode() == TargetOpcode::G_STORE) &&
-      !MI->hasOneMemOperand())
-    report("Generic instruction accessing memory must have one mem operand",
-           MI);
 
   StringRef ErrorInfo;
   if (!TII->verifyInstruction(*MI, ErrorInfo))
@@ -1029,62 +988,25 @@ MachineVerifier::visitMachineOperand(const MachineOperand *MO, unsigned MONum) {
         const TargetRegisterClass *RC = MRI->getRegClassOrNull(Reg);
         if (!RC) {
           // This is a generic virtual register.
-
-          // If we're post-Select, we can't have gvregs anymore.
-          if (isFunctionSelected) {
-            report("Generic virtual register invalid in a Selected function",
-                   MO, MONum);
+          // It must have a size and it must not have a SubIdx.
+          unsigned Size = MRI->getSize(Reg);
+          if (!Size) {
+            report("Generic virtual register must have a size", MO, MONum);
             return;
           }
-
-          // The gvreg must have a type and it must not have a SubIdx.
-          LLT Ty = MRI->getType(Reg);
-          if (!Ty.isValid()) {
-            report("Generic virtual register must have a valid type", MO,
-                   MONum);
-            return;
-          }
-
-          const RegisterBank *RegBank = MRI->getRegBankOrNull(Reg);
-
-          // If we're post-RegBankSelect, the gvreg must have a bank.
-          if (!RegBank && isFunctionRegBankSelected) {
-            report("Generic virtual register must have a bank in a "
-                   "RegBankSelected function",
-                   MO, MONum);
-            return;
-          }
-
           // Make sure the register fits into its register bank if any.
-          if (RegBank && Ty.isValid() &&
-              RegBank->getSize() < Ty.getSizeInBits()) {
+          const RegisterBank *RegBank = MRI->getRegBankOrNull(Reg);
+          if (RegBank && RegBank->getSize() < Size) {
             report("Register bank is too small for virtual register", MO,
                    MONum);
             errs() << "Register bank " << RegBank->getName() << " too small("
-                   << RegBank->getSize() << ") to fit " << Ty.getSizeInBits()
-                   << "-bits\n";
+                   << RegBank->getSize() << ") to fit " << Size << "-bits\n";
             return;
           }
           if (SubIdx)  {
-            report("Generic virtual register does not subregister index", MO,
-                   MONum);
+            report("Generic virtual register does not subregister index", MO, MONum);
             return;
           }
-
-          // If this is a target specific instruction and this operand
-          // has register class constraint, the virtual register must
-          // comply to it.
-          if (!isPreISelGenericOpcode(MCID.getOpcode()) &&
-              TII->getRegClass(MCID, MONum, TRI, *MF)) {
-            report("Virtual register does not match instruction constraint", MO,
-                   MONum);
-            errs() << "Expect register class "
-                   << TRI->getRegClassName(
-                          TII->getRegClass(MCID, MONum, TRI, *MF))
-                   << " but got nothing\n";
-            return;
-          }
-
           break;
         }
         if (SubIdx) {
@@ -1191,7 +1113,7 @@ void MachineVerifier::checkLivenessAtUse(const MachineOperand *MO,
   LiveQueryResult LRQ = LR.Query(UseIdx);
   // Check if we have a segment at the use, note however that we only need one
   // live subregister range, the others may be dead.
-  if (!LRQ.valueIn() && LaneMask.none()) {
+  if (!LRQ.valueIn() && LaneMask == 0) {
     report("No live segment at use", MO, MONum);
     report_context_liverange(LR);
     report_context_vreg_regunit(VRegOrUnit);
@@ -1201,7 +1123,7 @@ void MachineVerifier::checkLivenessAtUse(const MachineOperand *MO,
     report("Live range continues after kill flag", MO, MONum);
     report_context_liverange(LR);
     report_context_vreg_regunit(VRegOrUnit);
-    if (LaneMask.any())
+    if (LaneMask != 0)
       report_context_lanemask(LaneMask);
     report_context(UseIdx);
   }
@@ -1216,7 +1138,7 @@ void MachineVerifier::checkLivenessAtDef(const MachineOperand *MO,
       report("Inconsistent valno->def", MO, MONum);
       report_context_liverange(LR);
       report_context_vreg_regunit(VRegOrUnit);
-      if (LaneMask.any())
+      if (LaneMask != 0)
         report_context_lanemask(LaneMask);
       report_context(*VNI);
       report_context(DefIdx);
@@ -1225,7 +1147,7 @@ void MachineVerifier::checkLivenessAtDef(const MachineOperand *MO,
     report("No live segment at def", MO, MONum);
     report_context_liverange(LR);
     report_context_vreg_regunit(VRegOrUnit);
-    if (LaneMask.any())
+    if (LaneMask != 0)
       report_context_lanemask(LaneMask);
     report_context(DefIdx);
   }
@@ -1255,7 +1177,7 @@ void MachineVerifier::checkLivenessAtDef(const MachineOperand *MO,
         report("Live range continues after dead def flag", MO, MONum);
         report_context_liverange(LR);
         report_context_vreg_regunit(VRegOrUnit);
-        if (LaneMask.any())
+        if (LaneMask != 0)
           report_context_lanemask(LaneMask);
       }
     }
@@ -1277,7 +1199,7 @@ void MachineVerifier::checkLiveness(const MachineOperand *MO, unsigned MONum) {
     if (LiveVars && TargetRegisterInfo::isVirtualRegister(Reg) &&
         MO->isKill()) {
       LiveVariables::VarInfo &VI = LiveVars->getVarInfo(Reg);
-      if (!is_contained(VI.Kills, MI))
+      if (std::find(VI.Kills.begin(), VI.Kills.end(), MI) == VI.Kills.end())
         report("Kill missing from LiveVariables", MO, MONum);
     }
 
@@ -1303,9 +1225,9 @@ void MachineVerifier::checkLiveness(const MachineOperand *MO, unsigned MONum) {
             LaneBitmask MOMask = SubRegIdx != 0
                                ? TRI->getSubRegIndexLaneMask(SubRegIdx)
                                : MRI->getMaxLaneMaskForVReg(Reg);
-            LaneBitmask LiveInMask;
+            LaneBitmask LiveInMask = 0;
             for (const LiveInterval::SubRange &SR : LI.subranges()) {
-              if ((MOMask & SR.LaneMask).none())
+              if ((MOMask & SR.LaneMask) == 0)
                 continue;
               checkLivenessAtUse(MO, MONum, UseIdx, SR, Reg, SR.LaneMask);
               LiveQueryResult LRQ = SR.Query(UseIdx);
@@ -1313,7 +1235,7 @@ void MachineVerifier::checkLiveness(const MachineOperand *MO, unsigned MONum) {
                 LiveInMask |= SR.LaneMask;
             }
             // At least parts of the register has to be live at the use.
-            if ((LiveInMask & MOMask).none()) {
+            if ((LiveInMask & MOMask) == 0) {
               report("No live subrange at use", MO, MONum);
               report_context(LI);
               report_context(UseIdx);
@@ -1405,7 +1327,7 @@ void MachineVerifier::checkLiveness(const MachineOperand *MO, unsigned MONum) {
               ? TRI->getSubRegIndexLaneMask(SubRegIdx)
               : MRI->getMaxLaneMaskForVReg(Reg);
             for (const LiveInterval::SubRange &SR : LI.subranges()) {
-              if ((SR.LaneMask & MOMask).none())
+              if ((SR.LaneMask & MOMask) == 0)
                 continue;
               checkLivenessAtDef(MO, MONum, DefIdx, SR, Reg, SR.LaneMask);
             }
@@ -1718,8 +1640,8 @@ void MachineVerifier::verifyLiveRangeValue(const LiveRange &LR,
             !TRI->hasRegUnit(MOI->getReg(), Reg))
           continue;
       }
-      if (LaneMask.any() &&
-          (TRI->getSubRegIndexLaneMask(MOI->getSubReg()) & LaneMask).none())
+      if (LaneMask != 0 &&
+          (TRI->getSubRegIndexLaneMask(MOI->getSubReg()) & LaneMask) == 0)
         continue;
       hasDef = true;
       if (MOI->isEarlyClobber())
@@ -1850,22 +1772,15 @@ void MachineVerifier::verifyLiveRangeSegment(const LiveRange &LR,
     for (ConstMIBundleOperands MOI(*MI); MOI.isValid(); ++MOI) {
       if (!MOI->isReg() || MOI->getReg() != Reg)
         continue;
-      unsigned Sub = MOI->getSubReg();
-      LaneBitmask SLM = Sub != 0 ? TRI->getSubRegIndexLaneMask(Sub)
-                                 : LaneBitmask::getAll();
+      if (LaneMask != 0 &&
+          (LaneMask & TRI->getSubRegIndexLaneMask(MOI->getSubReg())) == 0)
+        continue;
       if (MOI->isDef()) {
-        if (Sub != 0) {
+        if (MOI->getSubReg() != 0)
           hasSubRegDef = true;
-          // An operand vreg0:sub0<def> reads vreg0:sub1..n. Invert the lane
-          // mask for subregister defs. Read-undef defs will be handled by
-          // readsReg below.
-          SLM = ~SLM;
-        }
         if (MOI->isDead())
           hasDeadDef = true;
       }
-      if (LaneMask.any() && (LaneMask & SLM).none())
-        continue;
       if (MOI->readsReg())
         hasRead = true;
     }
@@ -1873,7 +1788,7 @@ void MachineVerifier::verifyLiveRangeSegment(const LiveRange &LR,
       // Make sure that the corresponding machine operand for a "dead" live
       // range has the dead flag. We cannot perform this check for subregister
       // liveranges as partially dead values are allowed.
-      if (LaneMask.none() && !hasDeadDef) {
+      if (LaneMask == 0 && !hasDeadDef) {
         report("Instruction ending live segment on dead slot has no dead flag",
                MI);
         report_context(LR, Reg, LaneMask);
@@ -1883,7 +1798,7 @@ void MachineVerifier::verifyLiveRangeSegment(const LiveRange &LR,
       if (!hasRead) {
         // When tracking subregister liveness, the main range must start new
         // values on partial register writes, even if there is no read.
-        if (!MRI->shouldTrackSubRegLiveness(Reg) || LaneMask.any() ||
+        if (!MRI->shouldTrackSubRegLiveness(Reg) || LaneMask != 0 ||
             !hasSubRegDef) {
           report("Instruction ending live segment doesn't read the register",
                  MI);
@@ -1927,7 +1842,7 @@ void MachineVerifier::verifyLiveRangeSegment(const LiveRange &LR,
 
       // All predecessors must have a live-out value if this is not a
       // subregister liverange.
-      if (!PVNI && LaneMask.none()) {
+      if (!PVNI && LaneMask == 0) {
         report("Register not marked live out of predecessor", *PI);
         report_context(LR, Reg, LaneMask);
         report_context(*VNI);
@@ -1967,14 +1882,14 @@ void MachineVerifier::verifyLiveInterval(const LiveInterval &LI) {
   assert(TargetRegisterInfo::isVirtualRegister(Reg));
   verifyLiveRange(LI, Reg);
 
-  LaneBitmask Mask;
+  LaneBitmask Mask = 0;
   LaneBitmask MaxMask = MRI->getMaxLaneMaskForVReg(Reg);
   for (const LiveInterval::SubRange &SR : LI.subranges()) {
-    if ((Mask & SR.LaneMask).any()) {
+    if ((Mask & SR.LaneMask) != 0) {
       report("Lane masks of sub ranges overlap in live interval", MF);
       report_context(LI);
     }
-    if ((SR.LaneMask & ~MaxMask).any()) {
+    if ((SR.LaneMask & ~MaxMask) != 0) {
       report("Subrange lanemask is invalid", MF);
       report_context(LI);
     }
@@ -2032,16 +1947,14 @@ namespace {
 void MachineVerifier::verifyStackFrame() {
   unsigned FrameSetupOpcode   = TII->getCallFrameSetupOpcode();
   unsigned FrameDestroyOpcode = TII->getCallFrameDestroyOpcode();
-  if (FrameSetupOpcode == ~0u && FrameDestroyOpcode == ~0u)
-    return;
 
   SmallVector<StackStateOfBB, 8> SPState;
   SPState.resize(MF->getNumBlockIDs());
-  df_iterator_default_set<const MachineBasicBlock*> Reachable;
+  SmallPtrSet<const MachineBasicBlock*, 8> Reachable;
 
   // Visit the MBBs in DFS order.
   for (df_ext_iterator<const MachineFunction*,
-                       df_iterator_default_set<const MachineBasicBlock*> >
+                       SmallPtrSet<const MachineBasicBlock*, 8> >
        DFI = df_ext_begin(MF, Reachable), DFE = df_ext_end(MF, Reachable);
        DFI != DFE; ++DFI) {
     const MachineBasicBlock *MBB = *DFI;
@@ -2061,14 +1974,23 @@ void MachineVerifier::verifyStackFrame() {
     // Update stack state by checking contents of MBB.
     for (const auto &I : *MBB) {
       if (I.getOpcode() == FrameSetupOpcode) {
+        // The first operand of a FrameOpcode should be i32.
+        int Size = I.getOperand(0).getImm();
+        assert(Size >= 0 &&
+          "Value should be non-negative in FrameSetup and FrameDestroy.\n");
+
         if (BBState.ExitIsSetup)
           report("FrameSetup is after another FrameSetup", &I);
-        BBState.ExitValue -= TII->getFrameTotalSize(I);
+        BBState.ExitValue -= Size;
         BBState.ExitIsSetup = true;
       }
 
       if (I.getOpcode() == FrameDestroyOpcode) {
-        int Size = TII->getFrameTotalSize(I);
+        // The first operand of a FrameOpcode should be i32.
+        int Size = I.getOperand(0).getImm();
+        assert(Size >= 0 &&
+          "Value should be non-negative in FrameSetup and FrameDestroy.\n");
+
         if (!BBState.ExitIsSetup)
           report("FrameDestroy is not after a FrameSetup", &I);
         int AbsSPAdj = BBState.ExitValue < 0 ? -BBState.ExitValue :

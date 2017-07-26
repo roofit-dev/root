@@ -10,11 +10,10 @@
 #ifndef LLVM_OBJECTYAML_OBJECTYAML_H
 #define LLVM_OBJECTYAML_OBJECTYAML_H
 
-#include "llvm/ObjectYAML/COFFYAML.h"
-#include "llvm/ObjectYAML/ELFYAML.h"
-#include "llvm/ObjectYAML/MachOYAML.h"
-#include "llvm/ObjectYAML/WasmYAML.h"
 #include "llvm/Support/YAMLTraits.h"
+#include "llvm/ObjectYAML/ELFYAML.h"
+#include "llvm/ObjectYAML/COFFYAML.h"
+#include "llvm/ObjectYAML/MachOYAML.h"
 
 namespace llvm {
 namespace yaml {
@@ -24,7 +23,6 @@ struct YamlObjectFile {
   std::unique_ptr<COFFYAML::Object> Coff;
   std::unique_ptr<MachOYAML::Object> MachO;
   std::unique_ptr<MachOYAML::UniversalBinary> FatMachO;
-  std::unique_ptr<WasmYAML::Object> Wasm;
 };
 
 template <> struct MappingTraits<YamlObjectFile> {

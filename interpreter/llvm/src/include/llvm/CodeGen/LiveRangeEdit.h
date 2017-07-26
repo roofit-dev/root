@@ -100,8 +100,7 @@ private:
                     SmallVector<LiveInterval*, 8>,
                     SmallPtrSet<LiveInterval*, 8> > ToShrinkSet;
   /// Helper for eliminateDeadDefs.
-  void eliminateDeadDef(MachineInstr *MI, ToShrinkSet &ToShrink,
-                        AliasAnalysis *AA);
+  void eliminateDeadDef(MachineInstr *MI, ToShrinkSet &ToShrink);
 
   /// MachineRegisterInfo callback to notify when new virtual
   /// registers are created.
@@ -243,8 +242,7 @@ public:
   /// allocator.  These registers should not be split into new intervals
   /// as currently those new intervals are not guaranteed to spill.
   void eliminateDeadDefs(SmallVectorImpl<MachineInstr *> &Dead,
-                         ArrayRef<unsigned> RegsBeingSpilled = None,
-                         AliasAnalysis *AA = nullptr);
+                         ArrayRef<unsigned> RegsBeingSpilled = None);
 
   /// calculateRegClassAndHint - Recompute register class and hint for each new
   /// register.

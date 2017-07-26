@@ -42,7 +42,6 @@ static T getUniversalBinaryStruct(const char *Ptr) {
 MachOUniversalBinary::ObjectForArch::ObjectForArch(
     const MachOUniversalBinary *Parent, uint32_t Index)
     : Parent(Parent), Index(Index) {
-  // The iterators use Parent as a nullptr and an Index+1 == NumberOfObjects.
   if (!Parent || Index >= Parent->getNumberOfObjects()) {
     clear();
   } else {
@@ -52,10 +51,16 @@ MachOUniversalBinary::ObjectForArch::ObjectForArch(
       const char *HeaderPos = ParentData.begin() + sizeof(MachO::fat_header) +
                               Index * sizeof(MachO::fat_arch);
       Header = getUniversalBinaryStruct<MachO::fat_arch>(HeaderPos);
+      if (ParentData.size() < Header.offset + Header.size) {
+        clear();
+      }
     } else { // Parent->getMagic() == MachO::FAT_MAGIC_64
       const char *HeaderPos = ParentData.begin() + sizeof(MachO::fat_header) +
                               Index * sizeof(MachO::fat_arch_64);
       Header64 = getUniversalBinaryStruct<MachO::fat_arch_64>(HeaderPos);
+      if (ParentData.size() < Header64.offset + Header64.size) {
+        clear();
+      }
     }
   }
 }
@@ -68,17 +73,13 @@ MachOUniversalBinary::ObjectForArch::getAsObjectFile() const {
 
   StringRef ParentData = Parent->getData();
   StringRef ObjectData;
-  uint32_t cputype;
-  if (Parent->getMagic() == MachO::FAT_MAGIC) {
+  if (Parent->getMagic() == MachO::FAT_MAGIC)
     ObjectData = ParentData.substr(Header.offset, Header.size);
-    cputype = Header.cputype;
-  } else { // Parent->getMagic() == MachO::FAT_MAGIC_64
+  else // Parent->getMagic() == MachO::FAT_MAGIC_64
     ObjectData = ParentData.substr(Header64.offset, Header64.size);
-    cputype = Header64.cputype;
-  }
   StringRef ObjectName = Parent->getFileName();
   MemoryBufferRef ObjBuffer(ObjectData, ObjectName);
-  return ObjectFile::createMachOObjectFile(ObjBuffer, cputype, Index);
+  return ObjectFile::createMachOObjectFile(ObjBuffer);
 }
 
 Expected<std::unique_ptr<Archive>>
@@ -102,7 +103,7 @@ void MachOUniversalBinary::anchor() { }
 
 Expected<std::unique_ptr<MachOUniversalBinary>>
 MachOUniversalBinary::create(MemoryBufferRef Source) {
-  Error Err = Error::success();
+  Error Err;
   std::unique_ptr<MachOUniversalBinary> Ret(
       new MachOUniversalBinary(Source, Err));
   if (Err)
@@ -113,7 +114,7 @@ MachOUniversalBinary::create(MemoryBufferRef Source) {
 MachOUniversalBinary::MachOUniversalBinary(MemoryBufferRef Source, Error &Err)
     : Binary(Binary::ID_MachOUniversalBinary, Source), Magic(0),
       NumberOfObjects(0) {
-  ErrorAsOutParameter ErrAsOutParam(&Err);
+  ErrorAsOutParameter ErrAsOutParam(Err);
   if (Data.getBufferSize() < sizeof(MachO::fat_header)) {
     Err = make_error<GenericBinaryError>("File too small to be a Mach-O "
                                          "universal file",
@@ -126,10 +127,6 @@ MachOUniversalBinary::MachOUniversalBinary(MemoryBufferRef Source, Error &Err)
       getUniversalBinaryStruct<MachO::fat_header>(Buf.begin());
   Magic = H.magic;
   NumberOfObjects = H.nfat_arch;
-  if (NumberOfObjects == 0) {
-    Err = malformedError("contains zero architecture types");
-    return;
-  }
   uint32_t MinSize = sizeof(MachO::fat_header);
   if (Magic == MachO::FAT_MAGIC)
     MinSize += sizeof(MachO::fat_arch) * NumberOfObjects;
@@ -145,68 +142,6 @@ MachOUniversalBinary::MachOUniversalBinary(MemoryBufferRef Source, Error &Err)
                          " structs would extend past the end of the file");
     return;
   }
-  for (uint32_t i = 0; i < NumberOfObjects; i++) {
-    ObjectForArch A(this, i);
-    uint64_t bigSize = A.getOffset();
-    bigSize += A.getSize();
-    if (bigSize > Buf.size()) {
-      Err = malformedError("offset plus size of cputype (" +
-        Twine(A.getCPUType()) + ") cpusubtype (" +
-        Twine(A.getCPUSubType() & ~MachO::CPU_SUBTYPE_MASK) +
-        ") extends past the end of the file");
-      return;
-    }
-#define MAXSECTALIGN 15 /* 2**15 or 0x8000 */
-    if (A.getAlign() > MAXSECTALIGN) {
-      Err = malformedError("align (2^" + Twine(A.getAlign()) + ") too large "
-        "for cputype (" + Twine(A.getCPUType()) + ") cpusubtype (" +
-        Twine(A.getCPUSubType() & ~MachO::CPU_SUBTYPE_MASK) +
-        ") (maximum 2^" + Twine(MAXSECTALIGN) + ")");
-      return;
-    }
-    if(A.getOffset() % (1 << A.getAlign()) != 0){
-      Err = malformedError("offset: " + Twine(A.getOffset()) +
-        " for cputype (" + Twine(A.getCPUType()) + ") cpusubtype (" +
-        Twine(A.getCPUSubType() & ~MachO::CPU_SUBTYPE_MASK) +
-        ") not aligned on it's alignment (2^" + Twine(A.getAlign()) + ")");
-      return;
-    }
-    if (A.getOffset() < MinSize) {
-      Err =  malformedError("cputype (" + Twine(A.getCPUType()) + ") "
-        "cpusubtype (" + Twine(A.getCPUSubType() & ~MachO::CPU_SUBTYPE_MASK) +
-        ") offset " + Twine(A.getOffset()) + " overlaps universal headers");
-      return;
-    }
-  }
-  for (uint32_t i = 0; i < NumberOfObjects; i++) {
-    ObjectForArch A(this, i);
-    for (uint32_t j = i + 1; j < NumberOfObjects; j++) {
-      ObjectForArch B(this, j);
-      if (A.getCPUType() == B.getCPUType() &&
-          (A.getCPUSubType() & ~MachO::CPU_SUBTYPE_MASK) ==
-          (B.getCPUSubType() & ~MachO::CPU_SUBTYPE_MASK)) {
-        Err = malformedError("contains two of the same architecture (cputype "
-          "(" + Twine(A.getCPUType()) + ") cpusubtype (" +
-          Twine(A.getCPUSubType() & ~MachO::CPU_SUBTYPE_MASK) + "))");
-        return;
-      }
-      if ((A.getOffset() >= B.getOffset() &&
-           A.getOffset() < B.getOffset() + B.getSize()) ||
-          (A.getOffset() + A.getSize() > B.getOffset() &&
-           A.getOffset() + A.getSize() < B.getOffset() + B.getSize()) ||
-          (A.getOffset() <= B.getOffset() &&
-           A.getOffset() + A.getSize() >= B.getOffset() + B.getSize())) {
-        Err =  malformedError("cputype (" + Twine(A.getCPUType()) + ") "
-          "cpusubtype (" + Twine(A.getCPUSubType() & ~MachO::CPU_SUBTYPE_MASK) +
-          ") at offset " + Twine(A.getOffset()) + " with a size of " +
-          Twine(A.getSize()) + ", overlaps cputype (" + Twine(B.getCPUType()) +
-          ") cpusubtype (" + Twine(B.getCPUSubType() & ~MachO::CPU_SUBTYPE_MASK)
-          + ") at offset " + Twine(B.getOffset()) + " with a size of "
-          + Twine(B.getSize()));
-        return;
-      }
-    }
-  }
   Err = Error::success();
 }
 
@@ -218,9 +153,10 @@ MachOUniversalBinary::getObjectForArch(StringRef ArchName) const {
                                               ArchName,
                                           object_error::arch_not_found);
 
-  for (auto &Obj : objects())
-    if (Obj.getArchFlagName() == ArchName)
-      return Obj.getAsObjectFile();
+  for (object_iterator I = begin_objects(), E = end_objects(); I != E; ++I) {
+    if (I->getArchTypeName() == ArchName)
+      return I->getAsObjectFile();
+  }
   return make_error<GenericBinaryError>("fat file does not "
                                         "contain " +
                                             ArchName,

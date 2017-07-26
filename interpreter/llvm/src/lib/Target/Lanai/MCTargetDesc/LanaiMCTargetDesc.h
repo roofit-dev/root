@@ -15,7 +15,6 @@
 #define LLVM_LIB_TARGET_LANAI_MCTARGETDESC_LANAIMCTARGETDESC_H
 
 #include "llvm/MC/MCRegisterInfo.h"
-#include "llvm/MC/MCTargetOptions.h"
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {
@@ -32,15 +31,14 @@ class Triple;
 class StringRef;
 class raw_pwrite_stream;
 
-Target &getTheLanaiTarget();
+extern Target TheLanaiTarget;
 
 MCCodeEmitter *createLanaiMCCodeEmitter(const MCInstrInfo &MCII,
                                         const MCRegisterInfo &MRI,
                                         MCContext &Ctx);
 
 MCAsmBackend *createLanaiAsmBackend(const Target &T, const MCRegisterInfo &MRI,
-                                    const Triple &TheTriple, StringRef CPU,
-                                    const MCTargetOptions &Options);
+                                    const Triple &TheTriple, StringRef CPU);
 
 MCObjectWriter *createLanaiELFObjectWriter(raw_pwrite_stream &OS,
                                            uint8_t OSABI);

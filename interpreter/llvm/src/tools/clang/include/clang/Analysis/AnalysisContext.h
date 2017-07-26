@@ -406,8 +406,7 @@ private:
 };
 
 class AnalysisDeclContextManager {
-  typedef llvm::DenseMap<const Decl *, std::unique_ptr<AnalysisDeclContext>>
-      ContextMap;
+  typedef llvm::DenseMap<const Decl*, AnalysisDeclContext*> ContextMap;
 
   ContextMap Contexts;
   LocationContextManager LocContexts;

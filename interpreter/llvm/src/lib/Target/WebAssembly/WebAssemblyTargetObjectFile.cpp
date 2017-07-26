@@ -17,14 +17,8 @@
 #include "WebAssemblyTargetMachine.h"
 using namespace llvm;
 
-void WebAssemblyTargetObjectFileELF::Initialize(MCContext &Ctx,
-                                                const TargetMachine &TM) {
-  TargetLoweringObjectFileELF::Initialize(Ctx, TM);
-  InitializeELF(TM.Options.UseInitArray);
-}
-
 void WebAssemblyTargetObjectFile::Initialize(MCContext &Ctx,
                                              const TargetMachine &TM) {
-  TargetLoweringObjectFileWasm::Initialize(Ctx, TM);
-  InitializeWasm();
+  TargetLoweringObjectFileELF::Initialize(Ctx, TM);
+  InitializeELF(TM.Options.UseInitArray);
 }

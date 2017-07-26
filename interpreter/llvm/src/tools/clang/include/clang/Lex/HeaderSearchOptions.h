@@ -11,7 +11,6 @@
 #define LLVM_CLANG_LEX_HEADERSEARCHOPTIONS_H
 
 #include "clang/Basic/LLVM.h"
-#include "llvm/ADT/CachedHashString.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -44,7 +43,7 @@ namespace frontend {
 
 /// HeaderSearchOptions - Helper class for storing options related to the
 /// initialization of the HeaderSearch object.
-class HeaderSearchOptions {
+class HeaderSearchOptions : public RefCountedBase<HeaderSearchOptions> {
 public:
   struct Entry {
     std::string Path;
@@ -94,9 +93,6 @@ public:
   /// \brief The directory used for a user build.
   std::string ModuleUserBuildPath;
 
-  /// \brief The directories used to load prebuilt module files.
-  std::vector<std::string> PrebuiltModulePaths;
-
   /// The module/pch container format.
   std::string ModuleFormat;
 
@@ -145,7 +141,7 @@ public:
 
   /// \brief The set of macro names that should be ignored for the purposes
   /// of computing the module hash.
-  llvm::SmallSetVector<llvm::CachedHashString, 16> ModulesIgnoreMacros;
+  llvm::SmallSetVector<std::string, 16> ModulesIgnoreMacros;
 
   /// \brief The set of user-provided virtual filesystem overlay files.
   std::vector<std::string> VFSOverlayFiles;
@@ -176,10 +172,6 @@ public:
   /// Whether the module includes debug information (-gmodules).
   unsigned UseDebugInfo : 1;
 
-  unsigned ModulesValidateDiagnosticOptions : 1;
-
-  unsigned ModulesHashContent : 1;
-
   HeaderSearchOptions(StringRef _Sysroot = "/")
       : Sysroot(_Sysroot), ModuleFormat("raw"), DisableModuleHash(0),
         ImplicitModuleMaps(0), ModuleMapFileHomeIsCwd(0),
@@ -188,8 +180,8 @@ public:
         UseBuiltinIncludes(true), UseStandardSystemIncludes(true),
         UseStandardCXXIncludes(true), UseLibcxx(false), Verbose(false),
         ModulesValidateOncePerBuildSession(false),
-        ModulesValidateSystemHeaders(false), UseDebugInfo(false),
-        ModulesValidateDiagnosticOptions(true), ModulesHashContent(false) {}
+        ModulesValidateSystemHeaders(false),
+        UseDebugInfo(false) {}
 
   /// AddPath - Add the \p Path path to the specified \p Group list.
   void AddPath(StringRef Path, frontend::IncludeDirGroup Group,
@@ -206,10 +198,6 @@ public:
 
   void AddVFSOverlayFile(StringRef Name) {
     VFSOverlayFiles.push_back(Name);
-  }
-
-  void AddPrebuiltModulePath(StringRef Name) {
-    PrebuiltModulePaths.push_back(Name);
   }
 };
 

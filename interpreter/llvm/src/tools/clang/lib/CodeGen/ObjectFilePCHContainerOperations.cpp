@@ -55,7 +55,7 @@ class PCHContainerGenerator : public ASTConsumer {
   std::unique_ptr<llvm::LLVMContext> VMContext;
   std::unique_ptr<llvm::Module> M;
   std::unique_ptr<CodeGen::CodeGenModule> Builder;
-  std::unique_ptr<raw_pwrite_stream> OS;
+  raw_pwrite_stream *OS;
   std::shared_ptr<PCHBuffer> Buffer;
 
   /// Visit every type and emit debug info for it.
@@ -138,15 +138,15 @@ class PCHContainerGenerator : public ASTConsumer {
 public:
   PCHContainerGenerator(CompilerInstance &CI, const std::string &MainFileName,
                         const std::string &OutputFileName,
-                        std::unique_ptr<raw_pwrite_stream> OS,
+                        raw_pwrite_stream *OS,
                         std::shared_ptr<PCHBuffer> Buffer)
       : Diags(CI.getDiagnostics()), MainFileName(MainFileName),
         OutputFileName(OutputFileName), Ctx(nullptr),
         MMap(CI.getPreprocessor().getHeaderSearchInfo().getModuleMap()),
         HeaderSearchOpts(CI.getHeaderSearchOpts()),
         PreprocessorOpts(CI.getPreprocessorOpts()),
-        TargetOpts(CI.getTargetOpts()), LangOpts(CI.getLangOpts()),
-        OS(std::move(OS)), Buffer(std::move(Buffer)) {
+        TargetOpts(CI.getTargetOpts()), LangOpts(CI.getLangOpts()), OS(OS),
+        Buffer(std::move(Buffer)) {
     // The debug info output isn't affected by CodeModel and
     // ThreadModel, but the backend expects them to be nonempty.
     CodeGenOpts.CodeModel = "default";
@@ -171,8 +171,7 @@ public:
     // Prepare CGDebugInfo to emit debug info for a clang module.
     auto *DI = Builder->getModuleDebugInfo();
     StringRef ModuleName = llvm::sys::path::filename(MainFileName);
-    DI->setPCHDescriptor({ModuleName, "", OutputFileName,
-                          ASTFileSignature{{{~0U, ~0U, ~0U, ~0U, ~1U}}}});
+    DI->setPCHDescriptor({ModuleName, "", OutputFileName, ~1ULL});
     DI->setModuleMap(MMap);
   }
 
@@ -242,11 +241,7 @@ public:
 
     // PCH files don't have a signature field in the control block,
     // but LLVM detects DWO CUs by looking for a non-zero DWO id.
-    // We use the lower 64 bits for debug info.
-    uint64_t Signature =
-        Buffer->Signature
-            ? (uint64_t)Buffer->Signature[1] << 32 | Buffer->Signature[0]
-            : ~1ULL;
+    uint64_t Signature = Buffer->Signature ? Buffer->Signature : ~1ULL;
     Builder->getModuleDebugInfo()->setDwoId(Signature);
 
     // Finalize the Builder.
@@ -286,19 +281,20 @@ public:
     DEBUG({
       // Print the IR for the PCH container to the debug output.
       llvm::SmallString<0> Buffer;
-      clang::EmitBackendOutput(
-          Diags, HeaderSearchOpts, CodeGenOpts, TargetOpts, LangOpts,
-          Ctx.getTargetInfo().getDataLayout(), M.get(),
-          BackendAction::Backend_EmitLL,
-          llvm::make_unique<llvm::raw_svector_ostream>(Buffer));
+      llvm::raw_svector_ostream OS(Buffer);
+      clang::EmitBackendOutput(Diags, CodeGenOpts, TargetOpts, LangOpts,
+                               Ctx.getTargetInfo().getDataLayout(), M.get(),
+                               BackendAction::Backend_EmitLL, &OS);
       llvm::dbgs() << Buffer;
     });
 
     // Use the LLVM backend to emit the pch container.
-    clang::EmitBackendOutput(Diags, HeaderSearchOpts, CodeGenOpts, TargetOpts,
-                             LangOpts, Ctx.getTargetInfo().getDataLayout(),
-                             M.get(), BackendAction::Backend_EmitObj,
-                             std::move(OS));
+    clang::EmitBackendOutput(Diags, CodeGenOpts, TargetOpts, LangOpts,
+                             Ctx.getTargetInfo().getDataLayout(), M.get(),
+                             BackendAction::Backend_EmitObj, OS);
+
+    // Make sure the pch container hits disk.
+    OS->flush();
 
     // Free the memory for the temporary buffer.
     llvm::SmallVector<char, 0> Empty;
@@ -311,37 +307,33 @@ public:
 std::unique_ptr<ASTConsumer>
 ObjectFilePCHContainerWriter::CreatePCHContainerGenerator(
     CompilerInstance &CI, const std::string &MainFileName,
-    const std::string &OutputFileName,
-    std::unique_ptr<llvm::raw_pwrite_stream> OS,
+    const std::string &OutputFileName, llvm::raw_pwrite_stream *OS,
     std::shared_ptr<PCHBuffer> Buffer) const {
-  return llvm::make_unique<PCHContainerGenerator>(
-      CI, MainFileName, OutputFileName, std::move(OS), Buffer);
+  return llvm::make_unique<PCHContainerGenerator>(CI, MainFileName,
+                                                  OutputFileName, OS, Buffer);
 }
 
-StringRef
-ObjectFilePCHContainerReader::ExtractPCH(llvm::MemoryBufferRef Buffer) const {
-  StringRef PCH;
-  auto OFOrErr = llvm::object::ObjectFile::createObjectFile(Buffer);
-  if (OFOrErr) {
-    auto &OF = OFOrErr.get();
-    bool IsCOFF = isa<llvm::object::COFFObjectFile>(*OF);
+void ObjectFilePCHContainerReader::ExtractPCH(
+    llvm::MemoryBufferRef Buffer, llvm::BitstreamReader &StreamFile) const {
+  if (auto OF = llvm::object::ObjectFile::createObjectFile(Buffer)) {
+    auto *Obj = OF.get().get();
+    bool IsCOFF = isa<llvm::object::COFFObjectFile>(Obj);
     // Find the clang AST section in the container.
-    for (auto &Section : OF->sections()) {
+    for (auto &Section : OF->get()->sections()) {
       StringRef Name;
       Section.getName(Name);
-      if ((!IsCOFF && Name == "__clangast") || (IsCOFF && Name == "clangast")) {
-        Section.getContents(PCH);
-        return PCH;
+      if ((!IsCOFF && Name == "__clangast") ||
+          ( IsCOFF && Name ==   "clangast")) {
+        StringRef Buf;
+        Section.getContents(Buf);
+        StreamFile.init((const unsigned char *)Buf.begin(),
+                        (const unsigned char *)Buf.end());
+        return;
       }
     }
   }
-  handleAllErrors(OFOrErr.takeError(), [&](const llvm::ErrorInfoBase &EIB) {
-    if (EIB.convertToErrorCode() ==
-        llvm::object::object_error::invalid_file_type)
-      // As a fallback, treat the buffer as a raw AST.
-      PCH = Buffer.getBuffer();
-    else
-      EIB.log(llvm::errs());
-  });
-  return PCH;
+
+  // As a fallback, treat the buffer as a raw AST.
+  StreamFile.init((const unsigned char *)Buffer.getBufferStart(),
+                  (const unsigned char *)Buffer.getBufferEnd());
 }

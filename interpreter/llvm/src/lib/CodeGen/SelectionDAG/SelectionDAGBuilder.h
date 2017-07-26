@@ -304,23 +304,27 @@ private:
     BranchProbability DefaultProb;
   };
 
-  /// Return the range of value in [First..Last].
-  uint64_t getJumpTableRange(const CaseClusterVector &Clusters, unsigned First,
-                             unsigned Last) const;
-
-  /// Return the number of cases in [First..Last].
-  uint64_t getJumpTableNumCases(const SmallVectorImpl<unsigned> &TotalCases,
-                                unsigned First, unsigned Last) const;
+  /// Check whether a range of clusters is dense enough for a jump table.
+  bool isDense(const CaseClusterVector &Clusters, unsigned *TotalCases,
+               unsigned First, unsigned Last, unsigned MinDensity);
 
   /// Build a jump table cluster from Clusters[First..Last]. Returns false if it
   /// decides it's not a good idea.
-  bool buildJumpTable(const CaseClusterVector &Clusters, unsigned First,
+  bool buildJumpTable(CaseClusterVector &Clusters, unsigned First,
                       unsigned Last, const SwitchInst *SI,
                       MachineBasicBlock *DefaultMBB, CaseCluster &JTCluster);
 
   /// Find clusters of cases suitable for jump table lowering.
   void findJumpTables(CaseClusterVector &Clusters, const SwitchInst *SI,
                       MachineBasicBlock *DefaultMBB);
+
+  /// Check whether the range [Low,High] fits in a machine word.
+  bool rangeFitsInWord(const APInt &Low, const APInt &High);
+
+  /// Check whether these clusters are suitable for lowering with bit tests based
+  /// on the number of destinations, comparison metric, and range.
+  bool isSuitableForBitTests(unsigned NumDests, unsigned NumCmps,
+                             const APInt &Low, const APInt &High);
 
   /// Build a bit test cluster from Clusters[First..Last]. Returns false if it
   /// decides it's not a good idea.
@@ -604,34 +608,40 @@ public:
   SelectionDAGBuilder(SelectionDAG &dag, FunctionLoweringInfo &funcinfo,
                       CodeGenOpt::Level ol)
     : CurInst(nullptr), SDNodeOrder(LowestSDNodeOrder), TM(dag.getTarget()),
-      DAG(dag), DL(nullptr), AA(nullptr), FuncInfo(funcinfo),
+      DAG(dag), FuncInfo(funcinfo),
       HasTailCall(false) {
   }
 
-  void init(GCFunctionInfo *gfi, AliasAnalysis *AA,
+  void init(GCFunctionInfo *gfi, AliasAnalysis &aa,
             const TargetLibraryInfo *li);
 
-  /// Clear out the current SelectionDAG and the associated state and prepare
-  /// this SelectionDAGBuilder object to be used for a new block. This doesn't
-  /// clear out information about additional blocks that are needed to complete
-  /// switch lowering or PHI node updating; that information is cleared out as
-  /// it is consumed.
+  /// clear - Clear out the current SelectionDAG and the associated
+  /// state and prepare this SelectionDAGBuilder object to be used
+  /// for a new block. This doesn't clear out information about
+  /// additional blocks that are needed to complete switch lowering
+  /// or PHI node updating; that information is cleared out as it is
+  /// consumed.
   void clear();
 
-  /// Clear the dangling debug information map. This function is separated from
-  /// the clear so that debug information that is dangling in a basic block can
-  /// be properly resolved in a different basic block. This allows the
-  /// SelectionDAG to resolve dangling debug information attached to PHI nodes.
+  /// clearDanglingDebugInfo - Clear the dangling debug information
+  /// map. This function is separated from the clear so that debug
+  /// information that is dangling in a basic block can be properly
+  /// resolved in a different basic block. This allows the
+  /// SelectionDAG to resolve dangling debug information attached
+  /// to PHI nodes.
   void clearDanglingDebugInfo();
 
-  /// Return the current virtual root of the Selection DAG, flushing any
-  /// PendingLoad items. This must be done before emitting a store or any other
-  /// node that may need to be ordered after any prior load instructions.
+  /// getRoot - Return the current virtual root of the Selection DAG,
+  /// flushing any PendingLoad items. This must be done before emitting
+  /// a store or any other node that may need to be ordered after any
+  /// prior load instructions.
+  ///
   SDValue getRoot();
 
-  /// Similar to getRoot, but instead of flushing all the PendingLoad items,
-  /// flush all the PendingExports items. It is necessary to do this before
-  /// emitting a terminator instruction.
+  /// getControlRoot - Similar to getRoot, but instead of flushing all the
+  /// PendingLoad items, flush all the PendingExports items. It is necessary
+  /// to do this before emitting a terminator instruction.
+  ///
   SDValue getControlRoot();
 
   SDLoc getCurSDLoc() const {
@@ -641,6 +651,8 @@ public:
   DebugLoc getCurDebugLoc() const {
     return CurInst ? CurInst->getDebugLoc() : DebugLoc();
   }
+
+  unsigned getSDNodeOrder() const { return SDNodeOrder; }
 
   void CopyValueToVirtualRegister(const Value *V, unsigned Reg);
 
@@ -677,13 +689,12 @@ public:
                             MachineBasicBlock *FBB, MachineBasicBlock *CurBB,
                             MachineBasicBlock *SwitchBB,
                             Instruction::BinaryOps Opc, BranchProbability TW,
-                            BranchProbability FW, bool InvertCond);
+                            BranchProbability FW);
   void EmitBranchForMergedCondition(const Value *Cond, MachineBasicBlock *TBB,
                                     MachineBasicBlock *FBB,
                                     MachineBasicBlock *CurBB,
                                     MachineBasicBlock *SwitchBB,
-                                    BranchProbability TW, BranchProbability FW,
-                                    bool InvertCond);
+                                    BranchProbability TW, BranchProbability FW);
   bool ShouldEmitAsBranches(const std::vector<CaseBlock> &Cases);
   bool isExportableFromCurrentBlock(const Value *V, const BasicBlock *FromBB);
   void CopyToExportRegsIfNeeded(const Value *V);
@@ -771,11 +782,6 @@ public:
                                         const BasicBlock *EHPadBB,
                                         bool VarArgDisallowed,
                                         bool ForceVoidReturnTy);
-
-  /// Returns the type of FrameIndex and TargetFrameIndex nodes.
-  MVT getFrameIndexTy() {
-    return DAG.getTargetLoweringInfo().getFrameIndexTy(DAG.getDataLayout());
-  }
 
 private:
   // Terminator instructions.
@@ -869,8 +875,8 @@ private:
   void visitAlloca(const AllocaInst &I);
   void visitLoad(const LoadInst &I);
   void visitStore(const StoreInst &I);
-  void visitMaskedLoad(const CallInst &I, bool IsExpanding = false);
-  void visitMaskedStore(const CallInst &I, bool IsCompressing = false);
+  void visitMaskedLoad(const CallInst &I);
+  void visitMaskedStore(const CallInst &I);
   void visitMaskedGather(const CallInst &I);
   void visitMaskedScatter(const CallInst &I);
   void visitAtomicCmpXchg(const AtomicCmpXchgInst &I);
@@ -879,7 +885,6 @@ private:
   void visitPHI(const PHINode &I);
   void visitCall(const CallInst &I);
   bool visitMemCmpCall(const CallInst &I);
-  bool visitMemPCpyCall(const CallInst &I);
   bool visitMemChrCall(const CallInst &I);
   bool visitStrCpyCall(const CallInst &I, bool isStpcpy);
   bool visitStrCmpCall(const CallInst &I);
@@ -895,7 +900,6 @@ private:
   void visitInlineAsm(ImmutableCallSite CS);
   const char *visitIntrinsicCall(const CallInst &I, unsigned Intrinsic);
   void visitTargetIntrinsic(const CallInst &I, unsigned Intrinsic);
-  void visitConstrainedFPIntrinsic(const CallInst &I, unsigned Intrinsic);
 
   void visitVAStart(const CallInst &I);
   void visitVAArg(const VAArgInst &I);
@@ -908,8 +912,6 @@ private:
   // These two are implemented in StatepointLowering.cpp
   void visitGCRelocate(const GCRelocateInst &I);
   void visitGCResult(const GCResultInst &I);
-
-  void visitVectorReduce(const CallInst &I, unsigned Intrinsic);
 
   void visitUserOp1(const Instruction &I) {
     llvm_unreachable("UserOp1 should not exist at instruction selection time!");
@@ -930,7 +932,7 @@ private:
   /// instruction selection, they will be inserted to the entry BB.
   bool EmitFuncArgumentDbgValue(const Value *V, DILocalVariable *Variable,
                                 DIExpression *Expr, DILocation *DL,
-                                int64_t Offset, bool IsDbgDeclare,
+                                int64_t Offset, bool IsIndirect,
                                 const SDValue &N);
 
   /// Return the next block after MBB, or nullptr if there is none.
@@ -939,11 +941,6 @@ private:
   /// Update the DAG and DAG builder with the relevant information after
   /// a new root node has been created which could be a tail call.
   void updateDAGForMaybeTailCall(SDValue MaybeTC);
-
-  /// Return the appropriate SDDbgValue based on N.
-  SDDbgValue *getDbgValue(SDValue N, DILocalVariable *Variable,
-                          DIExpression *Expr, int64_t Offset,
-                          const DebugLoc &dl, unsigned DbgSDNodeOrder);
 };
 
 /// RegsForValue - This struct represents the registers (physical or virtual)
@@ -956,23 +953,26 @@ private:
 /// type.
 ///
 struct RegsForValue {
-  /// The value types of the values, which may not be legal, and
+  /// ValueVTs - The value types of the values, which may not be legal, and
   /// may need be promoted or synthesized from one or more registers.
+  ///
   SmallVector<EVT, 4> ValueVTs;
 
-  /// The value types of the registers. This is the same size as ValueVTs and it
-  /// records, for each value, what the type of the assigned register or
-  /// registers are. (Individual values are never synthesized from more than one
-  /// type of register.)
+  /// RegVTs - The value types of the registers. This is the same size as
+  /// ValueVTs and it records, for each value, what the type of the assigned
+  /// register or registers are. (Individual values are never synthesized
+  /// from more than one type of register.)
   ///
   /// With virtual registers, the contents of RegVTs is redundant with TLI's
   /// getRegisterType member function, however when with physical registers
   /// it is necessary to have a separate record of the types.
+  ///
   SmallVector<MVT, 4> RegVTs;
 
-  /// This list holds the registers assigned to the values.
+  /// Regs - This list holds the registers assigned to the values.
   /// Each legal or promoted value requires one register, and each
   /// expanded value requires multiple registers.
+  ///
   SmallVector<unsigned, 4> Regs;
 
   RegsForValue();
@@ -982,33 +982,33 @@ struct RegsForValue {
   RegsForValue(LLVMContext &Context, const TargetLowering &TLI,
                const DataLayout &DL, unsigned Reg, Type *Ty);
 
-  /// Add the specified values to this one.
+  /// append - Add the specified values to this one.
   void append(const RegsForValue &RHS) {
     ValueVTs.append(RHS.ValueVTs.begin(), RHS.ValueVTs.end());
     RegVTs.append(RHS.RegVTs.begin(), RHS.RegVTs.end());
     Regs.append(RHS.Regs.begin(), RHS.Regs.end());
   }
 
-  /// Emit a series of CopyFromReg nodes that copies from this value and returns
-  /// the result as a ValueVTs value. This uses Chain/Flag as the input and
-  /// updates them for the output Chain/Flag. If the Flag pointer is NULL, no
-  /// flag is used.
+  /// getCopyFromRegs - Emit a series of CopyFromReg nodes that copies from
+  /// this value and returns the result as a ValueVTs value.  This uses
+  /// Chain/Flag as the input and updates them for the output Chain/Flag.
+  /// If the Flag pointer is NULL, no flag is used.
   SDValue getCopyFromRegs(SelectionDAG &DAG, FunctionLoweringInfo &FuncInfo,
                           const SDLoc &dl, SDValue &Chain, SDValue *Flag,
                           const Value *V = nullptr) const;
 
-  /// Emit a series of CopyToReg nodes that copies the specified value into the
-  /// registers specified by this object. This uses Chain/Flag as the input and
-  /// updates them for the output Chain/Flag. If the Flag pointer is nullptr, no
-  /// flag is used. If V is not nullptr, then it is used in printing better
-  /// diagnostic messages on error.
+  /// getCopyToRegs - Emit a series of CopyToReg nodes that copies the specified
+  /// value into the registers specified by this object.  This uses Chain/Flag
+  /// as the input and updates them for the output Chain/Flag.  If the Flag
+  /// pointer is nullptr, no flag is used.  If V is not nullptr, then it is used
+  /// in printing better diagnostic messages on error.
   void getCopyToRegs(SDValue Val, SelectionDAG &DAG, const SDLoc &dl,
                      SDValue &Chain, SDValue *Flag, const Value *V = nullptr,
                      ISD::NodeType PreferredExtendType = ISD::ANY_EXTEND) const;
 
-  /// Add this value to the specified inlineasm node operand list. This adds the
-  /// code marker, matching input operand index (if applicable), and includes
-  /// the number of values added into it.
+  /// AddInlineAsmOperands - Add this value to the specified inlineasm node
+  /// operand list.  This adds the code marker, matching input operand index
+  /// (if applicable), and includes the number of values added into it.
   void AddInlineAsmOperands(unsigned Kind, bool HasMatching,
                             unsigned MatchingIdx, const SDLoc &dl,
                             SelectionDAG &DAG, std::vector<SDValue> &Ops) const;

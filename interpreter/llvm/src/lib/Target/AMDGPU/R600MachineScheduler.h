@@ -16,7 +16,6 @@
 #define LLVM_LIB_TARGET_AMDGPU_R600MACHINESCHEDULER_H
 
 #include "llvm/CodeGen/MachineScheduler.h"
-#include <vector>
 
 using namespace llvm;
 
@@ -26,10 +25,10 @@ class R600InstrInfo;
 struct R600RegisterInfo;
 
 class R600SchedStrategy final : public MachineSchedStrategy {
-  const ScheduleDAGMILive *DAG = nullptr;
-  const R600InstrInfo *TII = nullptr;
-  const R600RegisterInfo *TRI = nullptr;
-  MachineRegisterInfo *MRI = nullptr;
+  const ScheduleDAGMILive *DAG;
+  const R600InstrInfo *TII;
+  const R600RegisterInfo *TRI;
+  MachineRegisterInfo *MRI;
 
   enum InstKind {
     IDAlu,
@@ -67,8 +66,11 @@ class R600SchedStrategy final : public MachineSchedStrategy {
   int OccupedSlotsMask;
 
 public:
-  R600SchedStrategy() = default;
-  ~R600SchedStrategy() override = default;
+  R600SchedStrategy() :
+    DAG(nullptr), TII(nullptr), TRI(nullptr), MRI(nullptr) {
+  }
+
+  virtual ~R600SchedStrategy() {}
 
   void initialize(ScheduleDAGMI *dag) override;
   SUnit *pickNode(bool &IsTopNode) override;
@@ -95,6 +97,6 @@ private:
   void MoveUnits(std::vector<SUnit *> &QSrc, std::vector<SUnit *> &QDst);
 };
 
-} // end namespace llvm
+} // namespace llvm
 
-#endif // LLVM_LIB_TARGET_AMDGPU_R600MACHINESCHEDULER_H
+#endif /* R600MACHINESCHEDULER_H_ */

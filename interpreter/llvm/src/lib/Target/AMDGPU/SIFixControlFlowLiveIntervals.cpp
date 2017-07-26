@@ -37,7 +37,9 @@ public:
 
   bool runOnMachineFunction(MachineFunction &MF) override;
 
-  StringRef getPassName() const override { return "SI Fix CF Live Intervals"; }
+  const char *getPassName() const override {
+    return "SI Fix CF Live Intervals";
+  }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<LiveIntervals>();

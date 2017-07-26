@@ -34,7 +34,7 @@ using namespace llvm;
 
 namespace {
 class WebAssemblyOptimizeLiveIntervals final : public MachineFunctionPass {
-  StringRef getPassName() const override {
+  const char *getPassName() const override {
     return "WebAssembly Optimize Live Intervals";
   }
 

@@ -29,7 +29,7 @@ public:
   static char ID;
   SystemZShortenInst(const SystemZTargetMachine &tm);
 
-  StringRef getPassName() const override {
+  const char *getPassName() const override {
     return "SystemZ Instruction Shortening";
   }
 
@@ -37,7 +37,7 @@ public:
   bool runOnMachineFunction(MachineFunction &F) override;
   MachineFunctionProperties getRequiredProperties() const override {
     return MachineFunctionProperties().set(
-        MachineFunctionProperties::Property::NoVRegs);
+        MachineFunctionProperties::Property::AllVRegsAllocated);
   }
 
 private:
@@ -167,10 +167,10 @@ bool SystemZShortenInst::shortenFPConv(MachineInstr &MI, unsigned Opcode) {
     MI.RemoveOperand(0);
     MI.setDesc(TII->get(Opcode));
     MachineInstrBuilder(*MI.getParent()->getParent(), &MI)
-        .add(Dest)
-        .add(Mode)
-        .add(Src)
-        .add(Suppress);
+      .addOperand(Dest)
+      .addOperand(Mode)
+      .addOperand(Src)
+      .addOperand(Suppress);
     return true;
   }
   return false;
@@ -275,7 +275,7 @@ bool SystemZShortenInst::runOnMachineFunction(MachineFunction &F) {
   const SystemZSubtarget &ST = F.getSubtarget<SystemZSubtarget>();
   TII = ST.getInstrInfo();
   TRI = ST.getRegisterInfo();
-  LiveRegs.init(*TRI);
+  LiveRegs.init(TRI);
 
   bool Changed = false;
   for (auto &MBB : F)

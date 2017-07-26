@@ -28,9 +28,6 @@ class SectionKind {
     /// Text - Text section, used for functions and other executable code.
     Text,
 
-           /// ExecuteOnly, Text section that is not readable.
-           ExecuteOnly,
-
     /// ReadOnly - Data that is never written to at program runtime by the
     /// program or the dynamic linker.  Things in the top-level readonly
     /// SectionKind are not mergeable.
@@ -115,10 +112,7 @@ class SectionKind {
 public:
 
   bool isMetadata() const { return K == Metadata; }
-
-  bool isText() const { return K == Text || K == ExecuteOnly; }
-
-  bool isExecuteOnly() const { return K == ExecuteOnly; }
+  bool isText() const { return K == Text; }
 
   bool isReadOnly() const {
     return K == ReadOnly || isMergeableCString() ||
@@ -178,7 +172,6 @@ public:
 
   static SectionKind getMetadata() { return get(Metadata); }
   static SectionKind getText() { return get(Text); }
-  static SectionKind getExecuteOnly() { return get(ExecuteOnly); }
   static SectionKind getReadOnly() { return get(ReadOnly); }
   static SectionKind getMergeable1ByteCString() {
     return get(Mergeable1ByteCString);

@@ -7,29 +7,29 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/MC/MCFragment.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/MC/MCAssembler.h"
+#include "llvm/MC/MCAsmBackend.h"
+#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCAsmLayout.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
-#include "llvm/MC/MCFixup.h"
-#include "llvm/MC/MCFragment.h"
+#include "llvm/MC/MCFixupKindInfo.h"
 #include "llvm/MC/MCSection.h"
+#include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCValue.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/LEB128.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cassert>
-#include <cstdint>
-#include <utility>
-
 using namespace llvm;
 
-MCAsmLayout::MCAsmLayout(MCAssembler &Asm) : Assembler(Asm) {
+MCAsmLayout::MCAsmLayout(MCAssembler &Asm)
+  : Assembler(Asm), LastValidFragment()
+ {
   // Compute the section layout order. Virtual sections must go last.
   for (MCSection &Sec : Asm)
     if (!Sec.isVirtualSection())
@@ -144,14 +144,14 @@ const MCSymbol *MCAsmLayout::getBaseSymbol(const MCSymbol &Symbol) const {
   MCValue Value;
   if (!Expr->evaluateAsValue(Value, *this)) {
     Assembler.getContext().reportError(
-        Expr->getLoc(), "expression could not be evaluated");
+        SMLoc(), "expression could not be evaluated");
     return nullptr;
   }
 
   const MCSymbolRefExpr *RefB = Value.getSymB();
   if (RefB) {
     Assembler.getContext().reportError(
-        Expr->getLoc(), Twine("symbol '") + RefB->getSymbol().getName() +
+        SMLoc(), Twine("symbol '") + RefB->getSymbol().getName() +
                      "' could not be evaluated in a subtraction expression");
     return nullptr;
   }
@@ -163,7 +163,8 @@ const MCSymbol *MCAsmLayout::getBaseSymbol(const MCSymbol &Symbol) const {
   const MCSymbol &ASym = A->getSymbol();
   const MCAssembler &Asm = getAssembler();
   if (ASym.isCommon()) {
-    Asm.getContext().reportError(Expr->getLoc(),
+    // FIXME: we should probably add a SMLoc to MCExpr.
+    Asm.getContext().reportError(SMLoc(),
                                  "Common symbol '" + ASym.getName() +
                                      "' cannot be used in assignment expr");
     return nullptr;
@@ -230,9 +231,15 @@ uint64_t llvm::computeBundlePadding(const MCAssembler &Assembler,
 
 /* *** */
 
-void ilist_alloc_traits<MCFragment>::deleteNode(MCFragment *V) { V->destroy(); }
+void ilist_node_traits<MCFragment>::deleteNode(MCFragment *V) {
+  V->destroy();
+}
 
-MCFragment::~MCFragment() = default;
+MCFragment::MCFragment() : Kind(FragmentType(~0)), HasInstructions(false),
+                           AlignToBundleEnd(false), BundlePadding(0) {
+}
+
+MCFragment::~MCFragment() { }
 
 MCFragment::MCFragment(FragmentType Kind, bool HasInstructions,
                        uint8_t BundlePadding, MCSection *Parent)
@@ -293,6 +300,8 @@ void MCFragment::destroy() {
   }
 }
 
+/* *** */
+
 // Debugging methods
 
 namespace llvm {
@@ -304,11 +313,11 @@ raw_ostream &operator<<(raw_ostream &OS, const MCFixup &AF) {
   return OS;
 }
 
-} // end namespace llvm
+}
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 LLVM_DUMP_METHOD void MCFragment::dump() {
-  raw_ostream &OS = errs();
+  raw_ostream &OS = llvm::errs();
 
   OS << "<";
   switch (getKind()) {
@@ -446,7 +455,7 @@ LLVM_DUMP_METHOD void MCFragment::dump() {
 }
 
 LLVM_DUMP_METHOD void MCAssembler::dump() {
-  raw_ostream &OS = errs();
+  raw_ostream &OS = llvm::errs();
 
   OS << "<MCAssembler\n";
   OS << "  Sections:[\n    ";

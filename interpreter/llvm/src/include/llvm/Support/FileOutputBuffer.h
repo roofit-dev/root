@@ -78,12 +78,11 @@ private:
   FileOutputBuffer &operator=(const FileOutputBuffer &) = delete;
 
   FileOutputBuffer(std::unique_ptr<llvm::sys::fs::mapped_file_region> R,
-                   StringRef Path, StringRef TempPath, bool IsRegular);
+                   StringRef Path, StringRef TempPath);
 
   std::unique_ptr<llvm::sys::fs::mapped_file_region> Region;
   SmallString<128>    FinalPath;
   SmallString<128>    TempPath;
-  bool IsRegular;
 };
 } // end namespace llvm
 

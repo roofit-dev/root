@@ -248,8 +248,7 @@ namespace {
       llvm_unreachable("fixupNeedsRelaxation() unimplemented");
       return false;
     }
-    void relaxInstruction(const MCInst &Inst, const MCSubtargetInfo &STI,
-                          MCInst &Res) const override {
+    void relaxInstruction(const MCInst &Inst, MCInst &Res) const override {
       // FIXME.
       llvm_unreachable("relaxInstruction() unimplemented");
     }
@@ -274,8 +273,7 @@ namespace {
       SparcAsmBackend(T), OSType(OSType) { }
 
     void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
-                    uint64_t Value, bool IsPCRel,
-                    MCContext &Ctx) const override {
+                    uint64_t Value, bool IsPCRel) const override {
 
       Value = adjustFixupValue(Fixup.getKind(), Value);
       if (!Value) return;           // Doesn't change encoding.
@@ -301,7 +299,6 @@ namespace {
 
 MCAsmBackend *llvm::createSparcAsmBackend(const Target &T,
                                           const MCRegisterInfo &MRI,
-                                          const Triple &TT, StringRef CPU,
-                                          const MCTargetOptions &Options) {
+                                          const Triple &TT, StringRef CPU) {
   return new ELFSparcAsmBackend(T, TT.getOS());
 }

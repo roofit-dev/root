@@ -1,4 +1,4 @@
-//===- llvm/MC/MCWinCOFFObjectWriter.h - Win COFF Object Writer -*- C++ -*-===//
+//===-- llvm/MC/MCWinCOFFObjectWriter.h - Win COFF Object Writer *- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,23 +11,22 @@
 #define LLVM_MC_MCWINCOFFOBJECTWRITER_H
 
 namespace llvm {
-
 class MCAsmBackend;
 class MCFixup;
 class MCObjectWriter;
 class MCValue;
+class raw_ostream;
 class raw_pwrite_stream;
 
   class MCWinCOFFObjectTargetWriter {
     virtual void anchor();
-
     const unsigned Machine;
 
   protected:
     MCWinCOFFObjectTargetWriter(unsigned Machine_);
 
   public:
-    virtual ~MCWinCOFFObjectTargetWriter() = default;
+    virtual ~MCWinCOFFObjectTargetWriter() {}
 
     unsigned getMachine() const { return Machine; }
     virtual unsigned getRelocType(const MCValue &Target, const MCFixup &Fixup,
@@ -43,6 +42,6 @@ class raw_pwrite_stream;
   /// \returns The constructed object writer.
   MCObjectWriter *createWinCOFFObjectWriter(MCWinCOFFObjectTargetWriter *MOTW,
                                             raw_pwrite_stream &OS);
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_MC_MCWINCOFFOBJECTWRITER_H
+#endif

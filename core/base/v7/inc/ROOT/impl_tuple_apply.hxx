@@ -65,7 +65,6 @@ decltype(auto) invoke(F&& f, ArgTypes&&... args) {
 }
 #endif // ndef R__HAS_STD_INVOKE
 
-#ifndef R__HAS_STD_APPLY
 // From http://en.cppreference.com/w/cpp/experimental/apply
 namespace detail {
 template<class F, class Tuple, std::size_t... I>
@@ -83,7 +82,6 @@ constexpr decltype(auto) apply(F &&f, Tuple &&t) {
                             std::make_index_sequence < std::tuple_size <
                             std::decay_t < Tuple >> {} > {});
 }
-#endif // ndef R__HAS_STD_APPLY
 } // namespace __ROOT
 } // namespace std
 

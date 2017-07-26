@@ -17,6 +17,7 @@
 
 #include "clang/AST/DeclAccessPair.h"
 #include "clang/Basic/LLVM.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator.h"
 
@@ -38,9 +39,7 @@ class UnresolvedSetIterator : public llvm::iterator_adaptor_base<
       : iterator_adaptor_base(const_cast<DeclAccessPair *>(Iter)) {}
 
 public:
-  // Work around a bug in MSVC 2013 where explicitly default constructed
-  // temporaries with defaulted ctors are not zero initialized.
-  UnresolvedSetIterator() : iterator_adaptor_base(nullptr) {}
+  UnresolvedSetIterator() {}
 
   NamedDecl *getDecl() const { return I->getDecl(); }
   void setDecl(NamedDecl *ND) const { return I->setDecl(ND); }

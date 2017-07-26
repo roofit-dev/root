@@ -81,7 +81,9 @@ AnalysisDeclContextManager::AnalysisDeclContextManager(bool useUnoptimizedCFG,
   cfgBuildOptions.AddCXXNewAllocator = addCXXNewAllocator;
 }
 
-void AnalysisDeclContextManager::clear() { Contexts.clear(); }
+void AnalysisDeclContextManager::clear() {
+  llvm::DeleteContainerSeconds(Contexts);
+}
 
 static BodyFarm &getBodyFarm(ASTContext &C, CodeInjector *injector = nullptr) {
   static BodyFarm *BF = new BodyFarm(C, injector);
@@ -305,10 +307,10 @@ AnalysisDeclContext *AnalysisDeclContextManager::getContext(const Decl *D) {
     D = FD;
   }
 
-  std::unique_ptr<AnalysisDeclContext> &AC = Contexts[D];
+  AnalysisDeclContext *&AC = Contexts[D];
   if (!AC)
-    AC = llvm::make_unique<AnalysisDeclContext>(this, D, cfgBuildOptions);
-  return AC.get();
+    AC = new AnalysisDeclContext(this, D, cfgBuildOptions);
+  return AC;
 }
 
 const StackFrameContext *
@@ -604,7 +606,9 @@ AnalysisDeclContext::~AnalysisDeclContext() {
   }
 }
 
-AnalysisDeclContextManager::~AnalysisDeclContextManager() {}
+AnalysisDeclContextManager::~AnalysisDeclContextManager() {
+  llvm::DeleteContainerSeconds(Contexts);
+}
 
 LocationContext::~LocationContext() {}
 

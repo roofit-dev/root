@@ -28,7 +28,6 @@
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include <algorithm>
-#include <random>
 #include <vector>
 
 namespace llvm {
@@ -68,7 +67,7 @@ public:
     return false;
   }
 
-  StringRef getValueName() const override { return "IR scalar type"; }
+  const char *getValueName() const override { return "IR scalar type"; }
 };
 }
 
@@ -114,12 +113,6 @@ public:
     return  Rand64() % y;
   }
 
-  /// Make this like a C++11 random device
-  typedef uint32_t result_type;
-  uint32_t operator()() { return Rand32(); }
-  static constexpr result_type min() { return 0; }
-  static constexpr result_type max() { return 0x7ffff; }
-  
 private:
   unsigned Seed;
 };
@@ -424,9 +417,7 @@ struct AllocaModifier: public Modifier {
 
   void Act() override {
     Type *Tp = pickType();
-    const DataLayout &DL = BB->getModule()->getDataLayout();
-    PT->push_back(new AllocaInst(Tp, DL.getAllocaAddrSpace(),
-                                 "A", BB->getFirstNonPHI()));
+    PT->push_back(new AllocaInst(Tp, "A", BB->getFirstNonPHI()));
   }
 };
 
@@ -671,7 +662,7 @@ static void IntroduceControlFlow(Function *F, Random &R) {
       BoolInst.push_back(&Instr);
   }
 
-  std::shuffle(BoolInst.begin(), BoolInst.end(), R);
+  std::random_shuffle(BoolInst.begin(), BoolInst.end(), R);
 
   for (auto *Instr : BoolInst) {
     BasicBlock *Curr = Instr->getParent();

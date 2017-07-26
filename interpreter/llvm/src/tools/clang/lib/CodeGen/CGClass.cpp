@@ -309,10 +309,8 @@ Address CodeGenFunction::GetAddressOfBaseClass(
   // just do a bitcast; null checks are unnecessary.
   if (NonVirtualOffset.isZero() && !VBase) {
     if (sanitizePerformTypeCheck()) {
-      SanitizerSet SkippedChecks;
-      SkippedChecks.set(SanitizerKind::Null, !NullCheckValue);
       EmitTypeCheck(TCK_Upcast, Loc, Value.getPointer(),
-                    DerivedTy, DerivedAlign, SkippedChecks);
+                    DerivedTy, DerivedAlign, !NullCheckValue);
     }
     return Builder.CreateBitCast(Value, BasePtrTy);
   }
@@ -333,10 +331,8 @@ Address CodeGenFunction::GetAddressOfBaseClass(
   }
 
   if (sanitizePerformTypeCheck()) {
-    SanitizerSet SkippedChecks;
-    SkippedChecks.set(SanitizerKind::Null, true);
     EmitTypeCheck(VBase ? TCK_UpcastToVirtualBase : TCK_Upcast, Loc,
-                  Value.getPointer(), DerivedTy, DerivedAlign, SkippedChecks);
+                  Value.getPointer(), DerivedTy, DerivedAlign, true);
   }
 
   // Compute the virtual offset.
@@ -566,6 +562,105 @@ static void EmitBaseInitializer(CodeGenFunction &CGF,
                                           isBaseVirtual);
 }
 
+static void EmitAggMemberInitializer(CodeGenFunction &CGF,
+                                     LValue LHS,
+                                     Expr *Init,
+                                     Address ArrayIndexVar,
+                                     QualType T,
+                                     ArrayRef<VarDecl *> ArrayIndexes,
+                                     unsigned Index) {
+  if (Index == ArrayIndexes.size()) {
+    LValue LV = LHS;
+
+    if (ArrayIndexVar.isValid()) {
+      // If we have an array index variable, load it and use it as an offset.
+      // Then, increment the value.
+      llvm::Value *Dest = LHS.getPointer();
+      llvm::Value *ArrayIndex = CGF.Builder.CreateLoad(ArrayIndexVar);
+      Dest = CGF.Builder.CreateInBoundsGEP(Dest, ArrayIndex, "destaddress");
+      llvm::Value *Next = llvm::ConstantInt::get(ArrayIndex->getType(), 1);
+      Next = CGF.Builder.CreateAdd(ArrayIndex, Next, "inc");
+      CGF.Builder.CreateStore(Next, ArrayIndexVar);
+
+      // Update the LValue.
+      CharUnits EltSize = CGF.getContext().getTypeSizeInChars(T);
+      CharUnits Align = LV.getAlignment().alignmentOfArrayElement(EltSize);
+      LV.setAddress(Address(Dest, Align));
+    }
+
+    switch (CGF.getEvaluationKind(T)) {
+    case TEK_Scalar:
+      CGF.EmitScalarInit(Init, /*decl*/ nullptr, LV, false);
+      break;
+    case TEK_Complex:
+      CGF.EmitComplexExprIntoLValue(Init, LV, /*isInit*/ true);
+      break;
+    case TEK_Aggregate: {
+      AggValueSlot Slot =
+        AggValueSlot::forLValue(LV,
+                                AggValueSlot::IsDestructed,
+                                AggValueSlot::DoesNotNeedGCBarriers,
+                                AggValueSlot::IsNotAliased);
+
+      CGF.EmitAggExpr(Init, Slot);
+      break;
+    }
+    }
+
+    return;
+  }
+
+  const ConstantArrayType *Array = CGF.getContext().getAsConstantArrayType(T);
+  assert(Array && "Array initialization without the array type?");
+  Address IndexVar = CGF.GetAddrOfLocalVar(ArrayIndexes[Index]);
+
+  // Initialize this index variable to zero.
+  llvm::Value* Zero
+    = llvm::Constant::getNullValue(IndexVar.getElementType());
+  CGF.Builder.CreateStore(Zero, IndexVar);
+
+  // Start the loop with a block that tests the condition.
+  llvm::BasicBlock *CondBlock = CGF.createBasicBlock("for.cond");
+  llvm::BasicBlock *AfterFor = CGF.createBasicBlock("for.end");
+
+  CGF.EmitBlock(CondBlock);
+
+  llvm::BasicBlock *ForBody = CGF.createBasicBlock("for.body");
+  // Generate: if (loop-index < number-of-elements) fall to the loop body,
+  // otherwise, go to the block after the for-loop.
+  uint64_t NumElements = Array->getSize().getZExtValue();
+  llvm::Value *Counter = CGF.Builder.CreateLoad(IndexVar);
+  llvm::Value *NumElementsPtr =
+    llvm::ConstantInt::get(Counter->getType(), NumElements);
+  llvm::Value *IsLess = CGF.Builder.CreateICmpULT(Counter, NumElementsPtr,
+                                                  "isless");
+
+  // If the condition is true, execute the body.
+  CGF.Builder.CreateCondBr(IsLess, ForBody, AfterFor);
+
+  CGF.EmitBlock(ForBody);
+  llvm::BasicBlock *ContinueBlock = CGF.createBasicBlock("for.inc");
+
+  // Inside the loop body recurse to emit the inner loop or, eventually, the
+  // constructor call.
+  EmitAggMemberInitializer(CGF, LHS, Init, ArrayIndexVar,
+                           Array->getElementType(), ArrayIndexes, Index + 1);
+
+  CGF.EmitBlock(ContinueBlock);
+
+  // Emit the increment of the loop counter.
+  llvm::Value *NextVal = llvm::ConstantInt::get(Counter->getType(), 1);
+  Counter = CGF.Builder.CreateLoad(IndexVar);
+  NextVal = CGF.Builder.CreateAdd(Counter, NextVal, "inc");
+  CGF.Builder.CreateStore(NextVal, IndexVar);
+
+  // Finally, branch back up to the condition for the next iteration.
+  CGF.EmitBranch(CondBlock);
+
+  // Emit the fall-through block.
+  CGF.EmitBlock(AfterFor, true);
+}
+
 static bool isMemcpyEquivalentSpecialMember(const CXXMethodDecl *D) {
   auto *CD = dyn_cast<CXXConstructorDecl>(D);
   if (!(CD && CD->isCopyOrMoveConstructor()) &&
@@ -649,11 +744,14 @@ static void EmitMemberInitializer(CodeGenFunction &CGF,
     }
   }
 
-  CGF.EmitInitializerForField(Field, LHS, MemberInit->getInit());
+  ArrayRef<VarDecl *> ArrayIndexes;
+  if (MemberInit->getNumArrayIndices())
+    ArrayIndexes = MemberInit->getArrayIndices();
+  CGF.EmitInitializerForField(Field, LHS, MemberInit->getInit(), ArrayIndexes);
 }
 
 void CodeGenFunction::EmitInitializerForField(FieldDecl *Field, LValue LHS,
-                                              Expr *Init) {
+                                Expr *Init, ArrayRef<VarDecl *> ArrayIndexes) {
   QualType FieldType = Field->getType();
   switch (getEvaluationKind(FieldType)) {
   case TEK_Scalar:
@@ -668,13 +766,30 @@ void CodeGenFunction::EmitInitializerForField(FieldDecl *Field, LValue LHS,
     EmitComplexExprIntoLValue(Init, LHS, /*isInit*/ true);
     break;
   case TEK_Aggregate: {
-    AggValueSlot Slot =
-      AggValueSlot::forLValue(LHS,
-                              AggValueSlot::IsDestructed,
-                              AggValueSlot::DoesNotNeedGCBarriers,
-                              AggValueSlot::IsNotAliased);
-    EmitAggExpr(Init, Slot);
-    break;
+    Address ArrayIndexVar = Address::invalid();
+    if (ArrayIndexes.size()) {
+      // The LHS is a pointer to the first object we'll be constructing, as
+      // a flat array.
+      QualType BaseElementTy = getContext().getBaseElementType(FieldType);
+      llvm::Type *BasePtr = ConvertType(BaseElementTy);
+      BasePtr = llvm::PointerType::getUnqual(BasePtr);
+      Address BaseAddrPtr = Builder.CreateBitCast(LHS.getAddress(), BasePtr);
+      LHS = MakeAddrLValue(BaseAddrPtr, BaseElementTy);
+
+      // Create an array index that will be used to walk over all of the
+      // objects we're constructing.
+      ArrayIndexVar = CreateMemTemp(getContext().getSizeType(), "object.index");
+      llvm::Value *Zero =
+        llvm::Constant::getNullValue(ArrayIndexVar.getElementType());
+      Builder.CreateStore(Zero, ArrayIndexVar);
+
+      // Emit the block variables for the array indices, if any.
+      for (unsigned I = 0, N = ArrayIndexes.size(); I != N; ++I)
+        EmitAutoVarDecl(*ArrayIndexes[I]);
+    }
+
+    EmitAggMemberInitializer(*this, LHS, Init, ArrayIndexVar, FieldType,
+                             ArrayIndexes, 0);
   }
   }
 
@@ -689,8 +804,7 @@ void CodeGenFunction::EmitInitializerForField(FieldDecl *Field, LValue LHS,
 /// complete-to-base constructor delegation optimization, i.e.
 /// emitting the complete constructor as a simple call to the base
 /// constructor.
-bool CodeGenFunction::IsConstructorDelegationValid(
-    const CXXConstructorDecl *Ctor) {
+static bool IsConstructorDelegationValid(const CXXConstructorDecl *Ctor) {
 
   // Currently we disable the optimization for classes with virtual
   // bases because (1) the addresses of parameter variables need to be
@@ -1136,11 +1250,10 @@ namespace {
           RHS = EC->getSubExpr();
         if (!RHS)
           return nullptr;
-        if (MemberExpr *ME2 = dyn_cast<MemberExpr>(RHS)) {
-          if (ME2->getMemberDecl() == Field)
-            return Field;
-        }
-        return nullptr;
+        MemberExpr *ME2 = dyn_cast<MemberExpr>(RHS);
+        if (dyn_cast<FieldDecl>(ME2->getMemberDecl()) != Field)
+          return nullptr;
+        return Field;
       } else if (CXXMemberCallExpr *MCE = dyn_cast<CXXMemberCallExpr>(S)) {
         CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(MCE->getCalleeDecl());
         if (!(MD && isMemcpyEquivalentSpecialMember(MD)))
@@ -1390,20 +1503,6 @@ void CodeGenFunction::EmitDestructorBody(FunctionArgList &Args) {
   const CXXDestructorDecl *Dtor = cast<CXXDestructorDecl>(CurGD.getDecl());
   CXXDtorType DtorType = CurGD.getDtorType();
 
-  // For an abstract class, non-base destructors are never used (and can't
-  // be emitted in general, because vbase dtors may not have been validated
-  // by Sema), but the Itanium ABI doesn't make them optional and Clang may
-  // in fact emit references to them from other compilations, so emit them
-  // as functions containing a trap instruction.
-  if (DtorType != Dtor_Base && Dtor->getParent()->isAbstract()) {
-    llvm::CallInst *TrapCall = EmitTrapCall(llvm::Intrinsic::trap);
-    TrapCall->setDoesNotReturn();
-    TrapCall->setDoesNotThrow();
-    Builder.CreateUnreachable();
-    Builder.ClearInsertionPoint();
-    return;
-  }
-
   Stmt *Body = Dtor->getBody();
   if (Body)
     incrementProfileCounter(Body);
@@ -1436,7 +1535,9 @@ void CodeGenFunction::EmitDestructorBody(FunctionArgList &Args) {
   // we'd introduce *two* handler blocks.  In the Microsoft ABI, we
   // always delegate because we might not have a definition in this TU.
   switch (DtorType) {
-  case Dtor_Comdat: llvm_unreachable("not expecting a COMDAT");
+  case Dtor_Comdat:
+    llvm_unreachable("not expecting a COMDAT");
+
   case Dtor_Deleting: llvm_unreachable("already handled deleting case");
 
   case Dtor_Complete:
@@ -1451,9 +1552,7 @@ void CodeGenFunction::EmitDestructorBody(FunctionArgList &Args) {
                             /*Delegating=*/false, LoadCXXThisAddress());
       break;
     }
-
     // Fallthrough: act like we're in the base variant.
-    LLVM_FALLTHROUGH;
 
   case Dtor_Base:
     assert(Body);
@@ -1970,11 +2069,7 @@ void CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
 
   // Add the rest of the user-supplied arguments.
   const FunctionProtoType *FPT = D->getType()->castAs<FunctionProtoType>();
-  EvaluationOrder Order = E->isListInitialization()
-                              ? EvaluationOrder::ForceLeftToRight
-                              : EvaluationOrder::Default;
-  EmitCallArgs(Args, FPT, E->arguments(), E->getConstructor(),
-               /*ParamsToSkip*/ 0, Order);
+  EmitCallArgs(Args, FPT, E->arguments(), E->getConstructor());
 
   EmitCXXConstructorCall(D, Type, ForVirtualBase, Delegating, This, Args);
 }
@@ -1994,7 +2089,7 @@ static bool canEmitDelegateCallArgs(CodeGenFunction &CGF,
 
     // Likewise if they're inalloca.
     const CGFunctionInfo &Info =
-        CGF.CGM.getTypes().arrangeCXXConstructorCall(Args, Ctor, Type, 0, 0);
+        CGF.CGM.getTypes().arrangeCXXConstructorCall(Args, Ctor, Type, 0);
     if (Info.usesInAlloca())
       return false;
   }
@@ -2036,11 +2131,10 @@ void CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
     return;
   }
 
-  bool PassPrototypeArgs = true;
   // Check whether we can actually emit the constructor before trying to do so.
   if (auto Inherited = D->getInheritedConstructor()) {
-    PassPrototypeArgs = getTypes().inheritingCtorHasParams(Inherited, Type);
-    if (PassPrototypeArgs && !canEmitDelegateCallArgs(*this, D, Type, Args)) {
+    if (getTypes().inheritingCtorHasParams(Inherited, Type) &&
+        !canEmitDelegateCallArgs(*this, D, Type, Args)) {
       EmitInlinedInheritingCXXConstructorCall(D, Type, ForVirtualBase,
                                               Delegating, Args);
       return;
@@ -2048,17 +2142,14 @@ void CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
   }
 
   // Insert any ABI-specific implicit constructor arguments.
-  CGCXXABI::AddedStructorArgs ExtraArgs =
-      CGM.getCXXABI().addImplicitConstructorArgs(*this, D, Type, ForVirtualBase,
-                                                 Delegating, Args);
+  unsigned ExtraArgs = CGM.getCXXABI().addImplicitConstructorArgs(
+      *this, D, Type, ForVirtualBase, Delegating, Args);
 
   // Emit the call.
-  llvm::Constant *CalleePtr =
-    CGM.getAddrOfCXXStructor(D, getFromCtorType(Type));
-  const CGFunctionInfo &Info = CGM.getTypes().arrangeCXXConstructorCall(
-      Args, D, Type, ExtraArgs.Prefix, ExtraArgs.Suffix, PassPrototypeArgs);
-  CGCallee Callee = CGCallee::forDirect(CalleePtr, D);
-  EmitCall(Info, Callee, ReturnValueSlot(), Args);
+  llvm::Value *Callee = CGM.getAddrOfCXXStructor(D, getFromCtorType(Type));
+  const CGFunctionInfo &Info =
+      CGM.getTypes().arrangeCXXConstructorCall(Args, D, Type, ExtraArgs);
+  EmitCall(Info, Callee, ReturnValueSlot(), Args, D);
 
   // Generate vtable assumptions if we're constructing a complete object
   // with a vtable.  We don't do this for base subobjects for two reasons:
@@ -2128,9 +2219,7 @@ void CodeGenFunction::EmitInheritedCXXConstructorCall(
 void CodeGenFunction::EmitInlinedInheritingCXXConstructorCall(
     const CXXConstructorDecl *Ctor, CXXCtorType CtorType, bool ForVirtualBase,
     bool Delegating, CallArgList &Args) {
-  GlobalDecl GD(Ctor, CtorType);
-  InlinedInheritingConstructorScope Scope(*this, GD);
-  ApplyInlineDebugLocation DebugScope(*this, GD);
+  InlinedInheritingConstructorScope Scope(*this, GlobalDecl(Ctor, CtorType));
 
   // Save the arguments to be passed to the inherited constructor.
   CXXInheritedCtorInitExprArgs = Args;
@@ -2676,8 +2765,8 @@ void CodeGenFunction::EmitVTablePtrCheck(const CXXRecordDecl *RD,
       llvm::MDString::get(CGM.getLLVMContext(), "all-vtables"));
   llvm::Value *ValidVtable = Builder.CreateCall(
       CGM.getIntrinsic(llvm::Intrinsic::type_test), {CastedVTable, AllVtables});
-  EmitCheck(std::make_pair(TypeTest, M), SanitizerHandler::CFICheckFail,
-            StaticData, {CastedVTable, ValidVtable});
+  EmitCheck(std::make_pair(TypeTest, M), "cfi_check_fail", StaticData,
+            {CastedVTable, ValidVtable});
 }
 
 bool CodeGenFunction::ShouldEmitVTableTypeCheckedLoad(const CXXRecordDecl *RD) {
@@ -2709,11 +2798,36 @@ llvm::Value *CodeGenFunction::EmitVTableTypeCheckedLoad(
   llvm::Value *CheckResult = Builder.CreateExtractValue(CheckedLoad, 1);
 
   EmitCheck(std::make_pair(CheckResult, SanitizerKind::CFIVCall),
-            SanitizerHandler::CFICheckFail, nullptr, nullptr);
+            "cfi_check_fail", nullptr, nullptr);
 
   return Builder.CreateBitCast(
       Builder.CreateExtractValue(CheckedLoad, 0),
       cast<llvm::PointerType>(VTable->getType())->getElementType());
+}
+
+// FIXME: Ideally Expr::IgnoreParenNoopCasts should do this, but it doesn't do
+// quite what we want.
+static const Expr *skipNoOpCastsAndParens(const Expr *E) {
+  while (true) {
+    if (const ParenExpr *PE = dyn_cast<ParenExpr>(E)) {
+      E = PE->getSubExpr();
+      continue;
+    }
+
+    if (const CastExpr *CE = dyn_cast<CastExpr>(E)) {
+      if (CE->getCastKind() == CK_NoOp) {
+        E = CE->getSubExpr();
+        continue;
+      }
+    }
+    if (const UnaryOperator *UO = dyn_cast<UnaryOperator>(E)) {
+      if (UO->getOpcode() == UO_Extension) {
+        E = UO->getSubExpr();
+        continue;
+      }
+    }
+    return E;
+  }
 }
 
 bool
@@ -2724,41 +2838,31 @@ CodeGenFunction::CanDevirtualizeMemberFunctionCall(const Expr *Base,
   if (getLangOpts().AppleKext)
     return false;
 
-  // If the member function is marked 'final', we know that it can't be
-  // overridden and can therefore devirtualize it unless it's pure virtual.
-  if (MD->hasAttr<FinalAttr>())
-    return !MD->isPure();
-
-  // If the base expression (after skipping derived-to-base conversions) is a
-  // class prvalue, then we can devirtualize.
-  Base = Base->getBestDynamicClassTypeExpr();
-  if (Base->isRValue() && Base->getType()->isRecordType())
+  // If the most derived class is marked final, we know that no subclass can
+  // override this member function and so we can devirtualize it. For example:
+  //
+  // struct A { virtual void f(); }
+  // struct B final : A { };
+  //
+  // void f(B *b) {
+  //   b->f();
+  // }
+  //
+  const CXXRecordDecl *MostDerivedClassDecl = Base->getBestDynamicClassType();
+  if (MostDerivedClassDecl->hasAttr<FinalAttr>())
     return true;
 
-  // If we don't even know what we would call, we can't devirtualize.
-  const CXXRecordDecl *BestDynamicDecl = Base->getBestDynamicClassType();
-  if (!BestDynamicDecl)
-    return false;
-
-  // There may be a method corresponding to MD in a derived class.
-  const CXXMethodDecl *DevirtualizedMethod =
-      MD->getCorrespondingMethodInClass(BestDynamicDecl);
-
-  // If that method is pure virtual, we can't devirtualize. If this code is
-  // reached, the result would be UB, not a direct call to the derived class
-  // function, and we can't assume the derived class function is defined.
-  if (DevirtualizedMethod->isPure())
-    return false;
-
-  // If that method is marked final, we can devirtualize it.
-  if (DevirtualizedMethod->hasAttr<FinalAttr>())
+  // If the member function is marked 'final', we know that it can't be
+  // overridden and can therefore devirtualize it.
+  if (MD->hasAttr<FinalAttr>())
     return true;
 
   // Similarly, if the class itself is marked 'final' it can't be overridden
   // and we can therefore devirtualize the member function call.
-  if (BestDynamicDecl->hasAttr<FinalAttr>())
+  if (MD->getParent()->hasAttr<FinalAttr>())
     return true;
 
+  Base = skipNoOpCastsAndParens(Base);
   if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(Base)) {
     if (const VarDecl *VD = dyn_cast<VarDecl>(DRE->getDecl())) {
       // This is a record decl. We know the type and can devirtualize it.
@@ -2775,15 +2879,17 @@ CodeGenFunction::CanDevirtualizeMemberFunctionCall(const Expr *Base,
     if (const ValueDecl *VD = dyn_cast<ValueDecl>(ME->getMemberDecl()))
       return VD->getType()->isRecordType();
 
-  // Likewise for calls on an object accessed by a (non-reference) pointer to
-  // member access.
-  if (auto *BO = dyn_cast<BinaryOperator>(Base)) {
-    if (BO->isPtrMemOp()) {
-      auto *MPT = BO->getRHS()->getType()->castAs<MemberPointerType>();
-      if (MPT->getPointeeType()->isRecordType())
-        return true;
-    }
-  }
+  // We can always devirtualize calls on temporary object expressions.
+  if (isa<CXXConstructExpr>(Base))
+    return true;
+
+  // And calls on bound temporaries.
+  if (isa<CXXBindTemporaryExpr>(Base))
+    return true;
+
+  // Check if this is a call expr that returns a record type.
+  if (const CallExpr *CE = dyn_cast<CallExpr>(Base))
+    return CE->getCallReturnType(getContext())->isRecordType();
 
   // We can't devirtualize the call.
   return false;
@@ -2795,7 +2901,7 @@ void CodeGenFunction::EmitForwardingCallToLambda(
   // Get the address of the call operator.
   const CGFunctionInfo &calleeFnInfo =
     CGM.getTypes().arrangeCXXMethodDeclaration(callOperator);
-  llvm::Constant *calleePtr =
+  llvm::Value *callee =
     CGM.GetAddrOfFunction(GlobalDecl(callOperator),
                           CGM.getTypes().GetFunctionType(calleeFnInfo));
 
@@ -2814,8 +2920,8 @@ void CodeGenFunction::EmitForwardingCallToLambda(
   // variadic arguments.
 
   // Now emit our call.
-  auto callee = CGCallee::forDirect(calleePtr, callOperator);
-  RValue RV = EmitCall(calleeFnInfo, callee, returnSlot, callArgs);
+  RValue RV = EmitCall(calleeFnInfo, callee, returnSlot,
+                       callArgs, callOperator);
 
   // If necessary, copy the returned value into the slot.
   if (!resultType->isVoidType() && returnSlot.isNull())

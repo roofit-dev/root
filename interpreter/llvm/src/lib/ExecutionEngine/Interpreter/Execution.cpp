@@ -899,10 +899,10 @@ void Interpreter::visitSwitchInst(SwitchInst &I) {
 
   // Check to see if any of the cases match...
   BasicBlock *Dest = nullptr;
-  for (auto Case : I.cases()) {
-    GenericValue CaseVal = getOperandValue(Case.getCaseValue(), SF);
+  for (SwitchInst::CaseIt i = I.case_begin(), e = I.case_end(); i != e; ++i) {
+    GenericValue CaseVal = getOperandValue(i.getCaseValue(), SF);
     if (executeICMP_EQ(CondVal, CaseVal, ElTy).IntVal != 0) {
-      Dest = cast<BasicBlock>(Case.getCaseSuccessor());
+      Dest = cast<BasicBlock>(i.getCaseSuccessor());
       break;
     }
   }
@@ -999,7 +999,7 @@ GenericValue Interpreter::executeGEPOperation(Value *Ptr, gep_type_iterator I,
   uint64_t Total = 0;
 
   for (; I != E; ++I) {
-    if (StructType *STy = I.getStructTypeOrNull()) {
+    if (StructType *STy = dyn_cast<StructType>(*I)) {
       const StructLayout *SLO = getDataLayout().getStructLayout(STy);
 
       const ConstantInt *CPU = cast<ConstantInt>(I.getOperand());
@@ -1007,6 +1007,7 @@ GenericValue Interpreter::executeGEPOperation(Value *Ptr, gep_type_iterator I,
 
       Total += SLO->getElementOffset(Index);
     } else {
+      SequentialType *ST = cast<SequentialType>(*I);
       // Get the index number for the array... which must be long type...
       GenericValue IdxGV = getOperandValue(I.getOperand(), SF);
 
@@ -1019,7 +1020,7 @@ GenericValue Interpreter::executeGEPOperation(Value *Ptr, gep_type_iterator I,
         assert(BitWidth == 64 && "Invalid index type for getelementptr");
         Idx = (int64_t)IdxGV.IntVal.getZExtValue();
       }
-      Total += getDataLayout().getTypeAllocSize(I.getIndexedType()) * Idx;
+      Total += getDataLayout().getTypeAllocSize(ST->getElementType()) * Idx;
     }
   }
 
@@ -1565,7 +1566,7 @@ GenericValue Interpreter::executeBitCastInst(Value *SrcVal, Type *DstTy,
           Tmp = Tmp.zext(SrcBitSize);
           Tmp = TempSrc.AggregateVal[SrcElt++].IntVal;
           Tmp = Tmp.zext(DstBitSize);
-          Tmp <<= ShiftAmt;
+          Tmp = Tmp.shl(ShiftAmt);
           ShiftAmt += isLittleEndian ? SrcBitSize : -SrcBitSize;
           Elt.IntVal |= Tmp;
         }
@@ -1580,7 +1581,7 @@ GenericValue Interpreter::executeBitCastInst(Value *SrcVal, Type *DstTy,
           GenericValue Elt;
           Elt.IntVal = Elt.IntVal.zext(SrcBitSize);
           Elt.IntVal = TempSrc.AggregateVal[i].IntVal;
-          Elt.IntVal.lshrInPlace(ShiftAmt);
+          Elt.IntVal = Elt.IntVal.lshr(ShiftAmt);
           // it could be DstBitSize == SrcBitSize, so check it
           if (DstBitSize < SrcBitSize)
             Elt.IntVal = Elt.IntVal.trunc(DstBitSize);

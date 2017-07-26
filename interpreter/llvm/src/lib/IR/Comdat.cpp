@@ -1,4 +1,4 @@
-//===- Comdat.cpp - Implement Metadata classes ----------------------------===//
+//===-- Comdat.cpp - Implement Metadata classes --------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,14 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Comdat.h"
-
+#include "llvm/ADT/StringMap.h"
 using namespace llvm;
 
 Comdat::Comdat(Comdat &&C) : Name(C.Name), SK(C.SK) {}
 
-Comdat::Comdat() = default;
+Comdat::Comdat() : Name(nullptr), SK(Comdat::Any) {}
 
 StringRef Comdat::getName() const { return Name->first(); }

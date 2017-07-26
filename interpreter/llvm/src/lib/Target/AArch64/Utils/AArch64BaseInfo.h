@@ -266,86 +266,82 @@ inline static unsigned getNZCVToSatisfyCondCode(CondCode Code) {
 }
 } // end namespace AArch64CC
 
-struct SysAlias {
-  const char *Name;
-  uint16_t Encoding;
-  FeatureBitset FeaturesRequired;
-
-  SysAlias (const char *N, uint16_t E) : Name(N), Encoding(E) {};
-  SysAlias (const char *N, uint16_t E, FeatureBitset F) :
-    Name(N), Encoding(E), FeaturesRequired(F) {};
-
-  bool haveFeatures(FeatureBitset ActiveFeatures) const {
-    return (FeaturesRequired & ActiveFeatures) == FeaturesRequired;
-  }
-
-  FeatureBitset getRequiredFeatures() const { return FeaturesRequired; }
-};
-
-struct SysAliasReg : SysAlias {
-  bool NeedsReg;
-  SysAliasReg(const char *N, uint16_t E, bool R) : SysAlias(N, E), NeedsReg(R) {};
-};
-
 namespace AArch64AT{
-  struct AT : SysAlias {
-    using SysAlias::SysAlias;
+  struct AT {
+    const char *Name;
+    uint16_t Encoding;
   };
+
   #define GET_AT_DECL
   #include "AArch64GenSystemOperands.inc"
-}
 
+}
 namespace AArch64DB {
-  struct DB : SysAlias {
-    using SysAlias::SysAlias;
+  struct DB {
+    const char *Name;
+    uint16_t Encoding;
   };
+
   #define GET_DB_DECL
   #include "AArch64GenSystemOperands.inc"
 }
 
 namespace  AArch64DC {
-  struct DC : SysAlias {
-    using SysAlias::SysAlias;
+  struct DC {
+    const char *Name;
+    uint16_t Encoding;
   };
+
   #define GET_DC_DECL
   #include "AArch64GenSystemOperands.inc"
 }
 
 namespace  AArch64IC {
-  struct IC : SysAliasReg {
-    using SysAliasReg::SysAliasReg;
+  struct IC {
+    const char *Name;
+    uint16_t Encoding;
+    bool NeedsReg;
   };
   #define GET_IC_DECL
   #include "AArch64GenSystemOperands.inc"
 }
 
 namespace  AArch64ISB {
-  struct ISB : SysAlias {
-    using SysAlias::SysAlias;
+  struct ISB {
+    const char *Name;
+    uint16_t Encoding;
   };
   #define GET_ISB_DECL
   #include "AArch64GenSystemOperands.inc"
 }
 
 namespace AArch64PRFM {
-  struct PRFM : SysAlias {
-    using SysAlias::SysAlias;
+  struct PRFM {
+    const char *Name;
+    uint16_t Encoding;
   };
   #define GET_PRFM_DECL
   #include "AArch64GenSystemOperands.inc"
 }
 
 namespace AArch64PState {
-  struct PState : SysAlias{
-    using SysAlias::SysAlias;
+  struct PState {
+    const char *Name;
+    uint16_t Encoding;
+    FeatureBitset FeaturesRequired;
+
+    bool haveFeatures(FeatureBitset ActiveFeatures) const {
+      return (FeaturesRequired & ActiveFeatures) == FeaturesRequired;
+    }
   };
   #define GET_PSTATE_DECL
   #include "AArch64GenSystemOperands.inc"
 }
 
 namespace AArch64PSBHint {
-  struct PSB : SysAlias {
-    using SysAlias::SysAlias;
+  struct PSB {
+    const char *Name;
+    uint16_t Encoding;
   };
   #define GET_PSB_DECL
   #include "AArch64GenSystemOperands.inc"
@@ -455,8 +451,10 @@ namespace AArch64SysReg {
 }
 
 namespace AArch64TLBI {
-  struct TLBI : SysAliasReg {
-    using SysAliasReg::SysAliasReg;
+  struct TLBI {
+    const char *Name;
+    uint16_t Encoding;
+    bool NeedsReg;
   };
   #define GET_TLBI_DECL
   #include "AArch64GenSystemOperands.inc"

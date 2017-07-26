@@ -78,18 +78,8 @@ void DIPrinter::print(const DILineInfo &Info, bool Inlined) {
   std::string Filename = Info.FileName;
   if (Filename == kDILineInfoBadString)
     Filename = kBadString;
-  if (!Verbose) {
-    OS << Filename << ":" << Info.Line << ":" << Info.Column << "\n";
-    printContext(Filename, Info.Line);
-    return;
-  }
-  OS << "  Filename: " << Filename << "\n";
-  if (Info.StartLine)
-    OS << "Function start line: " << Info.StartLine << "\n";
-  OS << "  Line: " << Info.Line << "\n";
-  OS << "  Column: " << Info.Column << "\n";
-  if (Info.Discriminator)
-    OS << "  Discriminator: " << Info.Discriminator << "\n";
+  OS << Filename << ":" << Info.Line << ":" << Info.Column << "\n";
+  printContext(Filename, Info.Line);
 }
 
 DIPrinter &DIPrinter::operator<<(const DILineInfo &Info) {

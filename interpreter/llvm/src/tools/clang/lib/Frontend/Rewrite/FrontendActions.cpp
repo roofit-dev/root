@@ -9,12 +9,13 @@
 
 #include "clang/Rewrite/Frontend/FrontendActions.h"
 #include "clang/AST/ASTConsumer.h"
+#include "clang/Basic/FileManager.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/PreprocessorOptions.h"
+#include "clang/Parse/Parser.h"
 #include "clang/Rewrite/Frontend/ASTConsumers.h"
 #include "clang/Rewrite/Frontend/FixItRewriter.h"
 #include "clang/Rewrite/Frontend/Rewriters.h"
@@ -32,9 +33,8 @@ using namespace clang;
 
 std::unique_ptr<ASTConsumer>
 HTMLPrintAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
-  if (std::unique_ptr<raw_ostream> OS =
-          CI.createDefaultOutputFile(false, InFile))
-    return CreateHTMLPrinter(std::move(OS), CI.getPreprocessor());
+  if (raw_ostream *OS = CI.createDefaultOutputFile(false, InFile))
+    return CreateHTMLPrinter(OS, CI.getPreprocessor());
   return nullptr;
 }
 
@@ -152,15 +152,14 @@ bool FixItRecompile::BeginInvocation(CompilerInstance &CI) {
 
 std::unique_ptr<ASTConsumer>
 RewriteObjCAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
-  if (std::unique_ptr<raw_ostream> OS =
-          CI.createDefaultOutputFile(false, InFile, "cpp")) {
+  if (raw_ostream *OS = CI.createDefaultOutputFile(false, InFile, "cpp")) {
     if (CI.getLangOpts().ObjCRuntime.isNonFragile())
       return CreateModernObjCRewriter(
-          InFile, std::move(OS), CI.getDiagnostics(), CI.getLangOpts(),
+          InFile, OS, CI.getDiagnostics(), CI.getLangOpts(),
           CI.getDiagnosticOpts().NoRewriteMacros,
           (CI.getCodeGenOpts().getDebugInfo() != codegenoptions::NoDebugInfo));
-    return CreateObjCRewriter(InFile, std::move(OS), CI.getDiagnostics(),
-                              CI.getLangOpts(),
+    return CreateObjCRewriter(InFile, OS,
+                              CI.getDiagnostics(), CI.getLangOpts(),
                               CI.getDiagnosticOpts().NoRewriteMacros);
   }
   return nullptr;
@@ -174,40 +173,25 @@ RewriteObjCAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
 
 void RewriteMacrosAction::ExecuteAction() {
   CompilerInstance &CI = getCompilerInstance();
-  std::unique_ptr<raw_ostream> OS =
-      CI.createDefaultOutputFile(true, getCurrentFile());
+  raw_ostream *OS = CI.createDefaultOutputFile(true, getCurrentFile());
   if (!OS) return;
 
-  RewriteMacrosInInput(CI.getPreprocessor(), OS.get());
+  RewriteMacrosInInput(CI.getPreprocessor(), OS);
 }
 
 void RewriteTestAction::ExecuteAction() {
   CompilerInstance &CI = getCompilerInstance();
-  std::unique_ptr<raw_ostream> OS =
-      CI.createDefaultOutputFile(false, getCurrentFile());
+  raw_ostream *OS = CI.createDefaultOutputFile(false, getCurrentFile());
   if (!OS) return;
 
-  DoRewriteTest(CI.getPreprocessor(), OS.get());
+  DoRewriteTest(CI.getPreprocessor(), OS);
 }
 
 void RewriteIncludesAction::ExecuteAction() {
   CompilerInstance &CI = getCompilerInstance();
-  std::unique_ptr<raw_ostream> OS =
-      CI.createDefaultOutputFile(true, getCurrentFile());
+  raw_ostream *OS = CI.createDefaultOutputFile(true, getCurrentFile());
   if (!OS) return;
 
-  // If we're preprocessing a module map, start by dumping the contents of the
-  // module itself before switching to the input buffer.
-  auto &Input = getCurrentInput();
-  if (Input.getKind().getFormat() == InputKind::ModuleMap) {
-    if (Input.isFile())
-      (*OS) << "# 1 \"" << Input.getFile() << "\"\n";
-    // FIXME: Include additional information here so that we don't need the
-    // original source files to exist on disk.
-    getCurrentModule()->print(*OS);
-    (*OS) << "#pragma clang module contents\n";
-  }
-
-  RewriteIncludesInInput(CI.getPreprocessor(), OS.get(),
+  RewriteIncludesInInput(CI.getPreprocessor(), OS,
                          CI.getPreprocessorOutputOpts());
 }

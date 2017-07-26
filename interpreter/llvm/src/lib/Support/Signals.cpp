@@ -29,6 +29,7 @@
 #include <vector>
 
 namespace llvm {
+using namespace sys;
 
 //===----------------------------------------------------------------------===//
 //=== WARNING: Implementation here must contain only TRULY operating system

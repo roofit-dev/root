@@ -1,4 +1,4 @@
-//===- MCInstrAnalysis.cpp - InstrDesc target hooks -----------------------===//
+//===-- MCInstrAnalysis.cpp - InstrDesc target hooks ------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstrAnalysis.h"
-#include "llvm/MC/MCInstrDesc.h"
-#include "llvm/MC/MCInstrInfo.h"
-#include <cstdint>
-
 using namespace llvm;
 
 bool MCInstrAnalysis::evaluateBranch(const MCInst &Inst, uint64_t Addr,

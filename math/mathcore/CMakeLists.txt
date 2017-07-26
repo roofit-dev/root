@@ -2,6 +2,8 @@
 # CMakeLists.txt file for building ROOT io/io package
 ############################################################################
 
+ROOT_ADD_CXX_FLAG(CMAKE_CXX_FLAGS -Wno-deprecated-declarations) # auto_ptr...
+
 set(MATHCORE_HEADERS TRandom.h
   TRandom1.h TRandom2.h TRandom3.h TKDTree.h TKDTreeBinning.h TStatistic.h
   Math/Error.h Math/IParamFunction.h Math/IFunction.h Math/ParamFunctor.h Math/Functor.h
@@ -17,12 +19,7 @@ set(MATHCORE_HEADERS TRandom.h
   Math/MersenneTwisterEngine.h Math/MixMaxEngine.h   TRandomGen.h Math/LCGEngine.h
 )
 
-if(veccore)
-  set(MATHCORE_LIBRARIES ${VecCore_LIBRARIES})
-  set(MATHCORE_BUILTINS VECCORE)
-endif()
-
-ROOT_GENERATE_DICTIONARY(G__MathCore   TComplex.h TMath.h ${MATHCORE_HEADERS} Fit/*.h MODULE MathCore LINKDEF LinkDef.h OPTIONS "-writeEmptyRootPCM" DEPENDENCIES Core Imt BUILTINS ${MATHCORE_BUILTINS})
+ROOT_GENERATE_DICTIONARY(G__MathCore   TComplex.h TMath.h ${MATHCORE_HEADERS} Fit/*.h MODULE MathCore LINKDEF LinkDef.h OPTIONS "-writeEmptyRootPCM")
 
 add_definitions(-DUSE_ROOT_ERROR)
 ROOT_ADD_C_FLAG(_flags -Wno-strict-overflow)  # Avoid what it seems a compiler false positive warning
@@ -35,6 +32,11 @@ if(imt)
   set(MATHCORE_DEPENDENCIES Imt)
 endif()
 
+if(veccore)
+  set(MATHCORE_LIBRARIES ${VecCore_LIBRARIES})
+  set(MATHCORE_BUILTINS VECCORE)
+endif()
+
 ROOT_LINKER_LIBRARY(MathCore *.cxx *.c G__MathCore.cxx LIBRARIES ${CMAKE_THREAD_LIBS_INIT} ${MATHCORE_LIBRARIES} DEPENDENCIES Core ${MATHCORE_DEPENDENCIES} BUILTINS ${MATHCORE_BUILTINS})
 
 if(veccore)
@@ -44,3 +46,7 @@ endif()
 ROOT_INSTALL_HEADERS()
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)
+
+
+
+

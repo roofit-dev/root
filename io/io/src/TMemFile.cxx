@@ -38,7 +38,7 @@ only from memory.
 #define TRACE(x);
 #endif
 
-ClassImp(TMemFile);
+ClassImp(TMemFile)
 
 Long64_t TMemFile::fgDefaultBlockSize = 2*1024*1024;
 
@@ -332,7 +332,7 @@ void TMemFile::ResetAfterMerge(TFileMergeInfo *info)
    fBlockSeek   = &fBlockList;
    fBlockOffset = 0;
    {
-      R__LOCKGUARD(gROOTMutex);
+      R__LOCKGUARD2(gROOTMutex);
       gROOT->GetListOfFiles()->Remove(this);
    }
 

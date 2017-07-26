@@ -14,6 +14,8 @@
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/GlobalDecl.h"
 #include "clang/AST/Mangle.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 
 #include <stdio.h>
 #include <memory>
@@ -153,7 +155,7 @@ static const Type *getFullyQualifiedTemplateType(const ASTContext &Ctx,
     // allocate new type in the AST.
     if (MightHaveChanged) {
       QualType QT = Ctx.getTemplateSpecializationType(
-          TST->getTemplateName(), FQArgs,
+          TST->getTemplateName(), FQArgs.data(), FQArgs.size(),
           TST->getCanonicalTypeInternal());
       // getTemplateSpecializationType returns a fully qualified
       // version of the specialization itself, so no need to qualify
@@ -185,7 +187,7 @@ static const Type *getFullyQualifiedTemplateType(const ASTContext &Ctx,
       if (MightHaveChanged) {
         TemplateName TN(TSTDecl->getSpecializedTemplate());
         QualType QT = Ctx.getTemplateSpecializationType(
-            TN, FQArgs,
+            TN, FQArgs.data(), FQArgs.size(),
             TSTRecord->getCanonicalTypeInternal());
         // getTemplateSpecializationType returns a fully qualified
         // version of the specialization itself, so no need to qualify

@@ -26,7 +26,7 @@ namespace {
       : MachineFunctionPass(ID), TM(TM_) {}
 
     // Pass Name
-    StringRef getPassName() const override {
+    const char *getPassName() const override {
       return "MIPS DAG->DAG Pattern Instruction Selection";
     }
 

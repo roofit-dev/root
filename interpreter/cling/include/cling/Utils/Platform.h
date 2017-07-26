@@ -14,10 +14,6 @@
 #include "llvm/Support/Compiler.h"
 #include <string>
 
-#ifdef CLING_WIN_SEH_EXCEPTIONS
-#include <vector>
-#endif
-
 namespace cling {
 namespace utils {
 namespace platform {
@@ -31,10 +27,6 @@ namespace platform {
   /// \returns true on success false otherwise
   ///
   bool GetSystemLibraryPaths(llvm::SmallVectorImpl<std::string>& Paths);
-
-  ///\brief Returns a normalized version of the given Path
-  ///
-  std::string NormalizePath(const std::string& Path);
 
   ///\brief Open a handle to a shared library. On Unix the lib is opened with
   /// RTLD_LAZY|RTLD_GLOBAL flags.
@@ -52,6 +44,12 @@ namespace platform {
   ///
   const void* DLSym(const std::string& Name, std::string* Err = nullptr);
 
+  ///\brief Demangle the given symbol name
+  ///
+  /// \returns The demangled name or an empty string
+  ///
+  std::string Demangle(const std::string& Symbol);
+
   ///\brief Close a handle to a shared library.
   ///
   /// \param [in] Lib - Handle to library from previous call to DLOpen
@@ -61,11 +59,9 @@ namespace platform {
   ///
   void DLClose(const void* Lib, std::string* Err = nullptr);
 
-  ///\brief Demangle the given symbol name
+  ///\brief Returns a normalized version of the given Path
   ///
-  /// \returns The demangled name or an empty string
-  ///
-  std::string Demangle(const std::string& Symbol);
+  std::string NormalizePath(const std::string& Path);
 
   ///\brief Return true if the given pointer is in a valid memory region.
   ///
@@ -157,29 +153,14 @@ inline namespace windows {
                            std::string* UniversalSDK = nullptr,
                            bool Verbose = false);
 
-#ifdef CLING_WIN_SEH_EXCEPTIONS
   ///\brief Runtime override for _CxxThrowException in Interpreter.
   //
   __declspec(noreturn) void __stdcall ClingRaiseSEHException(void*, void*);
 
-  ///\brief Mirrors an internal LLVM structure that will hopefully become public
-  //
-  struct RuntimePRFunction {
-    uint8_t* Addr;
-    size_t Size;
-  };
-  typedef std::vector<RuntimePRFunction> EHFrameInfos;
+  void RegisterEHFrames(uint8_t* Addr, size_t Size, uintptr_t BaseAddr,
+                        bool Block);
 
-  ///\brief Add an 'ImageBase' and a vector of PRUNTIME_FUNCTION into lookup
-  /// for the exception handler.
-  //
-  void RegisterEHFrames(uintptr_t BaseAddr, const EHFrameInfos& Fr, bool Block);
-
-  ///\brief Remove an 'ImageBase' and all of it's PRUNTIME_FUNCTION from lookup
-  /// in the exception handler.
-  //
-  void DeRegisterEHFrames(uintptr_t BaseAddr, const EHFrameInfos& Frames);
-#endif // CLING_WIN_SEH_EXCEPTIONS
+  void DeRegisterEHFrames(uint8_t* Addr, size_t Size);
 
 } // namespace windows
 #endif // LLVM_ON_WIN32

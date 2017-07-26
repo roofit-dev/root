@@ -7,19 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/StringRef.h"
+#include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
-#include "llvm/MC/MCFragment.h"
-#include "llvm/MC/MCSymbol.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cassert>
-#include <cstddef>
-
 using namespace llvm;
 
 // Only the address of this fragment is ever actually used.
@@ -37,9 +31,10 @@ void *MCSymbol::operator new(size_t s, const StringMapEntry<bool> *Name,
   // For safety, ensure that the alignment of a pointer is enough for an
   // MCSymbol.  This also ensures we don't need padding between the name and
   // symbol.
-  static_assert((unsigned)alignof(MCSymbol) <= alignof(NameEntryStorageTy),
+  static_assert((unsigned)AlignOf<MCSymbol>::Alignment <=
+                AlignOf<NameEntryStorageTy>::Alignment,
                 "Bad alignment of MCSymbol");
-  void *Storage = Ctx.allocate(Size, alignof(NameEntryStorageTy));
+  void *Storage = Ctx.allocate(Size, alignOf<NameEntryStorageTy>());
   NameEntryStorageTy *Start = static_cast<NameEntryStorageTy*>(Storage);
   NameEntryStorageTy *End = Start + (Name ? 1 : 0);
   return End;
@@ -82,7 +77,5 @@ void MCSymbol::print(raw_ostream &OS, const MCAsmInfo *MAI) const {
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-LLVM_DUMP_METHOD void MCSymbol::dump() const {
-  dbgs() << *this;
-}
+LLVM_DUMP_METHOD void MCSymbol::dump() const { dbgs() << *this; }
 #endif

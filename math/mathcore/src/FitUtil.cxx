@@ -39,6 +39,9 @@
 #include <iostream>
 #endif
 
+// using parameter cache is not thread safe but needed for normalizing the functions
+#define USE_PARAMCACHE
+
 //  need to implement integral option
 
 namespace ROOT {
@@ -282,8 +285,8 @@ double FitUtil::EvaluateChi2(const IModelFunction & func, const BinData & data, 
             auto xx = *data.GetCoordComponent(i, j);
             binVolume *= std::abs(x2[j]- xx);
             xc[j] = 0.5*(x2[j]+ xx);
+            x = xc.data();
          }
-         x = xc.data();
          // normalize the bin volume using a reference value
          binVolume *= wrefVolume;
       } else if(data.NDim() > 1) {
@@ -751,6 +754,21 @@ void FitUtil::EvaluateChi2Gradient(const IModelFunction & f, const BinData & dat
 // utility function used by the likelihoods
 
 // for LogLikelihood functions
+#ifdef R__HAS_VECCORE
+double FitUtil::EvaluatePdf(const IModelFunctionTempl<ROOT::Double_v> & func, const UnBinData & data, const double * p, unsigned int i, double *) {
+   // evaluate the pdf contribution to the generic logl function in case of bin data
+   // return actually the log of the pdf and its derivatives
+
+
+   //func.SetParameters(p);
+
+
+   const auto x = vecCore::FromPtr<ROOT::Double_v>(data.GetCoordComponent(i,0));
+   auto fval = func (&x, p);
+   auto logPdf = ROOT::Math::Util::EvalLog(fval);
+   return logPdf[0];
+}
+#endif
 
 double FitUtil::EvaluatePdf(const IModelFunction & func, const UnBinData & data, const double * p, unsigned int i, double * g) {
    // evaluate the pdf contribution to the generic logl function in case of bin data
@@ -845,7 +863,7 @@ double FitUtil::EvaluateLogL(const IModelFunctionTempl<double>  & func, const Un
     auto mapFunction = [&](const unsigned i){
        double W = 0;
        double W2 = 0;
-       double fval = 0;
+       double fval = 0; 
 
        if(data.NDim() > 1) {
           std::vector<double> x(data.NDim());
@@ -981,6 +999,11 @@ nPoints = 0;
 
    return -logl;
 }
+
+#ifdef R__HAS_VECCORE
+void FitUtil::EvaluateLogLGradient(const IModelFunctionTempl<ROOT::Double_v> &, const UnBinData &, const double * , double *, unsigned int & ) {
+}
+#endif
 
 void FitUtil::EvaluateLogLGradient(const IModelFunction & f, const UnBinData & data, const double * p, double * grad, unsigned int & ) {
    // evaluate the gradient of the log likelihood function
@@ -1127,8 +1150,8 @@ double FitUtil::EvaluatePoissonBinPdf(const IModelFunction & func, const BinData
    return logPdf;
 }
 
-double FitUtil::EvaluatePoissonLogL(const IModelFunction &func, const BinData &data, const double *p, int iWeight, bool extended,
-                                    unsigned int &nPoints, const unsigned int &executionPolicy, unsigned nChunks) {
+double FitUtil::EvaluatePoissonLogL(const IModelFunction & func, const BinData & data,
+                                    const double * p, int iWeight, bool extended,  unsigned int &   nPoints ) {
    // evaluate the Poisson Log Likelihood
    // for binned likelihood fits
    // this is Sum ( f(x_i)  -  y_i * log( f (x_i) ) )
@@ -1152,79 +1175,72 @@ double FitUtil::EvaluatePoissonLogL(const IModelFunction &func, const BinData &d
    (const_cast<IModelFunction &>(func)).SetParameters(p);
 #endif
 
+   double nloglike = 0;  // negative loglikelihood
    nPoints = 0;  // npoints
 
 
    // get fit option and check case of using integral of bins
-   const DataOptions &fitOpt = data.Opt();
+   const DataOptions & fitOpt = data.Opt();
    bool useBinIntegral = fitOpt.fIntegral && data.HasBinEdges();
    bool useBinVolume = (fitOpt.fBinVolume && data.HasBinEdges());
    bool useW2 = (iWeight == 2);
 
    // normalize if needed by a reference volume value
    double wrefVolume = 1.0;
+   std::vector<double> xc;
    if (useBinVolume) {
       if (fitOpt.fNormBinVolume) wrefVolume /= data.RefVolume();
+      xc.resize(data.NDim() );
    }
 
 #ifdef DEBUG
    std::cout << "Evaluate PoissonLogL for params = [ ";
-   for (unsigned int j = 0; j < func.NPar(); ++j) std::cout << p[j] << " , ";
+   for (unsigned int j=0; j < func.NPar(); ++j) std::cout << p[j] << " , ";
    std::cout << "]  - data size = " << n << " useBinIntegral " << useBinIntegral << " useBinVolume "
              << useBinVolume << " useW2 " << useW2 << " wrefVolume = " << wrefVolume << std::endl;
 #endif
 
 #ifdef USE_PARAMCACHE
-   IntegralEvaluator<> igEval(func, 0, useBinIntegral);
+   IntegralEvaluator<> igEval( func, 0, useBinIntegral);
 #else
-   IntegralEvaluator<> igEval(func, p, useBinIntegral);
+   IntegralEvaluator<> igEval( func, p, useBinIntegral);
 #endif
    // double nuTot = 0; // total number of expected events (needed for non-extended fits)
    // double wTot = 0; // sum of all weights
    // double w2Tot = 0; // sum of weight squared  (these are needed for useW2)
 
-   auto mapFunction = [&](const unsigned i) {
-      auto x1 = data.GetCoordComponent(i, 0);
-      auto y = *data.ValuePtr(i);
 
-      const double *x = nullptr;
-      std::vector<double> xc;
+   for (unsigned int i = 0; i < n; ++ i) {
+      const double * x1 = data.Coords(i);
+      double y = data.Value(i);
+
       double fval = 0;
       double binVolume = 1.0;
 
       if (useBinVolume) {
          unsigned int ndim = data.NDim();
-         const double *x2 = data.BinUpEdge(i);
-         xc.resize(data.NDim());
+         const double * x2 = data.BinUpEdge(i);
          for (unsigned int j = 0; j < ndim; ++j) {
-            auto xx = *data.GetCoordComponent(i, j);
-            binVolume *= std::abs(x2[j] - xx);
-            xc[j] = 0.5 * (x2[j] + xx);
+            binVolume *= std::abs( x2[j]-x1[j] );
+            xc[j] = 0.5*(x2[j]+ x1[j]);
          }
-         x = xc.data();
          // normalize the bin volume using a reference value
          binVolume *= wrefVolume;
-      } else if (data.NDim() > 1) {
-         xc.resize(data.NDim());
-         xc[0] = *x1;
-         for (unsigned int j = 1; j < data.NDim(); ++j) {
-            xc[j] = *data.GetCoordComponent(i, j);
-         }
-         x = xc.data();
-      } else {
-         x = x1;
       }
+
+      const double * x = (useBinVolume) ? &xc.front() : x1;
 
       if (!useBinIntegral) {
 #ifdef USE_PARAMCACHE
-         fval = func(x);
+         fval = func ( x );
 #else
-         fval = func(x, p);
+         fval = func ( x, p );
 #endif
-      } else {
+      }
+      else {
          // calculate integral (normalized by bin volume)
          // need to set function and parameters here in case loop is parallelized
-         fval = igEval(x, data.BinUpEdge(i));
+         fval = igEval( x1, data.BinUpEdge(i)) ;
       }
       if (useBinVolume) fval *= binVolume;
 
@@ -1232,13 +1248,13 @@ double FitUtil::EvaluatePoissonLogL(const IModelFunction &func, const BinData &d
 
 #ifdef DEBUG
       int NSAMPLE = 100;
-      if (i % NSAMPLE == 0) {
-         std::cout << "evt " << i << " x = [ ";
-         for (unsigned int j = 0; j < func.NDim(); ++j) std::cout << x[j] << " , ";
+      if (i%NSAMPLE == 0) {
+         std::cout << "evt " << i << " x1 = [ ";
+         for (unsigned int j=0; j < func.NDim(); ++j) std::cout << x[j] << " , ";
          std::cout << "]  ";
          if (fitOpt.fIntegral) {
             std::cout << "x2 = [ ";
-            for (unsigned int j = 0; j < func.NDim(); ++j) std::cout << data.BinUpEdge(i)[j] << " , ";
+            for (unsigned int j=0; j < func.NDim(); ++j) std::cout << data.BinUpEdge(i)[j] << " , ";
             std::cout << "] ";
          }
          std::cout << "  y = " << y << " fval = " << fval << std::endl;
@@ -1250,7 +1266,8 @@ double FitUtil::EvaluatePoissonLogL(const IModelFunction &func, const BinData &d
       // negative values of fval
       fval = std::max(fval, 0.0);
 
-      double nloglike = 0; // negative loglikelihood
+
+      double tmp = 0;
       if (useW2) {
          // apply weight correction . Effective weight is error^2/ y
          // and expected events in bins is fval/weight
@@ -1258,15 +1275,14 @@ double FitUtil::EvaluatePoissonLogL(const IModelFunction &func, const BinData &d
          // (in case of weighted likelihood I don't care about the constant term due to
          // the saturated model)
          if (y != 0) {
-            auto pError = data.ErrorPtr(i);
-            auto error = (pError != nullptr) ? *pError : 1.;
-            double weight = (error * error) / y; // this is the bin effective weight
+            double error = data.Error(i);
+            double weight = (error*error)/y;  // this is the bin effective weight
             if (extended) {
-               nloglike = fval * weight;
+               tmp = fval * weight;
                // wTot  += weight;
                // w2Tot += weight*weight;
             }
-            nloglike -= weight * y * ROOT::Math::Util::EvalLog(fval);
+            tmp -= weight * y * ROOT::Math::Util::EvalLog( fval);
          }
 
          //  need to compute total weight and weight-square
@@ -1274,20 +1290,22 @@ double FitUtil::EvaluatePoissonLogL(const IModelFunction &func, const BinData &d
          //    nuTot += fval;
          // }
 
-      } else {
+      }
+      else {
          // standard case no weights or iWeight=1
          // this is needed for Poisson likelihood (which are extened and not for multinomial)
          // the formula below  include constant term due to likelihood of saturated model (f(x) = y)
          // (same formula as in Baker-Cousins paper, page 439 except a factor of 2
-         if (extended) nloglike = fval - y;
-
+         if (extended) tmp = fval -y ;
          if (y >  0) {
-            nloglike += y * (ROOT::Math::Util::EvalLog(y) - ROOT::Math::Util::EvalLog(fval));
+            tmp +=  y *  (ROOT::Math::Util::EvalLog( y) - ROOT::Math::Util::EvalLog(fval));
             nPoints++;
          }
       }
-      return nloglike;
-   };
+
+
+      nloglike +=  tmp;
+   }
 
    // if (notExtended) {
    //    // not extended : remove from the Likelihood the global Poisson term
@@ -1304,38 +1322,13 @@ double FitUtil::EvaluatePoissonLogL(const IModelFunction &func, const BinData &d
    //    // effective total weight is total sum of weight square / sum of weights
    //    //nloglike += (w2Tot/wTot) * nuTot;
    // }
-#ifdef R__USE_IMT
-   auto redFunction = [](const std::vector<double> &objs) {
-      return std::accumulate(objs.begin(), objs.end(), double{});
-   };
-#else
-   (void)nChunks;
-#endif
 
-   double res{};
-   if (executionPolicy == ROOT::Fit::kSerial) {
-      for (unsigned int i = 0; i < n; ++i) {
-         res += mapFunction(i);
-      }
-#ifdef R__USE_IMT
-   } else if (executionPolicy == ROOT::Fit::kMultithread) {
-      auto chunks = nChunks != 0 ? nChunks : setAutomaticChunking(data.Size());
-      ROOT::TThreadExecutor pool;
-      res = pool.MapReduce(mapFunction, ROOT::TSeq<unsigned>(0, n), redFunction, chunks);
-#endif
-      //   } else if(executionPolicy == ROOT::Fit::kMultitProcess){
-      // ROOT::TProcessExecutor pool;
-      // res = pool.MapReduce(mapFunction, ROOT::TSeq<unsigned>(0, n), redFunction);
-   } else {
-      Error("FitUtil::EvaluatePoissonLogL",
-            "Execution policy unknown. Avalaible choices:\n 0: Serial (default)\n 1: MultiThread (requires IMT)\n");
-   }
 
 #ifdef DEBUG
-   std::cout << "Loglikelihood  = " << res << std::endl;
+   std::cout << "Loglikelihood  = " << nloglike << std::endl;
 #endif
 
-   return res;
+   return nloglike;
 }
 
 void FitUtil::EvaluatePoissonLogLGradient(const IModelFunction & f, const BinData & data, const double * p, double * grad ) {

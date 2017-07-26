@@ -29,10 +29,7 @@ PseudoSourceValue::PseudoSourceValue(PSVKind Kind) : Kind(Kind) {}
 PseudoSourceValue::~PseudoSourceValue() {}
 
 void PseudoSourceValue::printCustom(raw_ostream &O) const {
-  if (Kind < TargetCustom)
-    O << PSVNames[Kind];
-  else
-    O << "TargetCustom" << Kind;
+  O << PSVNames[Kind];
 }
 
 bool PseudoSourceValue::isConstant(const MachineFrameInfo *) const {

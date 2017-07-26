@@ -16,8 +16,6 @@ endif()
 
 add_llvm_loadable_module( BugpointPasses
   TestPasses.cpp
-
-  DEPENDS
-  intrinsics_gen
-  bugpoint
   )
+
+add_dependencies(BugpointPasses bugpoint)

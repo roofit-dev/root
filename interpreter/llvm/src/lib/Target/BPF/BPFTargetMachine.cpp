@@ -24,9 +24,9 @@ using namespace llvm;
 
 extern "C" void LLVMInitializeBPFTarget() {
   // Register the target.
-  RegisterTargetMachine<BPFTargetMachine> X(getTheBPFleTarget());
-  RegisterTargetMachine<BPFTargetMachine> Y(getTheBPFbeTarget());
-  RegisterTargetMachine<BPFTargetMachine> Z(getTheBPFTarget());
+  RegisterTargetMachine<BPFTargetMachine> X(TheBPFleTarget);
+  RegisterTargetMachine<BPFTargetMachine> Y(TheBPFbeTarget);
+  RegisterTargetMachine<BPFTargetMachine> Z(TheBPFTarget);
 }
 
 // DataLayout: little or big endian

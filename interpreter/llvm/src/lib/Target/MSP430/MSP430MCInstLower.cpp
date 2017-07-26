@@ -119,7 +119,7 @@ void MSP430MCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
     MCOperand MCOp;
     switch (MO.getType()) {
     default:
-      MI->print(errs());
+      MI->dump();
       llvm_unreachable("unknown operand type");
     case MachineOperand::MO_Register:
       // Ignore all implicit register operands.

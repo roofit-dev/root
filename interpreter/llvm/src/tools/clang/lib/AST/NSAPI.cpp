@@ -453,6 +453,7 @@ NSAPI::getNSNumberFactoryMethodKind(QualType T) const {
   case BuiltinType::OCLEvent:
   case BuiltinType::OCLClkEvent:
   case BuiltinType::OCLQueue:
+  case BuiltinType::OCLNDRange:
   case BuiltinType::OCLReserveID:
   case BuiltinType::BoundMember:
   case BuiltinType::Dependent:

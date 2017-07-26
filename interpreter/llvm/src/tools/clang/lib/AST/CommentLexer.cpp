@@ -378,17 +378,15 @@ void Lexer::lexCommentText(Token &T) {
           if ((Info = Traits.getTypoCorrectCommandInfo(CommandName))) {
             StringRef CorrectedName = Info->Name;
             SourceLocation Loc = getSourceLocation(BufferPtr);
-            SourceLocation EndLoc = getSourceLocation(TokenPtr);
-            SourceRange FullRange = SourceRange(Loc, EndLoc);
-            SourceRange CommandRange(Loc.getLocWithOffset(1), EndLoc);
+            SourceRange CommandRange(Loc.getLocWithOffset(1),
+                                     getSourceLocation(TokenPtr));
             Diag(Loc, diag::warn_correct_comment_command_name)
-              << FullRange << CommandName << CorrectedName
+              << CommandName << CorrectedName
               << FixItHint::CreateReplacement(CommandRange, CorrectedName);
           } else {
             formTokenWithChars(T, TokenPtr, tok::unknown_command);
             T.setUnknownCommandName(CommandName);
-            Diag(T.getLocation(), diag::warn_unknown_comment_command_name)
-                << SourceRange(T.getLocation(), T.getEndLocation());
+            Diag(T.getLocation(), diag::warn_unknown_comment_command_name);
             return;
           }
         }

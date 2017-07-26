@@ -409,8 +409,9 @@ void DFGImpl::OutputDependencyFile() {
   const unsigned MaxColumns = 75;
   unsigned Columns = 0;
 
-  for (StringRef Target : Targets) {
-    unsigned N = Target.size();
+  for (std::vector<std::string>::iterator
+         I = Targets.begin(), E = Targets.end(); I != E; ++I) {
+    unsigned N = I->length();
     if (Columns == 0) {
       Columns += N;
     } else if (Columns + N + 2 > MaxColumns) {
@@ -421,7 +422,7 @@ void DFGImpl::OutputDependencyFile() {
       OS << ' ';
     }
     // Targets already quoted as needed.
-    OS << Target;
+    OS << *I;
   }
 
   OS << ':';
@@ -429,17 +430,18 @@ void DFGImpl::OutputDependencyFile() {
 
   // Now add each dependency in the order it was seen, but avoiding
   // duplicates.
-  for (StringRef File : Files) {
+  for (std::vector<std::string>::iterator I = Files.begin(),
+         E = Files.end(); I != E; ++I) {
     // Start a new line if this would exceed the column limit. Make
     // sure to leave space for a trailing " \" in case we need to
     // break the line on the next iteration.
-    unsigned N = File.size();
+    unsigned N = I->length();
     if (Columns + (N + 1) + 2 > MaxColumns) {
       OS << " \\\n ";
       Columns = 2;
     }
     OS << ' ';
-    PrintFilename(OS, File, OutputFormat);
+    PrintFilename(OS, *I, OutputFormat);
     Columns += N + 1;
   }
   OS << '\n';
@@ -447,7 +449,8 @@ void DFGImpl::OutputDependencyFile() {
   // Create phony targets if requested.
   if (PhonyTarget && !Files.empty()) {
     // Skip the first entry, this is always the input file itself.
-    for (auto I = Files.begin() + 1, E = Files.end(); I != E; ++I) {
+    for (std::vector<std::string>::iterator I = Files.begin() + 1,
+           E = Files.end(); I != E; ++I) {
       OS << '\n';
       PrintFilename(OS, *I, OutputFormat);
       OS << ":\n";

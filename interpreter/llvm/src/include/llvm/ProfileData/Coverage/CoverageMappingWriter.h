@@ -1,4 +1,4 @@
-//===- CoverageMappingWriter.h - Code coverage mapping writer ---*- C++ -*-===//
+//=-- CoverageMappingWriter.h - Code coverage mapping writer ------*- C++ -*-=//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,17 +12,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_PROFILEDATA_COVERAGE_COVERAGEMAPPINGWRITER_H
-#define LLVM_PROFILEDATA_COVERAGE_COVERAGEMAPPINGWRITER_H
+#ifndef LLVM_PROFILEDATA_COVERAGEMAPPINGWRITER_H
+#define LLVM_PROFILEDATA_COVERAGEMAPPINGWRITER_H
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ProfileData/Coverage/CoverageMapping.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
-
-class raw_ostream;
-
 namespace coverage {
 
 /// \brief Writer of the filenames section for the instrumentation
@@ -51,12 +49,15 @@ public:
       : VirtualFileMapping(VirtualFileMapping), Expressions(Expressions),
         MappingRegions(MappingRegions) {}
 
+  CoverageMappingWriter(ArrayRef<CounterExpression> Expressions,
+                        MutableArrayRef<CounterMappingRegion> MappingRegions)
+      : Expressions(Expressions), MappingRegions(MappingRegions) {}
+
   /// \brief Write encoded coverage mapping data to the given output stream.
   void write(raw_ostream &OS);
 };
 
 } // end namespace coverage
-
 } // end namespace llvm
 
-#endif // LLVM_PROFILEDATA_COVERAGE_COVERAGEMAPPINGWRITER_H
+#endif

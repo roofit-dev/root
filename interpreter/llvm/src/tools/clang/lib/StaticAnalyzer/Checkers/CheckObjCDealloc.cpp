@@ -34,7 +34,6 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/Basic/LangOptions.h"
-#include "clang/Basic/TargetInfo.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
@@ -174,7 +173,6 @@ private:
   bool classHasSeparateTeardown(const ObjCInterfaceDecl *ID) const;
 
   bool isReleasedByCIFilterDealloc(const ObjCPropertyImplDecl *PropImpl) const;
-  bool isNibLoadedIvarWithoutRetain(const ObjCPropertyImplDecl *PropImpl) const;
 };
 } // End anonymous namespace.
 
@@ -317,7 +315,15 @@ void ObjCDeallocChecker::checkBeginFunction(
 /// Returns nullptr if the instance symbol cannot be found.
 const ObjCIvarRegion *
 ObjCDeallocChecker::getIvarRegionForIvarSymbol(SymbolRef IvarSym) const {
-  return dyn_cast_or_null<ObjCIvarRegion>(IvarSym->getOriginRegion());
+  const MemRegion *RegionLoadedFrom = nullptr;
+  if (auto *DerivedSym = dyn_cast<SymbolDerived>(IvarSym))
+    RegionLoadedFrom = DerivedSym->getRegion();
+  else if (auto *RegionSym = dyn_cast<SymbolRegionValue>(IvarSym))
+    RegionLoadedFrom = RegionSym->getRegion();
+  else
+    return nullptr;
+
+  return dyn_cast<ObjCIvarRegion>(RegionLoadedFrom);
 }
 
 /// Given a symbol for an ivar, return a symbol for the instance containing
@@ -527,7 +533,7 @@ void ObjCDeallocChecker::diagnoseMissingReleases(CheckerContext &C) const {
     if (SelfRegion != IvarRegion->getSuperRegion())
       continue;
 
-    const ObjCIvarDecl *IvarDecl = IvarRegion->getDecl();
+      const ObjCIvarDecl *IvarDecl = IvarRegion->getDecl();
     // Prevent an inlined call to -dealloc in a super class from warning
     // about the values the subclass's -dealloc should release.
     if (IvarDecl->getContainingInterface() !=
@@ -905,9 +911,6 @@ ReleaseRequirement ObjCDeallocChecker::getDeallocReleaseRequirement(
     if (isReleasedByCIFilterDealloc(PropImpl))
       return ReleaseRequirement::MustNotReleaseDirectly;
 
-    if (isNibLoadedIvarWithoutRetain(PropImpl))
-      return ReleaseRequirement::Unknown;
-
     return ReleaseRequirement::MustRelease;
 
   case ObjCPropertyDecl::Weak:
@@ -1062,32 +1065,6 @@ bool ObjCDeallocChecker::isReleasedByCIFilterDealloc(
   }
 
   return false;
-}
-
-/// Returns whether the ivar backing the property is an IBOutlet that
-/// has its value set by nib loading code without retaining the value.
-///
-/// On macOS, if there is no setter, the nib-loading code sets the ivar
-/// directly, without retaining the value,
-///
-/// On iOS and its derivatives, the nib-loading code will call
-/// -setValue:forKey:, which retains the value before directly setting the ivar.
-bool ObjCDeallocChecker::isNibLoadedIvarWithoutRetain(
-    const ObjCPropertyImplDecl *PropImpl) const {
-  const ObjCIvarDecl *IvarDecl = PropImpl->getPropertyIvarDecl();
-  if (!IvarDecl->hasAttr<IBOutletAttr>())
-    return false;
-
-  const llvm::Triple &Target =
-      IvarDecl->getASTContext().getTargetInfo().getTriple();
-
-  if (!Target.isMacOSX())
-    return false;
-
-  if (PropImpl->getPropertyDecl()->getSetterMethodDecl())
-    return false;
-
-  return true;
 }
 
 void ento::registerObjCDeallocChecker(CheckerManager &Mgr) {

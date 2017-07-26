@@ -1,4 +1,4 @@
-//===-- SIMachineScheduler.h - SI Scheduler Interface -----------*- C++ -*-===//
+//===-- SIMachineScheduler.h - SI Scheduler Interface -*- C++ -*-------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -16,16 +16,10 @@
 #define LLVM_LIB_TARGET_AMDGPU_SIMACHINESCHEDULER_H
 
 #include "SIInstrInfo.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineScheduler.h"
 #include "llvm/CodeGen/RegisterPressure.h"
-#include "llvm/CodeGen/ScheduleDAG.h"
-#include <cassert>
-#include <cstdint>
-#include <map>
-#include <memory>
-#include <set>
-#include <vector>
+
+using namespace llvm;
 
 namespace llvm {
 
@@ -40,12 +34,13 @@ enum SIScheduleCandReason {
 
 struct SISchedulerCandidate {
   // The reason for this candidate.
-  SIScheduleCandReason Reason = NoCand;
+  SIScheduleCandReason Reason;
 
   // Set of reasons that apply to multiple candidates.
-  uint32_t RepeatReasonSet = 0;
+  uint32_t RepeatReasonSet;
 
-  SISchedulerCandidate() = default;
+  SISchedulerCandidate()
+    :  Reason(NoCand), RepeatReasonSet(0) {}
 
   bool isRepeat(SIScheduleCandReason R) { return RepeatReasonSet & (1 << R); }
   void setRepeat(SIScheduleCandReason R) { RepeatReasonSet |= (1 << R); }
@@ -53,11 +48,6 @@ struct SISchedulerCandidate {
 
 class SIScheduleDAGMI;
 class SIScheduleBlockCreator;
-
-enum SIScheduleBlockLinkKind {
-  NoData,
-  Data
-};
 
 class SIScheduleBlock {
   SIScheduleDAGMI *DAG;
@@ -88,8 +78,8 @@ class SIScheduleBlock {
   std::set<unsigned> LiveInRegs;
   std::set<unsigned> LiveOutRegs;
 
-  bool Scheduled = false;
-  bool HighLatencyBlock = false;
+  bool Scheduled;
+  bool HighLatencyBlock;
 
   std::vector<unsigned> HasLowLatencyNonWaitedParent;
 
@@ -97,16 +87,18 @@ class SIScheduleBlock {
   unsigned ID;
 
   std::vector<SIScheduleBlock*> Preds;  // All blocks predecessors.
-  // All blocks successors, and the kind of link
-  std::vector<std::pair<SIScheduleBlock*, SIScheduleBlockLinkKind>> Succs;
-  unsigned NumHighLatencySuccessors = 0;
+  std::vector<SIScheduleBlock*> Succs;  // All blocks successors.
+  unsigned NumHighLatencySuccessors;
 
 public:
   SIScheduleBlock(SIScheduleDAGMI *DAG, SIScheduleBlockCreator *BC,
                   unsigned ID):
-    DAG(DAG), BC(BC), TopRPTracker(TopPressure), ID(ID) {}
+    DAG(DAG), BC(BC), SUnits(), TopReadySUs(), ScheduledSUnits(),
+    TopRPTracker(TopPressure), Scheduled(false),
+    HighLatencyBlock(false), ID(ID),
+    Preds(), Succs(), NumHighLatencySuccessors(0) {};
 
-  ~SIScheduleBlock() = default;
+  ~SIScheduleBlock() {};
 
   unsigned getID() const { return ID; }
 
@@ -118,11 +110,10 @@ public:
 
   // Add block pred, which has instruction predecessor of SU.
   void addPred(SIScheduleBlock *Pred);
-  void addSucc(SIScheduleBlock *Succ, SIScheduleBlockLinkKind Kind);
+  void addSucc(SIScheduleBlock *Succ);
 
   const std::vector<SIScheduleBlock*>& getPreds() const { return Preds; }
-  ArrayRef<std::pair<SIScheduleBlock*, SIScheduleBlockLinkKind>>
-    getSuccs() const { return Succs; }
+  const std::vector<SIScheduleBlock*>& getSuccs() const { return Succs; }
 
   unsigned Height;  // Maximum topdown path length to block without outputs
   unsigned Depth;   // Maximum bottomup path length to block without inputs
@@ -155,6 +146,7 @@ public:
 
   bool isScheduled() { return Scheduled; }
 
+
   // Needs the block to be scheduled inside
   // TODO: find a way to compute it.
   std::vector<unsigned> &getInternalAdditionnalRegUsage() {
@@ -169,7 +161,7 @@ public:
 private:
   struct SISchedCandidate : SISchedulerCandidate {
     // The best SUnit candidate.
-    SUnit *SU = nullptr;
+    SUnit *SU;
 
     unsigned SGPRUsage;
     unsigned VGPRUsage;
@@ -177,7 +169,8 @@ private:
     unsigned LowLatencyOffset;
     bool HasLowLatencyNonWaitedParent;
 
-    SISchedCandidate() = default;
+    SISchedCandidate()
+      : SU(nullptr) {}
 
     bool isValid() const { return SU; }
 
@@ -218,9 +211,9 @@ struct SIScheduleBlocks {
 };
 
 enum SISchedulerBlockCreatorVariant {
-  LatenciesAlone,
-  LatenciesGrouped,
-  LatenciesAlonePlusConsecutive
+    LatenciesAlone,
+    LatenciesGrouped,
+    LatenciesAlonePlusConsecutive
 };
 
 class SIScheduleBlockCreator {
@@ -348,17 +341,17 @@ public:
   SIScheduleBlockScheduler(SIScheduleDAGMI *DAG,
                            SISchedulerBlockSchedulerVariant Variant,
                            SIScheduleBlocks BlocksStruct);
-  ~SIScheduleBlockScheduler() = default;
+  ~SIScheduleBlockScheduler() {};
 
-  std::vector<SIScheduleBlock*> getBlocks() { return BlocksScheduled; }
+  std::vector<SIScheduleBlock*> getBlocks() { return BlocksScheduled; };
 
-  unsigned getVGPRUsage() { return maxVregUsage; }
-  unsigned getSGPRUsage() { return maxSregUsage; }
+  unsigned getVGPRUsage() { return maxVregUsage; };
+  unsigned getSGPRUsage() { return maxSregUsage; };
 
 private:
   struct SIBlockSchedCandidate : SISchedulerCandidate {
     // The best Block candidate.
-    SIScheduleBlock *Block = nullptr;
+    SIScheduleBlock *Block;
 
     bool IsHighLatency;
     int VGPRUsageDiff;
@@ -367,7 +360,8 @@ private:
     unsigned LastPosHighLatParentScheduled;
     unsigned Height;
 
-    SIBlockSchedCandidate() = default;
+    SIBlockSchedCandidate()
+      : Block(nullptr) {}
 
     bool isValid() const { return Block; }
 
@@ -415,9 +409,9 @@ class SIScheduler {
   SIScheduleBlockCreator BlockCreator;
 
 public:
-  SIScheduler(SIScheduleDAGMI *DAG) : DAG(DAG), BlockCreator(DAG) {}
+  SIScheduler(SIScheduleDAGMI *DAG) : DAG(DAG), BlockCreator(DAG) {};
 
-  ~SIScheduler() = default;
+  ~SIScheduler() {};
 
   struct SIScheduleBlockResult
   scheduleVariant(SISchedulerBlockCreatorVariant BlockVariant,
@@ -451,14 +445,13 @@ public:
   }
 
   MachineBasicBlock *getBB() { return BB; }
-  MachineBasicBlock::iterator getCurrentTop() { return CurrentTop; }
-  MachineBasicBlock::iterator getCurrentBottom() { return CurrentBottom; }
+  MachineBasicBlock::iterator getCurrentTop() { return CurrentTop; };
+  MachineBasicBlock::iterator getCurrentBottom() { return CurrentBottom; };
   LiveIntervals *getLIS() { return LIS; }
   MachineRegisterInfo *getMRI() { return &MRI; }
   const TargetRegisterInfo *getTRI() { return TRI; }
-  ScheduleDAGTopologicalSort *GetTopo() { return &Topo; }
-  SUnit& getEntrySU() { return EntrySU; }
-  SUnit& getExitSU() { return ExitSU; }
+  SUnit& getEntrySU() { return EntrySU; };
+  SUnit& getExitSU() { return ExitSU; };
 
   void restoreSULinksLeft();
 
@@ -466,21 +459,12 @@ public:
                                                      _Iterator End,
                                                      unsigned &VgprUsage,
                                                      unsigned &SgprUsage);
-
   std::set<unsigned> getInRegs() {
     std::set<unsigned> InRegs;
     for (const auto &RegMaskPair : RPTracker.getPressure().LiveInRegs) {
       InRegs.insert(RegMaskPair.RegUnit);
     }
     return InRegs;
-  }
-
-  std::set<unsigned> getOutRegs() {
-    std::set<unsigned> OutRegs;
-    for (const auto &RegMaskPair : RPTracker.getPressure().LiveOutRegs) {
-      OutRegs.insert(RegMaskPair.RegUnit);
-    }
-    return OutRegs;
   };
 
   unsigned getVGPRSetID() const { return VGPRSetID; }
@@ -502,6 +486,6 @@ public:
   std::vector<int> BottomUpIndex2SU;
 };
 
-} // end namespace llvm
+} // namespace llvm
 
-#endif // LLVM_LIB_TARGET_AMDGPU_SIMACHINESCHEDULER_H
+#endif /* SIMACHINESCHEDULER_H_ */

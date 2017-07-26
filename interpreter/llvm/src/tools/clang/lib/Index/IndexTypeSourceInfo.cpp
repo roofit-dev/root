@@ -26,49 +26,27 @@ class TypeIndexer : public RecursiveASTVisitor<TypeIndexer> {
 
 public:
   TypeIndexer(IndexingContext &indexCtx, const NamedDecl *parent,
-              const DeclContext *DC, bool isBase, bool isIBType)
+              const DeclContext *DC, bool isBase)
     : IndexCtx(indexCtx), Parent(parent), ParentDC(DC), IsBase(isBase) {
     if (IsBase) {
       assert(Parent);
       Relations.emplace_back((unsigned)SymbolRole::RelationBaseOf, Parent);
     }
-    if (isIBType) {
-      assert(Parent);
-      Relations.emplace_back((unsigned)SymbolRole::RelationIBTypeOf, Parent);
-    }
   }
   
   bool shouldWalkTypesOfTypeLocs() const { return false; }
+
+  bool VisitTypedefTypeLoc(TypedefTypeLoc TL) {
+    return IndexCtx.handleReference(TL.getTypedefNameDecl(), TL.getNameLoc(),
+                                    Parent, ParentDC, SymbolRoleSet(),
+                                    Relations);
+  }
 
 #define TRY_TO(CALL_EXPR)                                                      \
   do {                                                                         \
     if (!CALL_EXPR)                                                            \
       return false;                                                            \
   } while (0)
-
-  bool VisitTypedefTypeLoc(TypedefTypeLoc TL) {
-    SourceLocation Loc = TL.getNameLoc();
-    TypedefNameDecl *ND = TL.getTypedefNameDecl();
-    if (ND->isTransparentTag()) {
-      TagDecl *Underlying = ND->getUnderlyingType()->getAsTagDecl();
-      return IndexCtx.handleReference(Underlying, Loc, Parent,
-                                      ParentDC, SymbolRoleSet(), Relations);
-    }
-    if (IsBase) {
-      TRY_TO(IndexCtx.handleReference(ND, Loc,
-                                      Parent, ParentDC, SymbolRoleSet()));
-      if (auto *CD = TL.getType()->getAsCXXRecordDecl()) {
-        TRY_TO(IndexCtx.handleReference(CD, Loc, Parent, ParentDC,
-                                        (unsigned)SymbolRole::Implicit,
-                                        Relations));
-      }
-    } else {
-      TRY_TO(IndexCtx.handleReference(ND, Loc,
-                                      Parent, ParentDC, SymbolRoleSet(),
-                                      Relations));
-    }
-    return true;
-  }
 
   bool traverseParamVarHelper(ParmVarDecl *D) {
     TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
@@ -115,13 +93,13 @@ public:
 
   bool VisitObjCInterfaceTypeLoc(ObjCInterfaceTypeLoc TL) {
     return IndexCtx.handleReference(TL.getIFaceDecl(), TL.getNameLoc(),
-                                    Parent, ParentDC, SymbolRoleSet(), Relations);
+                                    Parent, ParentDC, SymbolRoleSet());
   }
 
   bool VisitObjCObjectTypeLoc(ObjCObjectTypeLoc TL) {
     for (unsigned i = 0, e = TL.getNumProtocols(); i != e; ++i) {
       IndexCtx.handleReference(TL.getProtocol(i), TL.getProtocolLoc(i),
-                               Parent, ParentDC, SymbolRoleSet(), Relations);
+                               Parent, ParentDC, SymbolRoleSet());
     }
     return true;
   }
@@ -141,31 +119,6 @@ public:
     return true;
   }
 
-  bool VisitDependentNameTypeLoc(DependentNameTypeLoc TL) {
-    const DependentNameType *DNT = TL.getTypePtr();
-    const NestedNameSpecifier *NNS = DNT->getQualifier();
-    const Type *T = NNS->getAsType();
-    if (!T)
-      return true;
-    const TemplateSpecializationType *TST =
-        T->getAs<TemplateSpecializationType>();
-    if (!TST)
-      return true;
-    TemplateName TN = TST->getTemplateName();
-    const ClassTemplateDecl *TD =
-        dyn_cast_or_null<ClassTemplateDecl>(TN.getAsTemplateDecl());
-    if (!TD)
-      return true;
-    CXXRecordDecl *RD = TD->getTemplatedDecl();
-    DeclarationName Name(DNT->getIdentifier());
-    std::vector<const NamedDecl *> Symbols = RD->lookupDependentName(
-        Name, [](const NamedDecl *ND) { return isa<TypeDecl>(ND); });
-    if (Symbols.size() != 1)
-      return true;
-    return IndexCtx.handleReference(Symbols[0], TL.getNameLoc(), Parent,
-                                    ParentDC, SymbolRoleSet(), Relations);
-  }
-
   bool TraverseStmt(Stmt *S) {
     IndexCtx.indexBody(S, Parent, ParentDC);
     return true;
@@ -177,25 +130,23 @@ public:
 void IndexingContext::indexTypeSourceInfo(TypeSourceInfo *TInfo,
                                           const NamedDecl *Parent,
                                           const DeclContext *DC,
-                                          bool isBase,
-                                          bool isIBType) {
+                                          bool isBase) {
   if (!TInfo || TInfo->getTypeLoc().isNull())
     return;
   
-  indexTypeLoc(TInfo->getTypeLoc(), Parent, DC, isBase, isIBType);
+  indexTypeLoc(TInfo->getTypeLoc(), Parent, DC, isBase);
 }
 
 void IndexingContext::indexTypeLoc(TypeLoc TL,
                                    const NamedDecl *Parent,
                                    const DeclContext *DC,
-                                   bool isBase,
-                                   bool isIBType) {
+                                   bool isBase) {
   if (TL.isNull())
     return;
 
   if (!DC)
     DC = Parent->getLexicalDeclContext();
-  TypeIndexer(*this, Parent, DC, isBase, isIBType).TraverseTypeLoc(TL);
+  TypeIndexer(*this, Parent, DC, isBase).TraverseTypeLoc(TL);
 }
 
 void IndexingContext::indexNestedNameSpecifierLoc(NestedNameSpecifierLoc NNS,
@@ -233,14 +184,11 @@ void IndexingContext::indexNestedNameSpecifierLoc(NestedNameSpecifierLoc NNS,
   }
 }
 
-void IndexingContext::indexTagDecl(const TagDecl *D,
-                                   ArrayRef<SymbolRelation> Relations) {
-  if (!shouldIndex(D))
-    return;
-  if (!shouldIndexFunctionLocalSymbols() && isFunctionLocalSymbol(D))
+void IndexingContext::indexTagDecl(const TagDecl *D) {
+  if (!shouldIndexFunctionLocalSymbols() && isFunctionLocalDecl(D))
     return;
 
-  if (handleDecl(D, /*Roles=*/SymbolRoleSet(), Relations)) {
+  if (handleDecl(D)) {
     if (D->isThisDeclarationADefinition()) {
       indexNestedNameSpecifierLoc(D->getQualifierLoc(), D);
       if (auto CXXRD = dyn_cast<CXXRecordDecl>(D)) {

@@ -7205,7 +7205,7 @@ static void
 addenv(struct cgi_environment *env, const char *fmt, ...)
 {
 	size_t n, space;
-	int truncated = 0;
+	int truncated;
 	char *added;
 	va_list ap;
 

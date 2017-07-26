@@ -32,25 +32,9 @@ struct PatchableFunction : public MachineFunctionPass {
   bool runOnMachineFunction(MachineFunction &F) override;
    MachineFunctionProperties getRequiredProperties() const override {
     return MachineFunctionProperties().set(
-        MachineFunctionProperties::Property::NoVRegs);
+        MachineFunctionProperties::Property::AllVRegsAllocated);
   }
 };
-}
-
-/// Returns true if instruction \p MI will not result in actual machine code
-/// instructions.
-static bool doesNotGeneratecode(const MachineInstr &MI) {
-  // TODO: Introduce an MCInstrDesc flag for this
-  switch (MI.getOpcode()) {
-  default: return false;
-  case TargetOpcode::IMPLICIT_DEF:
-  case TargetOpcode::KILL:
-  case TargetOpcode::CFI_INSTRUCTION:
-  case TargetOpcode::EH_LABEL:
-  case TargetOpcode::GC_LABEL:
-  case TargetOpcode::DBG_VALUE:
-    return true;
-  }
 }
 
 bool PatchableFunction::runOnMachineFunction(MachineFunction &MF) {
@@ -64,20 +48,18 @@ bool PatchableFunction::runOnMachineFunction(MachineFunction &MF) {
 #endif
 
   auto &FirstMBB = *MF.begin();
-  MachineBasicBlock::iterator FirstActualI = FirstMBB.begin();
-  for (; doesNotGeneratecode(*FirstActualI); ++FirstActualI)
-    assert(FirstActualI != FirstMBB.end());
+  auto &FirstMI = *FirstMBB.begin();
 
   auto *TII = MF.getSubtarget().getInstrInfo();
-  auto MIB = BuildMI(FirstMBB, FirstActualI, FirstActualI->getDebugLoc(),
+  auto MIB = BuildMI(FirstMBB, FirstMBB.begin(), FirstMI.getDebugLoc(),
                      TII->get(TargetOpcode::PATCHABLE_OP))
                  .addImm(2)
-                 .addImm(FirstActualI->getOpcode());
+                 .addImm(FirstMI.getOpcode());
 
-  for (auto &MO : FirstActualI->operands())
-    MIB.add(MO);
+  for (auto &MO : FirstMI.operands())
+    MIB.addOperand(MO);
 
-  FirstActualI->eraseFromParent();
+  FirstMI.eraseFromParent();
   MF.ensureAlignment(4);
   return true;
 }

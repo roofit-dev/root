@@ -90,18 +90,13 @@ OMPDeclareReductionDecl::getPrevDeclInScope() const {
 void OMPCapturedExprDecl::anchor() {}
 
 OMPCapturedExprDecl *OMPCapturedExprDecl::Create(ASTContext &C, DeclContext *DC,
-                                                 IdentifierInfo *Id, QualType T,
-                                                 SourceLocation StartLoc) {
-  return new (C, DC) OMPCapturedExprDecl(C, DC, Id, T, StartLoc);
+                                                 IdentifierInfo *Id,
+                                                 QualType T) {
+  return new (C, DC) OMPCapturedExprDecl(C, DC, Id, T);
 }
 
 OMPCapturedExprDecl *OMPCapturedExprDecl::CreateDeserialized(ASTContext &C,
                                                              unsigned ID) {
-  return new (C, ID)
-      OMPCapturedExprDecl(C, nullptr, nullptr, QualType(), SourceLocation());
+  return new (C, ID) OMPCapturedExprDecl(C, nullptr, nullptr, QualType());
 }
 
-SourceRange OMPCapturedExprDecl::getSourceRange() const {
-  assert(hasInit());
-  return SourceRange(getInit()->getLocStart(), getInit()->getLocEnd());
-}

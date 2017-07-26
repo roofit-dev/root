@@ -85,8 +85,10 @@ private:
 
 PDBSymbolFunc::PDBSymbolFunc(const IPDBSession &PDBSession,
                              std::unique_ptr<IPDBRawSymbol> Symbol)
-    : PDBSymbol(PDBSession, std::move(Symbol)) {
-  assert(RawSymbol->getSymTag() == PDB_SymType::Function);
+    : PDBSymbol(PDBSession, std::move(Symbol)) {}
+
+std::unique_ptr<PDBSymbolTypeFunctionSig> PDBSymbolFunc::getSignature() const {
+  return Session.getConcreteSymbolById<PDBSymbolTypeFunctionSig>(getTypeId());
 }
 
 std::unique_ptr<IPDBEnumChildren<PDBSymbolData>>
@@ -94,15 +96,8 @@ PDBSymbolFunc::getArguments() const {
   return llvm::make_unique<FunctionArgEnumerator>(Session, *this);
 }
 
-void PDBSymbolFunc::dump(PDBSymDumper &Dumper) const { Dumper.dump(*this); }
-
-bool PDBSymbolFunc::isDestructor() const {
-  std::string Name = getName();
-  if (Name.empty())
-    return false;
-  if (Name[0] == '~')
-    return true;
-  if (Name == "__vecDelDtor")
-    return true;
-  return false;
+std::unique_ptr<PDBSymbolTypeUDT> PDBSymbolFunc::getClassParent() const {
+  return Session.getConcreteSymbolById<PDBSymbolTypeUDT>(getClassParentId());
 }
+
+void PDBSymbolFunc::dump(PDBSymDumper &Dumper) const { Dumper.dump(*this); }

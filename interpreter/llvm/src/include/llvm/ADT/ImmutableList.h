@@ -16,9 +16,8 @@
 
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/DataTypes.h"
 #include <cassert>
-#include <cstdint>
-#include <new>
 
 namespace llvm {
 
@@ -26,18 +25,18 @@ template <typename T> class ImmutableListFactory;
 
 template <typename T>
 class ImmutableListImpl : public FoldingSetNode {
-  friend class ImmutableListFactory<T>;
-
   T Head;
   const ImmutableListImpl* Tail;
 
   ImmutableListImpl(const T& head, const ImmutableListImpl* tail = nullptr)
     : Head(head), Tail(tail) {}
 
-public:
-  ImmutableListImpl(const ImmutableListImpl &) = delete;
-  ImmutableListImpl &operator=(const ImmutableListImpl &) = delete;
+  friend class ImmutableListFactory<T>;
 
+  void operator=(const ImmutableListImpl&) = delete;
+  ImmutableListImpl(const ImmutableListImpl&) = delete;
+
+public:
   const T& getHead() const { return Head; }
   const ImmutableListImpl* getTail() const { return Tail; }
 
@@ -80,17 +79,15 @@ public:
   }
 
   class iterator {
-    const ImmutableListImpl<T>* L = nullptr;
-
+    const ImmutableListImpl<T>* L;
   public:
-    iterator() = default;
+    iterator() : L(nullptr) {}
     iterator(ImmutableList l) : L(l.getInternalPointer()) {}
 
     iterator& operator++() { L = L->getTail(); return *this; }
     bool operator==(const iterator& I) const { return L == I.L; }
     bool operator!=(const iterator& I) const { return L != I.L; }
     const value_type& operator*() const { return L->getHead(); }
-
     ImmutableList getList() const { return L; }
   };
 
@@ -124,7 +121,7 @@ public:
 
   /// getHead - Returns the head of the list.
   const T& getHead() {
-    assert(!isEmpty() && "Cannot get the head of an empty list.");
+    assert (!isEmpty() && "Cannot get the head of an empty list.");
     return X->getHead();
   }
 
@@ -148,7 +145,7 @@ class ImmutableListFactory {
   uintptr_t Allocator;
 
   bool ownsAllocator() const {
-    return (Allocator & 0x1) == 0;
+    return Allocator & 0x1 ? false : true;
   }
 
   BumpPtrAllocator& getAllocator() const {
@@ -206,21 +203,18 @@ public:
 //===----------------------------------------------------------------------===//
 
 template<typename T> struct DenseMapInfo;
-template<typename T> struct DenseMapInfo<ImmutableList<T>> {
+template<typename T> struct DenseMapInfo<ImmutableList<T> > {
   static inline ImmutableList<T> getEmptyKey() {
     return reinterpret_cast<ImmutableListImpl<T>*>(-1);
   }
-
   static inline ImmutableList<T> getTombstoneKey() {
     return reinterpret_cast<ImmutableListImpl<T>*>(-2);
   }
-
   static unsigned getHashValue(ImmutableList<T> X) {
     uintptr_t PtrVal = reinterpret_cast<uintptr_t>(X.getInternalPointer());
     return (unsigned((uintptr_t)PtrVal) >> 4) ^
            (unsigned((uintptr_t)PtrVal) >> 9);
   }
-
   static bool isEqual(ImmutableList<T> X1, ImmutableList<T> X2) {
     return X1 == X2;
   }
@@ -228,8 +222,8 @@ template<typename T> struct DenseMapInfo<ImmutableList<T>> {
 
 template <typename T> struct isPodLike;
 template <typename T>
-struct isPodLike<ImmutableList<T>> { static const bool value = true; };
+struct isPodLike<ImmutableList<T> > { static const bool value = true; };
 
-} // end namespace llvm
+} // end llvm namespace
 
 #endif // LLVM_ADT_IMMUTABLELIST_H

@@ -1,4 +1,4 @@
-//===-- llvm/MC/MCSymbolizer.cpp - MCSymbolizer class ---------------------===//
+//===-- llvm/MC/MCSymbolizer.cpp - MCSymbolizer class -----------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,4 +11,5 @@
 
 using namespace llvm;
 
-MCSymbolizer::~MCSymbolizer() = default;
+MCSymbolizer::~MCSymbolizer() {
+}

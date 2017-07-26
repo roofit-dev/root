@@ -37,20 +37,21 @@ namespace {
 class HexagonCFGOptimizer : public MachineFunctionPass {
 
 private:
-  void InvertAndChangeJumpTarget(MachineInstr &, MachineBasicBlock *);
-  bool isOnFallThroughPath(MachineBasicBlock *MBB);
+  void InvertAndChangeJumpTarget(MachineInstr*, MachineBasicBlock*);
 
-public:
+ public:
   static char ID;
   HexagonCFGOptimizer() : MachineFunctionPass(ID) {
     initializeHexagonCFGOptimizerPass(*PassRegistry::getPassRegistry());
   }
 
-  StringRef getPassName() const override { return "Hexagon CFG Optimizer"; }
+  const char *getPassName() const override {
+    return "Hexagon CFG Optimizer";
+  }
   bool runOnMachineFunction(MachineFunction &Fn) override;
   MachineFunctionProperties getRequiredProperties() const override {
     return MachineFunctionProperties().set(
-        MachineFunctionProperties::Property::NoVRegs);
+        MachineFunctionProperties::Property::AllVRegsAllocated);
   }
 };
 
@@ -58,18 +59,8 @@ public:
 char HexagonCFGOptimizer::ID = 0;
 
 static bool IsConditionalBranch(int Opc) {
-  switch (Opc) {
-    case Hexagon::J2_jumpt:
-    case Hexagon::J2_jumptpt:
-    case Hexagon::J2_jumpf:
-    case Hexagon::J2_jumpfpt:
-    case Hexagon::J2_jumptnew:
-    case Hexagon::J2_jumpfnew:
-    case Hexagon::J2_jumptnewpt:
-    case Hexagon::J2_jumpfnewpt:
-      return true;
-  }
-  return false;
+  return (Opc == Hexagon::J2_jumpt) || (Opc == Hexagon::J2_jumpf)
+    || (Opc == Hexagon::J2_jumptnewpt) || (Opc == Hexagon::J2_jumpfnewpt);
 }
 
 
@@ -77,12 +68,14 @@ static bool IsUnconditionalJump(int Opc) {
   return (Opc == Hexagon::J2_jump);
 }
 
-void HexagonCFGOptimizer::InvertAndChangeJumpTarget(
-    MachineInstr &MI, MachineBasicBlock *NewTarget) {
+
+void
+HexagonCFGOptimizer::InvertAndChangeJumpTarget(MachineInstr* MI,
+                                               MachineBasicBlock* NewTarget) {
   const TargetInstrInfo *TII =
-      MI.getParent()->getParent()->getSubtarget().getInstrInfo();
+      MI->getParent()->getParent()->getSubtarget().getInstrInfo();
   int NewOpcode = 0;
-  switch (MI.getOpcode()) {
+  switch(MI->getOpcode()) {
   case Hexagon::J2_jumpt:
     NewOpcode = Hexagon::J2_jumpf;
     break;
@@ -103,18 +96,10 @@ void HexagonCFGOptimizer::InvertAndChangeJumpTarget(
     llvm_unreachable("Cannot handle this case");
   }
 
-  MI.setDesc(TII->get(NewOpcode));
-  MI.getOperand(1).setMBB(NewTarget);
+  MI->setDesc(TII->get(NewOpcode));
+  MI->getOperand(1).setMBB(NewTarget);
 }
 
-bool HexagonCFGOptimizer::isOnFallThroughPath(MachineBasicBlock *MBB) {
-  if (MBB->canFallThrough())
-    return true;
-  for (MachineBasicBlock *PB : MBB->predecessors())
-    if (PB->isLayoutSuccessor(MBB) && PB->canFallThrough())
-      return true;
-  return false;
-}
 
 bool HexagonCFGOptimizer::runOnMachineFunction(MachineFunction &Fn) {
   if (skipFunction(*Fn.getFunction()))
@@ -128,8 +113,8 @@ bool HexagonCFGOptimizer::runOnMachineFunction(MachineFunction &Fn) {
     // Traverse the basic block.
     MachineBasicBlock::iterator MII = MBB->getFirstTerminator();
     if (MII != MBB->end()) {
-      MachineInstr &MI = *MII;
-      int Opc = MI.getOpcode();
+      MachineInstr *MI = MII;
+      int Opc = MI->getOpcode();
       if (IsConditionalBranch(Opc)) {
 
         //
@@ -181,9 +166,9 @@ bool HexagonCFGOptimizer::runOnMachineFunction(MachineFunction &Fn) {
         // The target of the unconditional branch must be JumpAroundTarget.
         // TODO: If not, we should not invert the unconditional branch.
         MachineBasicBlock* CondBranchTarget = nullptr;
-        if (MI.getOpcode() == Hexagon::J2_jumpt ||
-            MI.getOpcode() == Hexagon::J2_jumpf) {
-          CondBranchTarget = MI.getOperand(1).getMBB();
+        if ((MI->getOpcode() == Hexagon::J2_jumpt) ||
+            (MI->getOpcode() == Hexagon::J2_jumpf)) {
+          CondBranchTarget = MI->getOperand(1).getMBB();
         }
 
         if (!LayoutSucc || (CondBranchTarget != JumpAroundTarget)) {
@@ -191,6 +176,7 @@ bool HexagonCFGOptimizer::runOnMachineFunction(MachineFunction &Fn) {
         }
 
         if ((NumSuccs == 2) && LayoutSucc && (LayoutSucc->pred_size() == 1)) {
+
           // Ensure that BB2 has one instruction -- an unconditional jump.
           if ((LayoutSucc->size() == 1) &&
               IsUnconditionalJump(LayoutSucc->front().getOpcode())) {
@@ -219,8 +205,9 @@ bool HexagonCFGOptimizer::runOnMachineFunction(MachineFunction &Fn) {
                 JumpAroundTarget->moveAfter(LayoutSucc);
                 // only move a block if it doesn't have a fall-thru. otherwise
                 // the CFG will be incorrect.
-                if (!isOnFallThroughPath(UncondTarget))
+                if (!UncondTarget->canFallThrough()) {
                   UncondTarget->moveAfter(JumpAroundTarget);
+                }
               }
 
               //

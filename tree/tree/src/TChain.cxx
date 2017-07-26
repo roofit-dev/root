@@ -55,7 +55,7 @@ the trees in the chain.
 #include "TFilePrefetch.h"
 #include "TVirtualMutex.h"
 
-ClassImp(TChain);
+ClassImp(TChain)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor.
@@ -90,7 +90,7 @@ TChain::TChain()
    gROOT->GetListOfDataSets()->Add(this);
 
    // Make sure we are informed if the TFile is deleted.
-   R__LOCKGUARD(gROOTMutex);
+   R__LOCKGUARD2(gROOTMutex);
    gROOT->GetListOfCleanups()->Add(this);
 }
 
@@ -135,7 +135,7 @@ TChain::TChain()
 /// ~~~
 
 TChain::TChain(const char* name, const char* title)
-:TTree(name, title, /*splitlevel*/ 99, nullptr)
+:TTree(name, title)
 , fTreeOffsetLen(100)
 , fNtrees(0)
 , fTreeNumber(-1)
@@ -154,8 +154,10 @@ TChain::TChain(const char* name, const char* title)
    fFiles = new TObjArray(fTreeOffsetLen);
    fStatus = new TList();
    fTreeOffset[0]  = 0;
+   if (gDirectory) gDirectory->Remove(this);
    gROOT->GetListOfSpecials()->Add(this);
    fFile = 0;
+   fDirectory = 0;
 
    // Reset PROOF-related bits
    ResetBit(kProofUptodate);
@@ -165,7 +167,7 @@ TChain::TChain(const char* name, const char* title)
    gROOT->GetListOfDataSets()->Add(this);
 
    // Make sure we are informed if the TFile is deleted.
-   R__LOCKGUARD(gROOTMutex);
+   R__LOCKGUARD2(gROOTMutex);
    gROOT->GetListOfCleanups()->Add(this);
 }
 
@@ -177,7 +179,7 @@ TChain::~TChain()
    bool rootAlive = gROOT && !gROOT->TestBit(TObject::kInvalidObject);
 
    if (rootAlive) {
-      R__LOCKGUARD(gROOTMutex);
+      R__LOCKGUARD2(gROOTMutex);
       gROOT->GetListOfCleanups()->Remove(this);
    }
 
@@ -2815,7 +2817,7 @@ void TChain::Streamer(TBuffer& b)
    if (b.IsReading()) {
       // Remove using the 'old' name.
       {
-         R__LOCKGUARD(gROOTMutex);
+         R__LOCKGUARD2(gROOTMutex);
          gROOT->GetListOfCleanups()->Remove(this);
       }
 
@@ -2839,7 +2841,7 @@ void TChain::Streamer(TBuffer& b)
       }
       // Re-add using the new name.
       {
-         R__LOCKGUARD(gROOTMutex);
+         R__LOCKGUARD2(gROOTMutex);
          gROOT->GetListOfCleanups()->Add(this);
       }
 

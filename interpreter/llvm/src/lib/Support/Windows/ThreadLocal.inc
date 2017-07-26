@@ -20,32 +20,33 @@
 #include "llvm/Support/ThreadLocal.h"
 
 namespace llvm {
+using namespace sys;
 
-sys::ThreadLocalImpl::ThreadLocalImpl() : data() {
+ThreadLocalImpl::ThreadLocalImpl() : data() {
   static_assert(sizeof(DWORD) <= sizeof(data), "size too big");
   DWORD* tls = reinterpret_cast<DWORD*>(&data);
   *tls = TlsAlloc();
   assert(*tls != TLS_OUT_OF_INDEXES);
 }
 
-sys::ThreadLocalImpl::~ThreadLocalImpl() {
+ThreadLocalImpl::~ThreadLocalImpl() {
   DWORD* tls = reinterpret_cast<DWORD*>(&data);
   TlsFree(*tls);
 }
 
-void *sys::ThreadLocalImpl::getInstance() {
+void *ThreadLocalImpl::getInstance() {
   DWORD* tls = reinterpret_cast<DWORD*>(&data);
   return TlsGetValue(*tls);
 }
 
-void sys::ThreadLocalImpl::setInstance(const void* d){
+void ThreadLocalImpl::setInstance(const void* d){
   DWORD* tls = reinterpret_cast<DWORD*>(&data);
   int errorcode = TlsSetValue(*tls, const_cast<void*>(d));
   assert(errorcode != 0);
   (void)errorcode;
 }
 
-void sys::ThreadLocalImpl::removeInstance() {
+void ThreadLocalImpl::removeInstance() {
   setInstance(0);
 }
 

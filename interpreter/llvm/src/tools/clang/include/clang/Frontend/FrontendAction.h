@@ -146,8 +146,6 @@ public:
     return *CurrentASTUnit;
   }
 
-  Module *getCurrentModule() const;
-
   std::unique_ptr<ASTUnit> takeCurrentASTUnit() {
     return std::move(CurrentASTUnit);
   }

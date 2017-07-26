@@ -53,7 +53,6 @@ my %Options = (
   IgnoreErrors => 0,         # Ignore build errors.
   ViewResults => 0,          # View results when the build terminates.
   ExitStatusFoundBugs => 0,  # Exit status reflects whether bugs were found
-  ShowDescription => 0,      # Display the description of the defect in the list
   KeepEmpty => 0,            # Don't remove output directory even with 0 results.
   EnableCheckers => {},
   DisableCheckers => {},
@@ -454,10 +453,6 @@ sub ScanFile {
 
   push @$Index,[ $FName, $BugCategory, $BugType, $BugFile, $BugFunction, $BugLine,
                  $BugPathLength ];
-
-  if ($Options{ShowDescription}) {
-      push @{ $Index->[-1] }, $BugDescription
-  }
 }
 
 ##----------------------------------------------------------------------------##
@@ -751,15 +746,6 @@ print OUT <<ENDTEXT;
   <td>Function/Method</td>
   <td class="Q">Line</td>
   <td class="Q">Path Length</td>
-ENDTEXT
-
-if ($Options{ShowDescription}) {
-print OUT <<ENDTEXT;
-    <td class="Q">Description</td>
-ENDTEXT
-}
-
-print OUT <<ENDTEXT;
   <td class="sorttable_nosort"></td>
   <!-- REPORTBUGCOL -->
 </tr></thead>
@@ -785,10 +771,10 @@ ENDTEXT
 
       print OUT "<tr class=\"bt_$x\">";
       print OUT "<td class=\"DESC\">";
-      print OUT $row->[1]; # $BugCategory
+      print OUT $row->[1];
       print OUT "</td>";
       print OUT "<td class=\"DESC\">";
-      print OUT $row->[2]; # $BugType
+      print OUT $row->[2];
       print OUT "</td>";
 
       # Update the file prefix.
@@ -816,11 +802,11 @@ ENDTEXT
       print OUT "</td>";
 
       print OUT "<td class=\"DESC\">";
-      print OUT $row->[4]; # Function
+      print OUT $row->[4];
       print OUT "</td>";
 
       # Print out the quantities.
-      for my $j ( 5 .. 6 ) { # Line & Path length
+      for my $j ( 5 .. 6 ) {
         print OUT "<td class=\"Q\">$row->[$j]</td>";
       }
 
@@ -1163,10 +1149,6 @@ OPTIONS:
 
    Specify the title used on generated HTML pages. If not specified, a default
    title will be used.
-
- --show-description
-
-   Display the description of defects in the list
 
  -plist
 
@@ -1601,12 +1583,6 @@ sub ProcessArgs {
     if ($arg eq "--status-bugs") {
       shift @$Args;
       $Options{ExitStatusFoundBugs} = 1;
-      next;
-    }
-
-    if ($arg eq "--show-description") {
-      shift @$Args;
-      $Options{ShowDescription} = 1;
       next;
     }
 

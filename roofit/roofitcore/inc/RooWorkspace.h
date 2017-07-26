@@ -130,7 +130,6 @@ public:
 
   Bool_t writeToFile(const char* fileName, Bool_t recreate=kTRUE) ;
 
-  virtual void RecursiveRemove(TObject *obj);
 
   // Tools management
   RooFactoryWSTool& factory() ;

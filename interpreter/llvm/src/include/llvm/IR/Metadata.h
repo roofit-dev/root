@@ -18,31 +18,19 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/PointerUnion.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/iterator_range.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/PointerUnion.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/CBindingWrapping.h"
 #include "llvm/Support/ErrorHandling.h"
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <iterator>
-#include <memory>
-#include <string>
 #include <type_traits>
-#include <utility>
 
 namespace llvm {
 
+class LLVMContext;
 class Module;
 class ModuleSlotTracker;
 
@@ -79,9 +67,8 @@ public:
 protected:
   Metadata(unsigned ID, StorageType Storage)
       : SubclassID(ID), Storage(Storage), SubclassData16(0), SubclassData32(0) {
-    static_assert(sizeof(*this) == 8, "Metadata fields poorly packed");
+    static_assert(sizeof(*this) == 8, "Metdata fields poorly packed");
   }
-
   ~Metadata() = default;
 
   /// \brief Default handling of a changed operand, which asserts.
@@ -133,14 +120,6 @@ public:
                       const Module *M = nullptr) const;
   /// @}
 };
-
-// Create wrappers for C Binding types (see CBindingWrapping.h).
-DEFINE_ISA_CONVERSION_FUNCTIONS(Metadata, LLVMMetadataRef)
-
-// Specialized opaque metadata conversions.
-inline Metadata **unwrap(LLVMMetadataRef *MDs) {
-  return reinterpret_cast<Metadata**>(MDs);
-}
 
 #define HANDLE_METADATA(CLASS) class CLASS;
 #include "llvm/IR/Metadata.def"
@@ -278,12 +257,12 @@ public:
 
 private:
   LLVMContext &Context;
-  uint64_t NextIndex = 0;
+  uint64_t NextIndex;
   SmallDenseMap<void *, std::pair<OwnerTy, uint64_t>, 4> UseMap;
 
 public:
-  ReplaceableMetadataImpl(LLVMContext &Context) : Context(Context) {}
-
+  ReplaceableMetadataImpl(LLVMContext &Context)
+      : Context(Context), NextIndex(0) {}
   ~ReplaceableMetadataImpl() {
     assert(UseMap.empty() && "Cannot destroy in-use replaceable metadata");
   }
@@ -346,7 +325,6 @@ protected:
       : Metadata(ID, Uniqued), ReplaceableMetadataImpl(V->getContext()), V(V) {
     assert(V && "Expected valid value");
   }
-
   ~ValueAsMetadata() = default;
 
 public:
@@ -400,7 +378,6 @@ public:
   static ConstantAsMetadata *get(Constant *C) {
     return ValueAsMetadata::getConstant(C);
   }
-
   static ConstantAsMetadata *getIfExists(Constant *C) {
     return ValueAsMetadata::getConstantIfExists(C);
   }
@@ -426,7 +403,6 @@ public:
   static LocalAsMetadata *get(Value *Local) {
     return ValueAsMetadata::getLocal(Local);
   }
-
   static LocalAsMetadata *getIfExists(Value *Local) {
     return ValueAsMetadata::getLocalIfExists(Local);
   }
@@ -487,7 +463,6 @@ public:
 namespace mdconst {
 
 namespace detail {
-
 template <class T> T &make();
 template <class T, class Result> struct HasDereference {
   typedef char Yes[1];
@@ -509,7 +484,6 @@ template <class V, class M> struct IsValidReference {
   static const bool value = std::is_base_of<Constant, V>::value &&
                             std::is_convertible<M, const Metadata &>::value;
 };
-
 } // end namespace detail
 
 /// \brief Check whether Metadata has a Value.
@@ -594,15 +568,14 @@ dyn_extract_or_null(Y &&MD) {
 class MDString : public Metadata {
   friend class StringMapEntry<MDString>;
 
-  StringMapEntry<MDString> *Entry = nullptr;
-
-  MDString() : Metadata(MDStringKind, Uniqued) {}
-
-public:
   MDString(const MDString &) = delete;
   MDString &operator=(MDString &&) = delete;
   MDString &operator=(const MDString &) = delete;
 
+  StringMapEntry<MDString> *Entry;
+  MDString() : Metadata(MDStringKind, Uniqued), Entry(nullptr) {}
+
+public:
   static MDString *get(LLVMContext &Context, StringRef Str);
   static MDString *get(LLVMContext &Context, const char *Str) {
     return get(Context, Str ? StringRef(Str) : StringRef());
@@ -661,18 +634,15 @@ struct DenseMapInfo<AAMDNodes> {
     return AAMDNodes(DenseMapInfo<MDNode *>::getEmptyKey(),
                      nullptr, nullptr);
   }
-
   static inline AAMDNodes getTombstoneKey() {
     return AAMDNodes(DenseMapInfo<MDNode *>::getTombstoneKey(),
                      nullptr, nullptr);
   }
-
   static unsigned getHashValue(const AAMDNodes &Val) {
     return DenseMapInfo<MDNode *>::getHashValue(Val.TBAA) ^
            DenseMapInfo<MDNode *>::getHashValue(Val.Scope) ^
            DenseMapInfo<MDNode *>::getHashValue(Val.NoAlias);
   }
-
   static bool isEqual(const AAMDNodes &LHS, const AAMDNodes &RHS) {
     return LHS == RHS;
   }
@@ -686,14 +656,15 @@ struct DenseMapInfo<AAMDNodes> {
 ///
 /// In particular, this is used by \a MDNode.
 class MDOperand {
-  Metadata *MD = nullptr;
-
-public:
-  MDOperand() = default;
   MDOperand(MDOperand &&) = delete;
   MDOperand(const MDOperand &) = delete;
   MDOperand &operator=(MDOperand &&) = delete;
   MDOperand &operator=(const MDOperand &) = delete;
+
+  Metadata *MD;
+
+public:
+  MDOperand() : MD(nullptr) {}
   ~MDOperand() { untrack(); }
 
   Metadata *get() const { return MD; }
@@ -720,7 +691,6 @@ private:
         MetadataTracking::track(MD);
     }
   }
-
   void untrack() {
     assert(static_cast<void *>(this) == &MD && "Expected same address");
     if (MD)
@@ -745,6 +715,13 @@ template <> struct simplify_type<const MDOperand> {
 class ContextAndReplaceableUses {
   PointerUnion<LLVMContext *, ReplaceableMetadataImpl *> Ptr;
 
+  ContextAndReplaceableUses() = delete;
+  ContextAndReplaceableUses(ContextAndReplaceableUses &&) = delete;
+  ContextAndReplaceableUses(const ContextAndReplaceableUses &) = delete;
+  ContextAndReplaceableUses &operator=(ContextAndReplaceableUses &&) = delete;
+  ContextAndReplaceableUses &
+  operator=(const ContextAndReplaceableUses &) = delete;
+
 public:
   ContextAndReplaceableUses(LLVMContext &Context) : Ptr(&Context) {}
   ContextAndReplaceableUses(
@@ -752,12 +729,6 @@ public:
       : Ptr(ReplaceableUses.release()) {
     assert(getReplaceableUses() && "Expected non-null replaceable uses");
   }
-  ContextAndReplaceableUses() = delete;
-  ContextAndReplaceableUses(ContextAndReplaceableUses &&) = delete;
-  ContextAndReplaceableUses(const ContextAndReplaceableUses &) = delete;
-  ContextAndReplaceableUses &operator=(ContextAndReplaceableUses &&) = delete;
-  ContextAndReplaceableUses &
-  operator=(const ContextAndReplaceableUses &) = delete;
   ~ContextAndReplaceableUses() { delete getReplaceableUses(); }
 
   operator LLVMContext &() { return getContext(); }
@@ -766,13 +737,11 @@ public:
   bool hasReplaceableUses() const {
     return Ptr.is<ReplaceableMetadataImpl *>();
   }
-
   LLVMContext &getContext() const {
     if (hasReplaceableUses())
       return getReplaceableUses()->getContext();
     return *Ptr.get<LLVMContext *>();
   }
-
   ReplaceableMetadataImpl *getReplaceableUses() const {
     if (hasReplaceableUses())
       return Ptr.get<ReplaceableMetadataImpl *>();
@@ -840,6 +809,10 @@ class MDNode : public Metadata {
   friend class ReplaceableMetadataImpl;
   friend class LLVMContextImpl;
 
+  MDNode(const MDNode &) = delete;
+  void operator=(const MDNode &) = delete;
+  void *operator new(size_t) = delete;
+
   unsigned NumOperands;
   unsigned NumUnresolved;
 
@@ -874,10 +847,6 @@ protected:
   }
 
 public:
-  MDNode(const MDNode &) = delete;
-  void operator=(const MDNode &) = delete;
-  void *operator new(size_t) = delete;
-
   static inline MDTuple *get(LLVMContext &Context, ArrayRef<Metadata *> MDs);
   static inline MDTuple *getIfExists(LLVMContext &Context,
                                      ArrayRef<Metadata *> MDs);
@@ -1033,11 +1002,9 @@ public:
   op_iterator op_begin() const {
     return const_cast<MDNode *>(this)->mutable_begin();
   }
-
   op_iterator op_end() const {
     return const_cast<MDNode *>(this)->mutable_end();
   }
-
   op_range operands() const { return op_range(op_begin(), op_end()); }
 
   const MDOperand &getOperand(unsigned I) const {
@@ -1071,6 +1038,7 @@ public:
   static MDNode *getMostGenericRange(MDNode *A, MDNode *B);
   static MDNode *getMostGenericAliasScope(MDNode *A, MDNode *B);
   static MDNode *getMostGenericAlignmentOrDereferenceable(MDNode *A, MDNode *B);
+
 };
 
 /// \brief Tuple of metadata.
@@ -1086,7 +1054,6 @@ class MDTuple : public MDNode {
       : MDNode(C, MDTupleKind, Storage, Vals) {
     setHash(Hash);
   }
-
   ~MDTuple() { dropAllReferences(); }
 
   void setHash(unsigned Hash) { SubclassData32 = Hash; }
@@ -1107,7 +1074,6 @@ public:
   static MDTuple *get(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
     return getImpl(Context, MDs, Uniqued);
   }
-
   static MDTuple *getIfExists(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
     return getImpl(Context, MDs, Uniqued, /* ShouldCreate */ false);
   }
@@ -1140,15 +1106,12 @@ public:
 MDTuple *MDNode::get(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
   return MDTuple::get(Context, MDs);
 }
-
 MDTuple *MDNode::getIfExists(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
   return MDTuple::getIfExists(Context, MDs);
 }
-
 MDTuple *MDNode::getDistinct(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
   return MDTuple::getDistinct(Context, MDs);
 }
-
 TempMDTuple MDNode::getTemporary(LLVMContext &Context,
                                  ArrayRef<Metadata *> MDs) {
   return MDTuple::getTemporary(Context, MDs);
@@ -1170,20 +1133,16 @@ class TypedMDOperandIterator
 public:
   TypedMDOperandIterator() = default;
   explicit TypedMDOperandIterator(MDNode::op_iterator I) : I(I) {}
-
   T *operator*() const { return cast_or_null<T>(*I); }
-
   TypedMDOperandIterator &operator++() {
     ++I;
     return *this;
   }
-
   TypedMDOperandIterator operator++(int) {
     TypedMDOperandIterator Temp(*this);
     ++I;
     return Temp;
   }
-
   bool operator==(const TypedMDOperandIterator &X) const { return I == X.I; }
   bool operator!=(const TypedMDOperandIterator &X) const { return I != X.I; }
 };
@@ -1254,15 +1213,15 @@ class DistinctMDOperandPlaceholder : public Metadata {
 
   Metadata **Use = nullptr;
 
+  DistinctMDOperandPlaceholder() = delete;
+  DistinctMDOperandPlaceholder(DistinctMDOperandPlaceholder &&) = delete;
+  DistinctMDOperandPlaceholder(const DistinctMDOperandPlaceholder &) = delete;
+
 public:
   explicit DistinctMDOperandPlaceholder(unsigned ID)
       : Metadata(DistinctMDOperandPlaceholderKind, Distinct) {
     SubclassData32 = ID;
   }
-
-  DistinctMDOperandPlaceholder() = delete;
-  DistinctMDOperandPlaceholder(DistinctMDOperandPlaceholder &&) = delete;
-  DistinctMDOperandPlaceholder(const DistinctMDOperandPlaceholder &) = delete;
 
   ~DistinctMDOperandPlaceholder() {
     if (Use)
@@ -1288,11 +1247,13 @@ public:
 ///
 /// TODO: Inherit from Metadata.
 class NamedMDNode : public ilist_node<NamedMDNode> {
+  friend struct ilist_traits<NamedMDNode>;
   friend class LLVMContextImpl;
   friend class Module;
+  NamedMDNode(const NamedMDNode &) = delete;
 
   std::string Name;
-  Module *Parent = nullptr;
+  Module *Parent;
   void *Operands; // SmallVector<TrackingMDRef, 4>
 
   void setParent(Module *M) { Parent = M; }
@@ -1302,35 +1263,30 @@ class NamedMDNode : public ilist_node<NamedMDNode> {
   template<class T1, class T2>
   class op_iterator_impl :
       public std::iterator<std::bidirectional_iterator_tag, T2> {
-    const NamedMDNode *Node = nullptr;
-    unsigned Idx = 0;
-
+    const NamedMDNode *Node;
+    unsigned Idx;
     op_iterator_impl(const NamedMDNode *N, unsigned i) : Node(N), Idx(i) { }
 
     friend class NamedMDNode;
 
   public:
-    op_iterator_impl() = default;
+    op_iterator_impl() : Node(nullptr), Idx(0) { }
 
     bool operator==(const op_iterator_impl &o) const { return Idx == o.Idx; }
     bool operator!=(const op_iterator_impl &o) const { return Idx != o.Idx; }
-
     op_iterator_impl &operator++() {
       ++Idx;
       return *this;
     }
-
     op_iterator_impl operator++(int) {
       op_iterator_impl tmp(*this);
       operator++();
       return tmp;
     }
-
     op_iterator_impl &operator--() {
       --Idx;
       return *this;
     }
-
     op_iterator_impl operator--(int) {
       op_iterator_impl tmp(*this);
       operator--();
@@ -1341,16 +1297,13 @@ class NamedMDNode : public ilist_node<NamedMDNode> {
   };
 
 public:
-  NamedMDNode(const NamedMDNode &) = delete;
-  ~NamedMDNode();
-
   /// \brief Drop all references and remove the node from parent module.
   void eraseFromParent();
 
-  /// Remove all uses and clear node vector.
-  void dropAllReferences() { clearOperands(); }
-  /// Drop all references to this node's operands.
-  void clearOperands();
+  /// \brief Remove all uses and clear node vector.
+  void dropAllReferences();
+
+  ~NamedMDNode();
 
   /// \brief Get the module that holds this named metadata collection.
   inline Module *getParent() { return Parent; }
@@ -1385,6 +1338,6 @@ public:
   }
 };
 
-} // end namespace llvm
+} // end llvm namespace
 
 #endif // LLVM_IR_METADATA_H

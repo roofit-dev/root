@@ -54,7 +54,7 @@ Bool_t TF1::fgRejectPoint = kFALSE;
 std::atomic<Bool_t> TF1::fgAddToGlobList(kTRUE);
 static Double_t gErrorTF1 = 0;
 
-ClassImp(TF1);
+ClassImp(TF1)
 
 // class wrapping evaluation of TF1(x) - y0
 class GFunc {
@@ -400,7 +400,13 @@ TF1 *TF1::fgCurrent = 0;
 
 TF1::TF1():
    TNamed(), TAttLine(), TAttFill(), TAttMarker(),
-   fXmin(0), fXmax(0), fNpar(0), fNdim(0), fType(EFType::kFormula)
+   fXmin(0), fXmax(0), fNpar(0), fNdim(0),
+   fNpx(100), fType(0),
+   fNpfits(0), fNDF(0), fChisquare(0),
+   fMinimum(-1111), fMaximum(-1111),
+   fParent(0), fHistogram(0),
+   fMethodCall(0), fNormalized(false), fNormIntegral(0),
+   fFormula(0), fParams(0)
 {
    SetFillStyle(0);
 }
@@ -421,7 +427,13 @@ TF1::TF1():
 /// titles for the X and Y axis respectively.
 
 TF1::TF1(const char *name, const char *formula, Double_t xmin, Double_t xmax, EAddToList addToGlobList) :
-   TNamed(name, formula), TAttLine(), TAttFill(), TAttMarker(), fType(EFType::kFormula)
+   TNamed(name, formula), TAttLine(), TAttFill(), TAttMarker(),
+   fNpx(100), fType(0),
+   fNpfits(0), fNDF(0), fChisquare(0),
+   fMinimum(-1111), fMaximum(-1111),
+   fParent(0), fHistogram(0),
+   fMethodCall(0), fNormalized(false), fNormIntegral(0),
+   fFormula(0), fParams(0)
 {
    if (xmin < xmax) {
       fXmin      = xmin;
@@ -462,7 +474,19 @@ TF1::TF1(const char *name, const char *formula, Double_t xmin, Double_t xmax, EA
 /// WARNING! A function created with this constructor cannot be Cloned.
 
 TF1::TF1(const char *name, Double_t xmin, Double_t xmax, Int_t npar, Int_t ndim, EAddToList addToGlobList) :
-   TF1(EFType::kInterpreted, name, xmin, xmax, npar, ndim, addToGlobList, new TF1Parameters(npar))
+   TNamed(name, name), TAttLine(), TAttFill(), TAttMarker(),
+   fXmin(xmin), fXmax(xmax),
+   fNpar(npar), fNdim(ndim),
+   fNpx(100), fType(2),
+   fNpfits(0), fNDF(0), fChisquare(0),
+   fMinimum(-1111), fMaximum(-1111),
+   fParErrors(std::vector<Double_t>(npar)),
+   fParMin(std::vector<Double_t>(npar)),
+   fParMax(std::vector<Double_t>(npar)),
+   fParent(0), fHistogram(0),
+   fMethodCall(0), fNormalized(false), fNormIntegral(0),
+   fFormula(0),
+   fParams(new TF1Parameters(npar))
 {
    if (fName == "*") {
       Info("TF1", "TF1 has name * - it is not well defined");
@@ -479,6 +503,8 @@ TF1::TF1(const char *name, Double_t xmin, Double_t xmax, Int_t npar, Int_t ndim,
       Error("TF1", "No function found with the signature %s(Double_t*,Double_t*)", name);
       return;
    }
+
+   DoInitialize(addToGlobList);
 }
 
 
@@ -496,8 +522,25 @@ TF1::TF1(const char *name, Double_t xmin, Double_t xmax, Int_t npar, Int_t ndim,
 /// WARNING! A function created with this constructor cannot be Cloned.
 
 TF1::TF1(const char *name, Double_t (*fcn)(Double_t *, Double_t *), Double_t xmin, Double_t xmax, Int_t npar, Int_t ndim, EAddToList addToGlobList) :
-   TF1(EFType::kPtrScalarFreeFcn, name, xmin, xmax, npar, ndim, addToGlobList, new TF1Parameters(npar), new TF1FunctorPointerImpl<double>(ROOT::Math::ParamFunctor(fcn)))
-{}
+   TNamed(name, name), TAttLine(), TAttFill(), TAttMarker(),
+   fXmin(xmin), fXmax(xmax),
+   fNpar(npar), fNdim(ndim),
+   fNpx(100), fType(1),
+   fNpfits(0), fNDF(0), fChisquare(0),
+   fMinimum(-1111), fMaximum(-1111),
+   fParErrors(std::vector<Double_t>(npar)),
+   fParMin(std::vector<Double_t>(npar)),
+   fParMax(std::vector<Double_t>(npar)),
+   fParent(0), fHistogram(0),
+   fMethodCall(0),
+   fNormalized(false), fNormIntegral(0),
+   fFunctor(new TF1FunctorPointerImpl<double>(ROOT::Math::ParamFunctor(fcn))),
+   fFormula(0),
+   fParams(new TF1Parameters(npar))
+
+{
+   DoInitialize(addToGlobList);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor using a pointer to real function.
@@ -513,8 +556,25 @@ TF1::TF1(const char *name, Double_t (*fcn)(Double_t *, Double_t *), Double_t xmi
 /// WARNING! A function created with this constructor cannot be Cloned.
 
 TF1::TF1(const char *name, Double_t (*fcn)(const Double_t *, const Double_t *), Double_t xmin, Double_t xmax, Int_t npar, Int_t ndim, EAddToList addToGlobList) :
-   TF1(EFType::kPtrScalarFreeFcn, name, xmin, xmax, npar, ndim, addToGlobList, new TF1Parameters(npar), new TF1FunctorPointerImpl<double>(ROOT::Math::ParamFunctor(fcn)))
-{}
+   TNamed(name, name), TAttLine(), TAttFill(), TAttMarker(),
+   fXmin(xmin), fXmax(xmax),
+   fNpar(npar), fNdim(ndim),
+   fNpx(100), fType(1),
+   fNpfits(0), fNDF(0), fChisquare(0),
+   fMinimum(-1111), fMaximum(-1111),
+   fParErrors(std::vector<Double_t>(npar)),
+   fParMin(std::vector<Double_t>(npar)),
+   fParMax(std::vector<Double_t>(npar)),
+   fParent(0), fHistogram(0),
+   fMethodCall(0),
+   fNormalized(false), fNormIntegral(0),
+   fFunctor(new TF1FunctorPointerImpl<double>(ROOT::Math::ParamFunctor(fcn))),
+   fFormula(0),
+   fParams(new TF1Parameters(npar))
+{
+   DoInitialize(addToGlobList);
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor using the Functor class.
@@ -528,8 +588,25 @@ TF1::TF1(const char *name, Double_t (*fcn)(const Double_t *, const Double_t *), 
 /// WARNING! A function created with this constructor cannot be Cloned.
 
 TF1::TF1(const char *name, ROOT::Math::ParamFunctor f, Double_t xmin, Double_t xmax, Int_t npar, Int_t ndim, EAddToList addToGlobList) :
-   TF1(EFType::kPtrScalarFreeFcn, name, xmin, xmax, npar, ndim, addToGlobList, new TF1Parameters(npar), new TF1FunctorPointerImpl<double>(ROOT::Math::ParamFunctor(f)))
-{}
+   TNamed(name, name), TAttLine(), TAttFill(), TAttMarker(),
+   fXmin(xmin), fXmax(xmax),
+   fNpar(npar), fNdim(ndim),
+   fNpx(100), fType(1),
+   fNpfits(0), fNDF(0), fChisquare(0),
+   fMinimum(-1111), fMaximum(-1111),
+   fParErrors(std::vector<Double_t>(npar)),
+   fParMin(std::vector<Double_t>(npar)),
+   fParMax(std::vector<Double_t>(npar)),
+   fParent(0), fHistogram(0),
+   fMethodCall(0),
+   fNormalized(false), fNormIntegral(0),
+   fFunctor(new TF1FunctorPointerImpl<double>(ROOT::Math::ParamFunctor(f))),
+   fFormula(0),
+   fParams(new TF1Parameters(npar))
+
+{
+   DoInitialize(addToGlobList);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Common initialization of the TF1. Add to the global list and
@@ -546,7 +623,7 @@ void TF1::DoInitialize(EAddToList addToGlobalList)
                  || addToGlobalList == EAddToList::kAdd);
    if (doAdd && gROOT) {
       SetBit(kNotGlobal, kFALSE);
-      R__LOCKGUARD(gROOTMutex);
+      R__LOCKGUARD2(gROOTMutex);
       // Store formula in linked list of formula in ROOT
       TF1 *f1old = (TF1 *)gROOT->GetListOfFunctions()->FindObject(fName);
       if (f1old) {
@@ -591,20 +668,20 @@ Bool_t TF1::AddToGlobalList(Bool_t on)
    bool prevStatus = !TestBit(kNotGlobal);
    if (on)  {
       if (prevStatus) {
-         R__LOCKGUARD(gROOTMutex);
+         R__LOCKGUARD2(gROOTMutex);
          assert(gROOT->GetListOfFunctions()->FindObject(this) != nullptr);
          return on; // do nothing
       }
       // do I need to delete previous one with the same name ???
       //TF1 * old = dynamic_cast<TF1*>( gROOT->GetListOfFunctions()->FindObject(GetName()) );
       //if (old) { gROOT->GetListOfFunctions()->Remove(old); old->SetBit(kNotGlobal, kTRUE); }
-      R__LOCKGUARD(gROOTMutex);
+      R__LOCKGUARD2(gROOTMutex);
       gROOT->GetListOfFunctions()->Add(this);
       SetBit(kNotGlobal, kFALSE);
    } else if (prevStatus) {
       // if previous status was on and now is off we need to remove the function
       SetBit(kNotGlobal, kTRUE);
-      R__LOCKGUARD(gROOTMutex);
+      R__LOCKGUARD2(gROOTMutex);
       TF1 *old = dynamic_cast<TF1 *>(gROOT->GetListOfFunctions()->FindObject(GetName()));
       if (!old) {
          Warning("AddToGlobalList", "Function is supposed to be in the global list but it is not present");
@@ -638,7 +715,7 @@ TF1::~TF1()
 
    // this was before in TFormula destructor
    {
-      R__LOCKGUARD(gROOTMutex);
+      R__LOCKGUARD2(gROOTMutex);
       if (gROOT) gROOT->GetListOfFunctions()->Remove(this);
    }
 
@@ -653,7 +730,14 @@ TF1::~TF1()
 
 TF1::TF1(const TF1 &f1) :
    TNamed(f1), TAttLine(f1), TAttFill(f1), TAttMarker(f1),
-   fXmin(0), fXmax(0), fNpar(0), fNdim(0), fType(EFType::kFormula)
+   fXmin(0), fXmax(0), fNpar(0), fNdim(0),
+   fNpx(100), fType(0),
+   fNpfits(0), fNDF(0), fChisquare(0),
+   fMinimum(-1111), fMaximum(-1111),
+   fParent(0), fHistogram(0),
+   fMethodCall(0),
+   fNormalized(false), fNormIntegral(0),
+   fFormula(0), fParams(0)
 {
    ((TF1 &)f1).Copy(*this);
 }
@@ -702,6 +786,7 @@ void TF1::Copy(TObject &obj) const
    ((TF1 &)obj).fNdim = fNdim;
    ((TF1 &)obj).fType = fType;
    ((TF1 &)obj).fFunctor   = fFunctor;
+   ((TF1 &)obj).fFunctp   = fFunctp;
    ((TF1 &)obj).fChisquare = fChisquare;
    ((TF1 &)obj).fNpfits  = fNpfits;
    ((TF1 &)obj).fNDF     = fNDF;
@@ -2202,7 +2287,7 @@ void TF1::InitArgs(const Double_t *x, const Double_t *params)
 void TF1::InitStandardFunctions()
 {
    TF1 *f1;
-   R__LOCKGUARD(gROOTMutex);
+   R__LOCKGUARD2(gROOTMutex);
    if (!gROOT->GetListOfFunctions()->FindObject("gaus")) {
       f1 = new TF1("gaus", "gaus", -1, 1);
       f1->SetParameters(1, 0, 1);
@@ -2605,7 +2690,7 @@ void TF1::Print(Option_t *option) const
          if (fFunctor)
             printf("Compiled based function: %s  based on a functor object.  Ndim = %d, Npar = %d\n", GetName(), GetNpar(), GetNdim());
          else {
-            printf("Function based on a list of points from a compiled based function: %s.  Ndim = %d, Npar = %d, Npx = %zu\n", GetName(), GetNpar(), GetNdim(), fSave.size());
+            printf("Function based on a list of points from a compiled based function: %s.  Ndim = %d, Npar = %d, Npx = %d\n", GetName(), GetNpar(), GetNdim(), int(fSave.size()));
             if (fSave.empty())
                Warning("Print", "Function %s is based on a list of points but list is empty", GetName());
          }
@@ -3264,7 +3349,7 @@ void TF1::Streamer(TBuffer &b)
          // need to register the objects
          b.ReadClassBuffer(TF1::Class(), this, v, R__s, R__c);
          if (!TestBit(kNotGlobal)) {
-            R__LOCKGUARD(gROOTMutex);
+            R__LOCKGUARD2(gROOTMutex);
             gROOT->GetListOfFunctions()->Add(this);
          }
          return;
@@ -3299,7 +3384,7 @@ void TF1::Streamer(TBuffer &b)
          SetParameters(fold.GetParameters());
          // copy the other data members
          fNpx = fold.fNpx;
-         fType = (EFType) fold.fType;
+         fType = fold.fType;
          fNpfits = fold.fNpfits;
          fNDF = fold.fNDF;
          fChisquare = fold.fChisquare;

@@ -630,8 +630,8 @@ CanQual<T> CanQual<T>::CreateUnsafe(QualType Other) {
 template<typename T>
 template<typename U>
 CanProxy<U> CanQual<T>::getAs() const {
-  static_assert(!TypeIsArrayType<T>::value,
-                "ArrayType cannot be used with getAs!");
+  ArrayType_cannot_be_used_with_getAs<U> at;
+  (void)at;
 
   if (Stored.isNull())
     return CanProxy<U>();
@@ -645,8 +645,8 @@ CanProxy<U> CanQual<T>::getAs() const {
 template<typename T>
 template<typename U>
 CanProxy<U> CanQual<T>::castAs() const {
-  static_assert(!TypeIsArrayType<U>::value,
-                "ArrayType cannot be used with castAs!");
+  ArrayType_cannot_be_used_with_getAs<U> at;
+  (void)at;
 
   assert(!Stored.isNull() && isa<U>(Stored.getTypePtr()));
   return CanQual<U>::CreateUnsafe(Stored);

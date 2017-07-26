@@ -82,12 +82,11 @@ namespace clang {
   /// \brief Structure that packs information about the type specifiers that
   /// were written in a particular type specifier sequence.
   struct WrittenBuiltinSpecs {
-    static_assert(TST_error < 1 << 6, "Type bitfield not wide enough for TST");
-    /*DeclSpec::TST*/ unsigned Type  : 6;
+    /*DeclSpec::TST*/ unsigned Type  : 5;
     /*DeclSpec::TSS*/ unsigned Sign  : 2;
     /*DeclSpec::TSW*/ unsigned Width : 2;
-    unsigned ModeAttr : 1;
-  };
+    bool ModeAttr : 1;
+  };  
 
   /// \brief A C++ access specifier (public, private, protected), plus the
   /// special value "none" which means different things in different contexts.
@@ -238,7 +237,6 @@ namespace clang {
     CC_X86Pascal,   // __attribute__((pascal))
     CC_X86_64Win64, // __attribute__((ms_abi))
     CC_X86_64SysV,  // __attribute__((sysv_abi))
-    CC_X86RegCall, // __attribute__((regcall))
     CC_AAPCS,       // __attribute__((pcs("aapcs")))
     CC_AAPCS_VFP,   // __attribute__((pcs("aapcs-vfp")))
     CC_IntelOclBicc, // __attribute__((intel_ocl_bicc))
@@ -256,7 +254,6 @@ namespace clang {
     case CC_X86StdCall:
     case CC_X86FastCall:
     case CC_X86ThisCall:
-    case CC_X86RegCall:
     case CC_X86Pascal:
     case CC_X86VectorCall:
     case CC_SpirFunction:

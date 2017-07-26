@@ -10,8 +10,6 @@
 #ifndef LLVM_CLANG_DRIVER_OPTIONS_H
 #define LLVM_CLANG_DRIVER_OPTIONS_H
 
-#include <memory>
-
 namespace llvm {
 namespace opt {
 class OptTable;
@@ -33,8 +31,7 @@ enum ClangFlags {
   CLOption = (1 << 9),
   CC1Option = (1 << 10),
   CC1AsOption = (1 << 11),
-  NoDriverOption = (1 << 12),
-  Ignored = (1 << 13)
+  NoDriverOption = (1 << 12)
 };
 
 enum ID {
@@ -47,7 +44,7 @@ enum ID {
   };
 }
 
-std::unique_ptr<llvm::opt::OptTable> createDriverOptTable();
+llvm::opt::OptTable *createDriverOptTable();
 }
 }
 

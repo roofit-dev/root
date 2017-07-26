@@ -1,4 +1,4 @@
-//===--- RDFCopy.h ----------------------------------------------*- C++ -*-===//
+//===--- RDFCopy.h --------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,34 +7,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_HEXAGON_RDFCOPY_H
-#define LLVM_LIB_TARGET_HEXAGON_RDFCOPY_H
+#ifndef RDF_COPY_H
+#define RDF_COPY_H
 
 #include "RDFGraph.h"
-#include "RDFLiveness.h"
-#include "llvm/CodeGen/MachineFunction.h"
-
 #include <map>
 #include <vector>
 
 namespace llvm {
-
   class MachineBasicBlock;
   class MachineDominatorTree;
   class MachineInstr;
 
 namespace rdf {
-
   struct CopyPropagation {
     CopyPropagation(DataFlowGraph &dfg) : MDT(dfg.getDT()), DFG(dfg),
-        L(dfg.getMF().getRegInfo(), dfg), Trace(false) {}
-
-    virtual ~CopyPropagation() = default;
+        Trace(false) {}
+    virtual ~CopyPropagation() {}
 
     bool run();
     void trace(bool On) { Trace = On; }
     bool trace() const { return Trace; }
-    DataFlowGraph &getDFG() { return DFG; }
 
     typedef std::map<RegisterRef, RegisterRef> EqualityMap;
     virtual bool interpretAsCopy(const MachineInstr *MI, EqualityMap &EM);
@@ -42,20 +35,20 @@ namespace rdf {
   private:
     const MachineDominatorTree &MDT;
     DataFlowGraph &DFG;
-    Liveness L;
+    DataFlowGraph::DefStackMap DefM;
     bool Trace;
 
+    // map: register -> (map: stmt -> reaching def)
+    std::map<RegisterRef,std::map<NodeId,NodeId>> RDefMap;
     // map: statement -> (map: dst reg -> src reg)
     std::map<NodeId, EqualityMap> CopyMap;
     std::vector<NodeId> Copies;
 
     void recordCopy(NodeAddr<StmtNode*> SA, EqualityMap &EM);
+    void updateMap(NodeAddr<InstrNode*> IA);
     bool scanBlock(MachineBasicBlock *B);
-    NodeId getLocalReachingDef(RegisterRef RefRR, NodeAddr<InstrNode*> IA);
   };
+} // namespace rdf
+} // namespace llvm
 
-} // end namespace rdf
-
-} // end namespace llvm
-
-#endif // LLVM_LIB_TARGET_HEXAGON_RDFCOPY_H
+#endif

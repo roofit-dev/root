@@ -101,11 +101,9 @@ public:
   };
 
   static char ID;
-  AArch64PromoteConstant() : ModulePass(ID) {
-    initializeAArch64PromoteConstantPass(*PassRegistry::getPassRegistry());
-  }
+  AArch64PromoteConstant() : ModulePass(ID) {}
 
-  StringRef getPassName() const override { return "AArch64 Promote Constant"; }
+  const char *getPassName() const override { return "AArch64 Promote Constant"; }
 
   /// Iterate over the functions and promote the interesting constants into
   /// global variables with module scope.
@@ -215,6 +213,10 @@ private:
 } // end anonymous namespace
 
 char AArch64PromoteConstant::ID = 0;
+
+namespace llvm {
+void initializeAArch64PromoteConstantPass(PassRegistry &);
+}
 
 INITIALIZE_PASS_BEGIN(AArch64PromoteConstant, "aarch64-promote-const",
                       "AArch64 Promote Constant Pass", false, false)

@@ -14,10 +14,7 @@
 #ifndef LLVM_ADT_IMMUTABLEMAP_H
 #define LLVM_ADT_IMMUTABLEMAP_H
 
-#include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/ImmutableSet.h"
-#include "llvm/Support/Allocator.h"
-#include <utility>
 
 namespace llvm {
 
@@ -59,7 +56,7 @@ struct ImutKeyValueInfo {
 };
 
 template <typename KeyT, typename ValT,
-          typename ValInfo = ImutKeyValueInfo<KeyT,ValT>>
+          typename ValInfo = ImutKeyValueInfo<KeyT,ValT> >
 class ImmutableMap {
 public:
   typedef typename ValInfo::value_type      value_type;
@@ -109,9 +106,6 @@ public:
     Factory(BumpPtrAllocator &Alloc, bool canonicalize = true)
         : F(Alloc), Canonicalize(canonicalize) {}
 
-    Factory(const Factory &) = delete;
-    Factory &operator=(const Factory &) = delete;
-
     ImmutableMap getEmptyMap() { return ImmutableMap(F.getEmptyTree()); }
 
     ImmutableMap add(ImmutableMap Old, key_type_ref K, data_type_ref D) {
@@ -127,6 +121,10 @@ public:
     typename TreeTy::Factory *getTreeFactory() const {
       return const_cast<typename TreeTy::Factory *>(&F);
     }
+
+  private:
+    Factory(const Factory& RHS) = delete;
+    void operator=(const Factory& RHS) = delete;
   };
 
   bool contains(key_type_ref K) const {
@@ -205,10 +203,9 @@ public:
   //===--------------------------------------------------===//
 
   class iterator : public ImutAVLValueIterator<ImmutableMap> {
-    friend class ImmutableMap;
-
     iterator() = default;
     explicit iterator(TreeTy *Tree) : iterator::ImutAVLValueIterator(Tree) {}
+    friend class ImmutableMap;
 
   public:
     key_type_ref getKey() const { return (*this)->first; }
@@ -251,7 +248,7 @@ public:
 
 // NOTE: This will possibly become the new implementation of ImmutableMap some day.
 template <typename KeyT, typename ValT,
-typename ValInfo = ImutKeyValueInfo<KeyT,ValT>>
+typename ValInfo = ImutKeyValueInfo<KeyT,ValT> >
 class ImmutableMapRef {
 public:
   typedef typename ValInfo::value_type      value_type;
@@ -365,10 +362,9 @@ public:
   //===--------------------------------------------------===//
 
   class iterator : public ImutAVLValueIterator<ImmutableMapRef> {
-    friend class ImmutableMapRef;
-
     iterator() = default;
     explicit iterator(TreeTy *Tree) : iterator::ImutAVLValueIterator(Tree) {}
+    friend class ImmutableMapRef;
 
   public:
     key_type_ref getKey() const { return (*this)->first; }

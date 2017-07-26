@@ -1,4 +1,4 @@
-//===- ScheduleDAGMutation.h - MachineInstr Scheduling ----------*- C++ -*-===//
+//==- ScheduleDAGMutation.h - MachineInstr Scheduling ------------*- C++ -*-==//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -16,19 +16,16 @@
 #define LLVM_CODEGEN_SCHEDULEDAGMUTATION_H
 
 namespace llvm {
+  class ScheduleDAGInstrs;
 
-class ScheduleDAGInstrs;
+  /// Mutate the DAG as a postpass after normal DAG building.
+  class ScheduleDAGMutation {
+    virtual void anchor();
+  public:
+    virtual ~ScheduleDAGMutation() {}
 
-/// Mutate the DAG as a postpass after normal DAG building.
-class ScheduleDAGMutation {
-  virtual void anchor();
+    virtual void apply(ScheduleDAGInstrs *DAG) = 0;
+  };
+}
 
-public:
-  virtual ~ScheduleDAGMutation() = default;
-
-  virtual void apply(ScheduleDAGInstrs *DAG) = 0;
-};
-
-} // end namespace llvm
-
-#endif // LLVM_CODEGEN_SCHEDULEDAGMUTATION_H
+#endif

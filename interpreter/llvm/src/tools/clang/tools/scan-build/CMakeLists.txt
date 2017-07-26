@@ -4,11 +4,8 @@ include(GNUInstallDirs)
 
 if (WIN32 AND NOT CYGWIN)
   set(BinFiles
-        scan-build
         scan-build.bat)
   set(LibexecFiles
-        ccc-analyzer
-        c++-analyzer
         ccc-analyzer.bat
         c++-analyzer.bat)
 else()

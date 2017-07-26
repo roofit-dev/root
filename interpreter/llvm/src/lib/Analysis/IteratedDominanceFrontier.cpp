@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Compute iterated dominance frontiers using a linear time algorithm.
+/// \brief Compute iterated dominance frontiers using a linear time algorithm.
 //
 //===----------------------------------------------------------------------===//
 
@@ -64,7 +64,10 @@ void IDFCalculator<NodeTy>::calculate(
       BasicBlock *BB = Node->getBlock();
       // Succ is the successor in the direction we are calculating IDF, so it is
       // successor for IDF, and predecessor for Reverse IDF.
-      for (auto *Succ : children<NodeTy>(BB)) {
+      for (auto SuccIter = GraphTraits<NodeTy>::child_begin(BB),
+                End = GraphTraits<NodeTy>::child_end(BB);
+           SuccIter != End; ++SuccIter) {
+        BasicBlock *Succ = *SuccIter;
         DomTreeNode *SuccNode = DT.getNode(Succ);
 
         // Quickly skip all CFG edges that are also dominator tree edges instead

@@ -89,10 +89,3 @@ bool R600RegisterInfo::isPhysRegLiveAcrossClauses(unsigned Reg) const {
     return true;
   }
 }
-
-void R600RegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
-                                           int SPAdj,
-                                           unsigned FIOperandNum,
-                                           RegScavenger *RS) const {
-  llvm_unreachable("Subroutines not supported yet");
-}

@@ -20,6 +20,7 @@
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Sema/Overload.h"
 #include "clang/Sema/Ownership.h"
+#include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/SmallVector.h"
 #include <cassert>
 
@@ -70,9 +71,6 @@ public:
     /// \brief The entity being initialized is a field of block descriptor for
     /// the copied-in c++ object.
     EK_BlockElement,
-    /// The entity being initialized is a field of block descriptor for the
-    /// copied-in lambda object that's used in the lambda to block conversion.
-    EK_LambdaToBlockConversionBlockElement,
     /// \brief The entity being initialized is the real or imaginary part of a
     /// complex number.
     EK_ComplexElement,
@@ -87,10 +85,7 @@ public:
     EK_RelatedResult,
     /// \brief The entity being initialized is a function parameter; function
     /// is member of group of audited CF APIs.
-    EK_Parameter_CF_Audited,
-    /// \brief The entity being initialized is a structured binding of a
-    /// decomposition declaration.
-    EK_Binding,
+    EK_Parameter_CF_Audited
 
     // Note: err_init_conversion_failed in DiagnosticSemaKinds.td uses this
     // enum as an index for its first %select.  When modifying this list,
@@ -123,16 +118,6 @@ private:
     bool NRVO;
   };
 
-  struct VD {
-    /// \brief The VarDecl, FieldDecl, or BindingDecl being initialized.
-    ValueDecl *VariableOrMember;
-
-    /// \brief When Kind == EK_Member, whether this is an implicit member
-    /// initialization in a copy or move constructor. These can perform array
-    /// copies.
-    bool IsImplicitFieldInit;
-  };
-
   struct C {
     /// \brief The name of the variable being captured by an EK_LambdaCapture.
     IdentifierInfo *VarID;
@@ -142,8 +127,9 @@ private:
   };
 
   union {
-    /// \brief When Kind == EK_Variable, EK_Member or EK_Binding, the variable.
-    VD Variable;
+    /// \brief When Kind == EK_Variable, or EK_Member, the VarDecl or
+    /// FieldDecl, respectively.
+    DeclaratorDecl *VariableOrMember;
     
     /// \brief When Kind == EK_RelatedResult, the ObjectiveC method where
     /// result type was implicitly changed to accommodate ARC semantics.
@@ -175,9 +161,9 @@ private:
   InitializedEntity() : ManglingNumber(0) {}
 
   /// \brief Create the initialization entity for a variable.
-  InitializedEntity(VarDecl *Var, EntityKind EK = EK_Variable)
-    : Kind(EK), Parent(nullptr), Type(Var->getType()),
-      ManglingNumber(0), Variable{Var, false} { }
+  InitializedEntity(VarDecl *Var)
+    : Kind(EK_Variable), Parent(nullptr), Type(Var->getType()),
+      ManglingNumber(0), VariableOrMember(Var) { }
   
   /// \brief Create the initialization entity for the result of a
   /// function, throwing an object, performing an explicit cast, or
@@ -191,11 +177,9 @@ private:
   }
   
   /// \brief Create the initialization entity for a member subobject.
-  InitializedEntity(FieldDecl *Member, const InitializedEntity *Parent,
-                    bool Implicit) 
+  InitializedEntity(FieldDecl *Member, const InitializedEntity *Parent) 
     : Kind(EK_Member), Parent(Parent), Type(Member->getType()),
-      ManglingNumber(0), Variable{Member, Implicit} {
-  }
+      ManglingNumber(0), VariableOrMember(Member) { }
   
   /// \brief Create the initialization entity for an array element.
   InitializedEntity(ASTContext &Context, unsigned Index, 
@@ -218,14 +202,14 @@ public:
 
   /// \brief Create the initialization entity for a parameter.
   static InitializedEntity InitializeParameter(ASTContext &Context,
-                                               const ParmVarDecl *Parm) {
+                                               ParmVarDecl *Parm) {
     return InitializeParameter(Context, Parm, Parm->getType());
   }
 
   /// \brief Create the initialization entity for a parameter, but use
   /// another type.
   static InitializedEntity InitializeParameter(ASTContext &Context,
-                                               const ParmVarDecl *Parm,
+                                               ParmVarDecl *Parm,
                                                QualType Type) {
     bool Consumed = (Context.getLangOpts().ObjCAutoRefCount &&
                      Parm->hasAttr<NSConsumedAttr>());
@@ -263,13 +247,7 @@ public:
                                            QualType Type, bool NRVO) {
     return InitializedEntity(EK_BlockElement, BlockVarLoc, Type, NRVO);
   }
-
-  static InitializedEntity InitializeLambdaToBlock(SourceLocation BlockVarLoc,
-                                                   QualType Type, bool NRVO) {
-    return InitializedEntity(EK_LambdaToBlockConversionBlockElement,
-                             BlockVarLoc, Type, NRVO);
-  }
-
+  
   /// \brief Create the initialization entity for an exception object.
   static InitializedEntity InitializeException(SourceLocation ThrowLoc,
                                                QualType Type, bool NRVO) {
@@ -283,18 +261,15 @@ public:
   
   /// \brief Create the initialization entity for a temporary.
   static InitializedEntity InitializeTemporary(QualType Type) {
-    return InitializeTemporary(nullptr, Type);
+    InitializedEntity Result(EK_Temporary, SourceLocation(), Type);
+    Result.TypeInfo = nullptr;
+    return Result;
   }
 
   /// \brief Create the initialization entity for a temporary.
   static InitializedEntity InitializeTemporary(TypeSourceInfo *TypeInfo) {
-    return InitializeTemporary(TypeInfo, TypeInfo->getType());
-  }
-  
-  /// \brief Create the initialization entity for a temporary.
-  static InitializedEntity InitializeTemporary(TypeSourceInfo *TypeInfo,
-                                               QualType Type) {
-    InitializedEntity Result(EK_Temporary, SourceLocation(), Type);
+    InitializedEntity Result(EK_Temporary, SourceLocation(), 
+                             TypeInfo->getType());
     Result.TypeInfo = TypeInfo;
     return Result;
   }
@@ -322,17 +297,15 @@ public:
   /// \brief Create the initialization entity for a member subobject.
   static InitializedEntity
   InitializeMember(FieldDecl *Member,
-                   const InitializedEntity *Parent = nullptr,
-                   bool Implicit = false) {
-    return InitializedEntity(Member, Parent, Implicit);
+                   const InitializedEntity *Parent = nullptr) {
+    return InitializedEntity(Member, Parent);
   }
   
   /// \brief Create the initialization entity for a member subobject.
   static InitializedEntity
   InitializeMember(IndirectFieldDecl *Member,
-                   const InitializedEntity *Parent = nullptr,
-                   bool Implicit = false) {
-    return InitializedEntity(Member->getAnonField(), Parent, Implicit);
+                   const InitializedEntity *Parent = nullptr) {
+    return InitializedEntity(Member->getAnonField(), Parent);
   }
 
   /// \brief Create the initialization entity for an array element.
@@ -340,11 +313,6 @@ public:
                                              unsigned Index, 
                                              const InitializedEntity &Parent) {
     return InitializedEntity(Context, Index, Parent);
-  }
-
-  /// \brief Create the initialization entity for a structured binding.
-  static InitializedEntity InitializeBinding(VarDecl *Binding) {
-    return InitializedEntity(Binding, EK_Binding);
   }
 
   /// \brief Create the initialization entity for a lambda capture.
@@ -388,7 +356,7 @@ public:
 
   /// \brief Retrieve the variable, parameter, or field being
   /// initialized.
-  ValueDecl *getDecl() const;
+  DeclaratorDecl *getDecl() const;
   
   /// \brief Retrieve the ObjectiveC method being initialized.
   ObjCMethodDecl *getMethodDecl() const { return MethodDecl; }
@@ -418,18 +386,6 @@ public:
   bool isInheritedVirtualBase() const {
     assert(getKind() == EK_Base && "Not a base specifier");
     return Base & 0x1;
-  }
-
-  /// \brief Determine whether this is an array new with an unknown bound.
-  bool isVariableLengthArrayNew() const {
-    return getKind() == EK_New && dyn_cast_or_null<IncompleteArrayType>(
-                                      getType()->getAsArrayTypeUnsafe());
-  }
-
-  /// \brief Is this the implicit initialization of a member of a class from
-  /// a defaulted constructor?
-  bool isImplicitMemberInitializer() const {
-    return getKind() == EK_Member && Variable.IsImplicitFieldInit;
   }
 
   /// \brief Determine the location of the 'return' keyword when initializing
@@ -591,16 +547,6 @@ public:
     return InitializationKind(IK_Value, isImplicit ? IC_Implicit : IC_Normal,
                               InitLoc, LParenLoc, RParenLoc);
   }
-
-  /// \brief Create an initialization from an initializer (which, for direct
-  /// initialization from a parenthesized list, will be a ParenListExpr).
-  static InitializationKind CreateForInit(SourceLocation Loc, bool DirectInit,
-                                          Expr *Init) {
-    if (!Init) return CreateDefault(Loc);
-    if (!DirectInit) return CreateCopy(Loc, Init->getLocStart());
-    if (isa<InitListExpr>(Init)) return CreateDirectList(Loc);
-    return CreateDirect(Loc, Init->getLocStart(), Init->getLocEnd());
-  }
   
   /// \brief Determine the initialization kind.
   InitKind getKind() const {
@@ -709,9 +655,6 @@ public:
     /// temporary object, which is permitted (but not required) by
     /// C++98/03 but not C++0x.
     SK_ExtraneousCopyToTemporary,
-    /// \brief Direct-initialization from a reference-related object in the
-    /// final stage of class copy-initialization.
-    SK_FinalCopy,
     /// \brief Perform a user-defined conversion, either via a conversion
     /// function or via a constructor.
     SK_UserConversion,
@@ -749,14 +692,9 @@ public:
     /// \brief An initialization that "converts" an Objective-C object
     /// (not a point to an object) to another Objective-C object type.
     SK_ObjCObjectConversion,
-    /// \brief Array indexing for initialization by elementwise copy.
-    SK_ArrayLoopIndex,
-    /// \brief Array initialization by elementwise copy.
-    SK_ArrayLoopInit,
     /// \brief Array initialization (from an array rvalue).
+    /// This is a GNU C extension.
     SK_ArrayInit,
-    /// \brief Array initialization (from an array rvalue) as a GNU extension.
-    SK_GNUArrayInit,
     /// \brief Array initialization from a parenthesized initializer list.
     /// This is a GNU C++ extension.
     SK_ParenthesizedArrayInit,
@@ -773,8 +711,6 @@ public:
     SK_StdInitializerListConstructorCall,
     /// \brief Initialize an OpenCL sampler from an integer.
     SK_OCLSamplerInit,
-    /// \brief Initialize queue_t from 0.
-    SK_OCLZeroQueue,
     /// \brief Passing zero to a function where OpenCL event_t is expected.
     SK_OCLZeroEvent
   };
@@ -831,8 +767,6 @@ public:
   enum FailureKind {
     /// \brief Too many initializers provided for a reference.
     FK_TooManyInitsForReference,
-    /// \brief Reference initialized from a parenthesized initializer list.
-    FK_ParenthesizedListInitForReference,
     /// \brief Array must be initialized with an initializer list.
     FK_ArrayNeedsInitList,
     /// \brief Array must be initialized with an initializer list or a 
@@ -858,10 +792,6 @@ public:
     FK_ReferenceInitOverloadFailed,
     /// \brief Non-const lvalue reference binding to a temporary.
     FK_NonConstLValueReferenceBindingToTemporary,
-    /// \brief Non-const lvalue reference binding to a bit-field.
-    FK_NonConstLValueReferenceBindingToBitfield,
-    /// \brief Non-const lvalue reference binding to a vector element.
-    FK_NonConstLValueReferenceBindingToVectorElement,
     /// \brief Non-const lvalue reference binding to an lvalue of unrelated
     /// type.
     FK_NonConstLValueReferenceBindingToUnrelated,
@@ -877,8 +807,6 @@ public:
     FK_ConversionFromPropertyFailed,
     /// \brief Too many initializers for scalar
     FK_TooManyInitsForScalar,
-    /// \brief Scalar initialized from a parenthesized initializer list.
-    FK_ParenthesizedListInitForScalar,
     /// \brief Reference initialization from an initializer list
     FK_ReferenceBindingToInitList,
     /// \brief Initialization of some unused destination type with an
@@ -905,7 +833,7 @@ public:
     /// having its address taken.
     FK_AddressOfUnaddressableFunction,
     /// \brief List-copy-initialization chose an explicit constructor.
-    FK_ExplicitConstructor,
+    FK_ExplicitConstructor
   };
   
 private:
@@ -1087,10 +1015,6 @@ public:
   /// \param T The type of the temporary being created.
   void AddExtraneousCopyToTemporary(QualType T);
 
-  /// \brief Add a new step that makes a copy of the input to an object of
-  /// the given type, as the final step in class copy-initialization.
-  void AddFinalCopy(QualType T);
-
   /// \brief Add a new step invoking a conversion function, which is either
   /// a constructor or a conversion function.
   void AddUserConversionStep(FunctionDecl *Function,
@@ -1148,11 +1072,8 @@ public:
   /// always a no-op.
   void AddObjCObjectConversionStep(QualType T);
 
-  /// \brief Add an array initialization loop step.
-  void AddArrayInitLoopStep(QualType T, QualType EltTy);
-
   /// \brief Add an array initialization step.
-  void AddArrayInitStep(QualType T, bool IsGNUExtension);
+  void AddArrayInitStep(QualType T);
 
   /// \brief Add a parenthesized array initialization step.
   void AddParenthesizedArrayInitStep(QualType T);
@@ -1175,9 +1096,6 @@ public:
   /// \brief Add a step to initialize an OpenCL event_t from a NULL
   /// constant.
   void AddOCLZeroEventStep(QualType T);
-
-  /// \brief Add a step to initialize an OpenCL queue_t from 0.
-  void AddOCLZeroQueueStep(QualType T);
 
   /// \brief Add steps to unwrap a initializer list for a reference around a
   /// single element and rewrap it at the end.

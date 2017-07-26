@@ -4,10 +4,8 @@ set(LLVM_LINK_COMPONENTS
   Support
   )
 
-add_llvm_utility(lli-child-target
+add_llvm_executable(lli-child-target
   ChildTarget.cpp
-
-  DEPENDS
-  intrinsics_gen
 )
 
+set_target_properties(lli-child-target PROPERTIES FOLDER "Misc")

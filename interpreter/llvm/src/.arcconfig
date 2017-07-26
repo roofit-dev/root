@@ -1,3 +1,4 @@
 {
-  "conduit_uri" : "https://reviews.llvm.org/"
+  "project_id" : "llvm",
+  "conduit_uri" : "http://reviews.llvm.org/"
 }

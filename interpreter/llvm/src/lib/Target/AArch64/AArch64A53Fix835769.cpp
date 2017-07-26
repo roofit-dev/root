@@ -82,18 +82,16 @@ class AArch64A53Fix835769 : public MachineFunctionPass {
 
 public:
   static char ID;
-  explicit AArch64A53Fix835769() : MachineFunctionPass(ID) {
-    initializeAArch64A53Fix835769Pass(*PassRegistry::getPassRegistry());
-  }
+  explicit AArch64A53Fix835769() : MachineFunctionPass(ID) {}
 
   bool runOnMachineFunction(MachineFunction &F) override;
 
   MachineFunctionProperties getRequiredProperties() const override {
     return MachineFunctionProperties().set(
-        MachineFunctionProperties::Property::NoVRegs);
+        MachineFunctionProperties::Property::AllVRegsAllocated);
   }
 
-  StringRef getPassName() const override {
+  const char *getPassName() const override {
     return "Workaround A53 erratum 835769 pass";
   }
 
@@ -108,9 +106,6 @@ private:
 char AArch64A53Fix835769::ID = 0;
 
 } // end anonymous namespace
-
-INITIALIZE_PASS(AArch64A53Fix835769, "aarch64-fix-cortex-a53-835769-pass",
-                "AArch64 fix for A53 erratum 835769", false, false)
 
 //===----------------------------------------------------------------------===//
 
@@ -142,8 +137,8 @@ static MachineBasicBlock *getBBFallenThrough(MachineBasicBlock *MBB,
 
   MachineBasicBlock *PrevBB = &*std::prev(MBBI);
   for (MachineBasicBlock *S : MBB->predecessors())
-    if (S == PrevBB && !TII->analyzeBranch(*PrevBB, TBB, FBB, Cond) && !TBB &&
-        !FBB)
+    if (S == PrevBB && !TII->AnalyzeBranch(*PrevBB, TBB, FBB, Cond) &&
+        !TBB && !FBB)
       return S;
 
   return nullptr;

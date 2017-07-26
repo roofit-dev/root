@@ -114,7 +114,7 @@ public:
         AA(&pass.getAnalysis<AAResultsWrapperPass>().getAAResults()),
         MDT(pass.getAnalysis<MachineDominatorTree>()),
         Loops(pass.getAnalysis<MachineLoopInfo>()), VRM(vrm),
-        MFI(mf.getFrameInfo()), MRI(mf.getRegInfo()),
+        MFI(*mf.getFrameInfo()), MRI(mf.getRegInfo()),
         TII(*mf.getSubtarget().getInstrInfo()),
         TRI(*mf.getSubtarget().getRegisterInfo()),
         MBFI(pass.getAnalysis<MachineBlockFrequencyInfo>()),
@@ -172,7 +172,7 @@ public:
         AA(&pass.getAnalysis<AAResultsWrapperPass>().getAAResults()),
         MDT(pass.getAnalysis<MachineDominatorTree>()),
         Loops(pass.getAnalysis<MachineLoopInfo>()), VRM(vrm),
-        MFI(mf.getFrameInfo()), MRI(mf.getRegInfo()),
+        MFI(*mf.getFrameInfo()), MRI(mf.getRegInfo()),
         TII(*mf.getSubtarget().getInstrInfo()),
         TRI(*mf.getSubtarget().getRegisterInfo()),
         MBFI(pass.getAnalysis<MachineBlockFrequencyInfo>()),
@@ -185,7 +185,10 @@ private:
   bool isSnippet(const LiveInterval &SnipLI);
   void collectRegsToSpill();
 
-  bool isRegToSpill(unsigned Reg) { return is_contained(RegsToSpill, Reg); }
+  bool isRegToSpill(unsigned Reg) {
+    return std::find(RegsToSpill.begin(),
+                     RegsToSpill.end(), Reg) != RegsToSpill.end();
+  }
 
   bool isSibling(unsigned Reg);
   bool hoistSpillInsideBB(LiveInterval &SpillLI, MachineInstr &CopyMI);
@@ -377,7 +380,7 @@ bool InlineSpiller::hoistSpillInsideBB(LiveInterval &SpillLI,
   MachineBasicBlock *MBB = LIS.getMBBFromIndex(SrcVNI->def);
   MachineBasicBlock::iterator MII;
   if (SrcVNI->isPHIDef())
-    MII = MBB->SkipPHIsLabelsAndDebug(MBB->begin());
+    MII = MBB->SkipPHIsAndLabels(MBB->begin());
   else {
     MachineInstr *DefMI = LIS.getInstructionFromIndex(SrcVNI->def);
     assert(DefMI && "Defining instruction disappeared");
@@ -550,18 +553,12 @@ bool InlineSpiller::reMaterializeFor(LiveInterval &VirtReg, MachineInstr &MI) {
     return true;
   }
 
-  // Allocate a new register for the remat.
+  // Alocate a new register for the remat.
   unsigned NewVReg = Edit->createFrom(Original);
 
   // Finally we can rematerialize OrigMI before MI.
   SlotIndex DefIdx =
       Edit->rematerializeAt(*MI.getParent(), MI, NewVReg, RM, TRI);
-
-  // We take the DebugLoc from MI, since OrigMI may be attributed to a
-  // different source location.
-  auto *NewMI = LIS.getInstructionFromIndex(DefIdx);
-  NewMI->setDebugLoc(MI.getDebugLoc());
-
   (void)DefIdx;
   DEBUG(dbgs() << "\tremat:  " << DefIdx << '\t'
                << *LIS.getInstructionFromIndex(DefIdx));
@@ -629,7 +626,7 @@ void InlineSpiller::reMaterializeAll() {
   if (DeadDefs.empty())
     return;
   DEBUG(dbgs() << "Remat created " << DeadDefs.size() << " dead defs.\n");
-  Edit->eliminateDeadDefs(DeadDefs, RegsToSpill, AA);
+  Edit->eliminateDeadDefs(DeadDefs, RegsToSpill);
 
   // LiveRangeEdit::eliminateDeadDef is used to remove dead define instructions
   // after rematerialization.  To remove a VNI for a vreg from its LiveInterval,
@@ -686,8 +683,7 @@ bool InlineSpiller::coalesceStackAccess(MachineInstr *MI, unsigned Reg) {
   return true;
 }
 
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-LLVM_DUMP_METHOD
+#if !defined(NDEBUG)
 // Dump the range of instructions from B to E with their slot indexes.
 static void dumpMachineInstrRangeWithSlotIndex(MachineBasicBlock::iterator B,
                                                MachineBasicBlock::iterator E,
@@ -740,12 +736,9 @@ foldMemoryOperand(ArrayRef<std::pair<MachineInstr*, unsigned> > Ops,
   bool WasCopy = MI->isCopy();
   unsigned ImpReg = 0;
 
-  // Spill subregs if the target allows it.
-  // We always want to spill subregs for stackmap/patchpoint pseudos.
-  bool SpillSubRegs = TII.isSubregFoldable() ||
-                      MI->getOpcode() == TargetOpcode::STATEPOINT ||
-                      MI->getOpcode() == TargetOpcode::PATCHPOINT ||
-                      MI->getOpcode() == TargetOpcode::STACKMAP;
+  bool SpillSubRegs = (MI->getOpcode() == TargetOpcode::STATEPOINT ||
+                       MI->getOpcode() == TargetOpcode::PATCHPOINT ||
+                       MI->getOpcode() == TargetOpcode::STACKMAP);
 
   // TargetInstrInfo::foldMemoryOperand only expects explicit, non-tied
   // operands.
@@ -758,7 +751,7 @@ foldMemoryOperand(ArrayRef<std::pair<MachineInstr*, unsigned> > Ops,
       ImpReg = MO.getReg();
       continue;
     }
-
+    // FIXME: Teach targets to deal with subregs.
     if (!SpillSubRegs && MO.getSubReg())
       return false;
     // We cannot fold a load instruction into a def.
@@ -768,11 +761,6 @@ foldMemoryOperand(ArrayRef<std::pair<MachineInstr*, unsigned> > Ops,
     if (!MI->isRegTiedToDefOperand(Idx))
       FoldOps.push_back(Idx);
   }
-
-  // If we only have implicit uses, we won't be able to fold that.
-  // Moreover, TargetInstrInfo::foldMemoryOperand will assert if we try!
-  if (FoldOps.empty())
-    return false;
 
   MachineInstrSpan MIS(MI);
 
@@ -888,10 +876,20 @@ void InlineSpiller::spillAroundUses(unsigned Reg) {
     // Debug values are not allowed to affect codegen.
     if (MI->isDebugValue()) {
       // Modify DBG_VALUE now that the value is in a spill slot.
+      bool IsIndirect = MI->isIndirectDebugValue();
+      uint64_t Offset = IsIndirect ? MI->getOperand(1).getImm() : 0;
+      const MDNode *Var = MI->getDebugVariable();
+      const MDNode *Expr = MI->getDebugExpression();
+      DebugLoc DL = MI->getDebugLoc();
+      DEBUG(dbgs() << "Modifying debug info due to spill:" << "\t" << *MI);
       MachineBasicBlock *MBB = MI->getParent();
-      DEBUG(dbgs() << "Modifying debug info due to spill:\t" << *MI);
-      buildDbgValueForSpill(*MBB, MI, *MI, StackSlot);
-      MBB->erase(MI);
+      assert(cast<DILocalVariable>(Var)->isValidLocationForIntrinsic(DL) &&
+             "Expected inlined-at fields to agree");
+      BuildMI(*MBB, MBB->erase(MI), DL, TII.get(TargetOpcode::DBG_VALUE))
+          .addFrameIndex(StackSlot)
+          .addImm(Offset)
+          .addMetadata(Var)
+          .addMetadata(Expr);
       continue;
     }
 
@@ -998,7 +996,7 @@ void InlineSpiller::spillAll() {
   // Hoisted spills may cause dead code.
   if (!DeadDefs.empty()) {
     DEBUG(dbgs() << "Eliminating " << DeadDefs.size() << " dead defs\n");
-    Edit->eliminateDeadDefs(DeadDefs, RegsToSpill, AA);
+    Edit->eliminateDeadDefs(DeadDefs, RegsToSpill);
   }
 
   // Finally delete the SnippetCopies.
@@ -1115,7 +1113,7 @@ void HoistSpillHelper::rmRedundantSpills(
   // earlier spill with smaller SlotIndex.
   for (const auto CurrentSpill : Spills) {
     MachineBasicBlock *Block = CurrentSpill->getParent();
-    MachineDomTreeNode *Node = MDT.getBase().getNode(Block);
+    MachineDomTreeNode *Node = MDT.DT->getNode(Block);
     MachineInstr *PrevSpill = SpillBBToSpill[Node];
     if (PrevSpill) {
       SlotIndex PIdx = LIS.getInstructionIndex(*PrevSpill);
@@ -1123,9 +1121,9 @@ void HoistSpillHelper::rmRedundantSpills(
       MachineInstr *SpillToRm = (CIdx > PIdx) ? CurrentSpill : PrevSpill;
       MachineInstr *SpillToKeep = (CIdx > PIdx) ? PrevSpill : CurrentSpill;
       SpillsToRm.push_back(SpillToRm);
-      SpillBBToSpill[MDT.getBase().getNode(Block)] = SpillToKeep;
+      SpillBBToSpill[MDT.DT->getNode(Block)] = SpillToKeep;
     } else {
-      SpillBBToSpill[MDT.getBase().getNode(Block)] = CurrentSpill;
+      SpillBBToSpill[MDT.DT->getNode(Block)] = CurrentSpill;
     }
   }
   for (const auto SpillToRm : SpillsToRm)
@@ -1200,7 +1198,7 @@ void HoistSpillHelper::getVisitOrders(
   // Sort the nodes in WorkSet in top-down order and save the nodes
   // in Orders. Orders will be used for hoisting in runHoistSpills.
   unsigned idx = 0;
-  Orders.push_back(MDT.getBase().getNode(Root));
+  Orders.push_back(MDT.DT->getNode(Root));
   do {
     MachineDomTreeNode *Node = Orders[idx++];
     const std::vector<MachineDomTreeNode *> &Children = Node->getChildren();
@@ -1442,7 +1440,7 @@ void HoistSpillHelper::hoistAllSpills() {
           RMEnt->RemoveOperand(i - 1);
       }
     }
-    Edit.eliminateDeadDefs(SpillsToRm, None, AA);
+    Edit.eliminateDeadDefs(SpillsToRm, None);
   }
 }
 

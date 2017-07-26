@@ -126,7 +126,8 @@ public:
     uint16_t type; // enum AtomType
     uint16_t form; // DWARF DW_FORM_ defines
 
-    constexpr Atom(uint16_t type, uint16_t form) : type(type), form(form) {}
+    LLVM_CONSTEXPR Atom(uint16_t type, uint16_t form)
+        : type(type), form(form) {}
 #ifndef NDEBUG
     void print(raw_ostream &O) {
       O << "Type: " << dwarf::AtomTypeString(type) << "\n"

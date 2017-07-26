@@ -10,7 +10,7 @@ using namespace llvm::pdb;
 // deal with the Error value directly, rather than converting to error_code.
 class DIAErrorCategory : public std::error_category {
 public:
-  const char *name() const noexcept override { return "llvm.pdb.dia"; }
+  const char *name() const LLVM_NOEXCEPT override { return "llvm.pdb.dia"; }
 
   std::string message(int Condition) const override {
     switch (static_cast<dia_error_code>(Condition)) {
@@ -38,20 +38,21 @@ char DIAError::ID = 0;
 
 DIAError::DIAError(dia_error_code C) : DIAError(C, "") {}
 
-DIAError::DIAError(StringRef Context)
+DIAError::DIAError(const std::string &Context)
     : DIAError(dia_error_code::unspecified, Context) {}
 
-DIAError::DIAError(dia_error_code C, StringRef Context) : Code(C) {
+DIAError::DIAError(dia_error_code C, const std::string &Context) : Code(C) {
   ErrMsg = "DIA Error: ";
   std::error_code EC = convertToErrorCode();
-  ErrMsg += EC.message() + "  ";
+  if (Code != dia_error_code::unspecified)
+    ErrMsg += EC.message() + "  ";
   if (!Context.empty())
     ErrMsg += Context;
 }
 
 void DIAError::log(raw_ostream &OS) const { OS << ErrMsg << "\n"; }
 
-StringRef DIAError::getErrorMessage() const { return ErrMsg; }
+const std::string &DIAError::getErrorMessage() const { return ErrMsg; }
 
 std::error_code DIAError::convertToErrorCode() const {
   return std::error_code(static_cast<int>(Code), *Category);

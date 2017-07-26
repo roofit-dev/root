@@ -1,4 +1,4 @@
-//===- llvm/CodeGen/AsmPrinter.h - AsmPrinter Framework ---------*- C++ -*-===//
+//===-- llvm/CodeGen/AsmPrinter.h - AsmPrinter Framework --------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -17,43 +17,35 @@
 #define LLVM_CODEGEN_ASMPRINTER_H
 
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/CodeGen/DwarfStringPoolEntry.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/DwarfStringPoolEntry.h"
 #include "llvm/IR/InlineAsm.h"
-#include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/DataTypes.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/SourceMgr.h"
-#include <cstdint>
-#include <memory>
-#include <utility>
-#include <vector>
 
 namespace llvm {
-
 class AsmPrinterHandler;
 class BlockAddress;
+class ByteStreamer;
+class GCStrategy;
 class Constant;
 class ConstantArray;
-class DataLayout;
 class DIE;
 class DIEAbbrev;
-class DwarfDebug;
 class GCMetadataPrinter;
 class GlobalIndirectSymbol;
 class GlobalValue;
 class GlobalVariable;
-class GCStrategy;
 class MachineBasicBlock;
-class MachineConstantPoolValue;
 class MachineFunction;
 class MachineInstr;
-class MachineJumpTableInfo;
+class MachineLocation;
 class MachineLoopInfo;
+class MachineLoop;
+class MachineConstantPoolValue;
+class MachineJumpTableInfo;
 class MachineModuleInfo;
-class MachineOptimizationRemarkEmitter;
 class MCAsmInfo;
 class MCCFIInstruction;
 class MCContext;
@@ -65,7 +57,10 @@ class MCSubtargetInfo;
 class MCSymbol;
 class MCTargetOptions;
 class MDNode;
+class DwarfDebug;
+class Mangler;
 class TargetLoweringObjectFile;
+class DataLayout;
 class TargetMachine;
 
 /// This class is intended to be used as a driving class for all asm writers.
@@ -89,39 +84,37 @@ public:
   std::unique_ptr<MCStreamer> OutStreamer;
 
   /// The current machine function.
-  const MachineFunction *MF = nullptr;
+  const MachineFunction *MF;
 
   /// This is a pointer to the current MachineModuleInfo.
-  MachineModuleInfo *MMI = nullptr;
+  MachineModuleInfo *MMI;
 
-  /// Optimization remark emitter.
-  MachineOptimizationRemarkEmitter *ORE;
+  /// Name-mangler for global names.
+  ///
+  Mangler *Mang;
 
   /// The symbol for the current function. This is recalculated at the beginning
   /// of each call to runOnMachineFunction().
   ///
-  MCSymbol *CurrentFnSym = nullptr;
+  MCSymbol *CurrentFnSym;
 
   /// The symbol used to represent the start of the current function for the
   /// purpose of calculating its size (e.g. using the .size directive). By
   /// default, this is equal to CurrentFnSym.
-  MCSymbol *CurrentFnSymForSize = nullptr;
+  MCSymbol *CurrentFnSymForSize;
 
   /// Map global GOT equivalent MCSymbols to GlobalVariables and keep track of
   /// its number of uses by other globals.
   typedef std::pair<const GlobalVariable *, unsigned> GOTEquivUsePair;
   MapVector<const MCSymbol *, GOTEquivUsePair> GlobalGOTEquivs;
 
-  /// Enable print [latency:throughput] in output
-  bool EnablePrintSchedInfo = false;
-
 private:
-  MCSymbol *CurrentFnBegin = nullptr;
-  MCSymbol *CurrentFnEnd = nullptr;
-  MCSymbol *CurExceptionSym = nullptr;
+  MCSymbol *CurrentFnBegin;
+  MCSymbol *CurrentFnEnd;
+  MCSymbol *CurExceptionSym;
 
   // The garbage collection metadata printer table.
-  void *GCMetadataPrinters = nullptr; // Really a DenseMap.
+  void *GCMetadataPrinters; // Really a DenseMap.
 
   /// Emit comments in assembly output if this is true.
   ///
@@ -129,44 +122,22 @@ private:
   static char ID;
 
   /// If VerboseAsm is set, a pointer to the loop info for this function.
-  MachineLoopInfo *LI = nullptr;
+  MachineLoopInfo *LI;
 
   struct HandlerInfo {
     AsmPrinterHandler *Handler;
-    const char *TimerName;
-    const char *TimerDescription;
-    const char *TimerGroupName;
-    const char *TimerGroupDescription;
-
+    const char *TimerName, *TimerGroupName;
     HandlerInfo(AsmPrinterHandler *Handler, const char *TimerName,
-                const char *TimerDescription, const char *TimerGroupName,
-                const char *TimerGroupDescription)
+                const char *TimerGroupName)
         : Handler(Handler), TimerName(TimerName),
-          TimerDescription(TimerDescription), TimerGroupName(TimerGroupName),
-          TimerGroupDescription(TimerGroupDescription) {}
+          TimerGroupName(TimerGroupName) {}
   };
   /// A vector of all debug/EH info emitters we should use. This vector
   /// maintains ownership of the emitters.
   SmallVector<HandlerInfo, 1> Handlers;
 
-public:
-  struct SrcMgrDiagInfo {
-    SourceMgr SrcMgr;
-    std::vector<const MDNode *> LocInfos;
-    LLVMContext::InlineAsmDiagHandlerTy DiagHandler;
-    void *DiagContext;
-  };
-
-private:
-  /// Structure for generating diagnostics for inline assembly. Only initialised
-  /// when necessary.
-  mutable std::unique_ptr<SrcMgrDiagInfo> DiagInfo;
-
   /// If the target supports dwarf debug info, this pointer is non-null.
-  DwarfDebug *DD = nullptr;
-
-  /// If the current module uses dwarf CFI annotations strictly for debugging.
-  bool isCFIMoveForDebugging = false;
+  DwarfDebug *DD;
 
 protected:
   explicit AsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer);
@@ -176,9 +147,6 @@ public:
 
   DwarfDebug *getDwarfDebug() { return DD; }
   DwarfDebug *getDwarfDebug() const { return DD; }
-
-  uint16_t getDwarfVersion() const;
-  void setDwarfVersion(uint16_t Version);
 
   bool isPositionIndependent() const;
 
@@ -208,6 +176,9 @@ public:
 
   void EmitToStreamer(MCStreamer &S, const MCInst &Inst);
 
+  /// Return the target triple string.
+  StringRef getTargetTriple() const;
+
   /// Return the current section we are emitting to.
   const MCSection *getCurrentSection() const;
 
@@ -215,41 +186,6 @@ public:
                          const GlobalValue *GV) const;
 
   MCSymbol *getSymbol(const GlobalValue *GV) const;
-
-  //===------------------------------------------------------------------===//
-  // XRay instrumentation implementation.
-  //===------------------------------------------------------------------===//
-public:
-  // This describes the kind of sled we're storing in the XRay table.
-  enum class SledKind : uint8_t {
-    FUNCTION_ENTER = 0,
-    FUNCTION_EXIT = 1,
-    TAIL_CALL = 2,
-    LOG_ARGS_ENTER = 3,
-    CUSTOM_EVENT = 4,
-  };
-
-  // The table will contain these structs that point to the sled, the function
-  // containing the sled, and what kind of sled (and whether they should always
-  // be instrumented).
-  struct XRayFunctionEntry {
-    const MCSymbol *Sled;
-    const MCSymbol *Function;
-    SledKind Kind;
-    bool AlwaysInstrument;
-    const class Function *Fn;
-
-    void emit(int, MCStreamer *, const MCSymbol *) const;
-  };
-
-  // All the sleds to be emitted.
-  SmallVector<XRayFunctionEntry, 4> Sleds;
-
-  // Helper function to record a given XRay sled.
-  void recordSled(MCSymbol *Sled, const MachineInstr &MI, SledKind Kind);
-
-  /// Emit a table with all XRay instrumentation points.
-  void emitXRayTable();
 
   //===------------------------------------------------------------------===//
   // MachineFunctionPass Implementation.
@@ -291,10 +227,6 @@ public:
 
   enum CFIMoveType { CFI_M_None, CFI_M_EH, CFI_M_Debug };
   CFIMoveType needsCFIMoves();
-
-  /// Returns false if needsCFIMoves() == CFI_M_EH for any function
-  /// in the module.
-  bool needsOnlyDebugCFIMoves() const { return isCFIMoveForDebugging; }
 
   bool needsSEHMoves();
 
@@ -408,7 +340,7 @@ public:
   //===------------------------------------------------------------------===//
   // Symbol Lowering Routines.
   //===------------------------------------------------------------------===//
-
+public:
   MCSymbol *createTempSymbol(const Twine &Name) const;
 
   /// Return the MCSymbol for a private symbol with global value name as its
@@ -434,7 +366,7 @@ public:
   //===------------------------------------------------------------------===//
   // Emission Helper Routines.
   //===------------------------------------------------------------------===//
-
+public:
   /// This is just convenient handler for printing offsets.
   void printOffset(int64_t Offset, raw_ostream &OS) const;
 
@@ -507,11 +439,9 @@ public:
   /// Get the value for DW_AT_APPLE_isa. Zero if no isa encoding specified.
   virtual unsigned getISAEncoding() { return 0; }
 
-  /// Emit the directive and value for debug thread local expression
-  ///
-  /// \p Value - The value to emit.
-  /// \p Size - The size of the integer (in bytes) to emit.
-  virtual void EmitDebugThreadLocal(const MCExpr *Value, unsigned Size) const;
+  /// EmitDwarfRegOp - Emit a dwarf register operation.
+  virtual void EmitDwarfRegOp(ByteStreamer &BS,
+                              const MachineLocation &MLoc) const;
 
   //===------------------------------------------------------------------===//
   // Dwarf Lowering Routines
@@ -538,7 +468,7 @@ public:
   //===------------------------------------------------------------------===//
   // Inline Asm Support
   //===------------------------------------------------------------------===//
-
+public:
   // These are hooks that targets can override to implement inline asm
   // support.  These should probably be moved out of AsmPrinter someday.
 
@@ -582,9 +512,9 @@ public:
 private:
   /// Private state for PrintSpecial()
   // Assign a unique ID to this machine instruction.
-  mutable const MachineInstr *LastMI = nullptr;
-  mutable unsigned LastFn = 0;
-  mutable unsigned Counter = ~0U;
+  mutable const MachineInstr *LastMI;
+  mutable unsigned LastFn;
+  mutable unsigned Counter;
 
   /// This method emits the header for the current function.
   virtual void EmitFunctionHeader();
@@ -623,7 +553,6 @@ private:
   void emitGlobalIndirectSymbol(Module &M,
                                 const GlobalIndirectSymbol& GIS);
 };
+}
 
-} // end namespace llvm
-
-#endif // LLVM_CODEGEN_ASMPRINTER_H
+#endif

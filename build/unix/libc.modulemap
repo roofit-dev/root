@@ -2,7 +2,7 @@ module "libc" {
   export *
   module "assert.h" {
     export *
-    textual header "assert.h"
+    header "assert.h"
   }
   module "ctype.h" {
     export *
@@ -15,6 +15,10 @@ module "libc" {
   module "fenv.h" {
     export *
     header "fenv.h"
+  }
+  module "float.h" {
+    export *
+    header "float.h"
   }
   module "inttypes.h" {
     export *

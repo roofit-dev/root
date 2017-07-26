@@ -6,7 +6,7 @@ add_llvm_library(LLVMOrcJIT
   OrcCBindings.cpp
   OrcError.cpp
   OrcMCJITReplacement.cpp
-  RPCUtils.cpp
+  OrcRemoteTargetRPCAPI.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/ExecutionEngine/Orc

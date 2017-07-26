@@ -16,33 +16,30 @@
 #define LLVM_LIB_TARGET_HEXAGON_HEXAGONISELLOWERING_H
 
 #include "Hexagon.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/CodeGen/ISDOpcodes.h"
-#include "llvm/CodeGen/MachineValueType.h"
-#include "llvm/CodeGen/SelectionDAGNodes.h"
-#include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/IR/CallingConv.h"
-#include "llvm/IR/InlineAsm.h"
 #include "llvm/Target/TargetLowering.h"
-#include <cstdint>
-#include <utility>
 
 namespace llvm {
 
-namespace HexagonISD {
+// Return true when the given node fits in a positive half word.
+bool isPositiveHalfWord(SDNode *N);
 
+  namespace HexagonISD {
     enum NodeType : unsigned {
       OP_BEGIN = ISD::BUILTIN_OP_END,
 
       CONST32 = OP_BEGIN,
       CONST32_GP,  // For marking data present in GP.
+      FCONST32,
       ALLOCA,
+      ARGEXTEND,
 
       AT_GOT,      // Index in GOT.
       AT_PCREL,    // Offset relative to PC.
 
-      CALL,        // Function call.
-      CALLnr,      // Function call that does not return.
+      CALLv3,      // A V3+ call instruction.
+      CALLv3nr,    // A V3+ call instruction that doesn't return.
       CALLR,
 
       RET_FLAG,    // Return with a flag operand.
@@ -50,6 +47,7 @@ namespace HexagonISD {
       JT,          // Jump table.
       CP,          // Constant pool.
 
+      POPCOUNT,
       COMBINE,
       PACKHL,
       VSPLATB,
@@ -81,27 +79,24 @@ namespace HexagonISD {
       EXTRACTU,
       EXTRACTURP,
       VCOMBINE,
-      VPACK,
       TC_RETURN,
       EH_RETURN,
       DCFETCH,
-      READCYCLE,
 
       OP_END
     };
-
-} // end namespace HexagonISD
+  }
 
   class HexagonSubtarget;
 
   class HexagonTargetLowering : public TargetLowering {
     int VarArgsFrameOffset;   // Frame offset to start of varargs area.
-    const HexagonTargetMachine &HTM;
-    const HexagonSubtarget &Subtarget;
 
     bool CanReturnSmallStruct(const Function* CalleeFn, unsigned& RetSize)
         const;
     void promoteLdStType(MVT VT, MVT PromotedLdStVT);
+    const HexagonTargetMachine &HTM;
+    const HexagonSubtarget &Subtarget;
 
   public:
     explicit HexagonTargetLowering(const TargetMachine &TM,
@@ -121,32 +116,19 @@ namespace HexagonISD {
 
     bool allowTruncateForTailCall(Type *Ty1, Type *Ty2) const override;
 
-    /// Return true if an FMA operation is faster than a pair of mul and add
-    /// instructions. fmuladd intrinsics will be expanded to FMAs when this
-    /// method returns true (and FMAs are legal), otherwise fmuladd is
-    /// expanded to mul + add.
-    bool isFMAFasterThanFMulAndFAdd(EVT) const override;
-
     // Should we expand the build vector with shuffles?
     bool shouldExpandBuildVectorWithShuffles(EVT VT,
         unsigned DefinedValues) const override;
-
-    bool isShuffleMaskLegal(const SmallVectorImpl<int> &Mask, EVT VT)
-        const override;
 
     SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
     const char *getTargetNodeName(unsigned Opcode) const override;
     SDValue LowerCONCAT_VECTORS(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerEXTRACT_VECTOR(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerEXTRACT_SUBVECTOR_HVX(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerINSERT_VECTOR(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerVECTOR_SHUFFLE(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerVECTOR_SHIFT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerDYNAMIC_STACKALLOC(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerINLINEASM(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerPREFETCH(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerREADCYCLECOUNTER(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerEH_LABEL(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerEH_RETURN(SDValue Op, SelectionDAG &DAG) const;
     SDValue
@@ -164,7 +146,7 @@ namespace HexagonISD {
     SDValue LowerToTLSLocalExecModel(GlobalAddressSDNode *GA,
         SelectionDAG &DAG) const;
     SDValue GetDynamicTLSAddr(SelectionDAG &DAG, SDValue Chain,
-        GlobalAddressSDNode *GA, SDValue InFlag, EVT PtrVT,
+        GlobalAddressSDNode *GA, SDValue *InFlag, EVT PtrVT,
         unsigned ReturnReg, unsigned char OperandFlags) const;
     SDValue LowerGLOBAL_OFFSET_TABLE(SDValue Op, SelectionDAG &DAG) const;
 
@@ -180,22 +162,21 @@ namespace HexagonISD {
 
     SDValue LowerSETCC(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerVSELECT(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerCTPOP(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerATOMIC_FENCE(SDValue Op, SelectionDAG& DAG) const;
     SDValue LowerRETURNADDR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerLOAD(SDValue Op, SelectionDAG &DAG) const;
-
-    bool CanLowerReturn(CallingConv::ID CallConv,
-                        MachineFunction &MF, bool isVarArg,
-                        const SmallVectorImpl<ISD::OutputArg> &Outs,
-                        LLVMContext &Context) const override;
 
     SDValue LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                         const SmallVectorImpl<ISD::OutputArg> &Outs,
                         const SmallVectorImpl<SDValue> &OutVals,
                         const SDLoc &dl, SelectionDAG &DAG) const override;
 
-    bool mayBeEmittedAsTailCall(const CallInst *CI) const override;
+    bool mayBeEmittedAsTailCall(CallInst *CI) const override;
+    MachineBasicBlock *
+    EmitInstrWithCustomInserter(MachineInstr &MI,
+                                MachineBasicBlock *BB) const override;
 
     /// If a physical register, this returns the register that receives the
     /// exception address on entry to an EH pad.
@@ -214,7 +195,6 @@ namespace HexagonISD {
     SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerConstantPool(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerJumpTable(SDValue Op, SelectionDAG &DAG) const;
-
     EVT getSetCCResultType(const DataLayout &, LLVMContext &C,
                            EVT VT) const override {
       if (!VT.isVector())
@@ -263,10 +243,6 @@ namespace HexagonISD {
     /// the immediate into a register.
     bool isLegalICmpImmediate(int64_t Imm) const override;
 
-    EVT getOptimalMemOpType(uint64_t Size, unsigned DstAlign,
-        unsigned SrcAlign, bool IsMemset, bool ZeroMemset, bool MemcpyStrSrc,
-        MachineFunction &MF) const override;
-
     bool allowsMisalignedMemoryAccesses(EVT VT, unsigned AddrSpace,
         unsigned Align, bool *Fast) const override;
 
@@ -293,7 +269,6 @@ namespace HexagonISD {
     findRepresentativeClass(const TargetRegisterInfo *TRI, MVT VT)
         const override;
   };
-
 } // end namespace llvm
 
-#endif // LLVM_LIB_TARGET_HEXAGON_HEXAGONISELLOWERING_H
+#endif    // Hexagon_ISELLOWERING_H

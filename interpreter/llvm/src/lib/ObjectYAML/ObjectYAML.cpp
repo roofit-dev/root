@@ -43,9 +43,6 @@ void MappingTraits<YamlObjectFile>::mapping(IO &IO,
       ObjectFile.FatMachO.reset(new MachOYAML::UniversalBinary());
       MappingTraits<MachOYAML::UniversalBinary>::mapping(IO,
                                                          *ObjectFile.FatMachO);
-    } else if (IO.mapTag("!WASM")) {
-      ObjectFile.Wasm.reset(new WasmYAML::Object());
-      MappingTraits<WasmYAML::Object>::mapping(IO, *ObjectFile.Wasm);
     } else {
       Input &In = (Input &)IO;
       std::string Tag = In.getCurrentNode()->getRawTag();
@@ -54,7 +51,7 @@ void MappingTraits<YamlObjectFile>::mapping(IO &IO,
       else
         IO.setError(
             llvm::Twine("YAML Object File unsupported document type tag '") +
-            llvm::Twine(Tag) + llvm::Twine("'!"));
+            llvm::Twine(Tag.c_str()) + llvm::Twine("'!"));
     }
   }
 }

@@ -6,15 +6,11 @@
 // LICENSE.TXT for details.
 //------------------------------------------------------------------------------
 
-// RUN: cat %s | %cling -x c -Xclang -verify 2>&1 | FileCheck %s
-// RUN: cat %s | %cling -x c -fsyntax-only -Xclang -verify 2>&1
+// RUN: cat %s | %cling -x c | FileCheck %s
 
 // Validate cling C mode.
 
-// Fix value printing!
-
 int printf(const char*,...);
-printf("CHECK 123 %p\n", gCling); // CHECK: CHECK 123
+printf("CHECK 123\n"); // CHECK: CHECK 123
 
-// expected-no-diagnostics
-.q
+// fix value printing!

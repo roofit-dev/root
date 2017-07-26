@@ -22,11 +22,21 @@ namespace llvm {
 
 struct NewArchiveMember {
   std::unique_ptr<MemoryBuffer> Buf;
-  sys::TimePoint<std::chrono::seconds> ModTime;
+  sys::TimeValue ModTime = sys::TimeValue::PosixZeroTime();
   unsigned UID = 0, GID = 0, Perms = 0644;
 
-  bool IsNew = false;
   NewArchiveMember() = default;
+  NewArchiveMember(NewArchiveMember &&Other)
+      : Buf(std::move(Other.Buf)), ModTime(Other.ModTime), UID(Other.UID),
+        GID(Other.GID), Perms(Other.Perms) {}
+  NewArchiveMember &operator=(NewArchiveMember &&Other) {
+    Buf = std::move(Other.Buf);
+    ModTime = Other.ModTime;
+    UID = Other.UID;
+    GID = Other.GID;
+    Perms = Other.Perms;
+    return *this;
+  }
   NewArchiveMember(MemoryBufferRef BufRef);
 
   static Expected<NewArchiveMember>

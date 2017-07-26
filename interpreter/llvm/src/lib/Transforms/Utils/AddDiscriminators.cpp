@@ -57,10 +57,12 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -100,10 +102,6 @@ static cl::opt<bool> NoDiscriminators(
 // Create the legacy AddDiscriminatorsPass.
 FunctionPass *llvm::createAddDiscriminatorsPass() {
   return new AddDiscriminatorsLegacyPass();
-}
-
-static bool shouldHaveDiscriminator(const Instruction *I) {
-  return !isa<IntrinsicInst>(I) || isa<MemIntrinsic>(I);
 }
 
 /// \brief Assign DWARF discriminators.
@@ -161,14 +159,20 @@ static bool addDiscriminators(Function &F) {
   // If the function has debug information, but the user has disabled
   // discriminators, do nothing.
   // Simlarly, if the function has no debug info, do nothing.
-  if (NoDiscriminators || !F.getSubprogram())
+  // Finally, if this module is built with dwarf versions earlier than 4,
+  // do nothing (discriminator support is a DWARF 4 feature).
+  if (NoDiscriminators || !F.getSubprogram() ||
+      F.getParent()->getDwarfVersion() < 4)
     return false;
 
   bool Changed = false;
+  Module *M = F.getParent();
+  LLVMContext &Ctx = M->getContext();
+  DIBuilder Builder(*M, /*AllowUnresolved*/ false);
 
   typedef std::pair<StringRef, unsigned> Location;
-  typedef DenseSet<const BasicBlock *> BBSet;
-  typedef DenseMap<Location, BBSet> LocationBBMap;
+  typedef DenseMap<const BasicBlock *, Metadata *> BBScopeMap;
+  typedef DenseMap<Location, BBScopeMap> LocationBBMap;
   typedef DenseMap<Location, unsigned> LocationDiscriminatorMap;
   typedef DenseSet<Location> LocationSet;
 
@@ -180,31 +184,32 @@ static bool addDiscriminators(Function &F) {
   // discriminator for this instruction.
   for (BasicBlock &B : F) {
     for (auto &I : B.getInstList()) {
-      // Not all intrinsic calls should have a discriminator.
-      // We want to avoid a non-deterministic assignment of discriminators at
-      // different debug levels. We still allow discriminators on memory
-      // intrinsic calls because those can be early expanded by SROA into
-      // pairs of loads and stores, and the expanded load/store instructions
-      // should have a valid discriminator.
-      if (!shouldHaveDiscriminator(&I))
+      if (isa<DbgInfoIntrinsic>(&I))
         continue;
       const DILocation *DIL = I.getDebugLoc();
       if (!DIL)
         continue;
       Location L = std::make_pair(DIL->getFilename(), DIL->getLine());
       auto &BBMap = LBM[L];
-      auto R = BBMap.insert(&B);
+      auto R = BBMap.insert(std::make_pair(&B, (Metadata *)nullptr));
       if (BBMap.size() == 1)
         continue;
-      // If we could insert more than one block with the same line+file, a
+      bool InsertSuccess = R.second;
+      Metadata *&NewScope = R.first->second;
+      // If we could insert a different block in the same location, a
       // discriminator is needed to distinguish both instructions.
-      // Only the lowest 7 bits are used to represent a discriminator to fit
-      // it in 1 byte ULEB128 representation.
-      unsigned Discriminator = R.second ? ++LDM[L] : LDM[L];
-      I.setDebugLoc(DIL->setBaseDiscriminator(Discriminator));
+      if (InsertSuccess) {
+        auto *Scope = DIL->getScope();
+        auto *File =
+            Builder.createFile(DIL->getFilename(), Scope->getDirectory());
+        NewScope = Builder.createLexicalBlockFile(Scope, File, ++LDM[L]);
+      }
+      I.setDebugLoc(DILocation::get(Ctx, DIL->getLine(), DIL->getColumn(),
+                                    NewScope, DIL->getInlinedAt()));
       DEBUG(dbgs() << DIL->getFilename() << ":" << DIL->getLine() << ":"
-                   << DIL->getColumn() << ":" << Discriminator << " " << I
-                   << "\n");
+                   << DIL->getColumn() << ":"
+                   << dyn_cast<DILexicalBlockFile>(NewScope)->getDiscriminator()
+                   << I << "\n");
       Changed = true;
     }
   }
@@ -217,11 +222,7 @@ static bool addDiscriminators(Function &F) {
     LocationSet CallLocations;
     for (auto &I : B.getInstList()) {
       CallInst *Current = dyn_cast<CallInst>(&I);
-      // We bypass intrinsic calls for the following two reasons:
-      //  1) We want to avoid a non-deterministic assigment of
-      //     discriminators.
-      //  2) We want to minimize the number of base discriminators used.
-      if (!Current || isa<IntrinsicInst>(&I))
+      if (!Current || isa<DbgInfoIntrinsic>(&I))
         continue;
 
       DILocation *CurrentDIL = Current->getDebugLoc();
@@ -230,8 +231,13 @@ static bool addDiscriminators(Function &F) {
       Location L =
           std::make_pair(CurrentDIL->getFilename(), CurrentDIL->getLine());
       if (!CallLocations.insert(L).second) {
-        unsigned Discriminator = ++LDM[L];
-        Current->setDebugLoc(CurrentDIL->setBaseDiscriminator(Discriminator));
+        auto *Scope = CurrentDIL->getScope();
+        auto *File = Builder.createFile(CurrentDIL->getFilename(),
+                                        Scope->getDirectory());
+        auto *NewScope = Builder.createLexicalBlockFile(Scope, File, ++LDM[L]);
+        Current->setDebugLoc(DILocation::get(Ctx, CurrentDIL->getLine(),
+                                             CurrentDIL->getColumn(), NewScope,
+                                             CurrentDIL->getInlinedAt()));
         Changed = true;
       }
     }
@@ -243,7 +249,7 @@ bool AddDiscriminatorsLegacyPass::runOnFunction(Function &F) {
   return addDiscriminators(F);
 }
 PreservedAnalyses AddDiscriminatorsPass::run(Function &F,
-                                             FunctionAnalysisManager &AM) {
+                                             AnalysisManager<Function> &AM) {
   if (!addDiscriminators(F))
     return PreservedAnalyses::all();
 

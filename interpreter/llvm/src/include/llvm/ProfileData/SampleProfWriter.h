@@ -1,4 +1,4 @@
-//===- SampleProfWriter.h - Write LLVM sample profile data ------*- C++ -*-===//
+//===- SampleProfWriter.h - Write LLVM sample profile data ----------------===//
 //
 //                      The LLVM Compiler Infrastructure
 //
@@ -14,18 +14,15 @@
 #define LLVM_PROFILEDATA_SAMPLEPROFWRITER_H
 
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/IR/ProfileSummary.h"
+#include "llvm/ProfileData/ProfileCommon.h"
 #include "llvm/ProfileData/SampleProf.h"
 #include "llvm/Support/ErrorOr.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
-#include <algorithm>
-#include <cstdint>
-#include <memory>
-#include <system_error>
 
 namespace llvm {
+
 namespace sampleprof {
 
 enum SampleProfileFormat { SPF_None = 0, SPF_Text, SPF_Binary, SPF_GCC };
@@ -33,7 +30,7 @@ enum SampleProfileFormat { SPF_None = 0, SPF_Text, SPF_Binary, SPF_GCC };
 /// \brief Sample-based profile writer. Base class.
 class SampleProfileWriter {
 public:
-  virtual ~SampleProfileWriter() = default;
+  virtual ~SampleProfileWriter() {}
 
   /// Write sample profiles in \p S.
   ///
@@ -43,7 +40,16 @@ public:
   /// Write all the sample profiles in the given map of samples.
   ///
   /// \returns status code of the file update operation.
-  std::error_code write(const StringMap<FunctionSamples> &ProfileMap);
+  std::error_code write(const StringMap<FunctionSamples> &ProfileMap) {
+    if (std::error_code EC = writeHeader(ProfileMap))
+      return EC;
+    for (const auto &I : ProfileMap) {
+      const FunctionSamples &Profile = I.second;
+      if (std::error_code EC = write(Profile))
+        return EC;
+    }
+    return sampleprof_error::success;
+  }
 
   raw_ostream &getOutputStream() { return *OutputStream; }
 
@@ -108,7 +114,7 @@ public:
 
 protected:
   SampleProfileWriterBinary(std::unique_ptr<raw_ostream> &OS)
-      : SampleProfileWriter(OS) {}
+      : SampleProfileWriter(OS), NameTable() {}
 
   std::error_code
   writeHeader(const StringMap<FunctionSamples> &ProfileMap) override;
@@ -127,7 +133,8 @@ private:
                               SampleProfileFormat Format);
 };
 
-} // end namespace sampleprof
-} // end namespace llvm
+} // End namespace sampleprof
+
+} // End namespace llvm
 
 #endif // LLVM_PROFILEDATA_SAMPLEPROFWRITER_H

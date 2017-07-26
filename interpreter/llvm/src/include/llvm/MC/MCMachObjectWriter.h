@@ -1,4 +1,4 @@
-//===- llvm/MC/MCMachObjectWriter.h - Mach Object Writer --------*- C++ -*-===//
+//===-- llvm/MC/MCMachObjectWriter.h - Mach Object Writer -------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,15 +11,12 @@
 #define LLVM_MC_MCMACHOBJECTWRITER_H
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/StringTableBuilder.h"
+#include "llvm/Support/DataTypes.h"
 #include "llvm/Support/MachO.h"
-#include <cstdint>
-#include <memory>
-#include <string>
 #include <vector>
 
 namespace llvm {
@@ -98,8 +95,8 @@ class MachObjectWriter : public MCObjectWriter {
         : Sym(Sym), MRE(MRE) {}
   };
 
-  DenseMap<const MCSection *, std::vector<RelAndSymbol>> Relocations;
-  DenseMap<const MCSection *, unsigned> IndirectSymBase;
+  llvm::DenseMap<const MCSection *, std::vector<RelAndSymbol>> Relocations;
+  llvm::DenseMap<const MCSection *, unsigned> IndirectSymBase;
 
   SectionAddrMap SectionAddress;
 
@@ -274,6 +271,6 @@ MCObjectWriter *createMachObjectWriter(MCMachObjectTargetWriter *MOTW,
                                        raw_pwrite_stream &OS,
                                        bool IsLittleEndian);
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_MC_MCMACHOBJECTWRITER_H
+#endif

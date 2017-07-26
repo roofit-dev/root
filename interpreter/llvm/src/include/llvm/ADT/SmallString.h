@@ -16,7 +16,6 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include <cstddef>
 
 namespace llvm {
 
@@ -26,7 +25,7 @@ template<unsigned InternalLen>
 class SmallString : public SmallVector<char, InternalLen> {
 public:
   /// Default ctor - Initialize to empty.
-  SmallString() = default;
+  SmallString() {}
 
   /// Initialize from a StringRef.
   SmallString(StringRef S) : SmallVector<char, InternalLen>(S.begin(), S.end()) {}
@@ -79,6 +78,7 @@ public:
   void append(size_t NumInputs, char Elt) {
     SmallVectorImpl<char>::append(NumInputs, Elt);
   }
+
 
   /// Append from a StringRef.
   void append(StringRef RHS) {
@@ -292,6 +292,6 @@ public:
   }
 };
 
-} // end namespace llvm
+}
 
-#endif // LLVM_ADT_SMALLSTRING_H
+#endif

@@ -97,7 +97,7 @@ public:
   /// implemented in terms of the name that is registered by one of the
   /// Registration templates, but can be overloaded directly.
   ///
-  virtual StringRef getPassName() const;
+  virtual const char *getPassName() const;
 
   /// getPassID - Return the PassID number that corresponds to this pass.
   AnalysisID getPassID() const {

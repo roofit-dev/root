@@ -44,9 +44,7 @@ public:
 }
 
 namespace llvm {
-Target &getTheSparcTarget();
-Target &getTheSparcV9Target();
-Target &getTheSparcelTarget();
+extern Target TheSparcTarget, TheSparcV9Target, TheSparcelTarget;
 }
 
 static MCDisassembler *createSparcDisassembler(const Target &T,
@@ -58,11 +56,11 @@ static MCDisassembler *createSparcDisassembler(const Target &T,
 
 extern "C" void LLVMInitializeSparcDisassembler() {
   // Register the disassembler.
-  TargetRegistry::RegisterMCDisassembler(getTheSparcTarget(),
+  TargetRegistry::RegisterMCDisassembler(TheSparcTarget,
                                          createSparcDisassembler);
-  TargetRegistry::RegisterMCDisassembler(getTheSparcV9Target(),
+  TargetRegistry::RegisterMCDisassembler(TheSparcV9Target,
                                          createSparcDisassembler);
-  TargetRegistry::RegisterMCDisassembler(getTheSparcelTarget(),
+  TargetRegistry::RegisterMCDisassembler(TheSparcelTarget,
                                          createSparcDisassembler);
 }
 

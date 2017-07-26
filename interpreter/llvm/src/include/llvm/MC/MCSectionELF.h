@@ -14,10 +14,12 @@
 #ifndef LLVM_MC_MCSECTIONELF_H
 #define LLVM_MC_MCSECTIONELF_H
 
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCSymbolELF.h"
-#include "llvm/MC/SectionKind.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/ELF.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
 
@@ -45,18 +47,17 @@ class MCSectionELF final : public MCSection {
 
   const MCSymbolELF *Group;
 
-  /// sh_info for SHF_LINK_ORDER (can be null).
-  const MCSymbol *AssociatedSymbol;
+  /// Depending on the type of the section this is sh_link or sh_info.
+  const MCSectionELF *Associated;
 
 private:
   friend class MCContext;
-
   MCSectionELF(StringRef Section, unsigned type, unsigned flags, SectionKind K,
                unsigned entrySize, const MCSymbolELF *group, unsigned UniqueID,
-               MCSymbol *Begin, const MCSymbolELF *AssociatedSymbol)
+               MCSymbol *Begin, const MCSectionELF *Associated)
       : MCSection(SV_ELF, K, Begin), SectionName(Section), Type(type),
         Flags(flags), UniqueID(UniqueID), EntrySize(entrySize), Group(group),
-        AssociatedSymbol(AssociatedSymbol) {
+        Associated(Associated) {
     if (Group)
       Group->setIsSignature();
   }
@@ -77,8 +78,7 @@ public:
   void setFlags(unsigned F) { Flags = F; }
   const MCSymbolELF *getGroup() const { return Group; }
 
-  void PrintSwitchToSection(const MCAsmInfo &MAI, const Triple &T,
-                            raw_ostream &OS,
+  void PrintSwitchToSection(const MCAsmInfo &MAI, raw_ostream &OS,
                             const MCExpr *Subsection) const override;
   bool UseCodeAlign() const override;
   bool isVirtualSection() const override;
@@ -86,8 +86,7 @@ public:
   bool isUnique() const { return UniqueID != ~0U; }
   unsigned getUniqueID() const { return UniqueID; }
 
-  const MCSection *getAssociatedSection() const { return &AssociatedSymbol->getSection(); }
-  const MCSymbol *getAssociatedSymbol() const { return AssociatedSymbol; }
+  const MCSectionELF *getAssociatedSection() const { return Associated; }
 
   static bool classof(const MCSection *S) {
     return S->getVariant() == SV_ELF;
@@ -96,4 +95,4 @@ public:
 
 } // end namespace llvm
 
-#endif // LLVM_MC_MCSECTIONELF_H
+#endif

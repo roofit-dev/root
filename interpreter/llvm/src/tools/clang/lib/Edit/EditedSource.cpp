@@ -363,14 +363,13 @@ static void adjustRemoval(const SourceManager &SM, const LangOptions &LangOpts,
 
 static void applyRewrite(EditsReceiver &receiver,
                          StringRef text, FileOffset offs, unsigned len,
-                         const SourceManager &SM, const LangOptions &LangOpts,
-                         bool shouldAdjustRemovals) {
+                         const SourceManager &SM, const LangOptions &LangOpts) {
   assert(offs.getFID().isValid());
   SourceLocation Loc = SM.getLocForStartOfFile(offs.getFID());
   Loc = Loc.getLocWithOffset(offs.getOffset());
   assert(Loc.isFileID());
 
-  if (text.empty() && shouldAdjustRemovals)
+  if (text.empty())
     adjustRemoval(SM, LangOpts, Loc, offs, len, text);
 
   CharSourceRange range = CharSourceRange::getCharRange(Loc,
@@ -388,8 +387,7 @@ static void applyRewrite(EditsReceiver &receiver,
     receiver.insert(Loc, text);
 }
 
-void EditedSource::applyRewrites(EditsReceiver &receiver,
-                                 bool shouldAdjustRemovals) {
+void EditedSource::applyRewrites(EditsReceiver &receiver) {
   SmallString<128> StrVec;
   FileOffset CurOffs, CurEnd;
   unsigned CurLen;
@@ -416,16 +414,14 @@ void EditedSource::applyRewrites(EditsReceiver &receiver,
       continue;
     }
 
-    applyRewrite(receiver, StrVec, CurOffs, CurLen, SourceMgr, LangOpts,
-                 shouldAdjustRemovals);
+    applyRewrite(receiver, StrVec, CurOffs, CurLen, SourceMgr, LangOpts);
     CurOffs = offs;
     StrVec = act.Text;
     CurLen = act.RemoveLen;
     CurEnd = CurOffs.getWithOffset(CurLen);
   }
 
-  applyRewrite(receiver, StrVec, CurOffs, CurLen, SourceMgr, LangOpts,
-               shouldAdjustRemovals);
+  applyRewrite(receiver, StrVec, CurOffs, CurLen, SourceMgr, LangOpts);
 }
 
 void EditedSource::clearRewrites() {

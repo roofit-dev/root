@@ -57,10 +57,6 @@ include "MipsSchedule.td"
 include "MipsInstrInfo.td"
 include "MipsCallingConv.td"
 
-// Avoid forward declaration issues.
-include "MipsScheduleP5600.td"
-include "MipsScheduleGeneric.td"
-
 def MipsInstrInfo : InstrInfo;
 
 //===----------------------------------------------------------------------===//
@@ -156,8 +152,6 @@ def FeatureMips64r6    : SubtargetFeature<"mips64r6", "MipsArchVersion",
                                 "Mips64r6 ISA Support [experimental]",
                                 [FeatureMips32r6, FeatureMips64r5,
                                  FeatureNaN2008]>;
-def FeatureSym32       : SubtargetFeature<"sym32", "HasSym32", "true",
-                                          "Symbols are 32 bit on Mips64">;
 
 def FeatureMips16  : SubtargetFeature<"mips16", "InMips16Mode", "true",
                                       "Mips16 mode">;
@@ -194,7 +188,7 @@ def ImplP5600 : SubtargetFeature<"p5600", "ProcImpl",
                                  "The P5600 Processor", [FeatureMips32r5]>;
 
 class Proc<string Name, list<SubtargetFeature> Features>
- : ProcessorModel<Name, MipsGenericModel, Features>;
+ : Processor<Name, MipsGenericItineraries, Features>;
 
 def : Proc<"mips1", [FeatureMips1]>;
 def : Proc<"mips2", [FeatureMips2]>;

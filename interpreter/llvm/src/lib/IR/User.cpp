@@ -43,9 +43,10 @@ void User::replaceUsesOfWith(Value *From, Value *To) {
 void User::allocHungoffUses(unsigned N, bool IsPhi) {
   assert(HasHungOffUses && "alloc must have hung off uses");
 
-  static_assert(alignof(Use) >= alignof(Use::UserRef),
+  static_assert(AlignOf<Use>::Alignment >= AlignOf<Use::UserRef>::Alignment,
                 "Alignment is insufficient for 'hung-off-uses' pieces");
-  static_assert(alignof(Use::UserRef) >= alignof(BasicBlock *),
+  static_assert(AlignOf<Use::UserRef>::Alignment >=
+                    AlignOf<BasicBlock *>::Alignment,
                 "Alignment is insufficient for 'hung-off-uses' pieces");
 
   // Allocate the array of Uses, followed by a pointer (with bottom bit set) to

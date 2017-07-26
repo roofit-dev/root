@@ -77,7 +77,6 @@ ROOT_BUILD_OPTION(builtin_glew ON "Build included libGLEW, or use system libGLEW
 ROOT_BUILD_OPTION(builtin_gsl OFF "Build the GSL library internally (downloading tarfile from the Web)")
 ROOT_BUILD_OPTION(builtin_llvm ON "Build the LLVM internally")
 ROOT_BUILD_OPTION(builtin_lzma OFF "Build included liblzma, or use system liblzma")
-ROOT_BUILD_OPTION(builtin_lz4 OFF "Built included liblz4, or use system liblz4")
 ROOT_BUILD_OPTION(builtin_openssl OFF "Build OpenSSL internally, or use system OpenSSL")
 ROOT_BUILD_OPTION(builtin_pcre OFF "Build included libpcre, or use system libpcre")
 ROOT_BUILD_OPTION(builtin_tbb OFF "Build the TBB internally")
@@ -255,11 +254,6 @@ endforeach()
 #---Apply root7 versus language------------------------------------------------------------------
 if(cxx14 OR cxx17 OR cxx14_defval OR cxx17_defval)
   set(root7_defvalue ON)
-endif()
-
-#---roottest option implies testing
-if(roottest)
-  set(testing ON CACHE BOOL "" FORCE)
 endif()
 
 #---Define at moment the options with the selected default values-----------------------------

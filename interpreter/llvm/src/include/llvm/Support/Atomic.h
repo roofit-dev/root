@@ -20,11 +20,6 @@
 
 #include "llvm/Support/DataTypes.h"
 
-// Windows will at times define MemoryFence.
-#ifdef MemoryFence
-#undef MemoryFence
-#endif
-
 namespace llvm {
   namespace sys {
     void MemoryFence();

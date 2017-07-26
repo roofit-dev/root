@@ -15,8 +15,6 @@
 #define LLVM_IR_TRACKINGMDREF_H
 
 #include "llvm/IR/Metadata.h"
-#include <algorithm>
-#include <cassert>
 
 namespace llvm {
 
@@ -24,15 +22,14 @@ namespace llvm {
 ///
 /// This class behaves like \a TrackingVH, but for metadata.
 class TrackingMDRef {
-  Metadata *MD = nullptr;
+  Metadata *MD;
 
 public:
-  TrackingMDRef() = default;
+  TrackingMDRef() : MD(nullptr) {}
   explicit TrackingMDRef(Metadata *MD) : MD(MD) { track(); }
 
   TrackingMDRef(TrackingMDRef &&X) : MD(X.MD) { retrack(X); }
   TrackingMDRef(const TrackingMDRef &X) : MD(X.MD) { track(); }
-
   TrackingMDRef &operator=(TrackingMDRef &&X) {
     if (&X == this)
       return *this;
@@ -42,7 +39,6 @@ public:
     retrack(X);
     return *this;
   }
-
   TrackingMDRef &operator=(const TrackingMDRef &X) {
     if (&X == this)
       return *this;
@@ -52,7 +48,6 @@ public:
     track();
     return *this;
   }
-
   ~TrackingMDRef() { untrack(); }
 
   Metadata *get() const { return MD; }
@@ -85,12 +80,10 @@ private:
     if (MD)
       MetadataTracking::track(MD);
   }
-
   void untrack() {
     if (MD)
       MetadataTracking::untrack(MD);
   }
-
   void retrack(TrackingMDRef &X) {
     assert(MD == X.MD && "Expected values to match");
     if (X.MD) {
@@ -108,17 +101,15 @@ template <class T> class TypedTrackingMDRef {
   TrackingMDRef Ref;
 
 public:
-  TypedTrackingMDRef() = default;
+  TypedTrackingMDRef() {}
   explicit TypedTrackingMDRef(T *MD) : Ref(static_cast<Metadata *>(MD)) {}
 
   TypedTrackingMDRef(TypedTrackingMDRef &&X) : Ref(std::move(X.Ref)) {}
   TypedTrackingMDRef(const TypedTrackingMDRef &X) : Ref(X.Ref) {}
-
   TypedTrackingMDRef &operator=(TypedTrackingMDRef &&X) {
     Ref = std::move(X.Ref);
     return *this;
   }
-
   TypedTrackingMDRef &operator=(const TypedTrackingMDRef &X) {
     Ref = X.Ref;
     return *this;
@@ -139,35 +130,31 @@ public:
   bool hasTrivialDestructor() const { return Ref.hasTrivialDestructor(); }
 };
 
-using TrackingMDNodeRef = TypedTrackingMDRef<MDNode>;
-using TrackingValueAsMetadataRef = TypedTrackingMDRef<ValueAsMetadata>;
+typedef TypedTrackingMDRef<MDNode> TrackingMDNodeRef;
+typedef TypedTrackingMDRef<ValueAsMetadata> TrackingValueAsMetadataRef;
 
 // Expose the underlying metadata to casting.
 template <> struct simplify_type<TrackingMDRef> {
-  using SimpleType = Metadata *;
-
+  typedef Metadata *SimpleType;
   static SimpleType getSimplifiedValue(TrackingMDRef &MD) { return MD.get(); }
 };
 
 template <> struct simplify_type<const TrackingMDRef> {
-  using SimpleType = Metadata *;
-
+  typedef Metadata *SimpleType;
   static SimpleType getSimplifiedValue(const TrackingMDRef &MD) {
     return MD.get();
   }
 };
 
 template <class T> struct simplify_type<TypedTrackingMDRef<T>> {
-  using SimpleType = T *;
-
+  typedef T *SimpleType;
   static SimpleType getSimplifiedValue(TypedTrackingMDRef<T> &MD) {
     return MD.get();
   }
 };
 
 template <class T> struct simplify_type<const TypedTrackingMDRef<T>> {
-  using SimpleType = T *;
-
+  typedef T *SimpleType;
   static SimpleType getSimplifiedValue(const TypedTrackingMDRef<T> &MD) {
     return MD.get();
   }
@@ -175,4 +162,4 @@ template <class T> struct simplify_type<const TypedTrackingMDRef<T>> {
 
 } // end namespace llvm
 
-#endif // LLVM_IR_TRACKINGMDREF_H
+#endif

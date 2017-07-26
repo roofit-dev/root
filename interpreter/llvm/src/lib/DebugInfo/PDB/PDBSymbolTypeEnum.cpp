@@ -21,8 +21,15 @@ using namespace llvm::pdb;
 
 PDBSymbolTypeEnum::PDBSymbolTypeEnum(const IPDBSession &PDBSession,
                                      std::unique_ptr<IPDBRawSymbol> Symbol)
-    : PDBSymbol(PDBSession, std::move(Symbol)) {
-  assert(RawSymbol->getSymTag() == PDB_SymType::Enum);
+    : PDBSymbol(PDBSession, std::move(Symbol)) {}
+
+std::unique_ptr<PDBSymbolTypeUDT> PDBSymbolTypeEnum::getClassParent() const {
+  return Session.getConcreteSymbolById<PDBSymbolTypeUDT>(getClassParentId());
+}
+
+std::unique_ptr<PDBSymbolTypeBuiltin>
+PDBSymbolTypeEnum::getUnderlyingType() const {
+  return Session.getConcreteSymbolById<PDBSymbolTypeBuiltin>(getTypeId());
 }
 
 void PDBSymbolTypeEnum::dump(PDBSymDumper &Dumper) const { Dumper.dump(*this); }

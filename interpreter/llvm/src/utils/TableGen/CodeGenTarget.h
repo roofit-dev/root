@@ -82,7 +82,7 @@ public:
   ~CodeGenTarget();
 
   Record *getTargetRecord() const { return TargetRec; }
-  const StringRef getName() const;
+  const std::string &getName() const;
 
   /// getInstNamespace - Return the target-specific instruction namespace.
   ///
@@ -139,7 +139,7 @@ public:
   /// supported by the target (i.e. there are registers that directly hold it).
   bool isLegalValueType(MVT::SimpleValueType VT) const {
     ArrayRef<MVT::SimpleValueType> LegalVTs = getLegalValueTypes();
-    return is_contained(LegalVTs, VT);
+    return std::find(LegalVTs.begin(), LegalVTs.end(), VT) != LegalVTs.end();
   }
 
   CodeGenSchedModels &getSchedModels() const;
@@ -196,8 +196,8 @@ class ComplexPattern {
   std::string SelectFunc;
   std::vector<Record*> RootNodes;
   unsigned Properties; // Node properties
-  unsigned Complexity;
 public:
+  ComplexPattern() : NumOperands(0) {}
   ComplexPattern(Record *R);
 
   MVT::SimpleValueType getValueType() const { return Ty; }
@@ -207,7 +207,6 @@ public:
     return RootNodes;
   }
   bool hasProperty(enum SDNP Prop) const { return Properties & (1 << Prop); }
-  unsigned getComplexity() const { return Complexity; }
 };
 
 } // End llvm namespace

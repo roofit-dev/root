@@ -207,9 +207,9 @@ class Configure(object):
             if m:
                 key = m.group(1)
                 if key not in definitions or not definitions[key]:
-                    return '/* #undef {0} */{1}'.format(key, os.linesep)
+                    return '/* #undef {} */\n'.format(key)
                 else:
-                    return '#define {0}{1}'.format(key, os.linesep)
+                    return '#define {}\n'.format(key)
             return line
 
         with open(template, 'r') as src_handle:

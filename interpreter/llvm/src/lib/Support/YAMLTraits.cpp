@@ -44,10 +44,13 @@ void IO::setContext(void *Context) {
 //  Input
 //===----------------------------------------------------------------------===//
 
-Input::Input(StringRef InputContent, void *Ctxt,
-             SourceMgr::DiagHandlerTy DiagHandler, void *DiagHandlerCtxt)
-    : IO(Ctxt), Strm(new Stream(InputContent, SrcMgr, false, &EC)),
-      CurrentNode(nullptr) {
+Input::Input(StringRef InputContent,
+             void *Ctxt,
+             SourceMgr::DiagHandlerTy DiagHandler,
+             void *DiagHandlerCtxt)
+  : IO(Ctxt),
+    Strm(new Stream(InputContent, SrcMgr)),
+    CurrentNode(nullptr) {
   if (DiagHandler)
     SrcMgr.setDiagHandler(DiagHandler, DiagHandlerCtxt);
   DocIterator = Strm->begin();
@@ -118,18 +121,6 @@ void Input::beginMapping() {
   }
 }
 
-std::vector<StringRef> Input::keys() {
-  MapHNode *MN = dyn_cast<MapHNode>(CurrentNode);
-  std::vector<StringRef> Ret;
-  if (!MN) {
-    setError(CurrentNode, "not a mapping");
-    return Ret;
-  }
-  for (auto &P : MN->Mapping)
-    Ret.push_back(P.first());
-  return Ret;
-}
-
 bool Input::preflightKey(const char *Key, bool Required, bool, bool &UseDefault,
                          void *&SaveInfo) {
   UseDefault = false;
@@ -175,7 +166,7 @@ void Input::endMapping() {
   if (!MN)
     return;
   for (const auto &NN : MN->Mapping) {
-    if (!is_contained(MN->ValidKeys, NN.first())) {
+    if (!MN->isValidKey(NN.first())) {
       setError(NN.second.get(), Twine("unknown key '") + NN.first() + "'");
       break;
     }
@@ -385,6 +376,14 @@ std::unique_ptr<Input::HNode> Input::createHNodes(Node *N) {
   }
 }
 
+bool Input::MapHNode::isValidKey(StringRef Key) {
+  for (const char *K : ValidKeys) {
+    if (Key.equals(K))
+      return true;
+  }
+  return false;
+}
+
 void Input::setError(const Twine &Message) {
   this->setError(CurrentNode, Message);
 }
@@ -398,10 +397,17 @@ bool Input::canElideEmptySequence() {
 //===----------------------------------------------------------------------===//
 
 Output::Output(raw_ostream &yout, void *context, int WrapColumn)
-    : IO(context), Out(yout), WrapColumn(WrapColumn), Column(0),
-      ColumnAtFlowStart(0), ColumnAtMapFlowStart(0), NeedBitValueComma(false),
-      NeedFlowSequenceComma(false), EnumerationMatchFound(false),
-      NeedsNewLine(false), WriteDefaultValues(false) {}
+    : IO(context),
+      Out(yout),
+      WrapColumn(WrapColumn),
+      Column(0),
+      ColumnAtFlowStart(0),
+      ColumnAtMapFlowStart(0),
+      NeedBitValueComma(false),
+      NeedFlowSequenceComma(false),
+      EnumerationMatchFound(false),
+      NeedsNewLine(false) {
+}
 
 Output::~Output() {
 }
@@ -448,14 +454,10 @@ void Output::endMapping() {
   StateStack.pop_back();
 }
 
-std::vector<StringRef> Output::keys() {
-  report_fatal_error("invalid call");
-}
-
 bool Output::preflightKey(const char *Key, bool Required, bool SameAsDefault,
                           bool &UseDefault, void *&) {
   UseDefault = false;
-  if (Required || !SameAsDefault || WriteDefaultValues) {
+  if (Required || !SameAsDefault) {
     auto State = StateStack.back();
     if (State == inFlowMapFirstKey || State == inFlowMapOtherKey) {
       flowKey(Key);

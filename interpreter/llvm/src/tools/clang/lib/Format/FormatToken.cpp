@@ -13,8 +13,9 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "FormatToken.h"
 #include "ContinuationIndenter.h"
+#include "FormatToken.h"
+#include "clang/Format/Format.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include <climits>
@@ -77,9 +78,6 @@ unsigned CommaSeparatedList::formatAfterToken(LineState &State,
   if (State.NextToken == nullptr || !State.NextToken->Previous)
     return 0;
 
-  if (Formats.size() == 1)
-    return 0; // Handled by formatFromToken
-
   // Ensure that we start on the opening brace.
   const FormatToken *LBrace =
       State.NextToken->Previous->getPreviousNonComment();
@@ -95,7 +93,6 @@ unsigned CommaSeparatedList::formatAfterToken(LineState &State,
 
   // Find the best ColumnFormat, i.e. the best number of columns to use.
   const ColumnFormat *Format = getColumnFormat(RemainingCodePoints);
-
   // If no ColumnFormat can be used, the braced list would generally be
   // bin-packed. Add a severe penalty to this so that column layouts are
   // preferred if possible.
@@ -133,9 +130,7 @@ unsigned CommaSeparatedList::formatAfterToken(LineState &State,
 unsigned CommaSeparatedList::formatFromToken(LineState &State,
                                              ContinuationIndenter *Indenter,
                                              bool DryRun) {
-  // Formatting with 1 Column isn't really a column layout, so we don't need the
-  // special logic here. We can just avoid bin packing any of the parameters.
-  if (Formats.size() == 1 || HasNestedBracedList)
+  if (HasNestedBracedList)
     State.Stack.back().AvoidBinPacking = true;
   return 0;
 }
@@ -279,7 +274,7 @@ void CommaSeparatedList::precomputeFormattingInfos(const FormatToken *Token) {
       continue;
 
     // Ignore layouts that are bound to violate the column limit.
-    if (Format.TotalWidth > Style.ColumnLimit && Columns > 1)
+    if (Format.TotalWidth > Style.ColumnLimit)
       continue;
 
     Formats.push_back(Format);
@@ -293,7 +288,7 @@ CommaSeparatedList::getColumnFormat(unsigned RemainingCharacters) const {
            I = Formats.rbegin(),
            E = Formats.rend();
        I != E; ++I) {
-    if (I->TotalWidth <= RemainingCharacters || I->Columns == 1) {
+    if (I->TotalWidth <= RemainingCharacters) {
       if (BestFormat && I->LineCount > BestFormat->LineCount)
         break;
       BestFormat = &*I;

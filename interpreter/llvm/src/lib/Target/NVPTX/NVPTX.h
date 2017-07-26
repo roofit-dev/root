@@ -45,17 +45,20 @@ FunctionPass *createNVPTXISelDag(NVPTXTargetMachine &TM,
                                  llvm::CodeGenOpt::Level OptLevel);
 ModulePass *createNVPTXAssignValidGlobalNamesPass();
 ModulePass *createGenericToNVVMPass();
+FunctionPass *createNVPTXFavorNonGenericAddrSpacesPass();
+FunctionPass *createNVPTXInferAddressSpacesPass();
 FunctionPass *createNVVMIntrRangePass(unsigned int SmVersion);
 FunctionPass *createNVVMReflectPass();
+FunctionPass *createNVVMReflectPass(const StringMap<int> &Mapping);
 MachineFunctionPass *createNVPTXPrologEpilogPass();
 MachineFunctionPass *createNVPTXReplaceImageHandlesPass();
 FunctionPass *createNVPTXImageOptimizerPass();
-FunctionPass *createNVPTXLowerArgsPass(const NVPTXTargetMachine *TM);
+FunctionPass *createNVPTXLowerKernelArgsPass(const NVPTXTargetMachine *TM);
 BasicBlockPass *createNVPTXLowerAllocaPass();
 MachineFunctionPass *createNVPTXPeephole();
 
-Target &getTheNVPTXTarget32();
-Target &getTheNVPTXTarget64();
+extern Target TheNVPTXTarget32;
+extern Target TheNVPTXTarget64;
 
 namespace NVPTX {
 enum DrvInterface {
@@ -106,8 +109,7 @@ enum AddressSpace {
 enum FromType {
   Unsigned = 0,
   Signed,
-  Float,
-  Untyped
+  Float
 };
 enum VecType {
   Scalar = 1,

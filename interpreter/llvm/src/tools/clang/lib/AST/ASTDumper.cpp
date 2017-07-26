@@ -102,26 +102,22 @@ namespace  {
     /// Pending[i] is an action to dump an entity at level i.
     llvm::SmallVector<std::function<void(bool isLastChild)>, 32> Pending;
 
-    /// Indicates whether we should trigger deserialization of nodes that had
-    /// not already been loaded.
-    bool Deserialize = false;
-
     /// Indicates whether we're at the top level.
-    bool TopLevel = true;
+    bool TopLevel;
 
     /// Indicates if we're handling the first child after entering a new depth.
-    bool FirstChild = true;
+    bool FirstChild;
 
     /// Prefix for currently-being-dumped entity.
     std::string Prefix;
 
     /// Keep track of the last location we print out so that we can
     /// print out deltas from then on out.
-    const char *LastLocFilename = "";
-    unsigned LastLocLine = ~0U;
+    const char *LastLocFilename;
+    unsigned LastLocLine;
 
     /// The \c FullComment parent of the comment being dumped.
-    const FullComment *FC = nullptr;
+    const FullComment *FC;
 
     bool ShowColors;
 
@@ -207,14 +203,15 @@ namespace  {
   public:
     ASTDumper(raw_ostream &OS, const CommandTraits *Traits,
               const SourceManager *SM)
-      : OS(OS), Traits(Traits), SM(SM),
+      : OS(OS), Traits(Traits), SM(SM), TopLevel(true), FirstChild(true),
+        LastLocFilename(""), LastLocLine(~0U), FC(nullptr),
         ShowColors(SM && SM->getDiagnostics().getShowColors()) { }
 
     ASTDumper(raw_ostream &OS, const CommandTraits *Traits,
               const SourceManager *SM, bool ShowColors)
-      : OS(OS), Traits(Traits), SM(SM), ShowColors(ShowColors) {}
-
-    void setDeserialize(bool D) { Deserialize = D; }
+      : OS(OS), Traits(Traits), SM(SM), TopLevel(true), FirstChild(true),
+        LastLocFilename(""), LastLocLine(~0U),
+        ShowColors(ShowColors) { }
 
     void dumpDecl(const Decl *D);
     void dumpStmt(const Stmt *S);
@@ -431,8 +428,6 @@ namespace  {
     void VisitFunctionDecl(const FunctionDecl *D);
     void VisitFieldDecl(const FieldDecl *D);
     void VisitVarDecl(const VarDecl *D);
-    void VisitDecompositionDecl(const DecompositionDecl *D);
-    void VisitBindingDecl(const BindingDecl *D);
     void VisitFileScopeAsmDecl(const FileScopeAsmDecl *D);
     void VisitImportDecl(const ImportDecl *D);
     void VisitPragmaCommentDecl(const PragmaCommentDecl *D);
@@ -520,8 +515,6 @@ namespace  {
     void VisitFloatingLiteral(const FloatingLiteral *Node);
     void VisitStringLiteral(const StringLiteral *Str);
     void VisitInitListExpr(const InitListExpr *ILE);
-    void VisitArrayInitLoopExpr(const ArrayInitLoopExpr *ILE);
-    void VisitArrayInitIndexExpr(const ArrayInitIndexExpr *ILE);
     void VisitUnaryOperator(const UnaryOperator *Node);
     void VisitUnaryExprOrTypeTraitExpr(const UnaryExprOrTypeTraitExpr *Node);
     void VisitMemberExpr(const MemberExpr *Node);
@@ -550,8 +543,6 @@ namespace  {
       dumpDecl(Node->getLambdaClass());
     }
     void VisitSizeOfPackExpr(const SizeOfPackExpr *Node);
-    void
-    VisitCXXDependentScopeMemberExpr(const CXXDependentScopeMemberExpr *Node);
 
     // ObjC
     void VisitObjCAtCatchStmt(const ObjCAtCatchStmt *Node);
@@ -767,15 +758,14 @@ bool ASTDumper::hasNodes(const DeclContext *DC) {
     return false;
 
   return DC->hasExternalLexicalStorage() ||
-         (Deserialize ? DC->decls_begin() != DC->decls_end()
-                      : DC->noload_decls_begin() != DC->noload_decls_end());
+         DC->noload_decls_begin() != DC->noload_decls_end();
 }
 
 void ASTDumper::dumpDeclContext(const DeclContext *DC) {
   if (!DC)
     return;
 
-  for (auto *D : (Deserialize ? DC->decls() : DC->noload_decls()))
+  for (auto *D : DC->noload_decls())
     dumpDecl(D);
 
   if (DC->hasExternalLexicalStorage()) {
@@ -799,13 +789,11 @@ void ASTDumper::dumpLookups(const DeclContext *DC, bool DumpDecls) {
 
     bool HasUndeserializedLookups = Primary->hasExternalVisibleStorage();
 
-    for (auto I = Deserialize ? Primary->lookups_begin()
-                              : Primary->noload_lookups_begin(),
-              E = Deserialize ? Primary->lookups_end()
-                              : Primary->noload_lookups_end();
-         I != E; ++I) {
+    DeclContext::all_lookups_iterator I = Primary->noload_lookups_begin(),
+                                      E = Primary->noload_lookups_end();
+    while (I != E) {
       DeclarationName Name = I.getLookupName();
-      DeclContextLookupResult R = *I;
+      DeclContextLookupResult R = *I++;
 
       dumpChild([=] {
         OS << "DeclarationName ";
@@ -1038,10 +1026,10 @@ void ASTDumper::dumpDecl(const Decl *D) {
     dumpSourceRange(D->getSourceRange());
     OS << ' ';
     dumpLocation(D->getLocation());
-    if (D->isFromASTFile())
-      OS << " imported";
-    if (Module *M = D->getOwningModule())
+    if (Module *M = D->getImportedOwningModule())
       OS << " in " << M->getFullModuleName();
+    else if (Module *M = D->getLocalOwningModule())
+      OS << " in (local) " << M->getFullModuleName();
     if (auto *ND = dyn_cast<NamedDecl>(D))
       for (Module *M : D->getASTContext().getModulesWithMergedDefinition(
                const_cast<NamedDecl *>(ND)))
@@ -1145,15 +1133,8 @@ void ASTDumper::VisitFunctionDecl(const FunctionDecl *D) {
 
   if (D->isPure())
     OS << " pure";
-  if (D->isDefaulted()) {
-    OS << " default";
-    if (D->isDeleted())
-      OS << "_delete";
-  }
-  if (D->isDeletedAsWritten())
+  else if (D->isDeletedAsWritten())
     OS << " delete";
-  if (D->isTrivial())
-    OS << " trivial";
 
   if (const FunctionProtoType *FPT = D->getType()->getAs<FunctionProtoType>()) {
     FunctionProtoType::ExtProtoInfo EPI = FPT->getExtProtoInfo();
@@ -1171,6 +1152,11 @@ void ASTDumper::VisitFunctionDecl(const FunctionDecl *D) {
   if (const FunctionTemplateSpecializationInfo *FTSI =
           D->getTemplateSpecializationInfo())
     dumpTemplateArgumentList(*FTSI->TemplateArguments);
+
+  for (ArrayRef<NamedDecl *>::iterator
+       I = D->getDeclsInPrototypeScope().begin(),
+       E = D->getDeclsInPrototypeScope().end(); I != E; ++I)
+    dumpDecl(*I);
 
   if (!D->param_begin() && D->getNumParams())
     dumpChild([=] { OS << "<<NULL params x " << D->getNumParams() << ">>"; });
@@ -1229,19 +1215,6 @@ void ASTDumper::VisitVarDecl(const VarDecl *D) {
     }
     dumpStmt(D->getInit());
   }
-}
-
-void ASTDumper::VisitDecompositionDecl(const DecompositionDecl *D) {
-  VisitVarDecl(D);
-  for (auto *B : D->bindings())
-    dumpDecl(B);
-}
-
-void ASTDumper::VisitBindingDecl(const BindingDecl *D) {
-  dumpName(D);
-  dumpType(D->getType());
-  if (auto *E = D->getBinding())
-    dumpStmt(E);
 }
 
 void ASTDumper::VisitFileScopeAsmDecl(const FileScopeAsmDecl *D) {
@@ -1469,7 +1442,6 @@ void ASTDumper::VisitTemplateTypeParmDecl(const TemplateTypeParmDecl *D) {
     OS << " typename";
   else
     OS << " class";
-  OS << " depth " << D->getDepth() << " index " << D->getIndex();
   if (D->isParameterPack())
     OS << " ...";
   dumpName(D);
@@ -1479,7 +1451,6 @@ void ASTDumper::VisitTemplateTypeParmDecl(const TemplateTypeParmDecl *D) {
 
 void ASTDumper::VisitNonTypeTemplateParmDecl(const NonTypeTemplateParmDecl *D) {
   dumpType(D->getType());
-  OS << " depth " << D->getDepth() << " index " << D->getIndex();
   if (D->isParameterPack())
     OS << " ...";
   dumpName(D);
@@ -1489,7 +1460,6 @@ void ASTDumper::VisitNonTypeTemplateParmDecl(const NonTypeTemplateParmDecl *D) {
 
 void ASTDumper::VisitTemplateTemplateParmDecl(
     const TemplateTemplateParmDecl *D) {
-  OS << " depth " << D->getDepth() << " index " << D->getIndex();
   if (D->isParameterPack())
     OS << " ...";
   dumpName(D);
@@ -2035,14 +2005,6 @@ void ASTDumper::VisitInitListExpr(const InitListExpr *ILE) {
   }
 }
 
-void ASTDumper::VisitArrayInitLoopExpr(const ArrayInitLoopExpr *E) {
-  VisitExpr(E);
-}
-
-void ASTDumper::VisitArrayInitIndexExpr(const ArrayInitIndexExpr *E) {
-  VisitExpr(E);
-}
-
 void ASTDumper::VisitUnaryOperator(const UnaryOperator *Node) {
   VisitExpr(Node);
   OS << " " << (Node->isPostfix() ? "postfix" : "prefix")
@@ -2217,11 +2179,6 @@ void ASTDumper::VisitSizeOfPackExpr(const SizeOfPackExpr *Node) {
       dumpTemplateArgument(A);
 }
 
-void ASTDumper::VisitCXXDependentScopeMemberExpr(
-    const CXXDependentScopeMemberExpr *Node) {
-  VisitExpr(Node);
-  OS << " " << (Node->isArrow() ? "->" : ".") << Node->getMember();
-}
 
 //===----------------------------------------------------------------------===//
 // Obj-C Expressions
@@ -2494,18 +2451,12 @@ void QualType::dump(const char *msg) const {
   dump();
 }
 
-LLVM_DUMP_METHOD void QualType::dump() const { dump(llvm::errs()); }
-
-LLVM_DUMP_METHOD void QualType::dump(llvm::raw_ostream &OS) const {
-  ASTDumper Dumper(OS, nullptr, nullptr);
+LLVM_DUMP_METHOD void QualType::dump() const {
+  ASTDumper Dumper(llvm::errs(), nullptr, nullptr);
   Dumper.dumpTypeAsChild(*this);
 }
 
-LLVM_DUMP_METHOD void Type::dump() const { dump(llvm::errs()); }
-
-LLVM_DUMP_METHOD void Type::dump(llvm::raw_ostream &OS) const {
-  QualType(this, 0).dump(OS);
-}
+LLVM_DUMP_METHOD void Type::dump() const { QualType(this, 0).dump(); }
 
 //===----------------------------------------------------------------------===//
 // Decl method implementations
@@ -2513,10 +2464,9 @@ LLVM_DUMP_METHOD void Type::dump(llvm::raw_ostream &OS) const {
 
 LLVM_DUMP_METHOD void Decl::dump() const { dump(llvm::errs()); }
 
-LLVM_DUMP_METHOD void Decl::dump(raw_ostream &OS, bool Deserialize) const {
+LLVM_DUMP_METHOD void Decl::dump(raw_ostream &OS) const {
   ASTDumper P(OS, &getASTContext().getCommentCommandTraits(),
               &getASTContext().getSourceManager());
-  P.setDeserialize(Deserialize);
   P.dumpDecl(this);
 }
 
@@ -2531,14 +2481,12 @@ LLVM_DUMP_METHOD void DeclContext::dumpLookups() const {
 }
 
 LLVM_DUMP_METHOD void DeclContext::dumpLookups(raw_ostream &OS,
-                                               bool DumpDecls,
-                                               bool Deserialize) const {
+                                               bool DumpDecls) const {
   const DeclContext *DC = this;
   while (!DC->isTranslationUnit())
     DC = DC->getParent();
   ASTContext &Ctx = cast<TranslationUnitDecl>(DC)->getASTContext();
   ASTDumper P(OS, &Ctx.getCommentCommandTraits(), &Ctx.getSourceManager());
-  P.setDeserialize(Deserialize);
   P.dumpLookups(this, DumpDecls);
 }
 

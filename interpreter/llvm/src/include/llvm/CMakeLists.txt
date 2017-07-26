@@ -1,5 +1,4 @@
 add_subdirectory(IR)
-add_subdirectory(Support)
 
 # If we're doing an out-of-tree build, copy a module map for generated
 # header files into the build area.

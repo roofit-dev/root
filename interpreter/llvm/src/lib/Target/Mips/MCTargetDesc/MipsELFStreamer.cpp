@@ -8,19 +8,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "MipsELFStreamer.h"
-#include "MipsOptionRecord.h"
 #include "MipsTargetStreamer.h"
-#include "llvm/MC/MCAssembler.h"
-#include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCSymbolELF.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/ELF.h"
 
 using namespace llvm;
 
 void MipsELFStreamer::EmitInstruction(const MCInst &Inst,
-                                      const MCSubtargetInfo &STI, bool) {
+                                      const MCSubtargetInfo &STI) {
   MCELFStreamer::EmitInstruction(Inst, STI);
 
   MCContext &Context = getContext();
@@ -55,7 +51,7 @@ void MipsELFStreamer::createPendingLabelRelocs() {
   Labels.clear();
 }
 
-void MipsELFStreamer::EmitLabel(MCSymbol *Symbol, SMLoc Loc) {
+void MipsELFStreamer::EmitLabel(MCSymbol *Symbol) {
   MCELFStreamer::EmitLabel(Symbol);
   Labels.push_back(Symbol);
 }

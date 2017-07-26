@@ -19,9 +19,7 @@ using namespace llvm::pdb;
 
 PDBSymbolUsingNamespace::PDBSymbolUsingNamespace(
     const IPDBSession &PDBSession, std::unique_ptr<IPDBRawSymbol> Symbol)
-    : PDBSymbol(PDBSession, std::move(Symbol)) {
-  assert(RawSymbol->getSymTag() == PDB_SymType::UsingNamespace);
-}
+    : PDBSymbol(PDBSession, std::move(Symbol)) {}
 
 void PDBSymbolUsingNamespace::dump(PDBSymDumper &Dumper) const {
   Dumper.dump(*this);

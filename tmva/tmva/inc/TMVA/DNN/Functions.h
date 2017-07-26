@@ -161,16 +161,20 @@ inline void evaluate(typename Architecture_t::Matrix_t &A,
 
 /*! Compute the value of the objective function f for given activations
 *  of the ouput layer and the truth Y. */
-template <typename Architecture_t>
-inline auto evaluate(ELossFunction f, const typename Architecture_t::Matrix_t &Y,
-                     const typename Architecture_t::Matrix_t &output, const typename Architecture_t::Matrix_t &weights)
-   -> decltype(Architecture_t::CrossEntropy(Y, output, weights))
+template<typename Architecture_t>
+inline auto evaluate(ELossFunction f,
+                    const typename Architecture_t::Matrix_t & Y,
+                    const typename Architecture_t::Matrix_t & output)
+-> decltype(Architecture_t::CrossEntropy(Y,output))
 {
     switch(f)
     {
-    case ELossFunction::kCrossEntropy: return Architecture_t::CrossEntropy(Y, output, weights);
-    case ELossFunction::kMeanSquaredError: return Architecture_t::MeanSquaredError(Y, output, weights);
-    case ELossFunction::kSoftmaxCrossEntropy: return Architecture_t::SoftmaxCrossEntropy(Y, output, weights);
+    case ELossFunction::kCrossEntropy :
+        return Architecture_t::CrossEntropy(Y, output);
+    case ELossFunction::kMeanSquaredError :
+        return Architecture_t::MeanSquaredError(Y, output);
+    case ELossFunction::kSoftmaxCrossEntropy :
+        return Architecture_t::SoftmaxCrossEntropy(Y, output);
     }
     return 0.0;
 }
@@ -178,19 +182,23 @@ inline auto evaluate(ELossFunction f, const typename Architecture_t::Matrix_t &Y
 /*! Compute the gradient of the given output function f for given activations
 *  output of the output layer and truth Y and write the results into dY. */
 //______________________________________________________________________________
-template <typename Architecture_t>
-inline void evaluateGradients(typename Architecture_t::Matrix_t &dY, ELossFunction f,
+template<typename Architecture_t>
+inline void evaluateGradients(typename Architecture_t::Matrix_t & dY,
+                              ELossFunction f,
                               const typename Architecture_t::Matrix_t &Y,
-                              const typename Architecture_t::Matrix_t &output,
-                              const typename Architecture_t::Matrix_t &weights)
+                              const typename Architecture_t::Matrix_t &output)
 {
     switch(f)
     {
-    case ELossFunction::kCrossEntropy: Architecture_t::CrossEntropyGradients(dY, Y, output, weights); break;
-    case ELossFunction::kMeanSquaredError: Architecture_t::MeanSquaredErrorGradients(dY, Y, output, weights); break;
+    case ELossFunction::kCrossEntropy :
+        Architecture_t::CrossEntropyGradients(dY, Y, output);
+        break;
+    case ELossFunction::kMeanSquaredError :
+        Architecture_t::MeanSquaredErrorGradients(dY, Y, output);
+        break;
     case ELossFunction::kSoftmaxCrossEntropy :
-       Architecture_t::SoftmaxCrossEntropyGradients(dY, Y, output, weights);
-       break;
+        Architecture_t::SoftmaxCrossEntropyGradients(dY, Y, output);
+        break;
     }
 }
 

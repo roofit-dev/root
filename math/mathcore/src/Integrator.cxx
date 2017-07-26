@@ -151,7 +151,7 @@ VirtualIntegratorOneDim * IntegratorOneDim::CreateIntegrator(IntegrationOneDim::
 
 
    {
-      R__LOCKGUARD(gROOTMutex);
+      R__LOCKGUARD2(gROOTMutex);
       TPluginHandler *h;
       //gDebug = 3;
       if ((h = gROOT->GetPluginManager()->FindHandler("ROOT::Math::VirtualIntegrator", "GSLIntegrator"))) {
@@ -208,7 +208,7 @@ VirtualIntegratorMultiDim * IntegratorMultiDim::CreateIntegrator(IntegrationMult
 #else  // use ROOT Plugin-Manager to instantiate GSLMCIntegrator
 
    {
-      R__LOCKGUARD(gROOTMutex);
+      R__LOCKGUARD2(gROOTMutex);
       const char * pluginName = "GSLMCIntegrator";
       TPluginHandler *h = nullptr;
       //gDebug = 3;

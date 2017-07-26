@@ -10,7 +10,6 @@
 #include "UnwrappedLineFormatter.h"
 #include "WhitespaceManager.h"
 #include "llvm/Support/Debug.h"
-#include <queue>
 
 #define DEBUG_TYPE "format-formatter"
 
@@ -151,7 +150,7 @@ public:
           MergedLines = 0;
     if (!DryRun)
       for (unsigned i = 0; i < MergedLines; ++i)
-        join(*Next[0], *Next[i + 1]);
+        join(*Next[i], *Next[i + 1]);
     Next = Next + MergedLines + 1;
     return Current;
   }
@@ -530,33 +529,34 @@ protected:
     if (Previous.Children[0]->First->MustBreakBefore)
       return false;
 
-    // Cannot merge into one line if this line ends on a comment.
-    if (Previous.is(tok::comment))
-      return false;
-
     // Cannot merge multiple statements into a single line.
     if (Previous.Children.size() > 1)
       return false;
 
-    const AnnotatedLine *Child = Previous.Children[0];
+    // Cannot merge into one line if this line ends on a comment.
+    if (Previous.is(tok::comment))
+      return false;
+
     // We can't put the closing "}" on a line with a trailing comment.
-    if (Child->Last->isTrailingComment())
+    if (Previous.Children[0]->Last->isTrailingComment())
       return false;
 
     // If the child line exceeds the column limit, we wouldn't want to merge it.
     // We add +2 for the trailing " }".
     if (Style.ColumnLimit > 0 &&
-        Child->Last->TotalLength + State.Column + 2 > Style.ColumnLimit)
+        Previous.Children[0]->Last->TotalLength + State.Column + 2 >
+            Style.ColumnLimit)
       return false;
 
     if (!DryRun) {
       Whitespaces->replaceWhitespace(
-          *Child->First, /*Newlines=*/0, /*Spaces=*/1,
+          *Previous.Children[0]->First,
+          /*Newlines=*/0, /*IndentLevel=*/0, /*Spaces=*/1,
           /*StartOfTokenColumn=*/State.Column, State.Line->InPPDirective);
     }
-    Penalty += formatLine(*Child, State.Column + 1, DryRun);
+    Penalty += formatLine(*Previous.Children[0], State.Column + 1, DryRun);
 
-    State.Column += 1 + Child->Last->TotalLength;
+    State.Column += 1 + Previous.Children[0]->Last->TotalLength;
     return true;
   }
 
@@ -835,15 +835,13 @@ UnwrappedLineFormatter::format(const SmallVectorImpl<AnnotatedLine *> &Lines,
     bool ShouldFormat = TheLine.Affected || FixIndentation;
     // We cannot format this line; if the reason is that the line had a
     // parsing error, remember that.
-    if (ShouldFormat && TheLine.Type == LT_Invalid && Status) {
-      Status->FormatComplete = false;
-      Status->Line =
-          SourceMgr.getSpellingLineNumber(TheLine.First->Tok.getLocation());
-    }
+    if (ShouldFormat && TheLine.Type == LT_Invalid && IncompleteFormat)
+      *IncompleteFormat = true;
 
     if (ShouldFormat && TheLine.Type != LT_Invalid) {
       if (!DryRun)
-        formatFirstToken(TheLine, PreviousLine, Indent);
+        formatFirstToken(*TheLine.First, PreviousLine, TheLine.Level, Indent,
+                         TheLine.InPPDirective);
 
       NextLine = Joiner.getNextMergedLine(DryRun, IndentTracker);
       unsigned ColumnLimit = getColumnLimit(TheLine.InPPDirective, NextLine);
@@ -883,8 +881,9 @@ UnwrappedLineFormatter::format(const SmallVectorImpl<AnnotatedLine *> &Lines,
                               TheLine.LeadingEmptyLinesAffected);
         // Format the first token.
         if (ReformatLeadingWhitespace)
-          formatFirstToken(TheLine, PreviousLine,
-                           TheLine.First->OriginalColumn);
+          formatFirstToken(*TheLine.First, PreviousLine, TheLine.Level,
+                           TheLine.First->OriginalColumn,
+                           TheLine.InPPDirective);
         else
           Whitespaces->addUntouchableToken(*TheLine.First,
                                            TheLine.InPPDirective);
@@ -904,14 +903,15 @@ UnwrappedLineFormatter::format(const SmallVectorImpl<AnnotatedLine *> &Lines,
   return Penalty;
 }
 
-void UnwrappedLineFormatter::formatFirstToken(const AnnotatedLine &Line,
+void UnwrappedLineFormatter::formatFirstToken(FormatToken &RootToken,
                                               const AnnotatedLine *PreviousLine,
-                                              unsigned Indent) {
-  FormatToken& RootToken = *Line.First;
+                                              unsigned IndentLevel,
+                                              unsigned Indent,
+                                              bool InPPDirective) {
   if (RootToken.is(tok::eof)) {
     unsigned Newlines = std::min(RootToken.NewlinesBefore, 1u);
-    Whitespaces->replaceWhitespace(RootToken, Newlines, /*Spaces=*/0,
-                                   /*StartOfTokenColumn=*/0);
+    Whitespaces->replaceWhitespace(RootToken, Newlines, /*IndentLevel=*/0,
+                                   /*Spaces=*/0, /*TargetColumn=*/0);
     return;
   }
   unsigned Newlines =
@@ -943,9 +943,9 @@ void UnwrappedLineFormatter::formatFirstToken(const AnnotatedLine &Line,
       (!PreviousLine->InPPDirective || !RootToken.HasUnescapedNewline))
     Newlines = std::min(1u, Newlines);
 
-  Whitespaces->replaceWhitespace(RootToken, Newlines, Indent, Indent,
-                                 Line.InPPDirective &&
-                                     !RootToken.HasUnescapedNewline);
+  Whitespaces->replaceWhitespace(RootToken, Newlines, IndentLevel, Indent,
+                                 Indent, InPPDirective &&
+                                             !RootToken.HasUnescapedNewline);
 }
 
 unsigned

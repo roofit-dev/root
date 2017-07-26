@@ -15,19 +15,13 @@
 #define LLVM_LIB_TARGET_XCORE_XCORETARGETMACHINE_H
 
 #include "XCoreSubtarget.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
-#include <memory>
 
 namespace llvm {
 
 class XCoreTargetMachine : public LLVMTargetMachine {
   std::unique_ptr<TargetLoweringObjectFile> TLOF;
   XCoreSubtarget Subtarget;
-
 public:
   XCoreTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                      StringRef FS, const TargetOptions &Options,
@@ -44,7 +38,6 @@ public:
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
 
   TargetIRAnalysis getTargetIRAnalysis() override;
-
   TargetLoweringObjectFile *getObjFileLowering() const override {
     return TLOF.get();
   }
@@ -52,4 +45,4 @@ public:
 
 } // end namespace llvm
 
-#endif // LLVM_LIB_TARGET_XCORE_XCORETARGETMACHINE_H
+#endif

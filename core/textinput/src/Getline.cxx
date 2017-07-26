@@ -84,7 +84,7 @@ namespace {
       static const size_t fgLineBufSize;
       char* fLineBuf;
    };
-   const size_t ROOTTabCompletion::fgLineBufSize = 16 * 1024; // must be equal to/larger than BUF_SIZE in TTabCom.cxx
+   const size_t ROOTTabCompletion::fgLineBufSize = 16*1024;
 
    class TClingTabCompletion: public TabCompletion {
    public:

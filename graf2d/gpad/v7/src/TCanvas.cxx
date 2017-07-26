@@ -2,8 +2,8 @@
 /// \ingroup Gpad ROOT7
 /// \author Axel Naumann <axel@cern.ch>
 /// \date 2015-07-10
-/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
-/// is welcome!
+/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
+
 
 /*************************************************************************
  * Copyright (C) 1995-2015, Rene Brun and Fons Rademakers.               *
@@ -16,64 +16,81 @@
 #include "ROOT/TCanvas.hxx"
 
 #include "ROOT/TDrawable.hxx"
+#include "TCanvas.h"
+#include "TROOT.h"
+
 #include "ROOT/TLogger.hxx"
 
 #include <memory>
-#include <stdio.h>
-#include <string.h>
-
-#include "TROOT.h"
 
 namespace {
-static std::vector<std::shared_ptr<ROOT::Experimental::TCanvas>> &GetHeldCanvases()
-{
-   static std::vector<std::shared_ptr<ROOT::Experimental::TCanvas>> sCanvases;
-   return sCanvases;
+static
+std::vector<std::shared_ptr<ROOT::Experimental::TCanvas>>& GetHeldCanvases() {
+  static std::vector<std::shared_ptr<ROOT::Experimental::TCanvas>> sCanvases;
+  return sCanvases;
+}
+
+}
+
+namespace ROOT {
+namespace Experimental {
+namespace Internal {
+
+class TV5CanvasAdaptor: public TObject {
+  ROOT::Experimental::TCanvas& fNewCanv;
+  ::TCanvas* fOldCanv; // ROOT owns them.
+
+public:
+  /// Construct an old TCanvas, append TV5CanvasAdaptor to its primitives.
+  /// That way, TV5CanvasAdaptor::Paint() is called when the TCanvas paints its
+  /// primitives, and TV5CanvasAdaptor::Paint() can forward to
+  /// Experimental::TCanvas::Paint().
+  TV5CanvasAdaptor(ROOT::Experimental::TCanvas& canv):
+    fNewCanv(canv),
+    fOldCanv(new ::TCanvas())
+  {
+    fOldCanv->SetTitle(canv.GetTitle().c_str());
+    AppendPad();
+  }
+
+  ~TV5CanvasAdaptor() {
+    // Make sure static destruction hasn't already destroyed the old TCanvases.
+    if (gROOT && gROOT->GetListOfCanvases() && !gROOT->GetListOfCanvases()->IsEmpty())
+      fOldCanv->RecursiveRemove(this);
+  }
+
+  void Paint(Option_t */*option*/="") override {
+    fNewCanv.Paint();
+  }
+};
+}
 }
 }
 
-const std::vector<std::shared_ptr<ROOT::Experimental::TCanvas>> &ROOT::Experimental::TCanvas::GetCanvases()
-{
-   return GetHeldCanvases();
+const std::vector<std::shared_ptr<ROOT::Experimental::TCanvas>> &
+ROOT::Experimental::TCanvas::GetCanvases() {
+  return GetHeldCanvases();
 }
 
-// void ROOT::Experimental::TCanvas::Paint() {
-//  for (auto&& drw: fPrimitives) {
-//    drw->Paint(*this);
-//  }
-// }
 
-void ROOT::Experimental::TCanvas::Update()
-{
-   // SnapshotList_t lst;
-   // for (auto&& drw: fPrimitives) {
-   //   TSnapshot *snap = drw->CreateSnapshot(*this);
-   //   lst.push_back(std::unique_ptr<TSnapshot>(snap));
-   // }
+ROOT::Experimental::TCanvas::TCanvas() {
+  fAdaptor = std::make_unique<Internal::TV5CanvasAdaptor>(*this);
 }
 
-std::shared_ptr<ROOT::Experimental::TCanvas> ROOT::Experimental::TCanvas::Create(const std::string &title)
-{
-   auto pCanvas = std::make_shared<TCanvas>();
-   pCanvas->SetTitle(title);
-   GetHeldCanvases().emplace_back(pCanvas);
-   return pCanvas;
+ROOT::Experimental::TCanvas::~TCanvas() = default;
+
+void ROOT::Experimental::TCanvas::Paint() {
+  for (auto&& drw: fPrimitives) {
+    drw->Paint(*this);
+  }
 }
 
-void ROOT::Experimental::TCanvas::Show()
-{
-   if (fPainter) return;
-   bool batch_mode = gROOT->IsBatch();
-   fPainter = Internal::TVirtualCanvasPainter::Create(*this, batch_mode);
-}
-
-void ROOT::Experimental::TCanvas::SaveAs(const std::string &filename)
-{
-   if (!fPainter) fPainter = Internal::TVirtualCanvasPainter::Create(*this, true);
-   if (filename.find(".svg") != std::string::npos)
-      fPainter->DoWhenReady("SVG", filename);
-   else if (filename.find(".png") != std::string::npos)
-      fPainter->DoWhenReady("PNG", filename);
+std::shared_ptr<ROOT::Experimental::TCanvas>
+ROOT::Experimental::TCanvas::Create(const std::string& title) {
+  auto pCanvas = std::make_shared<TCanvas>();
+  pCanvas->SetTitle(title);
+  GetHeldCanvases().emplace_back(pCanvas);
+  return pCanvas;
 }
 
 // TODO: removal from GetHeldCanvases().

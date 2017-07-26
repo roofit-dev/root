@@ -173,20 +173,17 @@ class OMPCapturedExprDecl final : public VarDecl {
   void anchor() override;
 
   OMPCapturedExprDecl(ASTContext &C, DeclContext *DC, IdentifierInfo *Id,
-                      QualType Type, SourceLocation StartLoc)
-      : VarDecl(OMPCapturedExpr, C, DC, StartLoc, SourceLocation(), Id, Type,
-                nullptr, SC_None) {
+                      QualType Type)
+      : VarDecl(OMPCapturedExpr, C, DC, SourceLocation(), SourceLocation(), Id,
+                Type, nullptr, SC_None) {
     setImplicit();
   }
 
 public:
   static OMPCapturedExprDecl *Create(ASTContext &C, DeclContext *DC,
-                                     IdentifierInfo *Id, QualType T,
-                                     SourceLocation StartLoc);
+                                     IdentifierInfo *Id, QualType T);
 
   static OMPCapturedExprDecl *CreateDeserialized(ASTContext &C, unsigned ID);
-
-  SourceRange getSourceRange() const override LLVM_READONLY;
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }

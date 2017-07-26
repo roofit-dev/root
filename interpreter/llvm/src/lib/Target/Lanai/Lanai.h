@@ -45,7 +45,7 @@ FunctionPass *createLanaiMemAluCombinerPass();
 // operations.
 FunctionPass *createLanaiSetflagAluCombinerPass();
 
-Target &getTheLanaiTarget();
+extern Target TheLanaiTarget;
 } // namespace llvm
 
 #endif // LLVM_LIB_TARGET_LANAI_LANAI_H

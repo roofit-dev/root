@@ -523,7 +523,7 @@ void TGLPShapeObjEditor::DrawSphere()const
       return;
    }
 
-   R__LOCKGUARD(gROOTMutex);
+   R__LOCKGUARD2(gROOTMutex);
 
    fMatView->MakeCurrent();
    glViewport(0, 0, fMatView->GetWidth(), fMatView->GetHeight());

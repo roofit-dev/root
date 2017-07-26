@@ -3,7 +3,8 @@
 
 (function( factory ) {
    if ( typeof define === "function" && define.amd ) {
-      define( ['jquery', 'jquery-ui', 'd3', 'JSRootPainter', 'JSRootPainter.hierarchy'], factory );
+      // AMD. Register as an anonymous module.
+      define( ['jquery', 'jquery-ui', 'd3', 'JSRootPainter'], factory );
    } else {
 
       if (typeof jQuery == 'undefined')
@@ -21,11 +22,10 @@
       if (typeof JSROOT.Painter != 'object')
          throw new Error('JSROOT.Painter not defined', 'JSRootPainter.jquery.js');
 
+      // Browser globals
       factory(jQuery, jQuery.ui, d3, JSROOT);
    }
 } (function($, myui, d3, JSROOT) {
-
-   JSROOT.sources.push("jq2d");
 
    if ( typeof define === "function" && define.amd )
       JSROOT.loadScript('$$$style/jquery-ui.css');
@@ -157,9 +157,9 @@
             .menu({
                items: "> :not(.ui-widget-header)",
                select: function( event, ui ) {
-                  var arg = ui.item.attr('arg'),
-                      cnt = ui.item.attr('cnt'),
-                      func = cnt ? pthis.funcs[cnt] : null;
+                  var arg = ui.item.attr('arg');
+                  var cnt = ui.item.attr('cnt');
+                  var func = cnt ? pthis.funcs[cnt] : null;
                   pthis.remove();
                   if (typeof func == 'function') {
                      if ('painter' in menu)
@@ -184,9 +184,7 @@
       return menu;
    }
 
-   var HierarchyPainter = JSROOT.HierarchyPainter;
-
-   HierarchyPainter.prototype.isLastSibling = function(hitem) {
+   JSROOT.HierarchyPainter.prototype.isLastSibling = function(hitem) {
       if (!hitem || !hitem._parent || !hitem._parent._childs) return false;
       var chlds = hitem._parent._childs, indx = chlds.indexOf(hitem);
       if (indx<0) return false;
@@ -195,7 +193,7 @@
       return true;
    }
 
-   HierarchyPainter.prototype.addItemHtml = function(hitem, d3prnt, arg) {
+   JSROOT.HierarchyPainter.prototype.addItemHtml = function(hitem, d3prnt, arg) {
 
       if (!hitem || ('_hidden' in hitem)) return true;
 
@@ -336,7 +334,7 @@
       if ('_fullname' in hitem)
          element_title += "  fullname: " + hitem._fullname;
 
-      if (!element_title)
+      if (element_title.length === 0)
          element_title = element_name;
 
       d3a.attr('title', element_title)
@@ -361,7 +359,7 @@
       return true;
    }
 
-   HierarchyPainter.prototype.toggleOpenState = function(isopen, h) {
+   JSROOT.HierarchyPainter.prototype.toggleOpenState = function(isopen, h) {
       var hitem = h ? h : this.h;
 
       if (!('_childs' in hitem)) {
@@ -392,16 +390,13 @@
       return false;
    }
 
-   HierarchyPainter.prototype.RefreshHtml = function(callback) {
+   JSROOT.HierarchyPainter.prototype.RefreshHtml = function(callback) {
 
       if (!this.divid) return JSROOT.CallBack(callback);
 
       var d3elem = this.select_main();
 
-      d3elem.html("")
-            .style('overflow','hidden') // clear html - most simple way
-            .style('display','flex')
-            .style('flex-direction','column');
+      d3elem.html(""); // clear html - most simple way
 
       var h = this, factcmds = [], status_item = null;
       this.ForEach(function(item) {
@@ -413,50 +408,42 @@
       if ((this.h == null) || d3elem.empty())
          return JSROOT.CallBack(callback);
 
-      if (factcmds.length) {
-         var fastbtns = d3elem.append("div").attr("class","jsroot");
-         for (var n=0;n<factcmds.length;++n) {
-            var btn = fastbtns.append("button")
-                       .text("")
-                       .attr("class",'fast_command')
-                       .attr("item", this.itemFullName(factcmds[n]))
-                       .attr("title", factcmds[n]._title)
-                       .on("click", function() { h.ExecuteCommand(d3.select(this).attr("item"), this); } );
-
-            if ('_icon' in factcmds[n])
-               btn.append('img').attr("src", factcmds[n]._icon);
-         }
-      }
-
-      var d3btns = d3elem.append("p").attr("class", "jsroot").style("margin-bottom","3px").style("margin-top",0);
-      d3btns.append("a").attr("class", "h_button").text("open all")
-            .attr("title","open all items in the browser").on("click", h.toggleOpenState.bind(h,true));
-      d3btns.append("text").text(" | ");
-      d3btns.append("a").attr("class", "h_button").text("close all")
-            .attr("title","close all items in the browser").on("click", h.toggleOpenState.bind(h,false));
-
-      if ('_online' in this.h) {
-         d3btns.append("text").text(" | ");
-         d3btns.append("a").attr("class", "h_button").text("reload")
-               .attr("title","reload object list from the server").on("click", h.reload.bind(h));
-      }
-
-      if ('disp_kind' in this) {
-         d3btns.append("text").text(" | ");
-         d3btns.append("a").attr("class", "h_button").text("clear")
-               .attr("title","clear all drawn objects").on("click", h.clear.bind(h,false));
-      }
-
       var maindiv =
          d3elem.append("div")
                .attr("class", "jsroot")
-               .style('font-size', this.with_icons ? "12px" : "15px")
-               .style("overflow","auto")
-               .style("flex","1");
+               .style('font-size', this.with_icons ? "12px" : "15px");
 
       if (this.background) // case of object inspector and streamer infos display
          maindiv.style("background-color", this.background)
                 .style('margin', '2px').style('padding', '2px');
+
+      for (var n=0;n<factcmds.length;++n) {
+         var btn = maindiv.append("button")
+                    .text("")
+                    .attr("class",'fast_command')
+                    .attr("item", this.itemFullName(factcmds[n]))
+                    .attr("title", factcmds[n]._title)
+                    .on("click", function() { h.ExecuteCommand(d3.select(this).attr("item"), this); } );
+
+         if ('_icon' in factcmds[n])
+            btn.append('img').attr("src", factcmds[n]._icon);
+      }
+
+      var d3p = maindiv.append("p").style("margin-left","3px").style("margin-bottom","3px").style("margin-top",0);
+
+      d3p.append("a").attr("class", "h_button").text("open all").on("click", h.toggleOpenState.bind(h,true));
+      d3p.append("text").text(" | ");
+      d3p.append("a").attr("class", "h_button").text("close all").on("click", h.toggleOpenState.bind(h,false));
+
+      if ('_online' in this.h) {
+         d3p.append("text").text(" | ");
+         d3p.append("a").attr("class", "h_button").text("reload").on("click", h.reload.bind(h));
+      }
+
+      if ('disp_kind' in this) {
+         d3p.append("text").text(" | ");
+         d3p.append("a").attr("class", "h_button").text("clear").on("click", h.clear.bind(h,false));
+      }
 
       this.addItemHtml(this.h, maindiv.append("div").attr("class","h_tree"));
 
@@ -469,7 +456,7 @@
       JSROOT.CallBack(callback);
    }
 
-   HierarchyPainter.prototype.UpdateTreeNode = function(hitem, d3cont) {
+   JSROOT.HierarchyPainter.prototype.UpdateTreeNode = function(hitem, d3cont) {
       if ((d3cont===undefined) || d3cont.empty())  {
          d3cont = d3.select(hitem._d3cont ? hitem._d3cont : null);
          var name = this.itemFullName(hitem);
@@ -486,7 +473,7 @@
          this.AdjustFloatBrowserSize(null, true);
    }
 
-   HierarchyPainter.prototype.UpdateBackground = function(hitem, scroll_into_view) {
+   JSROOT.HierarchyPainter.prototype.UpdateBackground = function(hitem, scroll_into_view) {
 
       if (!hitem || !hitem._d3cont) return;
 
@@ -502,7 +489,7 @@
          d3a.node().scrollIntoView(false);
    }
 
-   HierarchyPainter.prototype.tree_click = function(node, place) {
+   JSROOT.HierarchyPainter.prototype.tree_click = function(node, place) {
       if (!node) return;
 
       var d3cont = d3.select(node.parentNode.parentNode);
@@ -587,12 +574,6 @@
          }
          if (handle && handle.ctrl && d3.event.ctrlKey) drawopt = handle.ctrl;
 
-         if (!drawopt) {
-            for (var pitem = hitem._parent; pitem; pitem = pitem._parent) {
-               if (pitem._painter) { can_draw = false; if (can_expand===undefined) can_expand = false; break; }
-            }
-         }
-
          if (hitem._childs) can_expand = false;
 
          if (can_draw === undefined) can_draw = sett.draw;
@@ -611,7 +592,7 @@
             return this.expand(itemname, null, d3cont);
 
          // cannot draw, but can inspect ROOT objects
-         if ((typeof hitem._kind === "string") && (hitem._kind.indexOf("ROOT.")===0) && sett.inspect && (can_draw!==false))
+         if ((typeof hitem._kind === "string") && (hitem._kind.indexOf("ROOT.")===0) && sett.inspect)
             return this.display(itemname, "inspect");
 
          if (!hitem._childs || (hitem === this.h)) return;
@@ -625,7 +606,7 @@
       this.UpdateTreeNode(hitem, d3cont);
    }
 
-   HierarchyPainter.prototype.tree_mouseover = function(on, elem) {
+   JSROOT.HierarchyPainter.prototype.tree_mouseover = function(on, elem) {
       var itemname = d3.select(elem.parentNode.parentNode).attr('item');
 
       var hitem = this.Find(itemname);
@@ -641,8 +622,8 @@
          painter.MouseOverHierarchy(on, itemname, hitem);
    }
 
-   HierarchyPainter.prototype.direct_contextmenu = function(elem) {
-      // this is alternative context menu, used in the object inspector
+   JSROOT.HierarchyPainter.prototype.direct_contextmenu = function(elem) {
+      // this is alterntaive context menu, used in the object inspector
 
       d3.event.preventDefault();
       var itemname = d3.select(elem.parentNode.parentNode).attr('item');
@@ -662,7 +643,7 @@
       });
    }
 
-   HierarchyPainter.prototype.tree_contextmenu = function(elem) {
+   JSROOT.HierarchyPainter.prototype.tree_contextmenu = function(elem) {
       // this is handling of context menu request for the normal objects browser
 
       d3.event.preventDefault();
@@ -778,7 +759,7 @@
       return false;
    }
 
-   HierarchyPainter.prototype.CreateDisplay = function(callback) {
+   JSROOT.HierarchyPainter.prototype.CreateDisplay = function(callback) {
       if ('disp' in this) {
          if (this.disp.NumDraw() > 0) return JSROOT.CallBack(callback, this.disp);
          this.disp.Reset();
@@ -790,13 +771,13 @@
          return JSROOT.CallBack(callback, null);
 
       if (this.disp_kind == "tabs")
-         this.disp = new TabsDisplay(this.disp_frameid);
+         this.disp = new JSROOT.TabsDisplay(this.disp_frameid);
       else
       if (this.disp_kind.indexOf("flex")==0)
-         this.disp = new FlexibleDisplay(this.disp_frameid);
+         this.disp = new JSROOT.FlexibleDisplay(this.disp_frameid);
       else
       if (this.disp_kind.indexOf("coll")==0)
-         this.disp = new CollapsibleDisplay(this.disp_frameid);
+         this.disp = new JSROOT.CollapsibleDisplay(this.disp_frameid);
       else
          this.disp = new JSROOT.GridDisplay(this.disp_frameid, this.disp_kind);
 
@@ -806,11 +787,11 @@
       JSROOT.CallBack(callback, this.disp);
    }
 
-   HierarchyPainter.prototype.enable_dragging = function(element, itemname) {
+   JSROOT.HierarchyPainter.prototype.enable_dragging = function(element, itemname) {
       $(element).draggable({ revert: "invalid", appendTo: "body", helper: "clone" });
    }
 
-   HierarchyPainter.prototype.enable_dropping = function(frame, itemname) {
+   JSROOT.HierarchyPainter.prototype.enable_dropping = function(frame, itemname) {
       var h = this;
       $(frame).droppable({
          hoverClass : "ui-state-active",
@@ -831,14 +812,14 @@
       });
    }
 
-   HierarchyPainter.prototype.SetButtonsPosition = function() {
+   JSROOT.HierarchyPainter.prototype.SetButtonsPosition = function() {
       if (!this.gui_div) return;
 
       var jmain = $("#"+this.gui_div+" .jsroot_browser"), top = 7, left = 7;
 
       if (this.browser_visible) {
          var area = jmain.find(".jsroot_browser_area"),
-             off0 = jmain.offset(), off1 = area.offset();
+             off0 = jmain.offset(), off1 = area.offset(); 
          top = off1.top - off0.top + 7;
          left = off1.left - off0.left + area.innerWidth() - 27;
       }
@@ -847,7 +828,7 @@
           .css('left', left+'px').css('top', top+'px');
    }
 
-   HierarchyPainter.prototype.AdjustFloatBrowserSize = function(jmain, onlycheckmax) {
+   JSROOT.HierarchyPainter.prototype.AdjustFloatBrowserSize = function(jmain, onlycheckmax) {
       if (!jmain) {
          if (!this.gui_div) return;
          jmain = $("#" + this.gui_div + " .jsroot_browser");
@@ -872,7 +853,7 @@
       if ((h2!==undefined) && (h2<h1*0.7)) area.css('bottom', '');
    }
 
-   HierarchyPainter.prototype.ToggleBrowserKind = function(kind) {
+   JSROOT.HierarchyPainter.prototype.ToggleBrowserKind = function(kind) {
 
       if (!this.gui_div) return;
 
@@ -964,7 +945,7 @@
       this.SetButtonsPosition();
    }
 
-   HierarchyPainter.prototype.ToggleBrowserVisisbility = function() {
+   JSROOT.HierarchyPainter.prototype.ToggleBrowserVisisbility = function() {
       if (!this.gui_div || (typeof this.browser_visible==='string')) return;
 
       var main = d3.select("#" + this.gui_div + " .jsroot_browser");
@@ -1013,7 +994,7 @@
       }
    }
 
-   HierarchyPainter.prototype.CreateBrowser = function(browser_kind, update_html, call_back) {
+   JSROOT.HierarchyPainter.prototype.CreateBrowser = function(browser_kind, update_html, call_back) {
 
       if (!this.gui_div || this.exclude_browser) return false;
 
@@ -1178,7 +1159,7 @@
       return true;
    }
 
-   HierarchyPainter.prototype.InitializeBrowser = function() {
+   JSROOT.HierarchyPainter.prototype.InitializeBrowser = function() {
 
       var main = d3.select("#" + this.gui_div + " .jsroot_browser");
       if (main.empty()) return;
@@ -1223,7 +1204,7 @@
       }
    }
 
-   HierarchyPainter.prototype.CreateStatusLine = function(height, mode) {
+   JSROOT.HierarchyPainter.prototype.CreateStatusLine = function(height, mode) {
       if (this.status_disabled || !this.gui_div) return '';
 
       var main = d3.select("#"+this.gui_div+" .jsroot_browser");
@@ -1287,10 +1268,10 @@
          return id;
       }
 
-      this.status_layout = new JSROOT.GridDisplay(id, 'horizx4_1213');
+      this.status_layout = new JSROOT.GridDisplay(id, 'horiz4_1213');
       if (skip_height_check) this.status_layout.first_check = true; // if restored size, do not adjust height once again
 
-      var frame_titles = ['object name','object title','mouse coordinates','object info'];
+      var frame_titles = ['object name','object title','mouse coordiantes', 'object info'];
       for (var k=0;k<4;++k)
          d3.select(this.status_layout.GetFrame(k)).attr('title', frame_titles[k]).style('overflow','hidden')
            .append("label").attr("class","jsroot_status_label");
@@ -1302,7 +1283,7 @@
       return true;
    }
 
-   HierarchyPainter.prototype.ShowStatus = function(name, title, info, coordinates) {
+   JSROOT.HierarchyPainter.prototype.ShowStatus = function(name, title, info, coordinates) {
       if (!this.status_layout) return;
 
       $(this.status_layout.GetFrame(0)).children('label').text(name || "");
@@ -1319,7 +1300,7 @@
       }
    }
 
-   HierarchyPainter.prototype.AdjustSeparator = function(vsepar, hsepar, redraw, first_time) {
+   JSROOT.HierarchyPainter.prototype.AdjustSeparator = function(vsepar, hsepar, redraw, first_time) {
 
       if (!this.gui_div) return;
 
@@ -1390,14 +1371,14 @@
 
    // ==================================================
 
-   function CollapsibleDisplay(frameid) {
+   JSROOT.CollapsibleDisplay = function(frameid) {
       JSROOT.MDIDisplay.call(this, frameid);
       this.cnt = 0; // use to count newly created frames
    }
 
-   CollapsibleDisplay.prototype = Object.create(JSROOT.MDIDisplay.prototype);
+   JSROOT.CollapsibleDisplay.prototype = Object.create(JSROOT.MDIDisplay.prototype);
 
-   CollapsibleDisplay.prototype.ForEachFrame = function(userfunc,  only_visible) {
+   JSROOT.CollapsibleDisplay.prototype.ForEachFrame = function(userfunc,  only_visible) {
       var topid = this.frameid + '_collapsible';
 
       if (document.getElementById(topid) == null) return;
@@ -1413,7 +1394,7 @@
       });
    }
 
-   CollapsibleDisplay.prototype.GetActiveFrame = function() {
+   JSROOT.CollapsibleDisplay.prototype.GetActiveFrame = function() {
       var found = JSROOT.MDIDisplay.prototype.GetActiveFrame.call(this);
       if (found && !$(found).is(":hidden")) return found;
 
@@ -1425,7 +1406,7 @@
       return found;
    }
 
-   CollapsibleDisplay.prototype.ActivateFrame = function(frame) {
+   JSROOT.CollapsibleDisplay.prototype.ActivateFrame = function(frame) {
       if ($(frame).is(":hidden")) {
          $(frame).prev().toggleClass("ui-accordion-header-active ui-state-active ui-state-default ui-corner-bottom")
                  .find("> .ui-icon").toggleClass("ui-icon-triangle-1-e ui-icon-triangle-1-s").end()
@@ -1436,7 +1417,7 @@
       this.active_frame_title = d3.select(frame).attr('frame_title');
    }
 
-   CollapsibleDisplay.prototype.CreateFrame = function(title) {
+   JSROOT.CollapsibleDisplay.prototype.CreateFrame = function(title) {
 
       this.BeforeCreateFrame(title);
 
@@ -1464,10 +1445,10 @@
                      $(this).toggleClass("ui-accordion-header-active ui-state-active ui-state-default ui-corner-bottom")
                            .find("> .ui-icon").toggleClass("ui-icon-triangle-1-e ui-icon-triangle-1-s")
                            .end().next().toggleClass("ui-accordion-content-active").slideToggle(0);
-                     var sub = $(this).next(), hide_drawing = sub.is(":hidden");
-                     sub.attr('frame_active', hide_drawing ? "false" : "true")
-                        .css('display', hide_drawing ? 'none' : '');
-                     if (!hide_drawing) JSROOT.resize(sub.attr('id'));
+                     var sub = $(this).next();
+                     sub.attr('frame_active', sub.is(":hidden") ? "false" : "true");
+                     JSROOT.resize(sub.attr('id'));
+                     return false;
                   })
             .next()
             .addClass("ui-accordion-content ui-helper-reset ui-widget-content ui-corner-bottom")
@@ -1487,21 +1468,20 @@
             .toggleClass("ui-accordion-content-active").slideToggle(0);
 
       return $("#" + hid).attr('frame_title', title).css('overflow','hidden')
-                         .attr('can_resize','height') // inform JSROOT that it can resize height of the
                          .css('position','relative') // this required for correct positioning of 3D canvas in WebKit
                          .get(0);
     }
 
    // ================================================
 
-   TabsDisplay = function(frameid) {
+   JSROOT.TabsDisplay = function(frameid) {
       JSROOT.MDIDisplay.call(this, frameid);
       this.cnt = 0;
    }
 
-   TabsDisplay.prototype = Object.create(JSROOT.MDIDisplay.prototype);
+   JSROOT.TabsDisplay.prototype = Object.create(JSROOT.MDIDisplay.prototype);
 
-   TabsDisplay.prototype.ForEachFrame = function(userfunc, only_visible) {
+   JSROOT.TabsDisplay.prototype.ForEachFrame = function(userfunc, only_visible) {
       var topid = this.frameid + '_tabs';
 
       if (document.getElementById(topid) == null) return;
@@ -1518,7 +1498,7 @@
       });
    }
 
-   TabsDisplay.prototype.GetActiveFrame = function() {
+   JSROOT.TabsDisplay.prototype.GetActiveFrame = function() {
       var found = null;
       this.ForEachFrame(function(frame) {
          if (!found) found = frame;
@@ -1527,7 +1507,7 @@
       return found;
    }
 
-   TabsDisplay.prototype.ActivateFrame = function(frame) {
+   JSROOT.TabsDisplay.prototype.ActivateFrame = function(frame) {
       var cnt = 0, id = -1;
       this.ForEachFrame(function(fr) {
          if ($(fr).attr('id') == $(frame).attr('id')) id = cnt;
@@ -1538,7 +1518,7 @@
       this.active_frame_title = d3.select(frame).attr('frame_title');
    }
 
-   TabsDisplay.prototype.CreateFrame = function(title) {
+   JSROOT.TabsDisplay.prototype.CreateFrame = function(title) {
 
       this.BeforeCreateFrame(title);
 
@@ -1588,21 +1568,21 @@
       return $('#' + hid).get(0);
    }
 
-   TabsDisplay.prototype.CheckMDIResize = function(frame_id, size) {
+   JSROOT.TabsDisplay.prototype.CheckMDIResize = function(frame_id, size) {
       $("#" + this.frameid + '_tabs').tabs("refresh");
       JSROOT.MDIDisplay.prototype.CheckMDIResize.call(this, frame_id, size);
    }
 
    // ==================================================
 
-   function FlexibleDisplay(frameid) {
+   JSROOT.FlexibleDisplay = function(frameid) {
       JSROOT.MDIDisplay.call(this, frameid);
       this.cnt = 0; // use to count newly created frames
    }
 
-   FlexibleDisplay.prototype = Object.create(JSROOT.MDIDisplay.prototype);
+   JSROOT.FlexibleDisplay.prototype = Object.create(JSROOT.MDIDisplay.prototype);
 
-   FlexibleDisplay.prototype.ForEachFrame = function(userfunc,  only_visible) {
+   JSROOT.FlexibleDisplay.prototype.ForEachFrame = function(userfunc,  only_visible) {
       var topid = this.frameid + '_flex';
 
       if (document.getElementById(topid) == null) return;
@@ -1616,7 +1596,7 @@
       });
    }
 
-   FlexibleDisplay.prototype.GetActiveFrame = function() {
+   JSROOT.FlexibleDisplay.prototype.GetActiveFrame = function() {
       var found = JSROOT.MDIDisplay.prototype.GetActiveFrame.call(this);
       if (found && !$(found).is(":hidden")) return found;
 
@@ -1629,11 +1609,11 @@
    }
 
 
-   FlexibleDisplay.prototype.ActivateFrame = function(frame) {
+   JSROOT.FlexibleDisplay.prototype.ActivateFrame = function(frame) {
       this.active_frame_title = d3.select(frame).attr('frame_title');
    }
 
-   FlexibleDisplay.prototype.CreateFrame = function(title) {
+   JSROOT.FlexibleDisplay.prototype.CreateFrame = function(title) {
 
       this.BeforeCreateFrame(title);
 
@@ -1882,7 +1862,7 @@
       player.draw_first = true;
 
       player.ConfigureOnline = function(itemname, url, askey, root_version) {
-         this.SetItemName(itemname, "", this);
+         this.SetItemName(itemname);
          this.url = url;
          this.root_version = root_version;
          this.askey = askey;
@@ -2113,7 +2093,7 @@
       return JSROOT.hpainter.CreateStatusLine(height);
    }
 
-   return JSROOT;
+   return JSROOT.Painter;
 
 }));
 

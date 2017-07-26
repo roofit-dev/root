@@ -19,7 +19,6 @@
 #include "FormatToken.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Format/Format.h"
-#include "llvm/Support/Regex.h"
 #include <list>
 #include <stack>
 
@@ -48,14 +47,6 @@ struct UnwrappedLine {
   bool InPPDirective;
 
   bool MustBeDeclaration;
-
-  /// \brief If this \c UnwrappedLine closes a block in a sequence of lines,
-  /// \c MatchingOpeningBlockLineIndex stores the index of the corresponding
-  /// opening line. Otherwise, \c MatchingOpeningBlockLineIndex must be
-  /// \c kInvalidIndex.
-  size_t MatchingOpeningBlockLineIndex;
-
-  static const size_t kInvalidIndex = -1;
 };
 
 class UnwrappedLineConsumer {
@@ -108,10 +99,7 @@ private:
   void parseAccessSpecifier();
   bool parseEnum();
   void parseJavaEnumBody();
-  // Parses a record (aka class) as a top level element. If ParseAsExpr is true,
-  // parses the record as a child block, i.e. if the class declaration is an
-  // expression.
-  void parseRecord(bool ParseAsExpr = false);
+  void parseRecord();
   void parseObjCProtocolList();
   void parseObjCUntilAtEnd();
   void parseObjCInterfaceOrImplementation();
@@ -125,21 +113,6 @@ private:
   void nextToken();
   const FormatToken *getPreviousToken();
   void readToken();
-
-  // Decides which comment tokens should be added to the current line and which
-  // should be added as comments before the next token.
-  //
-  // Comments specifies the sequence of comment tokens to analyze. They get
-  // either pushed to the current line or added to the comments before the next
-  // token.
-  //
-  // NextTok specifies the next token. A null pointer NextTok is supported, and
-  // signifies either the absense of a next token, or that the next token
-  // shouldn't be taken into accunt for the analysis.
-  void distributeComments(const SmallVectorImpl<FormatToken *> &Comments,
-                          const FormatToken *NextTok);
-
-  // Adds the comment preceding the next token to unwrapped lines.
   void flushComments(bool NewlineBeforeNext);
   void pushToken(FormatToken *Tok);
   void calculateBraceTypes(bool ExpectClassBody = false);
@@ -188,8 +161,6 @@ private:
 
   const FormatStyle &Style;
   const AdditionalKeywords &Keywords;
-
-  llvm::Regex CommentPragmasRegex;
 
   FormatTokenSource *Tokens;
   UnwrappedLineConsumer &Callback;
@@ -242,8 +213,8 @@ struct UnwrappedLineNode {
   SmallVector<UnwrappedLine, 0> Children;
 };
 
-inline UnwrappedLine::UnwrappedLine() : Level(0), InPPDirective(false),
-  MustBeDeclaration(false), MatchingOpeningBlockLineIndex(kInvalidIndex) {}
+inline UnwrappedLine::UnwrappedLine()
+    : Level(0), InPPDirective(false), MustBeDeclaration(false) {}
 
 } // end namespace format
 } // end namespace clang

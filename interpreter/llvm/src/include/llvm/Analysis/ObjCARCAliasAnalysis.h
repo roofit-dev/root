@@ -48,10 +48,7 @@ public:
   /// Handle invalidation events from the new pass manager.
   ///
   /// By definition, this result is stateless and so remains valid.
-  bool invalidate(Function &, const PreservedAnalyses &,
-                  FunctionAnalysisManager::Invalidator &) {
-    return false;
-  }
+  bool invalidate(Function &, const PreservedAnalyses &) { return false; }
 
   AliasResult alias(const MemoryLocation &LocA, const MemoryLocation &LocB);
   bool pointsToConstantMemory(const MemoryLocation &Loc, bool OrLocal);
@@ -66,12 +63,12 @@ public:
 /// Analysis pass providing a never-invalidated alias analysis result.
 class ObjCARCAA : public AnalysisInfoMixin<ObjCARCAA> {
   friend AnalysisInfoMixin<ObjCARCAA>;
-  static AnalysisKey Key;
+  static char PassID;
 
 public:
   typedef ObjCARCAAResult Result;
 
-  ObjCARCAAResult run(Function &F, FunctionAnalysisManager &AM);
+  ObjCARCAAResult run(Function &F, AnalysisManager<Function> &AM);
 };
 
 /// Legacy wrapper pass to provide the ObjCARCAAResult object.

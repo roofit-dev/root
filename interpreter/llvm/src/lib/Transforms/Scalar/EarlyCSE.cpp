@@ -19,8 +19,6 @@
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/InstructionSimplify.h"
-#include "llvm/Analysis/MemorySSA.h"
-#include "llvm/Analysis/MemorySSAUpdater.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/DataLayout.h"
@@ -253,9 +251,6 @@ public:
   const TargetTransformInfo &TTI;
   DominatorTree &DT;
   AssumptionCache &AC;
-  const SimplifyQuery SQ;
-  MemorySSA *MSSA;
-  std::unique_ptr<MemorySSAUpdater> MSSAUpdater;
   typedef RecyclingAllocator<
       BumpPtrAllocator, ScopedHashTableVal<SimpleValue, Value *>> AllocatorTy;
   typedef ScopedHashTable<SimpleValue, Value *, DenseMapInfo<SimpleValue>,
@@ -316,12 +311,9 @@ public:
   unsigned CurrentGeneration;
 
   /// \brief Set up the EarlyCSE runner for a particular function.
-  EarlyCSE(const DataLayout &DL, const TargetLibraryInfo &TLI,
-           const TargetTransformInfo &TTI, DominatorTree &DT,
-           AssumptionCache &AC, MemorySSA *MSSA)
-      : TLI(TLI), TTI(TTI), DT(DT), AC(AC), SQ(DL, &TLI, &DT, &AC), MSSA(MSSA),
-        MSSAUpdater(make_unique<MemorySSAUpdater>(MSSA)), CurrentGeneration(0) {
-  }
+  EarlyCSE(const TargetLibraryInfo &TLI, const TargetTransformInfo &TTI,
+           DominatorTree &DT, AssumptionCache &AC)
+      : TLI(TLI), TTI(TTI), DT(DT), AC(AC), CurrentGeneration(0) {}
 
   bool run();
 
@@ -346,7 +338,7 @@ private:
   };
 
   // Contains all the needed information to create a stack for doing a depth
-  // first traversal of the tree. This includes scopes for values, loads, and
+  // first tranversal of the tree. This includes scopes for values, loads, and
   // calls as well as the generation. There is a child iterator so that the
   // children do not need to be store separately.
   class StackNode {
@@ -394,7 +386,7 @@ private:
     ParseMemoryInst(Instruction *Inst, const TargetTransformInfo &TTI)
       : IsTargetMemInst(false), Inst(Inst) {
       if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(Inst))
-        if (TTI.getTgtMemIntrinsic(II, Info))
+        if (TTI.getTgtMemIntrinsic(II, Info) && Info.NumMemRefs == 1)
           IsTargetMemInst = true;
     }
     bool isLoad() const {
@@ -406,14 +398,17 @@ private:
       return isa<StoreInst>(Inst);
     }
     bool isAtomic() const {
-      if (IsTargetMemInst)
-        return Info.Ordering != AtomicOrdering::NotAtomic;
+      if (IsTargetMemInst) {
+        assert(Info.IsSimple && "need to refine IsSimple in TTI");
+        return false;
+      }
       return Inst->isAtomic();
     }
     bool isUnordered() const {
-      if (IsTargetMemInst)
-        return Info.isUnordered();
-
+      if (IsTargetMemInst) {
+        assert(Info.IsSimple && "need to refine IsSimple in TTI");
+        return true;
+      }
       if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
         return LI->isUnordered();
       } else if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
@@ -424,9 +419,10 @@ private:
     }
 
     bool isVolatile() const {
-      if (IsTargetMemInst)
-        return Info.IsVolatile;
-
+      if (IsTargetMemInst) {
+        assert(Info.IsSimple && "need to refine IsSimple in TTI");
+        return false;
+      }
       if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
         return LI->isVolatile();
       } else if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
@@ -483,91 +479,15 @@ private:
   bool processNode(DomTreeNode *Node);
 
   Value *getOrCreateResult(Value *Inst, Type *ExpectedType) const {
-    if (auto *LI = dyn_cast<LoadInst>(Inst))
+    if (LoadInst *LI = dyn_cast<LoadInst>(Inst))
       return LI;
-    if (auto *SI = dyn_cast<StoreInst>(Inst))
+    else if (StoreInst *SI = dyn_cast<StoreInst>(Inst))
       return SI->getValueOperand();
     assert(isa<IntrinsicInst>(Inst) && "Instruction not supported");
     return TTI.getOrCreateResultFromMemIntrinsic(cast<IntrinsicInst>(Inst),
                                                  ExpectedType);
   }
-
-  bool isSameMemGeneration(unsigned EarlierGeneration, unsigned LaterGeneration,
-                           Instruction *EarlierInst, Instruction *LaterInst);
-
-  void removeMSSA(Instruction *Inst) {
-    if (!MSSA)
-      return;
-    // Removing a store here can leave MemorySSA in an unoptimized state by
-    // creating MemoryPhis that have identical arguments and by creating
-    // MemoryUses whose defining access is not an actual clobber.  We handle the
-    // phi case eagerly here.  The non-optimized MemoryUse case is lazily
-    // updated by MemorySSA getClobberingMemoryAccess.
-    if (MemoryAccess *MA = MSSA->getMemoryAccess(Inst)) {
-      // Optimize MemoryPhi nodes that may become redundant by having all the
-      // same input values once MA is removed.
-      SmallVector<MemoryPhi *, 4> PhisToCheck;
-      SmallVector<MemoryAccess *, 8> WorkQueue;
-      WorkQueue.push_back(MA);
-      // Process MemoryPhi nodes in FIFO order using a ever-growing vector since
-      // we shouldn't be processing that many phis and this will avoid an
-      // allocation in almost all cases.
-      for (unsigned I = 0; I < WorkQueue.size(); ++I) {
-        MemoryAccess *WI = WorkQueue[I];
-
-        for (auto *U : WI->users())
-          if (MemoryPhi *MP = dyn_cast<MemoryPhi>(U))
-            PhisToCheck.push_back(MP);
-
-        MSSAUpdater->removeMemoryAccess(WI);
-
-        for (MemoryPhi *MP : PhisToCheck) {
-          MemoryAccess *FirstIn = MP->getIncomingValue(0);
-          if (all_of(MP->incoming_values(),
-                     [=](Use &In) { return In == FirstIn; }))
-            WorkQueue.push_back(MP);
-        }
-        PhisToCheck.clear();
-      }
-    }
-  }
 };
-}
-
-/// Determine if the memory referenced by LaterInst is from the same heap
-/// version as EarlierInst.
-/// This is currently called in two scenarios:
-///
-///   load p
-///   ...
-///   load p
-///
-/// and
-///
-///   x = load p
-///   ...
-///   store x, p
-///
-/// in both cases we want to verify that there are no possible writes to the
-/// memory referenced by p between the earlier and later instruction.
-bool EarlyCSE::isSameMemGeneration(unsigned EarlierGeneration,
-                                   unsigned LaterGeneration,
-                                   Instruction *EarlierInst,
-                                   Instruction *LaterInst) {
-  // Check the simple memory generation tracking first.
-  if (EarlierGeneration == LaterGeneration)
-    return true;
-
-  if (!MSSA)
-    return false;
-
-  // Since we know LaterDef dominates LaterInst and EarlierInst dominates
-  // LaterInst, if LaterDef dominates EarlierInst then it can't occur between
-  // EarlierInst and LaterInst and neither can any other write that potentially
-  // clobbers LaterInst.
-  MemoryAccess *LaterDef =
-      MSSA->getWalker()->getClobberingMemoryAccess(LaterInst);
-  return MSSA->dominates(LaterDef, MSSA->getMemoryAccess(EarlierInst));
 }
 
 bool EarlyCSE::processNode(DomTreeNode *Node) {
@@ -589,34 +509,35 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
   // which reaches this block where the condition might hold a different
   // value.  Since we're adding this to the scoped hash table (like any other
   // def), it will have been popped if we encounter a future merge block.
-  if (BasicBlock *Pred = BB->getSinglePredecessor()) {
-    auto *BI = dyn_cast<BranchInst>(Pred->getTerminator());
-    if (BI && BI->isConditional()) {
-      auto *CondInst = dyn_cast<Instruction>(BI->getCondition());
-      if (CondInst && SimpleValue::canHandle(CondInst)) {
-        assert(BI->getSuccessor(0) == BB || BI->getSuccessor(1) == BB);
-        auto *TorF = (BI->getSuccessor(0) == BB)
-                         ? ConstantInt::getTrue(BB->getContext())
-                         : ConstantInt::getFalse(BB->getContext());
-        AvailableValues.insert(CondInst, TorF);
-        DEBUG(dbgs() << "EarlyCSE CVP: Add conditional value for '"
-                     << CondInst->getName() << "' as " << *TorF << " in "
-                     << BB->getName() << "\n");
-        // Replace all dominated uses with the known value.
-        if (unsigned Count = replaceDominatedUsesWith(
-                CondInst, TorF, DT, BasicBlockEdge(Pred, BB))) {
-          Changed = true;
-          NumCSECVP = NumCSECVP + Count;
-        }
-      }
-    }
-  }
+  if (BasicBlock *Pred = BB->getSinglePredecessor())
+    if (auto *BI = dyn_cast<BranchInst>(Pred->getTerminator()))
+      if (BI->isConditional())
+        if (auto *CondInst = dyn_cast<Instruction>(BI->getCondition()))
+          if (SimpleValue::canHandle(CondInst)) {
+            assert(BI->getSuccessor(0) == BB || BI->getSuccessor(1) == BB);
+            auto *ConditionalConstant = (BI->getSuccessor(0) == BB) ?
+              ConstantInt::getTrue(BB->getContext()) :
+              ConstantInt::getFalse(BB->getContext());
+            AvailableValues.insert(CondInst, ConditionalConstant);
+            DEBUG(dbgs() << "EarlyCSE CVP: Add conditional value for '"
+                  << CondInst->getName() << "' as " << *ConditionalConstant
+                  << " in " << BB->getName() << "\n");
+            // Replace all dominated uses with the known value.
+            if (unsigned Count =
+                    replaceDominatedUsesWith(CondInst, ConditionalConstant, DT,
+                                             BasicBlockEdge(Pred, BB))) {
+              Changed = true;
+              NumCSECVP = NumCSECVP + Count;
+            }
+          }
 
   /// LastStore - Keep track of the last non-volatile store that we saw... for
   /// as long as there in no instruction that reads memory.  If we see a store
   /// to the same location, we delete the dead store.  This zaps trivial dead
   /// stores which can occur in bitfield code among other things.
   Instruction *LastStore = nullptr;
+
+  const DataLayout &DL = BB->getModule()->getDataLayout();
 
   // See if any instructions in the block can be eliminated.  If so, do it.  If
   // not, add them to AvailableValues.
@@ -626,7 +547,6 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
     // Dead instructions should just be removed.
     if (isInstructionTriviallyDead(Inst, &TLI)) {
       DEBUG(dbgs() << "EarlyCSE DCE: " << *Inst << '\n');
-      removeMSSA(Inst);
       Inst->eraseFromParent();
       Changed = true;
       ++NumSimplify;
@@ -635,54 +555,20 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
 
     // Skip assume intrinsics, they don't really have side effects (although
     // they're marked as such to ensure preservation of control dependencies),
-    // and this pass will not bother with its removal. However, we should mark
-    // its condition as true for all dominated blocks.
+    // and this pass will not disturb any of the assumption's control
+    // dependencies.
     if (match(Inst, m_Intrinsic<Intrinsic::assume>())) {
-      auto *CondI =
-          dyn_cast<Instruction>(cast<CallInst>(Inst)->getArgOperand(0));
-      if (CondI && SimpleValue::canHandle(CondI)) {
-        DEBUG(dbgs() << "EarlyCSE considering assumption: " << *Inst << '\n');
-        AvailableValues.insert(CondI, ConstantInt::getTrue(BB->getContext()));
-      } else
-        DEBUG(dbgs() << "EarlyCSE skipping assumption: " << *Inst << '\n');
+      DEBUG(dbgs() << "EarlyCSE skipping assumption: " << *Inst << '\n');
       continue;
     }
-
-    // Skip invariant.start intrinsics since they only read memory, and we can
-    // forward values across it. Also, we dont need to consume the last store
-    // since the semantics of invariant.start allow us to perform DSE of the
-    // last store, if there was a store following invariant.start. Consider:
-    //
-    // store 30, i8* p
-    // invariant.start(p)
-    // store 40, i8* p
-    // We can DSE the store to 30, since the store 40 to invariant location p
-    // causes undefined behaviour.
-    if (match(Inst, m_Intrinsic<Intrinsic::invariant_start>()))
-      continue;
 
     if (match(Inst, m_Intrinsic<Intrinsic::experimental_guard>())) {
       if (auto *CondI =
               dyn_cast<Instruction>(cast<CallInst>(Inst)->getArgOperand(0))) {
-        if (SimpleValue::canHandle(CondI)) {
-          // Do we already know the actual value of this condition?
-          if (auto *KnownCond = AvailableValues.lookup(CondI)) {
-            // Is the condition known to be true?
-            if (isa<ConstantInt>(KnownCond) &&
-                cast<ConstantInt>(KnownCond)->isOneValue()) {
-              DEBUG(dbgs() << "EarlyCSE removing guard: " << *Inst << '\n');
-              removeMSSA(Inst);
-              Inst->eraseFromParent();
-              Changed = true;
-              continue;
-            } else
-              // Use the known value if it wasn't true.
-              cast<CallInst>(Inst)->setArgOperand(0, KnownCond);
-          }
-          // The condition we're on guarding here is true for all dominated
-          // locations.
+        // The condition we're on guarding here is true for all dominated
+        // locations.
+        if (SimpleValue::canHandle(CondI))
           AvailableValues.insert(CondI, ConstantInt::getTrue(BB->getContext()));
-        }
       }
 
       // Guard intrinsics read all memory, but don't write any memory.
@@ -694,23 +580,20 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
 
     // If the instruction can be simplified (e.g. X+0 = X) then replace it with
     // its simpler value.
-    if (Value *V = SimplifyInstruction(Inst, SQ)) {
+    if (Value *V = SimplifyInstruction(Inst, DL, &TLI, &DT, &AC)) {
       DEBUG(dbgs() << "EarlyCSE Simplify: " << *Inst << "  to: " << *V << '\n');
-      bool Killed = false;
       if (!Inst->use_empty()) {
         Inst->replaceAllUsesWith(V);
         Changed = true;
       }
       if (isInstructionTriviallyDead(Inst, &TLI)) {
-        removeMSSA(Inst);
         Inst->eraseFromParent();
         Changed = true;
-        Killed = true;
       }
-      if (Changed)
+      if (Changed) {
         ++NumSimplify;
-      if (Killed)
         continue;
+      }
     }
 
     // If this is a simple instruction that we can value number, process it.
@@ -721,7 +604,6 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
         if (auto *I = dyn_cast<Instruction>(V))
           I->andIRFlags(Inst);
         Inst->replaceAllUsesWith(V);
-        removeMSSA(Inst);
         Inst->eraseFromParent();
         Changed = true;
         ++NumCSE;
@@ -747,26 +629,24 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
       // generation or the load is known to be from an invariant location,
       // replace this instruction.
       //
-      // If either the dominating load or the current load are invariant, then
-      // we can assume the current load loads the same value as the dominating
-      // load.
+      // A dominating invariant load implies that the location loaded from is
+      // unchanging beginning at the point of the invariant load, so the load
+      // we're CSE'ing _away_ does not need to be invariant, only the available
+      // load we're CSE'ing _to_ does.
       LoadValue InVal = AvailableLoads.lookup(MemInst.getPointerOperand());
       if (InVal.DefInst != nullptr &&
+          (InVal.Generation == CurrentGeneration || InVal.IsInvariant) &&
           InVal.MatchingId == MemInst.getMatchingId() &&
           // We don't yet handle removing loads with ordering of any kind.
           !MemInst.isVolatile() && MemInst.isUnordered() &&
           // We can't replace an atomic load with one which isn't also atomic.
-          InVal.IsAtomic >= MemInst.isAtomic() &&
-          (InVal.IsInvariant || MemInst.isInvariantLoad() ||
-           isSameMemGeneration(InVal.Generation, CurrentGeneration,
-                               InVal.DefInst, Inst))) {
+          InVal.IsAtomic >= MemInst.isAtomic()) {
         Value *Op = getOrCreateResult(InVal.DefInst, Inst->getType());
         if (Op != nullptr) {
           DEBUG(dbgs() << "EarlyCSE CSE LOAD: " << *Inst
                        << "  to: " << *InVal.DefInst << '\n');
           if (!Inst->use_empty())
             Inst->replaceAllUsesWith(Op);
-          removeMSSA(Inst);
           Inst->eraseFromParent();
           Changed = true;
           ++NumCSELoad;
@@ -783,13 +663,12 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
       continue;
     }
 
-    // If this instruction may read from memory or throw (and potentially read
-    // from memory in the exception handler), forget LastStore.  Load/store
-    // intrinsics will indicate both a read and a write to memory.  The target
-    // may override this (e.g. so that a store intrinsic does not read from
-    // memory, and thus will be treated the same as a regular store for
-    // commoning purposes).
-    if ((Inst->mayReadFromMemory() || Inst->mayThrow()) &&
+    // If this instruction may read from memory, forget LastStore.
+    // Load/store intrinsics will indicate both a read and a write to
+    // memory.  The target may override this (e.g. so that a store intrinsic
+    // does not read  from memory, and thus will be treated the same as a
+    // regular store for commoning purposes).
+    if (Inst->mayReadFromMemory() &&
         !(MemInst.isValid() && !MemInst.mayReadFromMemory()))
       LastStore = nullptr;
 
@@ -798,14 +677,11 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
       // If we have an available version of this call, and if it is the right
       // generation, replace this instruction.
       std::pair<Instruction *, unsigned> InVal = AvailableCalls.lookup(Inst);
-      if (InVal.first != nullptr &&
-          isSameMemGeneration(InVal.second, CurrentGeneration, InVal.first,
-                              Inst)) {
+      if (InVal.first != nullptr && InVal.second == CurrentGeneration) {
         DEBUG(dbgs() << "EarlyCSE CSE CALL: " << *Inst
                      << "  to: " << *InVal.first << '\n');
         if (!Inst->use_empty())
           Inst->replaceAllUsesWith(InVal.first);
-        removeMSSA(Inst);
         Inst->eraseFromParent();
         Changed = true;
         ++NumCSECall;
@@ -838,22 +714,15 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
       LoadValue InVal = AvailableLoads.lookup(MemInst.getPointerOperand());
       if (InVal.DefInst &&
           InVal.DefInst == getOrCreateResult(Inst, InVal.DefInst->getType()) &&
+          InVal.Generation == CurrentGeneration &&
           InVal.MatchingId == MemInst.getMatchingId() &&
           // We don't yet handle removing stores with ordering of any kind.
-          !MemInst.isVolatile() && MemInst.isUnordered() &&
-          isSameMemGeneration(InVal.Generation, CurrentGeneration,
-                              InVal.DefInst, Inst)) {
-        // It is okay to have a LastStore to a different pointer here if MemorySSA
-        // tells us that the load and store are from the same memory generation.
-        // In that case, LastStore should keep its present value since we're
-        // removing the current store.
+          !MemInst.isVolatile() && MemInst.isUnordered()) {
         assert((!LastStore ||
                 ParseMemoryInst(LastStore, TTI).getPointerOperand() ==
-                    MemInst.getPointerOperand() ||
-                MSSA) &&
-               "can't have an intervening store if not using MemorySSA!");
+                MemInst.getPointerOperand()) &&
+               "can't have an intervening store!");
         DEBUG(dbgs() << "EarlyCSE DSE (writeback): " << *Inst << '\n');
-        removeMSSA(Inst);
         Inst->eraseFromParent();
         Changed = true;
         ++NumDSE;
@@ -885,7 +754,6 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
           if (LastStoreMemInst.isMatchingMemLoc(MemInst)) {
             DEBUG(dbgs() << "EarlyCSE DEAD STORE: " << *LastStore
                          << "  due to: " << *Inst << '\n');
-            removeMSSA(LastStore);
             LastStore->eraseFromParent();
             Changed = true;
             ++NumDSE;
@@ -977,24 +845,22 @@ bool EarlyCSE::run() {
 }
 
 PreservedAnalyses EarlyCSEPass::run(Function &F,
-                                    FunctionAnalysisManager &AM) {
+                                    AnalysisManager<Function> &AM) {
   auto &TLI = AM.getResult<TargetLibraryAnalysis>(F);
   auto &TTI = AM.getResult<TargetIRAnalysis>(F);
   auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
   auto &AC = AM.getResult<AssumptionAnalysis>(F);
-  auto *MSSA =
-      UseMemorySSA ? &AM.getResult<MemorySSAAnalysis>(F).getMSSA() : nullptr;
 
-  EarlyCSE CSE(F.getParent()->getDataLayout(), TLI, TTI, DT, AC, MSSA);
+  EarlyCSE CSE(TLI, TTI, DT, AC);
 
   if (!CSE.run())
     return PreservedAnalyses::all();
 
+  // CSE preserves the dominator tree because it doesn't mutate the CFG.
+  // FIXME: Bundle this with other CFG-preservation.
   PreservedAnalyses PA;
-  PA.preserveSet<CFGAnalyses>();
+  PA.preserve<DominatorTreeAnalysis>();
   PA.preserve<GlobalsAA>();
-  if (UseMemorySSA)
-    PA.preserve<MemorySSAAnalysis>();
   return PA;
 }
 
@@ -1006,16 +872,12 @@ namespace {
 /// canonicalize things as it goes. It is intended to be fast and catch obvious
 /// cases so that instcombine and other passes are more effective. It is
 /// expected that a later pass of GVN will catch the interesting/hard cases.
-template<bool UseMemorySSA>
-class EarlyCSELegacyCommonPass : public FunctionPass {
+class EarlyCSELegacyPass : public FunctionPass {
 public:
   static char ID;
 
-  EarlyCSELegacyCommonPass() : FunctionPass(ID) {
-    if (UseMemorySSA)
-      initializeEarlyCSEMemSSALegacyPassPass(*PassRegistry::getPassRegistry());
-    else
-      initializeEarlyCSELegacyPassPass(*PassRegistry::getPassRegistry());
+  EarlyCSELegacyPass() : FunctionPass(ID) {
+    initializeEarlyCSELegacyPassPass(*PassRegistry::getPassRegistry());
   }
 
   bool runOnFunction(Function &F) override {
@@ -1026,10 +888,8 @@ public:
     auto &TTI = getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
     auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
     auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
-    auto *MSSA =
-        UseMemorySSA ? &getAnalysis<MemorySSAWrapperPass>().getMSSA() : nullptr;
 
-    EarlyCSE CSE(F.getParent()->getDataLayout(), TLI, TTI, DT, AC, MSSA);
+    EarlyCSE CSE(TLI, TTI, DT, AC);
 
     return CSE.run();
   }
@@ -1039,20 +899,15 @@ public:
     AU.addRequired<DominatorTreeWrapperPass>();
     AU.addRequired<TargetLibraryInfoWrapperPass>();
     AU.addRequired<TargetTransformInfoWrapperPass>();
-    if (UseMemorySSA) {
-      AU.addRequired<MemorySSAWrapperPass>();
-      AU.addPreserved<MemorySSAWrapperPass>();
-    }
     AU.addPreserved<GlobalsAAWrapperPass>();
     AU.setPreservesCFG();
   }
 };
 }
 
-using EarlyCSELegacyPass = EarlyCSELegacyCommonPass</*UseMemorySSA=*/false>;
-
-template<>
 char EarlyCSELegacyPass::ID = 0;
+
+FunctionPass *llvm::createEarlyCSEPass() { return new EarlyCSELegacyPass(); }
 
 INITIALIZE_PASS_BEGIN(EarlyCSELegacyPass, "early-cse", "Early CSE", false,
                       false)
@@ -1061,26 +916,3 @@ INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
 INITIALIZE_PASS_END(EarlyCSELegacyPass, "early-cse", "Early CSE", false, false)
-
-using EarlyCSEMemSSALegacyPass =
-    EarlyCSELegacyCommonPass</*UseMemorySSA=*/true>;
-
-template<>
-char EarlyCSEMemSSALegacyPass::ID = 0;
-
-FunctionPass *llvm::createEarlyCSEPass(bool UseMemorySSA) {
-  if (UseMemorySSA)
-    return new EarlyCSEMemSSALegacyPass();
-  else
-    return new EarlyCSELegacyPass();
-}
-
-INITIALIZE_PASS_BEGIN(EarlyCSEMemSSALegacyPass, "early-cse-memssa",
-                      "Early CSE w/ MemorySSA", false, false)
-INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
-INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(MemorySSAWrapperPass)
-INITIALIZE_PASS_END(EarlyCSEMemSSALegacyPass, "early-cse-memssa",
-                    "Early CSE w/ MemorySSA", false, false)

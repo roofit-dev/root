@@ -9,19 +9,20 @@
 
 #include "MCTargetDesc/LanaiBaseInfo.h"
 #include "MCTargetDesc/LanaiFixupKinds.h"
+#include "MCTargetDesc/LanaiMCTargetDesc.h"
 #include "llvm/MC/MCELFObjectWriter.h"
-#include "llvm/Support/ELF.h"
+#include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
 namespace {
-
 class LanaiELFObjectWriter : public MCELFObjectTargetWriter {
 public:
   explicit LanaiELFObjectWriter(uint8_t OSABI);
 
-  ~LanaiELFObjectWriter() override = default;
+  ~LanaiELFObjectWriter() override;
 
 protected:
   unsigned getRelocType(MCContext &Ctx, const MCValue &Target,
@@ -29,17 +30,18 @@ protected:
   bool needsRelocateWithSymbol(const MCSymbol &SD,
                                unsigned Type) const override;
 };
-
-} // end anonymous namespace
+} // namespace
 
 LanaiELFObjectWriter::LanaiELFObjectWriter(uint8_t OSABI)
-    : MCELFObjectTargetWriter(/*Is64Bit_=*/false, OSABI, ELF::EM_LANAI,
+    : MCELFObjectTargetWriter(/*Is64Bit=*/false, OSABI, ELF::EM_LANAI,
                               /*HasRelocationAddend=*/true) {}
 
-unsigned LanaiELFObjectWriter::getRelocType(MCContext & /*Ctx*/,
-                                            const MCValue & /*Target*/,
+LanaiELFObjectWriter::~LanaiELFObjectWriter() {}
+
+unsigned LanaiELFObjectWriter::getRelocType(MCContext &Ctx,
+                                            const MCValue &Target,
                                             const MCFixup &Fixup,
-                                            bool /*IsPCRel*/) const {
+                                            bool IsPCRel) const {
   unsigned Type;
   unsigned Kind = static_cast<unsigned>(Fixup.getKind());
   switch (Kind) {
@@ -72,7 +74,7 @@ unsigned LanaiELFObjectWriter::getRelocType(MCContext & /*Ctx*/,
   return Type;
 }
 
-bool LanaiELFObjectWriter::needsRelocateWithSymbol(const MCSymbol & /*SD*/,
+bool LanaiELFObjectWriter::needsRelocateWithSymbol(const MCSymbol &SD,
                                                    unsigned Type) const {
   switch (Type) {
   case ELF::R_LANAI_21:

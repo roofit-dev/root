@@ -43,7 +43,9 @@ namespace {
     static char ID;
     Filler() : MachineFunctionPass(ID) {}
 
-    StringRef getPassName() const override { return "SPARC Delay Slot Filler"; }
+    const char *getPassName() const override {
+      return "SPARC Delay Slot Filler";
+    }
 
     bool runOnMachineBasicBlock(MachineBasicBlock &MBB);
     bool runOnMachineFunction(MachineFunction &F) override {
@@ -62,7 +64,7 @@ namespace {
 
     MachineFunctionProperties getRequiredProperties() const override {
       return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::NoVRegs);
+          MachineFunctionProperties::Property::AllVRegsAllocated);
     }
 
     void insertCallDefsUses(MachineBasicBlock::iterator MI,

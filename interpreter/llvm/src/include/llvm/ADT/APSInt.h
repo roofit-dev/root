@@ -19,7 +19,7 @@
 
 namespace llvm {
 
-class LLVM_NODISCARD APSInt : public APInt {
+class APSInt : public APInt {
   bool IsUnsigned;
 
 public:
@@ -78,22 +78,22 @@ public:
     return isSigned() ? getSExtValue() : getZExtValue();
   }
 
-  APSInt trunc(uint32_t width) const {
+  APSInt LLVM_ATTRIBUTE_UNUSED_RESULT trunc(uint32_t width) const {
     return APSInt(APInt::trunc(width), IsUnsigned);
   }
 
-  APSInt extend(uint32_t width) const {
+  APSInt LLVM_ATTRIBUTE_UNUSED_RESULT extend(uint32_t width) const {
     if (IsUnsigned)
       return APSInt(zext(width), IsUnsigned);
     else
       return APSInt(sext(width), IsUnsigned);
   }
 
-  APSInt extOrTrunc(uint32_t width) const {
-    if (IsUnsigned)
-      return APSInt(zextOrTrunc(width), IsUnsigned);
-    else
-      return APSInt(sextOrTrunc(width), IsUnsigned);
+  APSInt LLVM_ATTRIBUTE_UNUSED_RESULT extOrTrunc(uint32_t width) const {
+      if (IsUnsigned)
+        return APSInt(zextOrTrunc(width), IsUnsigned);
+      else
+        return APSInt(sextOrTrunc(width), IsUnsigned);
   }
 
   const APSInt &operator%=(const APSInt &RHS) {
@@ -125,10 +125,7 @@ public:
     return IsUnsigned ? APSInt(lshr(Amt), true) : APSInt(ashr(Amt), false);
   }
   APSInt& operator>>=(unsigned Amt) {
-    if (IsUnsigned)
-      lshrInPlace(Amt);
-    else
-      ashrInPlace(Amt);
+    *this = *this >> Amt;
     return *this;
   }
 
@@ -182,7 +179,7 @@ public:
     return APSInt(static_cast<const APInt&>(*this) << Bits, IsUnsigned);
   }
   APSInt& operator<<=(unsigned Amt) {
-    static_cast<APInt&>(*this) <<= Amt;
+    *this = *this << Amt;
     return *this;
   }
 
@@ -238,15 +235,24 @@ public:
     assert(IsUnsigned == RHS.IsUnsigned && "Signedness mismatch!");
     return APSInt(static_cast<const APInt&>(*this) & RHS, IsUnsigned);
   }
+  APSInt LLVM_ATTRIBUTE_UNUSED_RESULT And(const APSInt& RHS) const {
+    return this->operator&(RHS);
+  }
 
   APSInt operator|(const APSInt& RHS) const {
     assert(IsUnsigned == RHS.IsUnsigned && "Signedness mismatch!");
     return APSInt(static_cast<const APInt&>(*this) | RHS, IsUnsigned);
   }
+  APSInt LLVM_ATTRIBUTE_UNUSED_RESULT Or(const APSInt& RHS) const {
+    return this->operator|(RHS);
+  }
 
   APSInt operator^(const APSInt &RHS) const {
     assert(IsUnsigned == RHS.IsUnsigned && "Signedness mismatch!");
     return APSInt(static_cast<const APInt&>(*this) ^ RHS, IsUnsigned);
+  }
+  APSInt LLVM_ATTRIBUTE_UNUSED_RESULT Xor(const APSInt& RHS) const {
+    return this->operator^(RHS);
   }
 
   APSInt operator*(const APSInt& RHS) const {
@@ -288,12 +294,12 @@ public:
   /// \brief Compare underlying values of two numbers.
   static int compareValues(const APSInt &I1, const APSInt &I2) {
     if (I1.getBitWidth() == I2.getBitWidth() && I1.isSigned() == I2.isSigned())
-      return I1.IsUnsigned ? I1.compare(I2) : I1.compareSigned(I2);
+      return I1 == I2 ? 0 : I1 > I2 ? 1 : -1;
 
     // Check for a bit-width mismatch.
     if (I1.getBitWidth() > I2.getBitWidth())
       return compareValues(I1, I2.extend(I1.getBitWidth()));
-    if (I2.getBitWidth() > I1.getBitWidth())
+    else if (I2.getBitWidth() > I1.getBitWidth())
       return compareValues(I1.extend(I2.getBitWidth()), I2);
 
     // We have a signedness mismatch. Check for negative values and do an
@@ -308,7 +314,7 @@ public:
         return 1;
     }
 
-    return I1.compare(I2);
+    return I1.eq(I2) ? 0 : I1.ugt(I2) ? 1 : -1;
   }
 
   static APSInt get(int64_t X) { return APSInt(APInt(64, X), false); }

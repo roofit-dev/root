@@ -13,7 +13,6 @@ set(TestMathMoreSource
      testGSLIntegration.cxx
      testMCIntegration.cxx
      testGSLRootFinder.cxx
-     testMultiRootFinder.cxx
      testMinimization1D.cxx
      testInterpolation.cxx
      testRandom.cxx
@@ -53,4 +52,3 @@ foreach(file ${TestMathMoreSource})
   ROOT_ADD_TEST(mathmore-${testname} COMMAND ${testname} LABELS ${${testname}_LABELS})
 endforeach()
 
-ROOT_ADD_GTEST(stressMathMoreUnit testStress.cxx StatFunction.cxx LIBRARIES MathMore)

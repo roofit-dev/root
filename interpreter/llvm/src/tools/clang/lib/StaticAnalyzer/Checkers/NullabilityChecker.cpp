@@ -49,7 +49,7 @@ namespace {
 enum class Nullability : char {
   Contradicted, // Tracked nullability is contradicted by an explicit cast. Do
                 // not report any nullability related issue for this symbol.
-                // This nullability is propagated aggressively to avoid false
+                // This nullability is propagated agressively to avoid false
                 // positive results. See the comment on getMostNullable method.
   Nullable,
   Unspecified,
@@ -57,7 +57,7 @@ enum class Nullability : char {
 };
 
 /// Returns the most nullable nullability. This is used for message expressions
-/// like [receiver method], where the nullability of this expression is either
+/// like [reciever method], where the nullability of this expression is either
 /// the nullability of the receiver or the nullability of the return type of the
 /// method, depending on which is more nullable. Contradicted is considered to
 /// be the most nullable, to avoid false positive results.
@@ -153,10 +153,10 @@ private:
       ID.AddPointer(Region);
     }
 
-    std::shared_ptr<PathDiagnosticPiece> VisitNode(const ExplodedNode *N,
-                                                   const ExplodedNode *PrevN,
-                                                   BugReporterContext &BRC,
-                                                   BugReport &BR) override;
+    PathDiagnosticPiece *VisitNode(const ExplodedNode *N,
+                                   const ExplodedNode *PrevN,
+                                   BugReporterContext &BRC,
+                                   BugReport &BR) override;
 
   private:
     // The tracked region.
@@ -178,7 +178,7 @@ private:
                  const MemRegion *Region, BugReporter &BR,
                  const Stmt *ValueExpr = nullptr) const {
     if (!BT)
-      BT.reset(new BugType(this, "Nullability", categories::MemoryError));
+      BT.reset(new BugType(this, "Nullability", "Memory error"));
 
     auto R = llvm::make_unique<BugReport>(*BT, Msg, N);
     if (Region) {
@@ -306,11 +306,9 @@ NullabilityChecker::getTrackRegion(SVal Val, bool CheckSuperRegion) const {
   return dyn_cast<SymbolicRegion>(Region);
 }
 
-std::shared_ptr<PathDiagnosticPiece>
-NullabilityChecker::NullabilityBugVisitor::VisitNode(const ExplodedNode *N,
-                                                     const ExplodedNode *PrevN,
-                                                     BugReporterContext &BRC,
-                                                     BugReport &BR) {
+PathDiagnosticPiece *NullabilityChecker::NullabilityBugVisitor::VisitNode(
+    const ExplodedNode *N, const ExplodedNode *PrevN, BugReporterContext &BRC,
+    BugReport &BR) {
   ProgramStateRef State = N->getState();
   ProgramStateRef StatePrev = PrevN->getState();
 
@@ -327,7 +325,10 @@ NullabilityChecker::NullabilityBugVisitor::VisitNode(const ExplodedNode *N,
   // Retrieve the associated statement.
   const Stmt *S = TrackedNullab->getNullabilitySource();
   if (!S) {
-    S = PathDiagnosticLocation::getStmt(N);
+    ProgramPoint ProgLoc = N->getLocation();
+    if (Optional<StmtPoint> SP = ProgLoc.getAs<StmtPoint>()) {
+      S = SP->getStmt();
+    }
   }
 
   if (!S)
@@ -335,14 +336,13 @@ NullabilityChecker::NullabilityBugVisitor::VisitNode(const ExplodedNode *N,
 
   std::string InfoText =
       (llvm::Twine("Nullability '") +
-       getNullabilityString(TrackedNullab->getValue()) + "' is inferred")
+       getNullabilityString(TrackedNullab->getValue()) + "' is infered")
           .str();
 
   // Generate the extra diagnostic.
   PathDiagnosticLocation Pos(S, BRC.getSourceManager(),
                              N->getLocationContext());
-  return std::make_shared<PathDiagnosticEventPiece>(Pos, InfoText, true,
-                                                    nullptr);
+  return new PathDiagnosticEventPiece(Pos, InfoText, true, nullptr);
 }
 
 static Nullability getNullabilityAnnotation(QualType Type) {
@@ -613,9 +613,9 @@ void NullabilityChecker::checkPreStmt(const ReturnStmt *S,
 
     SmallString<256> SBuf;
     llvm::raw_svector_ostream OS(SBuf);
-    OS << (RetExpr->getType()->isObjCObjectPointerType() ? "nil" : "Null");
-    OS << " returned from a " << C.getDeclDescription(D) <<
+    OS << "Null is returned from a " << C.getDeclDescription(D) <<
           " that is expected to return a non-null value";
+
     reportBugIfInvariantHolds(OS.str(),
                               ErrorKind::NilReturnedToNonnull, N, nullptr, C,
                               RetExpr);
@@ -682,10 +682,9 @@ void NullabilityChecker::checkPreCall(const CallEvent &Call,
     if (Param->isParameterPack())
       break;
 
-    if (Idx >= Call.getNumArgs())
-      break;
-
-    const Expr *ArgExpr = Call.getArgExpr(Idx);
+    const Expr *ArgExpr = nullptr;
+    if (Idx < Call.getNumArgs())
+      ArgExpr = Call.getArgExpr(Idx);
     auto ArgSVal = Call.getArgSVal(Idx++).getAs<DefinedOrUnknownSVal>();
     if (!ArgSVal)
       continue;
@@ -710,11 +709,9 @@ void NullabilityChecker::checkPreCall(const CallEvent &Call,
       ExplodedNode *N = C.generateErrorNode(State);
       if (!N)
         return;
-
       SmallString<256> SBuf;
       llvm::raw_svector_ostream OS(SBuf);
-      OS << (Param->getType()->isObjCObjectPointerType() ? "nil" : "Null");
-      OS << " passed to a callee that requires a non-null " << ParamIdx
+      OS << "Null passed to a callee that requires a non-null " << ParamIdx
          << llvm::getOrdinalSuffix(ParamIdx) << " parameter";
       reportBugIfInvariantHolds(OS.str(), ErrorKind::NilPassedToNonnull, N,
                                 nullptr, C,
@@ -1133,11 +1130,8 @@ void NullabilityChecker::checkBind(SVal L, SVal V, const Stmt *S,
     if (ValueExpr)
       ValueStmt = ValueExpr;
 
-    SmallString<256> SBuf;
-    llvm::raw_svector_ostream OS(SBuf);
-    OS << (LocType->isObjCObjectPointerType() ? "nil" : "Null");
-    OS << " assigned to a pointer which is expected to have non-null value";
-    reportBugIfInvariantHolds(OS.str(),
+    reportBugIfInvariantHolds("Null is assigned to a pointer which is "
+                              "expected to have non-null value",
                               ErrorKind::NilAssignedToNonnull, N, nullptr, C,
                               ValueStmt);
     return;

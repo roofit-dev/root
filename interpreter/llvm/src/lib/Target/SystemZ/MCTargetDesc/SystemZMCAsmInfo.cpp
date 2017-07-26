@@ -14,7 +14,7 @@
 using namespace llvm;
 
 SystemZMCAsmInfo::SystemZMCAsmInfo(const Triple &TT) {
-  CodePointerSize = 8;
+  PointerSize = 8;
   CalleeSaveStackSlotSize = 8;
   IsLittleEndian = false;
 

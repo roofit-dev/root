@@ -20,24 +20,35 @@
 
 namespace llvm {
 
+class Module;
 class Function;
 class Value;
 
 /// \brief Structure to hold a use-list order.
 struct UseListOrder {
-  const Value *V = nullptr;
-  const Function *F = nullptr;
+  const Value *V;
+  const Function *F;
   std::vector<unsigned> Shuffle;
 
   UseListOrder(const Value *V, const Function *F, size_t ShuffleSize)
       : V(V), F(F), Shuffle(ShuffleSize) {}
 
-  UseListOrder() = default;
-  UseListOrder(UseListOrder &&) = default;
-  UseListOrder &operator=(UseListOrder &&) = default;
+  UseListOrder() : V(nullptr), F(nullptr) {}
+  UseListOrder(UseListOrder &&X)
+      : V(X.V), F(X.F), Shuffle(std::move(X.Shuffle)) {}
+  UseListOrder &operator=(UseListOrder &&X) {
+    V = X.V;
+    F = X.F;
+    Shuffle = std::move(X.Shuffle);
+    return *this;
+  }
+
+private:
+  UseListOrder(const UseListOrder &X) = delete;
+  UseListOrder &operator=(const UseListOrder &X) = delete;
 };
 
-using UseListOrderStack = std::vector<UseListOrder>;
+typedef std::vector<UseListOrder> UseListOrderStack;
 
 } // end namespace llvm
 

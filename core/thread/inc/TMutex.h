@@ -47,10 +47,6 @@ public:
    Int_t  UnLock();
    Int_t  CleanUp();
 
-   // Compatibility with standard library
-   void lock() { TMutex::Lock(); }
-   void unlock() { TMutex::UnLock(); }
-
    TVirtualMutex *Factory(Bool_t recursive = kFALSE);
 
    ClassDef(TMutex,0)  // Mutex lock class

@@ -11,7 +11,6 @@
 /// \brief Interface to describe a layout of a stack frame on an AMDGPU target.
 //
 //===----------------------------------------------------------------------===//
-
 #ifndef LLVM_LIB_TARGET_AMDGPU_AMDGPUFRAMELOWERING_H
 #define LLVM_LIB_TARGET_AMDGPU_AMDGPUFRAMELOWERING_H
 
@@ -28,17 +27,23 @@ class AMDGPUFrameLowering : public TargetFrameLowering {
 public:
   AMDGPUFrameLowering(StackDirection D, unsigned StackAl, int LAO,
                       unsigned TransAl = 1);
-  ~AMDGPUFrameLowering() override;
+  virtual ~AMDGPUFrameLowering();
 
   /// \returns The number of 32-bit sub-registers that are used when storing
   /// values to the stack.
   unsigned getStackWidth(const MachineFunction &MF) const;
 
+  int getFrameIndexReference(const MachineFunction &MF, int FI,
+                             unsigned &FrameReg) const override;
+
+  const SpillSlot *getCalleeSavedSpillSlots(unsigned &NumEntries) const override {
+    NumEntries = 0;
+    return nullptr;
+  }
+
   bool hasFP(const MachineFunction &MF) const override {
     return false;
   }
 };
-
-} // end namespace llvm
-
-#endif // LLVM_LIB_TARGET_AMDGPU_AMDGPUFRAMELOWERING_H
+} // namespace llvm
+#endif

@@ -11,19 +11,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "XCoreMCTargetDesc.h"
 #include "InstPrinter/XCoreInstPrinter.h"
-#include "MCTargetDesc/XCoreMCAsmInfo.h"
-#include "MCTargetDesc/XCoreMCTargetDesc.h"
+#include "XCoreMCAsmInfo.h"
 #include "XCoreTargetStreamer.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
-#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TargetRegistry.h"
 
 using namespace llvm;
@@ -83,24 +79,19 @@ static MCInstPrinter *createXCoreMCInstPrinter(const Triple &T,
 }
 
 XCoreTargetStreamer::XCoreTargetStreamer(MCStreamer &S) : MCTargetStreamer(S) {}
-
-XCoreTargetStreamer::~XCoreTargetStreamer() = default;
+XCoreTargetStreamer::~XCoreTargetStreamer() {}
 
 namespace {
 
 class XCoreTargetAsmStreamer : public XCoreTargetStreamer {
   formatted_raw_ostream &OS;
-
 public:
   XCoreTargetAsmStreamer(MCStreamer &S, formatted_raw_ostream &OS);
-
   void emitCCTopData(StringRef Name) override;
   void emitCCTopFunction(StringRef Name) override;
   void emitCCBottomData(StringRef Name) override;
   void emitCCBottomFunction(StringRef Name) override;
 };
-
-} // end anonymous namespace
 
 XCoreTargetAsmStreamer::XCoreTargetAsmStreamer(MCStreamer &S,
                                                formatted_raw_ostream &OS)
@@ -121,6 +112,7 @@ void XCoreTargetAsmStreamer::emitCCBottomData(StringRef Name) {
 void XCoreTargetAsmStreamer::emitCCBottomFunction(StringRef Name) {
   OS << "\t.cc_bottom " << Name << ".function\n";
 }
+}
 
 static MCTargetStreamer *createTargetAsmStreamer(MCStreamer &S,
                                                  formatted_raw_ostream &OS,
@@ -132,28 +124,26 @@ static MCTargetStreamer *createTargetAsmStreamer(MCStreamer &S,
 // Force static initialization.
 extern "C" void LLVMInitializeXCoreTargetMC() {
   // Register the MC asm info.
-  RegisterMCAsmInfoFn X(getTheXCoreTarget(), createXCoreMCAsmInfo);
+  RegisterMCAsmInfoFn X(TheXCoreTarget, createXCoreMCAsmInfo);
 
   // Register the MC codegen info.
-  TargetRegistry::registerMCAdjustCodeGenOpts(getTheXCoreTarget(),
+  TargetRegistry::registerMCAdjustCodeGenOpts(TheXCoreTarget,
                                               adjustCodeGenOpts);
 
   // Register the MC instruction info.
-  TargetRegistry::RegisterMCInstrInfo(getTheXCoreTarget(),
-                                      createXCoreMCInstrInfo);
+  TargetRegistry::RegisterMCInstrInfo(TheXCoreTarget, createXCoreMCInstrInfo);
 
   // Register the MC register info.
-  TargetRegistry::RegisterMCRegInfo(getTheXCoreTarget(),
-                                    createXCoreMCRegisterInfo);
+  TargetRegistry::RegisterMCRegInfo(TheXCoreTarget, createXCoreMCRegisterInfo);
 
   // Register the MC subtarget info.
-  TargetRegistry::RegisterMCSubtargetInfo(getTheXCoreTarget(),
+  TargetRegistry::RegisterMCSubtargetInfo(TheXCoreTarget,
                                           createXCoreMCSubtargetInfo);
 
   // Register the MCInstPrinter
-  TargetRegistry::RegisterMCInstPrinter(getTheXCoreTarget(),
+  TargetRegistry::RegisterMCInstPrinter(TheXCoreTarget,
                                         createXCoreMCInstPrinter);
 
-  TargetRegistry::RegisterAsmTargetStreamer(getTheXCoreTarget(),
+  TargetRegistry::RegisterAsmTargetStreamer(TheXCoreTarget,
                                             createTargetAsmStreamer);
 }

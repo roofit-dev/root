@@ -121,15 +121,13 @@ static void EmitDeclDestroy(CodeGenFunction &CGF, const VarDecl &D,
 /// constant from this point onwards.
 static void EmitDeclInvariant(CodeGenFunction &CGF, const VarDecl &D,
                               llvm::Constant *Addr) {
-  // Do not emit the intrinsic if we're not optimizing.
+  // Don't emit the intrinsic if we're not optimizing.
   if (!CGF.CGM.getCodeGenOpts().OptimizationLevel)
     return;
 
   // Grab the llvm.invariant.start intrinsic.
   llvm::Intrinsic::ID InvStartID = llvm::Intrinsic::invariant_start;
-  // Overloaded address space type.
-  llvm::Type *ObjectPtr[1] = {CGF.Int8PtrTy};
-  llvm::Constant *InvariantStart = CGF.CGM.getIntrinsic(InvStartID, ObjectPtr);
+  llvm::Constant *InvariantStart = CGF.CGM.getIntrinsic(InvStartID);
 
   // Emit a call with the size in bytes of the object.
   CharUnits WidthChars = CGF.getContext().getTypeSizeInChars(D.getType());
@@ -237,8 +235,7 @@ void CodeGenFunction::registerGlobalDtorWithAtExit(const VarDecl &VD,
     llvm::FunctionType::get(IntTy, dtorStub->getType(), false);
 
   llvm::Constant *atexit =
-      CGM.CreateRuntimeFunction(atexitTy, "atexit", llvm::AttributeList(),
-                                /*Local=*/true);
+    CGM.CreateRuntimeFunction(atexitTy, "atexit");
   if (llvm::Function *atexitFn = dyn_cast<llvm::Function>(atexit))
     atexitFn->setDoesNotThrow();
 
@@ -326,6 +323,10 @@ CodeGenModule::EmitCXXGlobalVarDeclInitFunc(const VarDecl *D,
        D->hasAttr<CUDASharedAttr>()))
     return;
 
+  // DLL imported variables will be initialized by the export side.
+  if (D->hasAttr<DLLImportAttr>())
+    return;
+
   // Check if we've already initialized this decl.
   auto I = DelayedCXXInitPosition.find(D);
   if (I != DelayedCXXInitPosition.end() && I->second == ~0U)
@@ -363,6 +364,9 @@ CodeGenModule::EmitCXXGlobalVarDeclInitFunc(const VarDecl *D,
 
   if (D->getTLSKind()) {
     // FIXME: Should we support init_priority for thread_local?
+    // FIXME: Ideally, initialization of instantiated thread_local static data
+    // members of class templates should not trigger initialization of other
+    // entities in the TU.
     // FIXME: We only need to register one __cxa_thread_atexit function for the
     // entire TU.
     CXXThreadLocalInits.push_back(Fn);
@@ -459,12 +463,16 @@ CodeGenModule::EmitCXXGlobalInitFunc() {
     PrioritizedCXXGlobalInits.clear();
   }
 
-  // Include the filename in the symbol name. Including "sub_" matches gcc and
-  // makes sure these symbols appear lexicographically behind the symbols with
-  // priority emitted above.
-  SmallString<128> FileName = llvm::sys::path::filename(getModule().getName());
-  if (FileName.empty())
+  SmallString<128> FileName;
+  SourceManager &SM = Context.getSourceManager();
+  if (const FileEntry *MainFile = SM.getFileEntryForID(SM.getMainFileID())) {
+    // Include the filename in the symbol name. Including "sub_" matches gcc and
+    // makes sure these symbols appear lexicographically behind the symbols with
+    // priority emitted above.
+    FileName = llvm::sys::path::filename(MainFile->getName());
+  } else {
     FileName = "<null>";
+  }
 
   for (size_t i = 0; i < FileName.size(); ++i) {
     // Replace everything that's not [a-zA-Z0-9._] with a _. This set happens
@@ -577,10 +585,9 @@ CodeGenFunction::GenerateCXXGlobalInitFunc(llvm::Function *Fn,
   FinishFunction();
 }
 
-void CodeGenFunction::GenerateCXXGlobalDtorsFunc(
-    llvm::Function *Fn,
-    const std::vector<std::pair<llvm::WeakTrackingVH, llvm::Constant *>>
-        &DtorsAndObjects) {
+void CodeGenFunction::GenerateCXXGlobalDtorsFunc(llvm::Function *Fn,
+                  const std::vector<std::pair<llvm::WeakVH, llvm::Constant*> >
+                                                &DtorsAndObjects) {
   {
     auto NL = ApplyDebugLocation::CreateEmpty(*this);
     StartFunction(GlobalDecl(), getContext().VoidTy, Fn,

@@ -26,8 +26,7 @@ namespace DNN
 //____________________________________________________________________________
 template<typename AFloat>
 AFloat TCuda<AFloat>::MeanSquaredError(const TCudaMatrix<AFloat> & Y,
-                                       const TCudaMatrix<AFloat> & output,
-                                       const TCudaMatrix<AFloat> & weights)
+                                       const TCudaMatrix<AFloat> & output)
 {
     dim3 blockDims = TDevice::BlockDims2D();
     dim3 gridDims  = TDevice::GridDims2D(Y);
@@ -37,7 +36,6 @@ AFloat TCuda<AFloat>::MeanSquaredError(const TCudaMatrix<AFloat> & Y,
         TCudaMatrix<AFloat>::GetDeviceReturnPointer(),
         Y.GetDataPointer(),
         output.GetDataPointer(),
-        weights.GetDataPointer(),
         (int) Y.GetNrows(),
         (int) Y.GetNcols());
     return TCudaMatrix<AFloat>::GetDeviceReturn();
@@ -47,8 +45,7 @@ AFloat TCuda<AFloat>::MeanSquaredError(const TCudaMatrix<AFloat> & Y,
 template<typename AFloat>
 void TCuda<AFloat>::MeanSquaredErrorGradients(TCudaMatrix<AFloat> & dY,
                                               const TCudaMatrix<AFloat> & Y,
-                                              const TCudaMatrix<AFloat> & output,
-                                              const TCudaMatrix<AFloat> &weights)
+                                              const TCudaMatrix<AFloat> & output)
 {
    dim3 blockDims = TDevice::BlockDims2D();
    dim3 gridDims  = TDevice::GridDims2D(Y);
@@ -57,7 +54,6 @@ void TCuda<AFloat>::MeanSquaredErrorGradients(TCudaMatrix<AFloat> & dY,
        dY.GetDataPointer(),
        Y.GetDataPointer(),
        output.GetDataPointer(),
-       weights.GetDataPointer(),
        (int) Y.GetNrows(),
        (int) Y.GetNcols());
    dY.SetComputeStream(s);
@@ -66,8 +62,7 @@ void TCuda<AFloat>::MeanSquaredErrorGradients(TCudaMatrix<AFloat> & dY,
 //____________________________________________________________________________
 template<typename AFloat>
 AFloat TCuda<AFloat>::CrossEntropy(const TCudaMatrix<AFloat> & Y,
-                                   const TCudaMatrix<AFloat> & output,
-                                   const TCudaMatrix<AFloat> &weights)
+                                   const TCudaMatrix<AFloat> & output)
 {
    dim3 blockDims = TDevice::BlockDims2D();
    dim3 gridDims  = TDevice::GridDims2D(Y);
@@ -77,7 +72,6 @@ AFloat TCuda<AFloat>::CrossEntropy(const TCudaMatrix<AFloat> & Y,
        TCudaMatrix<AFloat>::GetDeviceReturnPointer(),
        Y.GetDataPointer(),
        output.GetDataPointer(),
-       weights.GetDataPointer(),
        (int) Y.GetNrows(),
        (int) Y.GetNcols());
    return TCudaMatrix<AFloat>::GetDeviceReturn();
@@ -87,8 +81,7 @@ AFloat TCuda<AFloat>::CrossEntropy(const TCudaMatrix<AFloat> & Y,
 template<typename AFloat>
 void TCuda<AFloat>::CrossEntropyGradients(TCudaMatrix<AFloat> & dY,
                                           const TCudaMatrix<AFloat> & Y,
-                                          const TCudaMatrix<AFloat> & output,
-                                          const TCudaMatrix<AFloat> &weights)
+                                          const TCudaMatrix<AFloat> & output)
 {
    dim3 blockDims = TDevice::BlockDims2D();
    dim3 gridDims  = TDevice::GridDims2D(Y);
@@ -97,7 +90,6 @@ void TCuda<AFloat>::CrossEntropyGradients(TCudaMatrix<AFloat> & dY,
        dY.GetDataPointer(),
        Y.GetDataPointer(),
        output.GetDataPointer(),
-       weights.GetDataPointer(),
        (int) Y.GetNrows(),
        (int) Y.GetNcols());
    dY.SetComputeStream(s);
@@ -106,8 +98,7 @@ void TCuda<AFloat>::CrossEntropyGradients(TCudaMatrix<AFloat> & dY,
 //____________________________________________________________________________
 template<typename AFloat>
 AFloat TCuda<AFloat>::SoftmaxCrossEntropy(const TCudaMatrix<AFloat> & Y,
-                                          const TCudaMatrix<AFloat> & output,
-                                          const TCudaMatrix<AFloat> &weights)
+                                          const TCudaMatrix<AFloat> & output)
 {
    dim3 blockDims = TDevice::BlockDims1D();
    dim3 gridDims  = TDevice::GridDims1D(Y);
@@ -117,7 +108,6 @@ AFloat TCuda<AFloat>::SoftmaxCrossEntropy(const TCudaMatrix<AFloat> & Y,
        TCudaMatrix<AFloat>::GetDeviceReturnPointer(),
        Y.GetDataPointer(),
        output.GetDataPointer(),
-       weights.GetDataPointer(),
        (int) Y.GetNrows(),
        (int) Y.GetNcols());
    return TCudaMatrix<AFloat>::GetDeviceReturn();
@@ -127,8 +117,7 @@ AFloat TCuda<AFloat>::SoftmaxCrossEntropy(const TCudaMatrix<AFloat> & Y,
 template<typename AFloat>
 void TCuda<AFloat>::SoftmaxCrossEntropyGradients(TCudaMatrix<AFloat> & dY,
                                                  const TCudaMatrix<AFloat> & Y,
-                                                 const TCudaMatrix<AFloat> & output,
-                                                 const TCudaMatrix<AFloat> &weights)
+                                                 const TCudaMatrix<AFloat> & output)
 {
    dim3 blockDims = TDevice::BlockDims1D();
    dim3 gridDims  = TDevice::GridDims1D(Y);
@@ -137,7 +126,6 @@ void TCuda<AFloat>::SoftmaxCrossEntropyGradients(TCudaMatrix<AFloat> & dY,
        dY.GetDataPointer(),
        Y.GetDataPointer(),
        output.GetDataPointer(),
-       weights.GetDataPointer(),
        (int) Y.GetNrows(),
        (int) Y.GetNcols());
    dY.SetComputeStream(s);

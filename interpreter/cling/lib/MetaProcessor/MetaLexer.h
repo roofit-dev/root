@@ -53,9 +53,7 @@ namespace cling {
     unsigned length;
     mutable unsigned value;
   public:
-    Token(const char* Buf = nullptr) { startToken(Buf); }
-
-    void startToken(const char* Pos = nullptr) {
+    void startToken(const char* Pos = 0) {
       kind = tok::unknown;
       bufStart = Pos;
       value = ~0U;

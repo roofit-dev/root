@@ -14,6 +14,7 @@
 #include "clang/Driver/Job.h"
 #include "clang/Driver/Util.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/Path.h"
 #include <map>
 
 namespace llvm {
@@ -67,27 +68,10 @@ class Compilation {
   /// The root list of jobs.
   JobList Jobs;
 
-  /// Cache of translated arguments for a particular tool chain, bound
-  /// architecture, and device offload kind.
-  struct TCArgsKey final {
-    const ToolChain *TC = nullptr;
-    StringRef BoundArch;
-    Action::OffloadKind DeviceOffloadKind = Action::OFK_None;
-    bool operator<(const TCArgsKey &K) const {
-      if (TC < K.TC)
-        return true;
-      else if (TC == K.TC && BoundArch < K.BoundArch)
-        return true;
-      else if (TC == K.TC && BoundArch == K.BoundArch &&
-               DeviceOffloadKind < K.DeviceOffloadKind)
-        return true;
-      return false;
-    }
-    TCArgsKey(const ToolChain *TC, StringRef BoundArch,
-              Action::OffloadKind DeviceOffloadKind)
-        : TC(TC), BoundArch(BoundArch), DeviceOffloadKind(DeviceOffloadKind) {}
-  };
-  std::map<TCArgsKey, llvm::opt::DerivedArgList *> TCArgs;
+  /// Cache of translated arguments for a particular tool chain and bound
+  /// architecture.
+  llvm::DenseMap<std::pair<const ToolChain *, const char *>,
+                 llvm::opt::DerivedArgList *> TCArgs;
 
   /// Temporary files which should be removed on exit.
   llvm::opt::ArgStringList TempFiles;
@@ -114,7 +98,12 @@ public:
   const Driver &getDriver() const { return TheDriver; }
 
   const ToolChain &getDefaultToolChain() const { return DefaultToolChain; }
-
+  const ToolChain *getOffloadingHostToolChain() const {
+    auto It = OrderedOffloadingToolchains.find(Action::OFK_Host);
+    if (It != OrderedOffloadingToolchains.end())
+      return It->second;
+    return nullptr;
+  }
   unsigned isOffloadingHostKind(Action::OffloadKind Kind) const {
     return ActiveOffloadMask & Kind;
   }
@@ -132,14 +121,8 @@ public:
     return OrderedOffloadingToolchains.equal_range(Kind);
   }
 
-  /// Return true if an offloading tool chain of a given kind exists.
-  template <Action::OffloadKind Kind> bool hasOffloadToolChain() const {
-    return OrderedOffloadingToolchains.find(Kind) !=
-           OrderedOffloadingToolchains.end();
-  }
-
-  /// Return an offload toolchain of the provided kind. Only one is expected to
-  /// exist.
+  // Return an offload toolchain of the provided kind. Only one is expected to
+  // exist.
   template <Action::OffloadKind Kind>
   const ToolChain *getSingleOffloadToolChain() const {
     auto TCs = getOffloadToolChains<Kind>();
@@ -198,15 +181,10 @@ public:
 
   /// getArgsForToolChain - Return the derived argument list for the
   /// tool chain \p TC (or the default tool chain, if TC is not specified).
-  /// If a device offloading kind is specified, a translation specific for that
-  /// kind is performed, if any.
   ///
   /// \param BoundArch - The bound architecture name, or 0.
-  /// \param DeviceOffloadKind - The offload device kind that should be used in
-  /// the translation, if any.
-  const llvm::opt::DerivedArgList &
-  getArgsForToolChain(const ToolChain *TC, StringRef BoundArch,
-                      Action::OffloadKind DeviceOffloadKind);
+  const llvm::opt::DerivedArgList &getArgsForToolChain(const ToolChain *TC,
+                                                       const char *BoundArch);
 
   /// addTempFile - Add a file to remove on exit, and returns its
   /// argument.

@@ -16,6 +16,5 @@ const char * const CoreFoundationObjectiveC = "Core Foundation/Objective-C";
 const char * const LogicError = "Logic error";
 const char * const MemoryCoreFoundationObjectiveC =
   "Memory (Core Foundation/Objective-C)";
-const char * const MemoryError = "Memory error";
 const char * const UnixAPI = "Unix API";
 }}}

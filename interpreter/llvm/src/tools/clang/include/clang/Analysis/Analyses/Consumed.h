@@ -201,6 +201,11 @@ namespace consumed {
     
   public:
     ConsumedBlockInfo() = default;
+    ConsumedBlockInfo &operator=(ConsumedBlockInfo &&Other) {
+      StateMapsArray = std::move(Other.StateMapsArray);
+      VisitOrder = std::move(Other.VisitOrder);
+      return *this;
+    }
 
     ConsumedBlockInfo(unsigned int NumBlocks, PostOrderCFGView *SortedGraph)
         : StateMapsArray(NumBlocks), VisitOrder(NumBlocks, 0) {

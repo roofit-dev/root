@@ -1,4 +1,4 @@
-//===- CoverageMapping.cpp - Code coverage mapping support ------*- C++ -*-===//
+//=-- CoverageMapping.cpp - Code coverage mapping support ---------*- C++ -*-=//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,32 +12,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ProfileData/Coverage/CoverageMapping.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallBitVector.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ProfileData/Coverage/CoverageMapping.h"
 #include "llvm/ProfileData/Coverage/CoverageMappingReader.h"
 #include "llvm/ProfileData/InstrProfReader.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Errc.h"
-#include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
-#include <algorithm>
-#include <cassert>
-#include <cstdint>
-#include <iterator>
-#include <memory>
-#include <string>
-#include <system_error>
-#include <utility>
-#include <vector>
 
 using namespace llvm;
 using namespace coverage;
@@ -73,7 +59,7 @@ void CounterExpressionBuilder::extractTerms(
 
 Counter CounterExpressionBuilder::simplify(Counter ExpressionTree) {
   // Gather constant terms.
-  SmallVector<std::pair<unsigned, int>, 32> Terms;
+  llvm::SmallVector<std::pair<unsigned, int>, 32> Terms;
   extractTerms(ExpressionTree, +1, Terms);
 
   // If there are no terms, this is just a zero. The algorithm below assumes at
@@ -134,7 +120,8 @@ Counter CounterExpressionBuilder::subtract(Counter LHS, Counter RHS) {
       get(CounterExpression(CounterExpression::Subtract, LHS, RHS)));
 }
 
-void CounterMappingContext::dump(const Counter &C, raw_ostream &OS) const {
+void CounterMappingContext::dump(const Counter &C,
+                                 llvm::raw_ostream &OS) const {
   switch (C.getKind()) {
   case Counter::Zero:
     OS << '0';
@@ -158,7 +145,7 @@ void CounterMappingContext::dump(const Counter &C, raw_ostream &OS) const {
     return;
   Expected<int64_t> Value = evaluate(C);
   if (auto E = Value.takeError()) {
-    consumeError(std::move(E));
+    llvm::consumeError(std::move(E));
     return;
   }
   OS << '[' << *Value << ']';
@@ -196,105 +183,75 @@ void FunctionRecordIterator::skipOtherFiles() {
     *this = FunctionRecordIterator();
 }
 
-Error CoverageMapping::loadFunctionRecord(
-    const CoverageMappingRecord &Record,
-    IndexedInstrProfReader &ProfileReader) {
-  StringRef OrigFuncName = Record.FunctionName;
-  if (Record.Filenames.empty())
-    OrigFuncName = getFuncNameWithoutPrefix(OrigFuncName);
-  else
-    OrigFuncName = getFuncNameWithoutPrefix(OrigFuncName, Record.Filenames[0]);
-
-  // Don't load records for functions we've already seen.
-  if (!FunctionNames.insert(OrigFuncName).second)
-    return Error::success();
-
-  CounterMappingContext Ctx(Record.Expressions);
-
-  std::vector<uint64_t> Counts;
-  if (Error E = ProfileReader.getFunctionCounts(Record.FunctionName,
-                                                Record.FunctionHash, Counts)) {
-    instrprof_error IPE = InstrProfError::take(std::move(E));
-    if (IPE == instrprof_error::hash_mismatch) {
-      MismatchedFunctionCount++;
-      return Error::success();
-    } else if (IPE != instrprof_error::unknown_function)
-      return make_error<InstrProfError>(IPE);
-    Counts.assign(Record.MappingRegions.size(), 0);
-  }
-  Ctx.setCounts(Counts);
-
-  assert(!Record.MappingRegions.empty() && "Function has no regions");
-
-  FunctionRecord Function(OrigFuncName, Record.Filenames);
-  for (const auto &Region : Record.MappingRegions) {
-    Expected<int64_t> ExecutionCount = Ctx.evaluate(Region.Count);
-    if (auto E = ExecutionCount.takeError()) {
-      consumeError(std::move(E));
-      return Error::success();
-    }
-    Function.pushRegion(Region, *ExecutionCount);
-  }
-  if (Function.CountedRegions.size() != Record.MappingRegions.size()) {
-    MismatchedFunctionCount++;
-    return Error::success();
-  }
-
-  Functions.push_back(std::move(Function));
-  return Error::success();
-}
-
 Expected<std::unique_ptr<CoverageMapping>>
 CoverageMapping::load(CoverageMappingReader &CoverageReader,
                       IndexedInstrProfReader &ProfileReader) {
   auto Coverage = std::unique_ptr<CoverageMapping>(new CoverageMapping());
 
-  for (const auto &Record : CoverageReader)
-    if (Error E = Coverage->loadFunctionRecord(Record, ProfileReader))
-      return std::move(E);
+  std::vector<uint64_t> Counts;
+  for (const auto &Record : CoverageReader) {
+    CounterMappingContext Ctx(Record.Expressions);
 
-  return std::move(Coverage);
-}
+    Counts.clear();
+    if (Error E = ProfileReader.getFunctionCounts(
+            Record.FunctionName, Record.FunctionHash, Counts)) {
+      instrprof_error IPE = InstrProfError::take(std::move(E));
+      if (IPE == instrprof_error::hash_mismatch) {
+        Coverage->MismatchedFunctionCount++;
+        continue;
+      } else if (IPE != instrprof_error::unknown_function)
+        return make_error<InstrProfError>(IPE);
+      Counts.assign(Record.MappingRegions.size(), 0);
+    }
+    Ctx.setCounts(Counts);
 
-Expected<std::unique_ptr<CoverageMapping>> CoverageMapping::load(
-    ArrayRef<std::unique_ptr<CoverageMappingReader>> CoverageReaders,
-    IndexedInstrProfReader &ProfileReader) {
-  auto Coverage = std::unique_ptr<CoverageMapping>(new CoverageMapping());
+    assert(!Record.MappingRegions.empty() && "Function has no regions");
 
-  for (const auto &CoverageReader : CoverageReaders)
-    for (const auto &Record : *CoverageReader)
-      if (Error E = Coverage->loadFunctionRecord(Record, ProfileReader))
-        return std::move(E);
+    StringRef OrigFuncName = Record.FunctionName;
+    if (Record.Filenames.empty())
+      OrigFuncName = getFuncNameWithoutPrefix(OrigFuncName);
+    else
+      OrigFuncName =
+          getFuncNameWithoutPrefix(OrigFuncName, Record.Filenames[0]);
+    FunctionRecord Function(OrigFuncName, Record.Filenames);
+    for (const auto &Region : Record.MappingRegions) {
+      Expected<int64_t> ExecutionCount = Ctx.evaluate(Region.Count);
+      if (auto E = ExecutionCount.takeError()) {
+        llvm::consumeError(std::move(E));
+        break;
+      }
+      Function.pushRegion(Region, *ExecutionCount);
+    }
+    if (Function.CountedRegions.size() != Record.MappingRegions.size()) {
+      Coverage->MismatchedFunctionCount++;
+      continue;
+    }
+
+    Coverage->Functions.push_back(std::move(Function));
+  }
 
   return std::move(Coverage);
 }
 
 Expected<std::unique_ptr<CoverageMapping>>
-CoverageMapping::load(ArrayRef<StringRef> ObjectFilenames,
-                      StringRef ProfileFilename, StringRef Arch) {
+CoverageMapping::load(StringRef ObjectFilename, StringRef ProfileFilename,
+                      StringRef Arch) {
+  auto CounterMappingBuff = MemoryBuffer::getFileOrSTDIN(ObjectFilename);
+  if (std::error_code EC = CounterMappingBuff.getError())
+    return errorCodeToError(EC);
+  auto CoverageReaderOrErr =
+      BinaryCoverageReader::create(CounterMappingBuff.get(), Arch);
+  if (Error E = CoverageReaderOrErr.takeError())
+    return std::move(E);
+  auto CoverageReader = std::move(CoverageReaderOrErr.get());
   auto ProfileReaderOrErr = IndexedInstrProfReader::create(ProfileFilename);
   if (Error E = ProfileReaderOrErr.takeError())
     return std::move(E);
   auto ProfileReader = std::move(ProfileReaderOrErr.get());
-
-  SmallVector<std::unique_ptr<CoverageMappingReader>, 4> Readers;
-  SmallVector<std::unique_ptr<MemoryBuffer>, 4> Buffers;
-  for (StringRef ObjectFilename : ObjectFilenames) {
-    auto CovMappingBufOrErr = MemoryBuffer::getFileOrSTDIN(ObjectFilename);
-    if (std::error_code EC = CovMappingBufOrErr.getError())
-      return errorCodeToError(EC);
-    auto CoverageReaderOrErr =
-        BinaryCoverageReader::create(CovMappingBufOrErr.get(), Arch);
-    if (Error E = CoverageReaderOrErr.takeError())
-      return std::move(E);
-    Readers.push_back(std::move(CoverageReaderOrErr.get()));
-    Buffers.push_back(std::move(CovMappingBufOrErr.get()));
-  }
-  return load(Readers, *ProfileReader);
+  return load(*CoverageReader, *ProfileReader);
 }
 
 namespace {
-
 /// \brief Distributes functions into instantiation sets.
 ///
 /// An instantiation set is a collection of functions that have the same source
@@ -340,7 +297,7 @@ class SegmentBuilder {
       Segments.pop_back();
     DEBUG(dbgs() << "Segment at " << Line << ":" << Col);
     // Set this region's count.
-    if (Region.Kind != CounterMappingRegion::SkippedRegion) {
+    if (Region.Kind != coverage::CounterMappingRegion::SkippedRegion) {
       DEBUG(dbgs() << " with count " << Region.ExecutionCount);
       Segments.emplace_back(Line, Col, Region.ExecutionCount, IsRegionEntry);
     } else
@@ -394,10 +351,10 @@ class SegmentBuilder {
       // in combineRegions(). Because we accumulate counter values only from
       // regions of the same kind as the first region of the area, prefer
       // CodeRegion to ExpansionRegion and ExpansionRegion to SkippedRegion.
-      static_assert(CounterMappingRegion::CodeRegion <
-                            CounterMappingRegion::ExpansionRegion &&
-                        CounterMappingRegion::ExpansionRegion <
-                            CounterMappingRegion::SkippedRegion,
+      static_assert(coverage::CounterMappingRegion::CodeRegion <
+                            coverage::CounterMappingRegion::ExpansionRegion &&
+                        coverage::CounterMappingRegion::ExpansionRegion <
+                            coverage::CounterMappingRegion::SkippedRegion,
                     "Unexpected order of region kind values");
       return LHS.Kind < RHS.Kind;
     });
@@ -451,8 +408,7 @@ public:
     return Segments;
   }
 };
-
-} // end anonymous namespace
+}
 
 std::vector<StringRef> CoverageMapping::getUniqueSourceFiles() const {
   std::vector<StringRef> Filenames;
@@ -500,9 +456,9 @@ static bool isExpansion(const CountedRegion &R, unsigned FileID) {
   return R.Kind == CounterMappingRegion::ExpansionRegion && R.FileID == FileID;
 }
 
-CoverageData CoverageMapping::getCoverageForFile(StringRef Filename) const {
+CoverageData CoverageMapping::getCoverageForFile(StringRef Filename) {
   CoverageData FileCoverage(Filename);
-  std::vector<CountedRegion> Regions;
+  std::vector<coverage::CountedRegion> Regions;
 
   for (const auto &Function : Functions) {
     auto MainFileID = findMainViewFileID(Filename, Function);
@@ -522,7 +478,7 @@ CoverageData CoverageMapping::getCoverageForFile(StringRef Filename) const {
 }
 
 std::vector<const FunctionRecord *>
-CoverageMapping::getInstantiations(StringRef Filename) const {
+CoverageMapping::getInstantiations(StringRef Filename) {
   FunctionInstantiationSetCollector InstantiationSetCollector;
   for (const auto &Function : Functions) {
     auto MainFileID = findMainViewFileID(Filename, Function);
@@ -542,13 +498,13 @@ CoverageMapping::getInstantiations(StringRef Filename) const {
 }
 
 CoverageData
-CoverageMapping::getCoverageForFunction(const FunctionRecord &Function) const {
+CoverageMapping::getCoverageForFunction(const FunctionRecord &Function) {
   auto MainFileID = findMainViewFileID(Function);
   if (!MainFileID)
     return CoverageData();
 
   CoverageData FunctionCoverage(Function.Filenames[*MainFileID]);
-  std::vector<CountedRegion> Regions;
+  std::vector<coverage::CountedRegion> Regions;
   for (const auto &CR : Function.CountedRegions)
     if (CR.FileID == *MainFileID) {
       Regions.push_back(CR);
@@ -562,11 +518,11 @@ CoverageMapping::getCoverageForFunction(const FunctionRecord &Function) const {
   return FunctionCoverage;
 }
 
-CoverageData CoverageMapping::getCoverageForExpansion(
-    const ExpansionRecord &Expansion) const {
+CoverageData
+CoverageMapping::getCoverageForExpansion(const ExpansionRecord &Expansion) {
   CoverageData ExpansionCoverage(
       Expansion.Function.Filenames[Expansion.FileID]);
-  std::vector<CountedRegion> Regions;
+  std::vector<coverage::CountedRegion> Regions;
   for (const auto &CR : Expansion.Function.CountedRegions)
     if (CR.FileID == Expansion.FileID) {
       Regions.push_back(CR);
@@ -581,7 +537,8 @@ CoverageData CoverageMapping::getCoverageForExpansion(
   return ExpansionCoverage;
 }
 
-static std::string getCoverageMapErrString(coveragemap_error Err) {
+namespace {
+std::string getCoverageMapErrString(coveragemap_error Err) {
   switch (Err) {
   case coveragemap_error::success:
     return "Success";
@@ -599,18 +556,15 @@ static std::string getCoverageMapErrString(coveragemap_error Err) {
   llvm_unreachable("A value of coveragemap_error has no message.");
 }
 
-namespace {
-
 // FIXME: This class is only here to support the transition to llvm::Error. It
 // will be removed once this transition is complete. Clients should prefer to
 // deal with the Error value directly, rather than converting to error_code.
 class CoverageMappingErrorCategoryType : public std::error_category {
-  const char *name() const noexcept override { return "llvm.coveragemap"; }
+  const char *name() const LLVM_NOEXCEPT override { return "llvm.coveragemap"; }
   std::string message(int IE) const override {
     return getCoverageMapErrString(static_cast<coveragemap_error>(IE));
   }
 };
-
 } // end anonymous namespace
 
 std::string CoverageMapError::message() const {

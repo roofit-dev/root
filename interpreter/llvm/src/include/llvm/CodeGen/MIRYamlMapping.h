@@ -7,6 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// The MIR serialization library is currently a work in progress. It can't
+// serialize machine functions at this time.
+//
 // This file implements the mapping between various MIR data structures and
 // their corresponding YAML representation.
 //
@@ -55,7 +58,7 @@ template <> struct ScalarTraits<StringValue> {
 
 struct FlowStringValue : StringValue {
   FlowStringValue() {}
-  FlowStringValue(std::string Value) : StringValue(std::move(Value)) {}
+  FlowStringValue(std::string Value) : StringValue(Value) {}
 };
 
 template <> struct ScalarTraits<FlowStringValue> {
@@ -345,7 +348,7 @@ struct MachineFrameInfo {
   bool HasCalls = false;
   StringValue StackProtector;
   // TODO: Serialize FunctionContextIdx
-  unsigned MaxCallFrameSize = ~0u; ///< ~0u means: not computed yet.
+  unsigned MaxCallFrameSize = 0;
   bool HasOpaqueSPAdjustment = false;
   bool HasVAStart = false;
   bool HasMustTailInVarArgFunc = false;
@@ -366,7 +369,7 @@ template <> struct MappingTraits<MachineFrameInfo> {
     YamlIO.mapOptional("hasCalls", MFI.HasCalls);
     YamlIO.mapOptional("stackProtector", MFI.StackProtector,
                        StringValue()); // Don't print it out when it's empty.
-    YamlIO.mapOptional("maxCallFrameSize", MFI.MaxCallFrameSize, ~0u);
+    YamlIO.mapOptional("maxCallFrameSize", MFI.MaxCallFrameSize);
     YamlIO.mapOptional("hasOpaqueSPAdjustment", MFI.HasOpaqueSPAdjustment);
     YamlIO.mapOptional("hasVAStart", MFI.HasVAStart);
     YamlIO.mapOptional("hasMustTailInVarArgFunc", MFI.HasMustTailInVarArgFunc);
@@ -381,13 +384,13 @@ struct MachineFunction {
   StringRef Name;
   unsigned Alignment = 0;
   bool ExposesReturnsTwice = false;
-  bool NoVRegs;
-  // GISel MachineFunctionProperties.
-  bool Legalized = false;
-  bool RegBankSelected = false;
-  bool Selected = false;
+  bool HasInlineAsm = false;
+  // MachineFunctionProperties
+  bool AllVRegsAllocated = false;
   // Register information
+  bool IsSSA = false;
   bool TracksRegLiveness = false;
+  bool TracksSubRegLiveness = false;
   std::vector<VirtualRegisterDefinition> VirtualRegisters;
   std::vector<MachineFunctionLiveIn> LiveIns;
   Optional<std::vector<FlowStringValue>> CalleeSavedRegisters;
@@ -406,11 +409,11 @@ template <> struct MappingTraits<MachineFunction> {
     YamlIO.mapRequired("name", MF.Name);
     YamlIO.mapOptional("alignment", MF.Alignment);
     YamlIO.mapOptional("exposesReturnsTwice", MF.ExposesReturnsTwice);
-    YamlIO.mapOptional("noVRegs", MF.NoVRegs);
-    YamlIO.mapOptional("legalized", MF.Legalized);
-    YamlIO.mapOptional("regBankSelected", MF.RegBankSelected);
-    YamlIO.mapOptional("selected", MF.Selected);
+    YamlIO.mapOptional("hasInlineAsm", MF.HasInlineAsm);
+    YamlIO.mapOptional("allVRegsAllocated", MF.AllVRegsAllocated);
+    YamlIO.mapOptional("isSSA", MF.IsSSA);
     YamlIO.mapOptional("tracksRegLiveness", MF.TracksRegLiveness);
+    YamlIO.mapOptional("tracksSubRegLiveness", MF.TracksSubRegLiveness);
     YamlIO.mapOptional("registers", MF.VirtualRegisters);
     YamlIO.mapOptional("liveins", MF.LiveIns);
     YamlIO.mapOptional("calleeSavedRegisters", MF.CalleeSavedRegisters);

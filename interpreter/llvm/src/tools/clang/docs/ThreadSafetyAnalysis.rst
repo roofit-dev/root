@@ -764,6 +764,8 @@ implementation.
   #define THREAD_ANNOTATION_ATTRIBUTE__(x)   // no-op
   #endif
 
+  #define THREAD_ANNOTATION_ATTRIBUTE__(x)   __attribute__((x))
+
   #define CAPABILITY(x) \
     THREAD_ANNOTATION_ATTRIBUTE__(capability(x))
 
@@ -884,11 +886,11 @@ implementation.
 
   // Deprecated.
   #define PT_GUARDED_VAR \
-    THREAD_ANNOTATION_ATTRIBUTE__(pt_guarded_var)
+    THREAD_ANNOTATION_ATTRIBUTE__(pt_guarded)
 
   // Deprecated.
   #define GUARDED_VAR \
-    THREAD_ANNOTATION_ATTRIBUTE__(guarded_var)
+    THREAD_ANNOTATION_ATTRIBUTE__(guarded)
 
   // Replaced by REQUIRES
   #define EXCLUSIVE_LOCKS_REQUIRED(...) \

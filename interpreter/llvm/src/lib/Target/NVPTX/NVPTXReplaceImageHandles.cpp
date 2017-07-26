@@ -36,7 +36,7 @@ public:
 
   bool runOnMachineFunction(MachineFunction &MF) override;
 
-  StringRef getPassName() const override {
+  const char *getPassName() const override {
     return "NVPTX Replace Image Handles";
   }
 private:

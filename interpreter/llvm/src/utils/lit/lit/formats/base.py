@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 import os
+import sys
 
 import lit.Test
 import lit.util
@@ -80,7 +81,7 @@ class OneCommandPerFileTest(TestFormat):
                 yield test
 
     def createTempInput(self, tmp, test):
-        raise NotImplementedError('This is an abstract method.')
+        abstract
 
     def execute(self, test, litConfig):
         if test.config.unsupported:

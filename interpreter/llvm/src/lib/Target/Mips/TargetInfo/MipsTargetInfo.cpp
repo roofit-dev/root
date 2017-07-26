@@ -12,37 +12,20 @@
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
-Target &llvm::getTheMipsTarget() {
-  static Target TheMipsTarget;
-  return TheMipsTarget;
-}
-Target &llvm::getTheMipselTarget() {
-  static Target TheMipselTarget;
-  return TheMipselTarget;
-}
-Target &llvm::getTheMips64Target() {
-  static Target TheMips64Target;
-  return TheMips64Target;
-}
-Target &llvm::getTheMips64elTarget() {
-  static Target TheMips64elTarget;
-  return TheMips64elTarget;
-}
+Target llvm::TheMipsTarget, llvm::TheMipselTarget;
+Target llvm::TheMips64Target, llvm::TheMips64elTarget;
 
 extern "C" void LLVMInitializeMipsTargetInfo() {
   RegisterTarget<Triple::mips,
-                 /*HasJIT=*/true>
-      X(getTheMipsTarget(), "mips", "Mips");
+        /*HasJIT=*/true> X(TheMipsTarget, "mips", "Mips");
 
   RegisterTarget<Triple::mipsel,
-                 /*HasJIT=*/true>
-      Y(getTheMipselTarget(), "mipsel", "Mipsel");
+        /*HasJIT=*/true> Y(TheMipselTarget, "mipsel", "Mipsel");
 
   RegisterTarget<Triple::mips64,
-                 /*HasJIT=*/true>
-      A(getTheMips64Target(), "mips64", "Mips64 [experimental]");
+        /*HasJIT=*/true> A(TheMips64Target, "mips64", "Mips64 [experimental]");
 
   RegisterTarget<Triple::mips64el,
-                 /*HasJIT=*/true>
-      B(getTheMips64elTarget(), "mips64el", "Mips64el [experimental]");
+        /*HasJIT=*/true> B(TheMips64elTarget,
+                            "mips64el", "Mips64el [experimental]");
 }

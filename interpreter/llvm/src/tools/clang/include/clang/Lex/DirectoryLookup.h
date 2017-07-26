@@ -88,7 +88,7 @@ public:
 
   /// getName - Return the directory or filename corresponding to this lookup
   /// object.
-  StringRef getName() const;
+  const char *getName() const;
 
   /// getDir - Return the directory that this entry refers to.
   ///

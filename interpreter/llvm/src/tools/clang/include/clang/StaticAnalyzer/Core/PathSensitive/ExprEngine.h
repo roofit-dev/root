@@ -237,7 +237,7 @@ public:
                                      const CFGBlock *DstF) override;
 
   /// Called by CoreEngine.  Used to processing branching behavior
-  /// at static initializers.
+  /// at static initalizers.
   void processStaticInitializer(const DeclStmt *DS,
                                 NodeBuilderContext& BuilderCtx,
                                 ExplodedNode *Pred,
@@ -262,8 +262,7 @@ public:
   /// Called by CoreEngine.  Used to notify checkers that processing a
   /// function has ended. Called for both inlined and and top-level functions.
   void processEndOfFunction(NodeBuilderContext& BC,
-                            ExplodedNode *Pred,
-                            const ReturnStmt *RS = nullptr) override;
+                            ExplodedNode *Pred) override;
 
   /// Remove dead bindings/symbols before exiting a function.
   void removeDeadOnEndOfFunction(NodeBuilderContext& BC,
@@ -286,6 +285,10 @@ public:
   ProgramStateRef processAssume(ProgramStateRef state, SVal cond,
                                 bool assumption) override;
 
+  /// wantsRegionChangeUpdate - Called by ProgramStateManager to determine if a
+  ///  region change should trigger a processRegionChanges update.
+  bool wantsRegionChangeUpdate(ProgramStateRef state) override;
+
   /// processRegionChanges - Called by ProgramStateManager whenever a change is made
   ///  to the store. Used to update checkers that track region values.
   ProgramStateRef 
@@ -293,7 +296,6 @@ public:
                        const InvalidatedSymbols *invalidated,
                        ArrayRef<const MemRegion *> ExplicitRegions,
                        ArrayRef<const MemRegion *> Regions,
-                       const LocationContext *LCtx,
                        const CallEvent *Call) override;
 
   /// printState - Called by ProgramStateManager to print checker-specific data.
@@ -390,10 +392,6 @@ public:
   void VisitMemberExpr(const MemberExpr *M, ExplodedNode *Pred, 
                            ExplodedNodeSet &Dst);
 
-  /// VisitMemberExpr - Transfer function for builtin atomic expressions
-  void VisitAtomicExpr(const AtomicExpr *E, ExplodedNode *Pred,
-                       ExplodedNodeSet &Dst);
-
   /// Transfer function logic for ObjCAtSynchronizedStmts.
   void VisitObjCAtSynchronizedStmt(const ObjCAtSynchronizedStmt *S,
                                    ExplodedNode *Pred, ExplodedNodeSet &Dst);
@@ -480,22 +478,6 @@ public:
     return X.isValid() ? svalBuilder.evalComplement(X.castAs<NonLoc>()) : X;
   }
 
-  ProgramStateRef handleLValueBitCast(ProgramStateRef state, const Expr *Ex,
-                                      const LocationContext *LCtx, QualType T,
-                                      QualType ExTy, const CastExpr *CastE,
-                                      StmtNodeBuilder &Bldr,
-                                      ExplodedNode *Pred);
-
-  ProgramStateRef handleLVectorSplat(ProgramStateRef state,
-                                     const LocationContext *LCtx,
-                                     const CastExpr *CastE,
-                                     StmtNodeBuilder &Bldr,
-                                     ExplodedNode *Pred);
-
-  void handleUOExtension(ExplodedNodeSet::iterator I,
-                         const UnaryOperator* U,
-                         StmtNodeBuilder &Bldr);
-
 public:
 
   SVal evalBinOp(ProgramStateRef state, BinaryOperator::Opcode op,
@@ -523,9 +505,7 @@ protected:
 
   /// Call PointerEscape callback when a value escapes as a result of bind.
   ProgramStateRef processPointerEscapedOnBind(ProgramStateRef State,
-                                              SVal Loc,
-                                              SVal Val,
-                                              const LocationContext *LCtx) override;
+                                              SVal Loc, SVal Val) override;
   /// Call PointerEscape callback when a value escapes as a result of
   /// region invalidation.
   /// \param[in] ITraits Specifies invalidation traits for regions/symbols.
@@ -621,16 +601,16 @@ private:
   void performTrivialCopy(NodeBuilder &Bldr, ExplodedNode *Pred,
                           const CallEvent &Call);
 
-  /// If the value of the given expression \p InitWithAdjustments is a NonLoc,
-  /// copy it into a new temporary object region, and replace the value of the
-  /// expression with that.
+  /// If the value of the given expression is a NonLoc, copy it into a new
+  /// temporary object region, and replace the value of the expression with
+  /// that.
   ///
-  /// If \p Result is provided, the new region will be bound to this expression
-  /// instead of \p InitWithAdjustments.
+  /// If \p ResultE is provided, the new region will be bound to this expression
+  /// instead of \p E.
   ProgramStateRef createTemporaryRegionIfNeeded(ProgramStateRef State,
                                                 const LocationContext *LC,
-                                                const Expr *InitWithAdjustments,
-                                                const Expr *Result = nullptr);
+                                                const Expr *E,
+                                                const Expr *ResultE = nullptr);
 
   /// For a DeclStmt or CXXInitCtorInitializer, walk backward in the current CFG
   /// block to find the constructor expression that directly constructed into

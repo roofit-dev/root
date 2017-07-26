@@ -101,7 +101,9 @@ public:
   /// RGPassManager needs RegionInfo.
   void getAnalysisUsage(AnalysisUsage &Info) const override;
 
-  StringRef getPassName() const override { return "Region Pass Manager"; }
+  const char *getPassName() const override {
+    return "Region Pass Manager";
+  }
 
   PMDataManager *getAsPMDataManager() override { return this; }
   Pass *getAsPass() override { return this; }

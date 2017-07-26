@@ -22,11 +22,8 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include <cassert>
-#include <cstdint>
-#include <cstdlib>
+#include "llvm/Support/DataTypes.h"
 #include <limits>
-#include <utility>
 
 namespace llvm {
 
@@ -118,7 +115,7 @@ struct SparseSetValFunctor<KeyT, KeyT, KeyFunctorT> {
 /// @tparam SparseT     An unsigned integer type. See above.
 ///
 template<typename ValueT,
-         typename KeyFunctorT = identity<unsigned>,
+         typename KeyFunctorT = llvm::identity<unsigned>,
          typename SparseT = uint8_t>
 class SparseSet {
   static_assert(std::numeric_limits<SparseT>::is_integer &&
@@ -129,10 +126,15 @@ class SparseSet {
   typedef SmallVector<ValueT, 8> DenseT;
   typedef unsigned size_type;
   DenseT Dense;
-  SparseT *Sparse = nullptr;
-  unsigned Universe = 0;
+  SparseT *Sparse;
+  unsigned Universe;
   KeyFunctorT KeyIndexOf;
   SparseSetValFunctor<KeyT, ValueT, KeyFunctorT> ValIndexOf;
+
+  // Disable copy construction and assignment.
+  // This data structure is not meant to be used that way.
+  SparseSet(const SparseSet&) = delete;
+  SparseSet &operator=(const SparseSet&) = delete;
 
 public:
   typedef ValueT value_type;
@@ -141,9 +143,7 @@ public:
   typedef ValueT *pointer;
   typedef const ValueT *const_pointer;
 
-  SparseSet() = default;
-  SparseSet(const SparseSet &) = delete;
-  SparseSet &operator=(const SparseSet &) = delete;
+  SparseSet() : Sparse(nullptr), Universe(0) {}
   ~SparseSet() { free(Sparse); }
 
   /// setUniverse - Set the universe size which determines the largest key the
@@ -308,8 +308,9 @@ public:
     erase(I);
     return true;
   }
+
 };
 
 } // end namespace llvm
 
-#endif // LLVM_ADT_SPARSESET_H
+#endif

@@ -20,46 +20,31 @@
 #include "llvm/DebugInfo/PDB/PDBSymbolCompiland.h"
 #include "llvm/DebugInfo/PDB/PDBSymbolExe.h"
 #include "llvm/Support/ConvertUTF.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 using namespace llvm::pdb;
 
-template <typename... Ts>
-static Error ErrorFromHResult(HRESULT Result, const char *Str, Ts &&... Args) {
-  SmallString<64> MessageStorage;
-  StringRef Context;
-  if (sizeof...(Args) > 0) {
-    MessageStorage = formatv(Str, std::forward<Ts>(Args)...).str();
-    Context = MessageStorage;
-  } else
-    Context = Str;
+namespace {
 
+Error ErrorFromHResult(HRESULT Result) {
   switch (Result) {
   case E_PDB_NOT_FOUND:
-    return make_error<GenericError>(generic_error_code::invalid_path, Context);
+    return make_error<GenericError>(generic_error_code::invalid_path);
   case E_PDB_FORMAT:
-    return make_error<DIAError>(dia_error_code::invalid_file_format, Context);
+    return make_error<DIAError>(dia_error_code::invalid_file_format);
   case E_INVALIDARG:
-    return make_error<DIAError>(dia_error_code::invalid_parameter, Context);
+    return make_error<DIAError>(dia_error_code::invalid_parameter);
   case E_UNEXPECTED:
-    return make_error<DIAError>(dia_error_code::already_loaded, Context);
+    return make_error<DIAError>(dia_error_code::already_loaded);
   case E_PDB_INVALID_SIG:
   case E_PDB_INVALID_AGE:
-    return make_error<DIAError>(dia_error_code::debug_info_mismatch, Context);
-  default: {
-    std::string S;
-    raw_string_ostream OS(S);
-    OS << "HRESULT: " << format_hex(static_cast<DWORD>(Result), 10, true)
-       << ": " << Context;
-    return make_error<DIAError>(dia_error_code::unspecified, OS.str());
-  }
+    return make_error<DIAError>(dia_error_code::debug_info_mismatch);
+  default:
+    return make_error<DIAError>(dia_error_code::unspecified);
   }
 }
 
-static Error LoadDIA(CComPtr<IDiaDataSource> &DiaDataSource) {
+Error LoadDIA(CComPtr<IDiaDataSource> &DiaDataSource) {
   if (SUCCEEDED(CoCreateInstance(CLSID_DiaSource, nullptr, CLSCTX_INPROC_SERVER,
                                  IID_IDiaDataSource,
                                  reinterpret_cast<LPVOID *>(&DiaDataSource))))
@@ -70,11 +55,12 @@ static Error LoadDIA(CComPtr<IDiaDataSource> &DiaDataSource) {
 #if !defined(_MSC_VER)
   return llvm::make_error<GenericError>(
       "DIA is only supported when using MSVC.");
-#else
+#endif
+
   const wchar_t *msdia_dll = nullptr;
-#if _MSC_VER >= 1900 && _MSC_VER < 2000
+#if _MSC_VER == 1900
   msdia_dll = L"msdia140.dll"; // VS2015
-#elif _MSC_VER >= 1800
+#elif _MSC_VER == 1800
   msdia_dll = L"msdia120.dll"; // VS2013
 #else
 #error "Unknown Visual Studio version."
@@ -83,9 +69,10 @@ static Error LoadDIA(CComPtr<IDiaDataSource> &DiaDataSource) {
   HRESULT HR;
   if (FAILED(HR = NoRegCoCreate(msdia_dll, CLSID_DiaSource, IID_IDiaDataSource,
                                 reinterpret_cast<LPVOID *>(&DiaDataSource))))
-    return ErrorFromHResult(HR, "Calling NoRegCoCreate");
+    return ErrorFromHResult(HR);
   return Error::success();
-#endif
+}
+
 }
 
 DIASession::DIASession(CComPtr<IDiaSession> DiaSession) : Session(DiaSession) {}
@@ -105,12 +92,11 @@ Error DIASession::createFromPdb(StringRef Path,
 
   const wchar_t *Path16Str = reinterpret_cast<const wchar_t*>(Path16.data());
   HRESULT HR;
-  if (FAILED(HR = DiaDataSource->loadDataFromPdb(Path16Str))) {
-    return ErrorFromHResult(HR, "Calling loadDataFromPdb {0}", Path);
-  }
+  if (FAILED(HR = DiaDataSource->loadDataFromPdb(Path16Str)))
+    return ErrorFromHResult(HR);
 
   if (FAILED(HR = DiaDataSource->openSession(&DiaSession)))
-    return ErrorFromHResult(HR, "Calling openSession");
+    return ErrorFromHResult(HR);
 
   Session.reset(new DIASession(DiaSession));
   return Error::success();
@@ -132,10 +118,10 @@ Error DIASession::createFromExe(StringRef Path,
   const wchar_t *Path16Str = reinterpret_cast<const wchar_t *>(Path16.data());
   HRESULT HR;
   if (FAILED(HR = DiaDataSource->loadDataForExe(Path16Str, nullptr, nullptr)))
-    return ErrorFromHResult(HR, "Calling loadDataForExe");
+    return ErrorFromHResult(HR);
 
   if (FAILED(HR = DiaDataSource->openSession(&DiaSession)))
-    return ErrorFromHResult(HR, "Calling openSession");
+    return ErrorFromHResult(HR);
 
   Session.reset(new DIASession(DiaSession));
   return Error::success();

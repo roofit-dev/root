@@ -14,15 +14,16 @@
 #include "llvm/MC/MCObjectStreamer.h"
 
 namespace llvm {
-
 class MCAsmBackend;
 class MCContext;
 class MCCodeEmitter;
+class MCExpr;
 class MCInst;
 class MCSection;
 class MCSubtargetInfo;
 class MCSymbol;
 class StringRef;
+class raw_ostream;
 class raw_pwrite_stream;
 
 class MCWinCOFFStreamer : public MCObjectStreamer {
@@ -40,7 +41,7 @@ public:
   /// \{
 
   void InitSections(bool NoExecStack) override;
-  void EmitLabel(MCSymbol *Symbol, SMLoc Loc = SMLoc()) override;
+  void EmitLabel(MCSymbol *Symbol) override;
   void EmitAssemblerFlag(MCAssemblerFlag Flag) override;
   void EmitThumbFunc(MCSymbol *Func) override;
   bool EmitSymbolAttribute(MCSymbol *Symbol, MCSymbolAttr Attribute) override;
@@ -51,7 +52,7 @@ public:
   void EndCOFFSymbolDef() override;
   void EmitCOFFSafeSEH(MCSymbol const *Symbol) override;
   void EmitCOFFSectionIndex(MCSymbol const *Symbol) override;
-  void EmitCOFFSecRel32(MCSymbol const *Symbol, uint64_t Offset) override;
+  void EmitCOFFSecRel32(MCSymbol const *Symbol) override;
   void EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                         unsigned ByteAlignment) override;
   void EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
@@ -60,6 +61,7 @@ public:
                     unsigned ByteAlignment) override;
   void EmitTBSSSymbol(MCSection *Section, MCSymbol *Symbol, uint64_t Size,
                       unsigned ByteAlignment) override;
+  void EmitFileDirective(StringRef Filename) override;
   void EmitIdent(StringRef IdentString) override;
   void EmitWinEHHandlerData() override;
   void FinishImpl() override;
@@ -68,13 +70,12 @@ public:
 
 protected:
   const MCSymbol *CurSymbol;
-
   void EmitInstToData(const MCInst &Inst, const MCSubtargetInfo &STI) override;
 
 private:
   void Error(const Twine &Msg) const;
 };
+}
 
-} // end namespace llvm
+#endif
 
-#endif // LLVM_MC_MCWINCOFFSTREAMER_H

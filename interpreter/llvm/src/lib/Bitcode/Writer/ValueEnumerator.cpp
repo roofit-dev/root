@@ -314,13 +314,10 @@ ValueEnumerator::ValueEnumerator(const Module &M,
   // Remember what is the cutoff between globalvalue's and other constants.
   unsigned FirstConstant = Values.size();
 
-  // Enumerate the global variable initializers and attributes.
-  for (const GlobalVariable &GV : M.globals()) {
+  // Enumerate the global variable initializers.
+  for (const GlobalVariable &GV : M.globals())
     if (GV.hasInitializer())
       EnumerateValue(GV.getInitializer());
-    if (GV.hasAttributes())
-      EnumerateAttributes(GV.getAttributesAsList(AttributeList::FunctionIndex));
-  }
 
   // Enumerate the aliasees.
   for (const GlobalAlias &GA : M.aliases())
@@ -435,14 +432,12 @@ unsigned ValueEnumerator::getValueID(const Value *V) const {
   return I->second-1;
 }
 
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 LLVM_DUMP_METHOD void ValueEnumerator::dump() const {
   print(dbgs(), ValueMap, "Default");
   dbgs() << '\n';
   print(dbgs(), MetadataMap, "MetaData");
   dbgs() << '\n';
 }
-#endif
 
 void ValueEnumerator::print(raw_ostream &OS, const ValueMapType &Map,
                             const char *Name) const {
@@ -457,8 +452,7 @@ void ValueEnumerator::print(raw_ostream &OS, const ValueMapType &Map,
       OS << "Value: " << V->getName();
     else
       OS << "Value: [null]\n";
-    V->print(errs());
-    errs() << '\n';
+    V->dump();
 
     OS << " Uses(" << std::distance(V->use_begin(),V->use_end()) << "):";
     for (const Use &U : V->uses()) {
@@ -555,7 +549,7 @@ void ValueEnumerator::EnumerateFunctionLocalMetadata(
 void ValueEnumerator::dropFunctionFromMetadata(
     MetadataMapType::value_type &FirstMD) {
   SmallVector<const MDNode *, 64> Worklist;
-  auto push = [&Worklist](MetadataMapType::value_type &MD) {
+  auto push = [this, &Worklist](MetadataMapType::value_type &MD) {
     auto &Entry = MD.second;
 
     // Nothing to do if this metadata isn't tagged.
@@ -890,23 +884,23 @@ void ValueEnumerator::EnumerateOperandType(const Value *V) {
   }
 }
 
-void ValueEnumerator::EnumerateAttributes(AttributeList PAL) {
+void ValueEnumerator::EnumerateAttributes(AttributeSet PAL) {
   if (PAL.isEmpty()) return;  // null is always 0.
 
   // Do a lookup.
-  unsigned &Entry = AttributeListMap[PAL];
+  unsigned &Entry = AttributeMap[PAL];
   if (Entry == 0) {
     // Never saw this before, add it.
-    AttributeLists.push_back(PAL);
-    Entry = AttributeLists.size();
+    Attribute.push_back(PAL);
+    Entry = Attribute.size();
   }
 
   // Do lookups for all attribute groups.
   for (unsigned i = 0, e = PAL.getNumSlots(); i != e; ++i) {
-    IndexAndAttrSet Pair = {PAL.getSlotIndex(i), PAL.getSlotAttributes(i)};
-    unsigned &Entry = AttributeGroupMap[Pair];
+    AttributeSet AS = PAL.getSlotAttributes(i);
+    unsigned &Entry = AttributeGroupMap[AS];
     if (Entry == 0) {
-      AttributeGroups.push_back(Pair);
+      AttributeGroups.push_back(AS);
       Entry = AttributeGroups.size();
     }
   }
@@ -963,13 +957,8 @@ void ValueEnumerator::incorporateFunction(const Function &F) {
   }
 
   // Add all of the function-local metadata.
-  for (unsigned i = 0, e = FnLocalMDVector.size(); i != e; ++i) {
-    // At this point, every local values have been incorporated, we shouldn't
-    // have a metadata operand that references a value that hasn't been seen.
-    assert(ValueMap.count(FnLocalMDVector[i]->getValue()) &&
-           "Missing value for metadata operand");
+  for (unsigned i = 0, e = FnLocalMDVector.size(); i != e; ++i)
     EnumerateFunctionLocalMetadata(F, FnLocalMDVector[i]);
-  }
 }
 
 void ValueEnumerator::purgeFunction() {

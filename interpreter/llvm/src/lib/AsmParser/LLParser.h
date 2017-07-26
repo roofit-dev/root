@@ -193,10 +193,6 @@ namespace llvm {
         case lltok::kw_ninf: FMF.setNoInfs();          Lex.Lex(); continue;
         case lltok::kw_nsz:  FMF.setNoSignedZeros();   Lex.Lex(); continue;
         case lltok::kw_arcp: FMF.setAllowReciprocal(); Lex.Lex(); continue;
-        case lltok::kw_contract:
-          FMF.setAllowContract(true);
-          Lex.Lex();
-          continue;
         default: return FMF;
         }
       return FMF;
@@ -246,8 +242,6 @@ namespace llvm {
     bool ParseOrdering(AtomicOrdering &Ordering);
     bool ParseOptionalStackAlignment(unsigned &Alignment);
     bool ParseOptionalCommaAlign(unsigned &Alignment, bool &AteExtraComma);
-    bool ParseOptionalCommaAddrSpace(unsigned &AddrSpace, LocTy &Loc,
-                                     bool &AteExtraComma);
     bool ParseOptionalCommaInAlloca(bool &IsInAlloca);
     bool parseAllocSizeArguments(unsigned &ElemSizeArg,
                                  Optional<unsigned> &HowManyArg);
@@ -399,7 +393,7 @@ namespace llvm {
       Value *V;
       AttributeSet Attrs;
       ParamInfo(LocTy loc, Value *v, AttributeSet attrs)
-          : Loc(loc), V(v), Attrs(attrs) {}
+        : Loc(loc), V(v), Attrs(attrs) {}
     };
     bool ParseParameterList(SmallVectorImpl<ParamInfo> &ArgList,
                             PerFunctionState &PFS,
@@ -417,8 +411,7 @@ namespace llvm {
     bool ParseValID(ValID &ID, PerFunctionState *PFS = nullptr);
     bool ParseGlobalValue(Type *Ty, Constant *&V);
     bool ParseGlobalTypeAndValue(Constant *&V);
-    bool ParseGlobalValueVector(SmallVectorImpl<Constant *> &Elts,
-                                Optional<unsigned> *InRangeOp = nullptr);
+    bool ParseGlobalValueVector(SmallVectorImpl<Constant *> &Elts);
     bool parseOptionalComdat(StringRef GlobalName, Comdat *&C);
     bool ParseMetadataAsValue(Value *&V, PerFunctionState &PFS);
     bool ParseValueAsMetadata(Metadata *&MD, const Twine &TypeMsg,
@@ -453,7 +446,7 @@ namespace llvm {
       AttributeSet Attrs;
       std::string Name;
       ArgInfo(LocTy L, Type *ty, AttributeSet Attr, const std::string &N)
-          : Loc(L), Ty(ty), Attrs(Attr), Name(N) {}
+        : Loc(L), Ty(ty), Attrs(Attr), Name(N) {}
     };
     bool ParseArgumentList(SmallVectorImpl<ArgInfo> &ArgList, bool &isVarArg);
     bool ParseFunctionHeader(Function *&Fn, bool isDefine);

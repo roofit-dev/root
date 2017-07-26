@@ -70,28 +70,17 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineDominators.h"
-#include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/MC/MCInstrDesc.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
-#include <cassert>
-#include <cstdint>
-#include <memory>
 #include <utility>
-
 using namespace llvm;
 
 #define DEBUG_TYPE "peephole-opt"
@@ -129,7 +118,6 @@ STATISTIC(NumRewrittenCopies, "Number of copies rewritten");
 STATISTIC(NumNAPhysCopies, "Number of non-allocatable physical copies removed");
 
 namespace {
-
   class ValueTrackerResult;
 
   class PeepholeOptimizer : public MachineFunctionPass {
@@ -140,7 +128,6 @@ namespace {
 
   public:
     static char ID; // Pass identification
-
     PeepholeOptimizer() : MachineFunctionPass(ID) {
       initializePeepholeOptimizerPass(*PassRegistry::getPassRegistry());
     }
@@ -403,16 +390,14 @@ namespace {
     /// register of the last source.
     unsigned getReg() const { return Reg; }
   };
-
-} // end anonymous namespace
+}
 
 char PeepholeOptimizer::ID = 0;
 char &llvm::PeepholeOptimizerID = PeepholeOptimizer::ID;
-
-INITIALIZE_PASS_BEGIN(PeepholeOptimizer, DEBUG_TYPE,
+INITIALIZE_PASS_BEGIN(PeepholeOptimizer, "peephole-opts",
                 "Peephole Optimizations", false, false)
 INITIALIZE_PASS_DEPENDENCY(MachineDominatorTree)
-INITIALIZE_PASS_END(PeepholeOptimizer, DEBUG_TYPE,
+INITIALIZE_PASS_END(PeepholeOptimizer, "peephole-opts",
                 "Peephole Optimizations", false, false)
 
 /// If instruction is a copy-like instruction, i.e. it reads a single register
@@ -752,7 +737,6 @@ insertPHI(MachineRegisterInfo *MRI, const TargetInstrInfo *TII,
 }
 
 namespace {
-
 /// \brief Helper class to rewrite the arguments of a copy-like instruction.
 class CopyRewriter {
 protected:
@@ -836,6 +820,7 @@ public:
                TargetInstrInfo::RegSubRegPair Def,
                PeepholeOptimizer::RewriteMapTy &RewriteMap,
                bool HandleMultipleSources = true) {
+
     TargetInstrInfo::RegSubRegPair LookupSrc(Def.Reg, Def.SubReg);
     do {
       ValueTrackerResult Res = RewriteMap.lookup(LookupSrc);
@@ -874,7 +859,7 @@ public:
       const MachineOperand &MODef = NewPHI->getOperand(0);
       return TargetInstrInfo::RegSubRegPair(MODef.getReg(), MODef.getSubReg());
 
-    } while (true);
+    } while (1);
 
     return TargetInstrInfo::RegSubRegPair(0, 0);
   }
@@ -1016,7 +1001,6 @@ public:
     TrackSubReg = (unsigned)CopyLike.getOperand(3).getImm();
     return true;
   }
-
   bool RewriteCurrentSource(unsigned NewReg, unsigned NewSubReg) override {
     if (CurrentSrcIdx != 2)
       return false;
@@ -1157,8 +1141,7 @@ public:
     return true;
   }
 };
-
-}  // end anonymous namespace
+} // End namespace.
 
 /// \brief Get the appropriated CopyRewriter for \p MI.
 /// \return A pointer to a dynamically allocated CopyRewriter or nullptr
@@ -1540,6 +1523,11 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
       if (MI->isDebugValue())
           continue;
 
+      // If we run into an instruction we can't fold across, discard
+      // the load candidates.
+      if (MI->isLoadFoldBarrier())
+        FoldAsLoadDefCandidates.clear();
+
       if (MI->isPosition() || MI->isPHI())
         continue;
 
@@ -1583,6 +1571,7 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
         DEBUG(dbgs() << "NAPhysCopy: blowing away all info due to " << *MI
                      << '\n');
         NAPhysToVirtMIs.clear();
+        continue;
       }
 
       if ((isUncoalescableCopy(*MI) &&
@@ -1633,14 +1622,8 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
       // earlier load into MI.
       if (!isLoadFoldable(MI, FoldAsLoadDefCandidates) &&
           !FoldAsLoadDefCandidates.empty()) {
-
-        // We visit each operand even after successfully folding a previous
-        // one.  This allows us to fold multiple loads into a single
-        // instruction.  We do assume that optimizeLoadInstr doesn't insert
-        // foldable uses earlier in the argument list.  Since we don't restart
-        // iteration, we'd miss such cases.
         const MCInstrDesc &MIDesc = MI->getDesc();
-        for (unsigned i = MIDesc.getNumDefs(); i != MI->getNumOperands();
+        for (unsigned i = MIDesc.getNumDefs(); i != MIDesc.getNumOperands();
              ++i) {
           const MachineOperand &MOp = MI->getOperand(i);
           if (!MOp.isReg())
@@ -1667,23 +1650,13 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
               MRI->markUsesInDebugValueAsUndef(FoldedReg);
               FoldAsLoadDefCandidates.erase(FoldedReg);
               ++NumLoadFold;
-              
-              // MI is replaced with FoldMI so we can continue trying to fold
+              // MI is replaced with FoldMI.
               Changed = true;
-              MI = FoldMI;
+              break;
             }
           }
         }
       }
-      
-      // If we run into an instruction we can't fold across, discard
-      // the load candidates.  Note: We might be able to fold *into* this
-      // instruction, so this needs to be after the folding logic.
-      if (MI->isLoadFoldBarrier()) {
-        DEBUG(dbgs() << "Encountered load fold barrier on " << *MI << "\n");
-        FoldAsLoadDefCandidates.clear();
-      }
-
     }
   }
 
@@ -1715,8 +1688,7 @@ ValueTrackerResult ValueTracker::getNextSourceFromBitcast() {
   // Bitcasts with more than one def are not supported.
   if (Def->getDesc().getNumDefs() != 1)
     return ValueTrackerResult();
-  const MachineOperand DefOp = Def->getOperand(DefIdx);
-  if (DefOp.getSubReg() != DefSubReg)
+  if (Def->getOperand(DefIdx).getSubReg() != DefSubReg)
     // If we look for a different subreg, it means we want a subreg of the src.
     // Bails as we do not support composing subregs yet.
     return ValueTrackerResult();
@@ -1736,14 +1708,6 @@ ValueTrackerResult ValueTracker::getNextSourceFromBitcast() {
       return ValueTrackerResult();
     SrcIdx = OpIdx;
   }
-
-  // Stop when any user of the bitcast is a SUBREG_TO_REG, replacing with a COPY
-  // will break the assumed guarantees for the upper bits.
-  for (const MachineInstr &UseMI : MRI.use_nodbg_instructions(DefOp.getReg())) {
-    if (UseMI.isSubregToReg())
-      return ValueTrackerResult();
-  }
-
   const MachineOperand &Src = Def->getOperand(SrcIdx);
   return ValueTrackerResult(Src.getReg(), Src.getSubReg());
 }
@@ -1842,8 +1806,8 @@ ValueTrackerResult ValueTracker::getNextSourceFromInsertSubreg() {
   // sub-register we are tracking.
   const TargetRegisterInfo *TRI = MRI.getTargetRegisterInfo();
   if (!TRI ||
-      !(TRI->getSubRegIndexLaneMask(DefSubReg) &
-        TRI->getSubRegIndexLaneMask(InsertedReg.SubIdx)).none())
+      (TRI->getSubRegIndexLaneMask(DefSubReg) &
+       TRI->getSubRegIndexLaneMask(InsertedReg.SubIdx)) != 0)
     return ValueTrackerResult();
   // At this point, the value is available in v0 via the same subreg
   // we used for Def.

@@ -57,10 +57,10 @@ namespace {
 
     MachineFunctionProperties getRequiredProperties() const override {
       return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::NoVRegs);
+          MachineFunctionProperties::Property::AllVRegsAllocated);
     }
 
-    StringRef getPassName() const override {
+    const char *getPassName() const override {
       return "X86 Atom pad short functions";
     }
 
@@ -187,17 +187,19 @@ bool PadShortFunc::cyclesUntilReturn(MachineBasicBlock *MBB,
 
   unsigned int CyclesToEnd = 0;
 
-  for (MachineInstr &MI : *MBB) {
+  for (MachineBasicBlock::iterator MBBI = MBB->begin();
+        MBBI != MBB->end(); ++MBBI) {
+    MachineInstr *MI = MBBI;
     // Mark basic blocks with a return instruction. Calls to other
     // functions do not count because the called function will be padded,
     // if necessary.
-    if (MI.isReturn() && !MI.isCall()) {
+    if (MI->isReturn() && !MI->isCall()) {
       VisitedBBs[MBB] = VisitedBBInfo(true, CyclesToEnd);
       Cycles += CyclesToEnd;
       return true;
     }
 
-    CyclesToEnd += TII->getInstrLatency(STI->getInstrItineraryData(), MI);
+    CyclesToEnd += TII->getInstrLatency(STI->getInstrItineraryData(), *MI);
   }
 
   VisitedBBs[MBB] = VisitedBBInfo(false, CyclesToEnd);

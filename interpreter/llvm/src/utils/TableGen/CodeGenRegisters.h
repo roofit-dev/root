@@ -18,29 +18,20 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/SparseBitVector.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/SparseBitVector.h"
 #include "llvm/CodeGen/MachineValueType.h"
-#include "llvm/MC/LaneBitmask.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/SetTheory.h"
-#include <cassert>
-#include <cstdint>
+#include <cstdlib>
 #include <deque>
 #include <list>
 #include <map>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace llvm {
-
   class CodeGenRegBank;
   template <typename T, typename Vector, typename Set> class SetVector;
 
@@ -48,9 +39,8 @@ namespace llvm {
   /// Mask the bits specified in Mask, then rotate them Rol bits to the left
   /// assuming a wraparound at 32bits.
   struct MaskRolPair {
-    LaneBitmask Mask;
+    unsigned Mask;
     uint8_t RotateLeft;
-
     bool operator==(const MaskRolPair Other) const {
       return Mask == Other.Mask && RotateLeft == Other.RotateLeft;
     }
@@ -69,7 +59,7 @@ namespace llvm {
     uint16_t Size;
     uint16_t Offset;
     const unsigned EnumValue;
-    mutable LaneBitmask LaneMask;
+    mutable unsigned LaneMask;
     mutable SmallVector<MaskRolPair,1> CompositionLaneMaskTransform;
 
     // Are all super-registers containing this SubRegIndex covered by their
@@ -121,7 +111,7 @@ namespace llvm {
     const CompMap &getComposites() const { return Composed; }
 
     // Compute LaneMask from Composed. Return LaneMask.
-    LaneBitmask computeLaneMask() const;
+    unsigned computeLaneMask() const;
 
   private:
     CompMap Composed;
@@ -146,7 +136,7 @@ namespace llvm {
 
     CodeGenRegister(Record *R, unsigned Enum);
 
-    const StringRef getName() const;
+    const std::string &getName() const;
 
     // Extract more information from TheDef. This is used to build an object
     // graph after all CodeGenRegister objects have been created.
@@ -207,7 +197,7 @@ namespace llvm {
 
     // List of register units in ascending order.
     typedef SparseBitVector<> RegUnitList;
-    typedef SmallVector<LaneBitmask, 16> RegUnitLaneMaskList;
+    typedef SmallVector<unsigned, 16> RegUnitLaneMaskList;
 
     // How many entries in RegUnitList are native?
     RegUnitList NativeRegUnits;
@@ -216,7 +206,7 @@ namespace llvm {
     // This is only valid after computeSubRegs() completes.
     const RegUnitList &getRegUnits() const { return RegUnits; }
 
-    ArrayRef<LaneBitmask> getRegUnitLaneMasks() const {
+    ArrayRef<unsigned> getRegUnitLaneMasks() const {
       return makeArrayRef(RegUnitLaneMasks).slice(0, NativeRegUnits.count());
     }
 
@@ -276,7 +266,7 @@ namespace llvm {
   class CodeGenRegisterClass {
     CodeGenRegister::Vec Members;
     // Allocation orders. Order[0] always contains all registers in Members.
-    std::vector<SmallVector<Record*, 16>> Orders;
+    std::vector<SmallVector<Record*, 16> > Orders;
     // Bit mask of sub-classes including this, indexed by their EnumValue.
     BitVector SubClasses;
     // List of super-classes, topologocally ordered to have the larger classes
@@ -317,7 +307,7 @@ namespace llvm {
     std::string AltOrderSelect;
     uint8_t AllocationPriority;
     /// Contains the combination of the lane masks of all subregisters.
-    LaneBitmask LaneMask;
+    unsigned LaneMask;
     /// True if there are at least 2 subregisters which do not interfere.
     bool HasDisjunctSubRegs;
     bool CoveredBySubRegs;
@@ -473,10 +463,10 @@ namespace llvm {
 
     std::string Name;
     std::vector<unsigned> Units;
-    unsigned Weight = 0; // Cache the sum of all unit weights.
-    unsigned Order = 0;  // Cache the sort key.
+    unsigned Weight; // Cache the sum of all unit weights.
+    unsigned Order;  // Cache the sort key.
 
-    RegUnitSet() = default;
+    RegUnitSet() : Weight(0), Order(0) {}
   };
 
   // Base vector for identifying TopoSigs. The contents uniquely identify a
@@ -525,7 +515,7 @@ namespace llvm {
     // NOTE: This could grow beyond the number of register classes when we map
     // register units to lists of unit sets. If the list of unit sets does not
     // already exist for a register class, we create a new entry in this vector.
-    std::vector<std::vector<unsigned>> RegClassUnitSets;
+    std::vector<std::vector<unsigned> > RegClassUnitSets;
 
     // Give each register unit set an order based on sorting criteria.
     std::vector<unsigned> RegUnitSetOrder;
@@ -542,7 +532,6 @@ namespace llvm {
     void computeInferredRegisterClasses();
     void inferCommonSubClass(CodeGenRegisterClass *RC);
     void inferSubClassWithSubReg(CodeGenRegisterClass *RC);
-
     void inferMatchingSuperRegClass(CodeGenRegisterClass *RC) {
       inferMatchingSuperRegClass(RC, RegClasses.begin());
     }
@@ -601,7 +590,6 @@ namespace llvm {
     }
 
     const std::deque<CodeGenRegister> &getRegisters() { return Registers; }
-
     const StringMap<CodeGenRegister*> &getRegistersByName() {
       return RegistersByName;
     }
@@ -686,7 +674,6 @@ namespace llvm {
     unsigned getRegSetIDAt(unsigned Order) const {
       return RegUnitSetOrder[Order];
     }
-
     const RegUnitSet &getRegSetAt(unsigned Order) const {
       return RegUnitSets[RegUnitSetOrder[Order]];
     }
@@ -734,13 +721,8 @@ namespace llvm {
     // Bit mask of lanes that cover their registers. A sub-register index whose
     // LaneMask is contained in CoveringLanes will be completely covered by
     // another sub-register with the same or larger lane mask.
-    LaneBitmask CoveringLanes;
-
-    // Helper function for printing debug information. Handles artificial
-    // (non-native) reg units.
-    void printRegUnitName(unsigned Unit) const;
+    unsigned CoveringLanes;
   };
+}
 
-} // end namespace llvm
-
-#endif // LLVM_UTILS_TABLEGEN_CODEGENREGISTERS_H
+#endif

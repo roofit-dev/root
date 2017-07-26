@@ -15,7 +15,6 @@
 #ifndef HEXAGONMCCODEEMITTER_H
 #define HEXAGONMCCODEEMITTER_H
 
-#include "MCTargetDesc/HexagonFixupKinds.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
@@ -32,22 +31,18 @@ class HexagonMCCodeEmitter : public MCCodeEmitter {
   std::unique_ptr<unsigned> Addend;
   std::unique_ptr<bool> Extended;
   std::unique_ptr<MCInst const *> CurrentBundle;
-  std::unique_ptr<size_t> CurrentIndex;
 
   // helper routine for getMachineOpValue()
   unsigned getExprOpValue(const MCInst &MI, const MCOperand &MO,
                           const MCExpr *ME, SmallVectorImpl<MCFixup> &Fixups,
                           const MCSubtargetInfo &STI) const;
 
-  Hexagon::Fixups getFixupNoBits(MCInstrInfo const &MCII, const MCInst &MI,
-                                 const MCOperand &MO,
-                                 const MCSymbolRefExpr::VariantKind kind) const;
-
 public:
   HexagonMCCodeEmitter(MCInstrInfo const &aMII, MCContext &aMCT);
 
   // Return parse bits for instruction `MCI' inside bundle `MCB'
-  uint32_t parseBits(size_t Last, MCInst const &MCB, MCInst const &MCI) const;
+  uint32_t parseBits(size_t Instruction, size_t Last, MCInst const &MCB,
+                    MCInst const &MCI) const;
 
   void encodeInstruction(MCInst const &MI, raw_ostream &OS,
                          SmallVectorImpl<MCFixup> &Fixups,
@@ -56,7 +51,7 @@ public:
   void EncodeSingleInstruction(const MCInst &MI, raw_ostream &OS,
                                SmallVectorImpl<MCFixup> &Fixups,
                                const MCSubtargetInfo &STI,
-                               uint32_t Parse) const;
+                               uint32_t Parse, size_t Index) const;
 
   // \brief TableGen'erated function for getting the
   // binary encoding for an instruction.
@@ -68,11 +63,6 @@ public:
   unsigned getMachineOpValue(MCInst const &MI, MCOperand const &MO,
                              SmallVectorImpl<MCFixup> &Fixups,
                              MCSubtargetInfo const &STI) const;
-
-private:
-  uint64_t computeAvailableFeatures(const FeatureBitset &FB) const;
-  void verifyInstructionPredicates(const MCInst &MI,
-                                   uint64_t AvailableFeatures) const;
 }; // class HexagonMCCodeEmitter
 
 } // namespace llvm

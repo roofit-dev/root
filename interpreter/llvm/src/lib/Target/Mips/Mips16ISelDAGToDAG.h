@@ -20,8 +20,7 @@ namespace llvm {
 
 class Mips16DAGToDAGISel : public MipsDAGToDAGISel {
 public:
-  explicit Mips16DAGToDAGISel(MipsTargetMachine &TM, CodeGenOpt::Level OL)
-      : MipsDAGToDAGISel(TM, OL) {}
+  explicit Mips16DAGToDAGISel(MipsTargetMachine &TM) : MipsDAGToDAGISel(TM) {}
 
 private:
   std::pair<SDNode *, SDNode *> selectMULT(SDNode *N, unsigned Opc,
@@ -48,8 +47,7 @@ private:
   void initMips16SPAliasReg(MachineFunction &MF);
 };
 
-FunctionPass *createMips16ISelDag(MipsTargetMachine &TM,
-                                  CodeGenOpt::Level OptLevel);
+FunctionPass *createMips16ISelDag(MipsTargetMachine &TM);
 }
 
 #endif

@@ -19,7 +19,7 @@ class COFFImportFile;
 class ObjectFile;
 }
 namespace codeview {
-class TypeTableBuilder;
+class MemoryTypeTableBuilder;
 }
 
 class ScopedPrinter;
@@ -47,7 +47,6 @@ public:
   virtual void printVersionInfo() {}
   virtual void printGroupSections() {}
   virtual void printHashHistogram() {}
-  virtual void printNotes() {}
 
   // Only implemented for ARM ELF at this time.
   virtual void printAttributes() { }
@@ -58,19 +57,15 @@ public:
   virtual void printMipsReginfo() { }
   virtual void printMipsOptions() { }
 
-  // Only implemented for AMDGPU ELF at this time.
-  virtual void printAMDGPUCodeObjectMetadata() {}
-
   // Only implemented for PE/COFF.
   virtual void printCOFFImports() { }
   virtual void printCOFFExports() { }
   virtual void printCOFFDirectives() { }
   virtual void printCOFFBaseReloc() { }
   virtual void printCOFFDebugDirectory() { }
-  virtual void printCOFFResources() {}
   virtual void printCodeViewDebugInfo() { }
-  virtual void mergeCodeViewTypes(llvm::codeview::TypeTableBuilder &CVIDs,
-                                  llvm::codeview::TypeTableBuilder &CVTypes) {}
+  virtual void
+  mergeCodeViewTypes(llvm::codeview::MemoryTypeTableBuilder &CVTypes) {}
 
   // Only implemented for MachO.
   virtual void printMachODataInCode() { }
@@ -98,15 +93,10 @@ std::error_code createMachODumper(const object::ObjectFile *Obj,
                                   ScopedPrinter &Writer,
                                   std::unique_ptr<ObjDumper> &Result);
 
-std::error_code createWasmDumper(const object::ObjectFile *Obj,
-                                 ScopedPrinter &Writer,
-                                 std::unique_ptr<ObjDumper> &Result);
-
 void dumpCOFFImportFile(const object::COFFImportFile *File);
 
 void dumpCodeViewMergedTypes(ScopedPrinter &Writer,
-                             llvm::codeview::TypeTableBuilder &IDTable,
-                             llvm::codeview::TypeTableBuilder &TypeTable);
+                             llvm::codeview::MemoryTypeTableBuilder &CVTypes);
 
 } // namespace llvm
 

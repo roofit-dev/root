@@ -82,11 +82,7 @@ public:
     CharUnits BaselinePad = calculateBaselinePad(RD, ASTContext, RL);
     if (BaselinePad.isZero())
       return;
-
-    CharUnits OptimalPad;
-    SmallVector<const FieldDecl *, 20> OptimalFieldsOrder;
-    std::tie(OptimalPad, OptimalFieldsOrder) =
-        calculateOptimalPad(RD, ASTContext, RL);
+    CharUnits OptimalPad = calculateOptimalPad(RD, ASTContext, RL);
 
     CharUnits DiffPad = PadMultiplier * (BaselinePad - OptimalPad);
     if (DiffPad.getQuantity() <= AllowedPad) {
@@ -94,7 +90,7 @@ public:
       // There is not enough excess padding to trigger a warning.
       return;
     }
-    reportRecord(RD, BaselinePad, OptimalPad, OptimalFieldsOrder);
+    reportRecord(RD, BaselinePad, OptimalPad);
   }
 
   /// \brief Look for arrays of overly padded types. If the padding of the
@@ -203,30 +199,22 @@ public:
   /// 7.  Add tail padding by rounding the current offset up to the structure
   ///     alignment. Track the amount of padding added.
 
-  static std::pair<CharUnits, SmallVector<const FieldDecl *, 20>>
-  calculateOptimalPad(const RecordDecl *RD, const ASTContext &ASTContext,
-                      const ASTRecordLayout &RL) {
-    struct FieldInfo {
+  static CharUnits calculateOptimalPad(const RecordDecl *RD,
+                                       const ASTContext &ASTContext,
+                                       const ASTRecordLayout &RL) {
+    struct CharUnitPair {
       CharUnits Align;
       CharUnits Size;
-      const FieldDecl *Field;
-      bool operator<(const FieldInfo &RHS) const {
+      bool operator<(const CharUnitPair &RHS) const {
         // Order from small alignments to large alignments,
         // then large sizes to small sizes.
-        // then large field indices to small field indices
-        return std::make_tuple(Align, -Size,
-                               Field ? -static_cast<int>(Field->getFieldIndex())
-                                     : 0) <
-               std::make_tuple(
-                   RHS.Align, -RHS.Size,
-                   RHS.Field ? -static_cast<int>(RHS.Field->getFieldIndex())
-                             : 0);
+        return std::make_pair(Align, -Size) <
+               std::make_pair(RHS.Align, -RHS.Size);
       }
     };
-    SmallVector<FieldInfo, 20> Fields;
+    SmallVector<CharUnitPair, 20> Fields;
     auto GatherSizesAndAlignments = [](const FieldDecl *FD) {
-      FieldInfo RetVal;
-      RetVal.Field = FD;
+      CharUnitPair RetVal;
       auto &Ctx = FD->getASTContext();
       std::tie(RetVal.Size, RetVal.Align) =
           Ctx.getTypeInfoInChars(FD->getType());
@@ -238,13 +226,14 @@ public:
     std::transform(RD->field_begin(), RD->field_end(),
                    std::back_inserter(Fields), GatherSizesAndAlignments);
     std::sort(Fields.begin(), Fields.end());
+
     // This lets us skip over vptrs and non-virtual bases,
     // so that we can just worry about the fields in our object.
     // Note that this does cause us to miss some cases where we
     // could pack more bytes in to a base class's tail padding.
     CharUnits NewOffset = ASTContext.toCharUnitsFromBits(RL.getFieldOffset(0));
     CharUnits NewPad;
-    SmallVector<const FieldDecl *, 20> OptimalFieldsOrder;
+
     while (!Fields.empty()) {
       unsigned TrailingZeros =
           llvm::countTrailingZeros((unsigned long long)NewOffset.getQuantity());
@@ -253,7 +242,7 @@ public:
       // our long long (and CharUnits internal type) negative. So shift 62.
       long long CurAlignmentBits = 1ull << (std::min)(TrailingZeros, 62u);
       CharUnits CurAlignment = CharUnits::fromQuantity(CurAlignmentBits);
-      FieldInfo InsertPoint = {CurAlignment, CharUnits::Zero(), nullptr};
+      CharUnitPair InsertPoint = {CurAlignment, CharUnits::Zero()};
       auto CurBegin = Fields.begin();
       auto CurEnd = Fields.end();
 
@@ -266,7 +255,6 @@ public:
         // We found a field that we can layout with the current alignment.
         --Iter;
         NewOffset += Iter->Size;
-        OptimalFieldsOrder.push_back(Iter->Field);
         Fields.erase(Iter);
       } else {
         // We are poorly aligned, and we need to pad in order to layout another
@@ -280,18 +268,18 @@ public:
     // Calculate tail padding.
     CharUnits NewSize = NewOffset.alignTo(RL.getAlignment());
     NewPad += NewSize - NewOffset;
-    return {NewPad, std::move(OptimalFieldsOrder)};
+    return NewPad;
   }
 
-  void reportRecord(
-      const RecordDecl *RD, CharUnits BaselinePad, CharUnits OptimalPad,
-      const SmallVector<const FieldDecl *, 20> &OptimalFieldsOrder) const {
+  void reportRecord(const RecordDecl *RD, CharUnits BaselinePad,
+                    CharUnits TargetPad) const {
     if (!PaddingBug)
       PaddingBug =
           llvm::make_unique<BugType>(this, "Excessive Padding", "Performance");
 
     SmallString<100> Buf;
     llvm::raw_svector_ostream Os(Buf);
+
     Os << "Excessive padding in '";
     Os << QualType::getAsString(RD->getTypeForDecl(), Qualifiers()) << "'";
 
@@ -306,18 +294,16 @@ public:
     }
 
     Os << " (" << BaselinePad.getQuantity() << " padding bytes, where "
-       << OptimalPad.getQuantity() << " is optimal). \n"
-       << "Optimal fields order: \n";
-    for (const auto *FD : OptimalFieldsOrder)
-      Os << FD->getName() << ", \n";
-    Os << "consider reordering the fields or adding explicit padding "
-          "members.";
+       << TargetPad.getQuantity() << " is optimal). Consider reordering "
+       << "the fields or adding explicit padding members.";
 
     PathDiagnosticLocation CELoc =
         PathDiagnosticLocation::create(RD, BR->getSourceManager());
+
     auto Report = llvm::make_unique<BugReport>(*PaddingBug, Os.str(), CELoc);
     Report->setDeclWithIssue(RD);
     Report->addRange(RD->getSourceRange());
+
     BR->emitReport(std::move(Report));
   }
 };

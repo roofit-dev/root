@@ -42,9 +42,8 @@ StoreRef StoreManager::enterStackFrame(Store OldStore,
   return Store;
 }
 
-const ElementRegion *StoreManager::MakeElementRegion(const SubRegion *Base,
-                                                     QualType EleTy,
-                                                     uint64_t index) {
+const MemRegion *StoreManager::MakeElementRegion(const MemRegion *Base,
+                                              QualType EleTy, uint64_t index) {
   NonLoc idx = svalBuilder.makeArrayIndex(index);
   return MRMgr.getElementRegion(EleTy, idx, Base, svalBuilder.getContext());
 }
@@ -53,7 +52,7 @@ StoreRef StoreManager::BindDefault(Store store, const MemRegion *R, SVal V) {
   return StoreRef(store, *this);
 }
 
-const ElementRegion *StoreManager::GetElementZeroRegion(const SubRegion *R,
+const ElementRegion *StoreManager::GetElementZeroRegion(const MemRegion *R,
                                                         QualType T) {
   NonLoc idx = svalBuilder.makeZeroArrayIndex();
   assert(!T.isNull());
@@ -127,7 +126,7 @@ const MemRegion *StoreManager::castRegion(const MemRegion *R, QualType CastToTy)
     case MemRegion::VarRegionKind:
     case MemRegion::CXXTempObjectRegionKind:
     case MemRegion::CXXBaseObjectRegionKind:
-      return MakeElementRegion(cast<SubRegion>(R), PointeeTy);
+      return MakeElementRegion(R, PointeeTy);
 
     case MemRegion::ElementRegionKind: {
       // If we are casting from an ElementRegion to another type, the
@@ -172,7 +171,7 @@ const MemRegion *StoreManager::castRegion(const MemRegion *R, QualType CastToTy)
         }
 
         // Otherwise, create a new ElementRegion at offset 0.
-        return MakeElementRegion(cast<SubRegion>(baseR), PointeeTy);
+        return MakeElementRegion(baseR, PointeeTy);
       }
 
       // We have a non-zero offset from the base region.  We want to determine
@@ -203,11 +202,10 @@ const MemRegion *StoreManager::castRegion(const MemRegion *R, QualType CastToTy)
       if (!newSuperR) {
         // Create an intermediate ElementRegion to represent the raw byte.
         // This will be the super region of the final ElementRegion.
-        newSuperR = MakeElementRegion(cast<SubRegion>(baseR), Ctx.CharTy,
-                                      off.getQuantity());
+        newSuperR = MakeElementRegion(baseR, Ctx.CharTy, off.getQuantity());
       }
 
-      return MakeElementRegion(cast<SubRegion>(newSuperR), PointeeTy, newIndex);
+      return MakeElementRegion(newSuperR, PointeeTy, newIndex);
     }
   }
 
@@ -273,8 +271,9 @@ SVal StoreManager::evalDerivedToBase(SVal Derived, QualType BaseType,
     BaseDecl = BaseType->getAsCXXRecordDecl();
   assert(BaseDecl && "not a C++ object?");
 
-  const MemRegion *BaseReg = MRMgr.getCXXBaseObjectRegion(
-      BaseDecl, cast<SubRegion>(DerivedRegVal->getRegion()), IsVirtual);
+  const MemRegion *BaseReg =
+    MRMgr.getCXXBaseObjectRegion(BaseDecl, DerivedRegVal->getRegion(),
+                                 IsVirtual);
 
   return loc::MemRegionVal(BaseReg);
 }
@@ -293,7 +292,7 @@ static const CXXRecordDecl *getCXXRecordType(const MemRegion *MR) {
   return nullptr;
 }
 
-SVal StoreManager::attemptDownCast(SVal Base, QualType TargetType,
+SVal StoreManager::evalDynamicCast(SVal Base, QualType TargetType,
                                    bool &Failed) {
   Failed = false;
 
@@ -391,11 +390,11 @@ SVal StoreManager::getLValueFieldOrIvar(const Decl *D, SVal Base) {
     return Base;
 
   Loc BaseL = Base.castAs<Loc>();
-  const SubRegion* BaseR = nullptr;
+  const MemRegion* BaseR = nullptr;
 
   switch (BaseL.getSubKind()) {
   case loc::MemRegionValKind:
-    BaseR = cast<SubRegion>(BaseL.castAs<loc::MemRegionVal>().getRegion());
+    BaseR = BaseL.castAs<loc::MemRegionVal>().getRegion();
     break;
 
   case loc::GotoLabelKind:
@@ -404,15 +403,9 @@ SVal StoreManager::getLValueFieldOrIvar(const Decl *D, SVal Base) {
 
   case loc::ConcreteIntKind:
     // While these seem funny, this can happen through casts.
-    // FIXME: What we should return is the field offset, not base. For example,
-    //  add the field offset to the integer value.  That way things
+    // FIXME: What we should return is the field offset.  For example,
+    //  add the field offset to the integer value.  That way funny things
     //  like this work properly:  &(((struct foo *) 0xa)->f)
-    //  However, that's not easy to fix without reducing our abilities
-    //  to catch null pointer dereference. Eg., ((struct foo *)0x0)->f = 7
-    //  is a null dereference even though we're dereferencing offset of f
-    //  rather than null. Coming up with an approach that computes offsets
-    //  over null pointers properly while still being able to catch null
-    //  dereferences might be worth it.
     return Base;
 
   default:
@@ -437,12 +430,11 @@ SVal StoreManager::getLValueElement(QualType elementType, NonLoc Offset,
   // If the base is an unknown or undefined value, just return it back.
   // FIXME: For absolute pointer addresses, we just return that value back as
   //  well, although in reality we should return the offset added to that
-  //  value. See also the similar FIXME in getLValueFieldOrIvar().
+  //  value.
   if (Base.isUnknownOrUndef() || Base.getAs<loc::ConcreteInt>())
     return Base;
 
-  const SubRegion *BaseRegion =
-      Base.castAs<loc::MemRegionVal>().getRegionAs<SubRegion>();
+  const MemRegion* BaseRegion = Base.castAs<loc::MemRegionVal>().getRegion();
 
   // Pointer of any type can be cast and used as array base.
   const ElementRegion *ElemR = dyn_cast<ElementRegion>(BaseRegion);
@@ -479,8 +471,9 @@ SVal StoreManager::getLValueElement(QualType elementType, NonLoc Offset,
     if (isa<ElementRegion>(BaseRegion->StripCasts()))
       return UnknownVal();
 
-    return loc::MemRegionVal(MRMgr.getElementRegion(
-        elementType, Offset, cast<SubRegion>(ElemR->getSuperRegion()), Ctx));
+    return loc::MemRegionVal(MRMgr.getElementRegion(elementType, Offset,
+                                                    ElemR->getSuperRegion(),
+                                                    Ctx));
   }
 
   const llvm::APSInt& OffI = Offset.castAs<nonloc::ConcreteInt>().getValue();
@@ -491,7 +484,7 @@ SVal StoreManager::getLValueElement(QualType elementType, NonLoc Offset,
                                                                     OffI));
 
   // Construct the new ElementRegion.
-  const SubRegion *ArrayR = cast<SubRegion>(ElemR->getSuperRegion());
+  const MemRegion *ArrayR = ElemR->getSuperRegion();
   return loc::MemRegionVal(MRMgr.getElementRegion(elementType, NewIdx, ArrayR,
                                                   Ctx));
 }

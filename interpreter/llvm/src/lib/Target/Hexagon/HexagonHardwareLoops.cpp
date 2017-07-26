@@ -25,37 +25,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "HexagonInstrInfo.h"
-#include "HexagonSubtarget.h"
 #include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/SmallVector.h"
+#include "Hexagon.h"
+#include "HexagonSubtarget.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
-#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
-#include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/IR/Constants.h"
-#include "llvm/IR/DebugLoc.h"
-#include "llvm/Pass.h"
+#include "llvm/PassSupport.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetRegisterInfo.h"
-#include <cassert>
-#include <cstdint>
-#include <cstdlib>
-#include <iterator>
-#include <map>
-#include <set>
-#include <utility>
+#include "llvm/Target/TargetInstrInfo.h"
+#include <algorithm>
 #include <vector>
 
 using namespace llvm;
@@ -75,32 +60,20 @@ static cl::opt<bool> HWCreatePreheader("hexagon-hwloop-preheader",
     cl::Hidden, cl::init(true),
     cl::desc("Add a preheader to a hardware loop if one doesn't exist"));
 
-// Turn it off by default. If a preheader block is not created here, the
-// software pipeliner may be unable to find a block suitable to serve as
-// a preheader. In that case SWP will not run.
-static cl::opt<bool> SpecPreheader("hwloop-spec-preheader", cl::init(false),
-  cl::Hidden, cl::ZeroOrMore, cl::desc("Allow speculation of preheader "
-  "instructions"));
-
 STATISTIC(NumHWLoops, "Number of loops converted to hardware loops");
 
 namespace llvm {
-
   FunctionPass *createHexagonHardwareLoops();
   void initializeHexagonHardwareLoopsPass(PassRegistry&);
-
-} // end namespace llvm
+}
 
 namespace {
-
   class CountValue;
-
   struct HexagonHardwareLoops : public MachineFunctionPass {
     MachineLoopInfo            *MLI;
     MachineRegisterInfo        *MRI;
     MachineDominatorTree       *MDT;
     const HexagonInstrInfo     *TII;
-    const HexagonRegisterInfo  *TRI;
 #ifndef NDEBUG
     static int Counter;
 #endif
@@ -114,7 +87,7 @@ namespace {
 
     bool runOnMachineFunction(MachineFunction &MF) override;
 
-    StringRef getPassName() const override { return "Hexagon Hardware Loops"; }
+    const char *getPassName() const override { return "Hexagon Hardware Loops"; }
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.addRequired<MachineDominatorTree>();
@@ -165,6 +138,7 @@ namespace {
       static bool isUnsigned(Kind Cmp) {
         return (Cmp & U);
       }
+
     };
 
     /// \brief Find the register that contains the loop controlling
@@ -315,7 +289,6 @@ namespace {
       CV_Register,
       CV_Immediate
     };
-
   private:
     CountValueType Kind;
     union Values {
@@ -336,7 +309,6 @@ namespace {
         Contents.ImmVal = v;
       }
     }
-
     bool isReg() const { return Kind == CV_Register; }
     bool isImm() const { return Kind == CV_Immediate; }
 
@@ -358,8 +330,8 @@ namespace {
       if (isImm()) { OS << Contents.ImmVal; }
     }
   };
-
 } // end anonymous namespace
+
 
 INITIALIZE_PASS_BEGIN(HexagonHardwareLoops, "hwloops",
                       "Hexagon Hardware Loops", false, false)
@@ -382,9 +354,7 @@ bool HexagonHardwareLoops::runOnMachineFunction(MachineFunction &MF) {
   MLI = &getAnalysis<MachineLoopInfo>();
   MRI = &MF.getRegInfo();
   MDT = &getAnalysis<MachineDominatorTree>();
-  const HexagonSubtarget &HST = MF.getSubtarget<HexagonSubtarget>();
-  TII = HST.getInstrInfo();
-  TRI = HST.getRegisterInfo();
+  TII = MF.getSubtarget<HexagonSubtarget>().getInstrInfo();
 
   for (auto &L : *MLI)
     if (!L->getParentLoop()) {
@@ -396,15 +366,28 @@ bool HexagonHardwareLoops::runOnMachineFunction(MachineFunction &MF) {
   return Changed;
 }
 
+/// \brief Return the latch block if it's one of the exiting blocks. Otherwise,
+/// return the exiting block. Return 'null' when multiple exiting blocks are
+/// present.
+static MachineBasicBlock* getExitingBlock(MachineLoop *L) {
+  if (MachineBasicBlock *Latch = L->getLoopLatch()) {
+    if (L->isLoopExiting(Latch))
+      return Latch;
+    else
+      return L->getExitingBlock();
+  }
+  return nullptr;
+}
+
 bool HexagonHardwareLoops::findInductionRegister(MachineLoop *L,
                                                  unsigned &Reg,
                                                  int64_t &IVBump,
                                                  MachineInstr *&IVOp
                                                  ) const {
   MachineBasicBlock *Header = L->getHeader();
-  MachineBasicBlock *Preheader = MLI->findLoopPreheader(L, SpecPreheader);
+  MachineBasicBlock *Preheader = L->getLoopPreheader();
   MachineBasicBlock *Latch = L->getLoopLatch();
-  MachineBasicBlock *ExitingBlock = L->findLoopControlBlock();
+  MachineBasicBlock *ExitingBlock = getExitingBlock(L);
   if (!Header || !Preheader || !Latch || !ExitingBlock)
     return false;
 
@@ -434,8 +417,10 @@ bool HexagonHardwareLoops::findInductionRegister(MachineLoop *L,
 
       unsigned PhiOpReg = Phi->getOperand(i).getReg();
       MachineInstr *DI = MRI->getVRegDef(PhiOpReg);
+      unsigned UpdOpc = DI->getOpcode();
+      bool isAdd = (UpdOpc == Hexagon::A2_addi || UpdOpc == Hexagon::A2_addp);
 
-      if (DI->getDesc().isAdd()) {
+      if (isAdd) {
         // If the register operand to the add is the PHI we're looking at, this
         // meets the induction pattern.
         unsigned IndReg = DI->getOperand(1).getReg();
@@ -451,7 +436,7 @@ bool HexagonHardwareLoops::findInductionRegister(MachineLoop *L,
 
   SmallVector<MachineOperand,2> Cond;
   MachineBasicBlock *TB = nullptr, *FB = nullptr;
-  bool NotAnalyzed = TII->analyzeBranch(*ExitingBlock, TB, FB, Cond, false);
+  bool NotAnalyzed = TII->AnalyzeBranch(*ExitingBlock, TB, FB, Cond, false);
   if (NotAnalyzed)
     return false;
 
@@ -570,7 +555,7 @@ CountValue *HexagonHardwareLoops::getLoopTripCount(MachineLoop *L,
   // Look for the cmp instruction to determine if we can get a useful trip
   // count.  The trip count can be either a register or an immediate.  The
   // location of the value depends upon the type (reg or imm).
-  MachineBasicBlock *ExitingBlock = L->findLoopControlBlock();
+  MachineBasicBlock *ExitingBlock = getExitingBlock(L);
   if (!ExitingBlock)
     return nullptr;
 
@@ -581,7 +566,7 @@ CountValue *HexagonHardwareLoops::getLoopTripCount(MachineLoop *L,
   if (!FoundIV)
     return nullptr;
 
-  MachineBasicBlock *Preheader = MLI->findLoopPreheader(L, SpecPreheader);
+  MachineBasicBlock *Preheader = L->getLoopPreheader();
 
   MachineOperand *InitialValue = nullptr;
   MachineInstr *IV_Phi = MRI->getVRegDef(IVReg);
@@ -598,7 +583,7 @@ CountValue *HexagonHardwareLoops::getLoopTripCount(MachineLoop *L,
 
   SmallVector<MachineOperand,2> Cond;
   MachineBasicBlock *TB = nullptr, *FB = nullptr;
-  bool NotAnalyzed = TII->analyzeBranch(*ExitingBlock, TB, FB, Cond, false);
+  bool NotAnalyzed = TII->AnalyzeBranch(*ExitingBlock, TB, FB, Cond, false);
   if (NotAnalyzed)
     return nullptr;
 
@@ -608,9 +593,9 @@ CountValue *HexagonHardwareLoops::getLoopTripCount(MachineLoop *L,
   // the fall through can go to the header.
   assert (TB && "Exit block without a branch?");
   if (ExitingBlock != Latch && (TB == Latch || FB == Latch)) {
-    MachineBasicBlock *LTB = nullptr, *LFB = nullptr;
+    MachineBasicBlock *LTB = 0, *LFB = 0;
     SmallVector<MachineOperand,2> LCond;
-    bool NotAnalyzed = TII->analyzeBranch(*Latch, LTB, LFB, LCond, false);
+    bool NotAnalyzed = TII->AnalyzeBranch(*Latch, LTB, LFB, LCond, false);
     if (NotAnalyzed)
       return nullptr;
     if (TB == Latch)
@@ -802,7 +787,7 @@ CountValue *HexagonHardwareLoops::computeCount(MachineLoop *Loop,
   if (!isPowerOf2_64(std::abs(IVBump)))
     return nullptr;
 
-  MachineBasicBlock *PH = MLI->findLoopPreheader(Loop, SpecPreheader);
+  MachineBasicBlock *PH = Loop->getLoopPreheader();
   assert (PH && "Should have a preheader by now");
   MachineBasicBlock::iterator InsertPos = PH->getFirstTerminator();
   DebugLoc DL;
@@ -963,21 +948,24 @@ CountValue *HexagonHardwareLoops::computeCount(MachineLoop *Loop,
 /// \brief Return true if the operation is invalid within hardware loop.
 bool HexagonHardwareLoops::isInvalidLoopOperation(const MachineInstr *MI,
                                                   bool IsInnerHWLoop) const {
+
   // Call is not allowed because the callee may use a hardware loop except for
   // the case when the call never returns.
-  if (MI->getDesc().isCall())
-    return !TII->doesNotReturn(*MI);
+  if (MI->getDesc().isCall() && MI->getOpcode() != Hexagon::CALLv3nr)
+    return true;
 
   // Check if the instruction defines a hardware loop register.
-  using namespace Hexagon;
-  static const unsigned Regs01[] = { LC0, SA0, LC1, SA1 };
-  static const unsigned Regs1[]  = { LC1, SA1 };
-  auto CheckRegs = IsInnerHWLoop ? makeArrayRef(Regs01, array_lengthof(Regs01))
-                                 : makeArrayRef(Regs1, array_lengthof(Regs1));
-  for (unsigned R : CheckRegs)
-    if (MI->modifiesRegister(R, TRI))
+  for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
+    const MachineOperand &MO = MI->getOperand(i);
+    if (!MO.isReg() || !MO.isDef())
+      continue;
+    unsigned R = MO.getReg();
+    if (IsInnerHWLoop && (R == Hexagon::LC0 || R == Hexagon::SA0 ||
+                          R == Hexagon::LC1 || R == Hexagon::SA1))
       return true;
-
+    if (!IsInnerHWLoop && (R == Hexagon::LC1 || R == Hexagon::SA1))
+      return true;
+  }
   return false;
 }
 
@@ -1150,7 +1138,7 @@ bool HexagonHardwareLoops::convertToHardwareLoop(MachineLoop *L,
   if (containsInvalidInstruction(L, IsInnerHWLoop))
     return false;
 
-  MachineBasicBlock *LastMBB = L->findLoopControlBlock();
+  MachineBasicBlock *LastMBB = getExitingBlock(L);
   // Don't generate hw loop if the loop has more than one exit.
   if (!LastMBB)
     return false;
@@ -1165,7 +1153,7 @@ bool HexagonHardwareLoops::convertToHardwareLoop(MachineLoop *L,
 
   // Ensure the loop has a preheader: the loop instruction will be
   // placed there.
-  MachineBasicBlock *Preheader = MLI->findLoopPreheader(L, SpecPreheader);
+  MachineBasicBlock *Preheader = L->getLoopPreheader();
   if (!Preheader) {
     Preheader = createPreheaderForLoop(L);
     if (!Preheader)
@@ -1192,13 +1180,13 @@ bool HexagonHardwareLoops::convertToHardwareLoop(MachineLoop *L,
 
   // Determine the loop start.
   MachineBasicBlock *TopBlock = L->getTopBlock();
-  MachineBasicBlock *ExitingBlock = L->findLoopControlBlock();
-  MachineBasicBlock *LoopStart = nullptr;
+  MachineBasicBlock *ExitingBlock = getExitingBlock(L);
+  MachineBasicBlock *LoopStart = 0;
   if (ExitingBlock !=  L->getLoopLatch()) {
-    MachineBasicBlock *TB = nullptr, *FB = nullptr;
+    MachineBasicBlock *TB = 0, *FB = 0;
     SmallVector<MachineOperand, 2> Cond;
 
-    if (TII->analyzeBranch(*ExitingBlock, TB, FB, Cond, false))
+    if (TII->AnalyzeBranch(*ExitingBlock, TB, FB, Cond, false))
       return false;
 
     if (L->contains(TB))
@@ -1266,7 +1254,7 @@ bool HexagonHardwareLoops::convertToHardwareLoop(MachineLoop *L,
       if (LastI != LastMBB->end())
         LastI = LastMBB->erase(LastI);
       SmallVector<MachineOperand, 0> Cond;
-      TII->insertBranch(*LastMBB, BranchTarget, nullptr, Cond, LastIDL);
+      TII->InsertBranch(*LastMBB, BranchTarget, nullptr, Cond, LastIDL);
     }
   } else {
     // Conditional branch to loop start; just delete it.
@@ -1435,13 +1423,12 @@ bool HexagonHardwareLoops::loopCountMayWrapOrUnderFlow(
     if (!TII->analyzeCompare(*MI, CmpReg1, CmpReg2, CmpMask, CmpValue))
       continue;
 
-    MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
+    MachineBasicBlock *TBB = 0, *FBB = 0;
     SmallVector<MachineOperand, 2> Cond;
-    if (TII->analyzeBranch(*MI->getParent(), TBB, FBB, Cond, false))
+    if (TII->AnalyzeBranch(*MI->getParent(), TBB, FBB, Cond, false))
       continue;
 
-    Comparison::Kind Cmp =
-        getComparisonKind(MI->getOpcode(), nullptr, nullptr, 0);
+    Comparison::Kind Cmp = getComparisonKind(MI->getOpcode(), 0, 0, 0);
     if (Cmp == 0)
       continue;
     if (TII->predOpcodeHasNot(Cond) ^ (TBB != MBB))
@@ -1492,8 +1479,8 @@ bool HexagonHardwareLoops::checkForImmediate(const MachineOperand &MO,
     case TargetOpcode::COPY:
     case Hexagon::A2_tfrsi:
     case Hexagon::A2_tfrpi:
-    case Hexagon::CONST32:
-    case Hexagon::CONST64: {
+    case Hexagon::CONST32_Int_Real:
+    case Hexagon::CONST64_Int_Real: {
       // Call recursively to avoid an extra check whether operand(1) is
       // indeed an immediate (it could be a global address, for example),
       // plus we can handle COPY at the same time.
@@ -1511,7 +1498,7 @@ bool HexagonHardwareLoops::checkForImmediate(const MachineOperand &MO,
       int64_t V1, V2;
       if (!checkForImmediate(S1, V1) || !checkForImmediate(S2, V2))
         return false;
-      TV = V2 | (static_cast<uint64_t>(V1) << 32);
+      TV = V2 | (V1 << 32);
       break;
     }
     case TargetOpcode::REG_SEQUENCE: {
@@ -1522,9 +1509,9 @@ bool HexagonHardwareLoops::checkForImmediate(const MachineOperand &MO,
         return false;
       unsigned Sub2 = DI->getOperand(2).getImm();
       unsigned Sub4 = DI->getOperand(4).getImm();
-      if (Sub2 == Hexagon::isub_lo && Sub4 == Hexagon::isub_hi)
+      if (Sub2 == Hexagon::subreg_loreg && Sub4 == Hexagon::subreg_hireg)
         TV = V1 | (V3 << 32);
-      else if (Sub2 == Hexagon::isub_hi && Sub4 == Hexagon::isub_lo)
+      else if (Sub2 == Hexagon::subreg_hireg && Sub4 == Hexagon::subreg_loreg)
         TV = V3 | (V1 << 32);
       else
         llvm_unreachable("Unexpected form of REG_SEQUENCE");
@@ -1535,13 +1522,13 @@ bool HexagonHardwareLoops::checkForImmediate(const MachineOperand &MO,
       return false;
   }
 
-  // By now, we should have successfully obtained the immediate value defining
+  // By now, we should have successfuly obtained the immediate value defining
   // the register referenced in MO. Handle a potential use of a subregister.
   switch (MO.getSubReg()) {
-    case Hexagon::isub_lo:
+    case Hexagon::subreg_loreg:
       Val = TV & 0xFFFFFFFFULL;
       break;
-    case Hexagon::isub_hi:
+    case Hexagon::subreg_hireg:
       Val = (TV >> 32) & 0xFFFFFFFFULL;
       break;
     default:
@@ -1582,7 +1569,7 @@ static bool isImmValidForOpcode(unsigned CmpOpc, int64_t Imm) {
 bool HexagonHardwareLoops::fixupInductionVariable(MachineLoop *L) {
   MachineBasicBlock *Header = L->getHeader();
   MachineBasicBlock *Latch = L->getLoopLatch();
-  MachineBasicBlock *ExitingBlock = L->findLoopControlBlock();
+  MachineBasicBlock *ExitingBlock = getExitingBlock(L);
 
   if (!(Header && Latch && ExitingBlock))
     return false;
@@ -1611,8 +1598,10 @@ bool HexagonHardwareLoops::fixupInductionVariable(MachineLoop *L) {
 
       unsigned PhiReg = Phi->getOperand(i).getReg();
       MachineInstr *DI = MRI->getVRegDef(PhiReg);
+      unsigned UpdOpc = DI->getOpcode();
+      bool isAdd = (UpdOpc == Hexagon::A2_addi || UpdOpc == Hexagon::A2_addp);
 
-      if (DI->getDesc().isAdd()) {
+      if (isAdd) {
         // If the register operand to the add/sub is the PHI we are looking
         // at, this meets the induction pattern.
         unsigned IndReg = DI->getOperand(1).getReg();
@@ -1632,14 +1621,14 @@ bool HexagonHardwareLoops::fixupInductionVariable(MachineLoop *L) {
   MachineBasicBlock *TB = nullptr, *FB = nullptr;
   SmallVector<MachineOperand,2> Cond;
   // AnalyzeBranch returns true if it fails to analyze branch.
-  bool NotAnalyzed = TII->analyzeBranch(*ExitingBlock, TB, FB, Cond, false);
+  bool NotAnalyzed = TII->AnalyzeBranch(*ExitingBlock, TB, FB, Cond, false);
   if (NotAnalyzed || Cond.empty())
     return false;
 
   if (ExitingBlock != Latch && (TB == Latch || FB == Latch)) {
-    MachineBasicBlock *LTB = nullptr, *LFB = nullptr;
+    MachineBasicBlock *LTB = 0, *LFB = 0;
     SmallVector<MachineOperand,2> LCond;
-    bool NotAnalyzed = TII->analyzeBranch(*Latch, LTB, LFB, LCond, false);
+    bool NotAnalyzed = TII->AnalyzeBranch(*Latch, LTB, LFB, LCond, false);
     if (NotAnalyzed)
       return false;
 
@@ -1775,8 +1764,7 @@ bool HexagonHardwareLoops::fixupInductionVariable(MachineLoop *L) {
 
       // It is not valid to do this transformation on an unsigned comparison
       // because it may underflow.
-      Comparison::Kind Cmp =
-          getComparisonKind(PredDef->getOpcode(), nullptr, nullptr, 0);
+      Comparison::Kind Cmp = getComparisonKind(PredDef->getOpcode(), 0, 0, 0);
       if (!Cmp || Comparison::isUnsigned(Cmp))
         return false;
 
@@ -1819,17 +1807,18 @@ bool HexagonHardwareLoops::fixupInductionVariable(MachineLoop *L) {
   return false;
 }
 
-/// createPreheaderForLoop - Create a preheader for a given loop.
+/// \brief Create a preheader for a given loop.
 MachineBasicBlock *HexagonHardwareLoops::createPreheaderForLoop(
       MachineLoop *L) {
-  if (MachineBasicBlock *TmpPH = MLI->findLoopPreheader(L, SpecPreheader))
+  if (MachineBasicBlock *TmpPH = L->getLoopPreheader())
     return TmpPH;
+
   if (!HWCreatePreheader)
     return nullptr;
 
   MachineBasicBlock *Header = L->getHeader();
   MachineBasicBlock *Latch = L->getLoopLatch();
-  MachineBasicBlock *ExitingBlock = L->findLoopControlBlock();
+  MachineBasicBlock *ExitingBlock = getExitingBlock(L);
   MachineFunction *MF = Header->getParent();
   DebugLoc DL;
 
@@ -1850,12 +1839,12 @@ MachineBasicBlock *HexagonHardwareLoops::createPreheaderForLoop(
   SmallVector<MachineOperand,2> Tmp1;
   MachineBasicBlock *TB = nullptr, *FB = nullptr;
 
-  if (TII->analyzeBranch(*ExitingBlock, TB, FB, Tmp1, false))
+  if (TII->AnalyzeBranch(*ExitingBlock, TB, FB, Tmp1, false))
     return nullptr;
 
   for (MBBVector::iterator I = Preds.begin(), E = Preds.end(); I != E; ++I) {
     MachineBasicBlock *PB = *I;
-    bool NotAnalyzed = TII->analyzeBranch(*PB, TB, FB, Tmp1, false);
+    bool NotAnalyzed = TII->AnalyzeBranch(*PB, TB, FB, Tmp1, false);
     if (NotAnalyzed)
       return nullptr;
   }
@@ -1909,6 +1898,7 @@ MachineBasicBlock *HexagonHardwareLoops::createPreheaderForLoop(
       PN->addOperand(MachineOperand::CreateReg(NewPR, false));
       PN->addOperand(MachineOperand::CreateMBB(NewPH));
     }
+
   } else {
     assert(Header->pred_size() == 2);
 
@@ -1940,11 +1930,11 @@ MachineBasicBlock *HexagonHardwareLoops::createPreheaderForLoop(
     MachineBasicBlock *PB = *I;
     if (PB != Latch) {
       Tmp2.clear();
-      bool NotAnalyzed = TII->analyzeBranch(*PB, TB, FB, Tmp2, false);
+      bool NotAnalyzed = TII->AnalyzeBranch(*PB, TB, FB, Tmp2, false);
       (void)NotAnalyzed; // suppress compiler warning
       assert (!NotAnalyzed && "Should be analyzable!");
       if (TB != Header && (Tmp2.empty() || FB != Header))
-        TII->insertBranch(*PB, NewPH, nullptr, EmptyCond, DL);
+        TII->InsertBranch(*PB, NewPH, nullptr, EmptyCond, DL);
       PB->ReplaceUsesOfBlockWith(Header, NewPH);
     }
   }
@@ -1952,14 +1942,14 @@ MachineBasicBlock *HexagonHardwareLoops::createPreheaderForLoop(
   // It can happen that the latch block will fall through into the header.
   // Insert an unconditional branch to the header.
   TB = FB = nullptr;
-  bool LatchNotAnalyzed = TII->analyzeBranch(*Latch, TB, FB, Tmp2, false);
+  bool LatchNotAnalyzed = TII->AnalyzeBranch(*Latch, TB, FB, Tmp2, false);
   (void)LatchNotAnalyzed; // suppress compiler warning
   assert (!LatchNotAnalyzed && "Should be analyzable!");
   if (!TB && !FB)
-    TII->insertBranch(*Latch, Header, nullptr, EmptyCond, DL);
+    TII->InsertBranch(*Latch, Header, nullptr, EmptyCond, DL);
 
   // Finally, the branch from the preheader to the header.
-  TII->insertBranch(*NewPH, Header, nullptr, EmptyCond, DL);
+  TII->InsertBranch(*NewPH, Header, nullptr, EmptyCond, DL);
   NewPH->addSuccessor(Header);
 
   MachineLoop *ParentLoop = L->getParentLoop();
@@ -1968,12 +1958,9 @@ MachineBasicBlock *HexagonHardwareLoops::createPreheaderForLoop(
 
   // Update the dominator information with the new preheader.
   if (MDT) {
-    if (MachineDomTreeNode *HN = MDT->getNode(Header)) {
-      if (MachineDomTreeNode *DHN = HN->getIDom()) {
-        MDT->addNewBlock(NewPH, DHN->getBlock());
-        MDT->changeImmediateDominator(Header, NewPH);
-      }
-    }
+    MachineDomTreeNode *HDom = MDT->getNode(Header);
+    MDT->addNewBlock(NewPH, HDom->getIDom()->getBlock());
+    MDT->changeImmediateDominator(Header, NewPH);
   }
 
   return NewPH;

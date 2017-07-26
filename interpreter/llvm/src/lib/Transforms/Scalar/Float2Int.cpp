@@ -137,13 +137,13 @@ void Float2IntPass::findRoots(Function &F, SmallPtrSet<Instruction*,8> &Roots) {
 }
 
 // Helper - mark I as having been traversed, having range R.
-void Float2IntPass::seen(Instruction *I, ConstantRange R) {
+ConstantRange Float2IntPass::seen(Instruction *I, ConstantRange R) {
   DEBUG(dbgs() << "F2I: " << *I << ":" << R << "\n");
-  auto IT = SeenInsts.find(I);
-  if (IT != SeenInsts.end())
-    IT->second = std::move(R);
+  if (SeenInsts.find(I) != SeenInsts.end())
+    SeenInsts.find(I)->second = R;
   else
-    SeenInsts.insert(std::make_pair(I, std::move(R)));
+    SeenInsts.insert(std::make_pair(I, R));
+  return R;
 }
 
 // Helper - get a range representing a poison value.
@@ -190,14 +190,21 @@ void Float2IntPass::walkBackwards(const SmallPtrSetImpl<Instruction*> &Roots) {
       seen(I, badRange());
       break;
 
-    case Instruction::UIToFP:
-    case Instruction::SIToFP: {
-      // Path terminated cleanly - use the type of the integer input to seed
-      // the analysis.
+    case Instruction::UIToFP: {
+      // Path terminated cleanly.
       unsigned BW = I->getOperand(0)->getType()->getPrimitiveSizeInBits();
-      auto Input = ConstantRange(BW, true);
-      auto CastOp = (Instruction::CastOps)I->getOpcode();
-      seen(I, validateRange(Input.castOp(CastOp, MaxIntegerBW+1)));
+      APInt Min = APInt::getMinValue(BW).zextOrSelf(MaxIntegerBW+1);
+      APInt Max = APInt::getMaxValue(BW).zextOrSelf(MaxIntegerBW+1);
+      seen(I, validateRange(ConstantRange(Min, Max)));
+      continue;
+    }
+
+    case Instruction::SIToFP: {
+      // Path terminated cleanly.
+      unsigned BW = I->getOperand(0)->getType()->getPrimitiveSizeInBits();
+      APInt SMin = APInt::getSignedMinValue(BW).sextOrSelf(MaxIntegerBW+1);
+      APInt SMax = APInt::getSignedMaxValue(BW).sextOrSelf(MaxIntegerBW+1);
+      seen(I, validateRange(ConstantRange(SMin, SMax)));
       continue;
     }
 
@@ -242,12 +249,23 @@ void Float2IntPass::walkForwards() {
       llvm_unreachable("Should have been handled in walkForwards!");
 
     case Instruction::FAdd:
+      Op = [](ArrayRef<ConstantRange> Ops) {
+        assert(Ops.size() == 2 && "FAdd is a binary operator!");
+        return Ops[0].add(Ops[1]);
+      };
+      break;
+
     case Instruction::FSub:
+      Op = [](ArrayRef<ConstantRange> Ops) {
+        assert(Ops.size() == 2 && "FSub is a binary operator!");
+        return Ops[0].sub(Ops[1]);
+      };
+      break;
+
     case Instruction::FMul:
-      Op = [I](ArrayRef<ConstantRange> Ops) {
-        assert(Ops.size() == 2 && "its a binary operator!");
-        auto BinOp = (Instruction::BinaryOps) I->getOpcode();
-        return Ops[0].binaryOp(BinOp, Ops[1]);
+      Op = [](ArrayRef<ConstantRange> Ops) {
+        assert(Ops.size() == 2 && "FMul is a binary operator!");
+        return Ops[0].multiply(Ops[1]);
       };
       break;
 
@@ -257,12 +275,9 @@ void Float2IntPass::walkForwards() {
     //
     case Instruction::FPToUI:
     case Instruction::FPToSI:
-      Op = [I](ArrayRef<ConstantRange> Ops) {
+      Op = [](ArrayRef<ConstantRange> Ops) {
         assert(Ops.size() == 1 && "FPTo[US]I is a unary operator!");
-        // Note: We're ignoring the casts output size here as that's what the
-        // caller expects.
-        auto CastOp = (Instruction::CastOps)I->getOpcode();
-        return Ops[0].castOp(CastOp, MaxIntegerBW+1);
+        return Ops[0];
       };
       break;
 
@@ -516,10 +531,11 @@ FunctionPass *createFloat2IntPass() { return new Float2IntLegacyPass(); }
 PreservedAnalyses Float2IntPass::run(Function &F, FunctionAnalysisManager &) {
   if (!runImpl(F))
     return PreservedAnalyses::all();
-
-  PreservedAnalyses PA;
-  PA.preserveSet<CFGAnalyses>();
-  PA.preserve<GlobalsAA>();
-  return PA;
+  else {
+    // FIXME: This should also 'preserve the CFG'.
+    PreservedAnalyses PA;
+    PA.preserve<GlobalsAA>();
+    return PA;
+  }
 }
 } // End namespace llvm

@@ -200,10 +200,9 @@ Decl *Sema::ActOnProperty(Scope *S, SourceLocation AtLoc,
   if (ObjCCategoryDecl *CDecl = dyn_cast<ObjCCategoryDecl>(ClassDecl)) {
     if (CDecl->IsClassExtension()) {
       Res = HandlePropertyInClassExtension(S, AtLoc, LParenLoc,
-                                           FD,
-                                           GetterSel, ODS.getGetterNameLoc(),
-                                           SetterSel, ODS.getSetterNameLoc(),
-                                           isReadWrite, Attributes,
+                                           FD, GetterSel, SetterSel,
+                                           isReadWrite,
+                                           Attributes,
                                            ODS.getPropertyAttributes(),
                                            T, TSI, MethodImplKind);
       if (!Res)
@@ -213,10 +212,9 @@ Decl *Sema::ActOnProperty(Scope *S, SourceLocation AtLoc,
 
   if (!Res) {
     Res = CreatePropertyDecl(S, ClassDecl, AtLoc, LParenLoc, FD,
-                             GetterSel, ODS.getGetterNameLoc(), SetterSel,
-                             ODS.getSetterNameLoc(), isReadWrite, Attributes,
-                             ODS.getPropertyAttributes(), T, TSI,
-                             MethodImplKind);
+                             GetterSel, SetterSel, isReadWrite,
+                             Attributes, ODS.getPropertyAttributes(),
+                             T, TSI, MethodImplKind);
     if (lexicalDC)
       Res->setLexicalDeclContext(lexicalDC);
   }
@@ -414,10 +412,7 @@ Sema::HandlePropertyInClassExtension(Scope *S,
                                      SourceLocation AtLoc,
                                      SourceLocation LParenLoc,
                                      FieldDeclarator &FD,
-                                     Selector GetterSel,
-                                     SourceLocation GetterNameLoc,
-                                     Selector SetterSel,
-                                     SourceLocation SetterNameLoc,
+                                     Selector GetterSel, Selector SetterSel,
                                      const bool isReadWrite,
                                      unsigned &Attributes,
                                      const unsigned AttributesAsWritten,
@@ -517,8 +512,7 @@ Sema::HandlePropertyInClassExtension(Scope *S,
   // Create a new ObjCPropertyDecl with the DeclContext being
   // the class extension.
   ObjCPropertyDecl *PDecl = CreatePropertyDecl(S, CDecl, AtLoc, LParenLoc,
-                                               FD, GetterSel, GetterNameLoc,
-                                               SetterSel, SetterNameLoc,
+                                               FD, GetterSel, SetterSel,
                                                isReadWrite,
                                                Attributes, AttributesAsWritten,
                                                T, TSI, MethodImplKind, DC);
@@ -568,9 +562,7 @@ ObjCPropertyDecl *Sema::CreatePropertyDecl(Scope *S,
                                            SourceLocation LParenLoc,
                                            FieldDeclarator &FD,
                                            Selector GetterSel,
-                                           SourceLocation GetterNameLoc,
                                            Selector SetterSel,
-                                           SourceLocation SetterNameLoc,
                                            const bool isReadWrite,
                                            const unsigned Attributes,
                                            const unsigned AttributesAsWritten,
@@ -648,8 +640,8 @@ ObjCPropertyDecl *Sema::CreatePropertyDecl(Scope *S,
 
   // Regardless of setter/getter attribute, we save the default getter/setter
   // selector names in anticipation of declaration of setter/getter methods.
-  PDecl->setGetterName(GetterSel, GetterNameLoc);
-  PDecl->setSetterName(SetterSel, SetterNameLoc);
+  PDecl->setGetterName(GetterSel);
+  PDecl->setSetterName(SetterSel);
   PDecl->setPropertyAttributesAsWritten(
                           makePropertyAttributesAsWritten(AttributesAsWritten));
 
@@ -761,7 +753,7 @@ static void checkARCPropertyImpl(Sema &S, SourceLocation propertyImplLoc,
     break;
 
   case Qualifiers::OCL_Weak:
-    S.Diag(ivar->getLocation(), diag::err_weak_property)
+    S.Diag(ivar->getLocation(), diag::error_weak_property)
       << property->getDeclName()
       << ivar->getDeclName();
     break;
@@ -912,7 +904,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
     dyn_cast<ObjCContainerDecl>(CurContext);
   // Make sure we have a context for the property implementation declaration.
   if (!ClassImpDecl) {
-    Diag(AtLoc, diag::err_missing_property_context);
+    Diag(AtLoc, diag::error_missing_property_context);
     return nullptr;
   }
   if (PropertyIvarLoc.isInvalid())
@@ -936,11 +928,11 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
     // Look for this property declaration in the @implementation's @interface
     property = IDecl->FindPropertyDeclaration(PropertyId, QueryKind);
     if (!property) {
-      Diag(PropertyLoc, diag::err_bad_property_decl) << IDecl->getDeclName();
+      Diag(PropertyLoc, diag::error_bad_property_decl) << IDecl->getDeclName();
       return nullptr;
     }
     if (property->isClassProperty() && Synthesize) {
-      Diag(PropertyLoc, diag::err_synthesize_on_class_property) << PropertyId;
+      Diag(PropertyLoc, diag::error_synthesize_on_class_property) << PropertyId;
       return nullptr;
     }
     unsigned PIkind = property->getPropertyAttributesAsWritten();
@@ -956,7 +948,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
     if (const ObjCCategoryDecl *CD =
         dyn_cast<ObjCCategoryDecl>(property->getDeclContext())) {
       if (!CD->IsClassExtension()) {
-        Diag(PropertyLoc, diag::err_category_property) << CD->getDeclName();
+        Diag(PropertyLoc, diag::error_category_property) << CD->getDeclName();
         Diag(property->getLocation(), diag::note_property_declare);
         return nullptr;
       }
@@ -1000,12 +992,12 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
         
   } else if ((CatImplClass = dyn_cast<ObjCCategoryImplDecl>(ClassImpDecl))) {
     if (Synthesize) {
-      Diag(AtLoc, diag::err_synthesize_category_decl);
+      Diag(AtLoc, diag::error_synthesize_category_decl);
       return nullptr;
     }
     IDecl = CatImplClass->getClassInterface();
     if (!IDecl) {
-      Diag(AtLoc, diag::err_missing_property_interface);
+      Diag(AtLoc, diag::error_missing_property_interface);
       return nullptr;
     }
     ObjCCategoryDecl *Category =
@@ -1018,12 +1010,12 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
     // Look for this property declaration in @implementation's category
     property = Category->FindPropertyDeclaration(PropertyId, QueryKind);
     if (!property) {
-      Diag(PropertyLoc, diag::err_bad_category_property_decl)
+      Diag(PropertyLoc, diag::error_bad_category_property_decl)
       << Category->getDeclName();
       return nullptr;
     }
   } else {
-    Diag(AtLoc, diag::err_bad_property_context);
+    Diag(AtLoc, diag::error_bad_property_context);
     return nullptr;
   }
   ObjCIvarDecl *Ivar = nullptr;
@@ -1154,22 +1146,20 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
                                  diag::err_abstract_type_in_decl,
                                  AbstractSynthesizedIvarType)) {
         Diag(property->getLocation(), diag::note_property_declare);
-        // An abstract type is as bad as an incomplete type.
-        CompleteTypeErr = true;
-      }
-      if (CompleteTypeErr)
         Ivar->setInvalidDecl();
+      } else if (CompleteTypeErr)
+          Ivar->setInvalidDecl();
       ClassImpDecl->addDecl(Ivar);
       IDecl->makeDeclVisibleInContext(Ivar);
 
       if (getLangOpts().ObjCRuntime.isFragile())
-        Diag(PropertyDiagLoc, diag::err_missing_property_ivar_decl)
+        Diag(PropertyDiagLoc, diag::error_missing_property_ivar_decl)
             << PropertyId;
       // Note! I deliberately want it to fall thru so, we have a
       // a property implementation and to avoid future warnings.
     } else if (getLangOpts().ObjCRuntime.isNonFragile() &&
                !declaresSameEntity(ClassDeclared, IDecl)) {
-      Diag(PropertyDiagLoc, diag::err_ivar_in_superclass_use)
+      Diag(PropertyDiagLoc, diag::error_ivar_in_superclass_use)
       << property->getDeclName() << Ivar->getDeclName()
       << ClassDeclared->getDeclName();
       Diag(Ivar->getLocation(), diag::note_previous_access_declaration)
@@ -1194,7 +1184,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
                     == Compatible);
       }
       if (!compat) {
-        Diag(PropertyDiagLoc, diag::err_property_ivar_type)
+        Diag(PropertyDiagLoc, diag::error_property_ivar_type)
           << property->getDeclName() << PropType
           << Ivar->getDeclName() << IvarType;
         Diag(Ivar->getLocation(), diag::note_ivar_decl);
@@ -1209,7 +1199,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
         QualType rhsType =Context.getCanonicalType(IvarType).getUnqualifiedType();
         if (lhsType != rhsType &&
             lhsType->isArithmeticType()) {
-          Diag(PropertyDiagLoc, diag::err_property_ivar_type)
+          Diag(PropertyDiagLoc, diag::error_property_ivar_type)
             << property->getDeclName() << PropType
             << Ivar->getDeclName() << IvarType;
           Diag(Ivar->getLocation(), diag::note_ivar_decl);
@@ -1219,7 +1209,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
       // __weak is explicit. So it works on Canonical type.
       if ((PropType.isObjCGCWeak() && !IvarType.isObjCGCWeak() &&
            getLangOpts().getGC() != LangOptions::NonGC)) {
-        Diag(PropertyDiagLoc, diag::err_weak_property)
+        Diag(PropertyDiagLoc, diag::error_weak_property)
         << property->getDeclName() << Ivar->getDeclName();
         Diag(Ivar->getLocation(), diag::note_ivar_decl);
         // Fall thru - see previous comment
@@ -1228,7 +1218,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
       if ((property->getType()->isObjCObjectPointerType() ||
            PropType.isObjCGCStrong()) && IvarType.isObjCGCWeak() &&
           getLangOpts().getGC() != LangOptions::NonGC) {
-        Diag(PropertyDiagLoc, diag::err_strong_property)
+        Diag(PropertyDiagLoc, diag::error_strong_property)
         << property->getDeclName() << Ivar->getDeclName();
         // Fall thru - see previous comment
       }
@@ -1238,7 +1228,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
       checkARCPropertyImpl(*this, PropertyLoc, property, Ivar);
   } else if (PropertyIvar)
     // @dynamic
-    Diag(PropertyDiagLoc, diag::err_dynamic_property_ivar_decl);
+    Diag(PropertyDiagLoc, diag::error_dynamic_property_ivar_decl);
     
   assert (property && "ActOnPropertyImplDecl - property declaration missing");
   ObjCPropertyImplDecl *PIDecl =
@@ -1358,7 +1348,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
     if (Synthesize)
       if (ObjCPropertyImplDecl *PPIDecl =
           IC->FindPropertyImplIvarDecl(PropertyIvar)) {
-        Diag(PropertyLoc, diag::err_duplicate_ivar_use)
+        Diag(PropertyLoc, diag::error_duplicate_ivar_use)
         << PropertyId << PPIDecl->getPropertyDecl()->getIdentifier()
         << PropertyIvar;
         Diag(PPIDecl->getLocation(), diag::note_previous_use);
@@ -1366,7 +1356,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
 
     if (ObjCPropertyImplDecl *PPIDecl
         = IC->FindPropertyImplDecl(PropertyId, QueryKind)) {
-      Diag(PropertyLoc, diag::err_property_implemented) << PropertyId;
+      Diag(PropertyLoc, diag::error_property_implemented) << PropertyId;
       Diag(PPIDecl->getLocation(), diag::note_previous_declaration);
       return nullptr;
     }
@@ -1397,7 +1387,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
     if (Synthesize)
       if (ObjCPropertyImplDecl *PPIDecl =
           CatImplClass->FindPropertyImplIvarDecl(PropertyIvar)) {
-        Diag(PropertyDiagLoc, diag::err_duplicate_ivar_use)
+        Diag(PropertyDiagLoc, diag::error_duplicate_ivar_use)
         << PropertyId << PPIDecl->getPropertyDecl()->getIdentifier()
         << PropertyIvar;
         Diag(PPIDecl->getLocation(), diag::note_previous_use);
@@ -1405,7 +1395,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
 
     if (ObjCPropertyImplDecl *PPIDecl =
         CatImplClass->FindPropertyImplDecl(PropertyId, QueryKind)) {
-      Diag(PropertyDiagLoc, diag::err_property_implemented) << PropertyId;
+      Diag(PropertyDiagLoc, diag::error_property_implemented) << PropertyId;
       Diag(PPIDecl->getLocation(), diag::note_previous_declaration);
       return nullptr;
     }
@@ -1515,7 +1505,7 @@ bool Sema::DiagnosePropertyAccessorMismatch(ObjCPropertyDecl *property,
       compat = Context.canAssignObjCInterfaces(getterObjCPtr, propertyObjCPtr);
     else if (CheckAssignmentConstraints(Loc, GetterType, PropertyRValueType)
               != Compatible) {
-          Diag(Loc, diag::err_property_accessor_type)
+          Diag(Loc, diag::error_property_accessor_type)
             << property->getDeclName() << PropertyRValueType
             << GetterMethod->getSelector() << GetterType;
           Diag(GetterMethod->getLocation(), diag::note_declared_at);
@@ -2185,9 +2175,12 @@ void Sema::ProcessPropertyDecl(ObjCPropertyDecl *property) {
   DiagnosePropertyAccessorMismatch(property, GetterMethod,
                                    property->getLocation());
 
-  if (!property->isReadOnly() && SetterMethod) {
-    if (Context.getCanonicalType(SetterMethod->getReturnType()) !=
-        Context.VoidTy)
+  if (SetterMethod) {
+    ObjCPropertyDecl::PropertyAttributeKind CAttr =
+      property->getPropertyAttributes();
+    if ((!(CAttr & ObjCPropertyDecl::OBJC_PR_readonly)) &&
+        Context.getCanonicalType(SetterMethod->getReturnType()) !=
+            Context.VoidTy)
       Diag(SetterMethod->getLocation(), diag::err_setter_type_void);
     if (SetterMethod->param_size() != 1 ||
         !Context.hasSameUnqualifiedType(

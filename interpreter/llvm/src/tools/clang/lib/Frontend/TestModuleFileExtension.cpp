@@ -24,11 +24,11 @@ void TestModuleFileExtension::Writer::writeExtensionContents(
   using namespace llvm;
 
   // Write an abbreviation for this record.
-  auto Abv = std::make_shared<llvm::BitCodeAbbrev>();
+  BitCodeAbbrev *Abv = new llvm::BitCodeAbbrev();
   Abv->Add(BitCodeAbbrevOp(FIRST_EXTENSION_RECORD_ID));
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // # of characters
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob));   // message
-  auto Abbrev = Stream.EmitAbbrev(std::move(Abv));
+  auto Abbrev = Stream.EmitAbbrev(Abv);
 
   // Write a message into the extension block.
   SmallString<64> Message;

@@ -21,14 +21,13 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cassert>
-#include <cstdint>
 
 namespace llvm {
 
-class MachObjectWriter;
+// Forward declarations.
 class MCAsmLayout;
 class MCSymbol;
+class MachObjectWriter;
 
 /// Linker Optimization Hint Type.
 enum MCLOHType {
@@ -111,7 +110,7 @@ class MCLOHDirective {
                  const MCAsmLayout &Layout) const;
 
 public:
-  using LOHArgs = SmallVectorImpl<MCSymbol *>;
+  typedef SmallVectorImpl<MCSymbol *> LOHArgs;
 
   MCLOHDirective(MCLOHType Kind, const LOHArgs &Args)
       : Kind(Kind), Args(Args.begin(), Args.end()) {
@@ -134,15 +133,15 @@ public:
 
 class MCLOHContainer {
   /// Keep track of the emit size of all the LOHs.
-  mutable uint64_t EmitSize = 0;
+  mutable uint64_t EmitSize;
 
   /// Keep track of all LOH directives.
   SmallVector<MCLOHDirective, 32> Directives;
 
 public:
-  using LOHDirectives = SmallVectorImpl<MCLOHDirective>;
+  typedef SmallVectorImpl<MCLOHDirective> LOHDirectives;
 
-  MCLOHContainer() = default;
+  MCLOHContainer() : EmitSize(0) {}
 
   /// Const accessor to the directives.
   const LOHDirectives &getDirectives() const {
@@ -179,9 +178,9 @@ public:
 };
 
 // Add types for specialized template using MCSymbol.
-using MCLOHArgs = MCLOHDirective::LOHArgs;
-using MCLOHDirectives = MCLOHContainer::LOHDirectives;
+typedef MCLOHDirective::LOHArgs MCLOHArgs;
+typedef MCLOHContainer::LOHDirectives MCLOHDirectives;
 
 } // end namespace llvm
 
-#endif // LLVM_MC_MCLINKEROPTIMIZATIONHINT_H
+#endif

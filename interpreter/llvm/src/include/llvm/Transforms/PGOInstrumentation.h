@@ -22,13 +22,13 @@ namespace llvm {
 /// The instrumentation (profile-instr-gen) pass for IR based PGO.
 class PGOInstrumentationGen : public PassInfoMixin<PGOInstrumentationGen> {
 public:
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
+  PreservedAnalyses run(Module &M, AnalysisManager<Module> &AM);
 };
 
 /// The profile annotation (profile-instr-use) pass for IR based PGO.
 class PGOInstrumentationUse : public PassInfoMixin<PGOInstrumentationUse> {
 public:
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
+  PreservedAnalyses run(Module &M, AnalysisManager<Module> &AM);
   PGOInstrumentationUse(std::string Filename = "");
 
 private:
@@ -38,24 +38,11 @@ private:
 /// The indirect function call promotion pass.
 class PGOIndirectCallPromotion : public PassInfoMixin<PGOIndirectCallPromotion> {
 public:
-  PGOIndirectCallPromotion(bool IsInLTO = false, bool SamplePGO = false)
-      : InLTO(IsInLTO), SamplePGO(SamplePGO) {}
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
-
+  PGOIndirectCallPromotion(bool IsInLTO = false) : InLTO(IsInLTO) {}
+  PreservedAnalyses run(Module &M, AnalysisManager<Module> &AM);
 private:
   bool InLTO;
-  bool SamplePGO;
 };
-
-/// The profile size based optimization pass for memory intrinsics.
-class PGOMemOPSizeOpt : public PassInfoMixin<PGOMemOPSizeOpt> {
-public:
-  PGOMemOPSizeOpt() {}
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-};
-
-void setProfMetadata(Module *M, Instruction *TI, ArrayRef<uint64_t> EdgeCounts,
-                     uint64_t MaxCount);
 
 } // End llvm namespace
 #endif

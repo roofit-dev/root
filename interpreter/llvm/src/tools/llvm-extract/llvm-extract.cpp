@@ -17,13 +17,11 @@
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRPrintingPasses.h"
-#include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Error.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -50,10 +48,6 @@ Force("f", cl::desc("Enable binary output on terminals"));
 
 static cl::opt<bool>
 DeleteFn("delete", cl::desc("Delete specified Globals from Module"));
-
-static cl::opt<bool>
-    Recursive("recursive",
-              cl::desc("Recursively extract all called functions"));
 
 // ExtractFuncs - The functions to extract from the module.
 static cl::list<std::string>
@@ -228,38 +222,12 @@ int main(int argc, char **argv) {
     }
   }
 
-  // Use *argv instead of argv[0] to work around a wrong GCC warning.
-  ExitOnError ExitOnErr(std::string(*argv) + ": error reading input: ");
-
-  if (Recursive) {
-    std::vector<llvm::Function *> Workqueue;
-    for (GlobalValue *GV : GVs) {
-      if (auto *F = dyn_cast<Function>(GV)) {
-        Workqueue.push_back(F);
-      }
+  auto Materialize = [&](GlobalValue &GV) {
+    if (std::error_code EC = GV.materialize()) {
+      errs() << argv[0] << ": error reading input: " << EC.message() << "\n";
+      exit(1);
     }
-    while (!Workqueue.empty()) {
-      Function *F = &*Workqueue.back();
-      Workqueue.pop_back();
-      ExitOnErr(F->materialize());
-      for (auto &BB : *F) {
-        for (auto &I : BB) {
-          auto *CI = dyn_cast<CallInst>(&I);
-          if (!CI)
-            continue;
-          Function *CF = CI->getCalledFunction();
-          if (!CF)
-            continue;
-          if (CF->isDeclaration() || GVs.count(CF))
-            continue;
-          GVs.insert(CF);
-          Workqueue.push_back(CF);
-        }
-      }
-    }
-  }
-
-  auto Materialize = [&](GlobalValue &GV) { ExitOnErr(GV.materialize()); };
+  };
 
   // Materialize requisite global values.
   if (!DeleteFn) {
@@ -283,7 +251,7 @@ int main(int argc, char **argv) {
     // Now that we have all the GVs we want, mark the module as fully
     // materialized.
     // FIXME: should the GVExtractionPass handle this?
-    ExitOnErr(M->materializeAll());
+    M->materializeAll();
   }
 
   // In addition to deleting all other functions, we also want to spiff it

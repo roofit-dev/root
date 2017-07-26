@@ -96,7 +96,7 @@ void CallingConvEmitter::EmitAction(Record *Action,
     } else if (Action->isSubClassOf("CCIf")) {
       O << Action->getValueAsString("Predicate");
     } else {
-      errs() << *Action;
+      Action->dump();
       PrintFatalError("Unknown CCPredicateAction!");
     }
     
@@ -268,7 +268,7 @@ void CallingConvEmitter::EmitAction(Record *Action,
         << "LocVT, LocInfo, ArgFlags, State))\n";
       O << IndentStr << IndentStr << "return false;\n";
     } else {
-      errs() << *Action;
+      Action->dump();
       PrintFatalError("Unknown CCAction!");
     }
   }

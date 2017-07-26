@@ -26,9 +26,6 @@ class CCIfNotSubtarget<string F, CCAction A>
 class CCIfOrigArgWasNotPPCF128<CCAction A>
     : CCIf<"!static_cast<PPCCCState *>(&State)->WasOriginalArgPPCF128(ValNo)",
            A>;
-class CCIfOrigArgWasPPCF128<CCAction A>
-    : CCIf<"static_cast<PPCCCState *>(&State)->WasOriginalArgPPCF128(ValNo)",
-           A>;
 
 //===----------------------------------------------------------------------===//
 // Return Value Calling Convention
@@ -68,9 +65,11 @@ def RetCC_PPC : CallingConv<[
  
   // Vector types returned as "direct" go into V2 .. V9; note that only the
   // ELFv2 ABI fully utilizes all these registers.
-  CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
+  CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32], 
            CCIfSubtarget<"hasAltivec()",
-           CCAssignToReg<[V2, V3, V4, V5, V6, V7, V8, V9]>>>
+           CCAssignToReg<[V2, V3, V4, V5, V6, V7, V8, V9]>>>,
+  CCIfType<[v2f64, v2i64], CCIfSubtarget<"hasVSX()",
+           CCAssignToReg<[VSH2, VSH3, VSH4, VSH5, VSH6, VSH7, VSH8, VSH9]>>>
 ]>;
 
 // No explicit register is specified for the AnyReg calling convention. The
@@ -119,9 +118,11 @@ def RetCC_PPC64_ELF_FIS : CallingConv<[
   CCIfType<[f64],  CCAssignToReg<[F1, F2, F3, F4, F5, F6, F7, F8]>>,
   CCIfType<[v4f64, v4f32, v4i1],
            CCIfSubtarget<"hasQPX()", CCAssignToReg<[QF1, QF2]>>>,
-  CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
+  CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32], 
            CCIfSubtarget<"hasAltivec()",
-           CCAssignToReg<[V2, V3, V4, V5, V6, V7, V8, V9]>>>
+           CCAssignToReg<[V2, V3, V4, V5, V6, V7, V8, V9]>>>,
+  CCIfType<[v2f64, v2i64], CCIfSubtarget<"hasVSX()",
+           CCAssignToReg<[VSH2, VSH3, VSH4, VSH5, VSH6, VSH7, VSH8, VSH9]>>>
 ]>;
 
 //===----------------------------------------------------------------------===//
@@ -141,9 +142,6 @@ def CC_PPC32_SVR4_Common : CallingConv<[
   CCIfType<[i32],
   CCIfSplit<CCIfNotSubtarget<"useSoftFloat()", 
                             CCCustom<"CC_PPC32_SVR4_Custom_AlignArgRegs">>>>,
-  CCIfSplit<CCIfSubtarget<"useSoftFloat()",
-                          CCIfOrigArgWasPPCF128<CCCustom<
-                          "CC_PPC32_SVR4_Custom_SkipLastArgRegsPPCF128">>>>,
 
   // The 'nest' parameter, if any, is passed in R11.
   CCIfNest<CCAssignToReg<[R11]>>,
@@ -189,9 +187,12 @@ def CC_PPC32_SVR4 : CallingConv<[
     CCAssignToReg<[QF1, QF2, QF3, QF4, QF5, QF6, QF7, QF8]>>>,
 
   // The first 12 Vector arguments are passed in AltiVec registers.
-  CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
+  CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32], 
            CCIfSubtarget<"hasAltivec()", CCAssignToReg<[V2, V3, V4, V5, V6, V7,
                           V8, V9, V10, V11, V12, V13]>>>,
+  CCIfType<[v2f64, v2i64], CCIfSubtarget<"hasVSX()",
+           CCAssignToReg<[VSH2, VSH3, VSH4, VSH5, VSH6, VSH7, VSH8, VSH9,
+                          VSH10, VSH11, VSH12, VSH13]>>>,
            
   CCDelegateTo<CC_PPC32_SVR4_Common>
 ]>;  
@@ -280,5 +281,6 @@ def CSR_64_AllRegs_Altivec : CalleeSavedRegs<(add CSR_64_AllRegs,
                                              (sequence "V%u", 0, 31))>;
 
 def CSR_64_AllRegs_VSX : CalleeSavedRegs<(add CSR_64_AllRegs_Altivec,
-                                         (sequence "VSL%u", 0, 31))>;
+                                         (sequence "VSL%u", 0, 31),
+                                         (sequence "VSH%u", 0, 31))>;
 

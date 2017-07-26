@@ -91,8 +91,6 @@ public:
 
    BaseSelectionRule(long index, ESelect sel, const std::string& attributeName, const std::string& attributeValue, cling::Interpreter &interp, const char* selFileName = "",long lineno=-1);
 
-   virtual ~BaseSelectionRule() = default;
-
    virtual void DebugPrint() const;
    virtual void Print(std::ostream &out) const = 0;
 

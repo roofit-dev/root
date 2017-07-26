@@ -17,7 +17,9 @@
 
 #include "clang/AST/ASTConsumer.h"
 #include "clang/Basic/LLVM.h"
-#include <memory>
+#include "clang/StaticAnalyzer/Core/AnalyzerOptions.h"
+#include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
+#include <string>
 
 namespace clang {
 
@@ -27,7 +29,6 @@ class CodeInjector;
 class CompilerInstance;
 
 namespace ento {
-class PathDiagnosticConsumer;
 class CheckerManager;
 
 class AnalysisASTConsumer : public ASTConsumer {

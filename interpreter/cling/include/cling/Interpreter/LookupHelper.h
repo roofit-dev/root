@@ -13,7 +13,6 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/SmallVector.h"
 
-#include <array>
 #include <memory>
 
 namespace clang {
@@ -34,33 +33,22 @@ namespace llvm {
 
 namespace cling {
   class Interpreter;
-  class Transaction;
-
   ///\brief Reflection information query interface. The class performs lookups
   /// in the currently loaded information in the AST, using the same Parser,
   /// Sema and Preprocessor objects.
   ///
   class LookupHelper {
+  private:
+    std::unique_ptr<clang::Parser> m_Parser;
+    Interpreter* m_Interpreter; // we do not own.
+    const clang::Type* m_StringTy;
   public:
-    enum StringType {
-      kStdString,
-      kWCharString,
-      kUTF16Str,
-      kUTF32Str,
-      kNumCachedStrings,
-      kNotAString = kNumCachedStrings,
-    };
+
     enum DiagSetting {
       NoDiagnostics,
       WithDiagnostics
     };
 
-  private:
-    std::unique_ptr<clang::Parser> m_Parser;
-    Interpreter* m_Interpreter; // we do not own.
-    std::array<const clang::Type*, kNumCachedStrings> m_StringTy = {};
-
-  public:
     LookupHelper(clang::Parser* P, Interpreter* interp);
     ~LookupHelper();
 
@@ -234,8 +222,10 @@ namespace cling {
     bool hasFunction(const clang::Decl* scopeDecl, llvm::StringRef funcName,
                      DiagSetting diagOnOff) const;
 
-    ///\brief Retrieve the StringType of given Type.
-     StringType getStringType(const clang::Type* Type);
+
+    ///\brief Retrieve the QualType of `std::string`.
+    const clang::Type* getStringType();
+
   };
 
 } // end namespace

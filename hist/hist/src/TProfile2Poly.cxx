@@ -10,7 +10,7 @@
 #include <cassert>
 #include <cmath>
 
-ClassImp(TProfile2Poly);
+ClassImp(TProfile2Poly)
 
 // -------------- TProfile2PolyBin  --------------
 
@@ -123,11 +123,9 @@ Int_t TProfile2Poly::Fill(Double_t xcoord, Double_t ycoord, Double_t value, Doub
 {
    // Find region in which the hit occured
    Int_t tmp = GetOverflowRegionFromCoordinates(xcoord, ycoord);
-   if (tmp < 0) {
-      Int_t overflow_idx = OverflowIdxToArrayIdx(tmp);
-      fOverflowBins[overflow_idx].Fill(value, weight);
-      fOverflowBins[overflow_idx].SetContent(fOverflowBins[overflow_idx].fAverage );
-   }
+   Int_t overflow_idx = OverflowIdxToArrayIdx(tmp);
+   fOverflowBins[overflow_idx].Fill(value, weight);
+   fOverflowBins[overflow_idx].SetContent(fOverflowBins[overflow_idx].fAverage ); 
 
    // Find the cell to which (x,y) coordinates belong to
    Int_t n = (Int_t)(floor((xcoord - fXaxis.GetXmin()) / fStepX));
@@ -190,7 +188,7 @@ Long64_t TProfile2Poly::Merge(const std::vector<TProfile2Poly *> &list)
    // ------------ Check that bin numbers of TP2P's to be merged are equal
    std::set<Int_t> numBinUnique;
    for (const auto &histo : list) {
-      if (histo->fBins) numBinUnique.insert(histo->fBins->GetSize());
+      numBinUnique.insert(histo->fBins->GetSize());
    }
    if (numBinUnique.size() != 1) {
       std::cout << "[FAIL] TProfile2Poly::Merge: Bin numbers of TProfile2Polys to be merged differ!" << std::endl;
@@ -237,7 +235,7 @@ Long64_t TProfile2Poly::Merge(const std::vector<TProfile2Poly *> &list)
 
 void TProfile2Poly::SetContentToAverage()
 {
-   Int_t nbins = fBins ? fBins->GetSize() : 0;
+   Int_t nbins = fBins->GetSize();
    for (Int_t i = 0; i < nbins; i++) {
       TProfile2PolyBin *bin = (TProfile2PolyBin *)fBins->At(i);
       bin->Update();
@@ -252,7 +250,7 @@ void TProfile2Poly::SetContentToAverage()
 
 void TProfile2Poly::SetContentToError()
 {
-   Int_t nbins = fBins ? fBins->GetSize() : 0;
+   Int_t nbins = fBins->GetSize();
    for (Int_t i = 0; i < nbins; i++) {
       TProfile2PolyBin *bin = (TProfile2PolyBin *)fBins->At(i);
       bin->Update();

@@ -394,7 +394,7 @@ Bool_t TRootSnifferScanRec::GoInside(TRootSnifferScanRec &super, TObject *obj, c
 //                                                                      //
 //////////////////////////////////////////////////////////////////////////
 
-ClassImp(TRootSniffer);
+ClassImp(TRootSniffer)
 
    ////////////////////////////////////////////////////////////////////////////////
    /// constructor
@@ -1950,7 +1950,7 @@ TObject *TRootSniffer::GetItem(const char *fullname, TFolder *&parent, Bool_t fo
       httpfold = topf->AddFolder("http", "ROOT http server");
       httpfold->SetBit(kCanDelete);
       // register top folder in list of cleanups
-      R__LOCKGUARD(gROOTMutex);
+      R__LOCKGUARD2(gROOTMutex);
       gROOT->GetListOfCleanups()->Add(httpfold);
    }
 

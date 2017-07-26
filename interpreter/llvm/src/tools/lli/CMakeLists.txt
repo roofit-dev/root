@@ -1,12 +1,11 @@
-if ( LLVM_INCLUDE_UTILS )
-  add_subdirectory(ChildTarget)
-endif()
+add_subdirectory(ChildTarget)
 
 set(LLVM_LINK_COMPONENTS
   CodeGen
   Core
   ExecutionEngine
   IRReader
+  Instrumentation
   Interpreter
   MC
   MCJIT
@@ -39,8 +38,5 @@ endif( LLVM_USE_INTEL_JITEVENTS )
 add_llvm_tool(lli
   lli.cpp
   OrcLazyJIT.cpp
-
-  DEPENDS
-  intrinsics_gen
   )
 export_executable_symbols(lli)

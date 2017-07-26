@@ -97,9 +97,7 @@ wide variety of meanings:
    BangOperator: one of
                :!eq     !if      !head    !tail      !con
                :!add    !shl     !sra     !srl       !and
-               :!or     !empty   !subst   !foreach   !strconcat
-               :!cast   !listconcat
-
+               :!cast   !empty   !subst   !foreach   !listconcat   !strconcat
 
 Syntax
 ======

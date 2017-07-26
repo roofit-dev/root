@@ -17,8 +17,6 @@ extern "C" {
    R__DLLEXPORT void usedToIdentifyRootClingByDlSym() {}
 }
 
-// force compiler to emit symbol for function above
-static void (*dlsymaddr)() = &usedToIdentifyRootClingByDlSym;
 
 ROOT::Internal::RootCling::TROOTSYSSetter gROOTSYSSetter;
 
@@ -34,7 +32,12 @@ static const char *GetEtcDir() {
 
 int main(int argc, char **argv)
 {
-   (void) dlsymaddr; // avoid unused variable warning
+   // Force the emission of the symbol - the compiler cannot know that argv
+   // is always set.
+   if (!argv) {
+      auto dummyVal =  (int)(long)&usedToIdentifyRootClingByDlSym;
+      return dummyVal;
+   }
 
    ROOT::Internal::RootCling::DriverConfig config{};
 

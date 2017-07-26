@@ -17,6 +17,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Analysis/LoopPassManager.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRPrintingPasses.h"
@@ -29,7 +30,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Transforms/Scalar/LoopPassManager.h"
 
 using namespace llvm;
 using namespace opt_tool;
@@ -47,13 +47,12 @@ static cl::opt<std::string>
                         "pipeline for handling managed aliasing queries"),
                cl::Hidden);
 
-bool llvm::runPassPipeline(StringRef Arg0, Module &M,
+bool llvm::runPassPipeline(StringRef Arg0, LLVMContext &Context, Module &M,
                            TargetMachine *TM, tool_output_file *Out,
                            StringRef PassPipeline, OutputKind OK,
                            VerifierKind VK,
                            bool ShouldPreserveAssemblyUseListOrder,
-                           bool ShouldPreserveBitcodeUseListOrder,
-                           bool EmitSummaryIndex, bool EmitModuleHash) {
+                           bool ShouldPreserveBitcodeUseListOrder) {
   PassBuilder PB(TM);
 
   // Specially handle the alias analysis manager so that we can register
@@ -101,8 +100,8 @@ bool llvm::runPassPipeline(StringRef Arg0, Module &M,
         PrintModulePass(Out->os(), "", ShouldPreserveAssemblyUseListOrder));
     break;
   case OK_OutputBitcode:
-    MPM.addPass(BitcodeWriterPass(Out->os(), ShouldPreserveBitcodeUseListOrder,
-                                  EmitSummaryIndex, EmitModuleHash));
+    MPM.addPass(
+        BitcodeWriterPass(Out->os(), ShouldPreserveBitcodeUseListOrder));
     break;
   }
 

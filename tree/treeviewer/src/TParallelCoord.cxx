@@ -38,7 +38,7 @@
 #include "TGaxis.h"
 #include "TFile.h"
 
-ClassImp(TParallelCoord);
+ClassImp(TParallelCoord)
 
 /** \class TParallelCoord
 Parallel Coordinates class.
@@ -238,6 +238,8 @@ void TParallelCoord::AddVariable(const char* varexp)
    }
 
    AddVariable(fTree->GetV1(),varexp);
+   TParallelCoordVar* var = (TParallelCoordVar*)fVarList->Last();
+   var->Draw();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -415,6 +417,7 @@ void TParallelCoord::Draw(Option_t* option)
          var->SetHistogramHeight(0.5);
          var->SetHistogramLineWidth(0);
       }
+      var->Draw();
    }
 
    if (optcandle) {
@@ -635,12 +638,6 @@ void TParallelCoord::Paint(Option_t* /*option*/)
       }
    }
    gPad->RangeAxis(0,0,1,1);
-
-   TIter nextVar(fVarList);
-   TParallelCoordVar* var=0;
-   while((var = (TParallelCoordVar*)nextVar())) {
-      var->Paint();
-   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -740,21 +737,19 @@ void TParallelCoord::RemoveVariable(TParallelCoordVar *var)
 ////////////////////////////////////////////////////////////////////////////////
 /// Delete the variable "vartitle" from the graph.
 
-Bool_t TParallelCoord::RemoveVariable(const char* vartitle)
+TParallelCoordVar* TParallelCoord::RemoveVariable(const char* vartitle)
 {
    TIter next(fVarList);
    TParallelCoordVar* var=0;
    while((var = (TParallelCoordVar*)next())) {
       if (!strcmp(var->GetTitle(),vartitle)) break;
    }
-   if(!var) {
-      Error("RemoveVariable","\"%s\" not a variable",vartitle);
-      return kFALSE;
-   } else {
-      RemoveVariable(var);
-      delete var;
-      return kTRUE;
-   }
+   if(!var) Error("RemoveVariable","\"%s\" not a variable",vartitle);
+   fVarList->Remove(var);
+   fNvar = fVarList->GetSize();
+   SetAxesPosition();
+   var->DeleteVariable();
+   return var;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

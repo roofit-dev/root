@@ -58,12 +58,6 @@ public:
     SOB_Trapping    // -ftrapv
   };
 
-  enum CompilingModuleKind {
-    CMK_None,           ///< Not compiling a module interface at all.
-    CMK_ModuleMap,      ///< Compiling a module from a module map.
-    CMK_ModuleInterface ///< Compiling a C++ modules TS module interface unit.
-  };
-
   enum PragmaMSPointersToMembersKind {
     PPTMK_BestCase,
     PPTMK_FullGeneralitySingleInheritance,
@@ -88,12 +82,6 @@ public:
     MSVC2015 = 19
   };
 
-  enum FPContractModeKind {
-    FPC_Off,        // Form fused FP ops only where result will not be affected.
-    FPC_On,         // Form fused FP ops according to FP_CONTRACT rules.
-    FPC_Fast        // Aggressively fuse FP ops (E.g. FMA).
-  };
-
 public:
   /// \brief Set of enabled sanitizers.
   SanitizerSet Sanitize;
@@ -101,16 +89,6 @@ public:
   /// \brief Paths to blacklist files specifying which objects
   /// (files, functions, variables) should not be instrumented.
   std::vector<std::string> SanitizerBlacklistFiles;
-
-  /// \brief Paths to the XRay "always instrument" files specifying which
-  /// objects (files, functions, variables) should be imbued with the XRay
-  /// "always instrument" attribute.
-  std::vector<std::string> XRayAlwaysInstrumentFiles;
-
-  /// \brief Paths to the XRay "never instrument" files specifying which
-  /// objects (files, functions, variables) should be imbued with the XRay
-  /// "never instrument" attribute.
-  std::vector<std::string> XRayNeverInstrumentFiles;
 
   clang::ObjCRuntime ObjCRuntime;
 
@@ -148,10 +126,6 @@ public:
   /// host code generation.
   std::string OMPHostIRFile;
 
-  /// \brief Indicates whether the front-end is explicitly told that the
-  /// input is a header file (i.e. -x c-header).
-  bool IsHeaderFile;
-
   LangOptions();
 
   // Define accessors/mutators for language options of enumeration type.
@@ -160,17 +134,7 @@ public:
   Type get##Name() const { return static_cast<Type>(Name); } \
   void set##Name(Type Value) { Name = static_cast<unsigned>(Value); }  
 #include "clang/Basic/LangOptions.def"
-
-  /// Are we compiling a module interface (.cppm or module map)?
-  bool isCompilingModule() const {
-    return getCompilingModule() != CMK_None;
-  }
-
-  /// Do we need to track the owning module for a local declaration?
-  bool trackLocalOwningModule() const {
-    return ModulesLocalVisibility;
-  }
-
+  
   bool isSignedOverflowDefined() const {
     return getSignedOverflowBehavior() == SOB_Defined;
   }
@@ -190,46 +154,18 @@ public:
 
   /// \brief Is this a libc/libm function that is no longer recognized as a
   /// builtin because a -fno-builtin-* option has been specified?
-  bool isNoBuiltinFunc(StringRef Name) const;
-
-  /// \brief True if any ObjC types may have non-trivial lifetime qualifiers.
-  bool allowsNonTrivialObjCLifetimeQualifiers() const {
-    return ObjCAutoRefCount || ObjCWeak;
-  }
+  bool isNoBuiltinFunc(const char *Name) const;
 };
 
 /// \brief Floating point control options
 class FPOptions {
 public:
-  FPOptions() : fp_contract(LangOptions::FPC_Off) {}
+  unsigned fp_contract : 1;
 
-  // Used for serializing.
-  explicit FPOptions(unsigned I)
-      : fp_contract(static_cast<LangOptions::FPContractModeKind>(I)) {}
+  FPOptions() : fp_contract(0) {}
 
-  explicit FPOptions(const LangOptions &LangOpts)
-      : fp_contract(LangOpts.getDefaultFPContractMode()) {}
-
-  bool allowFPContractWithinStatement() const {
-    return fp_contract == LangOptions::FPC_On;
-  }
-  bool allowFPContractAcrossStatement() const {
-    return fp_contract == LangOptions::FPC_Fast;
-  }
-  void setAllowFPContractWithinStatement() {
-    fp_contract = LangOptions::FPC_On;
-  }
-  void setAllowFPContractAcrossStatement() {
-    fp_contract = LangOptions::FPC_Fast;
-  }
-  void setDisallowFPContract() { fp_contract = LangOptions::FPC_Off; }
-
-  /// Used to serialize this.
-  unsigned getInt() const { return fp_contract; }
-
-private:
-  /// Adjust BinaryOperator::FPFeatures to match the bit-field size of this.
-  unsigned fp_contract : 2;
+  FPOptions(const LangOptions &LangOpts) :
+    fp_contract(LangOpts.DefaultFPContract) {}
 };
 
 /// \brief Describes the kind of translation unit being processed.

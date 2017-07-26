@@ -67,21 +67,15 @@ void BPFInstPrinter::printMemOperand(const MCInst *MI, int OpNo, raw_ostream &O,
                                      const char *Modifier) {
   const MCOperand &RegOp = MI->getOperand(OpNo);
   const MCOperand &OffsetOp = MI->getOperand(OpNo + 1);
+  // offset
+  if (OffsetOp.isImm())
+    O << formatDec(OffsetOp.getImm());
+  else
+    assert(0 && "Expected an immediate");
 
   // register
   assert(RegOp.isReg() && "Register operand not a register");
-  O << getRegisterName(RegOp.getReg());
-
-  // offset
-  if (OffsetOp.isImm()) {
-    auto Imm = OffsetOp.getImm();
-    if (Imm >= 0)
-      O << " + " << formatDec(Imm);
-    else
-      O << " - " << formatDec(-Imm);
-  } else {
-    assert(0 && "Expected an immediate");
-  }
+  O << '(' << getRegisterName(RegOp.getReg()) << ')';
 }
 
 void BPFInstPrinter::printImm64Operand(const MCInst *MI, unsigned OpNo,

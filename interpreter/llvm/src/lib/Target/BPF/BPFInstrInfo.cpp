@@ -13,13 +13,15 @@
 
 #include "BPF.h"
 #include "BPFInstrInfo.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
+#include "BPFSubtarget.h"
+#include "BPFTargetMachine.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/IR/DebugLoc.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Support/ErrorHandling.h"
-#include <cassert>
-#include <iterator>
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 
 #define GET_INSTRINFO_CTOR_DTOR
 #include "BPFGenInstrInfo.inc"
@@ -73,7 +75,7 @@ void BPFInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
     llvm_unreachable("Can't load this register from stack slot");
 }
 
-bool BPFInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
+bool BPFInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
                                  MachineBasicBlock *&TBB,
                                  MachineBasicBlock *&FBB,
                                  SmallVectorImpl<MachineOperand> &Cond,
@@ -107,11 +109,11 @@ bool BPFInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
       while (std::next(I) != MBB.end())
         std::next(I)->eraseFromParent();
       Cond.clear();
-      FBB = nullptr;
+      FBB = 0;
 
       // Delete the J if it's equivalent to a fall-through.
       if (MBB.isLayoutSuccessor(I->getOperand(0).getMBB())) {
-        TBB = nullptr;
+        TBB = 0;
         I->eraseFromParent();
         I = MBB.end();
         continue;
@@ -128,16 +130,13 @@ bool BPFInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
   return false;
 }
 
-unsigned BPFInstrInfo::insertBranch(MachineBasicBlock &MBB,
+unsigned BPFInstrInfo::InsertBranch(MachineBasicBlock &MBB,
                                     MachineBasicBlock *TBB,
                                     MachineBasicBlock *FBB,
                                     ArrayRef<MachineOperand> Cond,
-                                    const DebugLoc &DL,
-                                    int *BytesAdded) const {
-  assert(!BytesAdded && "code size not handled");
-
+                                    const DebugLoc &DL) const {
   // Shouldn't be a fall through.
-  assert(TBB && "insertBranch must not be told to insert a fallthrough");
+  assert(TBB && "InsertBranch must not be told to insert a fallthrough");
 
   if (Cond.empty()) {
     // Unconditional branch
@@ -149,10 +148,7 @@ unsigned BPFInstrInfo::insertBranch(MachineBasicBlock &MBB,
   llvm_unreachable("Unexpected conditional branch");
 }
 
-unsigned BPFInstrInfo::removeBranch(MachineBasicBlock &MBB,
-                                    int *BytesRemoved) const {
-  assert(!BytesRemoved && "code size not handled");
-
+unsigned BPFInstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
   MachineBasicBlock::iterator I = MBB.end();
   unsigned Count = 0;
 

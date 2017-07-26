@@ -367,7 +367,7 @@ unsigned MapTableEmitter::emitBinSearchTable(raw_ostream &OS) {
 
   ArrayRef<const CodeGenInstruction*> NumberedInstructions =
                                             Target.getInstructionsByEnumValue();
-  std::string Namespace = Target.getInstNamespace();
+  std::string TargetName = Target.getName();
   const std::vector<ListInit*> &ValueCols = InstrMapDesc.getValueCols();
   unsigned NumCol = ValueCols.size();
   unsigned TotalNumInstr = NumberedInstructions.size();
@@ -387,22 +387,22 @@ unsigned MapTableEmitter::emitBinSearchTable(raw_ostream &OS) {
         if (ColInstrs[j] != nullptr) {
           RelExists = 1;
           OutStr += ", ";
-          OutStr += Namespace;
+          OutStr += TargetName;
           OutStr += "::";
           OutStr += ColInstrs[j]->getName();
         } else { OutStr += ", (uint16_t)-1U";}
       }
 
       if (RelExists) {
-        OS << "  { " << Namespace << "::" << CurInstr->getName();
+        OS << "  { " << TargetName << "::" << CurInstr->getName();
         OS << OutStr <<" },\n";
         TableSize++;
       }
     }
   }
   if (!TableSize) {
-    OS << "  { " << Namespace << "::" << "INSTRUCTION_LIST_END, ";
-    OS << Namespace << "::" << "INSTRUCTION_LIST_END }";
+    OS << "  { " << TargetName << "::" << "INSTRUCTION_LIST_END, ";
+    OS << TargetName << "::" << "INSTRUCTION_LIST_END }";
   }
   OS << "}; // End of " << InstrMapDesc.getName() << "Table\n\n";
   return TableSize;
@@ -542,7 +542,6 @@ static void emitEnums(raw_ostream &OS, RecordKeeper &Records) {
       for (unsigned j = i+1; j < FieldValues.size(); j++) {
         if (CurVal == FieldValues[j]) {
           FieldValues.erase(FieldValues.begin()+j);
-          --j;
         }
       }
     }
@@ -567,7 +566,7 @@ namespace llvm {
 //===----------------------------------------------------------------------===//
 void EmitMapTable(RecordKeeper &Records, raw_ostream &OS) {
   CodeGenTarget Target(Records);
-  std::string NameSpace = Target.getInstNamespace();
+  std::string TargetName = Target.getName();
   std::vector<Record*> InstrMapVec;
   InstrMapVec = Records.getAllDerivedDefinitions("InstrMapping");
 
@@ -577,7 +576,7 @@ void EmitMapTable(RecordKeeper &Records, raw_ostream &OS) {
   OS << "#ifdef GET_INSTRMAP_INFO\n";
   OS << "#undef GET_INSTRMAP_INFO\n";
   OS << "namespace llvm {\n\n";
-  OS << "namespace " << NameSpace << " {\n\n";
+  OS << "namespace " << TargetName << " {\n\n";
 
   // Emit coulumn field names and their values as enums.
   emitEnums(OS, Records);
@@ -600,7 +599,7 @@ void EmitMapTable(RecordKeeper &Records, raw_ostream &OS) {
     // Emit map tables and the functions to query them.
     IMap.emitTablesWithFunc(OS);
   }
-  OS << "} // End " << NameSpace << " namespace\n";
+  OS << "} // End " << TargetName << " namespace\n";
   OS << "} // End llvm namespace\n";
   OS << "#endif // GET_INSTRMAP_INFO\n\n";
 }

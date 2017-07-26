@@ -10,11 +10,8 @@
 #ifndef LLVM_DEBUGINFO_PDB_CONCRETESYMBOLENUMERATOR_H
 #define LLVM_DEBUGINFO_PDB_CONCRETESYMBOLENUMERATOR_H
 
-#include "llvm/DebugInfo/PDB/IPDBEnumChildren.h"
-#include "llvm/DebugInfo/PDB/PDBTypes.h"
+#include "IPDBEnumChildren.h"
 #include "llvm/Support/Casting.h"
-#include <algorithm>
-#include <cstdint>
 #include <memory>
 
 namespace llvm {
@@ -26,7 +23,7 @@ public:
   ConcreteSymbolEnumerator(std::unique_ptr<IPDBEnumSymbols> SymbolEnumerator)
       : Enumerator(std::move(SymbolEnumerator)) {}
 
-  ~ConcreteSymbolEnumerator() override = default;
+  ~ConcreteSymbolEnumerator() override {}
 
   uint32_t getChildCount() const override {
     return Enumerator->getChildCount();
@@ -34,11 +31,12 @@ public:
 
   std::unique_ptr<ChildType> getChildAtIndex(uint32_t Index) const override {
     std::unique_ptr<PDBSymbol> Child = Enumerator->getChildAtIndex(Index);
-    return unique_dyn_cast_or_null<ChildType>(Child);
+    return make_concrete_child(std::move(Child));
   }
 
   std::unique_ptr<ChildType> getNext() override {
-    return unique_dyn_cast_or_null<ChildType>(Enumerator->getNext());
+    std::unique_ptr<PDBSymbol> Child = Enumerator->getNext();
+    return make_concrete_child(std::move(Child));
   }
 
   void reset() override { Enumerator->reset(); }
@@ -49,11 +47,15 @@ public:
   }
 
 private:
+  std::unique_ptr<ChildType>
+  make_concrete_child(std::unique_ptr<PDBSymbol> Child) const {
+    ChildType *ConcreteChild = dyn_cast_or_null<ChildType>(Child.release());
+    return std::unique_ptr<ChildType>(ConcreteChild);
+  }
 
   std::unique_ptr<IPDBEnumSymbols> Enumerator;
 };
+}
+}
 
-} // end namespace pdb
-} // end namespace llvm
-
-#endif // LLVM_DEBUGINFO_PDB_CONCRETESYMBOLENUMERATOR_H
+#endif

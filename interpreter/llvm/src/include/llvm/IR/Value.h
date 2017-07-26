@@ -1,4 +1,4 @@
-//===- llvm/Value.h - Definition of the Value class -------------*- C++ -*-===//
+//===-- llvm/Value.h - Definition of the Value class ------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -18,14 +18,12 @@
 #include "llvm/IR/Use.h"
 #include "llvm/Support/CBindingWrapping.h"
 #include "llvm/Support/Casting.h"
-#include "llvm-c/Types.h"
-#include <cassert>
-#include <iterator>
 
 namespace llvm {
 
 class APInt;
 class Argument;
+class AssemblyAnnotationWriter;
 class BasicBlock;
 class Constant;
 class ConstantData;
@@ -43,13 +41,15 @@ class Instruction;
 class LLVMContext;
 class Module;
 class ModuleSlotTracker;
-class raw_ostream;
-template<typename ValueTy> class StringMapEntry;
 class StringRef;
 class Twine;
 class Type;
+class ValueHandleBase;
+class ValueSymbolTable;
+class raw_ostream;
 
-using ValueName = StringMapEntry<Value*>;
+template<typename ValueTy> class StringMapEntry;
+typedef StringMapEntry<Value*> ValueName;
 
 //===----------------------------------------------------------------------===//
 //                                 Value Class
@@ -77,7 +77,6 @@ class Value {
 
   const unsigned char SubclassID;   // Subclass identifier (for isa/dyn_cast)
   unsigned char HasValueHandle : 1; // Has a ValueHandle pointing to this?
-
 protected:
   /// \brief Hold subclass data that can be dropped.
   ///
@@ -120,11 +119,9 @@ private:
   template <typename UseT> // UseT == 'Use' or 'const Use'
   class use_iterator_impl
       : public std::iterator<std::forward_iterator_tag, UseT *> {
-    friend class Value;
-
     UseT *U;
-
     explicit use_iterator_impl(UseT *u) : U(u) {}
+    friend class Value;
 
   public:
     use_iterator_impl() : U() {}
@@ -137,7 +134,6 @@ private:
       U = U->getNext();
       return *this;
     }
-
     use_iterator_impl operator++(int) { // Postincrement
       auto tmp = *this;
       ++*this;
@@ -164,7 +160,7 @@ private:
     friend class Value;
 
   public:
-    user_iterator_impl() = default;
+    user_iterator_impl() {}
 
     bool operator==(const user_iterator_impl &x) const { return UI == x.UI; }
     bool operator!=(const user_iterator_impl &x) const { return !operator==(x); }
@@ -176,7 +172,6 @@ private:
       ++UI;
       return *this;
     }
-
     user_iterator_impl operator++(int) { // Postincrement
       auto tmp = *this;
       ++*this;
@@ -197,12 +192,12 @@ private:
     Use &getUse() const { return *UI; }
   };
 
+  void operator=(const Value &) = delete;
+  Value(const Value &) = delete;
+
 protected:
   Value(Type *Ty, unsigned scid);
-
 public:
-  Value(const Value &) = delete;
-  void operator=(const Value &) = delete;
   virtual ~Value();
 
   /// \brief Support for debugging, callable in GDB: V->dump()
@@ -241,15 +236,13 @@ public:
 
 private:
   void destroyValueName();
-  void doRAUW(Value *New, bool NoMetadata);
   void setNameImpl(const Twine &Name);
 
 public:
   /// \brief Return a constant reference to the value's name.
   ///
-  /// This guaranteed to return the same reference as long as the value is not
-  /// modified.  If the value has a name, this does a hashtable lookup, so it's
-  /// not free.
+  /// This is cheap and guaranteed to return the same reference as long as the
+  /// value is not modified.
   StringRef getName() const;
 
   /// \brief Change the name of the value.
@@ -258,6 +251,7 @@ public:
   ///
   /// \param Name The new name; or "" if the value's name should be removed.
   void setName(const Twine &Name);
+
 
   /// \brief Transfer the name from V to this value.
   ///
@@ -272,12 +266,6 @@ public:
   /// "V" instead of "this".  After this completes, 'this's use list is
   /// guaranteed to be empty.
   void replaceAllUsesWith(Value *V);
-
-  /// \brief Change non-metadata uses of this to point to a new Value.
-  ///
-  /// Go through the uses list for this definition and make each use point to
-  /// "V" instead of "this". This function skips metadata entries in the list.
-  void replaceNonMetadataUsesWith(Value *V);
 
   /// replaceUsesOutsideBlock - Go through the uses list for this definition and
   /// make each use point to "V" instead of "this" when the use is outside the
@@ -296,24 +284,15 @@ public:
   // when using them since you might not get all uses.
   // The methods that don't start with materialized_ assert that modules is
   // fully materialized.
-  void assertModuleIsMaterializedImpl() const;
-  // This indirection exists so we can keep assertModuleIsMaterializedImpl()
-  // around in release builds of Value.cpp to be linked with other code built
-  // in debug mode. But this avoids calling it in any of the release built code.
-  void assertModuleIsMaterialized() const {
-#ifndef NDEBUG
-    assertModuleIsMaterializedImpl();
-#endif
-  }
+  void assertModuleIsMaterialized() const;
 
   bool use_empty() const {
     assertModuleIsMaterialized();
     return UseList == nullptr;
   }
 
-  using use_iterator = use_iterator_impl<Use>;
-  using const_use_iterator = use_iterator_impl<const Use>;
-
+  typedef use_iterator_impl<Use> use_iterator;
+  typedef use_iterator_impl<const Use> const_use_iterator;
   use_iterator materialized_use_begin() { return use_iterator(UseList); }
   const_use_iterator materialized_use_begin() const {
     return const_use_iterator(UseList);
@@ -348,9 +327,8 @@ public:
     return UseList == nullptr;
   }
 
-  using user_iterator = user_iterator_impl<User>;
-  using const_user_iterator = user_iterator_impl<const User>;
-
+  typedef user_iterator_impl<User> user_iterator;
+  typedef user_iterator_impl<const User> const_user_iterator;
   user_iterator materialized_user_begin() { return user_iterator(UseList); }
   const_user_iterator materialized_user_begin() const {
     return const_user_iterator(UseList);
@@ -464,57 +442,42 @@ public:
     return SubclassOptionalData == V->SubclassOptionalData;
   }
 
+  /// \brief Clear any optional flags not set in the given Value.
+  void intersectOptionalDataWith(const Value *V) {
+    SubclassOptionalData &= V->SubclassOptionalData;
+  }
+
   /// \brief Return true if there is a value handle associated with this value.
   bool hasValueHandle() const { return HasValueHandle; }
 
   /// \brief Return true if there is metadata referencing this value.
   bool isUsedByMetadata() const { return IsUsedByMD; }
 
-  /// \brief Return true if this value is a swifterror value.
-  ///
-  /// swifterror values can be either a function argument or an alloca with a
-  /// swifterror attribute.
-  bool isSwiftError() const;
-
   /// \brief Strip off pointer casts, all-zero GEPs, and aliases.
   ///
   /// Returns the original uncasted value.  If this is called on a non-pointer
   /// value, it returns 'this'.
-  const Value *stripPointerCasts() const;
-  Value *stripPointerCasts() {
-    return const_cast<Value *>(
-                         static_cast<const Value *>(this)->stripPointerCasts());
-  }
-
-  /// \brief Strip off pointer casts, all-zero GEPs, aliases and barriers.
-  ///
-  /// Returns the original uncasted value.  If this is called on a non-pointer
-  /// value, it returns 'this'. This function should be used only in
-  /// Alias analysis.
-  const Value *stripPointerCastsAndBarriers() const;
-  Value *stripPointerCastsAndBarriers() {
-    return const_cast<Value *>(
-        static_cast<const Value *>(this)->stripPointerCastsAndBarriers());
+  Value *stripPointerCasts();
+  const Value *stripPointerCasts() const {
+    return const_cast<Value*>(this)->stripPointerCasts();
   }
 
   /// \brief Strip off pointer casts and all-zero GEPs.
   ///
   /// Returns the original uncasted value.  If this is called on a non-pointer
   /// value, it returns 'this'.
-  const Value *stripPointerCastsNoFollowAliases() const;
-  Value *stripPointerCastsNoFollowAliases() {
-    return const_cast<Value *>(
-          static_cast<const Value *>(this)->stripPointerCastsNoFollowAliases());
+  Value *stripPointerCastsNoFollowAliases();
+  const Value *stripPointerCastsNoFollowAliases() const {
+    return const_cast<Value*>(this)->stripPointerCastsNoFollowAliases();
   }
 
   /// \brief Strip off pointer casts and all-constant inbounds GEPs.
   ///
   /// Returns the original pointer value.  If this is called on a non-pointer
   /// value, it returns 'this'.
-  const Value *stripInBoundsConstantOffsets() const;
-  Value *stripInBoundsConstantOffsets() {
-    return const_cast<Value *>(
-              static_cast<const Value *>(this)->stripInBoundsConstantOffsets());
+  Value *stripInBoundsConstantOffsets();
+  const Value *stripInBoundsConstantOffsets() const {
+    return const_cast<Value*>(this)->stripInBoundsConstantOffsets();
   }
 
   /// \brief Accumulate offsets from \a stripInBoundsConstantOffsets().
@@ -524,22 +487,21 @@ public:
   /// correct bitwidth for an offset of this pointer type.
   ///
   /// If this is called on a non-pointer value, it returns 'this'.
-  const Value *stripAndAccumulateInBoundsConstantOffsets(const DataLayout &DL,
-                                                         APInt &Offset) const;
   Value *stripAndAccumulateInBoundsConstantOffsets(const DataLayout &DL,
-                                                   APInt &Offset) {
-    return const_cast<Value *>(static_cast<const Value *>(this)
-        ->stripAndAccumulateInBoundsConstantOffsets(DL, Offset));
+                                                   APInt &Offset);
+  const Value *stripAndAccumulateInBoundsConstantOffsets(const DataLayout &DL,
+                                                         APInt &Offset) const {
+    return const_cast<Value *>(this)
+        ->stripAndAccumulateInBoundsConstantOffsets(DL, Offset);
   }
 
   /// \brief Strip off pointer casts and inbounds GEPs.
   ///
   /// Returns the original pointer value.  If this is called on a non-pointer
   /// value, it returns 'this'.
-  const Value *stripInBoundsOffsets() const;
-  Value *stripInBoundsOffsets() {
-    return const_cast<Value *>(
-                      static_cast<const Value *>(this)->stripInBoundsOffsets());
+  Value *stripInBoundsOffsets();
+  const Value *stripInBoundsOffsets() const {
+    return const_cast<Value*>(this)->stripInBoundsOffsets();
   }
 
   /// \brief Returns the number of bytes known to be dereferenceable for the
@@ -562,11 +524,11 @@ public:
   /// the PHI node corresponding to PredBB.  If not, return ourself.  This is
   /// useful if you want to know the value something has in a predecessor
   /// block.
+  Value *DoPHITranslation(const BasicBlock *CurBB, const BasicBlock *PredBB);
+
   const Value *DoPHITranslation(const BasicBlock *CurBB,
-                                const BasicBlock *PredBB) const;
-  Value *DoPHITranslation(const BasicBlock *CurBB, const BasicBlock *PredBB) {
-    return const_cast<Value *>(
-             static_cast<const Value *>(this)->DoPHITranslation(CurBB, PredBB));
+                                const BasicBlock *PredBB) const{
+    return const_cast<Value*>(this)->DoPHITranslation(CurBB, PredBB);
   }
 
   /// \brief The maximum alignment for instructions.
@@ -609,7 +571,7 @@ private:
     Use *Merged;
     Use **Next = &Merged;
 
-    while (true) {
+    for (;;) {
       if (!L) {
         *Next = R;
         break;
@@ -821,6 +783,18 @@ template <> struct isa_impl<GlobalObject, Value> {
   }
 };
 
+// Value* is only 4-byte aligned.
+template<>
+class PointerLikeTypeTraits<Value*> {
+  typedef Value* PT;
+public:
+  static inline void *getAsVoidPointer(PT P) { return P; }
+  static inline PT getFromVoidPointer(void *P) {
+    return static_cast<PT>(P);
+  }
+  enum { NumLowBitsAvailable = 2 };
+};
+
 // Create wrappers for C Binding types (see CBindingWrapping.h).
 DEFINE_ISA_CONVERSION_FUNCTIONS(Value, LLVMValueRef)
 
@@ -831,9 +805,9 @@ inline Value **unwrap(LLVMValueRef *Vals) {
 
 template<typename T>
 inline T **unwrap(LLVMValueRef *Vals, unsigned Length) {
-#ifndef NDEBUG
+#ifdef DEBUG
   for (LLVMValueRef *I = Vals, *E = Vals + Length; I != E; ++I)
-    unwrap<T>(*I); // For side effect of calling assert on invalid usage.
+    cast<T>(*I);
 #endif
   (void)Length;
   return reinterpret_cast<T**>(Vals);
@@ -843,6 +817,6 @@ inline LLVMValueRef *wrap(const Value **Vals) {
   return reinterpret_cast<LLVMValueRef*>(const_cast<Value**>(Vals));
 }
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_IR_VALUE_H
+#endif

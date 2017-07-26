@@ -14,14 +14,10 @@
 #ifndef LLVM_LIB_TARGET_ARM_ARMTARGETMACHINE_H
 #define LLVM_LIB_TARGET_ARM_ARMTARGETMACHINE_H
 
+#include "ARMInstrInfo.h"
 #include "ARMSubtarget.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/Support/CodeGen.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
-#include <memory>
 
 namespace llvm {
 
@@ -36,7 +32,7 @@ public:
 
 protected:
   std::unique_ptr<TargetLoweringObjectFile> TLOF;
-  ARMSubtarget Subtarget;
+  ARMSubtarget        Subtarget;
   bool isLittle;
   mutable StringMap<std::unique_ptr<ARMSubtarget>> SubtargetMap;
 
@@ -66,8 +62,7 @@ public:
 ///
 class ARMTargetMachine : public ARMBaseTargetMachine {
   virtual void anchor();
-
-public:
+ public:
    ARMTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                     StringRef FS, const TargetOptions &Options,
                     Optional<Reloc::Model> RM, CodeModel::Model CM,
@@ -78,7 +73,6 @@ public:
 ///
 class ARMLETargetMachine : public ARMTargetMachine {
   void anchor() override;
-
 public:
   ARMLETargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                      StringRef FS, const TargetOptions &Options,
@@ -90,7 +84,6 @@ public:
 ///
 class ARMBETargetMachine : public ARMTargetMachine {
   void anchor() override;
-
 public:
   ARMBETargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                      StringRef FS, const TargetOptions &Options,
@@ -104,7 +97,6 @@ public:
 ///
 class ThumbTargetMachine : public ARMBaseTargetMachine {
   virtual void anchor();
-
 public:
   ThumbTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                      StringRef FS, const TargetOptions &Options,
@@ -116,7 +108,6 @@ public:
 ///
 class ThumbLETargetMachine : public ThumbTargetMachine {
   void anchor() override;
-
 public:
   ThumbLETargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                        StringRef FS, const TargetOptions &Options,
@@ -128,7 +119,6 @@ public:
 ///
 class ThumbBETargetMachine : public ThumbTargetMachine {
   void anchor() override;
-
 public:
   ThumbBETargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                        StringRef FS, const TargetOptions &Options,
@@ -138,4 +128,4 @@ public:
 
 } // end namespace llvm
 
-#endif // LLVM_LIB_TARGET_ARM_ARMTARGETMACHINE_H
+#endif

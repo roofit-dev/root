@@ -3,4 +3,4 @@
 # RUN: %{lit} --help > %t.out
 # RUN: FileCheck < %t.out %s
 #
-# CHECK: usage: lit.py [-h]
+# CHECK: Usage: lit.py [options] {file-or-path}

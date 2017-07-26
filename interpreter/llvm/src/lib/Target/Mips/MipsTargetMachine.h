@@ -1,4 +1,4 @@
-//===- MipsTargetMachine.h - Define TargetMachine for Mips ------*- C++ -*-===//
+//===-- MipsTargetMachine.h - Define TargetMachine for Mips -----*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -16,14 +16,15 @@
 
 #include "MCTargetDesc/MipsABIInfo.h"
 #include "MipsSubtarget.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/CodeGen.h"
+#include "llvm/CodeGen/BasicTTIImpl.h"
+#include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/SelectionDAGISel.h"
+#include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetMachine.h"
-#include <memory>
 
 namespace llvm {
+class formatted_raw_ostream;
+class MipsRegisterInfo;
 
 class MipsTargetMachine : public LLVMTargetMachine {
   bool isLittle;
@@ -72,7 +73,6 @@ public:
 ///
 class MipsebTargetMachine : public MipsTargetMachine {
   virtual void anchor();
-
 public:
   MipsebTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                       StringRef FS, const TargetOptions &Options,
@@ -84,7 +84,6 @@ public:
 ///
 class MipselTargetMachine : public MipsTargetMachine {
   virtual void anchor();
-
 public:
   MipselTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                       StringRef FS, const TargetOptions &Options,
@@ -92,6 +91,6 @@ public:
                       CodeGenOpt::Level OL);
 };
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_LIB_TARGET_MIPS_MIPSTARGETMACHINE_H
+#endif

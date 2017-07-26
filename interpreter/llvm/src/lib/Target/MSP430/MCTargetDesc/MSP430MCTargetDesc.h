@@ -19,7 +19,7 @@
 namespace llvm {
 class Target;
 
-Target &getTheMSP430Target();
+extern Target TheMSP430Target;
 
 } // End llvm namespace
 

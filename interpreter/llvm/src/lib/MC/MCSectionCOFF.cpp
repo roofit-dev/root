@@ -8,14 +8,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCSectionCOFF.h"
+#include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/COFF.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cassert>
-
 using namespace llvm;
 
-MCSectionCOFF::~MCSectionCOFF() = default; // anchor.
+MCSectionCOFF::~MCSectionCOFF() {} // anchor.
 
 // ShouldOmitSectionDirective - Decides whether a '.section' directive
 // should be printed before the section name
@@ -37,9 +37,10 @@ void MCSectionCOFF::setSelection(int Selection) const {
   Characteristics |= COFF::IMAGE_SCN_LNK_COMDAT;
 }
 
-void MCSectionCOFF::PrintSwitchToSection(const MCAsmInfo &MAI, const Triple &T,
+void MCSectionCOFF::PrintSwitchToSection(const MCAsmInfo &MAI,
                                          raw_ostream &OS,
                                          const MCExpr *Subsection) const {
+
   // standard sections don't require the '.section'
   if (ShouldOmitSectionDirective(SectionName, MAI)) {
     OS << '\t' << getSectionName() << '\n';
@@ -63,9 +64,6 @@ void MCSectionCOFF::PrintSwitchToSection(const MCAsmInfo &MAI, const Triple &T,
     OS << 'n';
   if (getCharacteristics() & COFF::IMAGE_SCN_MEM_SHARED)
     OS << 's';
-  if ((getCharacteristics() & COFF::IMAGE_SCN_MEM_DISCARDABLE) &&
-      !isImplicitlyDiscardable(SectionName))
-    OS << 'D';
   OS << '"';
 
   if (getCharacteristics() & COFF::IMAGE_SCN_LNK_COMDAT) {
@@ -93,7 +91,7 @@ void MCSectionCOFF::PrintSwitchToSection(const MCAsmInfo &MAI, const Triple &T,
         OS << "newest,";
         break;
       default:
-        assert(false && "unsupported COFF selection type");
+        assert (0 && "unsupported COFF selection type");
         break;
     }
     assert(COMDATSymbol);

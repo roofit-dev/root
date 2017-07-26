@@ -10,13 +10,13 @@
 
 constexpr int paramSize = 6;
 
-bool compareResult(double v1, double v2, std::string s = "", double tol = 0.01)
+int compareResult(double v1, double v2, std::string s = "", double tol = 0.01)
 {
    // compare v1 with reference v2
    //  // give 1% tolerance
-   if (std::abs(v1 - v2) < tol * std::abs(v2)) return true;
+   if (std::abs(v1 - v2) < tol * std::abs(v2)) return 0;
    std::cerr << s << " Failed comparison of fit results \t logl = " << v1 << "   it should be = " << v2 << std::endl;
-   return false;
+   return -1;
 }
 
 //Functor for a Higgs Fit normalized with analytical integral
@@ -32,7 +32,7 @@ public:
    {
       bool changed = false;
       for (unsigned i = 0; i < params.size(); i++) {
-         R__LOCKGUARD(gROOTMutex);
+         R__LOCKGUARD2(gROOTMutex);
          if (p[i] != params[i])
             if (!changed) {
                changed = true;
@@ -41,7 +41,7 @@ public:
       }
 
       if (changed) {
-         R__LOCKGUARD(gROOTMutex);
+         R__LOCKGUARD2(gROOTMutex);
          for (unsigned i = 0; i < paramSize; i++) {
             params[i] = p[i];
          }
@@ -123,8 +123,8 @@ public:
    double testMTFit()
    {
       std::cout << "\n///////////////////////////////MT TEST////////////////////////////" << std::endl << std::endl;
-      fSeq->SetParameters(p);
       fitter.SetFunction(*wfSeq, false);
+      fSeq->SetParameters(p);
       fitter.Config().ParSettings(0).SetLimits(0, 1);
       fitter.Config().ParSettings(1).Fix();
       fitter.Config().ParSettings(3).SetLowerLimit(0);
@@ -219,6 +219,7 @@ private:
 
 int main()
 {
+
    TestVector test(200000);
 
    //Sequential
@@ -226,21 +227,17 @@ int main()
       Error("testLogLExecPolicy", "Fit failed!");
       return -1;
    }
-
-#if defined(R__USE_IMT) || defined(R__HAS_VECCORE)
    auto seq = test.GetFitter().Result().MinFcnValue();
-#endif
 
-// #ifdef R__USE_IMT
-//    //Multithreaded
-//    if (!test.testMTFit()) {
-//       Error("testLogLExecPolicy", "Multithreaded Fit failed!");
-//       return -1;
-//    }
-//    auto seqMT = test.GetFitter().Result().MinFcnValue();
-//    if (!compareResult(seqMT, seq, "Mutithreaded LogL Fit: "))
-//       return 1;
-// #endif
+#ifdef R__USE_IMT
+   //Multithreaded
+   if (!test.testMTFit()) {
+      Error("testLogLExecPolicy", "Multithreaded Fit failed!");
+      return -1;
+   }
+   auto seqMT = test.GetFitter().Result().MinFcnValue();
+   compareResult(seqMT, seq, "Mutithreaded LogL Fit: ");
+#endif
 
 #ifdef R__HAS_VECCORE
    //Vectorized
@@ -249,19 +246,23 @@ int main()
       return -1;
    }
    auto vec = test.GetFitter().Result().MinFcnValue();
-   if (!compareResult(vec, seq, "vectorized LogL Fit: "))
-      return 2;
+   compareResult(vec, seq, "vectorized LogL Fit: ");
+
+#ifdef R__USE_IMT
+   //Multithreaded and vectorized
+   if (!test.testMTFitVec()) {
+      Error("testLogLExecPolicy", "Multithreaded + vectorized Fit failed!");
+      return -1;
+   }
+   auto vecMT = test.GetFitter().Result().MinFcnValue();
+   compareResult(vecMT, seq, "Mutithreaded + vectorized LogL Fit: ");
+#endif
 #endif
 
-// #if defined(R__USE_IMT) && defined(R__HAS_VECCORE)
-//    //Multithreaded and vectorized
-//    if (!test.testMTFitVec()) {
-//       Error("testLogLExecPolicy", "Multithreaded + vectorized Fit failed!");
-//       return -1;
-//    }
-//    auto vecMT = test.GetFitter().Result().MinFcnValue();
-//    if (!compareResult(vecMT, seq, "Mutithreaded + vectorized LogL Fit: "))
-//       return 3;
-// #endif
+//    //Multiprocessed
+//    auto seqMP = test.testMPFit();
+//    //Multiprocess + vectorized
+//    auto vecMP = test.testMPFitVec();
+
    return 0;
 }

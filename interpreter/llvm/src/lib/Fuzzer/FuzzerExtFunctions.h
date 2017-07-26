@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 // Defines an interface to (possibly optional) functions.
 //===----------------------------------------------------------------------===//
-
 #ifndef LLVM_FUZZER_EXT_FUNCTIONS_H
 #define LLVM_FUZZER_EXT_FUNCTIONS_H
 
@@ -31,5 +30,4 @@ struct ExternalFunctions {
 #undef EXT_FUNC
 };
 } // namespace fuzzer
-
 #endif

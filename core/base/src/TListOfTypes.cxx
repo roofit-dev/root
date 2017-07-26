@@ -99,8 +99,6 @@ TDataType *TListOfTypes::FindType(const char *name) const
    // Look for a type, first in the hast table
    // then in the interpreter.
 
-   R__COLLECTION_READ_GUARD();
-
    TDataType *result = static_cast<TDataType*>(THashTable::FindObject(name));
    if (!result) {
 
@@ -110,7 +108,7 @@ TDataType *TListOfTypes::FindType(const char *name) const
 
       // We perform now a lookup
 
-      R__LOCKGUARD(gInterpreterMutex);
+      R__LOCKGUARD2(gInterpreterMutex);
 
       TypedefInfo_t  *info = gInterpreter->TypedefInfo_Factory(name);
       if (gInterpreter->TypedefInfo_IsValid(info)) {

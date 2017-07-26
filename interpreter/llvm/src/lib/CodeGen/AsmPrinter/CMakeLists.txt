@@ -22,7 +22,6 @@ add_llvm_library(LLVMAsmPrinter
   OcamlGCPrinter.cpp
   WinException.cpp
   CodeViewDebug.cpp
-
-  DEPENDS
-  intrinsics_gen
   )
+
+add_dependencies(LLVMAsmPrinter intrinsics_gen)

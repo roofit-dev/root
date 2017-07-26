@@ -5,13 +5,10 @@ set(LLVM_LINK_COMPONENTS
   AllTargetsInfos
   CodeGen
   DebugInfoDWARF
-  DebugInfoPDB
-  Demangle
   MC
   MCDisassembler
   Object
   Support
-  Symbolize
   )
 
 add_llvm_tool(llvm-objdump
@@ -19,7 +16,6 @@ add_llvm_tool(llvm-objdump
   COFFDump.cpp
   ELFDump.cpp
   MachODump.cpp
-  WasmDump.cpp
   )
 
 if(HAVE_LIBXAR)

@@ -26,10 +26,9 @@
 
 #include "BrainF.h"
 #include "llvm/ADT/APInt.h"
-#include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/GenericValue.h"
-#include "llvm/ExecutionEngine/MCJIT.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -77,7 +76,7 @@ void addMainFunction(Module *mod) {
     getOrInsertFunction("main", IntegerType::getInt32Ty(mod->getContext()),
                         IntegerType::getInt32Ty(mod->getContext()),
                         PointerType::getUnqual(PointerType::getUnqual(
-                          IntegerType::getInt8Ty(mod->getContext())))));
+                          IntegerType::getInt8Ty(mod->getContext()))), NULL));
   {
     Function::arg_iterator args = main_func->arg_begin();
     Value *arg_0 = &*args++;
@@ -154,22 +153,13 @@ int main(int argc, char **argv) {
   //Write it out
   if (JIT) {
     InitializeNativeTarget();
-    InitializeNativeTargetAsmPrinter();
 
     outs() << "------- Running JIT -------\n";
     Module &M = *Mod;
     ExecutionEngine *ee = EngineBuilder(std::move(Mod)).create();
-    if (!ee) {
-      errs() << "Error: execution engine creation failed.\n";
-      abort();
-    }
     std::vector<GenericValue> args;
     Function *brainf_func = M.getFunction("brainf");
     GenericValue gv = ee->runFunction(brainf_func, args);
-    // Genereated code calls putchar, and output is not guaranteed without fflush.
-    // The better place for fflush(stdout) call would be the generated code, but it
-    // is unmanageable because stdout linkage name depends on stdlib implementation.
-    fflush(stdout);
   } else {
     WriteBitcodeToFile(Mod.get(), *out);
   }

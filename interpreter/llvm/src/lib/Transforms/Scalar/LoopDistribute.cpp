@@ -22,22 +22,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/Scalar/LoopDistribute.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Analysis/BlockFrequencyInfo.h"
-#include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/LoopAccessAnalysis.h"
 #include "llvm/Analysis/LoopInfo.h"
-#include "llvm/Analysis/OptimizationDiagnosticInfo.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Transforms/Scalar/LoopPassManager.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
@@ -73,10 +68,11 @@ static cl::opt<unsigned> PragmaDistributeSCEVCheckThreshold(
         "The maximum number of SCEV checks allowed for Loop "
         "Distribution for loop marked with #pragma loop distribute(enable)"));
 
+// Note that the initial value for this depends on whether the pass is invoked
+// directly or from the optimization pipeline.
 static cl::opt<bool> EnableLoopDistribute(
     "enable-loop-distribute", cl::Hidden,
-    cl::desc("Enable the new, experimental LoopDistribution Pass"),
-    cl::init(false));
+    cl::desc("Enable the new, experimental LoopDistribution Pass"));
 
 STATISTIC(NumLoopsDistributed, "Number of loops distributed");
 
@@ -593,38 +589,35 @@ private:
 class LoopDistributeForLoop {
 public:
   LoopDistributeForLoop(Loop *L, Function *F, LoopInfo *LI, DominatorTree *DT,
-                        ScalarEvolution *SE, OptimizationRemarkEmitter *ORE)
-      : L(L), F(F), LI(LI), LAI(nullptr), DT(DT), SE(SE), ORE(ORE) {
+                        ScalarEvolution *SE)
+      : L(L), F(F), LI(LI), LAI(nullptr), DT(DT), SE(SE) {
     setForced();
   }
 
   /// \brief Try to distribute an inner-most loop.
-  bool processLoop(std::function<const LoopAccessInfo &(Loop &)> &GetLAA) {
+  bool processLoop(LoopAccessAnalysis *LAA) {
     assert(L->empty() && "Only process inner loops.");
 
     DEBUG(dbgs() << "\nLDist: In \"" << L->getHeader()->getParent()->getName()
                  << "\" checking " << *L << "\n");
 
-    if (!L->getExitBlock())
-      return fail("MultipleExitBlocks", "multiple exit blocks");
-    if (!L->isLoopSimplifyForm())
-      return fail("NotLoopSimplifyForm",
-                  "loop is not in loop-simplify form");
-
     BasicBlock *PH = L->getLoopPreheader();
+    if (!PH)
+      return fail("no preheader");
+    if (!L->getExitBlock())
+      return fail("multiple exit blocks");
 
     // LAA will check that we only have a single exiting block.
-    LAI = &GetLAA(*L);
+    LAI = &LAA->getInfo(L);
 
     // Currently, we only distribute to isolate the part of the loop with
     // dependence cycles to enable partial vectorization.
     if (LAI->canVectorizeMemory())
-      return fail("MemOpsCanBeVectorized",
-                  "memory operations are safe for vectorization");
+      return fail("memory operations are safe for vectorization");
 
     auto *Dependences = LAI->getDepChecker().getDependences();
     if (!Dependences || Dependences->empty())
-      return fail("NoUnsafeDeps", "no unsafe dependences to isolate");
+      return fail("no unsafe dependences to isolate");
 
     InstPartitionContainer Partitions(L, LI, DT);
 
@@ -677,16 +670,14 @@ public:
 
     DEBUG(dbgs() << "Seeded partitions:\n" << Partitions);
     if (Partitions.getSize() < 2)
-      return fail("CantIsolateUnsafeDeps",
-                  "cannot isolate unsafe dependencies");
+      return fail("cannot isolate unsafe dependencies");
 
     // Run the merge heuristics: Merge non-cyclic adjacent partitions since we
     // should be able to vectorize these together.
     Partitions.mergeBeforePopulating();
     DEBUG(dbgs() << "\nMerged partitions:\n" << Partitions);
     if (Partitions.getSize() < 2)
-      return fail("CantIsolateUnsafeDeps",
-                  "cannot isolate unsafe dependencies");
+      return fail("cannot isolate unsafe dependencies");
 
     // Now, populate the partitions with non-memory operations.
     Partitions.populateUsedSet();
@@ -698,8 +689,7 @@ public:
       DEBUG(dbgs() << "\nPartitions merged to ensure unique loads:\n"
                    << Partitions);
       if (Partitions.getSize() < 2)
-        return fail("CantIsolateUnsafeDeps",
-                    "cannot isolate unsafe dependencies");
+        return fail("cannot isolate unsafe dependencies");
     }
 
     // Don't distribute the loop if we need too many SCEV run-time checks.
@@ -707,8 +697,7 @@ public:
     if (Pred.getComplexity() > (IsForced.getValueOr(false)
                                     ? PragmaDistributeSCEVCheckThreshold
                                     : DistributeSCEVCheckThreshold))
-      return fail("TooManySCEVRuntimeChecks",
-                  "too many SCEV run-time checks needed.\n");
+      return fail("too many SCEV run-time checks needed.\n");
 
     DEBUG(dbgs() << "\nDistributing loop: " << *L << "\n");
     // We're done forming the partitions set up the reverse mapping from
@@ -749,44 +738,42 @@ public:
     DEBUG(Partitions.printBlocks());
 
     if (LDistVerify) {
-      LI->verify(*DT);
+      LI->verify();
       DT->verifyDomTree();
     }
 
     ++NumLoopsDistributed;
     // Report the success.
-    ORE->emit(OptimizationRemark(LDIST_NAME, "Distribute", L->getStartLoc(),
-                                 L->getHeader())
-              << "distributed loop");
+    emitOptimizationRemark(F->getContext(), LDIST_NAME, *F, L->getStartLoc(),
+                           "distributed loop");
     return true;
   }
 
   /// \brief Provide diagnostics then \return with false.
-  bool fail(StringRef RemarkName, StringRef Message) {
+  bool fail(llvm::StringRef Message) {
     LLVMContext &Ctx = F->getContext();
     bool Forced = isForced().getValueOr(false);
 
     DEBUG(dbgs() << "Skipping; " << Message << "\n");
 
     // With Rpass-missed report that distribution failed.
-    ORE->emit(
-        OptimizationRemarkMissed(LDIST_NAME, "NotDistributed", L->getStartLoc(),
-                                 L->getHeader())
-        << "loop not distributed: use -Rpass-analysis=loop-distribute for more "
-           "info");
+    emitOptimizationRemarkMissed(
+        Ctx, LDIST_NAME, *F, L->getStartLoc(),
+        "loop not distributed: use -Rpass-analysis=loop-distribute for more "
+        "info");
 
     // With Rpass-analysis report why.  This is on by default if distribution
     // was requested explicitly.
-    ORE->emit(OptimizationRemarkAnalysis(
-                  Forced ? OptimizationRemarkAnalysis::AlwaysPrint : LDIST_NAME,
-                  RemarkName, L->getStartLoc(), L->getHeader())
-              << "loop not distributed: " << Message);
+    emitOptimizationRemarkAnalysis(
+        Ctx, Forced ? DiagnosticInfoOptimizationRemarkAnalysis::AlwaysPrint
+                    : LDIST_NAME,
+        *F, L->getStartLoc(), Twine("loop not distributed: ") + Message);
 
     // Also issue a warning if distribution was requested explicitly but it
     // failed.
     if (Forced)
       Ctx.diagnose(DiagnosticInfoOptimizationFailure(
-          *F, L->getStartLoc(), "loop not distributed: failed "
+          *F, L->getStartLoc(), "loop not disributed: failed "
                                 "explicitly specified loop distribution"));
 
     return false;
@@ -812,29 +799,29 @@ private:
       const RuntimePointerChecking *RtPtrChecking) {
     SmallVector<RuntimePointerChecking::PointerCheck, 4> Checks;
 
-    copy_if(AllChecks, std::back_inserter(Checks),
-            [&](const RuntimePointerChecking::PointerCheck &Check) {
-              for (unsigned PtrIdx1 : Check.first->Members)
-                for (unsigned PtrIdx2 : Check.second->Members)
-                  // Only include this check if there is a pair of pointers
-                  // that require checking and the pointers fall into
-                  // separate partitions.
-                  //
-                  // (Note that we already know at this point that the two
-                  // pointer groups need checking but it doesn't follow
-                  // that each pair of pointers within the two groups need
-                  // checking as well.
-                  //
-                  // In other words we don't want to include a check just
-                  // because there is a pair of pointers between the two
-                  // pointer groups that require checks and a different
-                  // pair whose pointers fall into different partitions.)
-                  if (RtPtrChecking->needsChecking(PtrIdx1, PtrIdx2) &&
-                      !RuntimePointerChecking::arePointersInSamePartition(
-                          PtrToPartition, PtrIdx1, PtrIdx2))
-                    return true;
-              return false;
-            });
+    std::copy_if(AllChecks.begin(), AllChecks.end(), std::back_inserter(Checks),
+                 [&](const RuntimePointerChecking::PointerCheck &Check) {
+                   for (unsigned PtrIdx1 : Check.first->Members)
+                     for (unsigned PtrIdx2 : Check.second->Members)
+                       // Only include this check if there is a pair of pointers
+                       // that require checking and the pointers fall into
+                       // separate partitions.
+                       //
+                       // (Note that we already know at this point that the two
+                       // pointer groups need checking but it doesn't follow
+                       // that each pair of pointers within the two groups need
+                       // checking as well.
+                       //
+                       // In other words we don't want to include a check just
+                       // because there is a pair of pointers between the two
+                       // pointer groups that require checks and a different
+                       // pair whose pointers fall into different partitions.)
+                       if (RtPtrChecking->needsChecking(PtrIdx1, PtrIdx2) &&
+                           !RuntimePointerChecking::arePointersInSamePartition(
+                               PtrToPartition, PtrIdx1, PtrIdx2))
+                         return true;
+                   return false;
+                 });
 
     return Checks;
   }
@@ -860,7 +847,6 @@ private:
   const LoopAccessInfo *LAI;
   DominatorTree *DT;
   ScalarEvolution *SE;
-  OptimizationRemarkEmitter *ORE;
 
   /// \brief Indicates whether distribution is forced to be enabled/disabled for
   /// the loop.
@@ -871,42 +857,19 @@ private:
   Optional<bool> IsForced;
 };
 
-/// Shared implementation between new and old PMs.
-static bool runImpl(Function &F, LoopInfo *LI, DominatorTree *DT,
-                    ScalarEvolution *SE, OptimizationRemarkEmitter *ORE,
-                    std::function<const LoopAccessInfo &(Loop &)> &GetLAA) {
-  // Build up a worklist of inner-loops to vectorize. This is necessary as the
-  // act of distributing a loop creates new loops and can invalidate iterators
-  // across the loops.
-  SmallVector<Loop *, 8> Worklist;
-
-  for (Loop *TopLevelLoop : *LI)
-    for (Loop *L : depth_first(TopLevelLoop))
-      // We only handle inner-most loops.
-      if (L->empty())
-        Worklist.push_back(L);
-
-  // Now walk the identified inner loops.
-  bool Changed = false;
-  for (Loop *L : Worklist) {
-    LoopDistributeForLoop LDL(L, &F, LI, DT, SE, ORE);
-
-    // If distribution was forced for the specific loop to be
-    // enabled/disabled, follow that.  Otherwise use the global flag.
-    if (LDL.isForced().getValueOr(EnableLoopDistribute))
-      Changed |= LDL.processLoop(GetLAA);
-  }
-
-  // Process each loop nest in the function.
-  return Changed;
-}
-
 /// \brief The pass class.
-class LoopDistributeLegacy : public FunctionPass {
+class LoopDistribute : public FunctionPass {
 public:
-  LoopDistributeLegacy() : FunctionPass(ID) {
+  /// \p ProcessAllLoopsByDefault specifies whether loop distribution should be
+  /// performed by default.  Pass -enable-loop-distribute={0,1} overrides this
+  /// default.  We use this to keep LoopDistribution off by default when invoked
+  /// from the optimization pipeline but on when invoked explicitly from opt.
+  LoopDistribute(bool ProcessAllLoopsByDefault = true)
+      : FunctionPass(ID), ProcessAllLoops(ProcessAllLoopsByDefault) {
     // The default is set by the caller.
-    initializeLoopDistributeLegacyPass(*PassRegistry::getPassRegistry());
+    if (EnableLoopDistribute.getNumOccurrences() > 0)
+      ProcessAllLoops = EnableLoopDistribute;
+    initializeLoopDistributePass(*PassRegistry::getPassRegistry());
   }
 
   bool runOnFunction(Function &F) override {
@@ -914,74 +877,66 @@ public:
       return false;
 
     auto *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
-    auto *LAA = &getAnalysis<LoopAccessLegacyAnalysis>();
+    auto *LAA = &getAnalysis<LoopAccessAnalysis>();
     auto *DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
     auto *SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
-    auto *ORE = &getAnalysis<OptimizationRemarkEmitterWrapperPass>().getORE();
-    std::function<const LoopAccessInfo &(Loop &)> GetLAA =
-        [&](Loop &L) -> const LoopAccessInfo & { return LAA->getInfo(&L); };
 
-    return runImpl(F, LI, DT, SE, ORE, GetLAA);
+    // Build up a worklist of inner-loops to vectorize. This is necessary as the
+    // act of distributing a loop creates new loops and can invalidate iterators
+    // across the loops.
+    SmallVector<Loop *, 8> Worklist;
+
+    for (Loop *TopLevelLoop : *LI)
+      for (Loop *L : depth_first(TopLevelLoop))
+        // We only handle inner-most loops.
+        if (L->empty())
+          Worklist.push_back(L);
+
+    // Now walk the identified inner loops.
+    bool Changed = false;
+    for (Loop *L : Worklist) {
+      LoopDistributeForLoop LDL(L, &F, LI, DT, SE);
+
+      // If distribution was forced for the specific loop to be
+      // enabled/disabled, follow that.  Otherwise use the global flag.
+      if (LDL.isForced().getValueOr(ProcessAllLoops))
+        Changed |= LDL.processLoop(LAA);
+    }
+
+    // Process each loop nest in the function.
+    return Changed;
   }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<ScalarEvolutionWrapperPass>();
     AU.addRequired<LoopInfoWrapperPass>();
     AU.addPreserved<LoopInfoWrapperPass>();
-    AU.addRequired<LoopAccessLegacyAnalysis>();
+    AU.addRequired<LoopAccessAnalysis>();
     AU.addRequired<DominatorTreeWrapperPass>();
     AU.addPreserved<DominatorTreeWrapperPass>();
-    AU.addRequired<OptimizationRemarkEmitterWrapperPass>();
-    AU.addPreserved<GlobalsAAWrapperPass>();
   }
 
   static char ID;
+
+private:
+  /// \brief Whether distribution should be on in this function.  The per-loop
+  /// pragma can override this.
+  bool ProcessAllLoops;
 };
 } // anonymous namespace
 
-PreservedAnalyses LoopDistributePass::run(Function &F,
-                                          FunctionAnalysisManager &AM) {
-  auto &LI = AM.getResult<LoopAnalysis>(F);
-  auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
-  auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
-  auto &ORE = AM.getResult<OptimizationRemarkEmitterAnalysis>(F);
+char LoopDistribute::ID;
+static const char ldist_name[] = "Loop Distribition";
 
-  // We don't directly need these analyses but they're required for loop
-  // analyses so provide them below.
-  auto &AA = AM.getResult<AAManager>(F);
-  auto &AC = AM.getResult<AssumptionAnalysis>(F);
-  auto &TTI = AM.getResult<TargetIRAnalysis>(F);
-  auto &TLI = AM.getResult<TargetLibraryAnalysis>(F);
-
-  auto &LAM = AM.getResult<LoopAnalysisManagerFunctionProxy>(F).getManager();
-  std::function<const LoopAccessInfo &(Loop &)> GetLAA =
-      [&](Loop &L) -> const LoopAccessInfo & {
-    LoopStandardAnalysisResults AR = {AA, AC, DT, LI, SE, TLI, TTI};
-    return LAM.getResult<LoopAccessAnalysis>(L, AR);
-  };
-
-  bool Changed = runImpl(F, &LI, &DT, &SE, &ORE, GetLAA);
-  if (!Changed)
-    return PreservedAnalyses::all();
-  PreservedAnalyses PA;
-  PA.preserve<LoopAnalysis>();
-  PA.preserve<DominatorTreeAnalysis>();
-  PA.preserve<GlobalsAA>();
-  return PA;
-}
-
-char LoopDistributeLegacy::ID;
-static const char ldist_name[] = "Loop Distribution";
-
-INITIALIZE_PASS_BEGIN(LoopDistributeLegacy, LDIST_NAME, ldist_name, false,
-                      false)
+INITIALIZE_PASS_BEGIN(LoopDistribute, LDIST_NAME, ldist_name, false, false)
 INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(LoopAccessLegacyAnalysis)
+INITIALIZE_PASS_DEPENDENCY(LoopAccessAnalysis)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(OptimizationRemarkEmitterWrapperPass)
-INITIALIZE_PASS_END(LoopDistributeLegacy, LDIST_NAME, ldist_name, false, false)
+INITIALIZE_PASS_END(LoopDistribute, LDIST_NAME, ldist_name, false, false)
 
 namespace llvm {
-FunctionPass *createLoopDistributePass() { return new LoopDistributeLegacy(); }
+FunctionPass *createLoopDistributePass(bool ProcessAllLoopsByDefault) {
+  return new LoopDistribute(ProcessAllLoopsByDefault);
+}
 }

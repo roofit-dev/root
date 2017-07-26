@@ -32,19 +32,16 @@
 #include "TError.h"
 #include "TSystem.h"
 
-// using parameter cache is not thread safe but needed for normalizing the functions
-#define USE_PARAMCACHE
-
 #ifdef R__HAS_VECCORE
-namespace vecCore {
-template <class T>
-vecCore::Mask<T> Int2Mask(unsigned i)
-{
-   T x;
-   for (unsigned j = 0; j < vecCore::VectorSize<T>(); j++)
-      vecCore::Set<T>(x, j, j);
-   return vecCore::Mask<T>(x < T(i));
-}
+namespace vecCore{
+   //Auxiliar function. To be included in VecCore's new release
+   template <typename T> vecCore::Scalar<T> Reduce(const T &v)
+   {
+      vecCore::Scalar<T> sum{};
+      for (size_t i = 0; i < VectorSize<T>(); ++i)
+      sum += vecCore::Get(v, i);
+      return sum;
+   }
 }
 #endif
 
@@ -226,7 +223,7 @@ namespace FitUtil {
                 vecCore::Load<ROOT::Double_v>(xx, x);
                 const double *p0 = p;
                 auto res =  (*f)( &xx, (const double *)p0);
-                return vecCore::Get<ROOT::Double_v>(res, 0);
+                return res[0];
             }
 #endif
 
@@ -270,6 +267,9 @@ namespace FitUtil {
        evaluate the LogL given a model function and the data at the point x.
        return also nPoints as the effective number of used points in the LogL evaluation
    */
+   template<class T>
+   double EvaluateLogL(const IModelFunctionTempl<T> & func, const UnBinData & data, const double * p, int iWeight, bool extended, unsigned int & nPoints, const unsigned int &executionPolicy, unsigned nChunks=0);
+
    double EvaluateLogL(const IModelFunction & func, const UnBinData & data, const double * p, int iWeight, bool extended, unsigned int & nPoints, const unsigned int &executionPolicy, unsigned nChunks=0);
 
    /**
@@ -277,10 +277,8 @@ namespace FitUtil {
        return also nPoints as the effective number of used points in the LogL evaluation
    */
    void EvaluateLogLGradient(const IModelFunction & func, const UnBinData & data, const double * x, double * grad, unsigned int & nPoints);
-
 #ifdef R__HAS_VECCORE
-   template <class NotCompileIfScalarBackend = std::enable_if<!(std::is_same<double, ROOT::Double_v>::value)>>
-   void EvaluateLogLGradient(const IModelFunctionTempl<ROOT::Double_v> &, const UnBinData &, const double *, double *, unsigned int & ) {}
+   void EvaluateLogLGradient(const IModelFunctionTempl<ROOT::Double_v> &, const UnBinData &, const double *, double *, unsigned int & ) ;
 #endif
 
    /**
@@ -288,8 +286,7 @@ namespace FitUtil {
        return also nPoints as the effective number of used points in the LogL evaluation
        By default is extended, pass extedend to false if want to be not extended (MultiNomial)
    */
-   double EvaluatePoissonLogL(const IModelFunction &func, const BinData &data, const double *x, int iWeight, bool extended,
-                              unsigned int &nPoints, const unsigned int &executionPolicy, unsigned nChunks = 0);
+   double EvaluatePoissonLogL(const IModelFunction & func, const BinData & data, const double * x, int iWeight, bool extended, unsigned int & nPoints);
 
    /**
        evaluate the Poisson LogL given a model function and the data at the point x.
@@ -314,20 +311,9 @@ namespace FitUtil {
        is used
    */
    double EvaluatePdf(const IModelFunction & func, const UnBinData & data, const double * x, unsigned int ipoint, double * g = 0);
-
-#ifdef R__HAS_VECCORE
-   template <class NotCompileIfScalarBackend = std::enable_if<!(std::is_same<double, ROOT::Double_v>::value)>>
-   double EvaluatePdf(const IModelFunctionTempl<ROOT::Double_v> &func, const UnBinData &data, const double *p, unsigned int i, double *) {
-      // evaluate the pdf contribution to the generic logl function in case of bin data
-      // return actually the log of the pdf and its derivatives
-      // func.SetParameters(p);
-      const auto x = vecCore::FromPtr<ROOT::Double_v>(data.GetCoordComponent(i, 0));
-      auto fval = func(&x, p);
-      auto logPdf = ROOT::Math::Util::EvalLog(fval);
-      return vecCore::Get<ROOT::Double_v>(logPdf, 0);
-   }
+#ifdef R__HAS_VECCORE   
+   double EvaluatePdf(const IModelFunctionTempl<ROOT::Double_v> & func, const UnBinData & data, const double * p, unsigned int i, double *);
 #endif
-
    /**
        evaluate the pdf contribution to the Poisson LogL given a model function and the BinPoint data.
        If the pointer g is not null evaluate also the gradient of the Poisson pdf.
@@ -338,9 +324,9 @@ namespace FitUtil {
 
    unsigned setAutomaticChunking(unsigned nEvents);
 
-   template<class T>
-   struct Evaluate {
 #ifdef R__HAS_VECCORE
+   template<class T>
+   struct Evaluate{
       static double EvalChi2(const IModelFunctionTempl<T> &func, const BinData & data, const double * p, unsigned int &nPoints, const unsigned int &executionPolicy, unsigned nChunks = 0)
       {
          // evaluate the chi2 given a  vectorized function reference  , the data and returns the value and also in nPoints
@@ -361,7 +347,7 @@ namespace FitUtil {
 
          // get fit option and check case if using integral of bins
          const DataOptions &fitOpt = data.Opt();
-         if (fitOpt.fBinVolume || fitOpt.fIntegral || fitOpt.fExpErrors)
+         if (fitOpt.fExpErrors || fitOpt.fIntegral || fitOpt.fExpErrors)
             Error("FitUtil::EvaluateChi2", "The vectorized implementation doesn't support Integrals, BinVolume or ExpErrors\n. Aborting operation.");
 
          (const_cast<IModelFunctionTempl<T> &>(func)).SetParameters(p);
@@ -379,16 +365,16 @@ namespace FitUtil {
             auto invErrorptr = (invError != nullptr) ? invError : &ones.front();
             vecCore::Load<T>(invErrorVec, invErrorptr);
 
-            const T *x;
+            const T * x = nullptr;
             if(data.NDim() > 1) {
-               std::vector<T> xc;
-               xc.resize(data.NDim());
-               xc[0] = x1;
-               for (unsigned int j = 1; j < data.NDim(); ++j)
-                  vecCore::Load<T>(xc[j], data.GetCoordComponent(i * vecSize, j));
-               x = xc.data();
+                std::vector<T> xc;
+                xc.resize(data.NDim());
+                xc[0] = x1;
+                for (unsigned int j = 1; j < data.NDim(); ++j)
+                    vecCore::Load<T>(xc[j], data.GetCoordComponent(i * vecSize, j));
+                    x = xc.data();
             } else {
-               x = &x1;
+                    x = &x1;
             }
 
             T fval{};
@@ -412,20 +398,15 @@ namespace FitUtil {
             return chi2;
          };
 
-#ifdef R__USE_IMT
          auto redFunction = [](const std::vector<T> &objs) {
             return std::accumulate(objs.begin(), objs.end(), T{});
          };
-#else
-         (void)nChunks;
-#endif
 
          T res{};
          if (executionPolicy == ROOT::Fit::kSerial) {
             for (unsigned int i = 0; i < (data.Size() / vecSize); i++) {
                res += mapFunction(i);
             }
-
 #ifdef R__USE_IMT
          } else if (executionPolicy == ROOT::Fit::kMultithread) {
             auto chunks = nChunks != 0 ? nChunks : setAutomaticChunking(data.Size() / vecSize);
@@ -440,11 +421,11 @@ namespace FitUtil {
          }
          nPoints = n;
 
-         // Last SIMD vector of elements (if padding needed)
-         vecCore::MaskedAssign(res, vecCore::Int2Mask<T>(data.Size() % vecSize),
-                               res + mapFunction(data.Size() / vecSize));
+#ifdef DEBUG
+         std::cout << "chi2 = " << chi2 << " n = " << nPoints  /*<< " rejected = " << nRejected */ << std::endl;
+#endif
 
-         return vecCore::ReduceAdd(res);
+         return vecCore::Reduce(res);
       }
 
       static double EvalLogL(const IModelFunctionTempl<T> &func, const UnBinData & data, const double * const p, int iWeight,
@@ -482,7 +463,7 @@ namespace FitUtil {
                T xmin_v, xmax_v;
                vecCore::Load<T>(xmin_v, xmin.data());
                vecCore::Load<T>(xmax_v, xmax.data());
-               if (vecCore::ReduceAdd(func(&xmin_v, p)) != 0 || vecCore::ReduceAdd(func(&xmax_v, p)) != 0) {
+               if (vecCore::Reduce(func(&xmin_v, p)) != 0 || vecCore::Reduce(func(&xmax_v, p)) != 0) {
                   MATH_ERROR_MSG("FitUtil::EvaluateLogLikelihood", "A range has not been set and the function is not zero at +/- inf");
                   return 0;
                }
@@ -497,28 +478,27 @@ namespace FitUtil {
          auto mapFunction = [ &, p](const unsigned i) {
             T W{};
             T W2{};
-            T fval{};
+            T x1{};
 
+            vecCore::Load<T>(x1, data.GetCoordComponent(i*vecSize,0));
+
+            const T * x = nullptr;
             if(data.NDim() > 1) {
-               std::vector<T> x(data.NDim());
-               for (unsigned int j = 0; j < data.NDim(); ++j)
-                  vecCore::Load<T>(x[j], data.GetCoordComponent(i * vecSize, j));
-#ifdef USE_PARAMCACHE
-               fval = func(x.data());
-#else
-               fval = func(x.data(), p);
-#endif
-               // one -dim case
+                std::vector<T> xc;
+                xc.resize(data.NDim());
+                xc[0] = x1;
+                for (unsigned int j = 1; j < data.NDim(); ++j)
+                    vecCore::Load<T>(xc[j], data.GetCoordComponent(i * vecSize, j));
+                    x = xc.data();
             } else {
-               T x;
-               vecCore::Load<T>(x, data.GetCoordComponent(i * vecSize, 0));
-#ifdef USE_PARAMCACHE
-               fval = func(&x);
-#else
-               fval = func(&x, p);
-#endif
+                    x = &x1;
             }
 
+#ifdef USE_PARAMCACHE
+            auto fval = func(x);
+#else
+            auto fval = func(x, p);
+#endif
             if (normalizeFunc) fval = fval * (1 / norm);
 
             // function EvalLog protects against negative or too small values of fval
@@ -543,20 +523,17 @@ namespace FitUtil {
             return LikelihoodAux<T>(logval, W, W2);
          };
 
-#ifdef R__USE_IMT
          auto redFunction = [](const std::vector<LikelihoodAux<T>> &objs) {
             return std::accumulate(objs.begin(), objs.end(), LikelihoodAux<T>(),
             [](const LikelihoodAux<T> &l1, const LikelihoodAux<T> &l2) {
                return l1 + l2;
             });
          };
-#else
-         (void)nChunks;
-#endif
 
          T logl_v{};
          T sumW_v{};
          T sumW2_v{};
+
          if (executionPolicy == ROOT::Fit::kSerial) {
             for (unsigned int i = 0; i < n / vecSize; ++i) {
                auto resArray = mapFunction(i);
@@ -616,7 +593,7 @@ namespace FitUtil {
                   T xmin_v, xmax_v;
                   vecCore::Load<T>(xmin_v, xmin.data());
                   vecCore::Load<T>(xmax_v, xmax.data());
-                  if (vecCore::ReduceAdd(func(&xmin_v, p)) != 0 || vecCore::ReduceAdd(func(&xmax_v, p)) != 0) {
+                  if (vecCore::Reduce(func(&xmin_v, p)) != 0 || vecCore::Reduce(func(&xmax_v, p)) != 0) {
                      MATH_ERROR_MSG("FitUtil::EvaluateLogLikelihood", "A range has not been set and the function is not zero at +/- inf");
                      return 0;
                   }
@@ -644,138 +621,10 @@ namespace FitUtil {
 
          // reset the number of fitting data points
          //  nPoints = n;
-         // std::cout<<", n: "<<nPoints<<std::endl;
+// std::cout<<", n: "<<nPoints<<std::endl;
          nPoints = 0;
          return -logl;
 
-      }
-
-      static double EvalPoissonLogL(const IModelFunctionTempl<T> &func, const BinData &data, const double *p, int iWeight, bool extended,
-                                    unsigned int, const unsigned int &executionPolicy, unsigned nChunks = 0)
-      {
-         // evaluate the Poisson Log Likelihood
-         // for binned likelihood fits
-         // this is Sum ( f(x_i)  -  y_i * log( f (x_i) ) )
-         // add as well constant term for saturated model to make it like a Chi2/2
-         // by default is etended. If extended is false the fit is not extended and
-         // the global poisson term is removed (i.e is a binomial fit)
-         // (remember that in this case one needs to have a function with a fixed normalization
-         // like in a non extended binned fit)
-         //
-         // if use Weight use a weighted dataset
-         // iWeight = 1 ==> logL = Sum( w f(x_i) )
-         // case of iWeight==1 is actually identical to weight==0
-         // iWeight = 2 ==> logL = Sum( w*w * f(x_i) )
-         //
-
-#ifdef USE_PARAMCACHE
-         (const_cast<IModelFunctionTempl<T> &>(func)).SetParameters(p);
-#endif
-         auto vecSize = vecCore::VectorSize<T>();
-         // get fit option and check case of using integral of bins
-         const DataOptions &fitOpt = data.Opt();
-         if (fitOpt.fExpErrors || fitOpt.fIntegral)
-            Error("FitUtil::EvaluateChi2",
-                  "The vectorized implementation doesn't support Integrals or BinVolume\n. Aborting operation.");
-         bool useW2 = (iWeight == 2);
-
-         auto mapFunction = [&](unsigned int i) {
-            T y;
-            vecCore::Load<T>(y, data.ValuePtr(i * vecSize));
-            T fval{};
-
-            if (data.NDim() > 1) {
-               std::vector<T> x(data.NDim());
-               for (unsigned int j = 0; j < data.NDim(); ++j)
-                  vecCore::Load<T>(x[j], data.GetCoordComponent(i * vecSize, j));
-#ifdef USE_PARAMCACHE
-               fval = func(x.data());
-#else
-               fval = func(x.data(), p);
-#endif
-               // one -dim case
-            } else {
-               T x;
-               vecCore::Load<T>(x, data.GetCoordComponent(i * vecSize, 0));
-#ifdef USE_PARAMCACHE
-               fval = func(&x);
-#else
-               fval = func(&x, p);
-#endif
-            }
-
-            // EvalLog protects against 0 values of fval but don't want to add in the -log sum
-            // negative values of fval
-            vecCore::MaskedAssign<T>(fval, fval < 0.0, 0.0);
-
-            T nloglike{}; // negative loglikelihood
-
-            if (useW2) {
-               // apply weight correction . Effective weight is error^2/ y
-               // and expected events in bins is fval/weight
-               // can apply correction only when y is not zero otherwise weight is undefined
-               // (in case of weighted likelihood I don't care about the constant term due to
-               // the saturated model)
-               auto m = vecCore::Mask_v<T>(y != 0.0);
-               if (!vecCore::MaskFull(m)) {
-                  T error = 1;
-                  if (data.GetErrorType() != ROOT::Fit::BinData::ErrorType::kNoError)
-                     vecCore::Load<T>(error, data.ErrorPtr(i * vecSize));
-                  T weight;
-                  vecCore::MaskedAssign<T>(weight, y != 0, (error * error) / y);
-                  if (extended) {
-                     nloglike = fval * weight;
-                     // wTot  += weight;
-                     // w2Tot += weight*weight;
-                  }
-                  vecCore::MaskedAssign<T>(nloglike, y != 0, nloglike - weight * y * ROOT::Math::Util::EvalLog(fval));
-               }
-
-            } else {
-               // standard case no weights or iWeight=1
-               // this is needed for Poisson likelihood (which are extened and not for multinomial)
-               // the formula below  include constant term due to likelihood of saturated model (f(x) = y)
-               // (same formula as in Baker-Cousins paper, page 439 except a factor of 2
-               if (extended) nloglike = fval - y;
-
-               vecCore::MaskedAssign<T>(
-                  nloglike, y > 0, nloglike + y * (ROOT::Math::Util::EvalLog(y) - ROOT::Math::Util::EvalLog(fval)));
-            }
-
-            return nloglike;
-         };
-
-#ifdef R__USE_IMT
-         auto redFunction = [](const std::vector<T> &objs) { return std::accumulate(objs.begin(), objs.end(), T{}); };
-#else
-         (void)nChunks;
-#endif
-
-         T res{};
-         if (executionPolicy == ROOT::Fit::kSerial) {
-            for (unsigned int i = 0; i < (data.Size() / vecSize); i++) {
-               res += mapFunction(i);
-            }
-#ifdef R__USE_IMT
-         } else if (executionPolicy == ROOT::Fit::kMultithread) {
-            auto chunks = nChunks != 0 ? nChunks : setAutomaticChunking(data.Size() / vecSize);
-            ROOT::TThreadExecutor pool;
-            res = pool.MapReduce(mapFunction, ROOT::TSeq<unsigned>(0, data.Size() / vecSize), redFunction, chunks);
-#endif
-            // } else if(executionPolicy == ROOT::Fit::kMultitProcess){
-            //   ROOT::TProcessExecutor pool;
-            //   res = pool.MapReduce(mapFunction, ROOT::TSeq<unsigned>(0, data.Size()/vecSize), redFunction);
-         } else {
-            Error(
-               "FitUtil::Evaluate<T>::EvalPoissonLogL",
-               "Execution policy unknown. Avalaible choices:\n 0: Serial (default)\n 1: MultiThread (requires IMT)\n");
-         }
-
-         // Last padded SIMD vector of elements
-         vecCore::MaskedAssign(res, vecCore::Int2Mask<T>(data.Size() % vecSize),
-                               res + mapFunction(data.Size() / vecSize));
-
-         return vecCore::ReduceAdd(res);
       }
 
       static double EvalChi2Effective(const IModelFunctionTempl<T> &, const BinData &, const double *, unsigned int &)
@@ -794,23 +643,10 @@ namespace FitUtil {
          Error("FitUtil::Evaluate<T>::EvalChi2Residual", "The vectorized evaluation of the Chi2 with the ith residual is still not supported");
          return -1.;
       }
-
-      /// evaluate the pdf (Poisson) contribution to the logl (return actually log of pdf)
-      /// and its gradient
-static double EvalPoissonBinPdf(const IModelFunctionTempl<T> &, const BinData &, const double *, unsigned int , double * ) {
-         Error("FitUtil::Evaluate<T>::EvaluatePoissonBinPdf", "The vectorized evaluation of the BinnedLikelihood fit evaluated point by point is still not supported");
-         return -1.;
-      }
-
-static void EvalPoissonLogLGradient(const IModelFunctionTempl<T> &, const BinData &, const double *, double * ) {
-         Error("FitUtil::Evaluate<T>::EvaluatePoissonLogLGradient", "The vectorized evaluation of the BinnedLikelihood fit evaluated point by point is still not supported");
-      }
    };
 
    template<>
    struct Evaluate<double>{
-#endif
-
       static double EvalChi2(const IModelFunction & func, const BinData & data, const double * p, unsigned int &nPoints, const unsigned int &executionPolicy, unsigned nChunks = 0)
       {
          // evaluate the chi2 given a  function reference, the data and returns the value and also in nPoints
@@ -819,19 +655,11 @@ static void EvalPoissonLogLGradient(const IModelFunctionTempl<T> &, const BinDat
          // optionally the integral of function in the bin is used
          return FitUtil::EvaluateChi2(func, data, p, nPoints, executionPolicy, nChunks);
       }
-
       static double EvalLogL(const IModelFunctionTempl<double> &func, const UnBinData & data, const double * p, int iWeight,
       bool extended, unsigned int &nPoints, const unsigned int &executionPolicy, unsigned nChunks = 0)
       {
          return FitUtil::EvaluateLogL(func, data, p, iWeight, extended, nPoints, executionPolicy, nChunks);
       }
-
-      static double EvalPoissonLogL(const IModelFunctionTempl<double> &func, const BinData &data, const double *p, int iWeight, bool extended, unsigned int &nPoints,
-                                    const unsigned int &executionPolicy, unsigned nChunks = 0)
-      {
-         return FitUtil::EvaluatePoissonLogL(func, data, p, iWeight, extended, nPoints, executionPolicy, nChunks);
-      }
-
       static double EvalChi2Effective(const IModelFunctionTempl<double> &func, const BinData & data, const double * p, unsigned int &nPoints)
       {
          return FitUtil::EvaluateChi2Effective(func, data, p, nPoints);
@@ -844,17 +672,8 @@ static void EvalPoissonLogLGradient(const IModelFunctionTempl<T> &, const BinDat
       {
          return FitUtil::EvaluateChi2Residual(func, data, p, i, g);
       }
-
-      /// evaluate the pdf (Poisson) contribution to the logl (return actually log of pdf)
-      /// and its gradient
-      static double EvalPoissonBinPdf(const IModelFunctionTempl<double> &func, const BinData & data, const double *p, unsigned int i, double *g ) {
-         return FitUtil::EvaluatePoissonBinPdf(func, data, p, i, g);
-      }
-
-static void EvalPoissonLogLGradient(const IModelFunctionTempl<double> &func, const BinData &data, const double *p, double *g) {
-         FitUtil::EvaluatePoissonLogLGradient(func, data, p, g);
-      }
    };
+#endif
 
 } // end namespace FitUtil
 

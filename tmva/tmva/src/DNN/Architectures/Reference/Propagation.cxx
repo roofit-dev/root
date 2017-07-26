@@ -21,15 +21,17 @@ namespace TMVA
 namespace DNN
 {
 
-template <typename AReal>
-void TReference<AReal>::MultiplyTranspose(TMatrixT<AReal> &output, const TMatrixT<AReal> &input,
-                                          const TMatrixT<AReal> &weights)
+template<typename Scalar_t>
+void TReference<Scalar_t>::MultiplyTranspose(TMatrixT<Scalar_t> &output,
+                                            const TMatrixT<Scalar_t> &input,
+                                            const TMatrixT<Scalar_t> &weights)
 {
     output.MultT(input, weights);
 }
 
-template <typename AReal>
-void TReference<AReal>::AddRowWise(TMatrixT<AReal> &output, const TMatrixT<AReal> &biases)
+template<typename Scalar_t>
+void TReference<Scalar_t>::AddRowWise(TMatrixT<Scalar_t> &output,
+                                     const TMatrixT<Scalar_t> &biases)
 {
    for (size_t i = 0; i < (size_t) output.GetNrows(); i++) {
       for (size_t j = 0; j < (size_t) output.GetNcols(); j++) {
@@ -38,11 +40,14 @@ void TReference<AReal>::AddRowWise(TMatrixT<AReal> &output, const TMatrixT<AReal
    }
 }
 
-template <typename AReal>
-void TReference<AReal>::Backward(TMatrixT<AReal> &activation_gradients_backward, TMatrixT<AReal> &weight_gradients,
-                                 TMatrixT<AReal> &bias_gradients, TMatrixT<AReal> &df,
-                                 const TMatrixT<AReal> &activation_gradients, const TMatrixT<AReal> &weights,
-                                 const TMatrixT<AReal> &activations_backward)
+template<typename Scalar_t>
+void TReference<Scalar_t>::Backward(TMatrixT<Scalar_t> & activation_gradients_backward,
+                                   TMatrixT<Scalar_t> & weight_gradients,
+                                   TMatrixT<Scalar_t> & bias_gradients,
+                                   TMatrixT<Scalar_t> & df,
+                                   const TMatrixT<Scalar_t> & activation_gradients,
+                                   const TMatrixT<Scalar_t> & weights,
+                                   const TMatrixT<Scalar_t> & activations_backward)
 {
 
    // Compute element-wise product.
@@ -65,7 +70,7 @@ void TReference<AReal>::Backward(TMatrixT<AReal> &activation_gradients_backward,
    // Bias gradients.
    if (bias_gradients.GetNoElements() > 0) {
       for (size_t j = 0; j < (size_t) df.GetNcols(); j++) {
-         AReal sum = 0.0;
+         Scalar_t sum = 0.0;
          for (size_t i = 0; i < (size_t) df.GetNrows(); i++) {
             sum += df(i,j);
          }
@@ -74,8 +79,10 @@ void TReference<AReal>::Backward(TMatrixT<AReal> &activation_gradients_backward,
    }
 }
 
-template <typename AReal>
-void TReference<AReal>::ScaleAdd(TMatrixT<AReal> &A, const TMatrixT<AReal> &B, AReal beta)
+template<typename Scalar_t>
+void TReference<Scalar_t>::ScaleAdd(TMatrixT<Scalar_t> & A,
+                                   const TMatrixT<Scalar_t> & B,
+                                   Scalar_t beta)
 {
    for (size_t i = 0; i < (size_t) A.GetNrows(); i++) {
       for (size_t j = 0; j < (size_t) A.GetNcols(); j++) {
@@ -84,21 +91,11 @@ void TReference<AReal>::ScaleAdd(TMatrixT<AReal> &A, const TMatrixT<AReal> &B, A
    }
 }
 
-template <typename AReal>
-void TReference<AReal>::Copy(TMatrixT<AReal> &A, const TMatrixT<AReal> &B)
+template<typename Scalar_t>
+void TReference<Scalar_t>::Copy(TMatrixT<Scalar_t> & A,
+                                const TMatrixT<Scalar_t> & B)
 {
    A = B;
-}
-
-template <typename AReal>
-void TReference<AReal>::SumColumns(TMatrixT<AReal> &B, const TMatrixT<AReal> &A)
-{
-   B = 0.0;
-   for (Int_t i = 0; i < A.GetNrows(); i++) {
-      for (Int_t j = 0; j < A.GetNcols(); j++) {
-         B(0, j) += A(i, j);
-      }
-   }
 }
 
 } // namespace DNN

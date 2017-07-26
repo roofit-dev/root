@@ -17,7 +17,6 @@
 #ifndef LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONBASEINFO_H
 #define LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONBASEINFO_H
 
-#include "HexagonDepITypes.h"
 #include "HexagonMCTargetDesc.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <stdint.h>
@@ -28,14 +27,57 @@ namespace llvm {
 /// instruction info tracks.
 ///
 namespace HexagonII {
-  unsigned const TypeCVI_FIRST = TypeCVI_HIST;
-  unsigned const TypeCVI_LAST = TypeCVI_VX_LATE;
+  // *** The code below must match HexagonInstrFormat*.td *** //
+
+  // Insn types.
+  // *** Must match HexagonInstrFormat*.td ***
+  enum Type {
+    TypePSEUDO  = 0,
+    TypeALU32   = 1,
+    TypeCR      = 2,
+    TypeJR      = 3,
+    TypeJ       = 4,
+    TypeLD      = 5,
+    TypeST      = 6,
+    TypeSYSTEM  = 7,
+    TypeXTYPE   = 8,
+    TypeMEMOP   = 9,
+    TypeNV      = 10,
+    TypeDUPLEX  = 11,
+    TypeCOMPOUND = 12,
+    TypeCVI_FIRST     = 13,
+    TypeCVI_VA        = TypeCVI_FIRST,
+    TypeCVI_VA_DV     = 14,
+    TypeCVI_VX        = 15,
+    TypeCVI_VX_DV     = 16,
+    TypeCVI_VP        = 17,
+    TypeCVI_VP_VS     = 18,
+    TypeCVI_VS        = 19,
+    TypeCVI_VINLANESAT= 20,
+    TypeCVI_VM_LD     = 21,
+    TypeCVI_VM_TMP_LD = 22,
+    TypeCVI_VM_CUR_LD = 23,
+    TypeCVI_VM_VP_LDU = 24,
+    TypeCVI_VM_ST     = 25,
+    TypeCVI_VM_NEW_ST = 26,
+    TypeCVI_VM_STU    = 27,
+    TypeCVI_HIST      = 28,
+    TypeCVI_LAST      = TypeCVI_HIST,
+    TypePREFIX  = 30, // Such as extenders.
+    TypeENDLOOP = 31  // Such as end of a HW loop.
+  };
 
   enum SubTarget {
-    HasV4SubT     = 0x3f,
-    HasV5SubT     = 0x3e,
-    HasV55SubT    = 0x3c,
-    HasV60SubT    = 0x38,
+    HasV2SubT     = 0xf,
+    HasV2SubTOnly = 0x1,
+    NoV2SubT      = 0x0,
+    HasV3SubT     = 0xe,
+    HasV3SubTOnly = 0x2,
+    NoV3SubT      = 0x1,
+    HasV4SubT     = 0xc,
+    NoV4SubT      = 0x3,
+    HasV5SubT     = 0x8,
+    NoV5SubT      = 0x7
   };
 
   enum AddrMode {
@@ -50,7 +92,7 @@ namespace HexagonII {
 
   // MemAccessSize is represented as 1+log2(N) where N is size in bits.
   enum class MemAccessSize {
-    NoMemAccess = 0,            // Not a memory access instruction.
+    NoMemAccess = 0,            // Not a memory acces instruction.
     ByteAccess = 1,             // Byte access instruction (memb).
     HalfWordAccess = 2,         // Half word access instruction (memh).
     WordAccess = 3,             // Word access instruction (memw).
@@ -65,104 +107,103 @@ namespace HexagonII {
   enum {
     // This 5-bit field describes the insn type.
     TypePos  = 0,
-    TypeMask = 0x3f,
+    TypeMask = 0x1f,
 
     // Solo instructions.
-    SoloPos  = 6,
+    SoloPos  = 5,
     SoloMask = 0x1,
     // Packed only with A or X-type instructions.
-    SoloAXPos  = 7,
+    SoloAXPos  = 6,
     SoloAXMask = 0x1,
     // Only A-type instruction in first slot or nothing.
-    SoloAin1Pos  = 8,
+    SoloAin1Pos  = 7,
     SoloAin1Mask = 0x1,
 
     // Predicated instructions.
-    PredicatedPos  = 9,
+    PredicatedPos  = 8,
     PredicatedMask = 0x1,
-    PredicatedFalsePos  = 10,
+    PredicatedFalsePos  = 9,
     PredicatedFalseMask = 0x1,
-    PredicatedNewPos  = 11,
+    PredicatedNewPos  = 10,
     PredicatedNewMask = 0x1,
-    PredicateLatePos  = 12,
+    PredicateLatePos  = 11,
     PredicateLateMask = 0x1,
 
     // New-Value consumer instructions.
-    NewValuePos  = 13,
+    NewValuePos  = 12,
     NewValueMask = 0x1,
     // New-Value producer instructions.
-    hasNewValuePos  = 14,
+    hasNewValuePos  = 13,
     hasNewValueMask = 0x1,
     // Which operand consumes or produces a new value.
-    NewValueOpPos  = 15,
+    NewValueOpPos  = 14,
     NewValueOpMask = 0x7,
     // Stores that can become new-value stores.
-    mayNVStorePos  = 18,
+    mayNVStorePos  = 17,
     mayNVStoreMask = 0x1,
     // New-value store instructions.
-    NVStorePos  = 19,
+    NVStorePos  = 18,
     NVStoreMask = 0x1,
     // Loads that can become current-value loads.
-    mayCVLoadPos  = 20,
+    mayCVLoadPos  = 19,
     mayCVLoadMask = 0x1,
     // Current-value load instructions.
-    CVLoadPos  = 21,
+    CVLoadPos  = 20,
     CVLoadMask = 0x1,
 
     // Extendable insns.
-    ExtendablePos  = 22,
+    ExtendablePos  = 21,
     ExtendableMask = 0x1,
     // Insns must be extended.
-    ExtendedPos  = 23,
+    ExtendedPos  = 22,
     ExtendedMask = 0x1,
     // Which operand may be extended.
-    ExtendableOpPos  = 24,
+    ExtendableOpPos  = 23,
     ExtendableOpMask = 0x7,
     // Signed or unsigned range.
-    ExtentSignedPos  = 27,
+    ExtentSignedPos  = 26,
     ExtentSignedMask = 0x1,
     // Number of bits of range before extending operand.
-    ExtentBitsPos  = 28,
+    ExtentBitsPos  = 27,
     ExtentBitsMask = 0x1f,
     // Alignment power-of-two before extending operand.
-    ExtentAlignPos  = 33,
+    ExtentAlignPos  = 32,
     ExtentAlignMask = 0x3,
 
+    // Valid subtargets
+    validSubTargetPos  = 34,
+    validSubTargetMask = 0xf,
+
     // Addressing mode for load/store instructions.
-    AddrModePos  = 41,
+    AddrModePos  = 40,
     AddrModeMask = 0x7,
     // Access size for load/store instructions.
-    MemAccessSizePos = 44,
+    MemAccessSizePos = 43,
     MemAccesSizeMask = 0xf,
 
     // Branch predicted taken.
-    TakenPos = 48,
+    TakenPos = 47,
     TakenMask = 0x1,
 
     // Floating-point instructions.
-    FPPos  = 49,
+    FPPos  = 48,
     FPMask = 0x1,
 
     // New-Value producer-2 instructions.
-    hasNewValuePos2  = 51,
+    hasNewValuePos2  = 50,
     hasNewValueMask2 = 0x1,
+
     // Which operand consumes or produces a new value.
-    NewValueOpPos2  = 52,
+    NewValueOpPos2  = 51,
     NewValueOpMask2 = 0x7,
 
     // Accumulator instructions.
-    AccumulatorPos = 55,
+    AccumulatorPos = 54,
     AccumulatorMask = 0x1,
 
-    // Complex XU, prevent xu competition by preferring slot3
-    PrefersSlot3Pos = 56,
+    // Complex XU, prevent xu competition by prefering slot3
+    PrefersSlot3Pos = 55,
     PrefersSlot3Mask = 0x1,
-
-    CofMax1Pos = 60,
-    CofMax1Mask = 0x1,
-
-    CVINewPos = 61,
-    CVINewMask = 0x1
   };
 
   // *** The code above must match HexagonInstrFormat*.td *** //
@@ -172,6 +213,8 @@ namespace HexagonII {
     //===------------------------------------------------------------------===//
     // Hexagon Specific MachineOperand flags.
     MO_NO_FLAG,
+
+    HMOTF_ConstExtended = 1,
 
     /// MO_PCREL - On a symbol operand, indicates a PC-relative relocation
     /// Used for computing a global address for PIC compilations
@@ -204,13 +247,7 @@ namespace HexagonII {
 
     // MO_TPREL - indicates relocation for TLS
     // local Executable method
-    MO_TPREL,
-
-    // HMOTF_ConstExtended
-    // Addendum to abovem, indicates a const extended op
-    // Can be used as a mask.
-    HMOTF_ConstExtended = 0x80
-
+    MO_TPREL
   };
 
   // Hexagon Sub-instruction classes.

@@ -480,8 +480,8 @@ template <template <typename ToArg, typename FromArg> class ArgumentAdapterT,
           typename FromTypes, typename ToTypes>
 class AdaptativeOverloadCollector {
 public:
-  AdaptativeOverloadCollector(
-      StringRef Name, std::vector<std::unique_ptr<MatcherDescriptor>> &Out)
+  AdaptativeOverloadCollector(StringRef Name,
+                              std::vector<MatcherDescriptor *> &Out)
       : Name(Name), Out(Out) {
     collect(FromTypes());
   }
@@ -499,7 +499,7 @@ private:
   inline void collect(FromTypeList);
 
   StringRef Name;
-  std::vector<std::unique_ptr<MatcherDescriptor>> &Out;
+  std::vector<MatcherDescriptor *> &Out;
 };
 
 /// \brief MatcherDescriptor that wraps multiple "overloads" of the same
@@ -509,10 +509,8 @@ private:
 /// more than one overloads match the arguments.
 class OverloadedMatcherDescriptor : public MatcherDescriptor {
 public:
-  OverloadedMatcherDescriptor(
-      MutableArrayRef<std::unique_ptr<MatcherDescriptor>> Callbacks)
-      : Overloads(std::make_move_iterator(Callbacks.begin()),
-                  std::make_move_iterator(Callbacks.end())) {}
+  OverloadedMatcherDescriptor(ArrayRef<MatcherDescriptor *> Callbacks)
+      : Overloads(Callbacks.begin(), Callbacks.end()) {}
 
   ~OverloadedMatcherDescriptor() override {}
 
@@ -643,37 +641,36 @@ private:
 
 /// \brief 0-arg overload
 template <typename ReturnType>
-std::unique_ptr<MatcherDescriptor>
-makeMatcherAutoMarshall(ReturnType (*Func)(), StringRef MatcherName) {
+MatcherDescriptor *makeMatcherAutoMarshall(ReturnType (*Func)(),
+                                     StringRef MatcherName) {
   std::vector<ast_type_traits::ASTNodeKind> RetTypes;
   BuildReturnTypeVector<ReturnType>::build(RetTypes);
-  return llvm::make_unique<FixedArgCountMatcherDescriptor>(
+  return new FixedArgCountMatcherDescriptor(
       matcherMarshall0<ReturnType>, reinterpret_cast<void (*)()>(Func),
       MatcherName, RetTypes, None);
 }
 
 /// \brief 1-arg overload
 template <typename ReturnType, typename ArgType1>
-std::unique_ptr<MatcherDescriptor>
-makeMatcherAutoMarshall(ReturnType (*Func)(ArgType1), StringRef MatcherName) {
+MatcherDescriptor *makeMatcherAutoMarshall(ReturnType (*Func)(ArgType1),
+                                     StringRef MatcherName) {
   std::vector<ast_type_traits::ASTNodeKind> RetTypes;
   BuildReturnTypeVector<ReturnType>::build(RetTypes);
   ArgKind AK = ArgTypeTraits<ArgType1>::getKind();
-  return llvm::make_unique<FixedArgCountMatcherDescriptor>(
+  return new FixedArgCountMatcherDescriptor(
       matcherMarshall1<ReturnType, ArgType1>,
       reinterpret_cast<void (*)()>(Func), MatcherName, RetTypes, AK);
 }
 
 /// \brief 2-arg overload
 template <typename ReturnType, typename ArgType1, typename ArgType2>
-std::unique_ptr<MatcherDescriptor>
-makeMatcherAutoMarshall(ReturnType (*Func)(ArgType1, ArgType2),
-                        StringRef MatcherName) {
+MatcherDescriptor *makeMatcherAutoMarshall(ReturnType (*Func)(ArgType1, ArgType2),
+                                     StringRef MatcherName) {
   std::vector<ast_type_traits::ASTNodeKind> RetTypes;
   BuildReturnTypeVector<ReturnType>::build(RetTypes);
   ArgKind AKs[] = { ArgTypeTraits<ArgType1>::getKind(),
                     ArgTypeTraits<ArgType2>::getKind() };
-  return llvm::make_unique<FixedArgCountMatcherDescriptor>(
+  return new FixedArgCountMatcherDescriptor(
       matcherMarshall2<ReturnType, ArgType1, ArgType2>,
       reinterpret_cast<void (*)()>(Func), MatcherName, RetTypes, AKs);
 }
@@ -681,10 +678,10 @@ makeMatcherAutoMarshall(ReturnType (*Func)(ArgType1, ArgType2),
 /// \brief Variadic overload.
 template <typename ResultT, typename ArgT,
           ResultT (*Func)(ArrayRef<const ArgT *>)>
-std::unique_ptr<MatcherDescriptor> makeMatcherAutoMarshall(
+MatcherDescriptor *makeMatcherAutoMarshall(
     ast_matchers::internal::VariadicFunction<ResultT, ArgT, Func> VarFunc,
     StringRef MatcherName) {
-  return llvm::make_unique<VariadicFuncMatcherDescriptor>(VarFunc, MatcherName);
+  return new VariadicFuncMatcherDescriptor(VarFunc, MatcherName);
 }
 
 /// \brief Overload for VariadicDynCastAllOfMatchers.
@@ -692,24 +689,24 @@ std::unique_ptr<MatcherDescriptor> makeMatcherAutoMarshall(
 /// Not strictly necessary, but DynCastAllOfMatcherDescriptor gives us better
 /// completion results for that type of matcher.
 template <typename BaseT, typename DerivedT>
-std::unique_ptr<MatcherDescriptor> makeMatcherAutoMarshall(
-    ast_matchers::internal::VariadicDynCastAllOfMatcher<BaseT, DerivedT>
-        VarFunc,
-    StringRef MatcherName) {
-  return llvm::make_unique<DynCastAllOfMatcherDescriptor>(VarFunc, MatcherName);
+MatcherDescriptor *
+makeMatcherAutoMarshall(ast_matchers::internal::VariadicDynCastAllOfMatcher<
+                            BaseT, DerivedT> VarFunc,
+                        StringRef MatcherName) {
+  return new DynCastAllOfMatcherDescriptor(VarFunc, MatcherName);
 }
 
 /// \brief Argument adaptative overload.
 template <template <typename ToArg, typename FromArg> class ArgumentAdapterT,
           typename FromTypes, typename ToTypes>
-std::unique_ptr<MatcherDescriptor> makeMatcherAutoMarshall(
-    ast_matchers::internal::ArgumentAdaptingMatcherFunc<ArgumentAdapterT,
-                                                        FromTypes, ToTypes>,
-    StringRef MatcherName) {
-  std::vector<std::unique_ptr<MatcherDescriptor>> Overloads;
+MatcherDescriptor *
+makeMatcherAutoMarshall(ast_matchers::internal::ArgumentAdaptingMatcherFunc<
+                            ArgumentAdapterT, FromTypes, ToTypes>,
+                        StringRef MatcherName) {
+  std::vector<MatcherDescriptor *> Overloads;
   AdaptativeOverloadCollector<ArgumentAdapterT, FromTypes, ToTypes>(MatcherName,
                                                                     Overloads);
-  return llvm::make_unique<OverloadedMatcherDescriptor>(Overloads);
+  return new OverloadedMatcherDescriptor(Overloads);
 }
 
 template <template <typename ToArg, typename FromArg> class ArgumentAdapterT,
@@ -724,12 +721,12 @@ inline void AdaptativeOverloadCollector<ArgumentAdapterT, FromTypes,
 
 /// \brief Variadic operator overload.
 template <unsigned MinCount, unsigned MaxCount>
-std::unique_ptr<MatcherDescriptor> makeMatcherAutoMarshall(
-    ast_matchers::internal::VariadicOperatorMatcherFunc<MinCount, MaxCount>
-        Func,
-    StringRef MatcherName) {
-  return llvm::make_unique<VariadicOperatorMatcherDescriptor>(
-      MinCount, MaxCount, Func.Op, MatcherName);
+MatcherDescriptor *
+makeMatcherAutoMarshall(ast_matchers::internal::VariadicOperatorMatcherFunc<
+                            MinCount, MaxCount> Func,
+                        StringRef MatcherName) {
+  return new VariadicOperatorMatcherDescriptor(MinCount, MaxCount, Func.Op,
+                                               MatcherName);
 }
 
 } // namespace internal

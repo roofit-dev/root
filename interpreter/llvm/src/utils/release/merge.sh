@@ -31,7 +31,7 @@ while [ $# -gt 0 ]; do
     case $1 in
         -rev | --rev | -r )
             shift
-            rev=$1
+            rev=${$1#r}
             ;;
         -proj | --proj | -project | --project | -p )
             shift
@@ -95,7 +95,7 @@ else
 fi
 
 echo
-echo "# To commit, run the following in $srcdir/:"
+echo "# To commit, run the following in $proj.src/:"
 echo svn commit -F $tempfile
 
 exit 0

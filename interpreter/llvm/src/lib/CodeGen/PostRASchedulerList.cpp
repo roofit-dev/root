@@ -98,7 +98,7 @@ namespace {
 
     MachineFunctionProperties getRequiredProperties() const override {
       return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::NoVRegs);
+          MachineFunctionProperties::Property::AllVRegsAllocated);
     }
 
     bool runOnMachineFunction(MachineFunction &Fn) override;
@@ -253,7 +253,7 @@ void SchedulePostRATDList::exitRegion() {
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 /// dumpSchedule - dump the scheduled Sequence.
-LLVM_DUMP_METHOD void SchedulePostRATDList::dumpSchedule() const {
+void SchedulePostRATDList::dumpSchedule() const {
   for (unsigned i = 0, e = Sequence.size(); i != e; i++) {
     if (SUnit *SU = Sequence[i])
       SU->dump(this);

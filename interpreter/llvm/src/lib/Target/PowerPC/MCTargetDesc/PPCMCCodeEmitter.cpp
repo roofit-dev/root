@@ -11,28 +11,21 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MCTargetDesc/PPCMCTargetDesc.h"
 #include "MCTargetDesc/PPCFixupKinds.h"
-#include "PPCInstrInfo.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
-#include "llvm/MC/MCFixup.h"
+#include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
-#include "llvm/MC/MCInstrDesc.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
-#include "llvm/Support/Endian.h"
 #include "llvm/Support/EndianStream.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cassert>
-#include <cstdint>
-
+#include "llvm/Target/TargetOpcodes.h"
 using namespace llvm;
 
 #define DEBUG_TYPE "mccodeemitter"
@@ -40,8 +33,10 @@ using namespace llvm;
 STATISTIC(MCNumEmitted, "Number of MC instructions emitted");
 
 namespace {
-
 class PPCMCCodeEmitter : public MCCodeEmitter {
+  PPCMCCodeEmitter(const PPCMCCodeEmitter &) = delete;
+  void operator=(const PPCMCCodeEmitter &) = delete;
+
   const MCInstrInfo &MCII;
   const MCContext &CTX;
   bool IsLittleEndian;
@@ -50,9 +45,8 @@ public:
   PPCMCCodeEmitter(const MCInstrInfo &mcii, MCContext &ctx)
       : MCII(mcii), CTX(ctx),
         IsLittleEndian(ctx.getAsmInfo()->isLittleEndian()) {}
-  PPCMCCodeEmitter(const PPCMCCodeEmitter &) = delete;
-  void operator=(const PPCMCCodeEmitter &) = delete;
-  ~PPCMCCodeEmitter() override = default;
+
+  ~PPCMCCodeEmitter() override {}
 
   unsigned getDirectBrEncoding(const MCInst &MI, unsigned OpNo,
                                SmallVectorImpl<MCFixup> &Fixups,
@@ -108,13 +102,9 @@ public:
   uint64_t getBinaryCodeForInstr(const MCInst &MI,
                                  SmallVectorImpl<MCFixup> &Fixups,
                                  const MCSubtargetInfo &STI) const;
-
   void encodeInstruction(const MCInst &MI, raw_ostream &OS,
                          SmallVectorImpl<MCFixup> &Fixups,
                          const MCSubtargetInfo &STI) const override {
-    verifyInstructionPredicates(MI,
-                                computeAvailableFeatures(STI.getFeatureBits()));
-
     unsigned Opcode = MI.getOpcode();
     const MCInstrDesc &Desc = MCII.get(Opcode);
 
@@ -143,16 +133,12 @@ public:
       }
       break;
     default:
-      llvm_unreachable("Invalid instruction size");
+      llvm_unreachable ("Invalid instruction size");
     }
     
     ++MCNumEmitted;  // Keep track of the # of mi's emitted.
   }
-
-private:
-  uint64_t computeAvailableFeatures(const FeatureBitset &FB) const;
-  void verifyInstructionPredicates(const MCInst &MI,
-                                   uint64_t AvailableFeatures) const;
+  
 };
   
 } // end anonymous namespace
@@ -244,6 +230,7 @@ unsigned PPCMCCodeEmitter::getMemRIEncoding(const MCInst &MI, unsigned OpNo,
   return RegBits;
 }
 
+
 unsigned PPCMCCodeEmitter::getMemRIXEncoding(const MCInst &MI, unsigned OpNo,
                                        SmallVectorImpl<MCFixup> &Fixups,
                                        const MCSubtargetInfo &STI) const {
@@ -291,6 +278,7 @@ unsigned PPCMCCodeEmitter::getSPE8DisEncoding(const MCInst &MI, unsigned OpNo,
   return reverseBits(Imm | RegBits) >> 22;
 }
 
+
 unsigned PPCMCCodeEmitter::getSPE4DisEncoding(const MCInst &MI, unsigned OpNo,
                                               SmallVectorImpl<MCFixup> &Fixups,
                                               const MCSubtargetInfo &STI)
@@ -306,6 +294,7 @@ unsigned PPCMCCodeEmitter::getSPE4DisEncoding(const MCInst &MI, unsigned OpNo,
   return reverseBits(Imm | RegBits) >> 22;
 }
 
+
 unsigned PPCMCCodeEmitter::getSPE2DisEncoding(const MCInst &MI, unsigned OpNo,
                                               SmallVectorImpl<MCFixup> &Fixups,
                                               const MCSubtargetInfo &STI)
@@ -320,6 +309,7 @@ unsigned PPCMCCodeEmitter::getSPE2DisEncoding(const MCInst &MI, unsigned OpNo,
   uint32_t Imm = getMachineOpValue(MI, MO, Fixups, STI) >> 1;
   return reverseBits(Imm | RegBits) >> 22;
 }
+
 
 unsigned PPCMCCodeEmitter::getTLSRegEncoding(const MCInst &MI, unsigned OpNo,
                                        SmallVectorImpl<MCFixup> &Fixups,
@@ -360,6 +350,7 @@ get_crbitm_encoding(const MCInst &MI, unsigned OpNo,
   return 0x80 >> CTX.getRegisterInfo()->getEncodingValue(MO.getReg());
 }
 
+
 unsigned PPCMCCodeEmitter::
 getMachineOpValue(const MCInst &MI, const MCOperand &MO,
                   SmallVectorImpl<MCFixup> &Fixups,
@@ -370,14 +361,7 @@ getMachineOpValue(const MCInst &MI, const MCOperand &MO,
     assert((MI.getOpcode() != PPC::MTOCRF && MI.getOpcode() != PPC::MTOCRF8 &&
             MI.getOpcode() != PPC::MFOCRF && MI.getOpcode() != PPC::MFOCRF8) ||
            MO.getReg() < PPC::CR0 || MO.getReg() > PPC::CR7);
-    unsigned Reg = MO.getReg();
-    unsigned Encode = CTX.getRegisterInfo()->getEncodingValue(Reg);
-
-    if ((MCII.get(MI.getOpcode()).TSFlags & PPCII::UseVSXReg))
-      if (PPCInstrInfo::isVRRegister(Reg))
-        Encode += 32;
-
-    return Encode;
+    return CTX.getRegisterInfo()->getEncodingValue(MO.getReg());
   }
   
   assert(MO.isImm() &&
@@ -385,5 +369,5 @@ getMachineOpValue(const MCInst &MI, const MCOperand &MO,
   return MO.getImm();
 }
 
-#define ENABLE_INSTR_PREDICATE_VERIFIER
+
 #include "PPCGenMCCodeEmitter.inc"

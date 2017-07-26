@@ -73,10 +73,10 @@ public:
       : ReceiverSymbol(ReceiverSymbol),
         Satisfied(false) {}
 
-  std::shared_ptr<PathDiagnosticPiece> VisitNode(const ExplodedNode *Succ,
-                                                 const ExplodedNode *Pred,
-                                                 BugReporterContext &BRC,
-                                                 BugReport &BR) override;
+  PathDiagnosticPiece *VisitNode(const ExplodedNode *Succ,
+                                 const ExplodedNode *Pred,
+                                 BugReporterContext &BRC,
+                                 BugReport &BR) override;
 
   void Profile(llvm::FoldingSetNodeID &ID) const override {
     ID.Add(ReceiverSymbol);
@@ -191,7 +191,7 @@ void ObjCSuperDeallocChecker::reportUseAfterDealloc(SymbolRef Sym,
     return;
 
   if (Desc.empty())
-    Desc = "Use of 'self' after it has been deallocated";
+    Desc = "use of 'self' after it has been deallocated";
 
   // Generate the report.
   std::unique_ptr<BugReport> BR(
@@ -249,10 +249,10 @@ ObjCSuperDeallocChecker::isSuperDeallocMessage(const ObjCMethodCall &M) const {
   return M.getSelector() == SELdealloc;
 }
 
-std::shared_ptr<PathDiagnosticPiece>
-SuperDeallocBRVisitor::VisitNode(const ExplodedNode *Succ,
-                                 const ExplodedNode *Pred,
-                                 BugReporterContext &BRC, BugReport &BR) {
+PathDiagnosticPiece *SuperDeallocBRVisitor::VisitNode(const ExplodedNode *Succ,
+                                                      const ExplodedNode *Pred,
+                                                      BugReporterContext &BRC,
+                                                      BugReport &BR) {
   if (Satisfied)
     return nullptr;
 
@@ -275,7 +275,7 @@ SuperDeallocBRVisitor::VisitNode(const ExplodedNode *Succ,
     if (!L.isValid() || !L.asLocation().isValid())
       return nullptr;
 
-    return std::make_shared<PathDiagnosticEventPiece>(
+    return new PathDiagnosticEventPiece(
         L, "[super dealloc] called here");
   }
 

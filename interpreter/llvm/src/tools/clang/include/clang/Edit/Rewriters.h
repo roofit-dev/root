@@ -9,6 +9,7 @@
 
 #ifndef LLVM_CLANG_EDIT_REWRITERS_H
 #define LLVM_CLANG_EDIT_REWRITERS_H
+#include "llvm/ADT/SmallVector.h"
 
 namespace clang {
   class ObjCMessageExpr;

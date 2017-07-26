@@ -7,15 +7,7 @@ See lit.pod for more information.
 """
 
 from __future__ import absolute_import
-import os
-import platform
-import random
-import re
-import sys
-import time
-import argparse
-import tempfile
-import shutil
+import math, os, platform, random, re, sys, time
 
 import lit.ProgressBar
 import lit.LitConfig
@@ -28,6 +20,7 @@ class TestingProgressDisplay(object):
     def __init__(self, opts, numTests, progressBar=None):
         self.opts = opts
         self.numTests = numTests
+        self.current = None
         self.progressBar = progressBar
         self.completed = 0
 
@@ -139,161 +132,124 @@ def sort_by_incremental_cache(run):
     run.tests.sort(key = lambda t: sortIndex(t))
 
 def main(builtinParameters = {}):
-    # Create a temp directory inside the normal temp directory so that we can
-    # try to avoid temporary test file leaks. The user can avoid this behavior
-    # by setting LIT_PRESERVES_TMP in the environment, so they can easily use
-    # their own temp directory to monitor temporary file leaks or handle them at
-    # the buildbot level.
-    lit_tmp = None
-    if 'LIT_PRESERVES_TMP' not in os.environ:
-        lit_tmp = tempfile.mkdtemp(prefix="lit_tmp_")
-        os.environ.update({
-                'TMPDIR': lit_tmp,
-                'TMP': lit_tmp,
-                'TEMP': lit_tmp,
-                'TEMPDIR': lit_tmp,
-                })
-    # FIXME: If Python does not exit cleanly, this directory will not be cleaned
-    # up. We should consider writing the lit pid into the temp directory,
-    # scanning for stale temp directories, and deleting temp directories whose
-    # lit process has died.
-    try:
-        main_with_tmp(builtinParameters)
-    finally:
-        if lit_tmp:
-            try:
-                shutil.rmtree(lit_tmp)
-            except:
-                # FIXME: Re-try after timeout on Windows.
-                pass
+    # Use processes by default on Unix platforms.
+    isWindows = platform.system() == 'Windows'
+    useProcessesIsDefault = not isWindows
 
-def main_with_tmp(builtinParameters):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('test_paths',
-                        nargs='*',
-                        help='Files or paths to include in the test suite')
+    global options
+    from optparse import OptionParser, OptionGroup
+    parser = OptionParser("usage: %prog [options] {file-or-path}")
 
-    parser.add_argument("--version", dest="show_version",
+    parser.add_option("", "--version", dest="show_version",
                       help="Show version and exit",
                       action="store_true", default=False)
-    parser.add_argument("-j", "--threads", dest="numThreads", metavar="N",
+    parser.add_option("-j", "--threads", dest="numThreads", metavar="N",
                       help="Number of testing threads",
-                      type=int, default=None)
-    parser.add_argument("--config-prefix", dest="configPrefix",
+                      type=int, action="store", default=None)
+    parser.add_option("", "--config-prefix", dest="configPrefix",
                       metavar="NAME", help="Prefix for 'lit' config files",
                       action="store", default=None)
-    parser.add_argument("-D", "--param", dest="userParameters",
+    parser.add_option("-D", "--param", dest="userParameters",
                       metavar="NAME=VAL",
                       help="Add 'NAME' = 'VAL' to the user defined parameters",
                       type=str, action="append", default=[])
 
-    format_group = parser.add_argument_group("Output Format")
+    group = OptionGroup(parser, "Output Format")
     # FIXME: I find these names very confusing, although I like the
     # functionality.
-    format_group.add_argument("-q", "--quiet",
+    group.add_option("-q", "--quiet", dest="quiet",
                      help="Suppress no error output",
                      action="store_true", default=False)
-    format_group.add_argument("-s", "--succinct",
+    group.add_option("-s", "--succinct", dest="succinct",
                      help="Reduce amount of output",
                      action="store_true", default=False)
-    format_group.add_argument("-v", "--verbose", dest="showOutput",
+    group.add_option("-v", "--verbose", dest="showOutput",
                      help="Show test output for failures",
                      action="store_true", default=False)
-    format_group.add_argument("-a", "--show-all", dest="showAllOutput",
+    group.add_option("-a", "--show-all", dest="showAllOutput",
                      help="Display all commandlines and output",
                      action="store_true", default=False)
-    format_group.add_argument("-o", "--output", dest="output_path",
+    group.add_option("-o", "--output", dest="output_path",
                      help="Write test results to the provided path",
-                     action="store", metavar="PATH")
-    format_group.add_argument("--no-progress-bar", dest="useProgressBar",
+                     action="store", type=str, metavar="PATH")
+    group.add_option("", "--no-progress-bar", dest="useProgressBar",
                      help="Do not use curses based progress bar",
                      action="store_false", default=True)
-    format_group.add_argument("--show-unsupported",
+    group.add_option("", "--show-unsupported", dest="show_unsupported",
                      help="Show unsupported tests",
                      action="store_true", default=False)
-    format_group.add_argument("--show-xfail",
+    group.add_option("", "--show-xfail", dest="show_xfail",
                      help="Show tests that were expected to fail",
                      action="store_true", default=False)
+    parser.add_option_group(group)
 
-    execution_group = parser.add_argument_group("Test Execution")
-    execution_group.add_argument("--path",
+    group = OptionGroup(parser, "Test Execution")
+    group.add_option("", "--path", dest="path",
                      help="Additional paths to add to testing environment",
                      action="append", type=str, default=[])
-    execution_group.add_argument("--vg", dest="useValgrind",
+    group.add_option("", "--vg", dest="useValgrind",
                      help="Run tests under valgrind",
                      action="store_true", default=False)
-    execution_group.add_argument("--vg-leak", dest="valgrindLeakCheck",
+    group.add_option("", "--vg-leak", dest="valgrindLeakCheck",
                      help="Check for memory leaks under valgrind",
                      action="store_true", default=False)
-    execution_group.add_argument("--vg-arg", dest="valgrindArgs", metavar="ARG",
+    group.add_option("", "--vg-arg", dest="valgrindArgs", metavar="ARG",
                      help="Specify an extra argument for valgrind",
                      type=str, action="append", default=[])
-    execution_group.add_argument("--time-tests", dest="timeTests",
+    group.add_option("", "--time-tests", dest="timeTests",
                      help="Track elapsed wall time for each test",
                      action="store_true", default=False)
-    execution_group.add_argument("--no-execute", dest="noExecute",
+    group.add_option("", "--no-execute", dest="noExecute",
                      help="Don't execute any tests (assume PASS)",
                      action="store_true", default=False)
-    execution_group.add_argument("--xunit-xml-output", dest="xunit_output_file",
+    group.add_option("", "--xunit-xml-output", dest="xunit_output_file",
                       help=("Write XUnit-compatible XML test reports to the"
                             " specified file"), default=None)
-    execution_group.add_argument("--timeout", dest="maxIndividualTestTime",
+    group.add_option("", "--timeout", dest="maxIndividualTestTime",
                      help="Maximum time to spend running a single test (in seconds)."
                      "0 means no time limit. [Default: 0]",
                     type=int, default=None)
-    execution_group.add_argument("--max-failures", dest="maxFailures",
-                     help="Stop execution after the given number of failures.",
-                     action="store", type=int, default=None)
+    parser.add_option_group(group)
 
-    selection_group = parser.add_argument_group("Test Selection")
-    selection_group.add_argument("--max-tests", dest="maxTests", metavar="N",
+    group = OptionGroup(parser, "Test Selection")
+    group.add_option("", "--max-tests", dest="maxTests", metavar="N",
                      help="Maximum number of tests to run",
                      action="store", type=int, default=None)
-    selection_group.add_argument("--max-time", dest="maxTime", metavar="N",
+    group.add_option("", "--max-time", dest="maxTime", metavar="N",
                      help="Maximum time to spend testing (in seconds)",
                      action="store", type=float, default=None)
-    selection_group.add_argument("--shuffle",
+    group.add_option("", "--shuffle", dest="shuffle",
                      help="Run tests in random order",
                      action="store_true", default=False)
-    selection_group.add_argument("-i", "--incremental",
+    group.add_option("-i", "--incremental", dest="incremental",
                      help="Run modified and failing tests first (updates "
                      "mtimes)",
                      action="store_true", default=False)
-    selection_group.add_argument("--filter", metavar="REGEX",
+    group.add_option("", "--filter", dest="filter", metavar="REGEX",
                      help=("Only run tests with paths matching the given "
                            "regular expression"),
                      action="store", default=None)
-    selection_group.add_argument("--num-shards", dest="numShards", metavar="M",
-                     help="Split testsuite into M pieces and only run one",
-                     action="store", type=int,
-                     default=os.environ.get("LIT_NUM_SHARDS"))
-    selection_group.add_argument("--run-shard", dest="runShard", metavar="N",
-                     help="Run shard #N of the testsuite",
-                     action="store", type=int,
-                     default=os.environ.get("LIT_RUN_SHARD"))
+    parser.add_option_group(group)
 
-    debug_group = parser.add_argument_group("Debug and Experimental Options")
-    debug_group.add_argument("--debug",
+    group = OptionGroup(parser, "Debug and Experimental Options")
+    group.add_option("", "--debug", dest="debug",
                       help="Enable debugging (for 'lit' development)",
                       action="store_true", default=False)
-    debug_group.add_argument("--show-suites", dest="showSuites",
+    group.add_option("", "--show-suites", dest="showSuites",
                       help="Show discovered test suites",
                       action="store_true", default=False)
-    debug_group.add_argument("--show-tests", dest="showTests",
+    group.add_option("", "--show-tests", dest="showTests",
                       help="Show all discovered tests",
                       action="store_true", default=False)
-    debug_group.add_argument("--use-process-pool", dest="executionStrategy",
-                      help="Run tests in parallel with a process pool",
-                      action="store_const", const="PROCESS_POOL")
-    debug_group.add_argument("--use-processes", dest="executionStrategy",
+    group.add_option("", "--use-processes", dest="useProcesses",
                       help="Run tests in parallel with processes (not threads)",
-                      action="store_const", const="PROCESSES")
-    debug_group.add_argument("--use-threads", dest="executionStrategy",
+                      action="store_true", default=useProcessesIsDefault)
+    group.add_option("", "--use-threads", dest="useProcesses",
                       help="Run tests in parallel with threads (not processes)",
-                      action="store_const", const="THREADS")
+                      action="store_false", default=useProcessesIsDefault)
+    parser.add_option_group(group)
 
-    opts = parser.parse_args()
-    args = opts.test_paths
+    (opts, args) = parser.parse_args()
 
     if opts.show_version:
         print("lit %s" % (lit.__version__,))
@@ -303,13 +259,14 @@ def main_with_tmp(builtinParameters):
         parser.error('No inputs specified')
 
     if opts.numThreads is None:
-        opts.numThreads = lit.util.detectCPUs()
-
-    if opts.executionStrategy is None:
-        opts.executionStrategy = 'PROCESS_POOL'
-
-    if opts.maxFailures == 0:
-        parser.error("Setting --max-failures to 0 does not have any effect.")
+# Python <2.5 has a race condition causing lit to always fail with numThreads>1
+# http://bugs.python.org/issue1731717
+# I haven't seen this bug occur with 2.5.2 and later, so only enable multiple
+# threads by default there.
+       if sys.hexversion >= 0x2050200:
+               opts.numThreads = lit.util.detectCPUs()
+       else:
+               opts.numThreads = 1
 
     inputs = args
 
@@ -323,13 +280,12 @@ def main_with_tmp(builtinParameters):
         userParams[name] = val
 
     # Decide what the requested maximum indvidual test time should be
-    if opts.maxIndividualTestTime is not None:
+    if opts.maxIndividualTestTime != None:
         maxIndividualTestTime = opts.maxIndividualTestTime
     else:
         # Default is zero
         maxIndividualTestTime = 0
 
-    isWindows = platform.system() == 'Windows'
 
     # Create the global config object.
     litConfig = lit.LitConfig.LitConfig(
@@ -344,9 +300,7 @@ def main_with_tmp(builtinParameters):
         isWindows = isWindows,
         params = userParams,
         config_prefix = opts.configPrefix,
-        maxIndividualTestTime = maxIndividualTestTime,
-        maxFailures = opts.maxFailures,
-        parallelism_groups = {})
+        maxIndividualTestTime = maxIndividualTestTime)
 
     # Perform test discovery.
     run = lit.run.Run(litConfig,
@@ -355,7 +309,7 @@ def main_with_tmp(builtinParameters):
     # After test discovery the configuration might have changed
     # the maxIndividualTestTime. If we explicitly set this on the
     # command line then override what was set in the test configuration
-    if opts.maxIndividualTestTime is not None:
+    if opts.maxIndividualTestTime != None:
         if opts.maxIndividualTestTime != litConfig.maxIndividualTestTime:
             litConfig.note(('The test suite configuration requested an individual'
                 ' test timeout of {0} seconds but a timeout of {1} seconds was'
@@ -418,29 +372,6 @@ def main_with_tmp(builtinParameters):
     else:
         run.tests.sort(key = lambda t: (not t.isEarlyTest(), t.getFullName()))
 
-    # Then optionally restrict our attention to a shard of the tests.
-    if (opts.numShards is not None) or (opts.runShard is not None):
-        if (opts.numShards is None) or (opts.runShard is None):
-            parser.error("--num-shards and --run-shard must be used together")
-        if opts.numShards <= 0:
-            parser.error("--num-shards must be positive")
-        if (opts.runShard < 1) or (opts.runShard > opts.numShards):
-            parser.error("--run-shard must be between 1 and --num-shards (inclusive)")
-        num_tests = len(run.tests)
-        # Note: user views tests and shard numbers counting from 1.
-        test_ixs = range(opts.runShard - 1, num_tests, opts.numShards)
-        run.tests = [run.tests[i] for i in test_ixs]
-        # Generate a preview of the first few test indices in the shard
-        # to accompany the arithmetic expression, for clarity.
-        preview_len = 3
-        ix_preview = ", ".join([str(i+1) for i in test_ixs[:preview_len]])
-        if len(test_ixs) > preview_len:
-            ix_preview += ", ..."
-        litConfig.note('Selecting shard %d/%d = size %d/%d = tests #(%d*k)+%d = [%s]' %
-                       (opts.runShard, opts.numShards,
-                        len(run.tests), num_tests,
-                        opts.numShards, opts.runShard, ix_preview))
-
     # Finally limit the number of tests, if desired.
     if opts.maxTests is not None:
         run.tests = run.tests[:opts.maxTests]
@@ -491,7 +422,7 @@ def main_with_tmp(builtinParameters):
     display = TestingProgressDisplay(opts, len(run.tests), progressBar)
     try:
         run.execute_tests(display, opts.numThreads, opts.maxTime,
-                          opts.executionStrategy)
+                          opts.useProcesses)
     except KeyboardInterrupt:
         sys.exit(2)
     display.finish()
@@ -522,8 +453,7 @@ def main_with_tmp(builtinParameters):
                        ('Expected Failing Tests', lit.Test.XFAIL),
                        ('Timed Out Tests', lit.Test.TIMEOUT)):
         if (lit.Test.XFAIL == code and not opts.show_xfail) or \
-           (lit.Test.UNSUPPORTED == code and not opts.show_unsupported) or \
-           (lit.Test.UNRESOLVED == code and (opts.maxFailures is not None)):
+           (lit.Test.UNSUPPORTED == code and not opts.show_unsupported):
             continue
         elts = byCode.get(code)
         if not elts:

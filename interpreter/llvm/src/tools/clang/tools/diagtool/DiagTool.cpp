@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "DiagTool.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
 #include <vector>
 

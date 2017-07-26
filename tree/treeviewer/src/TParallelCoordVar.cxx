@@ -28,7 +28,7 @@
 #include "TCanvas.h"
 #include "TMarker.h"
 
-ClassImp(TParallelCoordVar);
+ClassImp(TParallelCoordVar)
 
 /** \class TParallelCoordVar
 
@@ -105,12 +105,14 @@ void TParallelCoordVar::AddRange(TParallelCoordRange* range)
          range = new TParallelCoordRange(this,0,0,select);
          fRanges->Add(range);
          range->GetSelection()->Add(range);
+         range->Draw();
       } else {
          Error("AddRange","You must create a selection before adding ranges.");
       }
    } else {
       fRanges->Add(range);
       range->GetSelection()->Add(range);
+      range->Draw();
    }
 }
 
@@ -147,6 +149,9 @@ Int_t TParallelCoordVar::DistancetoPrimitive(Int_t px, Int_t py)
 
 void TParallelCoordVar::Draw(Option_t *option)
 {
+   TIter next(fRanges);
+   TParallelCoordRange* range;
+   while ((range = (TParallelCoordRange*)next())) range->Draw();
    AppendPad(option);
 }
 
@@ -544,12 +549,8 @@ void TParallelCoordVar::Init()
 ////////////////////////////////////////////////////////////////////////////////
 /// Paint the axis.
 
-void TParallelCoordVar::Paint(Option_t* option)
+void TParallelCoordVar::Paint(Option_t* /*option*/)
 {
-   TIter next(fRanges);
-   TParallelCoordRange* range;
-   while ((range = (TParallelCoordRange*)next())) range->Paint(option);
-
    PaintHistogram();
    if (TestBit(kShowBox)) PaintBoxPlot();
    PaintLabels();

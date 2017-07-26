@@ -290,7 +290,7 @@ namespace utils {
       if (mightHaveChanged) {
         QualType QT
           = Ctx.getTemplateSpecializationType(TST->getTemplateName(),
-                                              desArgs,
+                                              desArgs.data(), desArgs.size(),
                                               TST->getCanonicalTypeInternal());
         return QT.getTypePtr();
       }
@@ -323,7 +323,9 @@ namespace utils {
           if (mightHaveChanged) {
             TemplateName TN(TSTdecl->getSpecializedTemplate());
             QualType QT
-              = Ctx.getTemplateSpecializationType(TN, desArgs,
+              = Ctx.getTemplateSpecializationType(TN,
+                                                  desArgs.data(),
+                                                  desArgs.size(),
                                          TSTRecord->getCanonicalTypeInternal());
             return QT.getTypePtr();
           }
@@ -1314,7 +1316,8 @@ namespace utils {
       if (mightHaveChanged) {
         Qualifiers qualifiers = QT.getLocalQualifiers();
         QT = Ctx.getTemplateSpecializationType(TST->getTemplateName(),
-                                               desArgs,
+                                               desArgs.data(),
+                                               desArgs.size(),
                                                TST->getCanonicalTypeInternal());
         QT = Ctx.getQualifiedType(QT, qualifiers);
       }
@@ -1386,7 +1389,8 @@ namespace utils {
           if (mightHaveChanged) {
             Qualifiers qualifiers = QT.getLocalQualifiers();
             TemplateName TN(TSTdecl->getSpecializedTemplate());
-            QT = Ctx.getTemplateSpecializationType(TN, desArgs,
+            QT = Ctx.getTemplateSpecializationType(TN, desArgs.data(),
+                                                   desArgs.size(),
                                          TSTRecord->getCanonicalTypeInternal());
             QT = Ctx.getQualifiedType(QT, qualifiers);
           }

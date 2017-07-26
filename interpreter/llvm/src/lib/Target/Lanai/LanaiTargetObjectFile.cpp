@@ -49,25 +49,22 @@ static bool isInSmallSection(uint64_t Size) {
 // Return true if this global address should be placed into small data/bss
 // section.
 bool LanaiTargetObjectFile::isGlobalInSmallSection(
-    const GlobalObject *GO, const TargetMachine &TM) const {
-  if (GO == nullptr)
-    return false;
-
+    const GlobalValue *GV, const TargetMachine &TM) const {
   // We first check the case where global is a declaration, because finding
   // section kind using getKindForGlobal() is only allowed for global
   // definitions.
-  if (GO->isDeclaration() || GO->hasAvailableExternallyLinkage())
-    return isGlobalInSmallSectionImpl(GO, TM);
+  if (GV->isDeclaration() || GV->hasAvailableExternallyLinkage())
+    return isGlobalInSmallSectionImpl(GV, TM);
 
-  return isGlobalInSmallSection(GO, TM, getKindForGlobal(GO, TM));
+  return isGlobalInSmallSection(GV, TM, getKindForGlobal(GV, TM));
 }
 
 // Return true if this global address should be placed into small data/bss
 // section.
-bool LanaiTargetObjectFile::isGlobalInSmallSection(const GlobalObject *GO,
+bool LanaiTargetObjectFile::isGlobalInSmallSection(const GlobalValue *GV,
                                                    const TargetMachine &TM,
                                                    SectionKind Kind) const {
-  return (isGlobalInSmallSectionImpl(GO, TM) &&
+  return (isGlobalInSmallSectionImpl(GV, TM) &&
           (Kind.isData() || Kind.isBSS() || Kind.isCommon()));
 }
 
@@ -75,43 +72,37 @@ bool LanaiTargetObjectFile::isGlobalInSmallSection(const GlobalObject *GO,
 // section. This method does all the work, except for checking the section
 // kind.
 bool LanaiTargetObjectFile::isGlobalInSmallSectionImpl(
-    const GlobalObject *GO, const TargetMachine &TM) const {
+    const GlobalValue *GV, const TargetMachine &TM) const {
   // Only global variables, not functions.
-  const auto *GVA = dyn_cast<GlobalVariable>(GO);
+  const GlobalVariable *GVA = dyn_cast<GlobalVariable>(GV);
   if (!GVA)
     return false;
 
-  // Global values placed in sections starting with .ldata do not fit in
-  // 21-bits, so always use large memory access for them. FIXME: This is a
-  // workaround for a tool limitation.
-  if (GVA->getSection().startswith(".ldata"))
+  if (GV->hasLocalLinkage())
     return false;
 
-  if (TM.getCodeModel() == CodeModel::Small)
-    return true;
-
-  if (GVA->hasLocalLinkage())
+  if (((GV->hasExternalLinkage() && GV->isDeclaration()) ||
+       GV->hasCommonLinkage()))
     return false;
 
-  if (((GVA->hasExternalLinkage() && GVA->isDeclaration()) ||
-       GVA->hasCommonLinkage()))
-    return false;
-
-  Type *Ty = GVA->getValueType();
+  Type *Ty = GV->getType()->getElementType();
   return isInSmallSection(
-      GVA->getParent()->getDataLayout().getTypeAllocSize(Ty));
+      GV->getParent()->getDataLayout().getTypeAllocSize(Ty));
 }
 
-MCSection *LanaiTargetObjectFile::SelectSectionForGlobal(
-    const GlobalObject *GO, SectionKind Kind, const TargetMachine &TM) const {
+MCSection *
+LanaiTargetObjectFile::SelectSectionForGlobal(const GlobalValue *GV,
+                                              SectionKind Kind, Mangler &Mang,
+                                              const TargetMachine &TM) const {
   // Handle Small Section classification here.
-  if (Kind.isBSS() && isGlobalInSmallSection(GO, TM, Kind))
+  if (Kind.isBSS() && isGlobalInSmallSection(GV, TM, Kind))
     return SmallBSSSection;
-  if (Kind.isData() && isGlobalInSmallSection(GO, TM, Kind))
+  if (Kind.isData() && isGlobalInSmallSection(GV, TM, Kind))
     return SmallDataSection;
 
   // Otherwise, we work the same as ELF.
-  return TargetLoweringObjectFileELF::SelectSectionForGlobal(GO, Kind, TM);
+  return TargetLoweringObjectFileELF::SelectSectionForGlobal(GV, Kind, Mang,
+                                                             TM);
 }
 
 /// Return true if this constant should be placed into small data section.

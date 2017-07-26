@@ -65,6 +65,12 @@ protected:
   /// constants.
   MCSection *ReadOnlySection;
 
+  /// This section contains the static constructor pointer list.
+  MCSection *StaticCtorSection;
+
+  /// This section contains the static destructor pointer list.
+  MCSection *StaticDtorSection;
+
   /// If exception handling is supported by the target, this is the section the
   /// Language Specific Data Area information is emitted to.
   MCSection *LSDASection;
@@ -129,7 +135,7 @@ protected:
   /// it'll go here.
   MCSection *TLSExtraDataSection;
 
-  /// Section directive for Thread Local data. ELF, MachO, COFF, and Wasm.
+  /// Section directive for Thread Local data. ELF, MachO and COFF.
   MCSection *TLSDataSection; // Defaults to ".tdata".
 
   /// Section directive for Thread Local uninitialized data.
@@ -338,7 +344,7 @@ public:
     return EHFrameSection;
   }
 
-  enum Environment { IsMachO, IsELF, IsCOFF, IsWasm };
+  enum Environment { IsMachO, IsELF, IsCOFF };
   Environment getObjectFileType() const { return Env; }
 
   bool isPositionIndependent() const { return PositionIndependent; }
@@ -353,7 +359,6 @@ private:
   void initMachOMCObjectFileInfo(const Triple &T);
   void initELFMCObjectFileInfo(const Triple &T);
   void initCOFFMCObjectFileInfo(const Triple &T);
-  void initWasmMCObjectFileInfo(const Triple &T);
 
 public:
   const Triple &getTargetTriple() const { return TT; }

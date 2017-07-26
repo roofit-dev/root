@@ -35,7 +35,6 @@ class Function;
 class Instruction;
 class DominatorTree;
 class AssumptionCache;
-struct KnownBits;
 
 class DemandedBits {
 public:
@@ -59,7 +58,8 @@ private:
   void determineLiveOperandBits(const Instruction *UserI,
     const Instruction *I, unsigned OperandNo,
     const APInt &AOut, APInt &AB,
-    KnownBits &Known, KnownBits &Known2);
+    APInt &KnownZero, APInt &KnownOne,
+    APInt &KnownZero2, APInt &KnownOne2);
 
   bool Analyzed;
 
@@ -89,7 +89,7 @@ public:
 /// An analysis that produces \c DemandedBits for a function.
 class DemandedBitsAnalysis : public AnalysisInfoMixin<DemandedBitsAnalysis> {
   friend AnalysisInfoMixin<DemandedBitsAnalysis>;
-  static AnalysisKey Key;
+  static char PassID;
 
 public:
   /// \brief Provide the result typedef for this analysis pass.
@@ -97,7 +97,7 @@ public:
 
   /// \brief Run the analysis pass over a function and produce demanded bits
   /// information.
-  DemandedBits run(Function &F, FunctionAnalysisManager &AM);
+  DemandedBits run(Function &F, AnalysisManager<Function> &AM);
 };
 
 /// \brief Printer pass for DemandedBits
@@ -106,7 +106,7 @@ class DemandedBitsPrinterPass : public PassInfoMixin<DemandedBitsPrinterPass> {
 
 public:
   explicit DemandedBitsPrinterPass(raw_ostream &OS) : OS(OS) {}
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
+  PreservedAnalyses run(Function &F, AnalysisManager<Function> &AM);
 };
 
 /// Create a demanded bits analysis pass.

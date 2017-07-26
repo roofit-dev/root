@@ -29,7 +29,6 @@
 //
 // Authors: keith.ray@gmail.com (Keith Ray)
 
-#include "gtest/gtest-message.h"
 #include "gtest/internal/gtest-filepath.h"
 #include "gtest/internal/gtest-port.h"
 
@@ -40,8 +39,8 @@
 #elif GTEST_OS_WINDOWS
 # include <direct.h>
 # include <io.h>
-#elif GTEST_OS_SYMBIAN
-// Symbian OpenC has PATH_MAX in sys/syslimits.h
+#elif GTEST_OS_SYMBIAN || GTEST_OS_NACL
+// Symbian OpenC and NaCl have PATH_MAX in sys/syslimits.h
 # include <sys/syslimits.h>
 #else
 # include <limits.h>
@@ -97,7 +96,7 @@ static bool IsPathSeparator(char c) {
 
 // Returns the current working directory, or "" if unsuccessful.
 FilePath FilePath::GetCurrentDir() {
-#if GTEST_OS_WINDOWS_MOBILE || GTEST_OS_WINDOWS_PHONE || GTEST_OS_WINDOWS_RT
+#if GTEST_OS_WINDOWS_MOBILE
   // Windows CE doesn't have a current directory, so we just return
   // something reasonable.
   return FilePath(kCurrentDirectoryString);
@@ -106,14 +105,7 @@ FilePath FilePath::GetCurrentDir() {
   return FilePath(_getcwd(cwd, sizeof(cwd)) == NULL ? "" : cwd);
 #else
   char cwd[GTEST_PATH_MAX_ + 1] = { '\0' };
-  char* result = getcwd(cwd, sizeof(cwd));
-# if GTEST_OS_NACL
-  // getcwd will likely fail in NaCl due to the sandbox, so return something
-  // reasonable. The user may have provided a shim implementation for getcwd,
-  // however, so fallback only when failure is detected.
-  return FilePath(result == NULL ? kCurrentDirectoryString : cwd);
-# endif  // GTEST_OS_NACL
-  return FilePath(result == NULL ? "" : cwd);
+  return FilePath(getcwd(cwd, sizeof(cwd)) == NULL ? "" : cwd);
 #endif  // GTEST_OS_WINDOWS_MOBILE
 }
 
@@ -122,15 +114,14 @@ FilePath FilePath::GetCurrentDir() {
 // FilePath("dir/file"). If a case-insensitive extension is not
 // found, returns a copy of the original FilePath.
 FilePath FilePath::RemoveExtension(const char* extension) const {
-  const std::string dot_extension = std::string(".") + extension;
-  if (String::EndsWithCaseInsensitive(pathname_, dot_extension)) {
-    return FilePath(pathname_.substr(
-        0, pathname_.length() - dot_extension.length()));
+  String dot_extension(String::Format(".%s", extension));
+  if (pathname_.EndsWithCaseInsensitive(dot_extension.c_str())) {
+    return FilePath(String(pathname_.c_str(), pathname_.length() - 4));
   }
   return *this;
 }
 
-// Returns a pointer to the last occurence of a valid path separator in
+// Returns a pointer to the last occurrence of a valid path separator in
 // the FilePath. On Windows, for example, both '/' and '\' are valid path
 // separators. Returns NULL if no path separator was found.
 const char* FilePath::FindLastPathSeparator() const {
@@ -154,7 +145,7 @@ const char* FilePath::FindLastPathSeparator() const {
 // On Windows platform, '\' is the path separator, otherwise it is '/'.
 FilePath FilePath::RemoveDirectoryName() const {
   const char* const last_sep = FindLastPathSeparator();
-  return last_sep ? FilePath(last_sep + 1) : *this;
+  return last_sep ? FilePath(String(last_sep + 1)) : *this;
 }
 
 // RemoveFileName returns the directory path with the filename removed.
@@ -165,9 +156,9 @@ FilePath FilePath::RemoveDirectoryName() const {
 // On Windows platform, '\' is the path separator, otherwise it is '/'.
 FilePath FilePath::RemoveFileName() const {
   const char* const last_sep = FindLastPathSeparator();
-  std::string dir;
+  String dir;
   if (last_sep) {
-    dir = std::string(c_str(), last_sep + 1 - c_str());
+    dir = String(c_str(), last_sep + 1 - c_str());
   } else {
     dir = kCurrentDirectoryString;
   }
@@ -184,12 +175,11 @@ FilePath FilePath::MakeFileName(const FilePath& directory,
                                 const FilePath& base_name,
                                 int number,
                                 const char* extension) {
-  std::string file;
+  String file;
   if (number == 0) {
-    file = base_name.string() + "." + extension;
+    file = String::Format("%s.%s", base_name.c_str(), extension);
   } else {
-    file = base_name.string() + "_" + StreamableToString(number)
-        + "." + extension;
+    file = String::Format("%s_%d.%s", base_name.c_str(), number, extension);
   }
   return ConcatPaths(directory, FilePath(file));
 }
@@ -201,7 +191,8 @@ FilePath FilePath::ConcatPaths(const FilePath& directory,
   if (directory.IsEmpty())
     return relative_path;
   const FilePath dir(directory.RemoveTrailingPathSeparator());
-  return FilePath(dir.string() + kPathSeparator + relative_path.string());
+  return FilePath(String::Format("%s%c%s", dir.c_str(), kPathSeparator,
+                                 relative_path.c_str()));
 }
 
 // Returns true if pathname describes something findable in the file-system,
@@ -345,7 +336,7 @@ bool FilePath::CreateFolder() const {
 // On Windows platform, uses \ as the separator, other platforms use /.
 FilePath FilePath::RemoveTrailingPathSeparator() const {
   return IsDirectory()
-      ? FilePath(pathname_.substr(0, pathname_.length() - 1))
+      ? FilePath(String(pathname_.c_str(), pathname_.length() - 1))
       : *this;
 }
 

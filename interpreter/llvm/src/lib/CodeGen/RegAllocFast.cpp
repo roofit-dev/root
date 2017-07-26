@@ -149,21 +149,18 @@ namespace {
       spillImpossible = ~0u
     };
   public:
-    StringRef getPassName() const override { return "Fast Register Allocator"; }
+    const char *getPassName() const override {
+      return "Fast Register Allocator";
+    }
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.setPreservesCFG();
       MachineFunctionPass::getAnalysisUsage(AU);
     }
 
-    MachineFunctionProperties getRequiredProperties() const override {
-      return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::NoPHIs);
-    }
-
     MachineFunctionProperties getSetProperties() const override {
       return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::NoVRegs);
+          MachineFunctionProperties::Property::AllVRegsAllocated);
     }
 
   private:
@@ -212,9 +209,8 @@ int RAFast::getStackSpaceFor(unsigned VirtReg, const TargetRegisterClass *RC) {
     return SS;          // Already has space allocated?
 
   // Allocate a new stack object for this spill location...
-  unsigned Size = TRI->getSpillSize(*RC);
-  unsigned Align = TRI->getSpillAlignment(*RC);
-  int FrameIdx = MF->getFrameInfo().CreateSpillStackObject(Size, Align);
+  int FrameIdx = MF->getFrameInfo()->CreateSpillStackObject(RC->getSize(),
+                                                            RC->getAlignment());
 
   // Assign the slot.
   StackSlotForVirtReg[VirtReg] = FrameIdx;
@@ -305,7 +301,19 @@ void RAFast::spillVirtReg(MachineBasicBlock::iterator MI,
       LiveDbgValueMap[LRI->VirtReg];
     for (unsigned li = 0, le = LRIDbgValues.size(); li != le; ++li) {
       MachineInstr *DBG = LRIDbgValues[li];
-      MachineInstr *NewDV = buildDbgValueForSpill(*MBB, MI, *DBG, FI);
+      const MDNode *Var = DBG->getDebugVariable();
+      const MDNode *Expr = DBG->getDebugExpression();
+      bool IsIndirect = DBG->isIndirectDebugValue();
+      uint64_t Offset = IsIndirect ? DBG->getOperand(1).getImm() : 0;
+      DebugLoc DL = DBG->getDebugLoc();
+      assert(cast<DILocalVariable>(Var)->isValidLocationForIntrinsic(DL) &&
+             "Expected inlined-at fields to agree");
+      MachineInstr *NewDV =
+          BuildMI(*MBB, MI, DL, TII->get(TargetOpcode::DBG_VALUE))
+              .addFrameIndex(FI)
+              .addImm(Offset)
+              .addMetadata(Var)
+              .addMetadata(Expr);
       assert(NewDV->getParent() == MBB && "dangling parent pointer");
       (void)NewDV;
       DEBUG(dbgs() << "Inserting debug info due to spill:" << "\n" << *NewDV);
@@ -352,7 +360,7 @@ void RAFast::usePhysReg(MachineOperand &MO) {
     break;
   case regReserved:
     PhysRegState[PhysReg] = regFree;
-    LLVM_FALLTHROUGH;
+    // Fall through
   case regFree:
     MO.setIsKill();
     return;
@@ -381,7 +389,7 @@ void RAFast::usePhysReg(MachineOperand &MO) {
       assert((TRI->isSuperRegister(PhysReg, Alias) ||
               TRI->isSuperRegister(Alias, PhysReg)) &&
              "Instruction is not using a subregister of a reserved register");
-      LLVM_FALLTHROUGH;
+      // Fall through.
     case regFree:
       if (TRI->isSuperRegister(PhysReg, Alias)) {
         // Leave the superregister in the working set.
@@ -413,7 +421,7 @@ void RAFast::definePhysReg(MachineInstr &MI, unsigned PhysReg,
     break;
   default:
     spillVirtReg(MI, VirtReg);
-    LLVM_FALLTHROUGH;
+    // Fall through.
   case regFree:
   case regReserved:
     PhysRegState[PhysReg] = NewState;
@@ -429,7 +437,7 @@ void RAFast::definePhysReg(MachineInstr &MI, unsigned PhysReg,
       break;
     default:
       spillVirtReg(MI, VirtReg);
-      LLVM_FALLTHROUGH;
+      // Fall through.
     case regFree:
     case regReserved:
       PhysRegState[Alias] = regDisabled;
@@ -1084,6 +1092,8 @@ bool RAFast::runOnMachineFunction(MachineFunction &Fn) {
   RegClassInfo.runOnMachineFunction(Fn);
   UsedInInstr.clear();
   UsedInInstr.setUniverse(TRI->getNumRegUnits());
+
+  assert(!MRI->isSSA() && "regalloc requires leaving SSA");
 
   // initialize the virtual->physical register map to have a 'null'
   // mapping for all virtual registers

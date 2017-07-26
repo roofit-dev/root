@@ -44,6 +44,4 @@ void draw() {
   // Create a canvas to be displayed.
   auto canvas = Experimental::TCanvas::Create("Canvas Title");
   canvas->Draw(pHist);
-
-  canvas->Show();
 }

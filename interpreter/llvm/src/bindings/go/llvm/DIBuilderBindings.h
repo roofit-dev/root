@@ -57,10 +57,11 @@ LLVMMetadataRef LLVMDIBuilderCreateFunction(
     LLVMMetadataRef CompositeType, int IsLocalToUnit, int IsDefinition,
     unsigned ScopeLine, unsigned Flags, int IsOptimized);
 
-LLVMMetadataRef LLVMDIBuilderCreateAutoVariable(
-    LLVMDIBuilderRef D, LLVMMetadataRef Scope, const char *Name,
-    LLVMMetadataRef File, unsigned Line, LLVMMetadataRef Ty, int AlwaysPreserve,
-    unsigned Flags, uint32_t AlignInBits);
+LLVMMetadataRef
+LLVMDIBuilderCreateAutoVariable(LLVMDIBuilderRef D, LLVMMetadataRef Scope,
+                                const char *Name, LLVMMetadataRef File,
+                                unsigned Line, LLVMMetadataRef Ty,
+                                int AlwaysPreserve, unsigned Flags);
 
 LLVMMetadataRef LLVMDIBuilderCreateParameterVariable(
     LLVMDIBuilderRef D, LLVMMetadataRef Scope, const char *Name, unsigned ArgNo,
@@ -70,12 +71,13 @@ LLVMMetadataRef LLVMDIBuilderCreateParameterVariable(
 LLVMMetadataRef LLVMDIBuilderCreateBasicType(LLVMDIBuilderRef D,
                                              const char *Name,
                                              uint64_t SizeInBits,
+                                             uint64_t AlignInBits,
                                              unsigned Encoding);
 
 LLVMMetadataRef LLVMDIBuilderCreatePointerType(LLVMDIBuilderRef D,
                                                LLVMMetadataRef PointeeType,
                                                uint64_t SizeInBits,
-                                               uint32_t AlignInBits,
+                                               uint64_t AlignInBits,
                                                const char *Name);
 
 LLVMMetadataRef
@@ -85,24 +87,24 @@ LLVMDIBuilderCreateSubroutineType(LLVMDIBuilderRef D, LLVMMetadataRef File,
 LLVMMetadataRef LLVMDIBuilderCreateStructType(
     LLVMDIBuilderRef D, LLVMMetadataRef Scope, const char *Name,
     LLVMMetadataRef File, unsigned Line, uint64_t SizeInBits,
-    uint32_t AlignInBits, unsigned Flags, LLVMMetadataRef DerivedFrom,
+    uint64_t AlignInBits, unsigned Flags, LLVMMetadataRef DerivedFrom,
     LLVMMetadataRef ElementTypes);
 
 LLVMMetadataRef LLVMDIBuilderCreateReplaceableCompositeType(
     LLVMDIBuilderRef D, unsigned Tag, const char *Name, LLVMMetadataRef Scope,
     LLVMMetadataRef File, unsigned Line, unsigned RuntimeLang,
-    uint64_t SizeInBits, uint32_t AlignInBits, unsigned Flags);
+    uint64_t SizeInBits, uint64_t AlignInBits, unsigned Flags);
 
 LLVMMetadataRef
 LLVMDIBuilderCreateMemberType(LLVMDIBuilderRef D, LLVMMetadataRef Scope,
                               const char *Name, LLVMMetadataRef File,
                               unsigned Line, uint64_t SizeInBits,
-                              uint32_t AlignInBits, uint64_t OffsetInBits,
+                              uint64_t AlignInBits, uint64_t OffsetInBits,
                               unsigned Flags, LLVMMetadataRef Ty);
 
 LLVMMetadataRef LLVMDIBuilderCreateArrayType(LLVMDIBuilderRef D,
                                              uint64_t SizeInBits,
-                                             uint32_t AlignInBits,
+                                             uint64_t AlignInBits,
                                              LLVMMetadataRef ElementType,
                                              LLVMMetadataRef Subscripts);
 

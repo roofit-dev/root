@@ -24,6 +24,5 @@ add_clang_library(clangIndex
   clangFormat
   clangFrontend
   clangRewrite
-  clangSerialization
   clangToolingCore
   )

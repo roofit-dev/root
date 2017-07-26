@@ -24,13 +24,12 @@ class MCContext;
 class MCInstrInfo;
 class MCObjectWriter;
 class MCRegisterInfo;
-class MCTargetOptions;
 class StringRef;
 class Target;
 class Triple;
 class raw_pwrite_stream;
 
-Target &getTheAVRTarget();
+extern Target TheAVRTarget;
 
 /// Creates a machine code emitter for AVR.
 MCCodeEmitter *createAVRMCCodeEmitter(const MCInstrInfo &MCII,
@@ -39,8 +38,7 @@ MCCodeEmitter *createAVRMCCodeEmitter(const MCInstrInfo &MCII,
 
 /// Creates an assembly backend for AVR.
 MCAsmBackend *createAVRAsmBackend(const Target &T, const MCRegisterInfo &MRI,
-                                  const Triple &TT, StringRef CPU,
-                                  const llvm::MCTargetOptions &TO);
+                                  const Triple &TT, StringRef CPU);
 
 /// Creates an ELF object writer for AVR.
 MCObjectWriter *createAVRELFObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI);

@@ -305,8 +305,9 @@ void ELFState<ELFT>::initStrtabSectionHeader(Elf_Shdr &SHeader, StringRef Name,
   zero(SHeader);
   SHeader.sh_name = DotShStrtab.getOffset(Name);
   SHeader.sh_type = ELF::SHT_STRTAB;
-  STB.write(CBA.getOSAndAlignedOffset(SHeader.sh_offset, SHeader.sh_addralign));
-  SHeader.sh_size = STB.getSize();
+  CBA.getOSAndAlignedOffset(SHeader.sh_offset, SHeader.sh_addralign)
+      << STB.data();
+  SHeader.sh_size = STB.data().size();
   SHeader.sh_addralign = 1;
 }
 

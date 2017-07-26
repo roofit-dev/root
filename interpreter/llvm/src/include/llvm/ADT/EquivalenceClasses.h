@@ -15,10 +15,9 @@
 #ifndef LLVM_ADT_EQUIVALENCECLASSES_H
 #define LLVM_ADT_EQUIVALENCECLASSES_H
 
+#include "llvm/Support/DataTypes.h"
 #include <cassert>
 #include <cstddef>
-#include <cstdint>
-#include <iterator>
 #include <set>
 
 namespace llvm {
@@ -71,7 +70,6 @@ class EquivalenceClasses {
     friend class EquivalenceClasses;
     mutable const ECValue *Leader, *Next;
     ElemTy Data;
-
     // ECValue ctor - Start out with EndOfList pointing to this node, Next is
     // Null, isLeader = true.
     ECValue(const ElemTy &Elt)
@@ -83,7 +81,6 @@ class EquivalenceClasses {
       // Path compression.
       return Leader = Leader->getLeader();
     }
-
     const ECValue *getEndOfList() const {
       assert(isLeader() && "Cannot get the end of a list for a non-leader!");
       return Leader;
@@ -93,7 +90,6 @@ class EquivalenceClasses {
       assert(getNext() == nullptr && "Already has a next pointer!");
       Next = (const ECValue*)((intptr_t)NewNext | (intptr_t)isLeader());
     }
-
   public:
     ECValue(const ECValue &RHS) : Leader(this), Next((ECValue*)(intptr_t)1),
                                   Data(RHS.Data) {
@@ -119,7 +115,7 @@ class EquivalenceClasses {
   std::set<ECValue> TheMapping;
 
 public:
-  EquivalenceClasses() = default;
+  EquivalenceClasses() {}
   EquivalenceClasses(const EquivalenceClasses &RHS) {
     operator=(RHS);
   }
@@ -191,6 +187,7 @@ public:
     return NC;
   }
 
+
   //===--------------------------------------------------------------------===//
   // Mutation methods
 
@@ -212,6 +209,7 @@ public:
   member_iterator findLeader(const ElemTy &V) const {
     return findLeader(TheMapping.find(V));
   }
+
 
   /// union - Merge the two equivalence sets for the specified values, inserting
   /// them if they do not already exist in the equivalence set.
@@ -245,13 +243,12 @@ public:
                           const ElemTy, ptrdiff_t> super;
     const ECValue *Node;
     friend class EquivalenceClasses;
-
   public:
     typedef size_t size_type;
     typedef typename super::pointer pointer;
     typedef typename super::reference reference;
 
-    explicit member_iterator() = default;
+    explicit member_iterator() {}
     explicit member_iterator(const ECValue *N) : Node(N) {}
 
     reference operator*() const {
@@ -281,6 +278,6 @@ public:
   };
 };
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_ADT_EQUIVALENCECLASSES_H
+#endif

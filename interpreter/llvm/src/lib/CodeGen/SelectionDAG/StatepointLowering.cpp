@@ -55,8 +55,7 @@ void StatepointLoweringState::startNewStatepoint(SelectionDAGBuilder &Builder) {
   NextSlotToAllocate = 0;
   // Need to resize this on each safepoint - we need the two to stay in sync and
   // the clear patterns of a SelectionDAGBuilder have no relation to
-  // FunctionLoweringInfo.  Also need to ensure used bits get cleared.
-  AllocatedStackSlots.clear();
+  // FunctionLoweringInfo.  SmallBitVector::reset initializes all bits to false.
   AllocatedStackSlots.resize(Builder.FuncInfo.StatepointStackSlots.size());
 }
 
@@ -71,7 +70,7 @@ SDValue
 StatepointLoweringState::allocateStackSlot(EVT ValueType,
                                            SelectionDAGBuilder &Builder) {
   NumSlotsAllocatedForStatepoints++;
-  MachineFrameInfo &MFI = Builder.DAG.getMachineFunction().getFrameInfo();
+  auto *MFI = Builder.DAG.getMachineFunction().getFrameInfo();
 
   unsigned SpillSize = ValueType.getSizeInBits() / 8;
   assert((SpillSize * 8) == ValueType.getSizeInBits() && "Size not in bytes?");
@@ -83,16 +82,16 @@ StatepointLoweringState::allocateStackSlot(EVT ValueType,
   const size_t NumSlots = AllocatedStackSlots.size();
   assert(NextSlotToAllocate <= NumSlots && "Broken invariant");
 
-  assert(AllocatedStackSlots.size() ==
-         Builder.FuncInfo.StatepointStackSlots.size() &&
+  // The stack slots in StatepointStackSlots beyond the first NumSlots were
+  // added in this instance of StatepointLoweringState, and cannot be re-used.
+  assert(NumSlots <= Builder.FuncInfo.StatepointStackSlots.size() &&
          "Broken invariant");
 
   for (; NextSlotToAllocate < NumSlots; NextSlotToAllocate++) {
     if (!AllocatedStackSlots.test(NextSlotToAllocate)) {
       const int FI = Builder.FuncInfo.StatepointStackSlots[NextSlotToAllocate];
-      if (MFI.getObjectSize(FI) == SpillSize) {
+      if (MFI->getObjectSize(FI) == SpillSize) {
         AllocatedStackSlots.set(NextSlotToAllocate);
-        // TODO: Is ValueType the right thing to use here?
         return Builder.DAG.getFrameIndex(FI, ValueType);
       }
     }
@@ -102,13 +101,9 @@ StatepointLoweringState::allocateStackSlot(EVT ValueType,
 
   SDValue SpillSlot = Builder.DAG.CreateStackTemporary(ValueType);
   const unsigned FI = cast<FrameIndexSDNode>(SpillSlot)->getIndex();
-  MFI.markAsStatepointSpillSlotObjectIndex(FI);
+  MFI->markAsStatepointSpillSlotObjectIndex(FI);
 
   Builder.FuncInfo.StatepointStackSlots.push_back(FI);
-  AllocatedStackSlots.resize(AllocatedStackSlots.size()+1, true);
-  assert(AllocatedStackSlots.size() ==
-         Builder.FuncInfo.StatepointStackSlots.size() &&
-         "Broken invariant");
 
   StatepointMaxSlotsRequired = std::max<unsigned long>(
       StatepointMaxSlotsRequired, Builder.FuncInfo.StatepointStackSlots.size());
@@ -242,8 +237,7 @@ static void reservePreviousStackSlotForValue(const Value *IncomingValue,
 
   // Cache this slot so we find it when going through the normal
   // assignment loop.
-  SDValue Loc =
-      Builder.DAG.getTargetFrameIndex(*Index, Builder.getFrameIndexTy());
+  SDValue Loc = Builder.DAG.getTargetFrameIndex(*Index, Incoming.getValueType());
   Builder.StatepointLowering.setLocation(Incoming, Loc);
 }
 
@@ -344,7 +338,7 @@ spillIncomingStatepointValue(SDValue Incoming, SDValue Chain,
                                                        Builder);
     int Index = cast<FrameIndexSDNode>(Loc)->getIndex();
     // We use TargetFrameIndex so that isel will not select it into LEA
-    Loc = Builder.DAG.getTargetFrameIndex(Index, Builder.getFrameIndexTy());
+    Loc = Builder.DAG.getTargetFrameIndex(Index, Incoming.getValueType());
 
     // TODO: We can create TokenFactor node instead of
     //       chaining stores one after another, this may allow
@@ -356,14 +350,16 @@ spillIncomingStatepointValue(SDValue Incoming, SDValue Chain,
     // vary since we spill vectors of pointers too).  At some point we
     // can consider allowing spills of smaller values to larger slots
     // (i.e. change the '==' in the assert below to a '>=').
-    MachineFrameInfo &MFI = Builder.DAG.getMachineFunction().getFrameInfo();
-    assert((MFI.getObjectSize(Index) * 8) == Incoming.getValueSizeInBits() &&
+    auto *MFI = Builder.DAG.getMachineFunction().getFrameInfo();
+    assert((MFI->getObjectSize(Index) * 8) ==
+               Incoming.getValueType().getSizeInBits() &&
            "Bad spill:  stack slot does not match!");
 #endif
 
     Chain = Builder.DAG.getStore(Chain, Builder.getCurSDLoc(), Incoming, Loc,
                                  MachinePointerInfo::getFixedStack(
-                                     Builder.DAG.getMachineFunction(), Index));
+                                     Builder.DAG.getMachineFunction(), Index),
+                                 false, false, 0);
 
     Builder.StatepointLowering.setLocation(Incoming, Loc);
   }
@@ -375,7 +371,7 @@ spillIncomingStatepointValue(SDValue Incoming, SDValue Chain,
 /// Lower a single value incoming to a statepoint node.  This value can be
 /// either a deopt value or a gc value, the handling is the same.  We special
 /// case constants and allocas, then fall back to spilling if required.
-static void lowerIncomingStatepointValue(SDValue Incoming, bool LiveInOnly,
+static void lowerIncomingStatepointValue(SDValue Incoming,
                                          SmallVectorImpl<SDValue> &Ops,
                                          SelectionDAGBuilder &Builder) {
   SDValue Chain = Builder.getRoot();
@@ -392,18 +388,8 @@ static void lowerIncomingStatepointValue(SDValue Incoming, bool LiveInOnly,
     // This handles allocas as arguments to the statepoint (this is only
     // really meaningful for a deopt value.  For GC, we'd be trying to
     // relocate the address of the alloca itself?)
-    assert(Incoming.getValueType() == Builder.getFrameIndexTy() &&
-           "Incoming value is a frame index!");
     Ops.push_back(Builder.DAG.getTargetFrameIndex(FI->getIndex(),
-                                                  Builder.getFrameIndexTy()));
-  } else if (LiveInOnly) {
-    // If this value is live in (not live-on-return, or live-through), we can
-    // treat it the same way patchpoint treats it's "live in" values.  We'll 
-    // end up folding some of these into stack references, but they'll be 
-    // handled by the register allocator.  Note that we do not have the notion
-    // of a late use so these values might be placed in registers which are 
-    // clobbered by the call.  This is fine for live-in.
-    Ops.push_back(Incoming);
+                                                  Incoming.getValueType()));
   } else {
     // Otherwise, locate a spill slot and explicitly spill it so it
     // can be found by the runtime later.  We currently do not support
@@ -454,38 +440,19 @@ lowerStatepointMetaArgs(SmallVectorImpl<SDValue> &Ops,
                "non gc managed derived pointer found in statepoint");
       }
     }
-    assert(SI.Bases.size() == SI.Ptrs.size() && "Pointer without base!");
   } else {
     assert(SI.Bases.empty() && "No gc specified, so cannot relocate pointers!");
     assert(SI.Ptrs.empty() && "No gc specified, so cannot relocate pointers!");
   }
 #endif
 
-  // Figure out what lowering strategy we're going to use for each part
-  // Note: Is is conservatively correct to lower both "live-in" and "live-out"
-  // as "live-through". A "live-through" variable is one which is "live-in",
-  // "live-out", and live throughout the lifetime of the call (i.e. we can find
-  // it from any PC within the transitive callee of the statepoint).  In
-  // particular, if the callee spills callee preserved registers we may not
-  // be able to find a value placed in that register during the call.  This is
-  // fine for live-out, but not for live-through.  If we were willing to make
-  // assumptions about the code generator producing the callee, we could
-  // potentially allow live-through values in callee saved registers.
-  const bool LiveInDeopt =
-    SI.StatepointFlags & (uint64_t)StatepointFlags::DeoptLiveIn;
-
-  auto isGCValue =[&](const Value *V) {
-    return is_contained(SI.Ptrs, V) || is_contained(SI.Bases, V);
-  };
-  
   // Before we actually start lowering (and allocating spill slots for values),
   // reserve any stack slots which we judge to be profitable to reuse for a
   // particular value.  This is purely an optimization over the code below and
   // doesn't change semantics at all.  It is important for performance that we
   // reserve slots for both deopt and gc values before lowering either.
   for (const Value *V : SI.DeoptState) {
-    if (!LiveInDeopt || isGCValue(V))
-      reservePreviousStackSlotForValue(V, Builder);
+    reservePreviousStackSlotForValue(V, Builder);
   }
   for (unsigned i = 0; i < SI.Bases.size(); ++i) {
     reservePreviousStackSlotForValue(SI.Bases[i], Builder);
@@ -502,8 +469,7 @@ lowerStatepointMetaArgs(SmallVectorImpl<SDValue> &Ops,
   // what type of values are contained within.
   for (const Value *V : SI.DeoptState) {
     SDValue Incoming = Builder.getValue(V);
-    const bool LiveInValue = LiveInDeopt && !isGCValue(V);
-    lowerIncomingStatepointValue(Incoming, LiveInValue, Ops, Builder);
+    lowerIncomingStatepointValue(Incoming, Ops, Builder);
   }
 
   // Finally, go ahead and lower all the gc arguments.  There's no prefixed
@@ -513,12 +479,10 @@ lowerStatepointMetaArgs(SmallVectorImpl<SDValue> &Ops,
   // (base[0], ptr[0], base[1], ptr[1], ...)
   for (unsigned i = 0; i < SI.Bases.size(); ++i) {
     const Value *Base = SI.Bases[i];
-    lowerIncomingStatepointValue(Builder.getValue(Base), /*LiveInOnly*/ false,
-                                 Ops, Builder);
+    lowerIncomingStatepointValue(Builder.getValue(Base), Ops, Builder);
 
     const Value *Ptr = SI.Ptrs[i];
-    lowerIncomingStatepointValue(Builder.getValue(Ptr), /*LiveInOnly*/ false,
-                                 Ops, Builder);
+    lowerIncomingStatepointValue(Builder.getValue(Ptr), Ops, Builder);
   }
 
   // If there are any explicit spill slots passed to the statepoint, record
@@ -530,10 +494,8 @@ lowerStatepointMetaArgs(SmallVectorImpl<SDValue> &Ops,
     SDValue Incoming = Builder.getValue(V);
     if (FrameIndexSDNode *FI = dyn_cast<FrameIndexSDNode>(Incoming)) {
       // This handles allocas as arguments to the statepoint
-      assert(Incoming.getValueType() == Builder.getFrameIndexTy() &&
-             "Incoming value is a frame index!");
       Ops.push_back(Builder.DAG.getTargetFrameIndex(FI->getIndex(),
-                                                    Builder.getFrameIndexTy()));
+                                                    Incoming.getValueType()));
     }
   }
 
@@ -928,7 +890,7 @@ void SelectionDAGBuilder::visitGCResult(const GCResultInst &CI) {
 void SelectionDAGBuilder::visitGCRelocate(const GCRelocateInst &Relocate) {
 #ifndef NDEBUG
   // Consistency check
-  // We skip this check for relocates not in the same basic block as their
+  // We skip this check for relocates not in the same basic block as thier
   // statepoint. It would be too expensive to preserve validation info through
   // different basic blocks.
   if (Relocate.getStatepoint()->getParent() == Relocate.getParent())
@@ -954,8 +916,8 @@ void SelectionDAGBuilder::visitGCRelocate(const GCRelocateInst &Relocate) {
     return;
   }
 
-  SDValue SpillSlot =
-      DAG.getTargetFrameIndex(*DerivedPtrLocation, getFrameIndexTy());
+  SDValue SpillSlot = DAG.getTargetFrameIndex(*DerivedPtrLocation,
+                                              SD.getValueType());
 
   // Be conservative: flush all pending loads
   // TODO: Probably we can be less restrictive on this,
@@ -963,11 +925,10 @@ void SelectionDAGBuilder::visitGCRelocate(const GCRelocateInst &Relocate) {
   SDValue Chain = getRoot();
 
   SDValue SpillLoad =
-      DAG.getLoad(DAG.getTargetLoweringInfo().getValueType(DAG.getDataLayout(),
-                                                           Relocate.getType()),
-                  getCurSDLoc(), Chain, SpillSlot,
+      DAG.getLoad(SpillSlot.getValueType(), getCurSDLoc(), Chain, SpillSlot,
                   MachinePointerInfo::getFixedStack(DAG.getMachineFunction(),
-                                                    *DerivedPtrLocation));
+                                                    *DerivedPtrLocation),
+                  false, false, false, 0);
 
   // Again, be conservative, don't emit pending loads
   DAG.setRoot(SpillLoad.getValue(1));

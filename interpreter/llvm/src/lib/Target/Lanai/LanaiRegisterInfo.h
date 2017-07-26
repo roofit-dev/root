@@ -21,6 +21,9 @@
 
 namespace llvm {
 
+class TargetInstrInfo;
+class Type;
+
 struct LanaiRegisterInfo : public LanaiGenRegisterInfo {
   LanaiRegisterInfo();
 
@@ -29,7 +32,7 @@ struct LanaiRegisterInfo : public LanaiGenRegisterInfo {
 
   // Code Generation virtual methods.
   const uint16_t *
-  getCalleeSavedRegs(const MachineFunction *MF = nullptr) const override;
+  getCalleeSavedRegs(const MachineFunction *MF = 0) const override;
 
   BitVector getReservedRegs(const MachineFunction &MF) const override;
 
@@ -39,7 +42,9 @@ struct LanaiRegisterInfo : public LanaiGenRegisterInfo {
 
   void eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
                            unsigned FIOperandNum,
-                           RegScavenger *RS = nullptr) const override;
+                           RegScavenger *RS = NULL) const override;
+
+  bool canRealignStack(const MachineFunction &MF) const override;
 
   // Debug information queries.
   unsigned getRARegister() const;
@@ -53,6 +58,6 @@ struct LanaiRegisterInfo : public LanaiGenRegisterInfo {
   int getDwarfRegNum(unsigned RegNum, bool IsEH) const;
 };
 
-} // end namespace llvm
+} // namespace llvm
 
 #endif // LLVM_LIB_TARGET_LANAI_LANAIREGISTERINFO_H

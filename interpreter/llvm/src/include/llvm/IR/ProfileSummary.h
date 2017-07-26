@@ -1,4 +1,4 @@
-//===- ProfileSummary.h - Profile summary data structure. -------*- C++ -*-===//
+//===-- ProfileSummary.h - Profile summary data structure. ------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,17 +11,21 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_IR_PROFILESUMMARY_H
-#define LLVM_IR_PROFILESUMMARY_H
+#ifndef LLVM_SUPPORT_PROFILE_SUMMARY_H
+#define LLVM_SUPPORT_PROFILE_SUMMARY_H
 
-#include <algorithm>
 #include <cstdint>
+#include <utility>
 #include <vector>
+
+#include "llvm/Support/Casting.h"
 
 namespace llvm {
 
 class LLVMContext;
 class Metadata;
+class MDTuple;
+class MDNode;
 
 // The profile summary is one or more (Cutoff, MinCount, NumCounts) triplets.
 // The semantics of counts depend on the type of profile. For instrumentation
@@ -33,13 +37,12 @@ struct ProfileSummaryEntry {
   uint32_t Cutoff;    ///< The required percentile of counts.
   uint64_t MinCount;  ///< The minimum count for this percentile.
   uint64_t NumCounts; ///< Number of counts >= the minimum count.
-
   ProfileSummaryEntry(uint32_t TheCutoff, uint64_t TheMinCount,
                       uint64_t TheNumCounts)
       : Cutoff(TheCutoff), MinCount(TheMinCount), NumCounts(TheNumCounts) {}
 };
 
-using SummaryEntryVector = std::vector<ProfileSummaryEntry>;
+typedef std::vector<ProfileSummaryEntry> SummaryEntryVector;
 
 class ProfileSummary {
 public:
@@ -56,7 +59,6 @@ private:
 
 public:
   static const int Scale = 1000000;
-
   ProfileSummary(Kind K, SummaryEntryVector DetailedSummary,
                  uint64_t TotalCount, uint64_t MaxCount,
                  uint64_t MaxInternalCount, uint64_t MaxFunctionCount,
@@ -65,7 +67,6 @@ public:
         TotalCount(TotalCount), MaxCount(MaxCount),
         MaxInternalCount(MaxInternalCount), MaxFunctionCount(MaxFunctionCount),
         NumCounts(NumCounts), NumFunctions(NumFunctions) {}
-
   Kind getKind() const { return PSK; }
   /// \brief Return summary information as metadata.
   Metadata *getMD(LLVMContext &Context);
@@ -81,5 +82,4 @@ public:
 };
 
 } // end namespace llvm
-
-#endif // LLVM_IR_PROFILESUMMARY_H
+#endif

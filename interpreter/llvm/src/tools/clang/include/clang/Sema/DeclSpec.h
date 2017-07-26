@@ -380,8 +380,7 @@ private:
   SourceRange Range;
 
   SourceLocation StorageClassSpecLoc, ThreadStorageClassSpecLoc;
-  SourceRange TSWRange;
-  SourceLocation TSCLoc, TSSLoc, TSTLoc, AltiVecLoc;
+  SourceLocation TSWLoc, TSCLoc, TSSLoc, TSTLoc, AltiVecLoc;
   /// TSTNameLoc - If TypeSpecType is any of class, enum, struct, union,
   /// typename, then this is the location of the named type (if present);
   /// otherwise, it is the same as TSTLoc. Hence, the pair TSTLoc and
@@ -504,8 +503,7 @@ public:
   SourceLocation getLocStart() const LLVM_READONLY { return Range.getBegin(); }
   SourceLocation getLocEnd() const LLVM_READONLY { return Range.getEnd(); }
 
-  SourceLocation getTypeSpecWidthLoc() const { return TSWRange.getBegin(); }
-  SourceRange getTypeSpecWidthRange() const { return TSWRange; }
+  SourceLocation getTypeSpecWidthLoc() const { return TSWLoc; }
   SourceLocation getTypeSpecComplexLoc() const { return TSCLoc; }
   SourceLocation getTypeSpecSignLoc() const { return TSSLoc; }
   SourceLocation getTypeSpecTypeLoc() const { return TSTLoc; }
@@ -519,7 +517,7 @@ public:
   SourceRange getTypeofParensRange() const { return TypeofParensRange; }
   void setTypeofParensRange(SourceRange range) { TypeofParensRange = range; }
 
-  bool hasAutoTypeSpec() const {
+  bool containsPlaceholderType() const {
     return (TypeSpecType == TST_auto || TypeSpecType == TST_auto_type ||
             TypeSpecType == TST_decltype_auto);
   }
@@ -795,7 +793,6 @@ public:
   };
 
   /// PropertyAttributeKind - list of property attributes.
-  /// Keep this list in sync with LLVM's Dwarf.h ApplePropertyAttributes.
   enum ObjCPropertyAttributeKind {
     DQ_PR_noattr = 0x0,
     DQ_PR_readonly = 0x01,
@@ -819,9 +816,7 @@ public:
     : objcDeclQualifier(DQ_None), PropertyAttributes(DQ_PR_noattr),
       Nullability(0), GetterName(nullptr), SetterName(nullptr) { }
 
-  ObjCDeclQualifier getObjCDeclQualifier() const {
-    return (ObjCDeclQualifier)objcDeclQualifier;
-  }
+  ObjCDeclQualifier getObjCDeclQualifier() const { return objcDeclQualifier; }
   void setObjCDeclQualifier(ObjCDeclQualifier DQVal) {
     objcDeclQualifier = (ObjCDeclQualifier) (objcDeclQualifier | DQVal);
   }
@@ -861,25 +856,17 @@ public:
 
   const IdentifierInfo *getGetterName() const { return GetterName; }
   IdentifierInfo *getGetterName() { return GetterName; }
-  SourceLocation getGetterNameLoc() const { return GetterNameLoc; }
-  void setGetterName(IdentifierInfo *name, SourceLocation loc) {
-    GetterName = name;
-    GetterNameLoc = loc;
-  }
+  void setGetterName(IdentifierInfo *name) { GetterName = name; }
 
   const IdentifierInfo *getSetterName() const { return SetterName; }
   IdentifierInfo *getSetterName() { return SetterName; }
-  SourceLocation getSetterNameLoc() const { return SetterNameLoc; }
-  void setSetterName(IdentifierInfo *name, SourceLocation loc) {
-    SetterName = name;
-    SetterNameLoc = loc;
-  }
+  void setSetterName(IdentifierInfo *name) { SetterName = name; }
 
 private:
   // FIXME: These two are unrelated and mutually exclusive. So perhaps
   // we can put them in a union to reflect their mutual exclusivity
   // (space saving is negligible).
-  unsigned objcDeclQualifier : 7;
+  ObjCDeclQualifier objcDeclQualifier : 7;
 
   // NOTE: VC++ treats enums as signed, avoid using ObjCPropertyAttributeKind
   unsigned PropertyAttributes : 15;
@@ -890,9 +877,6 @@ private:
 
   IdentifierInfo *GetterName;    // getter name or NULL if no getter
   IdentifierInfo *SetterName;    // setter name or NULL if no setter
-  SourceLocation GetterNameLoc; // location of the getter attribute's value
-  SourceLocation SetterNameLoc; // location of the setter attribute's value
-
 };
 
 /// \brief Represents a C++ unqualified-id that has been parsed. 
@@ -921,9 +905,7 @@ public:
     /// \brief A template-id, e.g., f<int>.
     IK_TemplateId,
     /// \brief An implicit 'self' parameter
-    IK_ImplicitSelfParam,
-    /// \brief A deduction-guide name (a template-name)
-    IK_DeductionGuideName
+    IK_ImplicitSelfParam
   } Kind;
 
   struct OFI {
@@ -943,8 +925,8 @@ public:
   /// \brief Anonymous union that holds extra data associated with the
   /// parsed unqualified-id.
   union {
-    /// \brief When Kind == IK_Identifier, the parsed identifier, or when
-    /// Kind == IK_UserLiteralId, the identifier suffix.
+    /// \brief When Kind == IK_Identifier, the parsed identifier, or when Kind
+    /// == IK_UserLiteralId, the identifier suffix.
     IdentifierInfo *Identifier;
     
     /// \brief When Kind == IK_OperatorFunctionId, the overloaded operator
@@ -962,9 +944,6 @@ public:
     /// \brief When Kind == IK_DestructorName, the type referred to by the
     /// class-name.
     UnionParsedType DestructorName;
-
-    /// \brief When Kind == IK_DeductionGuideName, the parsed template-name.
-    UnionParsedTemplateTy TemplateName;
     
     /// \brief When Kind == IK_TemplateId or IK_ConstructorTemplateId,
     /// the template-id annotation that contains the template name and
@@ -1103,18 +1082,6 @@ public:
   /// \p TemplateId and will free it on destruction.
   void setTemplateId(TemplateIdAnnotation *TemplateId);
 
-  /// \brief Specify that this unqualified-id was parsed as a template-name for
-  /// a deduction-guide.
-  ///
-  /// \param Template The parsed template-name.
-  /// \param TemplateLoc The location of the parsed template-name.
-  void setDeductionGuideName(ParsedTemplateTy Template,
-                             SourceLocation TemplateLoc) {
-    Kind = IK_DeductionGuideName;
-    TemplateName = Template;
-    StartLocation = EndLocation = TemplateLoc;
-  }
-  
   /// \brief Return the source range that covers this unqualified-id.
   SourceRange getSourceRange() const LLVM_READONLY { 
     return SourceRange(StartLocation, EndLocation); 
@@ -1218,14 +1185,14 @@ struct DeclaratorChunk {
     /// declaration of a member function), it will be stored here as a
     /// sequence of tokens to be parsed once the class definition is
     /// complete. Non-NULL indicates that there is a default argument.
-    std::unique_ptr<CachedTokens> DefaultArgTokens;
+    CachedTokens *DefaultArgTokens;
 
-    ParamInfo() = default;
+    ParamInfo() {}
     ParamInfo(IdentifierInfo *ident, SourceLocation iloc,
               Decl *param,
-              std::unique_ptr<CachedTokens> DefArgTokens = nullptr)
+              CachedTokens *DefArgTokens = nullptr)
       : Ident(ident), IdentLoc(iloc), Param(param),
-        DefaultArgTokens(std::move(DefArgTokens)) {}
+        DefaultArgTokens(DefArgTokens) {}
   };
 
   struct TypeAndRange {
@@ -1278,10 +1245,9 @@ struct DeclaratorChunk {
     /// declarator.
     unsigned NumParams;
 
-    /// NumExceptionsOrDecls - This is the number of types in the
-    /// dynamic-exception-decl, if the function has one. In C, this is the
-    /// number of declarations in the function prototype.
-    unsigned NumExceptionsOrDecls;
+    /// NumExceptions - This is the number of types in the dynamic-exception-
+    /// decl, if the function has one.
+    unsigned NumExceptions;
 
     /// \brief The location of the ref-qualifier, if any.
     ///
@@ -1331,11 +1297,6 @@ struct DeclaratorChunk {
       /// \brief Pointer to the cached tokens for an exception-specification
       /// that has not yet been parsed.
       CachedTokens *ExceptionSpecTokens;
-
-      /// Pointer to a new[]'d array of declarations that need to be available
-      /// for lookup inside the function body, if one exists. Does not exist in
-      /// C++.
-      NamedDecl **DeclsInPrototype;
     };
 
     /// \brief If HasTrailingReturnType is true, this is the trailing return
@@ -1346,8 +1307,10 @@ struct DeclaratorChunk {
     ///
     /// This is used in various places for error recovery.
     void freeParams() {
-      for (unsigned I = 0; I < NumParams; ++I)
-        Params[I].DefaultArgTokens.reset();
+      for (unsigned I = 0; I < NumParams; ++I) {
+        delete Params[I].DefaultArgTokens;
+        Params[I].DefaultArgTokens = nullptr;
+      }
       if (DeleteParams) {
         delete[] Params;
         DeleteParams = false;
@@ -1358,20 +1321,10 @@ struct DeclaratorChunk {
     void destroy() {
       if (DeleteParams)
         delete[] Params;
-      switch (getExceptionSpecType()) {
-      default:
-        break;
-      case EST_Dynamic:
+      if (getExceptionSpecType() == EST_Dynamic)
         delete[] Exceptions;
-        break;
-      case EST_Unparsed:
+      else if (getExceptionSpecType() == EST_Unparsed)
         delete ExceptionSpecTokens;
-        break;
-      case EST_None:
-        if (NumExceptionsOrDecls != 0)
-          delete[] DeclsInPrototype;
-        break;
-      }
     }
 
     /// isKNRPrototype - Return true if this is a K&R style identifier list,
@@ -1441,19 +1394,6 @@ struct DeclaratorChunk {
       return static_cast<ExceptionSpecificationType>(ExceptionSpecType);
     }
 
-    /// \brief Get the number of dynamic exception specifications.
-    unsigned getNumExceptions() const {
-      assert(ExceptionSpecType != EST_None);
-      return NumExceptionsOrDecls;
-    }
-
-    /// \brief Get the non-parameter decls defined within this function
-    /// prototype. Typically these are tag declarations.
-    ArrayRef<NamedDecl *> getDeclsInPrototype() const {
-      assert(ExceptionSpecType == EST_None);
-      return llvm::makeArrayRef(DeclsInPrototype, NumExceptionsOrDecls);
-    }
-
     /// \brief Determine whether this function declarator had a
     /// trailing-return-type.
     bool hasTrailingReturnType() const { return HasTrailingReturnType; }
@@ -1476,12 +1416,15 @@ struct DeclaratorChunk {
     unsigned TypeQuals : 5;
     // CXXScopeSpec has a constructor, so it can't be a direct member.
     // So we need some pointer-aligned storage and a bit of trickery.
-    alignas(CXXScopeSpec) char ScopeMem[sizeof(CXXScopeSpec)];
+    union {
+      void *Aligner;
+      char Mem[sizeof(CXXScopeSpec)];
+    } ScopeMem;
     CXXScopeSpec &Scope() {
-      return *reinterpret_cast<CXXScopeSpec *>(ScopeMem);
+      return *reinterpret_cast<CXXScopeSpec*>(ScopeMem.Mem);
     }
     const CXXScopeSpec &Scope() const {
-      return *reinterpret_cast<const CXXScopeSpec *>(ScopeMem);
+      return *reinterpret_cast<const CXXScopeSpec*>(ScopeMem.Mem);
     }
     void destroy() {
       Scope().~CXXScopeSpec();
@@ -1599,7 +1542,6 @@ struct DeclaratorChunk {
                                      unsigned NumExceptions,
                                      Expr *NoexceptExpr,
                                      CachedTokens *ExceptionSpecTokens,
-                                     ArrayRef<NamedDecl *> DeclsInPrototype,
                                      SourceLocation LocalRangeBegin,
                                      SourceLocation LocalRangeEnd,
                                      Declarator &TheDeclarator,
@@ -1637,7 +1579,7 @@ struct DeclaratorChunk {
     I.EndLoc        = Loc;
     I.Mem.TypeQuals = TypeQuals;
     I.Mem.AttrList  = nullptr;
-    new (I.Mem.ScopeMem) CXXScopeSpec(SS);
+    new (I.Mem.ScopeMem.Mem) CXXScopeSpec(SS);
     return I;
   }
 
@@ -1654,58 +1596,6 @@ struct DeclaratorChunk {
 
   bool isParen() const {
     return Kind == Paren;
-  }
-};
-
-/// A parsed C++17 decomposition declarator of the form
-///   '[' identifier-list ']'
-class DecompositionDeclarator {
-public:
-  struct Binding {
-    IdentifierInfo *Name;
-    SourceLocation NameLoc;
-  };
-
-private:
-  /// The locations of the '[' and ']' tokens.
-  SourceLocation LSquareLoc, RSquareLoc;
-
-  /// The bindings.
-  Binding *Bindings;
-  unsigned NumBindings : 31;
-  unsigned DeleteBindings : 1;
-
-  friend class Declarator;
-
-public:
-  DecompositionDeclarator()
-      : Bindings(nullptr), NumBindings(0), DeleteBindings(false) {}
-  DecompositionDeclarator(const DecompositionDeclarator &G) = delete;
-  DecompositionDeclarator &operator=(const DecompositionDeclarator &G) = delete;
-  ~DecompositionDeclarator() {
-    if (DeleteBindings)
-      delete[] Bindings;
-  }
-
-  void clear() {
-    LSquareLoc = RSquareLoc = SourceLocation();
-    if (DeleteBindings)
-      delete[] Bindings;
-    Bindings = nullptr;
-    NumBindings = 0;
-    DeleteBindings = false;
-  }
-
-  ArrayRef<Binding> bindings() const {
-    return llvm::makeArrayRef(Bindings, NumBindings);
-  }
-
-  bool isSet() const { return LSquareLoc.isValid(); }
-
-  SourceLocation getLSquareLoc() const { return LSquareLoc; }
-  SourceLocation getRSquareLoc() const { return RSquareLoc; }
-  SourceRange getSourceRange() const {
-    return SourceRange(LSquareLoc, RSquareLoc);
   }
 };
 
@@ -1739,7 +1629,6 @@ public:
     ObjCParameterContext,// An ObjC method parameter type.
     KNRTypeListContext,  // K&R type definition list for formals.
     TypeNameContext,     // Abstract declarator for types.
-    FunctionalCastContext, // Type in a C++ functional cast expression.
     MemberContext,       // Struct/Union field.
     BlockContext,        // Declaration within a block in a function.
     ForContext,          // Declaration within first part of a for loop.
@@ -1768,9 +1657,6 @@ private:
   /// \brief Where we are parsing this declarator.
   TheContext Context;
 
-  /// The C++17 structured binding, if any. This is an alternative to a Name.
-  DecompositionDeclarator BindingGroup;
-
   /// DeclTypeInfo - This holds each type that the declarator includes as it is
   /// parsed.  This is pushed from the identifier out, which means that element
   /// #0 will be the most closely bound to the identifier, and
@@ -1792,6 +1678,18 @@ private:
   /// \brief Is this Declarator a redeclaration?
   unsigned Redeclaration : 1;
 
+  /// Attrs - Attributes.
+  ParsedAttributes Attrs;
+
+  /// \brief The asm label, if specified.
+  Expr *AsmLabel;
+
+  /// InlineParams - This is a local array used for the first function decl
+  /// chunk to avoid going to the heap for the common case when we have one
+  /// function chunk in the declarator.
+  DeclaratorChunk::ParamInfo InlineParams[16];
+  bool InlineParamsUsed;
+
   /// \brief true if the declaration is preceded by \c __extension__.
   unsigned Extension : 1;
 
@@ -1800,27 +1698,6 @@ private:
     
   /// Indicates whether this is an Objective-C 'weak' property.
   unsigned ObjCWeakProperty : 1;
-
-  /// Indicates whether the InlineParams / InlineBindings storage has been used.
-  unsigned InlineStorageUsed : 1;
-
-  /// Attrs - Attributes.
-  ParsedAttributes Attrs;
-
-  /// \brief The asm label, if specified.
-  Expr *AsmLabel;
-
-#ifndef _MSC_VER
-  union {
-#endif
-    /// InlineParams - This is a local array used for the first function decl
-    /// chunk to avoid going to the heap for the common case when we have one
-    /// function chunk in the declarator.
-    DeclaratorChunk::ParamInfo InlineParams[16];
-    DecompositionDeclarator::Binding InlineBindings[16];
-#ifndef _MSC_VER
-  };
-#endif
 
   /// \brief If this is the second or subsequent declarator in this declaration,
   /// the location of the comma before this declarator.
@@ -1834,12 +1711,14 @@ private:
 
 public:
   Declarator(const DeclSpec &ds, TheContext C)
-      : DS(ds), Range(ds.getSourceRange()), Context(C),
-        InvalidType(DS.getTypeSpecType() == DeclSpec::TST_error),
-        GroupingParens(false), FunctionDefinition(FDK_Declaration),
-        Redeclaration(false), Extension(false), ObjCIvar(false),
-        ObjCWeakProperty(false), InlineStorageUsed(false),
-        Attrs(ds.getAttributePool().getFactory()), AsmLabel(nullptr) {}
+    : DS(ds), Range(ds.getSourceRange()), Context(C),
+      InvalidType(DS.getTypeSpecType() == DeclSpec::TST_error),
+      GroupingParens(false), FunctionDefinition(FDK_Declaration), 
+      Redeclaration(false),
+      Attrs(ds.getAttributePool().getFactory()), AsmLabel(nullptr),
+      InlineParamsUsed(false), Extension(false), ObjCIvar(false),
+      ObjCWeakProperty(false) {
+  }
 
   ~Declarator() {
     clear();
@@ -1866,10 +1745,6 @@ public:
 
   /// \brief Retrieve the name specified by this declarator.
   UnqualifiedId &getName() { return Name; }
-
-  const DecompositionDeclarator &getDecompositionDeclarator() const {
-    return BindingGroup;
-  }
   
   TheContext getContext() const { return Context; }
 
@@ -1913,14 +1788,13 @@ public:
     SS.clear();
     Name.clear();
     Range = DS.getSourceRange();
-    BindingGroup.clear();
-
+    
     for (unsigned i = 0, e = DeclTypeInfo.size(); i != e; ++i)
       DeclTypeInfo[i].destroy();
     DeclTypeInfo.clear();
     Attrs.clear();
     AsmLabel = nullptr;
-    InlineStorageUsed = false;
+    InlineParamsUsed = false;
     ObjCIvar = false;
     ObjCWeakProperty = false;
     CommaLoc = SourceLocation();
@@ -1942,7 +1816,6 @@ public:
       return false;
 
     case TypeNameContext:
-    case FunctionalCastContext:
     case AliasDeclContext:
     case AliasTemplateContext:
     case PrototypeContext:
@@ -1983,7 +1856,6 @@ public:
       return true;
 
     case TypeNameContext:
-    case FunctionalCastContext:
     case CXXNewContext:
     case AliasDeclContext:
     case AliasTemplateContext:
@@ -2016,7 +1888,6 @@ public:
     case CXXCatchContext:
     case ObjCCatchContext:
     case TypeNameContext:
-    case FunctionalCastContext:
     case ConversionIdContext:
     case ObjCParameterContext:
     case ObjCResultContext:
@@ -2030,46 +1901,6 @@ public:
     case TemplateTypeArgContext:
     case TrailingReturnContext:
       return true;
-    }
-    llvm_unreachable("unknown context kind!");
-  }
-
-  /// Return true if the context permits a C++17 decomposition declarator.
-  bool mayHaveDecompositionDeclarator() const {
-    switch (Context) {
-    case FileContext:
-      // FIXME: It's not clear that the proposal meant to allow file-scope
-      // structured bindings, but it does.
-    case BlockContext:
-    case ForContext:
-    case InitStmtContext:
-      return true;
-
-    case ConditionContext:
-    case MemberContext:
-    case PrototypeContext:
-    case TemplateParamContext:
-      // Maybe one day...
-      return false;
-
-    // These contexts don't allow any kind of non-abstract declarator.
-    case KNRTypeListContext:
-    case TypeNameContext:
-    case FunctionalCastContext:
-    case AliasDeclContext:
-    case AliasTemplateContext:
-    case LambdaExprParameterContext:
-    case ObjCParameterContext:
-    case ObjCResultContext:
-    case CXXNewContext:
-    case CXXCatchContext:
-    case ObjCCatchContext:
-    case BlockLiteralContext:
-    case LambdaExprContext:
-    case ConversionIdContext:
-    case TemplateTypeArgContext:
-    case TrailingReturnContext:
-      return false;
     }
     llvm_unreachable("unknown context kind!");
   }
@@ -2113,7 +1944,6 @@ public:
     case CXXCatchContext:
     case ObjCCatchContext:
     case TypeNameContext:
-    case FunctionalCastContext: // FIXME
     case CXXNewContext:
     case AliasDeclContext:
     case AliasTemplateContext:
@@ -2128,22 +1958,14 @@ public:
   }
 
   /// isPastIdentifier - Return true if we have parsed beyond the point where
-  /// the name would appear. (This may happen even if we haven't actually parsed
-  /// a name, perhaps because this context doesn't require one.)
+  /// the
   bool isPastIdentifier() const { return Name.isValid(); }
 
   /// hasName - Whether this declarator has a name, which might be an
   /// identifier (accessible via getIdentifier()) or some kind of
-  /// special C++ name (constructor, destructor, etc.), or a structured
-  /// binding (which is not exactly a name, but occupies the same position).
-  bool hasName() const {
-    return Name.getKind() != UnqualifiedId::IK_Identifier || Name.Identifier ||
-           isDecompositionDeclarator();
-  }
-
-  /// Return whether this declarator is a decomposition declarator.
-  bool isDecompositionDeclarator() const {
-    return BindingGroup.isSet();
+  /// special C++ name (constructor, destructor, etc.).
+  bool hasName() const { 
+    return Name.getKind() != UnqualifiedId::IK_Identifier || Name.Identifier;
   }
 
   IdentifierInfo *getIdentifier() const { 
@@ -2158,13 +1980,7 @@ public:
   void SetIdentifier(IdentifierInfo *Id, SourceLocation IdLoc) {
     Name.setIdentifier(Id, IdLoc);
   }
-
-  /// Set the decomposition bindings for this declarator.
-  void
-  setDecompositionBindings(SourceLocation LSquareLoc,
-                           ArrayRef<DecompositionDeclarator::Binding> Bindings,
-                           SourceLocation RSquareLoc);
-
+  
   /// AddTypeInfo - Add a chunk to this declarator. Also extend the range to
   /// EndLoc, which should be the last token of the chunk.
   void AddTypeInfo(const DeclaratorChunk &TI,
@@ -2315,7 +2131,6 @@ public:
     case ConditionContext:
     case KNRTypeListContext:
     case TypeNameContext:
-    case FunctionalCastContext:
     case AliasDeclContext:
     case AliasTemplateContext:
     case PrototypeContext:
@@ -2347,16 +2162,6 @@ public:
         return false;
 
     return true;
-  }
-
-  /// \brief Determine whether a trailing return type was written (at any
-  /// level) within this declarator.
-  bool hasTrailingReturnType() const {
-    for (const auto &Chunk : type_objects())
-      if (Chunk.Kind == DeclaratorChunk::Function &&
-          Chunk.Fun.hasTrailingReturnType())
-        return true;
-    return false;
   }
 
   /// takeAttributes - Takes attributes from the given parsed-attributes
@@ -2473,9 +2278,7 @@ public:
     VS_None = 0,
     VS_Override = 1,
     VS_Final = 2,
-    VS_Sealed = 4,
-    // Represents the __final keyword, which is legal for gcc in pre-C++11 mode.
-    VS_GNU_Final = 8
+    VS_Sealed = 4
   };
 
   VirtSpecifiers() : Specifiers(0), LastSpecifier(VS_None) { }
@@ -2488,7 +2291,7 @@ public:
   bool isOverrideSpecified() const { return Specifiers & VS_Override; }
   SourceLocation getOverrideLoc() const { return VS_overrideLoc; }
 
-  bool isFinalSpecified() const { return Specifiers & (VS_Final | VS_Sealed | VS_GNU_Final); }
+  bool isFinalSpecified() const { return Specifiers & (VS_Final | VS_Sealed); }
   bool isFinalSpelledSealed() const { return Specifiers & VS_Sealed; }
   SourceLocation getFinalLoc() const { return VS_finalLoc; }
 

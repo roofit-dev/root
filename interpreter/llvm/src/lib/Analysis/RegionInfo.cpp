@@ -54,7 +54,8 @@ static cl::opt<Region::PrintStyle, true> printStyleX("print-region-style",
     clEnumValN(Region::PrintBB, "bb",
                "print regions in detail with block_iterator"),
     clEnumValN(Region::PrintRN, "rn",
-               "print regions in detail with element_iterator")));
+               "print regions in detail with element_iterator"),
+    clEnumValEnd));
 
 
 //===----------------------------------------------------------------------===//
@@ -81,15 +82,6 @@ RegionInfo::RegionInfo() :
 
 RegionInfo::~RegionInfo() {
 
-}
-
-bool RegionInfo::invalidate(Function &F, const PreservedAnalyses &PA,
-                            FunctionAnalysisManager::Invalidator &) {
-  // Check whether the analysis, all analyses on functions, or the function's
-  // CFG have been preserved.
-  auto PAC = PA.getChecker<RegionInfoAnalysis>();
-  return !(PAC.preserved() || PAC.preservedSet<AllAnalysesOn<Function>>() ||
-           PAC.preservedSet<CFGAnalyses>());
 }
 
 void RegionInfo::updateStatistics(Region *R) {
@@ -190,9 +182,9 @@ namespace llvm {
 // RegionInfoAnalysis implementation
 //
 
-AnalysisKey RegionInfoAnalysis::Key;
+char RegionInfoAnalysis::PassID;
 
-RegionInfo RegionInfoAnalysis::run(Function &F, FunctionAnalysisManager &AM) {
+RegionInfo RegionInfoAnalysis::run(Function &F, AnalysisManager<Function> &AM) {
   RegionInfo RI;
   auto *DT = &AM.getResult<DominatorTreeAnalysis>(F);
   auto *PDT = &AM.getResult<PostDominatorTreeAnalysis>(F);
@@ -214,7 +206,7 @@ PreservedAnalyses RegionInfoPrinterPass::run(Function &F,
 }
 
 PreservedAnalyses RegionInfoVerifierPass::run(Function &F,
-                                              FunctionAnalysisManager &AM) {
+                                              AnalysisManager<Function> &AM) {
   AM.getResult<RegionInfoAnalysis>(F).verifyAnalysis();
 
   return PreservedAnalyses::all();

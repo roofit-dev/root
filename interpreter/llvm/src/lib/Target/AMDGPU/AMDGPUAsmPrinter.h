@@ -15,110 +15,82 @@
 #ifndef LLVM_LIB_TARGET_AMDGPU_AMDGPUASMPRINTER_H
 #define LLVM_LIB_TARGET_AMDGPU_AMDGPUASMPRINTER_H
 
-#include "AMDKernelCodeT.h"
-#include "AMDGPU.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/CodeGen/AsmPrinter.h"
-#include <cstddef>
-#include <cstdint>
-#include <limits>
-#include <memory>
-#include <string>
 #include <vector>
 
 namespace llvm {
 
-class AMDGPUTargetStreamer;
-class MCOperand;
-class SISubtarget;
-
 class AMDGPUAsmPrinter final : public AsmPrinter {
 private:
-  // Track resource usage for callee functions.
-  struct SIFunctionResourceInfo {
-    // Track the number of explicitly used VGPRs. Special registers reserved at
-    // the end are tracked separately.
-    int32_t NumVGPR = 0;
-    int32_t NumExplicitSGPR = 0;
-    uint32_t PrivateSegmentSize = 0;
-    bool UsesVCC = false;
-    bool UsesFlatScratch = false;
-    bool HasDynamicallySizedStack = false;
-    bool HasRecursion = false;
-
-    int32_t getTotalNumSGPRs(const SISubtarget &ST) const;
-  };
-
-  // Track resource usage for kernels / entry functions.
   struct SIProgramInfo {
-    // Fields set in PGM_RSRC1 pm4 packet.
-    uint32_t VGPRBlocks = 0;
-    uint32_t SGPRBlocks = 0;
-    uint32_t Priority = 0;
-    uint32_t FloatMode = 0;
-    uint32_t Priv = 0;
-    uint32_t DX10Clamp = 0;
-    uint32_t DebugMode = 0;
-    uint32_t IEEEMode = 0;
-    uint32_t ScratchSize = 0;
+    SIProgramInfo() :
+      VGPRBlocks(0),
+      SGPRBlocks(0),
+      Priority(0),
+      FloatMode(0),
+      Priv(0),
+      DX10Clamp(0),
+      DebugMode(0),
+      IEEEMode(0),
+      ScratchSize(0),
+      ComputePGMRSrc1(0),
+      LDSBlocks(0),
+      ScratchBlocks(0),
+      ComputePGMRSrc2(0),
+      NumVGPR(0),
+      NumSGPR(0),
+      FlatUsed(false),
+      ReservedVGPRFirst(0),
+      ReservedVGPRCount(0),
+      DebuggerWavefrontPrivateSegmentOffsetSGPR((uint16_t)-1),
+      DebuggerPrivateSegmentBufferSGPR((uint16_t)-1),
+      VCCUsed(false),
+      CodeLen(0) {}
 
-    uint64_t ComputePGMRSrc1 = 0;
+    // Fields set in PGM_RSRC1 pm4 packet.
+    uint32_t VGPRBlocks;
+    uint32_t SGPRBlocks;
+    uint32_t Priority;
+    uint32_t FloatMode;
+    uint32_t Priv;
+    uint32_t DX10Clamp;
+    uint32_t DebugMode;
+    uint32_t IEEEMode;
+    uint32_t ScratchSize;
+
+    uint64_t ComputePGMRSrc1;
 
     // Fields set in PGM_RSRC2 pm4 packet.
-    uint32_t LDSBlocks = 0;
-    uint32_t ScratchBlocks = 0;
+    uint32_t LDSBlocks;
+    uint32_t ScratchBlocks;
 
-    uint64_t ComputePGMRSrc2 = 0;
+    uint64_t ComputePGMRSrc2;
 
-    uint32_t NumVGPR = 0;
-    uint32_t NumSGPR = 0;
-    uint32_t LDSSize = 0;
-    bool FlatUsed = false;
-
-    // Number of SGPRs that meets number of waves per execution unit request.
-    uint32_t NumSGPRsForWavesPerEU = 0;
-
-    // Number of VGPRs that meets number of waves per execution unit request.
-    uint32_t NumVGPRsForWavesPerEU = 0;
+    uint32_t NumVGPR;
+    uint32_t NumSGPR;
+    uint32_t LDSSize;
+    bool FlatUsed;
 
     // If ReservedVGPRCount is 0 then must be 0. Otherwise, this is the first
     // fixed VGPR number reserved.
-    uint16_t ReservedVGPRFirst = 0;
-
+    uint16_t ReservedVGPRFirst;
     // The number of consecutive VGPRs reserved.
-    uint16_t ReservedVGPRCount = 0;
+    uint16_t ReservedVGPRCount;
 
     // Fixed SGPR number used to hold wave scratch offset for entire kernel
-    // execution, or std::numeric_limits<uint16_t>::max() if the register is not
-    // used or not known.
-    uint16_t DebuggerWavefrontPrivateSegmentOffsetSGPR =
-        std::numeric_limits<uint16_t>::max();
-
+    // execution, or uint16_t(-1) if the register is not used or not known.
+    uint16_t DebuggerWavefrontPrivateSegmentOffsetSGPR;
     // Fixed SGPR number of the first 4 SGPRs used to hold scratch V# for entire
-    // kernel execution, or std::numeric_limits<uint16_t>::max() if the register
-    // is not used or not known.
-    uint16_t DebuggerPrivateSegmentBufferSGPR =
-        std::numeric_limits<uint16_t>::max();
-
-    // Whether there is recursion, dynamic allocas, indirect calls or some other
-    // reason there may be statically unknown stack usage.
-    bool DynamicCallStack = false;
+    // kernel execution, or uint16_t(-1) if the register is not used or not
+    // known.
+    uint16_t DebuggerPrivateSegmentBufferSGPR;
 
     // Bonus information for debugging.
-    bool VCCUsed = false;
-
-    SIProgramInfo() = default;
+    bool VCCUsed;
+    uint64_t CodeLen;
   };
 
-  SIProgramInfo CurrentProgramInfo;
-  DenseMap<const Function *, SIFunctionResourceInfo> CallGraphResourceInfo;
-
-  uint64_t getFunctionCodeSize(const MachineFunction &MF) const;
-  SIFunctionResourceInfo analyzeResourceUsage(const MachineFunction &MF) const;
-
-  void getSIProgramInfo(SIProgramInfo &Out, const MachineFunction &MF);
-  void getAmdKernelCode(amd_kernel_code_t &Out, const SIProgramInfo &KernelInfo,
-                        const MachineFunction &MF) const;
+  void getSIProgramInfo(SIProgramInfo &Out, const MachineFunction &MF) const;
   void findNumUsedRegistersSI(const MachineFunction &MF,
                               unsigned &NumSGPR,
                               unsigned &NumVGPR) const;
@@ -127,37 +99,18 @@ private:
   /// can correctly setup the GPU state.
   void EmitProgramInfoR600(const MachineFunction &MF);
   void EmitProgramInfoSI(const MachineFunction &MF, const SIProgramInfo &KernelInfo);
-  void emitCommonFunctionComments(uint32_t NumVGPR,
-                                  uint32_t NumSGPR,
-                                  uint32_t ScratchSize,
-                                  uint64_t CodeSize);
+  void EmitAmdKernelCodeT(const MachineFunction &MF,
+                          const SIProgramInfo &KernelInfo) const;
 
 public:
   explicit AMDGPUAsmPrinter(TargetMachine &TM,
                             std::unique_ptr<MCStreamer> Streamer);
 
-  StringRef getPassName() const override;
-
-  const MCSubtargetInfo* getSTI() const;
-
-  AMDGPUTargetStreamer& getTargetStreamer() const;
-
-  bool doFinalization(Module &M) override;
   bool runOnMachineFunction(MachineFunction &MF) override;
 
-  /// \brief Wrapper for MCInstLowering.lowerOperand() for the tblgen'erated
-  /// pseudo lowering.
-  bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp) const;
-
-  /// \brief Lower the specified LLVM Constant to an MCExpr.
-  /// The AsmPrinter::lowerConstantof does not know how to lower
-  /// addrspacecast, therefore they should be lowered by this function.
-  const MCExpr *lowerConstant(const Constant *CV) override;
-
-  /// \brief tblgen'erated driver function for lowering simple MI->MC pseudo
-  /// instructions.
-  bool emitPseudoExpansionLowering(MCStreamer &OutStreamer,
-                                   const MachineInstr *MI);
+  const char *getPassName() const override {
+    return "AMDGPU Assembly Printer";
+  }
 
   /// Implemented in AMDGPUMCInstLower.cpp
   void EmitInstruction(const MachineInstr *MI) override;
@@ -170,11 +123,6 @@ public:
 
   void EmitStartOfAsmFile(Module &M) override;
 
-  void EmitEndOfAsmFile(Module &M) override;
-
-  bool isBlockOnlyReachableByFallthrough(
-    const MachineBasicBlock *MBB) const override;
-
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
                        unsigned AsmVariant, const char *ExtraCode,
                        raw_ostream &O) override;
@@ -182,9 +130,8 @@ public:
 protected:
   std::vector<std::string> DisasmLines, HexLines;
   size_t DisasmLineMaxLen;
-  AMDGPUAS AMDGPUASI;
 };
 
-} // end namespace llvm
+} // End anonymous llvm
 
-#endif // LLVM_LIB_TARGET_AMDGPU_AMDGPUASMPRINTER_H
+#endif

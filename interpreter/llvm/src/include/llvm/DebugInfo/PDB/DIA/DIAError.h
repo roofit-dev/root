@@ -10,8 +10,9 @@
 #ifndef LLVM_DEBUGINFO_PDB_DIA_DIAERROR_H
 #define LLVM_DEBUGINFO_PDB_DIA_DIAERROR_H
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
+
+#include <string>
 
 namespace llvm {
 namespace pdb {
@@ -29,11 +30,11 @@ class DIAError : public ErrorInfo<DIAError> {
 public:
   static char ID;
   DIAError(dia_error_code C);
-  DIAError(StringRef Context);
-  DIAError(dia_error_code C, StringRef Context);
+  DIAError(const std::string &Context);
+  DIAError(dia_error_code C, const std::string &Context);
 
   void log(raw_ostream &OS) const override;
-  StringRef getErrorMessage() const;
+  const std::string &getErrorMessage() const;
   std::error_code convertToErrorCode() const override;
 
 private:

@@ -10,7 +10,6 @@
 #ifndef LLVM_DEBUGINFO_PDB_ERROR_H
 #define LLVM_DEBUGINFO_PDB_ERROR_H
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
 
 namespace llvm {
@@ -27,11 +26,11 @@ class GenericError : public ErrorInfo<GenericError> {
 public:
   static char ID;
   GenericError(generic_error_code C);
-  GenericError(StringRef Context);
-  GenericError(generic_error_code C, StringRef Context);
+  GenericError(const std::string &Context);
+  GenericError(generic_error_code C, const std::string &Context);
 
   void log(raw_ostream &OS) const override;
-  StringRef getErrorMessage() const;
+  const std::string &getErrorMessage() const;
   std::error_code convertToErrorCode() const override;
 
 private:

@@ -134,11 +134,6 @@ bool CodeGenModule::TryEmitDefinitionAsAlias(GlobalDecl AliasDecl,
   llvm::GlobalValue::LinkageTypes TargetLinkage =
       getFunctionLinkage(TargetDecl);
 
-  // available_externally definitions aren't real definitions, so we cannot
-  // create an alias to one.
-  if (TargetLinkage == llvm::GlobalValue::AvailableExternallyLinkage)
-    return true;
-
   // Check if we have it already.
   StringRef MangledName = getMangledName(AliasDecl);
   llvm::GlobalValue *Entry = GetGlobalValue(MangledName);
@@ -161,7 +156,14 @@ bool CodeGenModule::TryEmitDefinitionAsAlias(GlobalDecl AliasDecl,
 
   // Instead of creating as alias to a linkonce_odr, replace all of the uses
   // of the aliasee.
-  if (llvm::GlobalValue::isDiscardableIfUnused(Linkage)) {
+  if (llvm::GlobalValue::isDiscardableIfUnused(Linkage) &&
+     (TargetLinkage != llvm::GlobalValue::AvailableExternallyLinkage ||
+      !TargetDecl.getDecl()->hasAttr<AlwaysInlineAttr>())) {
+    // FIXME: An extern template instantiation will create functions with
+    // linkage "AvailableExternally". In libc++, some classes also define
+    // members with attribute "AlwaysInline" and expect no reference to
+    // be generated. It is desirable to reenable this optimisation after
+    // corresponding LLVM changes.
     addReplacement(MangledName, Aliasee);
     return false;
   }
@@ -218,7 +220,7 @@ llvm::Function *CodeGenModule::codegenCXXStructor(const CXXMethodDecl *MD,
       getTypes().arrangeCXXStructorDeclaration(MD, Type);
   auto *Fn = cast<llvm::Function>(
       getAddrOfCXXStructor(MD, Type, &FnInfo, /*FnType=*/nullptr,
-                           /*DontDefer=*/true, ForDefinition));
+                           /*DontDefer=*/true, /*IsForDefinition=*/true));
 
   GlobalDecl GD;
   if (const auto *DD = dyn_cast<CXXDestructorDecl>(MD)) {
@@ -239,8 +241,7 @@ llvm::Function *CodeGenModule::codegenCXXStructor(const CXXMethodDecl *MD,
 
 llvm::Constant *CodeGenModule::getAddrOfCXXStructor(
     const CXXMethodDecl *MD, StructorType Type, const CGFunctionInfo *FnInfo,
-    llvm::FunctionType *FnType, bool DontDefer,
-    ForDefinition_t IsForDefinition) {
+    llvm::FunctionType *FnType, bool DontDefer, bool IsForDefinition) {
   GlobalDecl GD;
   if (auto *CD = dyn_cast<CXXConstructorDecl>(MD)) {
     GD = GlobalDecl(CD, toCXXCtorType(Type));
@@ -256,13 +257,13 @@ llvm::Constant *CodeGenModule::getAddrOfCXXStructor(
 
   return GetOrCreateLLVMFunction(
       getMangledName(GD), FnType, GD, /*ForVTable=*/false, DontDefer,
-      /*isThunk=*/false, /*ExtraAttrs=*/llvm::AttributeList(), IsForDefinition);
+      /*isThunk=*/false, /*ExtraAttrs=*/llvm::AttributeSet(), IsForDefinition);
 }
 
-static CGCallee BuildAppleKextVirtualCall(CodeGenFunction &CGF,
-                                          GlobalDecl GD,
-                                          llvm::Type *Ty,
-                                          const CXXRecordDecl *RD) {
+static llvm::Value *BuildAppleKextVirtualCall(CodeGenFunction &CGF,
+                                              GlobalDecl GD,
+                                              llvm::Type *Ty,
+                                              const CXXRecordDecl *RD) {
   assert(!CGF.CGM.getTarget().getCXXABI().isMicrosoft() &&
          "No kext in Microsoft ABI");
   GD = GD.getCanonicalDecl();
@@ -272,26 +273,22 @@ static CGCallee BuildAppleKextVirtualCall(CodeGenFunction &CGF,
   VTable = CGF.Builder.CreateBitCast(VTable, Ty);
   assert(VTable && "BuildVirtualCall = kext vtbl pointer is null");
   uint64_t VTableIndex = CGM.getItaniumVTableContext().getMethodVTableIndex(GD);
-  const VTableLayout &VTLayout = CGM.getItaniumVTableContext().getVTableLayout(RD);
-  VTableLayout::AddressPointLocation AddressPoint =
-      VTLayout.getAddressPoint(BaseSubobject(RD, CharUnits::Zero()));
-  VTableIndex += VTLayout.getVTableOffset(AddressPoint.VTableIndex) +
-                 AddressPoint.AddressPointIndex;
+  uint64_t AddressPoint =
+    CGM.getItaniumVTableContext().getVTableLayout(RD)
+       .getAddressPoint(BaseSubobject(RD, CharUnits::Zero()));
+  VTableIndex += AddressPoint;
   llvm::Value *VFuncPtr =
     CGF.Builder.CreateConstInBoundsGEP1_64(VTable, VTableIndex, "vfnkxt");
-  llvm::Value *VFunc =
-    CGF.Builder.CreateAlignedLoad(VFuncPtr, CGF.PointerAlignInBytes);
-  CGCallee Callee(GD.getDecl(), VFunc);
-  return Callee;
+  return CGF.Builder.CreateAlignedLoad(VFuncPtr, CGF.PointerAlignInBytes);
 }
 
 /// BuildAppleKextVirtualCall - This routine is to support gcc's kext ABI making
 /// indirect call to virtual functions. It makes the call through indexing
 /// into the vtable.
-CGCallee
+llvm::Value *
 CodeGenFunction::BuildAppleKextVirtualCall(const CXXMethodDecl *MD, 
-                                           NestedNameSpecifier *Qual,
-                                           llvm::Type *Ty) {
+                                  NestedNameSpecifier *Qual,
+                                  llvm::Type *Ty) {
   assert((Qual->getKind() == NestedNameSpecifier::TypeSpec) &&
          "BuildAppleKextVirtualCall - bad Qual kind");
   
@@ -309,15 +306,21 @@ CodeGenFunction::BuildAppleKextVirtualCall(const CXXMethodDecl *MD,
 
 /// BuildVirtualCall - This routine makes indirect vtable call for
 /// call to virtual destructors. It returns 0 if it could not do it.
-CGCallee
+llvm::Value *
 CodeGenFunction::BuildAppleKextVirtualDestructorCall(
                                             const CXXDestructorDecl *DD,
                                             CXXDtorType Type,
                                             const CXXRecordDecl *RD) {
-  assert(DD->isVirtual() && Type != Dtor_Base);
-  // Compute the function type we're calling.
-  const CGFunctionInfo &FInfo = CGM.getTypes().arrangeCXXStructorDeclaration(
-      DD, StructorType::Complete);
-  llvm::Type *Ty = CGM.getTypes().GetFunctionType(FInfo);
-  return ::BuildAppleKextVirtualCall(*this, GlobalDecl(DD, Type), Ty, RD);
+  const auto *MD = cast<CXXMethodDecl>(DD);
+  // FIXME. Dtor_Base dtor is always direct!!
+  // It need be somehow inline expanded into the caller.
+  // -O does that. But need to support -O0 as well.
+  if (MD->isVirtual() && Type != Dtor_Base) {
+    // Compute the function type we're calling.
+    const CGFunctionInfo &FInfo = CGM.getTypes().arrangeCXXStructorDeclaration(
+        DD, StructorType::Complete);
+    llvm::Type *Ty = CGM.getTypes().GetFunctionType(FInfo);
+    return ::BuildAppleKextVirtualCall(*this, GlobalDecl(DD, Type), Ty, RD);
+  }
+  return nullptr;
 }

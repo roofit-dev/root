@@ -69,8 +69,23 @@ namespace llvm {
   };
 
   template <>
-  struct ilist_alloc_traits<IndexListEntry>
-      : public ilist_noalloc_traits<IndexListEntry> {};
+  struct ilist_traits<IndexListEntry> : public ilist_default_traits<IndexListEntry> {
+  private:
+    mutable ilist_half_node<IndexListEntry> Sentinel;
+  public:
+    IndexListEntry *createSentinel() const {
+      return static_cast<IndexListEntry*>(&Sentinel);
+    }
+    void destroySentinel(IndexListEntry *) const {}
+
+    IndexListEntry *provideInitialHead() const { return createSentinel(); }
+    IndexListEntry *ensureHead(IndexListEntry*) const { return createSentinel(); }
+    static void noteHead(IndexListEntry*, IndexListEntry*) {}
+    void deleteNode(IndexListEntry *N) {}
+
+  private:
+    void createNode(const IndexListEntry &);
+  };
 
   /// SlotIndex - An opaque wrapper around machine indexes.
   class SlotIndex {
@@ -346,8 +361,9 @@ namespace llvm {
 
     IndexListEntry* createEntry(MachineInstr *mi, unsigned index) {
       IndexListEntry *entry =
-          static_cast<IndexListEntry *>(ileAllocator.Allocate(
-              sizeof(IndexListEntry), alignof(IndexListEntry)));
+        static_cast<IndexListEntry*>(
+          ileAllocator.Allocate(sizeof(IndexListEntry),
+          alignOf<IndexListEntry>()));
 
       new (entry) IndexListEntry(mi, index);
 
@@ -405,8 +421,7 @@ namespace llvm {
     /// Returns the base index for the given instruction.
     SlotIndex getInstructionIndex(const MachineInstr &MI) const {
       // Instructions inside a bundle have the same number as the bundle itself.
-      const MachineInstr &BundleStart = *getBundleStart(MI.getIterator());
-      Mi2IndexMap::const_iterator itr = mi2iMap.find(&BundleStart);
+      Mi2IndexMap::const_iterator itr = mi2iMap.find(&getBundleStart(MI));
       assert(itr != mi2iMap.end() && "Instruction not found in maps.");
       return itr->second;
     }
@@ -602,23 +617,26 @@ namespace llvm {
       return newIndex;
     }
 
-    /// Removes machine instruction (bundle) \p MI from the mapping.
-    /// This should be called before MachineInstr::eraseFromParent() is used to
-    /// remove a whole bundle or an unbundled instruction.
-    void removeMachineInstrFromMaps(MachineInstr &MI);
-
-    /// Removes a single machine instruction \p MI from the mapping.
-    /// This should be called before MachineInstr::eraseFromBundle() is used to
-    /// remove a single instruction (out of a bundle).
-    void removeSingleMachineInstrFromMaps(MachineInstr &MI);
+    /// Remove the given machine instruction from the mapping.
+    void removeMachineInstrFromMaps(MachineInstr &MI) {
+      // remove index -> MachineInstr and
+      // MachineInstr -> index mappings
+      Mi2IndexMap::iterator mi2iItr = mi2iMap.find(&MI);
+      if (mi2iItr != mi2iMap.end()) {
+        IndexListEntry *miEntry(mi2iItr->second.listEntry());
+        assert(miEntry->getInstr() == &MI && "Instruction indexes broken.");
+        // FIXME: Eventually we want to actually delete these indexes.
+        miEntry->setInstr(nullptr);
+        mi2iMap.erase(mi2iItr);
+      }
+    }
 
     /// ReplaceMachineInstrInMaps - Replacing a machine instr with a new one in
-    /// maps used by register allocator. \returns the index where the new
-    /// instruction was inserted.
-    SlotIndex replaceMachineInstrInMaps(MachineInstr &MI, MachineInstr &NewMI) {
+    /// maps used by register allocator.
+    void replaceMachineInstrInMaps(MachineInstr &MI, MachineInstr &NewMI) {
       Mi2IndexMap::iterator mi2iItr = mi2iMap.find(&MI);
       if (mi2iItr == mi2iMap.end())
-        return SlotIndex();
+        return;
       SlotIndex replaceBaseIndex = mi2iItr->second;
       IndexListEntry *miEntry(replaceBaseIndex.listEntry());
       assert(miEntry->getInstr() == &MI &&
@@ -626,7 +644,6 @@ namespace llvm {
       miEntry->setInstr(&NewMI);
       mi2iMap.erase(mi2iItr);
       mi2iMap.insert(std::make_pair(&NewMI, replaceBaseIndex));
-      return replaceBaseIndex;
     }
 
     /// Add the given MachineBasicBlock into the maps.

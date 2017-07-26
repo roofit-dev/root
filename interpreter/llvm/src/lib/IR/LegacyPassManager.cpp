@@ -11,19 +11,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/IR/IRPrintingPasses.h"
+
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/IRPrintingPasses.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/LegacyPassManagers.h"
 #include "llvm/IR/LegacyPassNameParser.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Support/Chrono.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
+#include "llvm/Support/TimeValue.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -56,7 +56,8 @@ PassDebugging("debug-pass", cl::Hidden,
   clEnumVal(Arguments , "print pass arguments to pass to 'opt'"),
   clEnumVal(Structure , "print pass structure before run()"),
   clEnumVal(Executions, "print pass name before it is executed"),
-  clEnumVal(Details   , "print pass details when it is executed")));
+  clEnumVal(Details   , "print pass details when it is executed"),
+                             clEnumValEnd));
 
 namespace {
 typedef llvm::cl::list<const llvm::PassInfo *, bool, PassNameParser>
@@ -192,7 +193,9 @@ public:
   PMDataManager *getAsPMDataManager() override { return this; }
   Pass *getAsPass() override { return this; }
 
-  StringRef getPassName() const override { return "BasicBlock Pass Manager"; }
+  const char *getPassName() const override {
+    return "BasicBlock Pass Manager";
+  }
 
   // Print passes managed by this manager
   void dumpPassStructure(unsigned Offset) override {
@@ -337,7 +340,9 @@ public:
   /// its runOnFunction() for function F.
   Pass* getOnTheFlyPass(Pass *MP, AnalysisID PI, Function &F) override;
 
-  StringRef getPassName() const override { return "Module Pass Manager"; }
+  const char *getPassName() const override {
+    return "Module Pass Manager";
+  }
 
   PMDataManager *getAsPMDataManager() override { return this; }
   Pass *getAsPass() override { return this; }
@@ -449,7 +454,7 @@ class TimingInfo {
   TimerGroup TG;
 public:
   // Use 'create' member to get this.
-  TimingInfo() : TG("pass", "... Pass execution timing report ...") {}
+  TimingInfo() : TG("... Pass execution timing report ...") {}
 
   // TimingDtor - Print out information about timing information
   ~TimingInfo() {
@@ -472,10 +477,8 @@ public:
 
     sys::SmartScopedLock<true> Lock(*TimingInfoMutex);
     Timer *&T = TimingData[P];
-    if (!T) {
-      StringRef PassName = P->getPassName();
-      T = new Timer(PassName, PassName, TG);
-    }
+    if (!T)
+      T = new Timer(P->getPassName(), TG);
     return T;
   }
 };
@@ -535,11 +538,12 @@ PMTopLevelManager::setLastUser(ArrayRef<Pass*> AnalysisPasses, Pass *P) {
 
     // If AP is the last user of other passes then make P last user of
     // such passes.
-    for (auto LU : LastUser) {
-      if (LU.second == AP)
+    for (DenseMap<Pass *, Pass *>::iterator LUI = LastUser.begin(),
+           LUE = LastUser.end(); LUI != LUE; ++LUI) {
+      if (LUI->second == AP)
         // DenseMap iterator is not invalidated here because
         // this is just updating existing entries.
-        LastUser[LU.first] = P;
+        LastUser[LUI->first] = P;
     }
   }
 }
@@ -680,7 +684,7 @@ void PMTopLevelManager::schedulePass(Pass *P) {
 
   if (PI && !PI->isAnalysis() && ShouldPrintBeforePass(PI)) {
     Pass *PP = P->createPrinterPass(
-        dbgs(), ("*** IR Dump Before " + P->getPassName() + " ***").str());
+      dbgs(), std::string("*** IR Dump Before ") + P->getPassName() + " ***");
     PP->assignPassManager(activeStack, getTopLevelPassManagerType());
   }
 
@@ -689,7 +693,7 @@ void PMTopLevelManager::schedulePass(Pass *P) {
 
   if (PI && !PI->isAnalysis() && ShouldPrintAfterPass(PI)) {
     Pass *PP = P->createPrinterPass(
-        dbgs(), ("*** IR Dump After " + P->getPassName() + " ***").str());
+      dbgs(), std::string("*** IR Dump After ") + P->getPassName() + " ***");
     PP->assignPassManager(activeStack, getTopLevelPassManagerType());
   }
 }
@@ -789,9 +793,10 @@ void PMTopLevelManager::initializeAllAnalysisInfo() {
   for (PMDataManager *IPM : IndirectPassManagers)
     IPM->initializeAnalysisInfo();
 
-  for (auto LU : LastUser) {
-    SmallPtrSet<Pass *, 8> &L = InversedLastUser[LU.second];
-    L.insert(LU.first);
+  for (DenseMap<Pass *, Pass *>::iterator DMI = LastUser.begin(),
+        DME = LastUser.end(); DMI != DME; ++DMI) {
+    SmallPtrSet<Pass *, 8> &L = InversedLastUser[DMI->second];
+    L.insert(DMI->first);
   }
 }
 
@@ -832,9 +837,13 @@ bool PMDataManager::preserveHigherLevelAnalysis(Pass *P) {
     return true;
 
   const AnalysisUsage::VectorType &PreservedSet = AnUsage->getPreservedSet();
-  for (Pass *P1 : HigherLevelAnalysis) {
+  for (SmallVectorImpl<Pass *>::iterator I = HigherLevelAnalysis.begin(),
+         E = HigherLevelAnalysis.end(); I  != E; ++I) {
+    Pass *P1 = *I;
     if (P1->getAsImmutablePass() == nullptr &&
-        !is_contained(PreservedSet, P1->getPassID()))
+        std::find(PreservedSet.begin(), PreservedSet.end(),
+                  P1->getPassID()) ==
+           PreservedSet.end())
       return false;
   }
 
@@ -851,7 +860,9 @@ void PMDataManager::verifyPreservedAnalysis(Pass *P) {
   const AnalysisUsage::VectorType &PreservedSet = AnUsage->getPreservedSet();
 
   // Verify preserved analysis
-  for (AnalysisID AID : PreservedSet) {
+  for (AnalysisUsage::VectorType::const_iterator I = PreservedSet.begin(),
+         E = PreservedSet.end(); I != E; ++I) {
+    AnalysisID AID = *I;
     if (Pass *AP = findAnalysisPass(AID, true)) {
       TimeRegion PassTimer(getPassTimer(AP));
       AP->verifyAnalysis();
@@ -870,7 +881,8 @@ void PMDataManager::removeNotPreservedAnalysis(Pass *P) {
          E = AvailableAnalysis.end(); I != E; ) {
     DenseMap<AnalysisID, Pass*>::iterator Info = I++;
     if (Info->second->getAsImmutablePass() == nullptr &&
-        !is_contained(PreservedSet, Info->first)) {
+        std::find(PreservedSet.begin(), PreservedSet.end(), Info->first) ==
+        PreservedSet.end()) {
       // Remove this analysis
       if (PassDebugging >= Details) {
         Pass *S = Info->second;
@@ -893,7 +905,8 @@ void PMDataManager::removeNotPreservedAnalysis(Pass *P) {
            E = InheritedAnalysis[Index]->end(); I != E; ) {
       DenseMap<AnalysisID, Pass *>::iterator Info = I++;
       if (Info->second->getAsImmutablePass() == nullptr &&
-          !is_contained(PreservedSet, Info->first)) {
+          std::find(PreservedSet.begin(), PreservedSet.end(), Info->first) ==
+             PreservedSet.end()) {
         // Remove this analysis
         if (PassDebugging >= Details) {
           Pass *S = Info->second;
@@ -924,8 +937,9 @@ void PMDataManager::removeDeadPasses(Pass *P, StringRef Msg,
     dbgs() << " Free these instances\n";
   }
 
-  for (Pass *P : DeadPasses)
-    freePass(P, Msg, DBG_STR);
+  for (SmallVectorImpl<Pass *>::iterator I = DeadPasses.begin(),
+         E = DeadPasses.end(); I != E; ++I)
+    freePass(*I, Msg, DBG_STR);
 }
 
 void PMDataManager::freePass(Pass *P, StringRef Msg,
@@ -1131,7 +1145,7 @@ void PMDataManager::dumpPassInfo(Pass *P, enum PassDebuggingString S1,
                                  StringRef Msg) {
   if (PassDebugging < Executions)
     return;
-  dbgs() << "[" << std::chrono::system_clock::now() << "] " << (void *)this
+  dbgs() << "[" << sys::TimeValue::now().str() << "] " << (void *)this
          << std::string(getDepth() * 2 + 1, ' ');
   switch (S1) {
   case EXECUTION_MSG:
@@ -1380,9 +1394,8 @@ void FunctionPassManager::add(Pass *P) {
 /// so, return true.
 ///
 bool FunctionPassManager::run(Function &F) {
-  handleAllErrors(F.materialize(), [&](ErrorInfoBase &EIB) {
-    report_fatal_error("Error reading bitcode file: " + EIB.message());
-  });
+  if (std::error_code EC = F.materialize())
+    report_fatal_error("Error reading bitcode file: " + EC.message());
   return FPM->run(F);
 }
 

@@ -20,27 +20,36 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetOptions.h"
+#include <cassert>
 #include <string>
 
 namespace llvm {
 
+class InstrItineraryData;
 class GlobalValue;
-class MachineFunctionInitializer;
 class Mangler;
+class MachineFunctionInitializer;
+class MachineModuleInfo;
 class MCAsmInfo;
 class MCContext;
 class MCInstrInfo;
 class MCRegisterInfo;
 class MCSubtargetInfo;
 class MCSymbol;
-class raw_pwrite_stream;
-class PassManagerBuilder;
 class Target;
-class TargetIntrinsicInfo;
+class TargetLibraryInfo;
+class TargetFrameLowering;
 class TargetIRAnalysis;
-class TargetLoweringObjectFile;
+class TargetIntrinsicInfo;
+class TargetLowering;
 class TargetPassConfig;
+class TargetRegisterInfo;
 class TargetSubtargetInfo;
+class TargetTransformInfo;
+class formatted_raw_ostream;
+class raw_ostream;
+class raw_pwrite_stream;
+class TargetLoweringObjectFile;
 
 // The old pass manager infrastructure is hidden in a legacy namespace now.
 namespace legacy {
@@ -55,6 +64,8 @@ using legacy::PassManagerBase;
 /// interface.
 ///
 class TargetMachine {
+  TargetMachine(const TargetMachine &) = delete;
+  void operator=(const TargetMachine &) = delete;
 protected: // Can only create subclasses.
   TargetMachine(const Target &T, StringRef DataLayoutString,
                 const Triple &TargetTriple, StringRef CPU, StringRef FS,
@@ -92,11 +103,8 @@ protected: // Can only create subclasses.
   unsigned O0WantsFastISel : 1;
 
 public:
-  const TargetOptions DefaultOptions;
   mutable TargetOptions Options;
 
-  TargetMachine(const TargetMachine &) = delete;
-  void operator=(const TargetMachine &) = delete;
   virtual ~TargetMachine();
 
   const Target &getTarget() const { return TheTarget; }
@@ -185,6 +193,12 @@ public:
 
   bool shouldPrintMachineCode() const { return Options.PrintMachineCode; }
 
+  /// Returns the default value of asm verbosity.
+  ///
+  bool getAsmVerbosityDefault() const {
+    return Options.MCOptions.AsmVerbose;
+  }
+
   bool getUniqueSectionNames() const { return Options.UniqueSectionNames; }
 
   /// Return true if data objects should be emitted into their own section,
@@ -206,9 +220,10 @@ public:
   /// uses this to answer queries about the IR.
   virtual TargetIRAnalysis getTargetIRAnalysis();
 
-  /// Allow the target to modify the pass manager, e.g. by calling
-  /// PassManagerBuilder::addExtension.
-  virtual void adjustPassManager(PassManagerBuilder &) {}
+  /// Add target-specific function passes that should be run as early as
+  /// possible in the optimization pipeline.  Most TargetMachines have no such
+  /// passes.
+  virtual void addEarlyAsPossiblePasses(PassManagerBase &) {}
 
   /// These enums are meant to be passed into addPassesToEmitFile to indicate
   /// what type of file to emit, and returned by it to indicate what type of
@@ -226,8 +241,7 @@ public:
   virtual bool addPassesToEmitFile(
       PassManagerBase &, raw_pwrite_stream &, CodeGenFileType,
       bool /*DisableVerify*/ = true, AnalysisID /*StartBefore*/ = nullptr,
-      AnalysisID /*StartAfter*/ = nullptr, AnalysisID /*StopBefore*/ = nullptr,
-      AnalysisID /*StopAfter*/ = nullptr,
+      AnalysisID /*StartAfter*/ = nullptr, AnalysisID /*StopAfter*/ = nullptr,
       MachineFunctionInitializer * /*MFInitializer*/ = nullptr) {
     return true;
   }
@@ -252,7 +266,7 @@ public:
 
   void getNameWithPrefix(SmallVectorImpl<char> &Name, const GlobalValue *GV,
                          Mangler &Mang, bool MayAlwaysUsePrivate = false) const;
-  MCSymbol *getSymbol(const GlobalValue *GV) const;
+  MCSymbol *getSymbol(const GlobalValue *GV, Mangler &Mang) const;
 
   /// True if the target uses physical regs at Prolog/Epilog insertion
   /// time. If true (most machines), all vregs must be allocated before
@@ -268,8 +282,8 @@ class LLVMTargetMachine : public TargetMachine {
 protected: // Can only create subclasses.
   LLVMTargetMachine(const Target &T, StringRef DataLayoutString,
                     const Triple &TargetTriple, StringRef CPU, StringRef FS,
-                    const TargetOptions &Options, Reloc::Model RM,
-                    CodeModel::Model CM, CodeGenOpt::Level OL);
+                    TargetOptions Options, Reloc::Model RM, CodeModel::Model CM,
+                    CodeGenOpt::Level OL);
 
   void initAsmInfo();
 public:
@@ -288,8 +302,7 @@ public:
   bool addPassesToEmitFile(
       PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
       bool DisableVerify = true, AnalysisID StartBefore = nullptr,
-      AnalysisID StartAfter = nullptr, AnalysisID StopBefore = nullptr,
-      AnalysisID StopAfter = nullptr,
+      AnalysisID StartAfter = nullptr, AnalysisID StopAfter = nullptr,
       MachineFunctionInitializer *MFInitializer = nullptr) override;
 
   /// Add passes to the specified pass manager to get machine code emitted with
@@ -299,8 +312,15 @@ public:
   bool addPassesToEmitMC(PassManagerBase &PM, MCContext *&Ctx,
                          raw_pwrite_stream &OS,
                          bool DisableVerify = true) override;
+
+  /// Add MachineModuleInfo pass to pass manager.
+  MachineModuleInfo &addMachineModuleInfo(PassManagerBase &PM) const;
+
+  /// Add MachineFunctionAnalysis pass to pass manager.
+  void addMachineFunctionAnalysis(PassManagerBase &PM,
+      MachineFunctionInitializer *MFInitializer) const;
 };
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_TARGET_TARGETMACHINE_H
+#endif

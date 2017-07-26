@@ -39,7 +39,7 @@ static MCOperand GetSymbolRef(const MachineOperand &MO, const MCSymbol *Symbol,
   // Populate the relocation type based on Hexagon target flags
   // set on an operand
   MCSymbolRefExpr::VariantKind RelocationType;
-  switch (MO.getTargetFlags() & ~HexagonII::HMOTF_ConstExtended) {
+  switch (MO.getTargetFlags()) {
   default:
     RelocationType = MCSymbolRefExpr::VK_None;
     break;
@@ -109,14 +109,11 @@ void llvm::HexagonLowerToMC(const MCInstrInfo &MCII, const MachineInstr *MI,
 
     switch (MO.getType()) {
     default:
-      MI->print(errs());
+      MI->dump();
       llvm_unreachable("unknown operand type");
-    case MachineOperand::MO_RegisterMask:
-      continue;
     case MachineOperand::MO_Register:
       // Ignore all implicit register operands.
-      if (MO.isImplicit())
-        continue;
+      if (MO.isImplicit()) continue;
       MCO = MCOperand::createReg(MO.getReg());
       break;
     case MachineOperand::MO_FPImmediate: {

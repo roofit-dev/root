@@ -29,9 +29,9 @@ using namespace llvm;
 
 // Always verify dominfo if expensive checking is enabled.
 #ifdef EXPENSIVE_CHECKS
-bool llvm::VerifyDomInfo = true;
+static bool VerifyDomInfo = true;
 #else
-bool llvm::VerifyDomInfo = false;
+static bool VerifyDomInfo = false;
 #endif
 static cl::opt<bool,true>
 VerifyDomInfoX("verify-dom-info", cl::location(VerifyDomInfo),
@@ -64,23 +64,10 @@ template class llvm::DomTreeNodeBase<BasicBlock>;
 template class llvm::DominatorTreeBase<BasicBlock>;
 
 template void llvm::Calculate<Function, BasicBlock *>(
-    DominatorTreeBase<
-        typename std::remove_pointer<GraphTraits<BasicBlock *>::NodeRef>::type>
-        &DT,
-    Function &F);
+    DominatorTreeBase<GraphTraits<BasicBlock *>::NodeType> &DT, Function &F);
 template void llvm::Calculate<Function, Inverse<BasicBlock *>>(
-    DominatorTreeBase<typename std::remove_pointer<
-        GraphTraits<Inverse<BasicBlock *>>::NodeRef>::type> &DT,
+    DominatorTreeBase<GraphTraits<Inverse<BasicBlock *>>::NodeType> &DT,
     Function &F);
-
-bool DominatorTree::invalidate(Function &F, const PreservedAnalyses &PA,
-                               FunctionAnalysisManager::Invalidator &) {
-  // Check whether the analysis, all analyses on functions, or the function's
-  // CFG have been preserved.
-  auto PAC = PA.getChecker<DominatorTreeAnalysis>();
-  return !(PAC.preserved() || PAC.preservedSet<AllAnalysesOn<Function>>() ||
-           PAC.preservedSet<CFGAnalyses>());
-}
 
 // dominates - Return true if Def dominates a use in User. This performs
 // the special checks necessary if Def and User are in the same basic block.
@@ -314,13 +301,13 @@ void DominatorTree::verifyDomTree() const {
 //===----------------------------------------------------------------------===//
 
 DominatorTree DominatorTreeAnalysis::run(Function &F,
-                                         FunctionAnalysisManager &) {
+                                         AnalysisManager<Function> &) {
   DominatorTree DT;
   DT.recalculate(F);
   return DT;
 }
 
-AnalysisKey DominatorTreeAnalysis::Key;
+char DominatorTreeAnalysis::PassID;
 
 DominatorTreePrinterPass::DominatorTreePrinterPass(raw_ostream &OS) : OS(OS) {}
 

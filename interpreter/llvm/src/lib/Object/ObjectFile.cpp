@@ -1,4 +1,4 @@
-//===- ObjectFile.cpp - File format independent object file ---------------===//
+//===- ObjectFile.cpp - File format independent object file -----*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,28 +11,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Object/Binary.h"
 #include "llvm/Object/COFF.h"
-#include "llvm/Object/Error.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Object/Wasm.h"
-#include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
-#include <algorithm>
-#include <cstdint>
-#include <memory>
 #include <system_error>
 
 using namespace llvm;
 using namespace object;
 
-void ObjectFile::anchor() {}
+void ObjectFile::anchor() { }
 
 ObjectFile::ObjectFile(unsigned int Type, MemoryBufferRef Source)
     : SymbolicFile(Type, Source) {}
@@ -87,7 +78,6 @@ ObjectFile::createObjectFile(MemoryBufferRef Object, sys::fs::file_magic Type) {
   switch (Type) {
   case sys::fs::file_magic::unknown:
   case sys::fs::file_magic::bitcode:
-  case sys::fs::file_magic::coff_cl_gl_object:
   case sys::fs::file_magic::archive:
   case sys::fs::file_magic::macho_universal_binary:
   case sys::fs::file_magic::windows_resource:
@@ -114,8 +104,6 @@ ObjectFile::createObjectFile(MemoryBufferRef Object, sys::fs::file_magic Type) {
   case sys::fs::file_magic::coff_import_library:
   case sys::fs::file_magic::pecoff_executable:
     return errorOrToExpected(createCOFFObjectFile(Object));
-  case sys::fs::file_magic::wasm_object:
-    return createWasmObjectFile(Object);
   }
   llvm_unreachable("Unexpected Object File Type");
 }
@@ -130,8 +118,8 @@ ObjectFile::createObjectFile(StringRef ObjectPath) {
 
   Expected<std::unique_ptr<ObjectFile>> ObjOrErr =
       createObjectFile(Buffer->getMemBufferRef());
-  if (Error Err = ObjOrErr.takeError())
-    return std::move(Err);
+  if (!ObjOrErr)
+    ObjOrErr.takeError();
   std::unique_ptr<ObjectFile> Obj = std::move(ObjOrErr.get());
 
   return OwningBinary<ObjectFile>(std::move(Obj), std::move(Buffer));

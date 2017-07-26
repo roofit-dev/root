@@ -68,29 +68,21 @@ public:
                             const TargetRegisterClass *RC,
                             const TargetRegisterInfo *TRI) const override;
 
-  unsigned getInstSizeInBytes(const MachineInstr &MI) const override;
+  unsigned GetInstSizeInBytes(const MachineInstr *MI) const;
 
   // Branch folding goodness
   bool
-  reverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const override;
+  ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const override;
   bool isUnpredicatedTerminator(const MachineInstr &MI) const override;
-  bool analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
-                     MachineBasicBlock *&FBB,
+  bool AnalyzeBranch(MachineBasicBlock &MBB,
+                     MachineBasicBlock *&TBB, MachineBasicBlock *&FBB,
                      SmallVectorImpl<MachineOperand> &Cond,
                      bool AllowModify) const override;
 
-  unsigned removeBranch(MachineBasicBlock &MBB,
-                        int *BytesRemoved = nullptr) const override;
-  unsigned insertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
+  unsigned RemoveBranch(MachineBasicBlock &MBB) const override;
+  unsigned InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
                         MachineBasicBlock *FBB, ArrayRef<MachineOperand> Cond,
-                        const DebugLoc &DL,
-                        int *BytesAdded = nullptr) const override;
-
-  int64_t getFramePoppedByCallee(const MachineInstr &I) const {
-    assert(isFrameInstr(I) && "Not a frame instruction");
-    assert(I.getOperand(1).getImm() >= 0 && "Size must not be negative");
-    return I.getOperand(1).getImm();
-  }
+                        const DebugLoc &DL) const override;
 };
 
 }

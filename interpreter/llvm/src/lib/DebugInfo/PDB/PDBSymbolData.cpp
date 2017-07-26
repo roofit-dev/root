@@ -19,8 +19,10 @@ using namespace llvm::pdb;
 
 PDBSymbolData::PDBSymbolData(const IPDBSession &PDBSession,
                              std::unique_ptr<IPDBRawSymbol> DataSymbol)
-    : PDBSymbol(PDBSession, std::move(DataSymbol)) {
-  assert(RawSymbol->getSymTag() == PDB_SymType::Data);
+    : PDBSymbol(PDBSession, std::move(DataSymbol)) {}
+
+std::unique_ptr<PDBSymbol> PDBSymbolData::getType() const {
+  return Session.getSymbolById(getTypeId());
 }
 
 void PDBSymbolData::dump(PDBSymDumper &Dumper) const { Dumper.dump(*this); }

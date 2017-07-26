@@ -25,44 +25,39 @@ namespace clang {
 /// \brief Represents a version number in the form major[.minor[.subminor[.build]]].
 class VersionTuple {
   unsigned Major : 31;
-
-  unsigned UsesUnderscores : 1;
-
   unsigned Minor : 31;
-  unsigned HasMinor : 1;
-
   unsigned Subminor : 31;
-  unsigned HasSubminor : 1;
-
   unsigned Build : 31;
+  unsigned HasMinor : 1;
+  unsigned HasSubminor : 1;
   unsigned HasBuild : 1;
+  unsigned UsesUnderscores : 1;
 
 public:
   VersionTuple()
-      : Major(0), UsesUnderscores(false), Minor(0), HasMinor(false),
-        Subminor(0), HasSubminor(false), Build(0), HasBuild(false) {}
+      : Major(0), Minor(0), Subminor(0), Build(0), HasMinor(false),
+        HasSubminor(false), HasBuild(false), UsesUnderscores(false) {}
 
   explicit VersionTuple(unsigned Major)
-      : Major(Major), UsesUnderscores(false), Minor(0), HasMinor(false),
-        Subminor(0), HasSubminor(false), Build(0), HasBuild(false) {}
+      : Major(Major), Minor(0), Subminor(0), Build(0), HasMinor(false),
+        HasSubminor(false), HasBuild(false), UsesUnderscores(false) {}
 
   explicit VersionTuple(unsigned Major, unsigned Minor,
                         bool UsesUnderscores = false)
-      : Major(Major), UsesUnderscores(UsesUnderscores), Minor(Minor),
-        HasMinor(true), Subminor(0), HasSubminor(false), Build(0),
-        HasBuild(false) {}
+      : Major(Major), Minor(Minor), Subminor(0), Build(0), HasMinor(true),
+        HasSubminor(false), HasBuild(false), UsesUnderscores(UsesUnderscores) {}
 
   explicit VersionTuple(unsigned Major, unsigned Minor, unsigned Subminor,
                         bool UsesUnderscores = false)
-      : Major(Major), UsesUnderscores(UsesUnderscores), Minor(Minor),
-        HasMinor(true), Subminor(Subminor), HasSubminor(true), Build(0),
-        HasBuild(false) {}
+      : Major(Major), Minor(Minor), Subminor(Subminor), Build(0),
+        HasMinor(true), HasSubminor(true), HasBuild(false),
+        UsesUnderscores(UsesUnderscores) {}
 
   explicit VersionTuple(unsigned Major, unsigned Minor, unsigned Subminor,
                         unsigned Build, bool UsesUnderscores = false)
-      : Major(Major), UsesUnderscores(UsesUnderscores), Minor(Minor),
-        HasMinor(true), Subminor(Subminor), HasSubminor(true), Build(Build),
-        HasBuild(true) {}
+      : Major(Major), Minor(Minor), Subminor(Subminor), Build(Build),
+        HasMinor(true), HasSubminor(true), HasBuild(true),
+        UsesUnderscores(UsesUnderscores) {}
 
   /// \brief Determine whether this version information is empty
   /// (e.g., all version components are zero).

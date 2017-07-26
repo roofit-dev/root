@@ -13,7 +13,6 @@
 
 #include "AArch64TargetStreamer.h"
 #include "llvm/MC/ConstantPools.h"
-
 using namespace llvm;
 
 //
@@ -22,7 +21,7 @@ using namespace llvm;
 AArch64TargetStreamer::AArch64TargetStreamer(MCStreamer &S)
     : MCTargetStreamer(S), ConstantPools(new AssemblerConstantPools()) {}
 
-AArch64TargetStreamer::~AArch64TargetStreamer() = default;
+AArch64TargetStreamer::~AArch64TargetStreamer() {}
 
 // The constant pool handling is shared by all AArch64TargetStreamer
 // implementations.

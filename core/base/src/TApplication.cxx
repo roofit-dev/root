@@ -75,7 +75,7 @@ Bool_t TIdleTimer::Notify()
 }
 
 
-ClassImp(TApplication);
+ClassImp(TApplication)
 
 static void CallEndOfProcessCleanups()
 {
@@ -123,7 +123,7 @@ TApplication::TApplication(const char *appClassName, Int_t *argc, char **argv,
    fFiles(0), fIdleTimer(0), fSigHandler(0), fExitOnException(kDontExit),
    fAppRemote(0)
 {
-   R__LOCKGUARD(gInterpreterMutex);
+   R__LOCKGUARD2(gInterpreterMutex);
 
    // Create the list of applications the first time
    if (!fgApplications)
@@ -468,47 +468,7 @@ void TApplication::GetOptions(Int_t *argc, char **argv)
          } else {
             Warning("GetOptions", "-e must be followed by an expression.");
          }
-      } else if (!strcmp(argv[i], "--")) {
-         TObjString* macro = nullptr;
-         bool warnShown = false;
 
-         if (fFiles) {
-            for (auto f: *fFiles) {
-               TObjString* file = dynamic_cast<TObjString*>(f);
-
-               if (file->TestBit(kExpression))
-                  continue;
-               if (file->String().EndsWith(".root"))
-                  continue;
-               if (file->String().Contains('('))
-                  continue;
-
-               if (macro && !warnShown && (warnShown = true))
-                  Warning("GetOptions", "-- is used with several macros. "
-                                        "The arguments will be passed to the last one.");
-
-               macro = file;
-            }
-         }
-
-         if (macro) {
-            argv[i] = null;
-            ++i;
-            TString& str = macro->String();
-
-            str += '(';
-            for (; i < *argc; i++) {
-               str += argv[i];
-               str += ',';
-               argv[i] = null;
-            }
-            str.EndsWith(",") ? str[str.Length() - 1] = ')' : str += ')';
-         } else {
-            Warning("GetOptions", "no macro to pass arguments to was provided. "
-                                  "Everything after the -- will be ignored.");
-            for (; i < *argc; i++)
-               argv[i] = null;
-         }
       } else if (argv[i][0] != '-' && argv[i][0] != '+') {
          Long64_t size;
          Long_t id, flags, modtime;
@@ -1307,7 +1267,7 @@ void TApplication::SetEchoMode(Bool_t)
 
 void TApplication::CreateApplication()
 {
-   R__LOCKGUARD(gROOTMutex);
+   R__LOCKGUARD2(gROOTMutex);
    // gApplication is set at the end of 'new TApplication.
    if (!gApplication) {
       char *a = StrDup("RootApp");

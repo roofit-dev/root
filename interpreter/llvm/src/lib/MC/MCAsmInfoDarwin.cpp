@@ -1,4 +1,4 @@
-//===- MCAsmInfoDarwin.cpp - Darwin asm properties ------------------------===//
+//===-- MCAsmInfoDarwin.cpp - Darwin asm properties -------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,10 +13,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCAsmInfoDarwin.h"
-#include "llvm/MC/MCDirectives.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSectionMachO.h"
-#include "llvm/Support/MachO.h"
-
 using namespace llvm;
 
 bool MCAsmInfoDarwin::isSectionAtomizableBySymbols(
@@ -77,6 +76,7 @@ MCAsmInfoDarwin::MCAsmInfoDarwin() {
   ZeroDirective = "\t.space\t";  // ".space N" emits N zeros.
   HasMachoZeroFillDirective = true;  // Uses .zerofill
   HasMachoTBSSDirective = true; // Uses .tbss
+  HasStaticCtorDtorReferenceInStaticMode = true;
 
   // FIXME: Change this once MC is the system assembler.
   HasAggressiveSymbolFolding = false;

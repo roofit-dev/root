@@ -25,18 +25,15 @@ void llvm::initializeTransformUtils(PassRegistry &Registry) {
   initializeBreakCriticalEdgesPass(Registry);
   initializeInstNamerPass(Registry);
   initializeLCSSAWrapperPassPass(Registry);
-  initializeLibCallsShrinkWrapLegacyPassPass(Registry);
   initializeLoopSimplifyPass(Registry);
-  initializeLowerInvokeLegacyPassPass(Registry);
+  initializeLowerInvokePass(Registry);
   initializeLowerSwitchPass(Registry);
-  initializeNameAnonGlobalLegacyPassPass(Registry);
+  initializeNameAnonFunctionPass(Registry);
   initializePromoteLegacyPassPass(Registry);
-  initializeStripNonLineTableDebugInfoPass(Registry);
   initializeUnifyFunctionExitNodesPass(Registry);
   initializeInstSimplifierPass(Registry);
   initializeMetaRenamerPass(Registry);
-  initializeStripGCRelocatesPass(Registry);
-  initializePredicateInfoPrinterLegacyPassPass(Registry);
+  initializeMemorySSAWrapperPassPass(Registry);
 }
 
 /// LLVMInitializeTransformUtils - C binding for initializeTransformUtilsPasses.

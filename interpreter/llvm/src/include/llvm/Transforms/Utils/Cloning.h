@@ -21,30 +21,32 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/Analysis/AssumptionCache.h"
-#include "llvm/IR/CallSite.h"
 #include "llvm/IR/ValueHandle.h"
+#include "llvm/IR/ValueMap.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include <functional>
-#include <memory>
-#include <vector>
 
 namespace llvm {
 
-class AllocaInst;
-class BasicBlock;
-class BlockFrequencyInfo;
-class CallInst;
-class CallGraph;
-class DominatorTree;
+class Module;
 class Function;
 class Instruction;
+class Pass;
+class LPPassManager;
+class BasicBlock;
+class Value;
+class CallInst;
 class InvokeInst;
+class ReturnInst;
+class CallSite;
+class Trace;
+class CallGraph;
+class DataLayout;
 class Loop;
 class LoopInfo;
-class Module;
-class ProfileSummaryInfo;
-class ReturnInst;
+class AllocaInst;
+class AssumptionCacheTracker;
+class DominatorTree;
 
 /// Return an exact copy of the specified module
 ///
@@ -64,20 +66,20 @@ CloneModule(const Module *M, ValueToValueMapTy &VMap,
 struct ClonedCodeInfo {
   /// ContainsCalls - This is set to true if the cloned code contains a normal
   /// call instruction.
-  bool ContainsCalls = false;
+  bool ContainsCalls;
 
   /// ContainsDynamicAllocas - This is set to true if the cloned code contains
   /// a 'dynamic' alloca.  Dynamic allocas are allocas that are either not in
   /// the entry block or they are in the entry block but are not a constant
   /// size.
-  bool ContainsDynamicAllocas = false;
+  bool ContainsDynamicAllocas;
 
   /// All cloned call sites that have operand bundles attached are appended to
   /// this vector.  This vector may contain nulls or undefs if some of the
   /// originally inserted callsites were DCE'ed after they were cloned.
-  std::vector<WeakTrackingVH> OperandBundleCallSites;
+  std::vector<WeakVH> OperandBundleCallSites;
 
-  ClonedCodeInfo() = default;
+  ClonedCodeInfo() : ContainsCalls(false), ContainsDynamicAllocas(false) {}
 };
 
 /// CloneBasicBlock - Return a copy of the specified basic block, but without
@@ -174,20 +176,13 @@ void CloneAndPruneFunctionInto(Function *NewFunc, const Function *OldFunc,
 class InlineFunctionInfo {
 public:
   explicit InlineFunctionInfo(CallGraph *cg = nullptr,
-                              std::function<AssumptionCache &(Function &)>
-                                  *GetAssumptionCache = nullptr,
-                              ProfileSummaryInfo *PSI = nullptr,
-                              BlockFrequencyInfo *CallerBFI = nullptr,
-                              BlockFrequencyInfo *CalleeBFI = nullptr)
-      : CG(cg), GetAssumptionCache(GetAssumptionCache), PSI(PSI),
-        CallerBFI(CallerBFI), CalleeBFI(CalleeBFI) {}
+                              AssumptionCacheTracker *ACT = nullptr)
+      : CG(cg), ACT(ACT) {}
 
   /// CG - If non-null, InlineFunction will update the callgraph to reflect the
   /// changes it makes.
   CallGraph *CG;
-  std::function<AssumptionCache &(Function &)> *GetAssumptionCache;
-  ProfileSummaryInfo *PSI;
-  BlockFrequencyInfo *CallerBFI, *CalleeBFI;
+  AssumptionCacheTracker *ACT;
 
   /// StaticAllocas - InlineFunction fills this in with all static allocas that
   /// get copied into the caller.
@@ -195,19 +190,11 @@ public:
 
   /// InlinedCalls - InlineFunction fills this in with callsites that were
   /// inlined from the callee.  This is only filled in if CG is non-null.
-  SmallVector<WeakTrackingVH, 8> InlinedCalls;
-
-  /// All of the new call sites inlined into the caller.
-  ///
-  /// 'InlineFunction' fills this in by scanning the inlined instructions, and
-  /// only if CG is null. If CG is non-null, instead the value handle
-  /// `InlinedCalls` above is used.
-  SmallVector<CallSite, 8> InlinedCallSites;
+  SmallVector<WeakVH, 8> InlinedCalls;
 
   void reset() {
     StaticAllocas.clear();
     InlinedCalls.clear();
-    InlinedCallSites.clear();
   }
 };
 
@@ -221,10 +208,6 @@ public:
 /// exists in the instruction stream.  Similarly this will inline a recursive
 /// function by one level.
 ///
-/// Note that while this routine is allowed to cleanup and optimize the
-/// *inlined* code to minimize the actual inserted code, it must not delete
-/// code in the caller as users of this routine may have pointers to
-/// instructions in the caller that need to remain stable.
 bool InlineFunction(CallInst *C, InlineFunctionInfo &IFI,
                     AAResults *CalleeAAR = nullptr, bool InsertLifetime = true);
 bool InlineFunction(InvokeInst *II, InlineFunctionInfo &IFI,
@@ -248,16 +231,6 @@ Loop *cloneLoopWithPreheader(BasicBlock *Before, BasicBlock *LoopDomBB,
 void remapInstructionsInBlocks(const SmallVectorImpl<BasicBlock *> &Blocks,
                                ValueToValueMapTy &VMap);
 
-/// Split edge between BB and PredBB and duplicate all non-Phi instructions
-/// from BB between its beginning and the StopAt instruction into the split
-/// block. Phi nodes are not duplicated, but their uses are handled correctly:
-/// we replace them with the uses of corresponding Phi inputs. ValueMapping
-/// is used to map the original instructions from BB to their newly-created
-/// copies. Returns the split block.
-BasicBlock *
-DuplicateInstructionsInSplitBetween(BasicBlock *BB, BasicBlock *PredBB,
-                                    Instruction *StopAt,
-                                    ValueToValueMapTy &ValueMapping);
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_TRANSFORMS_UTILS_CLONING_H
+#endif

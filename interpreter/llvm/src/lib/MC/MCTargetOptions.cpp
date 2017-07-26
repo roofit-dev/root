@@ -1,4 +1,4 @@
-//===- lib/MC/MCTargetOptions.cpp - MC Target Options ---------------------===//
+//===- lib/MC/MCTargetOptions.cpp - MC Target Options --------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -10,16 +10,17 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCTargetOptions.h"
 
-using namespace llvm;
+namespace llvm {
 
 MCTargetOptions::MCTargetOptions()
     : SanitizeAddress(false), MCRelaxAll(false), MCNoExecStack(false),
-      MCFatalWarnings(false), MCNoWarn(false), MCNoDeprecatedWarn(false),
-      MCSaveTempLabels(false), MCUseDwarfDirectory(false),
-      MCIncrementalLinkerCompatible(false), MCPIECopyRelocations(false),
+      MCFatalWarnings(false), MCNoWarn(false), MCSaveTempLabels(false),
+      MCUseDwarfDirectory(false), MCIncrementalLinkerCompatible(false),
       ShowMCEncoding(false), ShowMCInst(false), AsmVerbose(false),
-      PreserveAsmComments(true) {}
+      DwarfVersion(0), ABIName() {}
 
 StringRef MCTargetOptions::getABIName() const {
   return ABIName;
 }
+
+} // end namespace llvm

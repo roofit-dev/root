@@ -16,19 +16,12 @@
 #define LLVM_LIB_TARGET_WEBASSEMBLY_MCTARGETDESC_WEBASSEMBLYMCASMINFO_H
 
 #include "llvm/MC/MCAsmInfoELF.h"
-#include "llvm/MC/MCAsmInfoWasm.h"
 
 namespace llvm {
 
 class Triple;
 
-class WebAssemblyMCAsmInfoELF final : public MCAsmInfoELF {
-public:
-  explicit WebAssemblyMCAsmInfoELF(const Triple &T);
-  ~WebAssemblyMCAsmInfoELF() override;
-};
-
-class WebAssemblyMCAsmInfo final : public MCAsmInfoWasm {
+class WebAssemblyMCAsmInfo final : public MCAsmInfoELF {
 public:
   explicit WebAssemblyMCAsmInfo(const Triple &T);
   ~WebAssemblyMCAsmInfo() override;

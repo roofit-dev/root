@@ -10,38 +10,20 @@
 #include "ARM.h"
 #include "ARMBaseInstrInfo.h"
 #include "ARMSubtarget.h"
-#include "MCTargetDesc/ARMBaseInfo.h"
+#include "MCTargetDesc/ARMAddressingModes.h"
 #include "Thumb2InstrInfo.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PostOrderIterator.h"
-#include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
-#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineOperand.h"
-#include "llvm/IR/DebugLoc.h"
-#include "llvm/IR/Function.h"
-#include "llvm/MC/MCInstrDesc.h"
-#include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/IR/Function.h" // To access Function attributes
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetInstrInfo.h"
-#include <algorithm>
-#include <cassert>
-#include <cstdint>
-#include <functional>
-#include <iterator>
+#include "llvm/Target/TargetMachine.h"
 #include <utility>
-
 using namespace llvm;
 
 #define DEBUG_TYPE "t2-reduce-size"
@@ -58,7 +40,6 @@ static cl::opt<int> ReduceLimitLdSt("t2-reduce-limit3",
                                      cl::init(-1), cl::Hidden);
 
 namespace {
-
   /// ReduceTable - A static table with information on mapping from wide
   /// opcodes to narrow
   struct ReduceEntry {
@@ -158,20 +139,19 @@ namespace {
   class Thumb2SizeReduce : public MachineFunctionPass {
   public:
     static char ID;
+    Thumb2SizeReduce(std::function<bool(const Function &)> Ftor);
 
     const Thumb2InstrInfo *TII;
     const ARMSubtarget *STI;
-
-    Thumb2SizeReduce(std::function<bool(const Function &)> Ftor);
 
     bool runOnMachineFunction(MachineFunction &MF) override;
 
     MachineFunctionProperties getRequiredProperties() const override {
       return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::NoVRegs);
+          MachineFunctionProperties::Property::AllVRegsAllocated);
     }
 
-    StringRef getPassName() const override {
+    const char *getPassName() const override {
       return "Thumb2 instruction size reduction pass";
     }
 
@@ -221,21 +201,19 @@ namespace {
 
     struct MBBInfo {
       // The flags leaving this block have high latency.
-      bool HighLatencyCPSR = false;
+      bool HighLatencyCPSR;
       // Has this block been visited yet?
-      bool Visited = false;
+      bool Visited;
 
-      MBBInfo() = default;
+      MBBInfo() : HighLatencyCPSR(false), Visited(false) {}
     };
 
     SmallVector<MBBInfo, 8> BlockInfo;
 
     std::function<bool(const Function &)> PredicateFtor;
   };
-
   char Thumb2SizeReduce::ID = 0;
-
-} // end anonymous namespace
+}
 
 Thumb2SizeReduce::Thumb2SizeReduce(std::function<bool(const Function &)> Ftor)
     : MachineFunctionPass(ID), PredicateFtor(std::move(Ftor)) {
@@ -452,10 +430,6 @@ Thumb2SizeReduce::ReduceLoadStore(MachineBasicBlock &MBB, MachineInstr *MI,
     if (!MBB.getParent()->getFunction()->optForMinSize())
       return false;
 
-    if (!MI->hasOneMemOperand() ||
-        (*MI->memoperands_begin())->getAlignment() < 4)
-      return false;
-
     // We're creating a completely different type of load/store - LDM from LDR.
     // For this reason we can't reuse the logic at the end of this function; we
     // have to implement the MI building here.
@@ -512,13 +486,14 @@ Thumb2SizeReduce::ReduceLoadStore(MachineBasicBlock &MBB, MachineInstr *MI,
     isLdStMul = true;
     break;
   }
-  case ARM::t2STMIA:
+  case ARM::t2STMIA: {
     // If the base register is killed, we don't care what its value is after the
     // instruction, so we can use an updating STMIA.
     if (!MI->getOperand(0).isKill())
       return false;
 
     break;
+  }
   case ARM::t2LDMIA_RET: {
     unsigned BaseReg = MI->getOperand(1).getReg();
     if (BaseReg != ARM::SP)
@@ -583,8 +558,8 @@ Thumb2SizeReduce::ReduceLoadStore(MachineBasicBlock &MBB, MachineInstr *MI,
     MIB.addReg(MI->getOperand(0).getReg(), RegState::Define | RegState::Dead);
 
   if (!isLdStMul) {
-    MIB.add(MI->getOperand(0));
-    MIB.add(MI->getOperand(1));
+    MIB.addOperand(MI->getOperand(0));
+    MIB.addOperand(MI->getOperand(1));
 
     if (HasImmOffset)
       MIB.addImm(OffsetImm / Scale);
@@ -598,7 +573,7 @@ Thumb2SizeReduce::ReduceLoadStore(MachineBasicBlock &MBB, MachineInstr *MI,
 
   // Transfer the rest of operands.
   for (unsigned e = MI->getNumOperands(); OpNum != e; ++OpNum)
-    MIB.add(MI->getOperand(OpNum));
+    MIB.addOperand(MI->getOperand(OpNum));
 
   // Transfer memoperands.
   MIB->setMemRefs(MI->memoperands_begin(), MI->memoperands_end());
@@ -642,13 +617,12 @@ Thumb2SizeReduce::ReduceSpecial(MachineBasicBlock &MBB, MachineInstr *MI,
         MI->getOperand(MCID.getNumOperands()-1).getReg() == ARM::CPSR)
       return false;
 
-    MachineInstrBuilder MIB =
-        BuildMI(MBB, MI, MI->getDebugLoc(),
-                TII->get(ARM::tADDrSPi))
-            .add(MI->getOperand(0))
-            .add(MI->getOperand(1))
-            .addImm(Imm / 4) // The tADDrSPi has an implied scale by four.
-            .add(predOps(ARMCC::AL));
+    MachineInstrBuilder MIB = BuildMI(MBB, MI, MI->getDebugLoc(),
+                                      TII->get(ARM::tADDrSPi))
+      .addOperand(MI->getOperand(0))
+      .addOperand(MI->getOperand(1))
+      .addImm(Imm / 4); // The tADDrSPi has an implied scale by four.
+    AddDefaultPred(MIB);
 
     // Transfer MI flags.
     MIB.setMIFlags(MI->getFlags());
@@ -674,10 +648,11 @@ Thumb2SizeReduce::ReduceSpecial(MachineBasicBlock &MBB, MachineInstr *MI,
     if (getInstrPredicate(*MI, PredReg) == ARMCC::AL) {
       switch (Opc) {
       default: break;
-      case ARM::t2ADDSri:
+      case ARM::t2ADDSri: {
         if (ReduceTo2Addr(MBB, MI, Entry, LiveCPSR, IsSelfLoop))
           return true;
-        LLVM_FALLTHROUGH;
+        // fallthrough
+      }
       case ARM::t2ADDSrr:
         return ReduceToNarrow(MBB, MI, Entry, LiveCPSR, IsSelfLoop);
       }
@@ -719,6 +694,7 @@ bool
 Thumb2SizeReduce::ReduceTo2Addr(MachineBasicBlock &MBB, MachineInstr *MI,
                                 const ReduceEntry &Entry,
                                 bool LiveCPSR, bool IsSelfLoop) {
+
   if (ReduceLimit2Addr != -1 && ((int)Num2Addrs >= ReduceLimit2Addr))
     return false;
 
@@ -805,9 +781,13 @@ Thumb2SizeReduce::ReduceTo2Addr(MachineBasicBlock &MBB, MachineInstr *MI,
   // Add the 16-bit instruction.
   DebugLoc dl = MI->getDebugLoc();
   MachineInstrBuilder MIB = BuildMI(MBB, MI, dl, NewMCID);
-  MIB.add(MI->getOperand(0));
-  if (NewMCID.hasOptionalDef())
-    MIB.add(HasCC ? t1CondCodeOp(CCDead) : condCodeOp());
+  MIB.addOperand(MI->getOperand(0));
+  if (NewMCID.hasOptionalDef()) {
+    if (HasCC)
+      AddDefaultT1CC(MIB, CCDead);
+    else
+      AddNoT1CC(MIB);
+  }
 
   // Transfer the rest of operands.
   unsigned NumOps = MCID.getNumOperands();
@@ -816,7 +796,7 @@ Thumb2SizeReduce::ReduceTo2Addr(MachineBasicBlock &MBB, MachineInstr *MI,
       continue;
     if (SkipPred && MCID.OpInfo[i].isPredicate())
       continue;
-    MIB.add(MI->getOperand(i));
+    MIB.addOperand(MI->getOperand(i));
   }
 
   // Transfer MI flags.
@@ -896,9 +876,13 @@ Thumb2SizeReduce::ReduceToNarrow(MachineBasicBlock &MBB, MachineInstr *MI,
   // Add the 16-bit instruction.
   DebugLoc dl = MI->getDebugLoc();
   MachineInstrBuilder MIB = BuildMI(MBB, MI, dl, NewMCID);
-  MIB.add(MI->getOperand(0));
-  if (NewMCID.hasOptionalDef())
-    MIB.add(HasCC ? t1CondCodeOp(CCDead) : condCodeOp());
+  MIB.addOperand(MI->getOperand(0));
+  if (NewMCID.hasOptionalDef()) {
+    if (HasCC)
+      AddDefaultT1CC(MIB, CCDead);
+    else
+      AddNoT1CC(MIB);
+  }
 
   // Transfer the rest of operands.
   unsigned NumOps = MCID.getNumOperands();
@@ -921,10 +905,10 @@ Thumb2SizeReduce::ReduceToNarrow(MachineBasicBlock &MBB, MachineInstr *MI,
       // Skip implicit def of CPSR. Either it's modeled as an optional
       // def now or it's already an implicit def on the new instruction.
       continue;
-    MIB.add(MO);
+    MIB.addOperand(MO);
   }
   if (!MCID.isPredicable() && NewMCID.isPredicable())
-    MIB.add(predOps(ARMCC::AL));
+    AddDefaultPred(MIB);
 
   // Transfer MI flags.
   MIB.setMIFlags(MI->getFlags());

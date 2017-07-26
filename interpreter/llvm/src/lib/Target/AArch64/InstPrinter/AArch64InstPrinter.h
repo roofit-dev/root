@@ -15,7 +15,6 @@
 #define LLVM_LIB_TARGET_AARCH64_INSTPRINTER_AARCH64INSTPRINTER_H
 
 #include "MCTargetDesc/AArch64MCTargetDesc.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCInstPrinter.h"
 
 namespace llvm {
@@ -38,11 +37,9 @@ public:
                                        unsigned PrintMethodIdx,
                                        const MCSubtargetInfo &STI,
                                        raw_ostream &O);
-
   virtual StringRef getRegName(unsigned RegNo) const {
     return getRegisterName(RegNo);
   }
-
   static const char *getRegisterName(unsigned RegNo,
                                      unsigned AltIdx = AArch64::NoRegAltName);
 
@@ -180,15 +177,12 @@ public:
                                unsigned PrintMethodIdx,
                                const MCSubtargetInfo &STI,
                                raw_ostream &O) override;
-
   StringRef getRegName(unsigned RegNo) const override {
     return getRegisterName(RegNo);
   }
-
   static const char *getRegisterName(unsigned RegNo,
                                      unsigned AltIdx = AArch64::NoRegAltName);
 };
+}
 
-} // end namespace llvm
-
-#endif // LLVM_LIB_TARGET_AARCH64_INSTPRINTER_AARCH64INSTPRINTER_H
+#endif

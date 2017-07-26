@@ -38,7 +38,7 @@ public:
   static char ID;
 
   SIDebuggerInsertNops() : MachineFunctionPass(ID) { }
-  StringRef getPassName() const override { return PASS_NAME; }
+  const char *getPassName() const override { return PASS_NAME; }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesCFG();

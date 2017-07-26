@@ -27,7 +27,6 @@
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCTargetOptionsCommandFlags.h"
-#include "llvm/Object/Decompressor.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Compression.h"
 #include "llvm/Support/DataExtractor.h"
@@ -113,8 +112,8 @@ struct CompileUnitIdentifiers {
 };
 
 static Expected<const char *>
-getIndexedString(dwarf::Form Form, DataExtractor InfoData, 
-                 uint32_t &InfoOffset, StringRef StrOffsets, StringRef Str) {
+getIndexedString(uint32_t Form, DataExtractor InfoData, uint32_t &InfoOffset,
+                 StringRef StrOffsets, StringRef Str) {
   if (Form == dwarf::DW_FORM_string)
     return InfoData.getCStr(&InfoOffset);
   if (Form != dwarf::DW_FORM_GNU_str_index)
@@ -134,14 +133,7 @@ static Expected<CompileUnitIdentifiers> getCUIdentifiers(StringRef Abbrev,
                                                          StringRef Str) {
   uint32_t Offset = 0;
   DataExtractor InfoData(Info, true, 0);
-  dwarf::DwarfFormat Format = dwarf::DwarfFormat::DWARF32;
-  uint64_t Length = InfoData.getU32(&Offset);
-  // If the length is 0xffffffff, then this indictes that this is a DWARF 64
-  // stream and the length is actually encoded into a 64 bit value that follows.
-  if (Length == 0xffffffffU) {
-    Format = dwarf::DwarfFormat::DWARF64;
-    Length = InfoData.getU64(&Offset);
-  }
+  InfoData.getU32(&Offset); // Length
   uint16_t Version = InfoData.getU16(&Offset);
   InfoData.getU32(&Offset); // Abbrev offset (should be zero)
   uint8_t AddrSize = InfoData.getU8(&Offset);
@@ -150,16 +142,16 @@ static Expected<CompileUnitIdentifiers> getCUIdentifiers(StringRef Abbrev,
 
   DataExtractor AbbrevData(Abbrev, true, 0);
   uint32_t AbbrevOffset = getCUAbbrev(Abbrev, AbbrCode);
-  auto Tag = static_cast<dwarf::Tag>(AbbrevData.getULEB128(&AbbrevOffset));
+  uint64_t Tag = AbbrevData.getULEB128(&AbbrevOffset);
   if (Tag != dwarf::DW_TAG_compile_unit)
     return make_error<DWPError>("top level DIE is not a compile unit");
   // DW_CHILDREN
   AbbrevData.getU8(&AbbrevOffset);
   uint32_t Name;
-  dwarf::Form Form;
+  uint32_t Form;
   CompileUnitIdentifiers ID;
   while ((Name = AbbrevData.getULEB128(&AbbrevOffset)) |
-         (Form = static_cast<dwarf::Form>(AbbrevData.getULEB128(&AbbrevOffset))) &&
+             (Form = AbbrevData.getULEB128(&AbbrevOffset)) &&
          (Name != 0 || Form != 0)) {
     switch (Name) {
     case dwarf::DW_AT_name: {
@@ -182,8 +174,7 @@ static Expected<CompileUnitIdentifiers> getCUIdentifiers(StringRef Abbrev,
       ID.Signature = InfoData.getU64(&Offset);
       break;
     default:
-      DWARFFormValue::skipValue(Form, InfoData, &Offset, Version, AddrSize,
-                                Format);
+      DWARFFormValue::skipValue(Form, InfoData, &Offset, Version, AddrSize);
     }
   }
   return ID;
@@ -335,6 +326,21 @@ writeIndex(MCStreamer &Out, MCSection *Section,
   writeIndexTable(Out, ContributionOffsets, IndexEntries,
                   &DWARFUnitIndex::Entry::SectionContribution::Length);
 }
+static bool consumeCompressedDebugSectionHeader(StringRef &data,
+                                                uint64_t &OriginalSize) {
+  // Consume "ZLIB" prefix.
+  if (!data.startswith("ZLIB"))
+    return false;
+  data = data.substr(4);
+  // Consume uncompressed section size (big-endian 8 bytes).
+  DataExtractor extractor(data, false, 8);
+  uint32_t Offset = 0;
+  OriginalSize = extractor.getU64(&Offset);
+  if (Offset == 0)
+    return false;
+  data = data.substr(Offset);
+  return true;
+}
 
 std::string buildDWODescription(StringRef Name, StringRef DWPName, StringRef DWOName) {
   std::string Text = "\'";
@@ -354,31 +360,24 @@ std::string buildDWODescription(StringRef Name, StringRef DWPName, StringRef DWO
   return Text;
 }
 
-static Error createError(StringRef Name, Error E) {
-  return make_error<DWPError>(
-      ("failure while decompressing compressed section: '" + Name + "', " +
-       llvm::toString(std::move(E)))
-          .str());
-}
-
-static Error
-handleCompressedSection(std::deque<SmallString<32>> &UncompressedSections,
-                        StringRef &Name, StringRef &Contents) {
-  if (!Decompressor::isGnuStyle(Name))
-    return Error::success();
-
-  Expected<Decompressor> Dec =
-      Decompressor::create(Name, Contents, false /*IsLE*/, false /*Is64Bit*/);
-  if (!Dec)
-    return createError(Name, Dec.takeError());
-
+static Error handleCompressedSection(
+    std::deque<SmallString<32>> &UncompressedSections, StringRef &Name,
+    StringRef &Contents) {
+  if (!Name.startswith("zdebug_"))
+    return Error();
   UncompressedSections.emplace_back();
-  if (Error E = Dec->decompress(UncompressedSections.back()))
-    return createError(Name, std::move(E));
-
-  Name = Name.substr(2); // Drop ".z"
+  uint64_t OriginalSize;
+  if (!zlib::isAvailable())
+    return make_error<DWPError>("zlib not available");
+  if (!consumeCompressedDebugSectionHeader(Contents, OriginalSize) ||
+      zlib::uncompress(Contents, UncompressedSections.back(), OriginalSize) !=
+          zlib::StatusOK)
+    return make_error<DWPError>(
+        ("failure while decompressing compressed section: '" + Name + "\'")
+            .str());
+  Name = Name.substr(1);
   Contents = UncompressedSections.back();
-  return Error::success();
+  return Error();
 }
 
 static Error handleSection(
@@ -393,14 +392,16 @@ static Error handleSection(
     StringRef &AbbrevSection, StringRef &CurCUIndexSection,
     StringRef &CurTUIndexSection) {
   if (Section.isBSS())
-    return Error::success();
+    return Error();
 
   if (Section.isVirtual())
-    return Error::success();
+    return Error();
 
   StringRef Name;
   if (std::error_code Err = Section.getName(Name))
     return errorCodeToError(Err);
+
+  Name = Name.substr(Name.find_first_not_of("._"));
 
   StringRef Contents;
   if (auto Err = Section.getContents(Contents))
@@ -409,11 +410,9 @@ static Error handleSection(
   if (auto Err = handleCompressedSection(UncompressedSections, Name, Contents))
     return Err;
 
-  Name = Name.substr(Name.find_first_not_of("._"));
-
   auto SectionPair = KnownSections.find(Name);
   if (SectionPair == KnownSections.end())
-    return Error::success();
+    return Error();
 
   if (DWARFSectionKind Kind = SectionPair->second.second) {
     auto Index = Kind - DW_SECT_INFO;
@@ -450,7 +449,7 @@ static Error handleSection(
     Out.SwitchSection(OutSection);
     Out.EmitBytes(Contents);
   }
-  return Error::success();
+  return Error();
 }
 
 static Error
@@ -601,7 +600,7 @@ static Error write(MCStreamer &Out, ArrayRef<std::string> Inputs) {
   writeIndex(Out, MCOFI.getDwarfCUIndexSection(), ContributionOffsets,
              IndexEntries);
 
-  return Error::success();
+  return Error();
 }
 
 static int error(const Twine &Error, const Twine &Context) {
@@ -644,8 +643,7 @@ int main(int argc, char **argv) {
   MCContext MC(MAI.get(), MRI.get(), &MOFI);
   MOFI.InitMCObjectFileInfo(TheTriple, /*PIC*/ false, CodeModel::Default, MC);
 
-  MCTargetOptions Options;
-  auto MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, "", Options);
+  auto MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, "");
   if (!MAB)
     return error("no asm backend for target " + TripleName, Context);
 

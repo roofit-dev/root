@@ -769,7 +769,7 @@ MCDisassembler::DecodeStatus XCoreDisassembler::getInstruction(
 }
 
 namespace llvm {
-  Target &getTheXCoreTarget();
+  extern Target TheXCoreTarget;
 }
 
 static MCDisassembler *createXCoreDisassembler(const Target &T,
@@ -780,6 +780,6 @@ static MCDisassembler *createXCoreDisassembler(const Target &T,
 
 extern "C" void LLVMInitializeXCoreDisassembler() {
   // Register the disassembler.
-  TargetRegistry::RegisterMCDisassembler(getTheXCoreTarget(),
+  TargetRegistry::RegisterMCDisassembler(TheXCoreTarget,
                                          createXCoreDisassembler);
 }

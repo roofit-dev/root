@@ -14,7 +14,6 @@
 
 #include "yaml2obj.h"
 #include "llvm/ObjectYAML/ObjectYAML.h"
-#include "llvm/ObjectYAML/DWARFEmitter.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/LEB128.h"
 #include "llvm/Support/MachO.h"
@@ -42,7 +41,6 @@ private:
   Error writeLoadCommands(raw_ostream &OS);
   Error writeSectionData(raw_ostream &OS);
   Error writeLinkEditData(raw_ostream &OS);
-
   void writeBindOpcodes(raw_ostream &OS,
                         std::vector<MachOYAML::BindOpcode> &BindOpcodes);
   // LinkEdit writers
@@ -85,9 +83,6 @@ Error MachOWriter::writeHeader(raw_ostream &OS) {
   Header.flags = Obj.Header.flags;
   Header.reserved = Obj.Header.reserved;
 
-  if (Obj.IsLittleEndian != sys::IsLittleEndianHost)
-    MachO::swapStruct(Header);
-
   auto header_size =
       is64Bit ? sizeof(MachO::mach_header_64) : sizeof(MachO::mach_header);
   OS.write((const char *)&Header, header_size);
@@ -113,20 +108,16 @@ SectionType constructSection(MachOYAML::Section Sec) {
 }
 
 template <typename StructType>
-size_t writeLoadCommandData(MachOYAML::LoadCommand &LC, raw_ostream &OS,
-                            bool IsLittleEndian) {
+size_t writeLoadCommandData(MachOYAML::LoadCommand &LC, raw_ostream &OS) {
   return 0;
 }
 
 template <>
 size_t writeLoadCommandData<MachO::segment_command>(MachOYAML::LoadCommand &LC,
-                                                    raw_ostream &OS,
-                                                    bool IsLittleEndian) {
+                                                    raw_ostream &OS) {
   size_t BytesWritten = 0;
   for (const auto &Sec : LC.Sections) {
     auto TempSec = constructSection<MachO::section>(Sec);
-    if (IsLittleEndian != sys::IsLittleEndianHost)
-      MachO::swapStruct(TempSec);
     OS.write(reinterpret_cast<const char *>(&(TempSec)),
              sizeof(MachO::section));
     BytesWritten += sizeof(MachO::section);
@@ -135,14 +126,13 @@ size_t writeLoadCommandData<MachO::segment_command>(MachOYAML::LoadCommand &LC,
 }
 
 template <>
-size_t writeLoadCommandData<MachO::segment_command_64>(
-    MachOYAML::LoadCommand &LC, raw_ostream &OS, bool IsLittleEndian) {
+size_t
+writeLoadCommandData<MachO::segment_command_64>(MachOYAML::LoadCommand &LC,
+                                                raw_ostream &OS) {
   size_t BytesWritten = 0;
   for (const auto &Sec : LC.Sections) {
     auto TempSec = constructSection<MachO::section_64>(Sec);
     TempSec.reserved3 = Sec.reserved3;
-    if (IsLittleEndian != sys::IsLittleEndianHost)
-      MachO::swapStruct(TempSec);
     OS.write(reinterpret_cast<const char *>(&(TempSec)),
              sizeof(MachO::section_64));
     BytesWritten += sizeof(MachO::section_64);
@@ -161,38 +151,20 @@ size_t writePayloadString(MachOYAML::LoadCommand &LC, raw_ostream &OS) {
 
 template <>
 size_t writeLoadCommandData<MachO::dylib_command>(MachOYAML::LoadCommand &LC,
-                                                  raw_ostream &OS,
-                                                  bool IsLittleEndian) {
+                                                  raw_ostream &OS) {
   return writePayloadString(LC, OS);
 }
 
 template <>
 size_t writeLoadCommandData<MachO::dylinker_command>(MachOYAML::LoadCommand &LC,
-                                                     raw_ostream &OS,
-                                                     bool IsLittleEndian) {
+                                                     raw_ostream &OS) {
   return writePayloadString(LC, OS);
 }
 
 template <>
 size_t writeLoadCommandData<MachO::rpath_command>(MachOYAML::LoadCommand &LC,
-                                                  raw_ostream &OS,
-                                                  bool IsLittleEndian) {
+                                                  raw_ostream &OS) {
   return writePayloadString(LC, OS);
-}
-
-template <>
-size_t writeLoadCommandData<MachO::build_version_command>(
-    MachOYAML::LoadCommand &LC, raw_ostream &OS, bool IsLittleEndian) {
-  size_t BytesWritten = 0;
-  for (const auto &T : LC.Tools) {
-    struct MachO::build_tool_version tool = T;
-    if (IsLittleEndian != sys::IsLittleEndianHost)
-      MachO::swapStruct(tool);
-    OS.write(reinterpret_cast<const char *>(&tool),
-             sizeof(MachO::build_tool_version));
-    BytesWritten += sizeof(MachO::build_tool_version);
-  }
-  return BytesWritten;
 }
 
 void ZeroFillBytes(raw_ostream &OS, size_t Size) {
@@ -216,28 +188,20 @@ void MachOWriter::ZeroToOffset(raw_ostream &OS, size_t Offset) {
 Error MachOWriter::writeLoadCommands(raw_ostream &OS) {
   for (auto &LC : Obj.LoadCommands) {
     size_t BytesWritten = 0;
-    llvm::MachO::macho_load_command Data = LC.Data;
-
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
   case MachO::LCName:                                                          \
-    if (Obj.IsLittleEndian != sys::IsLittleEndianHost)                         \
-      MachO::swapStruct(Data.LCStruct##_data);                                 \
-    OS.write(reinterpret_cast<const char *>(&(Data.LCStruct##_data)),          \
+    OS.write(reinterpret_cast<const char *>(&(LC.Data.LCStruct##_data)),       \
              sizeof(MachO::LCStruct));                                         \
     BytesWritten = sizeof(MachO::LCStruct);                                    \
-    BytesWritten +=                                                            \
-        writeLoadCommandData<MachO::LCStruct>(LC, OS, Obj.IsLittleEndian);     \
+    BytesWritten += writeLoadCommandData<MachO::LCStruct>(LC, OS);             \
     break;
 
     switch (LC.Data.load_command_data.cmd) {
     default:
-      if (Obj.IsLittleEndian != sys::IsLittleEndianHost)
-        MachO::swapStruct(Data.load_command_data);
-      OS.write(reinterpret_cast<const char *>(&(Data.load_command_data)),
+      OS.write(reinterpret_cast<const char *>(&(LC.Data.load_command_data)),
                sizeof(MachO::load_command));
       BytesWritten = sizeof(MachO::load_command);
-      BytesWritten +=
-          writeLoadCommandData<MachO::load_command>(LC, OS, Obj.IsLittleEndian);
+      BytesWritten += writeLoadCommandData<MachO::load_command>(LC, OS);
       break;
 #include "llvm/Support/MachO.def"
     }
@@ -264,44 +228,37 @@ Error MachOWriter::writeLoadCommands(raw_ostream &OS) {
 }
 
 Error MachOWriter::writeSectionData(raw_ostream &OS) {
-  bool FoundLinkEditSeg = false;
   for (auto &LC : Obj.LoadCommands) {
     switch (LC.Data.load_command_data.cmd) {
     case MachO::LC_SEGMENT:
     case MachO::LC_SEGMENT_64:
+      auto currOffset = OS.tell() - fileStart;
+      auto segname = LC.Data.segment_command_data.segname;
       uint64_t segOff = is64Bit ? LC.Data.segment_command_64_data.fileoff
                                 : LC.Data.segment_command_data.fileoff;
-      if (0 == strncmp(&LC.Data.segment_command_data.segname[0], "__LINKEDIT", 16)) {
-        FoundLinkEditSeg = true;
+
+      if (0 == strncmp(&segname[0], "__LINKEDIT", 16)) {
         if (auto Err = writeLinkEditData(OS))
           return Err;
-      }
-      for (auto &Sec : LC.Sections) {
-        ZeroToOffset(OS, Sec.offset);
+      } else {
         // Zero Fill any data between the end of the last thing we wrote and the
         // start of this section.
-        assert((OS.tell() - fileStart <= Sec.offset ||
-                Sec.offset == (uint32_t)0) &&
-               "Wrote too much data somewhere, section offsets don't line up.");
-        if (0 == strncmp(&Sec.segname[0], "__DWARF", 16)) {
-          if (0 == strncmp(&Sec.sectname[0], "__debug_str", 16)) {
-            DWARFYAML::EmitDebugStr(OS, Obj.DWARF);
-          } else if (0 == strncmp(&Sec.sectname[0], "__debug_abbrev", 16)) {
-            DWARFYAML::EmitDebugAbbrev(OS, Obj.DWARF);
-          } else if (0 == strncmp(&Sec.sectname[0], "__debug_aranges", 16)) {
-            DWARFYAML::EmitDebugAranges(OS, Obj.DWARF);
-          } else if (0 == strncmp(&Sec.sectname[0], "__debug_pubnames", 16)) {
-            DWARFYAML::EmitPubSection(OS, Obj.DWARF.PubNames,
-                                      Obj.IsLittleEndian);
-          } else if (0 == strncmp(&Sec.sectname[0], "__debug_pubtypes", 16)) {
-            DWARFYAML::EmitPubSection(OS, Obj.DWARF.PubTypes,
-                                      Obj.IsLittleEndian);
-          } else if (0 == strncmp(&Sec.sectname[0], "__debug_info", 16)) {
-            DWARFYAML::EmitDebugInfo(OS, Obj.DWARF);
-          } else if (0 == strncmp(&Sec.sectname[0], "__debug_line", 16)) {
-            DWARFYAML::EmitDebugLine(OS, Obj.DWARF);
+        if (currOffset < segOff) {
+          ZeroFillBytes(OS, segOff - currOffset);
+        }
+
+        for (auto &Sec : LC.Sections) {
+          // Zero Fill any data between the end of the last thing we wrote and
+          // the
+          // start of this section.
+          assert(
+              OS.tell() - fileStart <= Sec.offset &&
+              "Wrote too much data somewhere, section offsets don't line up.");
+          currOffset = OS.tell() - fileStart;
+          if (currOffset < Sec.offset) {
+            ZeroFillBytes(OS, Sec.offset - currOffset);
           }
-        } else {
+
           // Fills section data with 0xDEADBEEF
           Fill(OS, Sec.size, 0xDEADBEEFu);
         }
@@ -311,12 +268,6 @@ Error MachOWriter::writeSectionData(raw_ostream &OS) {
       ZeroToOffset(OS, segOff + segSize);
       break;
     }
-  }
-  // Old PPC Object Files didn't have __LINKEDIT segments, the data was just
-  // stuck at the end of the file.
-  if (!FoundLinkEditSeg) {
-    if (auto Err = writeLinkEditData(OS))
-      return Err;
   }
   return Error::success();
 }
@@ -371,17 +322,13 @@ Error MachOWriter::writeExportTrie(raw_ostream &OS) {
 }
 
 template <typename NListType>
-void writeNListEntry(MachOYAML::NListEntry &NLE, raw_ostream &OS,
-                     bool IsLittleEndian) {
+void writeNListEntry(MachOYAML::NListEntry &NLE, raw_ostream &OS) {
   NListType ListEntry;
   ListEntry.n_strx = NLE.n_strx;
   ListEntry.n_type = NLE.n_type;
   ListEntry.n_sect = NLE.n_sect;
   ListEntry.n_desc = NLE.n_desc;
   ListEntry.n_value = NLE.n_value;
-
-  if (IsLittleEndian != sys::IsLittleEndianHost)
-    MachO::swapStruct(ListEntry);
   OS.write(reinterpret_cast<const char *>(&ListEntry), sizeof(NListType));
 }
 
@@ -462,9 +409,9 @@ Error MachOWriter::writeLazyBindOpcodes(raw_ostream &OS) {
 Error MachOWriter::writeNameList(raw_ostream &OS) {
   for (auto NLE : Obj.LinkEdit.NameList) {
     if (is64Bit)
-      writeNListEntry<MachO::nlist_64>(NLE, OS, Obj.IsLittleEndian);
+      writeNListEntry<MachO::nlist_64>(NLE, OS);
     else
-      writeNListEntry<MachO::nlist>(NLE, OS, Obj.IsLittleEndian);
+      writeNListEntry<MachO::nlist>(NLE, OS);
   }
   return Error::success();
 }

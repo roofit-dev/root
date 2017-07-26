@@ -42,8 +42,7 @@ public:
     ConstantPool,
     FixedStack,
     GlobalValueCallEntry,
-    ExternalSymbolCallEntry,
-    TargetCustom
+    ExternalSymbolCallEntry
   };
 
 private:
@@ -68,9 +67,6 @@ public:
   bool isGOT() const { return Kind == GOT; }
   bool isConstantPool() const { return Kind == ConstantPool; }
   bool isJumpTable() const { return Kind == JumpTable; }
-  unsigned getTargetCustom() const {
-    return (Kind >= TargetCustom) ? ((Kind+1) - TargetCustom) : 0;
-  }
 
   /// Test whether the memory pointed to by this PseudoSourceValue has a
   /// constant value.

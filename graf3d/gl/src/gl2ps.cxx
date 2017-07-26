@@ -1537,12 +1537,12 @@ static GLboolean gl2psLess(GLfloat f1, GLfloat f2)
 
 static void gl2psBuildBspTree(GL2PSbsptree *tree, GL2PSlist *primitives)
 {
-  GL2PSprimitive *prim = nullptr, *frontprim = nullptr, *backprim = nullptr;
+  GL2PSprimitive *prim, *frontprim = NULL, *backprim = NULL;
   GL2PSlist *frontlist, *backlist;
   GLint i, index;
 
-  tree->front = nullptr;
-  tree->back = nullptr;
+  tree->front = NULL;
+  tree->back = NULL;
   tree->primitives = gl2psListCreate(1, 2, sizeof(GL2PSprimitive*));
   index = gl2psFindRoot(primitives, &prim);
   gl2psGetPlane(prim, tree->plane);

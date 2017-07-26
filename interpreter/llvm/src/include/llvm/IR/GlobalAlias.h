@@ -17,7 +17,6 @@
 
 #include "llvm/ADT/ilist_node.h"
 #include "llvm/IR/GlobalIndirectSymbol.h"
-#include "llvm/IR/Value.h"
 
 namespace llvm {
 
@@ -28,14 +27,15 @@ template <typename ValueSubClass> class SymbolTableListTraits;
 class GlobalAlias : public GlobalIndirectSymbol,
                     public ilist_node<GlobalAlias> {
   friend class SymbolTableListTraits<GlobalAlias>;
+  void operator=(const GlobalAlias &) = delete;
+  GlobalAlias(const GlobalAlias &) = delete;
+
+  void setParent(Module *parent);
 
   GlobalAlias(Type *Ty, unsigned AddressSpace, LinkageTypes Linkage,
               const Twine &Name, Constant *Aliasee, Module *Parent);
 
 public:
-  GlobalAlias(const GlobalAlias &) = delete;
-  GlobalAlias &operator=(const GlobalAlias &) = delete;
-
   /// If a parent module is specified, the alias is automatically inserted into
   /// the end of the specified module's alias list.
   static GlobalAlias *create(Type *Ty, unsigned AddressSpace,
@@ -59,19 +59,15 @@ public:
   // Linkage, Type, Parent and AddressSpace taken from the Aliasee.
   static GlobalAlias *create(const Twine &Name, GlobalValue *Aliasee);
 
-  void copyAttributesFrom(const GlobalValue *Src) {
-    GlobalValue::copyAttributesFrom(Src);
-  }
-
   /// removeFromParent - This method unlinks 'this' from the containing module,
   /// but does not delete it.
   ///
-  void removeFromParent();
+  void removeFromParent() override;
 
   /// eraseFromParent - This method unlinks 'this' from the containing module
   /// and deletes it.
   ///
-  void eraseFromParent();
+  void eraseFromParent() override;
 
   /// These methods retrieve and set alias target.
   void setAliasee(Constant *Aliasee);
@@ -93,6 +89,6 @@ public:
   }
 };
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_IR_GLOBALALIAS_H
+#endif

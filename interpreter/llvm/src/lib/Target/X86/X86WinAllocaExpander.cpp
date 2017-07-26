@@ -63,7 +63,7 @@ private:
   unsigned SlotSize;
   int64_t StackProbeSize;
 
-  StringRef getPassName() const override { return "X86 WinAlloca Expander"; }
+  const char *getPassName() const override { return "X86 WinAlloca Expander"; }
   static char ID;
 };
 
@@ -225,7 +225,6 @@ void X86WinAllocaExpander::lower(MachineInstr* MI, Lowering L) {
       break;
 
     // Fall through to make any remaining adjustment.
-    LLVM_FALLTHROUGH;
   case Sub:
     assert(Amount > 0);
     if (Amount == SlotSize) {

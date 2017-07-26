@@ -141,10 +141,6 @@ public:
   typedef DominanceFrontierBase<BasicBlock>::DomSetType DomSetType;
   typedef DominanceFrontierBase<BasicBlock>::iterator iterator;
   typedef DominanceFrontierBase<BasicBlock>::const_iterator const_iterator;
-
-  /// Handle invalidation explicitly.
-  bool invalidate(Function &F, const PreservedAnalyses &PA,
-                  FunctionAnalysisManager::Invalidator &);
 };
 
 class DominanceFrontierWrapperPass : public FunctionPass {
@@ -175,14 +171,14 @@ extern template class ForwardDominanceFrontierBase<BasicBlock>;
 class DominanceFrontierAnalysis
     : public AnalysisInfoMixin<DominanceFrontierAnalysis> {
   friend AnalysisInfoMixin<DominanceFrontierAnalysis>;
-  static AnalysisKey Key;
+  static char PassID;
 
 public:
   /// \brief Provide the result typedef for this analysis pass.
   typedef DominanceFrontier Result;
 
   /// \brief Run the analysis pass over a function and produce a dominator tree.
-  DominanceFrontier run(Function &F, FunctionAnalysisManager &AM);
+  DominanceFrontier run(Function &F, AnalysisManager<Function> &AM);
 };
 
 /// \brief Printer pass for the \c DominanceFrontier.
@@ -192,7 +188,7 @@ class DominanceFrontierPrinterPass
 
 public:
   explicit DominanceFrontierPrinterPass(raw_ostream &OS);
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
+  PreservedAnalyses run(Function &F, AnalysisManager<Function> &AM);
 };
 
 } // End llvm namespace

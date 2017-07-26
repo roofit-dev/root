@@ -32,8 +32,8 @@ OldT2IfCvt("old-thumb2-ifcvt", cl::Hidden,
 Thumb2InstrInfo::Thumb2InstrInfo(const ARMSubtarget &STI)
     : ARMBaseInstrInfo(STI), RI() {}
 
-/// Return the noop instruction to use for a noop.
-void Thumb2InstrInfo::getNoop(MCInst &NopInst) const {
+/// getNoopForMachoTarget - Return the noop instruction to use for a noop.
+void Thumb2InstrInfo::getNoopForMachoTarget(MCInst &NopInst) const {
   NopInst.setOpcode(ARM::tHINT);
   NopInst.addOperand(MCOperand::createImm(0));
   NopInst.addOperand(MCOperand::createImm(ARMCC::AL));
@@ -117,9 +117,8 @@ void Thumb2InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   if (!ARM::GPRRegClass.contains(DestReg, SrcReg))
     return ARMBaseInstrInfo::copyPhysReg(MBB, I, DL, DestReg, SrcReg, KillSrc);
 
-  BuildMI(MBB, I, DL, get(ARM::tMOVr), DestReg)
-      .addReg(SrcReg, getKillRegState(KillSrc))
-      .add(predOps(ARMCC::AL));
+  AddDefaultPred(BuildMI(MBB, I, DL, get(ARM::tMOVr), DestReg)
+    .addReg(SrcReg, getKillRegState(KillSrc)));
 }
 
 void Thumb2InstrInfo::
@@ -131,7 +130,7 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
   if (I != MBB.end()) DL = I->getDebugLoc();
 
   MachineFunction &MF = *MBB.getParent();
-  MachineFrameInfo &MFI = MF.getFrameInfo();
+  MachineFrameInfo &MFI = *MF.getFrameInfo();
   MachineMemOperand *MMO = MF.getMachineMemOperand(
       MachinePointerInfo::getFixedStack(MF, FI), MachineMemOperand::MOStore,
       MFI.getObjectSize(FI), MFI.getObjectAlignment(FI));
@@ -139,12 +138,9 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
   if (RC == &ARM::GPRRegClass   || RC == &ARM::tGPRRegClass ||
       RC == &ARM::tcGPRRegClass || RC == &ARM::rGPRRegClass ||
       RC == &ARM::GPRnopcRegClass) {
-    BuildMI(MBB, I, DL, get(ARM::t2STRi12))
-        .addReg(SrcReg, getKillRegState(isKill))
-        .addFrameIndex(FI)
-        .addImm(0)
-        .addMemOperand(MMO)
-        .add(predOps(ARMCC::AL));
+    AddDefaultPred(BuildMI(MBB, I, DL, get(ARM::t2STRi12))
+                   .addReg(SrcReg, getKillRegState(isKill))
+                   .addFrameIndex(FI).addImm(0).addMemOperand(MMO));
     return;
   }
 
@@ -160,7 +156,8 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(ARM::t2STRDi8));
     AddDReg(MIB, SrcReg, ARM::gsub_0, getKillRegState(isKill), TRI);
     AddDReg(MIB, SrcReg, ARM::gsub_1, 0, TRI);
-    MIB.addFrameIndex(FI).addImm(0).addMemOperand(MMO).add(predOps(ARMCC::AL));
+    MIB.addFrameIndex(FI).addImm(0).addMemOperand(MMO);
+    AddDefaultPred(MIB);
     return;
   }
 
@@ -173,7 +170,7 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                      const TargetRegisterClass *RC,
                      const TargetRegisterInfo *TRI) const {
   MachineFunction &MF = *MBB.getParent();
-  MachineFrameInfo &MFI = MF.getFrameInfo();
+  MachineFrameInfo &MFI = *MF.getFrameInfo();
   MachineMemOperand *MMO = MF.getMachineMemOperand(
       MachinePointerInfo::getFixedStack(MF, FI), MachineMemOperand::MOLoad,
       MFI.getObjectSize(FI), MFI.getObjectAlignment(FI));
@@ -183,11 +180,8 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
   if (RC == &ARM::GPRRegClass   || RC == &ARM::tGPRRegClass ||
       RC == &ARM::tcGPRRegClass || RC == &ARM::rGPRRegClass ||
       RC == &ARM::GPRnopcRegClass) {
-    BuildMI(MBB, I, DL, get(ARM::t2LDRi12), DestReg)
-        .addFrameIndex(FI)
-        .addImm(0)
-        .addMemOperand(MMO)
-        .add(predOps(ARMCC::AL));
+    AddDefaultPred(BuildMI(MBB, I, DL, get(ARM::t2LDRi12), DestReg)
+                   .addFrameIndex(FI).addImm(0).addMemOperand(MMO));
     return;
   }
 
@@ -204,7 +198,8 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(ARM::t2LDRDi8));
     AddDReg(MIB, DestReg, ARM::gsub_0, RegState::DefineNoRead, TRI);
     AddDReg(MIB, DestReg, ARM::gsub_1, RegState::DefineNoRead, TRI);
-    MIB.addFrameIndex(FI).addImm(0).addMemOperand(MMO).add(predOps(ARMCC::AL));
+    MIB.addFrameIndex(FI).addImm(0).addMemOperand(MMO);
+    AddDefaultPred(MIB);
 
     if (TargetRegisterInfo::isPhysicalRegister(DestReg))
       MIB.addReg(DestReg, RegState::ImplicitDefine);
@@ -264,11 +259,10 @@ void llvm::emitT2RegPlusImmediate(MachineBasicBlock &MBB,
     if (Fits) {
       if (isSub) {
         BuildMI(MBB, MBBI, dl, TII.get(ARM::t2SUBrr), DestReg)
-            .addReg(BaseReg)
-            .addReg(DestReg, RegState::Kill)
-            .add(predOps(Pred, PredReg))
-            .add(condCodeOp())
-            .setMIFlags(MIFlags);
+          .addReg(BaseReg)
+          .addReg(DestReg, RegState::Kill)
+          .addImm((unsigned)Pred).addReg(PredReg).addReg(0)
+          .setMIFlags(MIFlags);
       } else {
         // Here we know that DestReg is not SP but we do not
         // know anything about BaseReg. t2ADDrr is an invalid
@@ -276,11 +270,10 @@ void llvm::emitT2RegPlusImmediate(MachineBasicBlock &MBB,
         // is fine if SP is the first argument. To be sure we
         // do not generate invalid encoding, put BaseReg first.
         BuildMI(MBB, MBBI, dl, TII.get(ARM::t2ADDrr), DestReg)
-            .addReg(BaseReg)
-            .addReg(DestReg, RegState::Kill)
-            .add(predOps(Pred, PredReg))
-            .add(condCodeOp())
-            .setMIFlags(MIFlags);
+          .addReg(BaseReg)
+          .addReg(DestReg, RegState::Kill)
+          .addImm((unsigned)Pred).addReg(PredReg).addReg(0)
+          .setMIFlags(MIFlags);
       }
       return;
     }
@@ -291,10 +284,8 @@ void llvm::emitT2RegPlusImmediate(MachineBasicBlock &MBB,
     unsigned Opc = 0;
     if (DestReg == ARM::SP && BaseReg != ARM::SP) {
       // mov sp, rn. Note t2MOVr cannot be used.
-      BuildMI(MBB, MBBI, dl, TII.get(ARM::tMOVr), DestReg)
-          .addReg(BaseReg)
-          .setMIFlags(MIFlags)
-          .add(predOps(ARMCC::AL));
+      AddDefaultPred(BuildMI(MBB, MBBI, dl, TII.get(ARM::tMOVr),DestReg)
+        .addReg(BaseReg).setMIFlags(MIFlags));
       BaseReg = ARM::SP;
       continue;
     }
@@ -305,11 +296,8 @@ void llvm::emitT2RegPlusImmediate(MachineBasicBlock &MBB,
       if (DestReg == ARM::SP && (ThisVal < ((1 << 7)-1) * 4)) {
         assert((ThisVal & 3) == 0 && "Stack update is not multiple of 4?");
         Opc = isSub ? ARM::tSUBspi : ARM::tADDspi;
-        BuildMI(MBB, MBBI, dl, TII.get(Opc), DestReg)
-            .addReg(BaseReg)
-            .addImm(ThisVal / 4)
-            .setMIFlags(MIFlags)
-            .add(predOps(ARMCC::AL));
+        AddDefaultPred(BuildMI(MBB, MBBI, dl, TII.get(Opc), DestReg)
+          .addReg(BaseReg).addImm(ThisVal/4).setMIFlags(MIFlags));
         NumBytes = 0;
         continue;
       }
@@ -346,13 +334,12 @@ void llvm::emitT2RegPlusImmediate(MachineBasicBlock &MBB,
     }
 
     // Build the new ADD / SUB.
-    MachineInstrBuilder MIB = BuildMI(MBB, MBBI, dl, TII.get(Opc), DestReg)
-                                  .addReg(BaseReg, RegState::Kill)
-                                  .addImm(ThisVal)
-                                  .add(predOps(ARMCC::AL))
-                                  .setMIFlags(MIFlags);
+    MachineInstrBuilder MIB =
+      AddDefaultPred(BuildMI(MBB, MBBI, dl, TII.get(Opc), DestReg)
+                     .addReg(BaseReg, RegState::Kill)
+                     .addImm(ThisVal)).setMIFlags(MIFlags);
     if (HasCCOut)
-      MIB.add(condCodeOp());
+      AddDefaultCC(MIB);
 
     BaseReg = DestReg;
   }
@@ -487,7 +474,7 @@ bool llvm::rewriteT2FrameIndex(MachineInstr &MI, unsigned FrameRegIdx,
       do MI.RemoveOperand(FrameRegIdx+1);
       while (MI.getNumOperands() > FrameRegIdx+1);
       MachineInstrBuilder MIB(*MI.getParent()->getParent(), &MI);
-      MIB.add(predOps(ARMCC::AL));
+      AddDefaultPred(MIB);
       return true;
     }
 

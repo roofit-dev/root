@@ -162,10 +162,10 @@ ObjCPropertyDecl::findPropertyDecl(const DeclContext *DC,
         return nullptr;
   }
 
-  // If context is class, then lookup property in its visible extensions.
+  // If context is class, then lookup property in its extensions.
   // This comes before property is looked up in primary class.
   if (auto *IDecl = dyn_cast<ObjCInterfaceDecl>(DC)) {
-    for (const auto *Ext : IDecl->visible_extensions())
+    for (const auto *Ext : IDecl->known_extensions())
       if (ObjCPropertyDecl *PD = ObjCPropertyDecl::findPropertyDecl(Ext,
                                                        propertyID,
                                                        queryKind))
@@ -539,18 +539,9 @@ void ObjCInterfaceDecl::getDesignatedInitializers(
 
 bool ObjCInterfaceDecl::isDesignatedInitializer(Selector Sel,
                                       const ObjCMethodDecl **InitMethod) const {
-  bool HasCompleteDef = isThisDeclarationADefinition();
-  // During deserialization the data record for the ObjCInterfaceDecl could
-  // be made invariant by reusing the canonical decl. Take this into account
-  // when checking for the complete definition.
-  if (!HasCompleteDef && getCanonicalDecl()->hasDefinition() &&
-      getCanonicalDecl()->getDefinition() == getDefinition())
-    HasCompleteDef = true;
-
   // Check for a complete definition and recover if not so.
-  if (!HasCompleteDef)
+  if (!isThisDeclarationADefinition())
     return false;
-
   if (data().ExternallyCompleted)
     LoadExternalDefinition();
 
@@ -809,7 +800,8 @@ void ObjCMethodDecl::setParamsAndSelLocs(ASTContext &C,
   if (Params.empty() && SelLocs.empty())
     return;
 
-  static_assert(alignof(ParmVarDecl *) >= alignof(SourceLocation),
+  static_assert(llvm::AlignOf<ParmVarDecl *>::Alignment >=
+                    llvm::AlignOf<SourceLocation>::Alignment,
                 "Alignment not sufficient for SourceLocation");
 
   unsigned Size = sizeof(ParmVarDecl *) * NumParams +
@@ -879,12 +871,6 @@ ObjCMethodDecl *ObjCMethodDecl::getNextRedeclarationImpl() {
     }
   }
 
-  // Ensure that the discovered method redeclaration has a valid declaration
-  // context. Used to prevent infinite loops when iterating redeclarations in
-  // a partially invalid AST.
-  if (Redecl && cast<Decl>(Redecl->getDeclContext())->isInvalidDecl())
-    Redecl = nullptr;
-
   if (!Redecl && isRedeclaration()) {
     // This is the last redeclaration, go back to the first method.
     return cast<ObjCContainerDecl>(CtxD)->getMethod(getSelector(),
@@ -911,13 +897,9 @@ ObjCMethodDecl *ObjCMethodDecl::getCanonicalDecl() {
         return MD;
   }
 
-  if (isRedeclaration()) {
-    // It is possible that we have not done deserializing the ObjCMethod yet.
-    ObjCMethodDecl *MD =
-        cast<ObjCContainerDecl>(CtxD)->getMethod(getSelector(),
-                                                 isInstanceMethod());
-    return MD ? MD : this;
-  }
+  if (isRedeclaration())
+    return cast<ObjCContainerDecl>(CtxD)->getMethod(getSelector(),
+                                                    isInstanceMethod());
 
   return this;
 }
@@ -1338,12 +1320,8 @@ ObjCTypeParamDecl *ObjCTypeParamDecl::Create(ASTContext &ctx, DeclContext *dc,
                                              IdentifierInfo *name,
                                              SourceLocation colonLoc,
                                              TypeSourceInfo *boundInfo) {
-  auto *TPDecl =
-    new (ctx, dc) ObjCTypeParamDecl(ctx, dc, variance, varianceLoc, index,
-                                    nameLoc, name, colonLoc, boundInfo);
-  QualType TPType = ctx.getObjCTypeParamType(TPDecl, {});
-  TPDecl->setTypeForDecl(TPType.getTypePtr());
-  return TPDecl;
+  return new (ctx, dc) ObjCTypeParamDecl(ctx, dc, variance, varianceLoc, index,
+                                         nameLoc, name, colonLoc, boundInfo);
 }
 
 ObjCTypeParamDecl *ObjCTypeParamDecl::CreateDeserialized(ASTContext &ctx,
@@ -1388,7 +1366,7 @@ ObjCTypeParamList *ObjCTypeParamList::create(
                      SourceLocation rAngleLoc) {
   void *mem =
       ctx.Allocate(totalSizeToAlloc<ObjCTypeParamDecl *>(typeParams.size()),
-                   alignof(ObjCTypeParamList));
+                   llvm::alignOf<ObjCTypeParamList>());
   return new (mem) ObjCTypeParamList(lAngleLoc, typeParams, rAngleLoc);
 }
 

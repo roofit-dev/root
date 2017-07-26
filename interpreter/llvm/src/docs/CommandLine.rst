@@ -355,7 +355,8 @@ library fill it in with the appropriate level directly, which is used like this:
       clEnumVal(g , "No optimizations, enable debugging"),
       clEnumVal(O1, "Enable trivial optimizations"),
       clEnumVal(O2, "Enable default optimizations"),
-      clEnumVal(O3, "Enable expensive optimizations")));
+      clEnumVal(O3, "Enable expensive optimizations"),
+     clEnumValEnd));
 
   ...
     if (OptimizationLevel >= O2) doPartialRedundancyElimination(...);
@@ -363,7 +364,8 @@ library fill it in with the appropriate level directly, which is used like this:
 
 This declaration defines a variable "``OptimizationLevel``" of the
 "``OptLevel``" enum type.  This variable can be assigned any of the values that
-are listed in the declaration.  The CommandLine library enforces that
+are listed in the declaration (Note that the declaration list must be terminated
+with the "``clEnumValEnd``" argument!).  The CommandLine library enforces that
 the user can only specify one of the options, and it ensure that only valid enum
 values can be specified.  The "``clEnumVal``" macros ensure that the command
 line arguments matched the enum values.  With this option added, our help output
@@ -399,7 +401,8 @@ program.  Because of this, we can alternatively write this example like this:
      clEnumValN(Debug, "g", "No optimizations, enable debugging"),
       clEnumVal(O1        , "Enable trivial optimizations"),
       clEnumVal(O2        , "Enable default optimizations"),
-      clEnumVal(O3        , "Enable expensive optimizations")));
+      clEnumVal(O3        , "Enable expensive optimizations"),
+     clEnumValEnd));
 
   ...
     if (OptimizationLevel == Debug) outputDebugInfo(...);
@@ -433,7 +436,8 @@ the code looks like this:
     cl::values(
       clEnumValN(nodebuginfo, "none", "disable debug information"),
        clEnumVal(quick,               "enable quick debug information"),
-       clEnumVal(detailed,            "enable detailed debug information")));
+       clEnumVal(detailed,            "enable detailed debug information"),
+      clEnumValEnd));
 
 This definition defines an enumerated command line variable of type "``enum
 DebugLev``", which works exactly the same way as before.  The difference here is
@@ -494,7 +498,8 @@ Then define your "``cl::list``" variable:
       clEnumVal(dce               , "Dead Code Elimination"),
       clEnumVal(constprop         , "Constant Propagation"),
      clEnumValN(inlining, "inline", "Procedure Integration"),
-      clEnumVal(strip             , "Strip Symbols")));
+      clEnumVal(strip             , "Strip Symbols"),
+    clEnumValEnd));
 
 This defines a variable that is conceptually of the type
 "``std::vector<enum Opts>``".  Thus, you can access it with standard vector
@@ -553,7 +558,8 @@ Reworking the above list example, we could replace `cl::list`_ with `cl::bits`_:
       clEnumVal(dce               , "Dead Code Elimination"),
       clEnumVal(constprop         , "Constant Propagation"),
      clEnumValN(inlining, "inline", "Procedure Integration"),
-      clEnumVal(strip             , "Strip Symbols")));
+      clEnumVal(strip             , "Strip Symbols"),
+    clEnumValEnd));
 
 To test to see if ``constprop`` was specified, we can use the ``cl:bits::isSet``
 function:
@@ -961,10 +967,11 @@ This section describes the basic attributes that you can specify on options.
 .. _cl::values:
 
 * The **cl::values** attribute specifies the string-to-value mapping to be used
-  by the generic parser.  It takes a list of (option, value, description)
-  triplets that specify the option name, the value mapped to, and the
-  description shown in the ``-help`` for the tool.  Because the generic parser
-  is used most frequently with enum values, two macros are often useful:
+  by the generic parser.  It takes a **clEnumValEnd terminated** list of
+  (option, value, description) triplets that specify the option name, the value
+  mapped to, and the description shown in the ``-help`` for the tool.  Because
+  the generic parser is used most frequently with enum values, two macros are
+  often useful:
 
   #. The **clEnumVal** macro is used as a nice simple way to specify a triplet
      for an enum.  This macro automatically makes the option name be the same as
@@ -1289,7 +1296,8 @@ Here is an example of how the function could be used:
   int main(int argc, char **argv) {
     cl::OptionCategory AnotherCategory("Some options");
 
-    StringMap<cl::Option*> &Map = cl::getRegisteredOptions();
+    StringMap<cl::Option*> Map;
+    cl::getRegisteredOptions(Map);
 
     //Unhide useful option and put it in a different category
     assert(Map.count("print-all-options") > 0);

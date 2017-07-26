@@ -30,7 +30,6 @@ subdirectories =
  NVPTX
  Mips
  PowerPC
- RISCV
  Sparc
  SystemZ
  WebAssembly

@@ -1,4 +1,4 @@
-//===-- ConstantsContext.h - Constants-related Context Interals -*- C++ -*-===//
+//===-- ConstantsContext.h - Constants-related Context Interals -----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,26 +15,14 @@
 #ifndef LLVM_LIB_IR_CONSTANTSCONTEXT_H
 #define LLVM_LIB_IR_CONSTANTSCONTEXT_H
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/IR/Constants.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/InlineAsm.h"
-#include "llvm/IR/Instruction.h"
-#include "llvm/IR/OperandTraits.h"
-#include "llvm/Support/Casting.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <utility>
 
 #define DEBUG_TYPE "ir"
 
@@ -44,20 +32,16 @@ namespace llvm {
 /// behind the scenes to implement unary constant exprs.
 class UnaryConstantExpr : public ConstantExpr {
   void anchor() override;
-
+  void *operator new(size_t, unsigned) = delete;
 public:
-  UnaryConstantExpr(unsigned Opcode, Constant *C, Type *Ty)
-    : ConstantExpr(Ty, Opcode, &Op<0>(), 1) {
-    Op<0>() = C;
-  }
-
   // allocate space for exactly one operand
   void *operator new(size_t s) {
     return User::operator new(s, 1);
   }
-
-  void *operator new(size_t, unsigned) = delete;
-
+  UnaryConstantExpr(unsigned Opcode, Constant *C, Type *Ty)
+    : ConstantExpr(Ty, Opcode, &Op<0>(), 1) {
+    Op<0>() = C;
+  }
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 };
 
@@ -65,8 +49,12 @@ public:
 /// behind the scenes to implement binary constant exprs.
 class BinaryConstantExpr : public ConstantExpr {
   void anchor() override;
-
+  void *operator new(size_t, unsigned) = delete;
 public:
+  // allocate space for exactly two operands
+  void *operator new(size_t s) {
+    return User::operator new(s, 2);
+  }
   BinaryConstantExpr(unsigned Opcode, Constant *C1, Constant *C2,
                      unsigned Flags)
     : ConstantExpr(C1->getType(), Opcode, &Op<0>(), 2) {
@@ -74,14 +62,6 @@ public:
     Op<1>() = C2;
     SubclassOptionalData = Flags;
   }
-
-  // allocate space for exactly two operands
-  void *operator new(size_t s) {
-    return User::operator new(s, 2);
-  }
-
-  void *operator new(size_t, unsigned) = delete;
-
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 };
@@ -90,22 +70,18 @@ public:
 /// behind the scenes to implement select constant exprs.
 class SelectConstantExpr : public ConstantExpr {
   void anchor() override;
-
+  void *operator new(size_t, unsigned) = delete;
 public:
+  // allocate space for exactly three operands
+  void *operator new(size_t s) {
+    return User::operator new(s, 3);
+  }
   SelectConstantExpr(Constant *C1, Constant *C2, Constant *C3)
     : ConstantExpr(C2->getType(), Instruction::Select, &Op<0>(), 3) {
     Op<0>() = C1;
     Op<1>() = C2;
     Op<2>() = C3;
   }
-
-  // allocate space for exactly three operands
-  void *operator new(size_t s) {
-    return User::operator new(s, 3);
-  }
-
-  void *operator new(size_t, unsigned) = delete;
-
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 };
@@ -115,22 +91,18 @@ public:
 /// extractelement constant exprs.
 class ExtractElementConstantExpr : public ConstantExpr {
   void anchor() override;
-
+  void *operator new(size_t, unsigned) = delete;
 public:
+  // allocate space for exactly two operands
+  void *operator new(size_t s) {
+    return User::operator new(s, 2);
+  }
   ExtractElementConstantExpr(Constant *C1, Constant *C2)
     : ConstantExpr(cast<VectorType>(C1->getType())->getElementType(),
                    Instruction::ExtractElement, &Op<0>(), 2) {
     Op<0>() = C1;
     Op<1>() = C2;
   }
-
-  // allocate space for exactly two operands
-  void *operator new(size_t s) {
-    return User::operator new(s, 2);
-  }
-
-  void *operator new(size_t, unsigned) = delete;
-
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 };
@@ -140,8 +112,12 @@ public:
 /// insertelement constant exprs.
 class InsertElementConstantExpr : public ConstantExpr {
   void anchor() override;
-
+  void *operator new(size_t, unsigned) = delete;
 public:
+  // allocate space for exactly three operands
+  void *operator new(size_t s) {
+    return User::operator new(s, 3);
+  }
   InsertElementConstantExpr(Constant *C1, Constant *C2, Constant *C3)
     : ConstantExpr(C1->getType(), Instruction::InsertElement,
                    &Op<0>(), 3) {
@@ -149,14 +125,6 @@ public:
     Op<1>() = C2;
     Op<2>() = C3;
   }
-
-  // allocate space for exactly three operands
-  void *operator new(size_t s) {
-    return User::operator new(s, 3);
-  }
-
-  void *operator new(size_t, unsigned) = delete;
-
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 };
@@ -166,8 +134,12 @@ public:
 /// shufflevector constant exprs.
 class ShuffleVectorConstantExpr : public ConstantExpr {
   void anchor() override;
-
+  void *operator new(size_t, unsigned) = delete;
 public:
+  // allocate space for exactly three operands
+  void *operator new(size_t s) {
+    return User::operator new(s, 3);
+  }
   ShuffleVectorConstantExpr(Constant *C1, Constant *C2, Constant *C3)
   : ConstantExpr(VectorType::get(
                    cast<VectorType>(C1->getType())->getElementType(),
@@ -178,14 +150,6 @@ public:
     Op<1>() = C2;
     Op<2>() = C3;
   }
-
-  // allocate space for exactly three operands
-  void *operator new(size_t s) {
-    return User::operator new(s, 3);
-  }
-
-  void *operator new(size_t, unsigned) = delete;
-
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 };
@@ -195,21 +159,18 @@ public:
 /// extractvalue constant exprs.
 class ExtractValueConstantExpr : public ConstantExpr {
   void anchor() override;
-
+  void *operator new(size_t, unsigned) = delete;
 public:
+  // allocate space for exactly one operand
+  void *operator new(size_t s) {
+    return User::operator new(s, 1);
+  }
   ExtractValueConstantExpr(Constant *Agg, ArrayRef<unsigned> IdxList,
                            Type *DestTy)
       : ConstantExpr(DestTy, Instruction::ExtractValue, &Op<0>(), 1),
         Indices(IdxList.begin(), IdxList.end()) {
     Op<0>() = Agg;
   }
-
-  // allocate space for exactly one operand
-  void *operator new(size_t s) {
-    return User::operator new(s, 1);
-  }
-
-  void *operator new(size_t, unsigned) = delete;
 
   /// Indices - These identify which value to extract.
   const SmallVector<unsigned, 4> Indices;
@@ -230,8 +191,12 @@ public:
 /// insertvalue constant exprs.
 class InsertValueConstantExpr : public ConstantExpr {
   void anchor() override;
-
+  void *operator new(size_t, unsigned) = delete;
 public:
+  // allocate space for exactly one operand
+  void *operator new(size_t s) {
+    return User::operator new(s, 2);
+  }
   InsertValueConstantExpr(Constant *Agg, Constant *Val,
                           ArrayRef<unsigned> IdxList, Type *DestTy)
       : ConstantExpr(DestTy, Instruction::InsertValue, &Op<0>(), 2),
@@ -239,13 +204,6 @@ public:
     Op<0>() = Agg;
     Op<1>() = Val;
   }
-
-  // allocate space for exactly one operand
-  void *operator new(size_t s) {
-    return User::operator new(s, 2);
-  }
-
-  void *operator new(size_t, unsigned) = delete;
 
   /// Indices - These identify the position for the insertion.
   const SmallVector<unsigned, 4> Indices;
@@ -266,11 +224,9 @@ public:
 class GetElementPtrConstantExpr : public ConstantExpr {
   Type *SrcElementTy;
   Type *ResElementTy;
-
+  void anchor() override;
   GetElementPtrConstantExpr(Type *SrcElementTy, Constant *C,
                             ArrayRef<Constant *> IdxList, Type *DestTy);
-
-  void anchor() override;
 
 public:
   static GetElementPtrConstantExpr *Create(Type *SrcElementTy, Constant *C,
@@ -281,10 +237,8 @@ public:
     Result->SubclassOptionalData = Flags;
     return Result;
   }
-
   Type *getSourceElementType() const;
   Type *getResultElementType() const;
-
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 
@@ -301,8 +255,12 @@ public:
 // needed in order to store the predicate value for these instructions.
 class CompareConstantExpr : public ConstantExpr {
   void anchor() override;
-
+  void *operator new(size_t, unsigned) = delete;
 public:
+  // allocate space for exactly two operands
+  void *operator new(size_t s) {
+    return User::operator new(s, 2);
+  }
   unsigned short predicate;
   CompareConstantExpr(Type *ty, Instruction::OtherOps opc,
                       unsigned short pred,  Constant* LHS, Constant* RHS)
@@ -310,14 +268,6 @@ public:
     Op<0>() = LHS;
     Op<1>() = RHS;
   }
-
-  // allocate space for exactly two operands
-  void *operator new(size_t s) {
-    return User::operator new(s, 2);
-  }
-
-  void *operator new(size_t, unsigned) = delete;
-
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 
@@ -423,7 +373,6 @@ template <class ConstantClass> struct ConstantAggrKeyType {
   bool operator==(const ConstantAggrKeyType &X) const {
     return Operands == X.Operands;
   }
-
   bool operator==(const ConstantClass *C) const {
     if (Operands.size() != C->getNumOperands())
       return false;
@@ -432,7 +381,6 @@ template <class ConstantClass> struct ConstantAggrKeyType {
         return false;
     return true;
   }
-
   unsigned getHash() const {
     return hash_combine_range(Operands.begin(), Operands.end());
   }
@@ -468,7 +416,6 @@ struct InlineAsmKeyType {
            AsmString == X.AsmString && Constraints == X.Constraints &&
            FTy == X.FTy;
   }
-
   bool operator==(const InlineAsm *Asm) const {
     return HasSideEffects == Asm->hasSideEffects() &&
            IsAlignStack == Asm->isAlignStack() &&
@@ -477,7 +424,6 @@ struct InlineAsmKeyType {
            Constraints == Asm->getConstraintString() &&
            FTy == Asm->getFunctionType();
   }
-
   unsigned getHash() const {
     return hash_combine(AsmString, Constraints, HasSideEffects, IsAlignStack,
                         AsmDialect, FTy);
@@ -607,28 +553,22 @@ private:
     static inline ConstantClass *getEmptyKey() {
       return ConstantClassInfo::getEmptyKey();
     }
-
     static inline ConstantClass *getTombstoneKey() {
       return ConstantClassInfo::getTombstoneKey();
     }
-
     static unsigned getHashValue(const ConstantClass *CP) {
       SmallVector<Constant *, 32> Storage;
       return getHashValue(LookupKey(CP->getType(), ValType(CP, Storage)));
     }
-
     static bool isEqual(const ConstantClass *LHS, const ConstantClass *RHS) {
       return LHS == RHS;
     }
-
     static unsigned getHashValue(const LookupKey &Val) {
       return hash_combine(Val.first, Val.second.getHash());
     }
-
     static unsigned getHashValue(const LookupKeyHashed &Val) {
       return Val.first;
     }
-
     static bool isEqual(const LookupKey &LHS, const ConstantClass *RHS) {
       if (RHS == getEmptyKey() || RHS == getTombstoneKey())
         return false;
@@ -636,7 +576,6 @@ private:
         return false;
       return LHS.second == RHS;
     }
-
     static bool isEqual(const LookupKeyHashed &LHS, const ConstantClass *RHS) {
       return isEqual(LHS.second, RHS);
     }
@@ -656,7 +595,6 @@ public:
     for (auto &I : Map)
       delete I; // Asserts that use_empty().
   }
-
 private:
   ConstantClass *create(TypeClass *Ty, ValType V, LookupKeyHashed &HashKey) {
     ConstantClass *Result = V.create(Ty);
@@ -727,4 +665,4 @@ public:
 
 } // end namespace llvm
 
-#endif // LLVM_LIB_IR_CONSTANTSCONTEXT_H
+#endif

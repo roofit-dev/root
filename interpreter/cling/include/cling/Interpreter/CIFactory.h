@@ -21,7 +21,6 @@ namespace llvm {
 
 namespace clang {
   class DiagnosticsEngine;
-  class ASTConsumer;
 }
 
 namespace cling {
@@ -34,13 +33,11 @@ namespace cling {
 
     clang::CompilerInstance* createCI(llvm::StringRef Code,
                                       const InvocationOptions& Opts,
-                                      const char* LLVMDir,
-                                      clang::ASTConsumer* consumer);
+                                      const char* LLVMDir);
 
     clang::CompilerInstance* createCI(MemBufPtr_t Buffer, int Argc,
-                                      const char* const* Argv,
+                                      const char* const *Argv,
                                       const char* LLVMDir,
-                                      clang::ASTConsumer* consumer,
                                       bool OnlyLex = false);
   } // namespace CIFactory
 } // namespace cling

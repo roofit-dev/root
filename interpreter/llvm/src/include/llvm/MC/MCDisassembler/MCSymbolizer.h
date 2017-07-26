@@ -1,4 +1,4 @@
-//===- llvm/MC/MCSymbolizer.h - MCSymbolizer class --------------*- C++ -*-===//
+//===-- llvm/MC/MCSymbolizer.h - MCSymbolizer class -------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -17,8 +17,9 @@
 #define LLVM_MC_MCDISASSEMBLER_MCSYMBOLIZER_H
 
 #include "llvm/MC/MCDisassembler/MCRelocationInfo.h"
-#include <algorithm>
-#include <cstdint>
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/DataTypes.h"
+#include <cassert>
 #include <memory>
 
 namespace llvm {
@@ -37,6 +38,9 @@ class raw_ostream;
 /// operands are actually symbolizable, and in what way. I don't think this
 /// information exists right now.
 class MCSymbolizer {
+  MCSymbolizer(const MCSymbolizer &) = delete;
+  void operator=(const MCSymbolizer &) = delete;
+
 protected:
   MCContext &Ctx;
   std::unique_ptr<MCRelocationInfo> RelInfo;
@@ -47,8 +51,6 @@ public:
     : Ctx(Ctx), RelInfo(std::move(RelInfo)) {
   }
 
-  MCSymbolizer(const MCSymbolizer &) = delete;
-  MCSymbolizer &operator=(const MCSymbolizer &) = delete;
   virtual ~MCSymbolizer();
 
   /// \brief Try to add a symbolic operand instead of \p Value to the MCInst.
@@ -78,6 +80,6 @@ public:
                                                uint64_t Address) = 0;
 };
 
-} // end namespace llvm
+}
 
-#endif // LLVM_MC_MCDISASSEMBLER_MCSYMBOLIZER_H
+#endif

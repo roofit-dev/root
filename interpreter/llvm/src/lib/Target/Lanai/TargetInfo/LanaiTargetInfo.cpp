@@ -13,13 +13,8 @@
 
 using namespace llvm;
 
-namespace llvm {
-Target &getTheLanaiTarget() {
-  static Target TheLanaiTarget;
-  return TheLanaiTarget;
-}
-} // namespace llvm
+Target llvm::TheLanaiTarget;
 
 extern "C" void LLVMInitializeLanaiTargetInfo() {
-  RegisterTarget<Triple::lanai> X(getTheLanaiTarget(), "lanai", "Lanai");
+  RegisterTarget<Triple::lanai> X(TheLanaiTarget, "lanai", "Lanai");
 }

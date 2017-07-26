@@ -20,11 +20,7 @@
 #include "Mips.h"
 #include "MipsELFStreamer.h"
 #include "MipsMCNaCl.h"
-#include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCELFStreamer.h"
-#include "llvm/MC/MCInst.h"
-#include "llvm/Support/ErrorHandling.h"
-#include <cassert>
 
 using namespace llvm;
 
@@ -42,14 +38,14 @@ class MipsNaClELFStreamer : public MipsELFStreamer {
 public:
   MipsNaClELFStreamer(MCContext &Context, MCAsmBackend &TAB,
                       raw_pwrite_stream &OS, MCCodeEmitter *Emitter)
-      : MipsELFStreamer(Context, TAB, OS, Emitter) {}
+      : MipsELFStreamer(Context, TAB, OS, Emitter), PendingCall(false) {}
 
-  ~MipsNaClELFStreamer() override = default;
+  ~MipsNaClELFStreamer() override {}
 
 private:
   // Whether we started the sandboxing sequence for calls.  Calls are bundled
   // with branch delays and aligned to the bundle end.
-  bool PendingCall = false;
+  bool PendingCall;
 
   bool isIndirectJump(const MCInst &MI) {
     if (MI.getOpcode() == Mips::JALR) {
@@ -139,8 +135,8 @@ private:
 public:
   /// This function is the one used to emit instruction data into the ELF
   /// streamer.  We override it to mask dangerous instructions.
-  void EmitInstruction(const MCInst &Inst, const MCSubtargetInfo &STI,
-                       bool) override {
+  void EmitInstruction(const MCInst &Inst,
+                       const MCSubtargetInfo &STI) override {
     // Sandbox indirect jumps.
     if (isIndirectJump(Inst)) {
       if (PendingCall)
@@ -269,4 +265,4 @@ MCELFStreamer *createMipsNaClELFStreamer(MCContext &Context, MCAsmBackend &TAB,
   return S;
 }
 
-} // end namespace llvm
+}

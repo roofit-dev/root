@@ -39,7 +39,8 @@ void operator delete[](void *Ptr, const clang::ASTContext &C, size_t);
 namespace clang {
 
 /// AttrVec - A vector of Attr, which is how they are stored on the AST.
-typedef SmallVector<Attr *, 4> AttrVec;
+typedef SmallVector<Attr*, 2> AttrVec;
+typedef SmallVector<const Attr*, 2> ConstAttrVec;
 
 /// specific_attr_iterator - Iterates over a subrange of an AttrVec, only
 /// providing attributes that are of a specific type.

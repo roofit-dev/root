@@ -29,8 +29,6 @@ void FunctionScopeInfo::Clear() {
   HasIndirectGoto = false;
   HasDroppedStmt = false;
   HasOMPDeclareReductionCombiner = false;
-  HasFallthroughStmt = false;
-  HasPotentialAvailabilityViolations = false;
   ObjCShouldCallSuper = false;
   ObjCIsDesignatedInit = false;
   ObjCWarnForNoDesignatedInitChain = false;
@@ -40,15 +38,10 @@ void FunctionScopeInfo::Clear() {
   FirstCXXTryLoc = SourceLocation();
   FirstSEHTryLoc = SourceLocation();
 
-  // Coroutine state
-  FirstCoroutineStmtLoc = SourceLocation();
-  CoroutinePromise = nullptr;
-  NeedsCoroutineSuspends = true;
-  CoroutineSuspends.first = nullptr;
-  CoroutineSuspends.second = nullptr;
-
   SwitchStack.clear();
   Returns.clear();
+  CoroutinePromise = nullptr;
+  CoroutineStmts.clear();
   ErrorTrap.reset();
   PossiblyUnreachableDiags.clear();
   WeakObjectUses.clear();
@@ -189,7 +182,7 @@ void FunctionScopeInfo::markSafeWeakUse(const Expr *E) {
   }
 
   // Has this weak object been seen before?
-  FunctionScopeInfo::WeakObjectUseMap::iterator Uses = WeakObjectUses.end();
+  FunctionScopeInfo::WeakObjectUseMap::iterator Uses;
   if (const ObjCPropertyRefExpr *RefExpr = dyn_cast<ObjCPropertyRefExpr>(E)) {
     if (!RefExpr->isObjectReceiver())
       return;
@@ -202,10 +195,10 @@ void FunctionScopeInfo::markSafeWeakUse(const Expr *E) {
   }
   else if (const ObjCIvarRefExpr *IvarE = dyn_cast<ObjCIvarRefExpr>(E))
     Uses = WeakObjectUses.find(WeakObjectProfileTy(IvarE));
-  else if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E)) {
-    if (isa<VarDecl>(DRE->getDecl()))
-      Uses = WeakObjectUses.find(WeakObjectProfileTy(DRE));
-  } else if (const ObjCMessageExpr *MsgE = dyn_cast<ObjCMessageExpr>(E)) {
+  else if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E))
+    Uses = WeakObjectUses.find(WeakObjectProfileTy(DRE));
+  else if (const ObjCMessageExpr *MsgE = dyn_cast<ObjCMessageExpr>(E)) {
+    Uses = WeakObjectUses.end();
     if (const ObjCMethodDecl *MD = MsgE->getMethodDecl()) {
       if (const ObjCPropertyDecl *Prop = MD->findPropertyDecl()) {
         Uses =

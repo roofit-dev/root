@@ -16,108 +16,87 @@
 
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/PointerIntPair.h"
-#include "llvm/ADT/PointerUnion.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/iterator.h"
-#include "llvm/ADT/iterator_range.h"
 #include "llvm/CodeGen/DwarfStringPoolEntry.h"
-#include "llvm/Support/AlignOf.h"
-#include "llvm/Support/Allocator.h"
 #include "llvm/Support/Dwarf.h"
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <iterator>
-#include <new>
-#include <type_traits>
-#include <vector>
 
 namespace llvm {
-
 class AsmPrinter;
-class DIE;
-class DIEUnit;
 class MCExpr;
-class MCSection;
 class MCSymbol;
 class raw_ostream;
+class DwarfTypeUnit;
 
 //===--------------------------------------------------------------------===//
-/// Dwarf abbreviation data, describes one attribute of a Dwarf abbreviation.
+/// DIEAbbrevData - Dwarf abbreviation data, describes one attribute of a
+/// Dwarf abbreviation.
 class DIEAbbrevData {
-  /// Dwarf attribute code.
+  /// Attribute - Dwarf attribute code.
+  ///
   dwarf::Attribute Attribute;
 
-  /// Dwarf form code.
+  /// Form - Dwarf form code.
+  ///
   dwarf::Form Form;
 
-  /// Dwarf attribute value for DW_FORM_implicit_const
-  int64_t Value;
-
 public:
-  DIEAbbrevData(dwarf::Attribute A, dwarf::Form F)
-      : Attribute(A), Form(F), Value(0) {}
-  DIEAbbrevData(dwarf::Attribute A, int64_t V)
-      : Attribute(A), Form(dwarf::DW_FORM_implicit_const), Value(V) {}
+  DIEAbbrevData(dwarf::Attribute A, dwarf::Form F) : Attribute(A), Form(F) {}
 
-  /// Accessors.
-  /// @{
+  // Accessors.
   dwarf::Attribute getAttribute() const { return Attribute; }
   dwarf::Form getForm() const { return Form; }
-  int64_t getValue() const { return Value; }
-  /// @}
 
-  /// Used to gather unique data for the abbreviation folding set.
+  /// Profile - Used to gather unique data for the abbreviation folding set.
+  ///
   void Profile(FoldingSetNodeID &ID) const;
 };
 
 //===--------------------------------------------------------------------===//
-/// Dwarf abbreviation, describes the organization of a debug information
-/// object.
+/// DIEAbbrev - Dwarf abbreviation, describes the organization of a debug
+/// information object.
 class DIEAbbrev : public FoldingSetNode {
   /// Unique number for node.
+  ///
   unsigned Number;
 
-  /// Dwarf tag code.
+  /// Tag - Dwarf tag code.
+  ///
   dwarf::Tag Tag;
 
-  /// Whether or not this node has children.
+  /// Children - Whether or not this node has children.
   ///
-  /// This cheats a bit in all of the uses since the values in the standard
-  /// are 0 and 1 for no children and children respectively.
+  // This cheats a bit in all of the uses since the values in the standard
+  // are 0 and 1 for no children and children respectively.
   bool Children;
 
-  /// Raw data bytes for abbreviation.
+  /// Data - Raw data bytes for abbreviation.
+  ///
   SmallVector<DIEAbbrevData, 12> Data;
 
 public:
-  DIEAbbrev(dwarf::Tag T, bool C) : Tag(T), Children(C) {}
+  DIEAbbrev(dwarf::Tag T, bool C) : Tag(T), Children(C), Data() {}
 
-  /// Accessors.
-  /// @{
+  // Accessors.
   dwarf::Tag getTag() const { return Tag; }
   unsigned getNumber() const { return Number; }
   bool hasChildren() const { return Children; }
   const SmallVectorImpl<DIEAbbrevData> &getData() const { return Data; }
   void setChildrenFlag(bool hasChild) { Children = hasChild; }
   void setNumber(unsigned N) { Number = N; }
-  /// @}
 
-  /// Adds another set of attribute information to the abbreviation.
+  /// AddAttribute - Adds another set of attribute information to the
+  /// abbreviation.
   void AddAttribute(dwarf::Attribute Attribute, dwarf::Form Form) {
     Data.push_back(DIEAbbrevData(Attribute, Form));
   }
 
-  /// Adds attribute with DW_FORM_implicit_const value
-  void AddImplicitConstAttribute(dwarf::Attribute Attribute, int64_t Value) {
-    Data.push_back(DIEAbbrevData(Attribute, Value));
-  }
-
-  /// Used to gather unique data for the abbreviation folding set.
+  /// Profile - Used to gather unique data for the abbreviation folding set.
+  ///
   void Profile(FoldingSetNodeID &ID) const;
 
-  /// Print the abbreviation using the specified asm printer.
+  /// Emit - Print the abbreviation using the specified asm printer.
+  ///
   void Emit(const AsmPrinter *AP) const;
 
   void print(raw_ostream &O);
@@ -125,38 +104,7 @@ public:
 };
 
 //===--------------------------------------------------------------------===//
-/// Helps unique DIEAbbrev objects and assigns abbreviation numbers.
-///
-/// This class will unique the DIE abbreviations for a llvm::DIE object and
-/// assign a unique abbreviation number to each unique DIEAbbrev object it
-/// finds. The resulting collection of DIEAbbrev objects can then be emitted
-/// into the .debug_abbrev section.
-class DIEAbbrevSet {
-  /// The bump allocator to use when creating DIEAbbrev objects in the uniqued
-  /// storage container.
-  BumpPtrAllocator &Alloc;
-  /// \brief FoldingSet that uniques the abbreviations.
-  llvm::FoldingSet<DIEAbbrev> AbbreviationsSet;
-  /// A list of all the unique abbreviations in use.
-  std::vector<DIEAbbrev *> Abbreviations;
-
-public:
-  DIEAbbrevSet(BumpPtrAllocator &A) : Alloc(A) {}
-  ~DIEAbbrevSet();
-  /// Generate the abbreviation declaration for a DIE and return a pointer to
-  /// the generated abbreviation.
-  ///
-  /// \param Die the debug info entry to generate the abbreviation for.
-  /// \returns A reference to the uniqued abbreviation declaration that is
-  /// owned by this class.
-  DIEAbbrev &uniqueAbbreviation(DIE &Die);
-
-  /// Print all abbreviations using the specified asm printer.
-  void Emit(const AsmPrinter *AP, MCSection *Section) const;
-};
-
-//===--------------------------------------------------------------------===//
-/// An integer value DIE.
+/// DIEInteger - An integer value DIE.
 ///
 class DIEInteger {
   uint64_t Integer;
@@ -164,7 +112,8 @@ class DIEInteger {
 public:
   explicit DIEInteger(uint64_t I) : Integer(I) {}
 
-  /// Choose the best form for integer.
+  /// BestForm - Choose the best form for integer.
+  ///
   static dwarf::Form BestForm(bool IsSigned, uint64_t Int) {
     if (IsSigned) {
       const int64_t SignedInt = Int;
@@ -195,14 +144,16 @@ public:
 };
 
 //===--------------------------------------------------------------------===//
-/// An expression DIE.
+/// DIEExpr - An expression DIE.
+//
 class DIEExpr {
   const MCExpr *Expr;
 
 public:
   explicit DIEExpr(const MCExpr *E) : Expr(E) {}
 
-  /// Get MCExpr.
+  /// getValue - Get MCExpr.
+  ///
   const MCExpr *getValue() const { return Expr; }
 
   void EmitValue(const AsmPrinter *AP, dwarf::Form Form) const;
@@ -212,14 +163,16 @@ public:
 };
 
 //===--------------------------------------------------------------------===//
-/// A label DIE.
+/// DIELabel - A label DIE.
+//
 class DIELabel {
   const MCSymbol *Label;
 
 public:
   explicit DIELabel(const MCSymbol *L) : Label(L) {}
 
-  /// Get MCSymbol.
+  /// getValue - Get MCSymbol.
+  ///
   const MCSymbol *getValue() const { return Label; }
 
   void EmitValue(const AsmPrinter *AP, dwarf::Form Form) const;
@@ -229,7 +182,7 @@ public:
 };
 
 //===--------------------------------------------------------------------===//
-/// A simple label difference DIE.
+/// DIEDelta - A simple label difference DIE.
 ///
 class DIEDelta {
   const MCSymbol *LabelHi;
@@ -245,16 +198,15 @@ public:
 };
 
 //===--------------------------------------------------------------------===//
-/// A container for string pool string values.
+/// DIEString - A container for string values.
 ///
-/// This class is used with the DW_FORM_strp and DW_FORM_GNU_str_index forms.
 class DIEString {
   DwarfStringPoolEntryRef S;
 
 public:
   DIEString(DwarfStringPoolEntryRef S) : S(S) {}
 
-  /// Grab the string out of the object.
+  /// getString - Grab the string out of the object.
   StringRef getString() const { return S.getString(); }
 
   void EmitValue(const AsmPrinter *AP, dwarf::Form Form) const;
@@ -264,31 +216,9 @@ public:
 };
 
 //===--------------------------------------------------------------------===//
-/// A container for inline string values.
-///
-/// This class is used with the DW_FORM_string form.
-class DIEInlineString {
-  StringRef S;
-
-public:
-  template <typename Allocator>
-  explicit DIEInlineString(StringRef Str, Allocator &A) : S(Str.copy(A)) {}
-
-  ~DIEInlineString() = default;
-
-  /// Grab the string out of the object.
-  StringRef getString() const { return S; }
-
-  void EmitValue(const AsmPrinter *AP, dwarf::Form Form) const;
-  unsigned SizeOf(const AsmPrinter *AP, dwarf::Form Form) const;
-
-  void print(raw_ostream &O) const;
-};
-
-//===--------------------------------------------------------------------===//
-/// A pointer to another debug information entry.  An instance of this class can
-/// also be used as a proxy for a debug information entry not yet defined
-/// (ie. types.)
+/// DIEEntry - A pointer to another debug information entry.  An instance of
+/// this class can also be used as a proxy for a debug information entry not
+/// yet defined (ie. types.)
 class DIE;
 class DIEEntry {
   DIE *Entry;
@@ -300,23 +230,30 @@ public:
 
   DIE &getEntry() const { return *Entry; }
 
+  /// Returns size of a ref_addr entry.
+  static unsigned getRefAddrSize(const AsmPrinter *AP);
+
   void EmitValue(const AsmPrinter *AP, dwarf::Form Form) const;
-  unsigned SizeOf(const AsmPrinter *AP, dwarf::Form Form) const;
+  unsigned SizeOf(const AsmPrinter *AP, dwarf::Form Form) const {
+    return Form == dwarf::DW_FORM_ref_addr ? getRefAddrSize(AP)
+                                           : sizeof(int32_t);
+  }
 
   void print(raw_ostream &O) const;
 };
 
 //===--------------------------------------------------------------------===//
-/// Represents a pointer to a location list in the debug_loc
+/// DIELocList - Represents a pointer to a location list in the debug_loc
 /// section.
+//
 class DIELocList {
-  /// Index into the .debug_loc vector.
+  // Index into the .debug_loc vector.
   size_t Index;
 
 public:
   DIELocList(size_t I) : Index(I) {}
 
-  /// Grab the current index out.
+  /// getValue - Grab the current index out.
   size_t getValue() const { return Index; }
 
   void EmitValue(const AsmPrinter *AP, dwarf::Form Form) const;
@@ -326,8 +263,9 @@ public:
 };
 
 //===--------------------------------------------------------------------===//
-/// A debug information entry value. Some of these roughly correlate
+/// DIEValue - A debug information entry value. Some of these roughly correlate
 /// to DWARF attribute classes.
+///
 class DIEBlock;
 class DIELoc;
 class DIEValue {
@@ -339,7 +277,8 @@ public:
   };
 
 private:
-  /// Type of data stored in the value.
+  /// Ty - Type of data stored in the value.
+  ///
   Type Ty = isNone;
   dwarf::Attribute Attribute = (dwarf::Attribute)0;
   dwarf::Form Form = (dwarf::Form)0;
@@ -416,11 +355,9 @@ private:
 
 public:
   DIEValue() = default;
-
   DIEValue(const DIEValue &X) : Ty(X.Ty), Attribute(X.Attribute), Form(X.Form) {
     copyVal(X);
   }
-
   DIEValue &operator=(const DIEValue &X) {
     destroyVal();
     Ty = X.Ty;
@@ -429,7 +366,6 @@ public:
     copyVal(X);
     return *this;
   }
-
   ~DIEValue() { destroyVal(); }
 
 #define HANDLE_DIEVALUE_SMALL(T)                                               \
@@ -445,13 +381,11 @@ public:
   }
 #include "llvm/CodeGen/DIEValue.def"
 
-  /// Accessors.
-  /// @{
+  // Accessors
   Type getType() const { return Ty; }
   dwarf::Attribute getAttribute() const { return Attribute; }
   dwarf::Form getForm() const { return Form; }
   explicit operator bool() const { return Ty; }
-  /// @}
 
 #define HANDLE_DIEVALUE_SMALL(T)                                               \
   const DIE##T &getDIE##T() const {                                            \
@@ -465,10 +399,12 @@ public:
   }
 #include "llvm/CodeGen/DIEValue.def"
 
-  /// Emit value via the Dwarf writer.
+  /// EmitValue - Emit value via the Dwarf writer.
+  ///
   void EmitValue(const AsmPrinter *AP) const;
 
-  /// Return the size of a value in bytes.
+  /// SizeOf - Return the size of a value in bytes.
+  ///
   unsigned SizeOf(const AsmPrinter *AP) const;
 
   void print(raw_ostream &O) const;
@@ -477,7 +413,6 @@ public:
 
 struct IntrusiveBackListNode {
   PointerIntPair<IntrusiveBackListNode *, 1> Next;
-
   IntrusiveBackListNode() : Next(this, true) {}
 
   IntrusiveBackListNode *getNext() const {
@@ -641,60 +576,54 @@ public:
   }
 
   value_range values() {
-    return make_range(value_iterator(List.begin()), value_iterator(List.end()));
+    return llvm::make_range(value_iterator(List.begin()),
+                            value_iterator(List.end()));
   }
   const_value_range values() const {
-    return make_range(const_value_iterator(List.begin()),
-                      const_value_iterator(List.end()));
+    return llvm::make_range(const_value_iterator(List.begin()),
+                            const_value_iterator(List.end()));
   }
 };
 
 //===--------------------------------------------------------------------===//
-/// A structured debug information entry.  Has an abbreviation which
+/// DIE - A structured debug information entry.  Has an abbreviation which
 /// describes its organization.
 class DIE : IntrusiveBackListNode, public DIEValueList {
   friend class IntrusiveBackList<DIE>;
-  friend class DIEUnit;
 
-  /// Dwarf unit relative offset.
+  /// Offset - Offset in debug info section.
+  ///
   unsigned Offset;
-  /// Size of instance + children.
+
+  /// Size - Size of instance + children.
+  ///
   unsigned Size;
+
   unsigned AbbrevNumber = ~0u;
-  /// Dwarf tag code.
+
+  /// Tag - Dwarf tag code.
+  ///
   dwarf::Tag Tag = (dwarf::Tag)0;
-  /// Set to true to force a DIE to emit an abbreviation that says it has
-  /// children even when it doesn't. This is used for unit testing purposes.
-  bool ForceChildren;
+
   /// Children DIEs.
   IntrusiveBackList<DIE> Children;
 
-  /// The owner is either the parent DIE for children of other DIEs, or a
-  /// DIEUnit which contains this DIE as its unit DIE.
-  PointerUnion<DIE *, DIEUnit *> Owner;
+  DIE *Parent = nullptr;
 
   DIE() = delete;
-  explicit DIE(dwarf::Tag Tag) : Offset(0), Size(0), Tag(Tag),
-      ForceChildren(false) {}
+  explicit DIE(dwarf::Tag Tag) : Offset(0), Size(0), Tag(Tag) {}
 
 public:
   static DIE *get(BumpPtrAllocator &Alloc, dwarf::Tag Tag) {
     return new (Alloc) DIE(Tag);
   }
 
-  DIE(const DIE &RHS) = delete;
-  DIE(DIE &&RHS) = delete;
-  void operator=(const DIE &RHS) = delete;
-  void operator=(const DIE &&RHS) = delete;
-
   // Accessors.
   unsigned getAbbrevNumber() const { return AbbrevNumber; }
   dwarf::Tag getTag() const { return Tag; }
-  /// Get the compile/type unit relative offset of this DIE.
   unsigned getOffset() const { return Offset; }
   unsigned getSize() const { return Size; }
-  bool hasChildren() const { return ForceChildren || !Children.empty(); }
-  void setForceChildren(bool B) { ForceChildren = B; }
+  bool hasChildren() const { return !Children.empty(); }
 
   typedef IntrusiveBackList<DIE>::iterator child_iterator;
   typedef IntrusiveBackList<DIE>::const_iterator const_child_iterator;
@@ -702,13 +631,13 @@ public:
   typedef iterator_range<const_child_iterator> const_child_range;
 
   child_range children() {
-    return make_range(Children.begin(), Children.end());
+    return llvm::make_range(Children.begin(), Children.end());
   }
   const_child_range children() const {
-    return make_range(Children.begin(), Children.end());
+    return llvm::make_range(Children.begin(), Children.end());
   }
 
-  DIE *getParent() const;
+  DIE *getParent() const { return Parent; }
 
   /// Generate the abbreviation for this DIE.
   ///
@@ -719,50 +648,19 @@ public:
   /// Set the abbreviation number for this DIE.
   void setAbbrevNumber(unsigned I) { AbbrevNumber = I; }
 
-  /// Get the absolute offset within the .debug_info or .debug_types section
-  /// for this DIE.
-  unsigned getDebugSectionOffset() const;
-
-  /// Compute the offset of this DIE and all its children.
-  ///
-  /// This function gets called just before we are going to generate the debug
-  /// information and gives each DIE a chance to figure out its CU relative DIE
-  /// offset, unique its abbreviation and fill in the abbreviation code, and
-  /// return the unit offset that points to where the next DIE will be emitted
-  /// within the debug unit section. After this function has been called for all
-  /// DIE objects, the DWARF can be generated since all DIEs will be able to
-  /// properly refer to other DIE objects since all DIEs have calculated their
-  /// offsets.
-  ///
-  /// \param AP AsmPrinter to use when calculating sizes.
-  /// \param AbbrevSet the abbreviation used to unique DIE abbreviations.
-  /// \param CUOffset the compile/type unit relative offset in bytes.
-  /// \returns the offset for the DIE that follows this DIE within the
-  /// current compile/type unit.
-  unsigned computeOffsetsAndAbbrevs(const AsmPrinter *AP,
-                                    DIEAbbrevSet &AbbrevSet, unsigned CUOffset);
-
-  /// Climb up the parent chain to get the compile unit or type unit DIE that
-  /// this DIE belongs to.
-  ///
-  /// \returns the compile or type unit DIE that owns this DIE, or NULL if
-  /// this DIE hasn't been added to a unit DIE.
-  const DIE *getUnitDie() const;
-
-  /// Climb up the parent chain to get the compile unit or type unit that this
-  /// DIE belongs to.
-  ///
-  /// \returns the DIEUnit that represents the compile or type unit that owns
-  /// this DIE, or NULL if this DIE hasn't been added to a unit DIE.
-  const DIEUnit *getUnit() const;
-
+  /// Climb up the parent chain to get the compile or type unit DIE this DIE
+  /// belongs to.
+  const DIE *getUnit() const;
+  /// Similar to getUnit, returns null when DIE is not added to an
+  /// owner yet.
+  const DIE *getUnitOrNull() const;
   void setOffset(unsigned O) { Offset = O; }
   void setSize(unsigned S) { Size = S; }
 
   /// Add a child to the DIE.
   DIE &addChild(DIE *Child) {
     assert(!Child->getParent() && "Child should be orphaned");
-    Child->Owner = this;
+    Child->Parent = this;
     Children.push_back(*Child);
     return Children.back();
   }
@@ -775,63 +673,6 @@ public:
 
   void print(raw_ostream &O, unsigned IndentCount = 0) const;
   void dump();
-};
-
-//===--------------------------------------------------------------------===//
-/// Represents a compile or type unit.
-class DIEUnit {
-  /// The compile unit or type unit DIE. This variable must be an instance of
-  /// DIE so that we can calculate the DIEUnit from any DIE by traversing the
-  /// parent backchain and getting the Unit DIE, and then casting itself to a
-  /// DIEUnit. This allows us to be able to find the DIEUnit for any DIE without
-  /// having to store a pointer to the DIEUnit in each DIE instance.
-  DIE Die;
-  /// The section this unit will be emitted in. This may or may not be set to
-  /// a valid section depending on the client that is emitting DWARF.
-  MCSection *Section;
-  uint64_t Offset; /// .debug_info or .debug_types absolute section offset.
-  uint32_t Length; /// The length in bytes of all of the DIEs in this unit.
-  const uint16_t Version; /// The Dwarf version number for this unit.
-  const uint8_t AddrSize; /// The size in bytes of an address for this unit.
-protected:
-  ~DIEUnit() = default;
-
-public:
-  DIEUnit(uint16_t Version, uint8_t AddrSize, dwarf::Tag UnitTag);
-  DIEUnit(const DIEUnit &RHS) = delete;
-  DIEUnit(DIEUnit &&RHS) = delete;
-  void operator=(const DIEUnit &RHS) = delete;
-  void operator=(const DIEUnit &&RHS) = delete;
-  /// Set the section that this DIEUnit will be emitted into.
-  ///
-  /// This function is used by some clients to set the section. Not all clients
-  /// that emit DWARF use this section variable.
-  void setSection(MCSection *Section) {
-    assert(!this->Section);
-    this->Section = Section;
-  }
-
-  virtual const MCSymbol *getCrossSectionRelativeBaseAddress() const {
-    return nullptr;
-  }
-
-  /// Return the section that this DIEUnit will be emitted into.
-  ///
-  /// \returns Section pointer which can be NULL.
-  MCSection *getSection() const { return Section; }
-  void setDebugSectionOffset(unsigned O) { Offset = O; }
-  unsigned getDebugSectionOffset() const { return Offset; }
-  void setLength(uint64_t L) { Length = L; }
-  uint64_t getLength() const { return Length; }
-  uint16_t getDwarfVersion() const { return Version; }
-  uint16_t getAddressSize() const { return AddrSize; }
-  DIE &getUnitDie() { return Die; }
-  const DIE &getUnitDie() const { return Die; }
-};
-
-struct BasicDIEUnit final : DIEUnit {
-  BasicDIEUnit(uint16_t Version, uint8_t AddrSize, dwarf::Tag UnitTag)
-      : DIEUnit(Version, AddrSize, UnitTag) {}
 };
 
 //===--------------------------------------------------------------------===//
@@ -899,6 +740,6 @@ public:
   void print(raw_ostream &O) const;
 };
 
-} // end namespace llvm
+} // end llvm namespace
 
-#endif // LLVM_LIB_CODEGEN_ASMPRINTER_DIE_H
+#endif

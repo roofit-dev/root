@@ -95,9 +95,11 @@ static unsigned getXCoreSectionFlags(SectionKind K, bool IsCPRel) {
   return Flags;
 }
 
-MCSection *XCoreTargetObjectFile::getExplicitSectionGlobal(
-    const GlobalObject *GO, SectionKind Kind, const TargetMachine &TM) const {
-  StringRef SectionName = GO->getSection();
+MCSection *
+XCoreTargetObjectFile::getExplicitSectionGlobal(const GlobalValue *GV,
+                                                SectionKind Kind, Mangler &Mang,
+                                                const TargetMachine &TM) const {
+  StringRef SectionName = GV->getSection();
   // Infer section flags from the section name if we can.
   bool IsCPRel = SectionName.startswith(".cp.");
   if (IsCPRel && !Kind.isReadOnly())
@@ -106,10 +108,12 @@ MCSection *XCoreTargetObjectFile::getExplicitSectionGlobal(
                                     getXCoreSectionFlags(Kind, IsCPRel));
 }
 
-MCSection *XCoreTargetObjectFile::SelectSectionForGlobal(
-    const GlobalObject *GO, SectionKind Kind, const TargetMachine &TM) const {
+MCSection *
+XCoreTargetObjectFile::SelectSectionForGlobal(const GlobalValue *GV,
+                                              SectionKind Kind, Mangler &Mang,
+                                              const TargetMachine &TM) const {
 
-  bool UseCPRel = GO->hasLocalLinkage();
+  bool UseCPRel = GV->isLocalLinkage(GV->getLinkage());
 
   if (Kind.isText())                    return TextSection;
   if (UseCPRel) {
@@ -118,8 +122,8 @@ MCSection *XCoreTargetObjectFile::SelectSectionForGlobal(
     if (Kind.isMergeableConst8())       return MergeableConst8Section;
     if (Kind.isMergeableConst16())      return MergeableConst16Section;
   }
-  Type *ObjType = GO->getValueType();
-  auto &DL = GO->getParent()->getDataLayout();
+  Type *ObjType = GV->getValueType();
+  auto &DL = GV->getParent()->getDataLayout();
   if (TM.getCodeModel() == CodeModel::Small || !ObjType->isSized() ||
       DL.getTypeAllocSize(ObjType) < CodeModelLargeSize) {
     if (Kind.isReadOnly())              return UseCPRel? ReadOnlySection

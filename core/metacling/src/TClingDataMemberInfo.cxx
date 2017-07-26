@@ -341,11 +341,11 @@ long TClingDataMemberInfo::Offset()
                }
                case APValue::Float:
                   if (&val->getFloat().getSemantics()
-                      == (const llvm::fltSemantics*)&llvm::APFloat::IEEEsingle()) {
+                      == &llvm::APFloat::IEEEsingle) {
                      fConstInitVal.fFloat = val->getFloat().convertToFloat();
                      return (long)&fConstInitVal.fFloat;
                   } else if (&val->getFloat().getSemantics()
-                             == (const llvm::fltSemantics*) &llvm::APFloat::IEEEdouble()) {
+                             == &llvm::APFloat::IEEEdouble) {
                      fConstInitVal.fDouble = val->getFloat().convertToDouble();
                      return (long)&fConstInitVal.fDouble;
                   }

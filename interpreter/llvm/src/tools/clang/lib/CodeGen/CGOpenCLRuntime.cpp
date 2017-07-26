@@ -15,7 +15,6 @@
 
 #include "CGOpenCLRuntime.h"
 #include "CodeGenFunction.h"
-#include "TargetInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include <assert.h>
@@ -35,10 +34,10 @@ llvm::Type *CGOpenCLRuntime::convertOpenCLSpecificType(const Type *T) {
          "Not an OpenCL specific type!");
 
   llvm::LLVMContext& Ctx = CGM.getLLVMContext();
-  uint32_t ImgAddrSpc = CGM.getContext().getTargetAddressSpace(
-    CGM.getTarget().getOpenCLImageAddrSpace());
+  uint32_t ImgAddrSpc =
+    CGM.getContext().getTargetAddressSpace(LangAS::opencl_global);
   switch (cast<BuiltinType>(T)->getKind()) {
-  default:
+  default: 
     llvm_unreachable("Unexpected opencl builtin type!");
     return nullptr;
 #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
@@ -48,7 +47,7 @@ llvm::Type *CGOpenCLRuntime::convertOpenCLSpecificType(const Type *T) {
         ImgAddrSpc);
 #include "clang/Basic/OpenCLImageTypes.def"
   case BuiltinType::OCLSampler:
-    return getSamplerType();
+    return llvm::IntegerType::get(Ctx, 32);
   case BuiltinType::OCLEvent:
     return llvm::PointerType::get(llvm::StructType::create(
                            Ctx, "opencl.event_t"), 0);
@@ -58,6 +57,9 @@ llvm::Type *CGOpenCLRuntime::convertOpenCLSpecificType(const Type *T) {
   case BuiltinType::OCLQueue:
     return llvm::PointerType::get(
         llvm::StructType::create(Ctx, "opencl.queue_t"), 0);
+  case BuiltinType::OCLNDRange:
+    return llvm::PointerType::get(
+        llvm::StructType::create(Ctx, "opencl.ndrange_t"), 0);
   case BuiltinType::OCLReserveID:
     return llvm::PointerType::get(
         llvm::StructType::create(Ctx, "opencl.reserve_id_t"), 0);
@@ -73,33 +75,4 @@ llvm::Type *CGOpenCLRuntime::getPipeType() {
   }
 
   return PipeTy;
-}
-
-llvm::PointerType *CGOpenCLRuntime::getSamplerType() {
-  if (!SamplerTy)
-    SamplerTy = llvm::PointerType::get(llvm::StructType::create(
-      CGM.getLLVMContext(), "opencl.sampler_t"),
-      CGM.getContext().getTargetAddressSpace(
-      LangAS::opencl_constant));
-  return SamplerTy;
-}
-
-llvm::Value *CGOpenCLRuntime::getPipeElemSize(const Expr *PipeArg) {
-  const PipeType *PipeTy = PipeArg->getType()->getAs<PipeType>();
-  // The type of the last (implicit) argument to be passed.
-  llvm::Type *Int32Ty = llvm::IntegerType::getInt32Ty(CGM.getLLVMContext());
-  unsigned TypeSize = CGM.getContext()
-                          .getTypeSizeInChars(PipeTy->getElementType())
-                          .getQuantity();
-  return llvm::ConstantInt::get(Int32Ty, TypeSize, false);
-}
-
-llvm::Value *CGOpenCLRuntime::getPipeElemAlign(const Expr *PipeArg) {
-  const PipeType *PipeTy = PipeArg->getType()->getAs<PipeType>();
-  // The type of the last (implicit) argument to be passed.
-  llvm::Type *Int32Ty = llvm::IntegerType::getInt32Ty(CGM.getLLVMContext());
-  unsigned TypeSize = CGM.getContext()
-                          .getTypeAlignInChars(PipeTy->getElementType())
-                          .getQuantity();
-  return llvm::ConstantInt::get(Int32Ty, TypeSize, false);
 }

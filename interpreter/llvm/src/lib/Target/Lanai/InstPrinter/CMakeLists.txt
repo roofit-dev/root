@@ -1,3 +1,3 @@
-add_llvm_library(LLVMLanaiAsmPrinter
+add_llvm_library(LLVMLanaiInstPrinter
   LanaiInstPrinter.cpp
   )

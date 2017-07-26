@@ -107,12 +107,12 @@ tooling::Replacements TokenAnalyzer::process() {
     }
 
     tooling::Replacements RunResult =
-        analyze(Annotator, AnnotatedLines, Tokens);
+        analyze(Annotator, AnnotatedLines, Tokens, Result);
 
     DEBUG({
       llvm::dbgs() << "Replacements for run " << Run << ":\n";
-      for (tooling::Replacements::const_iterator I = RunResult.begin(),
-                                                 E = RunResult.end();
+      for (tooling::Replacements::iterator I = RunResult.begin(),
+                                           E = RunResult.end();
            I != E; ++I) {
         llvm::dbgs() << I->toString() << "\n";
       }
@@ -120,15 +120,7 @@ tooling::Replacements TokenAnalyzer::process() {
     for (unsigned i = 0, e = AnnotatedLines.size(); i != e; ++i) {
       delete AnnotatedLines[i];
     }
-    for (const auto &R : RunResult) {
-      auto Err = Result.add(R);
-      // FIXME: better error handling here. For now, simply return an empty
-      // Replacements to indicate failure.
-      if (Err) {
-        llvm::errs() << llvm::toString(std::move(Err)) << "\n";
-        return tooling::Replacements();
-      }
-    }
+    Result.insert(RunResult.begin(), RunResult.end());
   }
   return Result;
 }

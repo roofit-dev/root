@@ -10,25 +10,23 @@
 #ifndef LLVM_MC_MCFRAGMENT_H
 #define LLVM_MC_MCFRAGMENT_H
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/ilist.h"
+#include "llvm/ADT/ilist_node.h"
+#include "llvm/ADT/iterator.h"
 #include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCInst.h"
-#include "llvm/Support/SMLoc.h"
-#include <cstdint>
-#include <utility>
 
 namespace llvm {
-
 class MCSection;
-class MCSubtargetInfo;
 class MCSymbol;
+class MCSubtargetInfo;
 
 class MCFragment : public ilist_node_with_parent<MCFragment, MCSection> {
   friend class MCAsmLayout;
+
+  MCFragment(const MCFragment &) = delete;
+  void operator=(const MCFragment &) = delete;
 
 public:
   enum FragmentType : uint8_t {
@@ -85,12 +83,13 @@ protected:
              uint8_t BundlePadding, MCSection *Parent = nullptr);
 
   ~MCFragment();
+private:
+
+  // This is a friend so that the sentinal can be created.
+  friend struct ilist_sentinel_traits<MCFragment>;
+  MCFragment();
 
 public:
-  MCFragment() = delete;
-  MCFragment(const MCFragment &) = delete;
-  MCFragment &operator=(const MCFragment &) = delete;
-
   /// Destroys the current fragment.
   ///
   /// This must be used instead of delete as MCFragment is non-virtual.
@@ -136,8 +135,7 @@ public:
 class MCDummyFragment : public MCFragment {
 public:
   explicit MCDummyFragment(MCSection *Sec)
-      : MCFragment(FT_Dummy, false, 0, Sec) {}
-
+      : MCFragment(FT_Dummy, false, 0, Sec){};
   static bool classof(const MCFragment *F) { return F->getKind() == FT_Dummy; }
 };
 
@@ -200,8 +198,8 @@ protected:
                                                     Sec) {}
 
 public:
-  using const_fixup_iterator = SmallVectorImpl<MCFixup>::const_iterator;
-  using fixup_iterator = SmallVectorImpl<MCFixup>::iterator;
+  typedef SmallVectorImpl<MCFixup>::const_iterator const_fixup_iterator;
+  typedef SmallVectorImpl<MCFixup>::iterator fixup_iterator;
 
   SmallVectorImpl<MCFixup> &getFixups() { return Fixups; }
   const SmallVectorImpl<MCFixup> &getFixups() const { return Fixups; }
@@ -277,6 +275,7 @@ public:
 };
 
 class MCAlignFragment : public MCFragment {
+
   /// Alignment - The alignment to ensure, in bytes.
   unsigned Alignment;
 
@@ -324,6 +323,7 @@ public:
 };
 
 class MCFillFragment : public MCFragment {
+
   /// Value to use for filling bytes.
   uint8_t Value;
 
@@ -343,19 +343,16 @@ public:
 };
 
 class MCOrgFragment : public MCFragment {
+
   /// Offset - The offset this fragment should start at.
   const MCExpr *Offset;
 
   /// Value - Value to use for filling bytes.
   int8_t Value;
 
-  /// Loc - Source location of the directive that this fragment was created for.
-  SMLoc Loc;
-
 public:
-  MCOrgFragment(const MCExpr &Offset, int8_t Value, SMLoc Loc,
-                MCSection *Sec = nullptr)
-      : MCFragment(FT_Org, false, 0, Sec), Offset(&Offset), Value(Value), Loc(Loc) {}
+  MCOrgFragment(const MCExpr &Offset, int8_t Value, MCSection *Sec = nullptr)
+      : MCFragment(FT_Org, false, 0, Sec), Offset(&Offset), Value(Value) {}
 
   /// \name Accessors
   /// @{
@@ -363,8 +360,6 @@ public:
   const MCExpr &getOffset() const { return *Offset; }
 
   uint8_t getValue() const { return Value; }
-
-  SMLoc getLoc() const { return Loc; }
 
   /// @}
 
@@ -374,6 +369,7 @@ public:
 };
 
 class MCLEBFragment : public MCFragment {
+
   /// Value - The value this fragment should contain.
   const MCExpr *Value;
 
@@ -406,6 +402,7 @@ public:
 };
 
 class MCDwarfLineAddrFragment : public MCFragment {
+
   /// LineDelta - the value of the difference between the two line numbers
   /// between two .loc dwarf directives.
   int64_t LineDelta;
@@ -442,6 +439,7 @@ public:
 };
 
 class MCDwarfCallFrameFragment : public MCFragment {
+
   /// AddrDelta - The expression for the difference of the two symbols that
   /// make up the address delta between two .cfi_* dwarf directives.
   const MCExpr *AddrDelta;
@@ -497,6 +495,7 @@ class MCCVInlineLineTableFragment : public MCFragment {
   unsigned StartLineNum;
   const MCSymbol *FnStartSym;
   const MCSymbol *FnEndSym;
+  SmallVector<unsigned, 3> SecondaryFuncs;
   SmallString<8> Contents;
 
   /// CodeViewContext has the real knowledge about this format, so let it access
@@ -507,10 +506,12 @@ public:
   MCCVInlineLineTableFragment(unsigned SiteFuncId, unsigned StartFileId,
                               unsigned StartLineNum, const MCSymbol *FnStartSym,
                               const MCSymbol *FnEndSym,
+                              ArrayRef<unsigned> SecondaryFuncs,
                               MCSection *Sec = nullptr)
       : MCFragment(FT_CVInlineLines, false, 0, Sec), SiteFuncId(SiteFuncId),
         StartFileId(StartFileId), StartLineNum(StartLineNum),
-        FnStartSym(FnStartSym), FnEndSym(FnEndSym) {}
+        FnStartSym(FnStartSym), FnEndSym(FnEndSym),
+        SecondaryFuncs(SecondaryFuncs.begin(), SecondaryFuncs.end()) {}
 
   /// \name Accessors
   /// @{
@@ -561,4 +562,4 @@ public:
 
 } // end namespace llvm
 
-#endif // LLVM_MC_MCFRAGMENT_H
+#endif

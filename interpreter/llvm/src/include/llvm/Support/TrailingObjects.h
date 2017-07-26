@@ -62,7 +62,7 @@ namespace trailing_objects_internal {
 template <typename First, typename... Rest> class AlignmentCalcHelper {
 private:
   enum {
-    FirstAlignment = alignof(First),
+    FirstAlignment = AlignOf<First>::Alignment,
     RestAlignment = AlignmentCalcHelper<Rest...>::Alignment,
   };
 
@@ -74,7 +74,7 @@ public:
 
 template <typename First> class AlignmentCalcHelper<First> {
 public:
-  enum { Alignment = alignof(First) };
+  enum { Alignment = AlignOf<First>::Alignment };
 };
 
 /// The base class for TrailingObjects* classes.
@@ -127,32 +127,28 @@ template <typename Ty1, typename Ty2> struct ExtractSecondType {
 
 template <int Align, typename BaseTy, typename TopTrailingObj, typename PrevTy,
           typename... MoreTys>
-class TrailingObjectsImpl {
+struct TrailingObjectsImpl {
   // The main template definition is never used -- the two
   // specializations cover all possibilities.
 };
 
 template <int Align, typename BaseTy, typename TopTrailingObj, typename PrevTy,
           typename NextTy, typename... MoreTys>
-class TrailingObjectsImpl<Align, BaseTy, TopTrailingObj, PrevTy, NextTy,
-                          MoreTys...>
+struct TrailingObjectsImpl<Align, BaseTy, TopTrailingObj, PrevTy, NextTy,
+                           MoreTys...>
     : public TrailingObjectsImpl<Align, BaseTy, TopTrailingObj, NextTy,
                                  MoreTys...> {
 
   typedef TrailingObjectsImpl<Align, BaseTy, TopTrailingObj, NextTy, MoreTys...>
       ParentType;
 
-  struct RequiresRealignment {
-    static const bool value = alignof(PrevTy) < alignof(NextTy);
-  };
-
-  static constexpr bool requiresRealignment() {
-    return RequiresRealignment::value;
-  }
-
-protected:
-  // Ensure the inherited getTrailingObjectsImpl is not hidden.
+  // Ensure the methods we inherit are not hidden.
   using ParentType::getTrailingObjectsImpl;
+  using ParentType::additionalSizeToAllocImpl;
+
+  static LLVM_CONSTEXPR bool requiresRealignment() {
+    return llvm::AlignOf<PrevTy>::Alignment < llvm::AlignOf<NextTy>::Alignment;
+  }
 
   // These two functions are helper functions for
   // TrailingObjects::getTrailingObjects. They recurse to the left --
@@ -173,7 +169,7 @@ protected:
 
     if (requiresRealignment())
       return reinterpret_cast<const NextTy *>(
-          llvm::alignAddr(Ptr, alignof(NextTy)));
+          llvm::alignAddr(Ptr, llvm::alignOf<NextTy>()));
     else
       return reinterpret_cast<const NextTy *>(Ptr);
   }
@@ -187,7 +183,8 @@ protected:
                     Obj, TrailingObjectsBase::OverloadToken<PrevTy>());
 
     if (requiresRealignment())
-      return reinterpret_cast<NextTy *>(llvm::alignAddr(Ptr, alignof(NextTy)));
+      return reinterpret_cast<NextTy *>(
+          llvm::alignAddr(Ptr, llvm::alignOf<NextTy>()));
     else
       return reinterpret_cast<NextTy *>(Ptr);
   }
@@ -195,12 +192,13 @@ protected:
   // Helper function for TrailingObjects::additionalSizeToAlloc: this
   // function recurses to superclasses, each of which requires one
   // fewer size_t argument, and adds its own size.
-  static constexpr size_t additionalSizeToAllocImpl(
+  static LLVM_CONSTEXPR size_t additionalSizeToAllocImpl(
       size_t SizeSoFar, size_t Count1,
       typename ExtractSecondType<MoreTys, size_t>::type... MoreCounts) {
-    return ParentType::additionalSizeToAllocImpl(
-        (requiresRealignment() ? llvm::alignTo<alignof(NextTy)>(SizeSoFar)
-                               : SizeSoFar) +
+    return additionalSizeToAllocImpl(
+        (requiresRealignment()
+             ? llvm::alignTo(SizeSoFar, llvm::alignOf<NextTy>())
+             : SizeSoFar) +
             sizeof(NextTy) * Count1,
         MoreCounts...);
   }
@@ -209,15 +207,14 @@ protected:
 // The base case of the TrailingObjectsImpl inheritance recursion,
 // when there's no more trailing types.
 template <int Align, typename BaseTy, typename TopTrailingObj, typename PrevTy>
-class TrailingObjectsImpl<Align, BaseTy, TopTrailingObj, PrevTy>
+struct TrailingObjectsImpl<Align, BaseTy, TopTrailingObj, PrevTy>
     : public TrailingObjectsAligner<Align> {
-protected:
   // This is a dummy method, only here so the "using" doesn't fail --
   // it will never be called, because this function recurses backwards
   // up the inheritance chain to subclasses.
   static void getTrailingObjectsImpl();
 
-  static constexpr size_t additionalSizeToAllocImpl(size_t SizeSoFar) {
+  static LLVM_CONSTEXPR size_t additionalSizeToAllocImpl(size_t SizeSoFar) {
     return SizeSoFar;
   }
 
@@ -238,7 +235,7 @@ class TrailingObjects : private trailing_objects_internal::TrailingObjectsImpl<
                             BaseTy, TrailingTys...> {
 
   template <int A, typename B, typename T, typename P, typename... M>
-  friend class trailing_objects_internal::TrailingObjectsImpl;
+  friend struct trailing_objects_internal::TrailingObjectsImpl;
 
   template <typename... Tys> class Foo {};
 
@@ -294,14 +291,7 @@ class TrailingObjects : private trailing_objects_internal::TrailingObjectsImpl<
 
 public:
   // Make this (privately inherited) member public.
-#ifndef _MSC_VER
   using ParentType::OverloadToken;
-#else
-  // MSVC bug prevents the above from working, at least up through CL
-  // 19.10.24629.
-  template <typename T>
-  using OverloadToken = typename ParentType::template OverloadToken<T>;
-#endif
 
   /// Returns a pointer to the trailing object array of the given type
   /// (which must be one of those specified in the class template). The
@@ -333,10 +323,11 @@ public:
   /// used in the class; they are supplied here redundantly only so
   /// that it's clear what the counts are counting in callers.
   template <typename... Tys>
-  static constexpr typename std::enable_if<
+  static LLVM_CONSTEXPR typename std::enable_if<
       std::is_same<Foo<TrailingTys...>, Foo<Tys...>>::value, size_t>::type
-  additionalSizeToAlloc(typename trailing_objects_internal::ExtractSecondType<
-                        TrailingTys, size_t>::type... Counts) {
+      additionalSizeToAlloc(
+          typename trailing_objects_internal::ExtractSecondType<
+              TrailingTys, size_t>::type... Counts) {
     return ParentType::additionalSizeToAllocImpl(0, Counts...);
   }
 
@@ -345,10 +336,10 @@ public:
   /// additionalSizeToAlloc, except it *does* include the size of the base
   /// object.
   template <typename... Tys>
-  static constexpr typename std::enable_if<
+  static LLVM_CONSTEXPR typename std::enable_if<
       std::is_same<Foo<TrailingTys...>, Foo<Tys...>>::value, size_t>::type
-  totalSizeToAlloc(typename trailing_objects_internal::ExtractSecondType<
-                   TrailingTys, size_t>::type... Counts) {
+      totalSizeToAlloc(typename trailing_objects_internal::ExtractSecondType<
+                       TrailingTys, size_t>::type... Counts) {
     return sizeof(BaseTy) + ParentType::additionalSizeToAllocImpl(0, Counts...);
   }
 
@@ -370,7 +361,9 @@ public:
   template <typename... Tys> struct FixedSizeStorage {
     template <size_t... Counts> struct with_counts {
       enum { Size = totalSizeToAlloc<Tys...>(Counts...) };
-      typedef llvm::AlignedCharArray<alignof(BaseTy), Size> type;
+      typedef llvm::AlignedCharArray<
+          llvm::AlignOf<BaseTy>::Alignment, Size
+          > type;
     };
   };
 

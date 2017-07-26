@@ -371,12 +371,11 @@ namespace {
     protected:
       typedef MapVector<Instruction*, BitVector> UsesTy;
 
-      void findRootsRecursive(Instruction *IVU,
+      bool findRootsRecursive(Instruction *IVU,
                               SmallInstructionSet SubsumedInsts);
       bool findRootsBase(Instruction *IVU, SmallInstructionSet SubsumedInsts);
       bool collectPossibleRoots(Instruction *Base,
                                 std::map<int64_t,Instruction*> &Roots);
-      bool validateRootSet(DAGRootSet &DRS);
 
       bool collectUsedInstructions(SmallInstructionSet &PossibleRedSet);
       void collectInLoopUserSet(const SmallInstructionVector &Roots,
@@ -557,7 +556,7 @@ bool LoopReroll::isLoopControlIV(Loop *L, Instruction *IV) {
             Instruction *UUser = dyn_cast<Instruction>(UU);
             // Skip SExt if we are extending an nsw value
             // TODO: Allow ZExt too
-            if (BO->hasNoSignedWrap() && UUser && UUser->hasOneUse() &&
+            if (BO->hasNoSignedWrap() && UUser && UUser->getNumUses() == 1 &&
                 isa<SExtInst>(UUser))
               UUser = dyn_cast<Instruction>(*(UUser->user_begin()));
             if (!isCompareUsedByBranch(UUser))
@@ -740,11 +739,11 @@ void LoopReroll::DAGRootTracker::collectInLoopUserSet(
     collectInLoopUserSet(Root, Exclude, Final, Users);
 }
 
-static bool isUnorderedLoadStore(Instruction *I) {
+static bool isSimpleLoadStore(Instruction *I) {
   if (LoadInst *LI = dyn_cast<LoadInst>(I))
-    return LI->isUnordered();
+    return LI->isSimple();
   if (StoreInst *SI = dyn_cast<StoreInst>(I))
-    return SI->isUnordered();
+    return SI->isSimple();
   if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(I))
     return !MI->isVolatile();
   return false;
@@ -828,8 +827,7 @@ collectPossibleRoots(Instruction *Base, std::map<int64_t,Instruction*> &Roots) {
     Roots[V] = cast<Instruction>(I);
   }
 
-  // Make sure we have at least two roots.
-  if (Roots.empty() || (Roots.size() == 1 && BaseUsers.empty()))
+  if (Roots.empty())
     return false;
 
   // If we found non-loop-inc, non-root users of Base, assume they are
@@ -852,7 +850,7 @@ collectPossibleRoots(Instruction *Base, std::map<int64_t,Instruction*> &Roots) {
   for (auto &KV : Roots) {
     if (KV.first == 0)
       continue;
-    if (!KV.second->hasNUses(NumBaseUses)) {
+    if (KV.second->getNumUses() != NumBaseUses) {
       DEBUG(dbgs() << "LRR: Aborting - Root and Base #users not the same: "
             << "#Base=" << NumBaseUses << ", #Root=" <<
             KV.second->getNumUses() << "\n");
@@ -863,61 +861,40 @@ collectPossibleRoots(Instruction *Base, std::map<int64_t,Instruction*> &Roots) {
   return true;
 }
 
-void LoopReroll::DAGRootTracker::
+bool LoopReroll::DAGRootTracker::
 findRootsRecursive(Instruction *I, SmallInstructionSet SubsumedInsts) {
   // Does the user look like it could be part of a root set?
   // All its users must be simple arithmetic ops.
-  if (I->hasNUsesOrMore(IL_MaxRerollIterations + 1))
-    return;
+  if (I->getNumUses() > IL_MaxRerollIterations)
+    return false;
 
-  if (I != IV && findRootsBase(I, SubsumedInsts))
-    return;
+  if ((I->getOpcode() == Instruction::Mul ||
+       I->getOpcode() == Instruction::PHI) &&
+      I != IV &&
+      findRootsBase(I, SubsumedInsts))
+    return true;
 
   SubsumedInsts.insert(I);
 
   for (User *V : I->users()) {
-    Instruction *I = cast<Instruction>(V);
-    if (is_contained(LoopIncs, I))
+    Instruction *I = dyn_cast<Instruction>(V);
+    if (std::find(LoopIncs.begin(), LoopIncs.end(), I) != LoopIncs.end())
       continue;
 
-    if (!isSimpleArithmeticOp(I))
-      continue;
-
-    // The recursive call makes a copy of SubsumedInsts.
-    findRootsRecursive(I, SubsumedInsts);
+    if (!I || !isSimpleArithmeticOp(I) ||
+        !findRootsRecursive(I, SubsumedInsts))
+      return false;
   }
-}
-
-bool LoopReroll::DAGRootTracker::validateRootSet(DAGRootSet &DRS) {
-  if (DRS.Roots.empty())
-    return false;
-
-  // Consider a DAGRootSet with N-1 roots (so N different values including
-  //   BaseInst).
-  // Define d = Roots[0] - BaseInst, which should be the same as
-  //   Roots[I] - Roots[I-1] for all I in [1..N).
-  // Define D = BaseInst@J - BaseInst@J-1, where "@J" means the value at the
-  //   loop iteration J.
-  //
-  // Now, For the loop iterations to be consecutive:
-  //   D = d * N
-  const auto *ADR = dyn_cast<SCEVAddRecExpr>(SE->getSCEV(DRS.BaseInst));
-  if (!ADR)
-    return false;
-  unsigned N = DRS.Roots.size() + 1;
-  const SCEV *StepSCEV = SE->getMinusSCEV(SE->getSCEV(DRS.Roots[0]), ADR);
-  const SCEV *ScaleSCEV = SE->getConstant(StepSCEV->getType(), N);
-  if (ADR->getStepRecurrence(*SE) != SE->getMulExpr(StepSCEV, ScaleSCEV))
-    return false;
-
   return true;
 }
 
 bool LoopReroll::DAGRootTracker::
 findRootsBase(Instruction *IVU, SmallInstructionSet SubsumedInsts) {
-  // The base of a RootSet must be an AddRec, so it can be erased.
-  const auto *IVU_ADR = dyn_cast<SCEVAddRecExpr>(SE->getSCEV(IVU));
-  if (!IVU_ADR || IVU_ADR->getLoop() != L)
+
+  // The base instruction needs to be a multiply so
+  // that we can erase it.
+  if (IVU->getOpcode() != Instruction::Mul &&
+      IVU->getOpcode() != Instruction::PHI)
     return false;
 
   std::map<int64_t, Instruction*> V;
@@ -933,8 +910,6 @@ findRootsBase(Instruction *IVU, SmallInstructionSet SubsumedInsts) {
   DAGRootSet DRS;
   DRS.BaseInst = nullptr;
 
-  SmallVector<DAGRootSet, 16> PotentialRootSets;
-
   for (auto &KV : V) {
     if (!DRS.BaseInst) {
       DRS.BaseInst = KV.second;
@@ -945,22 +920,13 @@ findRootsBase(Instruction *IVU, SmallInstructionSet SubsumedInsts) {
       DRS.Roots.push_back(KV.second);
     } else {
       // Linear sequence terminated.
-      if (!validateRootSet(DRS))
-        return false;
-
-      // Construct a new DAGRootSet with the next sequence.
-      PotentialRootSets.push_back(DRS);
+      RootSets.push_back(DRS);
       DRS.BaseInst = KV.second;
+      DRS.SubsumedInsts = SubsumedInsts;
       DRS.Roots.clear();
     }
   }
-
-  if (!validateRootSet(DRS))
-    return false;
-
-  PotentialRootSets.push_back(DRS);
-
-  RootSets.append(PotentialRootSets.begin(), PotentialRootSets.end());
+  RootSets.push_back(DRS);
 
   return true;
 }
@@ -974,7 +940,8 @@ bool LoopReroll::DAGRootTracker::findRoots() {
       if (isLoopIncrement(IVU, IV))
         LoopIncs.push_back(cast<Instruction>(IVU));
     }
-    findRootsRecursive(IV, SmallInstructionSet());
+    if (!findRootsRecursive(IV, SmallInstructionSet()))
+      return false;
     LoopIncs.push_back(IV);
   } else {
     if (!findRootsBase(IV, SmallInstructionSet()))
@@ -994,6 +961,31 @@ bool LoopReroll::DAGRootTracker::findRoots() {
     }
   }
 
+  // And ensure all loop iterations are consecutive. We rely on std::map
+  // providing ordered traversal.
+  for (auto &V : RootSets) {
+    const auto *ADR = dyn_cast<SCEVAddRecExpr>(SE->getSCEV(V.BaseInst));
+    if (!ADR)
+      return false;
+
+    // Consider a DAGRootSet with N-1 roots (so N different values including
+    //   BaseInst).
+    // Define d = Roots[0] - BaseInst, which should be the same as
+    //   Roots[I] - Roots[I-1] for all I in [1..N).
+    // Define D = BaseInst@J - BaseInst@J-1, where "@J" means the value at the
+    //   loop iteration J.
+    //
+    // Now, For the loop iterations to be consecutive:
+    //   D = d * N
+
+    unsigned N = V.Roots.size() + 1;
+    const SCEV *StepSCEV = SE->getMinusSCEV(SE->getSCEV(V.Roots[0]), ADR);
+    const SCEV *ScaleSCEV = SE->getConstant(StepSCEV->getType(), N);
+    if (ADR->getStepRecurrence(*SE) != SE->getMulExpr(StepSCEV, ScaleSCEV)) {
+      DEBUG(dbgs() << "LRR: Aborting because iterations are not consecutive\n");
+      return false;
+    }
+  }
   Scale = RootSets[0].Roots.size() + 1;
 
   if (Scale > IL_MaxRerollIterations) {
@@ -1096,7 +1088,7 @@ bool LoopReroll::DAGRootTracker::isBaseInst(Instruction *I) {
 
 bool LoopReroll::DAGRootTracker::isRootInst(Instruction *I) {
   for (auto &DRS : RootSets) {
-    if (is_contained(DRS.Roots, I))
+    if (std::find(DRS.Roots.begin(), DRS.Roots.end(), I) != DRS.Roots.end())
       return true;
   }
   return false;
@@ -1291,7 +1283,7 @@ bool LoopReroll::DAGRootTracker::validate(ReductionTracker &Reductions) {
         // which while a valid (somewhat arbitrary) micro-optimization, is
         // needed because otherwise isSafeToSpeculativelyExecute returns
         // false on PHI nodes.
-        if (!isa<PHINode>(I) && !isUnorderedLoadStore(I) &&
+        if (!isa<PHINode>(I) && !isSimpleLoadStore(I) &&
             !isSafeToSpeculativelyExecute(I))
           // Intervening instructions cause side effects.
           FutureSideEffects = true;
@@ -1321,10 +1313,10 @@ bool LoopReroll::DAGRootTracker::validate(ReductionTracker &Reductions) {
       // If we've past an instruction from a future iteration that may have
       // side effects, and this instruction might also, then we can't reorder
       // them, and this matching fails. As an exception, we allow the alias
-      // set tracker to handle regular (unordered) load/store dependencies.
-      if (FutureSideEffects && ((!isUnorderedLoadStore(BaseInst) &&
+      // set tracker to handle regular (simple) load/store dependencies.
+      if (FutureSideEffects && ((!isSimpleLoadStore(BaseInst) &&
                                  !isSafeToSpeculativelyExecute(BaseInst)) ||
-                                (!isUnorderedLoadStore(RootInst) &&
+                                (!isSimpleLoadStore(RootInst) &&
                                  !isSafeToSpeculativelyExecute(RootInst)))) {
         DEBUG(dbgs() << "LRR: iteration root match failed at " << *BaseInst <<
                         " vs. " << *RootInst <<
@@ -1420,12 +1412,13 @@ bool LoopReroll::DAGRootTracker::validate(ReductionTracker &Reductions) {
 void LoopReroll::DAGRootTracker::replace(const SCEV *IterCount) {
   BasicBlock *Header = L->getHeader();
   // Remove instructions associated with non-base iterations.
-  for (BasicBlock::reverse_iterator J = Header->rbegin(), JE = Header->rend();
-       J != JE;) {
+  for (BasicBlock::reverse_iterator J = Header->rbegin();
+       J != Header->rend();) {
     unsigned I = Uses[&*J].find_first();
     if (I > 0 && I < IL_All) {
-      DEBUG(dbgs() << "LRR: removing: " << *J << "\n");
-      J++->eraseFromParent();
+      Instruction *D = &*J;
+      DEBUG(dbgs() << "LRR: removing: " << *D << "\n");
+      D->eraseFromParent();
       continue;
     }
 
@@ -1506,8 +1499,8 @@ void LoopReroll::DAGRootTracker::replaceIV(Instruction *Inst,
   { // Limit the lifetime of SCEVExpander.
     const DataLayout &DL = Header->getModule()->getDataLayout();
     SCEVExpander Expander(*SE, DL, "reroll");
-    Value *NewIV = Expander.expandCodeFor(NewIVSCEV, Inst->getType(),
-                                          Header->getFirstNonPHIOrDbg());
+    Value *NewIV =
+        Expander.expandCodeFor(NewIVSCEV, InstIV->getType(), &Header->front());
 
     for (auto &KV : Uses)
       if (KV.second.find_first() == 0)

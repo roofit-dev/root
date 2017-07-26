@@ -10,8 +10,6 @@
 #ifndef LLVM_EXECUTIONENGINE_RUNTIMEDYLDCHECKER_H
 #define LLVM_EXECUTIONENGINE_RUNTIMEDYLDCHECKER_H
 
-#include "llvm/ADT/Optional.h"
-
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -98,10 +96,6 @@ public:
   std::pair<uint64_t, std::string> getSectionAddr(StringRef FileName,
                                                   StringRef SectionName,
                                                   bool LocalAddress);
-
-  /// \brief If there is a section at the given local address, return its load
-  ///        address, otherwise return none.
-  Optional<uint64_t> getSectionLoadAddress(void *LocalAddress) const;
 
 private:
   std::unique_ptr<RuntimeDyldCheckerImpl> Impl;

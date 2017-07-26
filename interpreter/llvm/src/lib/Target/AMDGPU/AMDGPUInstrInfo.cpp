@@ -23,6 +23,7 @@
 using namespace llvm;
 
 #define GET_INSTRINFO_CTOR_DTOR
+#define GET_INSTRINFO_NAMED_OPS
 #define GET_INSTRMAP_INFO
 #include "AMDGPUGenInstrInfo.inc"
 
@@ -30,7 +31,11 @@ using namespace llvm;
 void AMDGPUInstrInfo::anchor() {}
 
 AMDGPUInstrInfo::AMDGPUInstrInfo(const AMDGPUSubtarget &ST)
-  : AMDGPUGenInstrInfo(-1, -1), ST(ST), AMDGPUASI(ST.getAMDGPUAS()) {}
+  : AMDGPUGenInstrInfo(-1, -1), ST(ST) {}
+
+bool AMDGPUInstrInfo::enableClusterLoads() const {
+  return true;
+}
 
 // FIXME: This behaves strangely. If, for example, you have 32 load + stores,
 // the first 16 loads will be interleaved with the stores, and the next 16 will
@@ -52,6 +57,63 @@ bool AMDGPUInstrInfo::shouldScheduleLoadsNear(SDNode *Load0, SDNode *Load1,
 
   // A cacheline is 64 bytes (for global memory).
   return (NumLoads <= 16 && (Offset1 - Offset0) < 64);
+}
+
+int AMDGPUInstrInfo::getIndirectIndexBegin(const MachineFunction &MF) const {
+  const MachineRegisterInfo &MRI = MF.getRegInfo();
+  const MachineFrameInfo *MFI = MF.getFrameInfo();
+  int Offset = -1;
+
+  if (MFI->getNumObjects() == 0) {
+    return -1;
+  }
+
+  if (MRI.livein_empty()) {
+    return 0;
+  }
+
+  const TargetRegisterClass *IndirectRC = getIndirectAddrRegClass();
+  for (MachineRegisterInfo::livein_iterator LI = MRI.livein_begin(),
+                                            LE = MRI.livein_end();
+                                            LI != LE; ++LI) {
+    unsigned Reg = LI->first;
+    if (TargetRegisterInfo::isVirtualRegister(Reg) ||
+        !IndirectRC->contains(Reg))
+      continue;
+
+    unsigned RegIndex;
+    unsigned RegEnd;
+    for (RegIndex = 0, RegEnd = IndirectRC->getNumRegs(); RegIndex != RegEnd;
+                                                          ++RegIndex) {
+      if (IndirectRC->getRegister(RegIndex) == Reg)
+        break;
+    }
+    Offset = std::max(Offset, (int)RegIndex);
+  }
+
+  return Offset + 1;
+}
+
+int AMDGPUInstrInfo::getIndirectIndexEnd(const MachineFunction &MF) const {
+  int Offset = 0;
+  const MachineFrameInfo *MFI = MF.getFrameInfo();
+
+  // Variable sized objects are not supported
+  if (MFI->hasVarSizedObjects()) {
+    return -1;
+  }
+
+  if (MFI->getNumObjects() == 0) {
+    return -1;
+  }
+
+  const AMDGPUSubtarget &ST = MF.getSubtarget<AMDGPUSubtarget>();
+  const AMDGPUFrameLowering *TFL = ST.getFrameLowering();
+
+  unsigned IgnoredFrameReg;
+  Offset = TFL->getFrameIndexReference(MF, -1, IgnoredFrameReg);
+
+  return getIndirectIndexBegin(MF) + Offset;
 }
 
 int AMDGPUInstrInfo::getMaskedMIMGOp(uint16_t Opcode, unsigned Channels) const {
@@ -86,7 +148,6 @@ static SIEncodingFamily subtargetEncodingFamily(const AMDGPUSubtarget &ST) {
   case AMDGPUSubtarget::SEA_ISLANDS:
     return SIEncodingFamily::SI;
   case AMDGPUSubtarget::VOLCANIC_ISLANDS:
-  case AMDGPUSubtarget::GFX9:
     return SIEncodingFamily::VI;
 
   // FIXME: This should never be called for r600 GPUs.

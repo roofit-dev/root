@@ -7,18 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/MC/MCContext.h"
-#include "llvm/MC/MCFragment.h"
 #include "llvm/MC/MCSection.h"
+#include "llvm/MC/MCAssembler.h"
+#include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/Support/Compiler.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include <algorithm>
-#include <utility>
-
 using namespace llvm;
+
+//===----------------------------------------------------------------------===//
+// MCSection
+//===----------------------------------------------------------------------===//
 
 MCSection::MCSection(SectionVariant V, SectionKind K, MCSymbol *Begin)
     : Begin(Begin), BundleGroupBeforeFirstInst(false), HasInstructions(false),
@@ -32,7 +31,8 @@ MCSymbol *MCSection::getEndSymbol(MCContext &Ctx) {
 
 bool MCSection::hasEnded() const { return End && End->isInSection(); }
 
-MCSection::~MCSection() = default;
+MCSection::~MCSection() {
+}
 
 void MCSection::setBundleLockState(BundleLockStateType NewState) {
   if (NewState == NotBundleLocked) {
@@ -87,7 +87,7 @@ MCSection::getSubsectionInsertionPoint(unsigned Subsection) {
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 LLVM_DUMP_METHOD void MCSection::dump() {
-  raw_ostream &OS = errs();
+  raw_ostream &OS = llvm::errs();
 
   OS << "<MCSection";
   OS << " Fragments:[\n      ";
@@ -99,3 +99,11 @@ LLVM_DUMP_METHOD void MCSection::dump() {
   OS << "]>";
 }
 #endif
+
+MCSection::iterator MCSection::begin() { return Fragments.begin(); }
+
+MCSection::iterator MCSection::end() { return Fragments.end(); }
+
+MCSection::reverse_iterator MCSection::rbegin() { return Fragments.rbegin(); }
+
+MCSection::reverse_iterator MCSection::rend() { return Fragments.rend(); }

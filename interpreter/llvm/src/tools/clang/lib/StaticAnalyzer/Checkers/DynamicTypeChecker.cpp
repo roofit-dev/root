@@ -49,10 +49,10 @@ class DynamicTypeChecker : public Checker<check::PostStmt<ImplicitCastExpr>> {
       ID.AddPointer(Reg);
     }
 
-    std::shared_ptr<PathDiagnosticPiece> VisitNode(const ExplodedNode *N,
-                                                   const ExplodedNode *PrevN,
-                                                   BugReporterContext &BRC,
-                                                   BugReport &BR) override;
+    PathDiagnosticPiece *VisitNode(const ExplodedNode *N,
+                                   const ExplodedNode *PrevN,
+                                   BugReporterContext &BRC,
+                                   BugReport &BR) override;
 
   private:
     // The tracked region.
@@ -91,11 +91,9 @@ void DynamicTypeChecker::reportTypeError(QualType DynamicType,
   C.emitReport(std::move(R));
 }
 
-std::shared_ptr<PathDiagnosticPiece>
-DynamicTypeChecker::DynamicTypeBugVisitor::VisitNode(const ExplodedNode *N,
-                                                     const ExplodedNode *PrevN,
-                                                     BugReporterContext &BRC,
-                                                     BugReport &BR) {
+PathDiagnosticPiece *DynamicTypeChecker::DynamicTypeBugVisitor::VisitNode(
+    const ExplodedNode *N, const ExplodedNode *PrevN, BugReporterContext &BRC,
+    BugReport &BR) {
   ProgramStateRef State = N->getState();
   ProgramStateRef StatePrev = PrevN->getState();
 
@@ -109,7 +107,12 @@ DynamicTypeChecker::DynamicTypeBugVisitor::VisitNode(const ExplodedNode *N,
     return nullptr;
 
   // Retrieve the associated statement.
-  const Stmt *S = PathDiagnosticLocation::getStmt(N);
+  const Stmt *S = nullptr;
+  ProgramPoint ProgLoc = N->getLocation();
+  if (Optional<StmtPoint> SP = ProgLoc.getAs<StmtPoint>()) {
+    S = SP->getStmt();
+  }
+
   if (!S)
     return nullptr;
 
@@ -145,8 +148,7 @@ DynamicTypeChecker::DynamicTypeBugVisitor::VisitNode(const ExplodedNode *N,
   // Generate the extra diagnostic.
   PathDiagnosticLocation Pos(S, BRC.getSourceManager(),
                              N->getLocationContext());
-  return std::make_shared<PathDiagnosticEventPiece>(Pos, OS.str(), true,
-                                                    nullptr);
+  return new PathDiagnosticEventPiece(Pos, OS.str(), true, nullptr);
 }
 
 static bool hasDefinition(const ObjCObjectPointerType *ObjPtr) {

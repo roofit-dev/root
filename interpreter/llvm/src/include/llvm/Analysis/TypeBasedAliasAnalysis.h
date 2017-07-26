@@ -27,13 +27,13 @@ class TypeBasedAAResult : public AAResultBase<TypeBasedAAResult> {
   friend AAResultBase<TypeBasedAAResult>;
 
 public:
+  explicit TypeBasedAAResult() {}
+  TypeBasedAAResult(TypeBasedAAResult &&Arg) : AAResultBase(std::move(Arg)) {}
+
   /// Handle invalidation events from the new pass manager.
   ///
   /// By definition, this result is stateless and so remains valid.
-  bool invalidate(Function &, const PreservedAnalyses &,
-                  FunctionAnalysisManager::Invalidator &) {
-    return false;
-  }
+  bool invalidate(Function &, const PreservedAnalyses &) { return false; }
 
   AliasResult alias(const MemoryLocation &LocA, const MemoryLocation &LocB);
   bool pointsToConstantMemory(const MemoryLocation &Loc, bool OrLocal);
@@ -50,12 +50,12 @@ private:
 /// Analysis pass providing a never-invalidated alias analysis result.
 class TypeBasedAA : public AnalysisInfoMixin<TypeBasedAA> {
   friend AnalysisInfoMixin<TypeBasedAA>;
-  static AnalysisKey Key;
+  static char PassID;
 
 public:
   typedef TypeBasedAAResult Result;
 
-  TypeBasedAAResult run(Function &F, FunctionAnalysisManager &AM);
+  TypeBasedAAResult run(Function &F, AnalysisManager<Function> &AM);
 };
 
 /// Legacy wrapper pass to provide the TypeBasedAAResult object.

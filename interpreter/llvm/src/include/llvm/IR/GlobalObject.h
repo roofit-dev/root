@@ -15,19 +15,18 @@
 #ifndef LLVM_IR_GLOBALOBJECT_H
 #define LLVM_IR_GLOBALOBJECT_H
 
-#include "llvm/ADT/StringRef.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
-#include "llvm/IR/Value.h"
-#include <string>
-#include <utility>
 
 namespace llvm {
-
 class Comdat;
 class MDNode;
 class Metadata;
+class Module;
 
 class GlobalObject : public GlobalValue {
+  GlobalObject(const GlobalObject &) = delete;
+
 protected:
   GlobalObject(Type *Ty, ValueTy VTy, Use *Ops, unsigned NumOps,
                LinkageTypes Linkage, const Twine &Name,
@@ -37,11 +36,11 @@ protected:
     setGlobalValueSubClassData(0);
   }
 
+  std::string Section;     // Section to emit this into, empty means default
   Comdat *ObjComdat;
   enum {
     LastAlignmentBit = 4,
     HasMetadataHashEntryBit,
-    HasSectionHashEntryBit,
 
     GlobalObjectBits,
   };
@@ -54,8 +53,6 @@ private:
   static const unsigned GlobalObjectMask = (1 << GlobalObjectBits) - 1;
 
 public:
-  GlobalObject(const GlobalObject &) = delete;
-
   unsigned getAlignment() const {
     unsigned Data = getGlobalValueSubClassData();
     unsigned AlignmentData = Data & AlignmentMask;
@@ -63,38 +60,11 @@ public:
   }
   void setAlignment(unsigned Align);
 
-  unsigned getGlobalObjectSubClassData() const {
-    unsigned ValueData = getGlobalValueSubClassData();
-    return ValueData >> GlobalObjectBits;
-  }
+  unsigned getGlobalObjectSubClassData() const;
+  void setGlobalObjectSubClassData(unsigned Val);
 
-  void setGlobalObjectSubClassData(unsigned Val) {
-    unsigned OldData = getGlobalValueSubClassData();
-    setGlobalValueSubClassData((OldData & GlobalObjectMask) |
-                               (Val << GlobalObjectBits));
-    assert(getGlobalObjectSubClassData() == Val && "representation error");
-  }
-
-  /// Check if this global has a custom object file section.
-  ///
-  /// This is more efficient than calling getSection() and checking for an empty
-  /// string.
-  bool hasSection() const {
-    return getGlobalValueSubClassData() & (1 << HasSectionHashEntryBit);
-  }
-
-  /// Get the custom section of this global if it has one.
-  ///
-  /// If this global does not have a custom section, this will be empty and the
-  /// default object file section (.text, .data, etc) will be used.
-  StringRef getSection() const {
-    return hasSection() ? getSectionImpl() : StringRef();
-  }
-
-  /// Change the section for this global.
-  ///
-  /// Setting the section to the empty string tells LLVM to choose an
-  /// appropriate default object file section.
+  bool hasSection() const { return !getSection().empty(); }
+  StringRef getSection() const { return Section; }
   void setSection(StringRef S);
 
   bool hasComdat() const { return getComdat() != nullptr; }
@@ -150,10 +120,8 @@ public:
 
   void addTypeMetadata(unsigned Offset, Metadata *TypeID);
 
-protected:
-  void copyAttributesFrom(const GlobalObject *Src);
+  void copyAttributesFrom(const GlobalValue *Src) override;
 
-public:
   // Methods for support type inquiry through isa, cast, and dyn_cast:
   static inline bool classof(const Value *V) {
     return V->getValueID() == Value::FunctionVal ||
@@ -163,22 +131,16 @@ public:
   void clearMetadata();
 
 private:
-  void setGlobalObjectFlag(unsigned Bit, bool Val) {
-    unsigned Mask = 1 << Bit;
-    setGlobalValueSubClassData((~Mask & getGlobalValueSubClassData()) |
-                               (Val ? Mask : 0u));
-  }
-
   bool hasMetadataHashEntry() const {
     return getGlobalValueSubClassData() & (1 << HasMetadataHashEntryBit);
   }
   void setHasMetadataHashEntry(bool HasEntry) {
-    setGlobalObjectFlag(HasMetadataHashEntryBit, HasEntry);
+    unsigned Mask = 1 << HasMetadataHashEntryBit;
+    setGlobalValueSubClassData((~Mask & getGlobalValueSubClassData()) |
+                               (HasEntry ? Mask : 0u));
   }
-
-  StringRef getSectionImpl() const;
 };
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_IR_GLOBALOBJECT_H
+#endif

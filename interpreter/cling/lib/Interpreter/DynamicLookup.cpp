@@ -96,8 +96,9 @@ namespace {
 
           if (Node->hasExplicitTemplateArgs())
             TemplateSpecializationType::PrintTemplateArgumentList(OS,
-                                                     Node->template_arguments(),
-                                                                  m_Policy);
+                                                        Node->getTemplateArgs(),
+                                                     Node->getNumTemplateArgs(),
+                                                                      m_Policy);
           if (Node->hasExplicitTemplateArgs())
             assert((Node->getTemplateArgs() || Node->getNumTemplateArgs()) && \
                    "There shouldn't be template paramlist");
@@ -190,8 +191,6 @@ namespace cling {
     m_Sema->LookupQualifiedName(R, NSD);
     m_LifetimeHandlerDecl = R.getAsSingle<CXXRecordDecl>();
     assert(m_LifetimeHandlerDecl && "LifetimeHandler could not be found.");
-    m_LifetimeHandlerDecl = m_LifetimeHandlerDecl->getDefinition();
-    assert(m_LifetimeHandlerDecl && "LifetimeHandler is not defined");
 
     // Find the LifetimeHandler::getMemory declaration
     R.clear();
@@ -491,7 +490,8 @@ namespace cling {
                                        Inits);
         m_Sema->AddInitializerToDecl(HandlerInstance,
                                      InitExprResult.get(),
-                                     /*DirectInit*/ true);
+                                     /*DirectInit*/ true,
+                                     /*TypeMayContainAuto*/ false);
 
         // 2.5 Register the instance in the enclosing context
         CuredDecl->getDeclContext()->addDecl(HandlerInstance);
@@ -626,20 +626,6 @@ namespace cling {
           return ASTNodeInfo(Node, /*needs eval*/false);
         }
     }
-
-    return ASTNodeInfo(Node, IsArtificiallyDependent(Node));
-  }
-
-
-  ASTNodeInfo
-  EvaluateTSynthesizer::VisitArraySubscriptExpr(ArraySubscriptExpr* Node) {
-    ASTNodeInfo rhs = Visit(Node->getRHS());
-    ASTNodeInfo lhs;
-
-    lhs = Visit(Node->getLHS());
-
-    assert((lhs.hasSingleNode() || rhs.hasSingleNode()) &&
-           "1:N replacements are not implemented yet!");
 
     return ASTNodeInfo(Node, IsArtificiallyDependent(Node));
   }
@@ -797,7 +783,8 @@ namespace cling {
                                        //valid!
                                        // TODO: Propose a patch in clang
                                        m_NoRange,
-                                       Initializer.get()
+                                       Initializer.get(),
+                                       /*TypeMayContainAuto*/false
                                        ).get();
     return Result;
   }

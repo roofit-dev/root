@@ -122,7 +122,7 @@ DependenceAnalysis::run(Function &F, FunctionAnalysisManager &FAM) {
   return DependenceInfo(&F, &AA, &SE, &LI);
 }
 
-AnalysisKey DependenceAnalysis::Key;
+char DependenceAnalysis::PassID;
 
 INITIALIZE_PASS_BEGIN(DependenceAnalysisWrapperPass, "da",
                       "Dependence Analysis", true, true)
@@ -385,9 +385,9 @@ void DependenceInfo::Constraint::setAny(ScalarEvolution *NewSE) {
   Kind = Any;
 }
 
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+
 // For debugging purposes. Dumps the constraint out to OS.
-LLVM_DUMP_METHOD void DependenceInfo::Constraint::dump(raw_ostream &OS) const {
+void DependenceInfo::Constraint::dump(raw_ostream &OS) const {
   if (isEmpty())
     OS << " Empty\n";
   else if (isAny())
@@ -403,7 +403,6 @@ LLVM_DUMP_METHOD void DependenceInfo::Constraint::dump(raw_ostream &OS) const {
   else
     llvm_unreachable("unknown constraint type in Constraint::dump");
 }
-#endif
 
 
 // Updates X with the intersection

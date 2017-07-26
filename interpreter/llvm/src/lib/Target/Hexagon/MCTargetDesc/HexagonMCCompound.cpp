@@ -1,4 +1,5 @@
-//=== HexagonMCCompound.cpp - Hexagon Compound checker  -------------------===//
+
+//=== HexagonMCCompound.cpp - Hexagon Compound checker  -------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -10,18 +11,18 @@
 // This file is looks at a packet and tries to form compound insns
 //
 //===----------------------------------------------------------------------===//
-
 #include "Hexagon.h"
 #include "MCTargetDesc/HexagonBaseInfo.h"
-#include "MCTargetDesc/HexagonMCInstrInfo.h"
 #include "MCTargetDesc/HexagonMCShuffler.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCSectionELF.h"
+#include "llvm/MC/MCStreamer.h"
+#include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cassert>
-#include <cstdint>
 
 using namespace llvm;
 using namespace Hexagon;
@@ -78,7 +79,8 @@ static const unsigned cmpgtn1BitOpcode[8] = {
 };
 
 // enum HexagonII::CompoundGroup
-static unsigned getCompoundCandidateGroup(MCInst const &MI, bool IsExtended) {
+namespace {
+unsigned getCompoundCandidateGroup(MCInst const &MI, bool IsExtended) {
   unsigned DstReg, SrcReg, Src1Reg, Src2Reg;
 
   switch (MI.getOpcode()) {
@@ -171,9 +173,11 @@ static unsigned getCompoundCandidateGroup(MCInst const &MI, bool IsExtended) {
 
   return HexagonII::HCG_None;
 }
+}
 
 /// getCompoundOp - Return the index from 0-7 into the above opcode lists.
-static unsigned getCompoundOp(MCInst const &HMCI) {
+namespace {
+unsigned getCompoundOp(MCInst const &HMCI) {
   const MCOperand &Predicate = HMCI.getOperand(0);
   unsigned PredReg = Predicate.getReg();
 
@@ -194,10 +198,11 @@ static unsigned getCompoundOp(MCInst const &HMCI) {
     return (PredReg == Hexagon::P0) ? tp0_jump_t : tp1_jump_t;
   }
 }
+}
 
-static MCInst *getCompoundInsn(MCContext &Context, MCInst const &L,
-                               MCInst const &R) {
-  MCInst *CompoundInsn = nullptr;
+namespace {
+MCInst *getCompoundInsn(MCContext &Context, MCInst const &L, MCInst const &R) {
+  MCInst *CompoundInsn = 0;
   unsigned compoundOpcode;
   MCOperand Rs, Rt;
   int64_t Value;
@@ -285,7 +290,8 @@ static MCInst *getCompoundInsn(MCContext &Context, MCInst const &L,
     CompoundInsn = new (Context) MCInst;
     CompoundInsn->setOpcode(compoundOpcode);
     CompoundInsn->addOperand(Rs);
-    CompoundInsn->addOperand(L.getOperand(2));
+    if (Value != -1)
+      CompoundInsn->addOperand(L.getOperand(2));
     CompoundInsn->addOperand(R.getOperand(1));
     break;
 
@@ -303,7 +309,8 @@ static MCInst *getCompoundInsn(MCContext &Context, MCInst const &L,
     CompoundInsn = new (Context) MCInst;
     CompoundInsn->setOpcode(compoundOpcode);
     CompoundInsn->addOperand(Rs);
-    CompoundInsn->addOperand(L.getOperand(2));
+    if (Value != -1)
+      CompoundInsn->addOperand(L.getOperand(2));
     CompoundInsn->addOperand(R.getOperand(1));
     break;
 
@@ -331,10 +338,12 @@ static MCInst *getCompoundInsn(MCContext &Context, MCInst const &L,
 
   return CompoundInsn;
 }
+}
 
 /// Non-Symmetrical. See if these two instructions are fit for compound pair.
-static bool isOrderedCompoundPair(MCInst const &MIa, bool IsExtendedA,
-                                  MCInst const &MIb, bool IsExtendedB) {
+namespace {
+bool isOrderedCompoundPair(MCInst const &MIa, bool IsExtendedA,
+                           MCInst const &MIb, bool IsExtendedB) {
   unsigned MIaG = getCompoundCandidateGroup(MIa, IsExtendedA);
   unsigned MIbG = getCompoundCandidateGroup(MIb, IsExtendedB);
   // We have two candidates - check that this is the same register
@@ -346,9 +355,10 @@ static bool isOrderedCompoundPair(MCInst const &MIa, bool IsExtendedA,
   return ((MIaG == HexagonII::HCG_A && MIbG == HexagonII::HCG_B) &&
           (MIa.getOperand(0).getReg() == MIb.getOperand(0).getReg()));
 }
+}
 
-static bool lookForCompound(MCInstrInfo const &MCII, MCContext &Context,
-                            MCInst &MCI) {
+namespace {
+bool lookForCompound(MCInstrInfo const &MCII, MCContext &Context, MCInst &MCI) {
   assert(HexagonMCInstrInfo::isBundle(MCI));
   bool JExtended = false;
   for (MCInst::iterator J =
@@ -359,7 +369,8 @@ static bool lookForCompound(MCInstrInfo const &MCII, MCContext &Context,
       JExtended = true;
       continue;
     }
-    if (HexagonMCInstrInfo::getType(MCII, *JumpInst) == HexagonII::TypeJ) {
+    if (llvm::HexagonMCInstrInfo::getType(MCII, *JumpInst) ==
+        HexagonII::TypeJ) {
       // Try to pair with another insn (B)undled with jump.
       bool BExtended = false;
       for (MCInst::iterator B =
@@ -392,12 +403,13 @@ static bool lookForCompound(MCInstrInfo const &MCII, MCContext &Context,
   }
   return false;
 }
+}
 
 /// tryCompound - Given a bundle check for compound insns when one
 /// is found update the contents fo the bundle with the compound insn.
 /// If a compound instruction is found then the bundle will have one
 /// additional slot.
-void HexagonMCInstrInfo::tryCompound(MCInstrInfo const &MCII, MCSubtargetInfo const &STI,
+void HexagonMCInstrInfo::tryCompound(MCInstrInfo const &MCII,
                                      MCContext &Context, MCInst &MCI) {
   assert(HexagonMCInstrInfo::isBundle(MCI) &&
          "Non-Bundle where Bundle expected");
@@ -406,24 +418,10 @@ void HexagonMCInstrInfo::tryCompound(MCInstrInfo const &MCII, MCSubtargetInfo co
   if (MCI.size() < 2)
     return;
 
-  bool StartedValid = llvm::HexagonMCShuffle(Context, false, MCII, STI, MCI);
-
-  // Create a vector, needed to keep the order of jump instructions.
-  MCInst CheckList(MCI);
-
   // Look for compounds until none are found, only update the bundle when
   // a compound is found.
-  while (lookForCompound(MCII, Context, CheckList)) {
-    // Keep the original bundle around in case the shuffle fails.
-    MCInst OriginalBundle(MCI);
+  while (lookForCompound(MCII, Context, MCI))
+    ;
 
-    // Need to update the bundle.
-    MCI = CheckList;
-
-    if (StartedValid &&
-        !llvm::HexagonMCShuffle(Context, false, MCII, STI, MCI)) {
-       DEBUG(dbgs() << "Found ERROR\n");
-      MCI = OriginalBundle;
-    }
-  }
+  return;
 }

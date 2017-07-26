@@ -12,12 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Frontend/Utils.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/FileSystemStatCache.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/SourceManager.h"
-#include "clang/Frontend/Utils.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Lex/PTHManager.h"
 #include "clang/Lex/Preprocessor.h"
@@ -28,6 +28,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/OnDiskHashTable.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/raw_ostream.h"
 
 // FIXME: put this somewhere else?
 #ifndef S_ISDIR
@@ -58,30 +59,23 @@ public:
 
 
 class PTHEntryKeyVariant {
-  union {
-    const FileEntry *FE;
-    // FIXME: Use "StringRef Path;" when MSVC 2013 is dropped.
-    const char *PathPtr;
-  };
-  size_t PathSize;
+  union { const FileEntry* FE; const char* Path; };
   enum { IsFE = 0x1, IsDE = 0x2, IsNoExist = 0x0 } Kind;
   FileData *Data;
 
 public:
   PTHEntryKeyVariant(const FileEntry *fe) : FE(fe), Kind(IsFE), Data(nullptr) {}
 
-  PTHEntryKeyVariant(FileData *Data, StringRef Path)
-      : PathPtr(Path.data()), PathSize(Path.size()), Kind(IsDE),
-        Data(new FileData(*Data)) {}
+  PTHEntryKeyVariant(FileData *Data, const char *path)
+      : Path(path), Kind(IsDE), Data(new FileData(*Data)) {}
 
-  explicit PTHEntryKeyVariant(StringRef Path)
-      : PathPtr(Path.data()), PathSize(Path.size()), Kind(IsNoExist),
-        Data(nullptr) {}
+  explicit PTHEntryKeyVariant(const char *path)
+      : Path(path), Kind(IsNoExist), Data(nullptr) {}
 
   bool isFile() const { return Kind == IsFE; }
 
   StringRef getString() const {
-    return Kind == IsFE ? FE->getName() : StringRef(PathPtr, PathSize);
+    return Kind == IsFE ? FE->getName() : Path;
   }
 
   unsigned getKind() const { return (unsigned) Kind; }
@@ -189,14 +183,14 @@ class PTHWriter {
   typedef llvm::DenseMap<const IdentifierInfo*,uint32_t> IDMap;
   typedef llvm::StringMap<OffsetOpt, llvm::BumpPtrAllocator> CachedStrsTy;
 
+  IDMap IM;
   raw_pwrite_stream &Out;
   Preprocessor& PP;
-  IDMap IM;
-  std::vector<llvm::StringMapEntry<OffsetOpt>*> StrEntries;
+  uint32_t idcount;
   PTHMap PM;
   CachedStrsTy CachedStrs;
-  uint32_t idcount;
   Offset CurStrOffset;
+  std::vector<llvm::StringMapEntry<OffsetOpt>*> StrEntries;
 
   //// Get the persistent id for the given IdentifierInfo*.
   uint32_t ResolveID(const IdentifierInfo* II);
@@ -556,7 +550,7 @@ public:
   StatListener(PTHMap &pm) : PM(pm) {}
   ~StatListener() override {}
 
-  LookupResult getStat(StringRef Path, FileData &Data, bool isFile,
+  LookupResult getStat(const char *Path, FileData &Data, bool isFile,
                        std::unique_ptr<vfs::File> *F,
                        vfs::FileSystem &FS) override {
     LookupResult Result = statChained(Path, Data, isFile, F, FS);

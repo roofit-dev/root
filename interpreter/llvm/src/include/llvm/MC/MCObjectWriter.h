@@ -1,4 +1,4 @@
-//===- llvm/MC/MCObjectWriter.h - Object File Writer Interface --*- C++ -*-===//
+//===-- llvm/MC/MCObjectWriter.h - Object File Writer Interface -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,15 +11,13 @@
 #define LLVM_MC_MCOBJECTWRITER_H
 
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Endian.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/DataTypes.h"
 #include "llvm/Support/EndianStream.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
-#include <cstdint>
 
 namespace llvm {
-
 class MCAsmLayout;
 class MCAssembler;
 class MCFixup;
@@ -40,12 +38,15 @@ class MCValue;
 /// The object writer also contains a number of helper methods for writing
 /// binary data to the output stream.
 class MCObjectWriter {
+  MCObjectWriter(const MCObjectWriter &) = delete;
+  void operator=(const MCObjectWriter &) = delete;
+
   raw_pwrite_stream *OS;
 
 protected:
   unsigned IsLittleEndian : 1;
 
-  // Can only create subclasses.
+protected: // Can only create subclasses.
   MCObjectWriter(raw_pwrite_stream &OS, bool IsLittleEndian)
       : OS(&OS), IsLittleEndian(IsLittleEndian) {}
 
@@ -54,8 +55,6 @@ protected:
   }
 
 public:
-  MCObjectWriter(const MCObjectWriter &) = delete;
-  MCObjectWriter &operator=(const MCObjectWriter &) = delete;
   virtual ~MCObjectWriter();
 
   /// lifetime management
@@ -108,6 +107,11 @@ public:
                                                       const MCFragment &FB,
                                                       bool InSet,
                                                       bool IsPCRel) const;
+
+  /// True if this symbol (which is a variable) is weak. This is not
+  /// just STB_WEAK, but more generally whether or not we can evaluate
+  /// past it.
+  virtual bool isWeak(const MCSymbol &Sym) const;
 
   /// Write the object file.
   ///
@@ -195,6 +199,6 @@ public:
   /// @}
 };
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_MC_MCOBJECTWRITER_H
+#endif

@@ -16,7 +16,6 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
@@ -68,7 +67,6 @@ namespace {
     }
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
-      AU.addRequired<TargetLibraryInfoWrapperPass>();
       AU.setPreservesAll();
     }
 
@@ -112,15 +110,9 @@ namespace {
       }
 
       // Rename all functions
-      const TargetLibraryInfo &TLI =
-          getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
       for (auto &F : M) {
         StringRef Name = F.getName();
-        LibFunc Tmp;
-        // Leave library functions alone because their presence or absence could
-        // affect the behavior of other passes.
-        if (Name.startswith("llvm.") || (!Name.empty() && Name[0] == 1) ||
-            TLI.getLibFunc(F, Tmp))
+        if (Name.startswith("llvm.") || (!Name.empty() && Name[0] == 1))
           continue;
 
         F.setName(renamer.newName());
@@ -147,11 +139,8 @@ namespace {
 }
 
 char MetaRenamer::ID = 0;
-INITIALIZE_PASS_BEGIN(MetaRenamer, "metarenamer",
-                      "Assign new names to everything", false, false)
-INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
-INITIALIZE_PASS_END(MetaRenamer, "metarenamer",
-                    "Assign new names to everything", false, false)
+INITIALIZE_PASS(MetaRenamer, "metarenamer", 
+                "Assign new names to everything", false, false)
 //===----------------------------------------------------------------------===//
 //
 // MetaRenamer - Rename everything with metasyntactic names.

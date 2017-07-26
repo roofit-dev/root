@@ -25,7 +25,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/Inliner.h"
+#include "llvm/Transforms/IPO/InlinerPass.h"
 
 using namespace llvm;
 
@@ -38,17 +38,21 @@ namespace {
 /// The common implementation of the inlining logic is shared between this
 /// inliner pass and the always inliner pass. The two passes use different cost
 /// analyses to determine when to inline.
-class SimpleInliner : public LegacyInlinerBase {
-
-  InlineParams Params;
+class SimpleInliner : public Inliner {
+  // This field is populated based on one of the following:
+  //  * optimization or size-optimization levels,
+  //  * the --inline-threshold flag, or
+  //  * a user specified value.
+  int DefaultThreshold;
 
 public:
-  SimpleInliner() : LegacyInlinerBase(ID), Params(llvm::getInlineParams()) {
+  SimpleInliner()
+      : Inliner(ID), DefaultThreshold(llvm::getDefaultInlineThreshold()) {
     initializeSimpleInlinerPass(*PassRegistry::getPassRegistry());
   }
 
-  explicit SimpleInliner(InlineParams Params)
-      : LegacyInlinerBase(ID), Params(std::move(Params)) {
+  explicit SimpleInliner(int Threshold)
+      : Inliner(ID), DefaultThreshold(Threshold) {
     initializeSimpleInlinerPass(*PassRegistry::getPassRegistry());
   }
 
@@ -57,12 +61,7 @@ public:
   InlineCost getInlineCost(CallSite CS) override {
     Function *Callee = CS.getCalledFunction();
     TargetTransformInfo &TTI = TTIWP->getTTI(*Callee);
-    std::function<AssumptionCache &(Function &)> GetAssumptionCache =
-        [&](Function &F) -> AssumptionCache & {
-      return ACT->getAssumptionCache(F);
-    };
-    return llvm::getInlineCost(CS, Params, TTI, GetAssumptionCache,
-                               /*GetBFI=*/None, PSI);
+    return llvm::getInlineCost(CS, DefaultThreshold, TTI, ACT, PSI);
   }
 
   bool runOnSCC(CallGraphSCC &SCC) override;
@@ -70,47 +69,39 @@ public:
 
 private:
   TargetTransformInfoWrapperPass *TTIWP;
-
 };
 
 } // end anonymous namespace
 
 char SimpleInliner::ID = 0;
-INITIALIZE_PASS_BEGIN(SimpleInliner, "inline", "Function Integration/Inlining",
-                      false, false)
+INITIALIZE_PASS_BEGIN(SimpleInliner, "inline",
+                "Function Integration/Inlining", false, false)
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
 INITIALIZE_PASS_DEPENDENCY(CallGraphWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(ProfileSummaryInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
-INITIALIZE_PASS_END(SimpleInliner, "inline", "Function Integration/Inlining",
-                    false, false)
+INITIALIZE_PASS_END(SimpleInliner, "inline",
+                "Function Integration/Inlining", false, false)
 
 Pass *llvm::createFunctionInliningPass() { return new SimpleInliner(); }
 
 Pass *llvm::createFunctionInliningPass(int Threshold) {
-  return new SimpleInliner(llvm::getInlineParams(Threshold));
+  return new SimpleInliner(Threshold);
 }
 
 Pass *llvm::createFunctionInliningPass(unsigned OptLevel,
-                                       unsigned SizeOptLevel,
-                                       bool DisableInlineHotCallSite) {
-  auto Param = llvm::getInlineParams(OptLevel, SizeOptLevel);
-  if (DisableInlineHotCallSite)
-    Param.HotCallSiteThreshold = 0;
-  return new SimpleInliner(Param);
-}
-
-Pass *llvm::createFunctionInliningPass(InlineParams &Params) {
-  return new SimpleInliner(Params);
+                                       unsigned SizeOptLevel) {
+  return new SimpleInliner(
+      llvm::computeThresholdFromOptLevels(OptLevel, SizeOptLevel));
 }
 
 bool SimpleInliner::runOnSCC(CallGraphSCC &SCC) {
   TTIWP = &getAnalysis<TargetTransformInfoWrapperPass>();
-  return LegacyInlinerBase::runOnSCC(SCC);
+  return Inliner::runOnSCC(SCC);
 }
 
 void SimpleInliner::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetTransformInfoWrapperPass>();
-  LegacyInlinerBase::getAnalysisUsage(AU);
+  Inliner::getAnalysisUsage(AU);
 }

@@ -19,7 +19,6 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/DataTypes.h" // Needed for uint64_t on Windows.
 #include <random>
-#include <system_error>
 
 namespace llvm {
 class StringRef;
@@ -31,21 +30,9 @@ class StringRef;
 /// Module::createRNG to create a new RNG instance for use with that
 /// module.
 class RandomNumberGenerator {
-
-  // 64-bit Mersenne Twister by Matsumoto and Nishimura, 2000
-  // http://en.cppreference.com/w/cpp/numeric/random/mersenne_twister_engine
-  // This RNG is deterministically portable across C++11
-  // implementations.
-  using generator_type = std::mt19937_64;
-
 public:
-  using result_type = generator_type::result_type;
-
   /// Returns a random number in the range [0, Max).
-  result_type operator()();
-
-  static constexpr result_type min() { return generator_type::min(); }
-  static constexpr result_type max() { return generator_type::max(); }
+  uint_fast64_t operator()();
 
 private:
   /// Seeds and salts the underlying RNG engine.
@@ -54,7 +41,11 @@ private:
   /// Module::createRNG to create a new RNG salted with the Module ID.
   RandomNumberGenerator(StringRef Salt);
 
-  generator_type Generator;
+  // 64-bit Mersenne Twister by Matsumoto and Nishimura, 2000
+  // http://en.cppreference.com/w/cpp/numeric/random/mersenne_twister_engine
+  // This RNG is deterministically portable across C++11
+  // implementations.
+  std::mt19937_64 Generator;
 
   // Noncopyable.
   RandomNumberGenerator(const RandomNumberGenerator &other) = delete;
@@ -62,9 +53,6 @@ private:
 
   friend class Module;
 };
-
-// Get random vector of specified size
-std::error_code getRandomBytes(void *Buffer, size_t Size);
 }
 
 #endif

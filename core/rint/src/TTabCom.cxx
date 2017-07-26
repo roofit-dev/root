@@ -144,8 +144,7 @@
 #include "Riostream.h"
 #include "Rstrstream.h"
 
-#define BUF_SIZE 1024 // must be smaller than/equal to fgLineBufSize in Getline.cxx and
-                      // lineBufSize in cppcompleter.py
+#define BUF_SIZE    1024        // must match value in C_Getline.c (for bounds checking)
 #define IfDebug(x)  if(gDebug==TTabCom::kDebug) x
 
 #ifdef R__WIN32
@@ -155,7 +154,7 @@ const char kDelim = ':';
 #endif
 
 
-ClassImp(TTabCom);
+ClassImp(TTabCom)
 // ----------------------------------------------------------------------------
 //
 //             global/file scope variables

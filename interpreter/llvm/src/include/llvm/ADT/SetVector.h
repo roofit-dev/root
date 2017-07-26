@@ -20,13 +20,11 @@
 #ifndef LLVM_ADT_SETVECTOR_H
 #define LLVM_ADT_SETVECTOR_H
 
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Compiler.h"
+#include "llvm/ADT/SmallSet.h"
 #include <algorithm>
 #include <cassert>
-#include <iterator>
+#include <utility>
 #include <vector>
 
 namespace llvm {
@@ -53,7 +51,7 @@ public:
   typedef typename vector_type::size_type size_type;
 
   /// \brief Construct an empty SetVector
-  SetVector() = default;
+  SetVector() {}
 
   /// \brief Initialize a SetVector with a range of elements
   template<typename It>
@@ -62,12 +60,6 @@ public:
   }
 
   ArrayRef<T> getArrayRef() const { return vector_; }
-
-  /// Clear the SetVector and return the underlying vector.
-  Vector takeVector() {
-    set_.clear();
-    return std::move(vector_);
-  }
 
   /// \brief Determine if the SetVector is empty or not.
   bool empty() const {
@@ -119,12 +111,6 @@ public:
     return vector_.rend();
   }
 
-  /// \brief Return the first element of the SetVector.
-  const T &front() const {
-    assert(!empty() && "Cannot call front() on empty SetVector!");
-    return vector_.front();
-  }
-
   /// \brief Return the last element of the SetVector.
   const T &back() const {
     assert(!empty() && "Cannot call back() on empty SetVector!");
@@ -157,7 +143,8 @@ public:
   /// \brief Remove an item from the set vector.
   bool remove(const value_type& X) {
     if (set_.erase(X)) {
-      typename vector_type::iterator I = find(vector_, X);
+      typename vector_type::iterator I =
+        std::find(vector_.begin(), vector_.end(), X);
       assert(I != vector_.end() && "Corrupted SetVector instances!");
       vector_.erase(I);
       return true;
@@ -189,7 +176,7 @@ public:
   /// write it:
   ///
   /// \code
-  ///   V.erase(remove_if(V, P), V.end());
+  ///   V.erase(std::remove_if(V.begin(), V.end(), P), V.end());
   /// \endcode
   ///
   /// However, SetVector doesn't expose non-const iterators, making any
@@ -198,8 +185,9 @@ public:
   /// \returns true if any element is removed.
   template <typename UnaryPredicate>
   bool remove_if(UnaryPredicate P) {
-    typename vector_type::iterator I =
-        llvm::remove_if(vector_, TestAndEraseFromSet<UnaryPredicate>(P, set_));
+    typename vector_type::iterator I
+      = std::remove_if(vector_.begin(), vector_.end(),
+                       TestAndEraseFromSet<UnaryPredicate>(P, set_));
     if (I == vector_.end())
       return false;
     vector_.erase(I, vector_.end());
@@ -225,7 +213,7 @@ public:
     vector_.pop_back();
   }
 
-  LLVM_NODISCARD T pop_back_val() {
+  T LLVM_ATTRIBUTE_UNUSED_RESULT pop_back_val() {
     T Ret = back();
     pop_back();
     return Ret;
@@ -238,7 +226,7 @@ public:
   bool operator!=(const SetVector &that) const {
     return vector_ != that.vector_;
   }
-
+  
   /// \brief Compute This := This u S, return whether 'This' changed.
   /// TODO: We should be able to use set_union from SetOperations.h, but
   ///       SetVector interface is inconsistent with DenseSet.
@@ -295,10 +283,9 @@ private:
 /// \brief A SetVector that performs no allocations if smaller than
 /// a certain size.
 template <typename T, unsigned N>
-class SmallSetVector
-    : public SetVector<T, SmallVector<T, N>, SmallDenseSet<T, N>> {
+class SmallSetVector : public SetVector<T, SmallVector<T, N>, SmallSet<T, N> > {
 public:
-  SmallSetVector() = default;
+  SmallSetVector() {}
 
   /// \brief Initialize a SmallSetVector with a range of elements
   template<typename It>
@@ -307,6 +294,7 @@ public:
   }
 };
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_ADT_SETVECTOR_H
+// vim: sw=2 ai
+#endif

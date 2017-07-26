@@ -24,7 +24,8 @@ class RegScavenger;
 class TargetRegisterClass;
 class Triple;
 
-class AArch64RegisterInfo final : public AArch64GenRegisterInfo {
+struct AArch64RegisterInfo : public AArch64GenRegisterInfo {
+private:
   const Triple &TT;
 
 public:
@@ -35,7 +36,7 @@ public:
   /// Code Generation virtual methods...
   const MCPhysReg *getCalleeSavedRegs(const MachineFunction *MF) const override;
   const MCPhysReg *
-  getCalleeSavedRegsViaCopy(const MachineFunction *MF) const;
+  getCalleeSavedRegsViaCopy(const MachineFunction *MF) const override;
   const uint32_t *getCallPreservedMask(const MachineFunction &MF,
                                        CallingConv::ID) const override;
 
@@ -62,7 +63,6 @@ public:
                                              CallingConv::ID) const;
 
   BitVector getReservedRegs(const MachineFunction &MF) const override;
-  bool isConstantPhysReg(unsigned PhysReg) const override;
   const TargetRegisterClass *
   getPointerRegClass(const MachineFunction &MF,
                      unsigned Kind = 0) const override;
@@ -95,10 +95,6 @@ public:
 
   unsigned getRegPressureLimit(const TargetRegisterClass *RC,
                                MachineFunction &MF) const override;
-
-  bool trackLivenessAfterRegAlloc(const MachineFunction&) const override {
-    return true;
-  }
 };
 
 } // end namespace llvm

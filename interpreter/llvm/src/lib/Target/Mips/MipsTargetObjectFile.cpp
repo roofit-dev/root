@@ -61,23 +61,23 @@ static bool IsInSmallSection(uint64_t Size) {
 
 /// Return true if this global address should be placed into small data/bss
 /// section.
-bool MipsTargetObjectFile::IsGlobalInSmallSection(
-    const GlobalObject *GO, const TargetMachine &TM) const {
+bool MipsTargetObjectFile::
+IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM) const {
   // We first check the case where global is a declaration, because finding
   // section kind using getKindForGlobal() is only allowed for global
   // definitions.
-  if (GO->isDeclaration() || GO->hasAvailableExternallyLinkage())
-    return IsGlobalInSmallSectionImpl(GO, TM);
+  if (GV->isDeclaration() || GV->hasAvailableExternallyLinkage())
+    return IsGlobalInSmallSectionImpl(GV, TM);
 
-  return IsGlobalInSmallSection(GO, TM, getKindForGlobal(GO, TM));
+  return IsGlobalInSmallSection(GV, TM, getKindForGlobal(GV, TM));
 }
 
 /// Return true if this global address should be placed into small data/bss
 /// section.
 bool MipsTargetObjectFile::
-IsGlobalInSmallSection(const GlobalObject *GO, const TargetMachine &TM,
+IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
                        SectionKind Kind) const {
-  return (IsGlobalInSmallSectionImpl(GO, TM) &&
+  return (IsGlobalInSmallSectionImpl(GV, TM) &&
           (Kind.isData() || Kind.isBSS() || Kind.isCommon()));
 }
 
@@ -85,7 +85,7 @@ IsGlobalInSmallSection(const GlobalObject *GO, const TargetMachine &TM,
 /// section. This method does all the work, except for checking the section
 /// kind.
 bool MipsTargetObjectFile::
-IsGlobalInSmallSectionImpl(const GlobalObject *GO,
+IsGlobalInSmallSectionImpl(const GlobalValue *GV,
                            const TargetMachine &TM) const {
   const MipsSubtarget &Subtarget =
       *static_cast<const MipsTargetMachine &>(TM).getSubtargetImpl();
@@ -95,37 +95,39 @@ IsGlobalInSmallSectionImpl(const GlobalObject *GO,
     return false;
 
   // Only global variables, not functions.
-  const GlobalVariable *GVA = dyn_cast<GlobalVariable>(GO);
+  const GlobalVariable *GVA = dyn_cast<GlobalVariable>(GV);
   if (!GVA)
     return false;
 
   // Enforce -mlocal-sdata.
-  if (!LocalSData && GVA->hasLocalLinkage())
+  if (!LocalSData && GV->hasLocalLinkage())
     return false;
 
   // Enforce -mextern-sdata.
-  if (!ExternSData && ((GVA->hasExternalLinkage() && GVA->isDeclaration()) ||
-                       GVA->hasCommonLinkage()))
+  if (!ExternSData && ((GV->hasExternalLinkage() && GV->isDeclaration()) ||
+                       GV->hasCommonLinkage()))
     return false;
 
-  Type *Ty = GVA->getValueType();
+  Type *Ty = GV->getValueType();
   return IsInSmallSection(
-      GVA->getParent()->getDataLayout().getTypeAllocSize(Ty));
+      GV->getParent()->getDataLayout().getTypeAllocSize(Ty));
 }
 
-MCSection *MipsTargetObjectFile::SelectSectionForGlobal(
-    const GlobalObject *GO, SectionKind Kind, const TargetMachine &TM) const {
+MCSection *
+MipsTargetObjectFile::SelectSectionForGlobal(const GlobalValue *GV,
+                                             SectionKind Kind, Mangler &Mang,
+                                             const TargetMachine &TM) const {
   // TODO: Could also support "weak" symbols as well with ".gnu.linkonce.s.*"
   // sections?
 
   // Handle Small Section classification here.
-  if (Kind.isBSS() && IsGlobalInSmallSection(GO, TM, Kind))
+  if (Kind.isBSS() && IsGlobalInSmallSection(GV, TM, Kind))
     return SmallBSSSection;
-  if (Kind.isData() && IsGlobalInSmallSection(GO, TM, Kind))
+  if (Kind.isData() && IsGlobalInSmallSection(GV, TM, Kind))
     return SmallDataSection;
 
   // Otherwise, we work the same as ELF.
-  return TargetLoweringObjectFileELF::SelectSectionForGlobal(GO, Kind, TM);
+  return TargetLoweringObjectFileELF::SelectSectionForGlobal(GV, Kind, Mang,TM);
 }
 
 /// Return true if this constant should be placed into small data section.
@@ -147,12 +149,4 @@ MCSection *MipsTargetObjectFile::getSectionForConstant(const DataLayout &DL,
 
   // Otherwise, we work the same as ELF.
   return TargetLoweringObjectFileELF::getSectionForConstant(DL, Kind, C, Align);
-}
-
-const MCExpr *
-MipsTargetObjectFile::getDebugThreadLocalSymbol(const MCSymbol *Sym) const {
-  const MCExpr *Expr =
-      MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_None, getContext());
-  return MCBinaryExpr::createAdd(
-      Expr, MCConstantExpr::create(0x8000, getContext()), getContext());
 }

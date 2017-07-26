@@ -16,11 +16,10 @@
 #define LLVM_CLANG_TOOLING_FILEMATCHTRIE_H
 
 #include "clang/Basic/LLVM.h"
+#include "llvm/ADT/StringRef.h"
 #include <memory>
-
-namespace llvm {
-class StringRef;
-}
+#include <string>
+#include <vector>
 
 namespace clang {
 namespace tooling {

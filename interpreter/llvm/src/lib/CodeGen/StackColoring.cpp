@@ -23,6 +23,7 @@
 
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
@@ -384,13 +385,14 @@ void StackColoring::getAnalysisUsage(AnalysisUsage &AU) const {
   MachineFunctionPass::getAnalysisUsage(AU);
 }
 
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+#ifndef NDEBUG
+
 LLVM_DUMP_METHOD void StackColoring::dumpBV(const char *tag,
                                             const BitVector &BV) const {
-  dbgs() << tag << " : { ";
+  DEBUG(dbgs() << tag << " : { ");
   for (unsigned I = 0, E = BV.size(); I != E; ++I)
-    dbgs() << BV.test(I) << " ";
-  dbgs() << "}\n";
+    DEBUG(dbgs() << BV.test(I) << " ");
+  DEBUG(dbgs() << "}\n");
 }
 
 LLVM_DUMP_METHOD void StackColoring::dumpBB(MachineBasicBlock *MBB) const {
@@ -406,19 +408,20 @@ LLVM_DUMP_METHOD void StackColoring::dumpBB(MachineBasicBlock *MBB) const {
 
 LLVM_DUMP_METHOD void StackColoring::dump() const {
   for (MachineBasicBlock *MBB : depth_first(MF)) {
-    dbgs() << "Inspecting block #" << MBB->getNumber() << " ["
-           << MBB->getName() << "]\n";
-    dumpBB(MBB);
+    DEBUG(dbgs() << "Inspecting block #" << MBB->getNumber() << " ["
+                 << MBB->getName() << "]\n");
+    DEBUG(dumpBB(MBB));
   }
 }
 
 LLVM_DUMP_METHOD void StackColoring::dumpIntervals() const {
   for (unsigned I = 0, E = Intervals.size(); I != E; ++I) {
-    dbgs() << "Interval[" << I << "]:\n";
-    Intervals[I]->dump();
+    DEBUG(dbgs() << "Interval[" << I << "]:\n");
+    DEBUG(Intervals[I]->dump());
   }
 }
-#endif
+
+#endif // not NDEBUG
 
 static inline int getStartOrEndSlot(const MachineInstr &MI)
 {
@@ -567,8 +570,9 @@ unsigned StackColoring::collectMarkers(unsigned NumSlot)
 
   // Step 2: compute begin/end sets for each block
 
-  // NOTE: We use a depth-first iteration to ensure that we obtain a
-  // deterministic numbering.
+  // NOTE: We use a reverse-post-order iteration to ensure that we obtain a
+  // deterministic numbering, and because we'll need a post-order iteration
+  // later for solving the liveness dataflow problem.
   for (MachineBasicBlock *MBB : depth_first(MF)) {
 
     // Assign a serial number to this basic block.
@@ -774,9 +778,10 @@ void StackColoring::remapInstructions(DenseMap<int, int> &SlotRemap) {
   unsigned FixedInstr = 0;
   unsigned FixedMemOp = 0;
   unsigned FixedDbg = 0;
+  MachineModuleInfo *MMI = &MF->getMMI();
 
   // Remap debug information that refers to stack slots.
-  for (auto &VI : MF->getVariableDbgInfo()) {
+  for (auto &VI : MMI->getVariableDbgInfo()) {
     if (!VI.Var)
       continue;
     if (SlotRemap.count(VI.Slot)) {
@@ -975,7 +980,7 @@ bool StackColoring::runOnMachineFunction(MachineFunction &Func) {
                << "********** Function: "
                << ((const Value*)Func.getFunction())->getName() << '\n');
   MF = &Func;
-  MFI = &MF->getFrameInfo();
+  MFI = MF->getFrameInfo();
   Indexes = &getAnalysis<SlotIndexes>();
   SP = &getAnalysis<StackProtector>();
   BlockLiveness.clear();

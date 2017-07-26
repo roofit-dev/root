@@ -21,9 +21,6 @@ class raw_ostream;
 
 namespace pdb {
 
-class PDBSymbolTypeVTable;
-class PDBSymbolTypeVTableShape;
-
 /// IPDBRawSymbol defines an interface used to represent an arbitrary symbol.
 /// It exposes a monolithic interface consisting of accessors for the union of
 /// all properties that are valid for any symbol type.  This interface is then
@@ -113,8 +110,6 @@ public:
   virtual Variant getValue() const = 0;
   virtual uint32_t getVirtualBaseDispIndex() const = 0;
   virtual uint32_t getVirtualBaseOffset() const = 0;
-  virtual std::unique_ptr<PDBSymbolTypeBuiltin>
-  getVirtualBaseTableType() const = 0;
   virtual uint32_t getVirtualTableShapeId() const = 0;
   virtual PDB_DataKind getDataKind() const = 0;
   virtual PDB_SymType getSymTag() const = 0;

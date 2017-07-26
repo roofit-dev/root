@@ -14,11 +14,9 @@
 #ifndef LLVM_TOOLS_LLI_REMOTEJITUTILS_H
 #define LLVM_TOOLS_LLI_REMOTEJITUTILS_H
 
-#include "llvm/ExecutionEngine/Orc/RawByteChannel.h"
-#include "llvm/Support/Error.h"
-#include <cassert>
-#include <cerrno>
-#include <system_error>
+#include "llvm/ExecutionEngine/Orc/RPCChannel.h"
+#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include <mutex>
 
 #if !defined(_MSC_VER) && !defined(__MINGW32__)
 #include <unistd.h>
@@ -27,7 +25,7 @@
 #endif
 
 /// RPC channel that reads from and writes from file descriptors.
-class FDRPCChannel final : public llvm::orc::rpc::RawByteChannel {
+class FDRPCChannel final : public llvm::orc::remote::RPCChannel {
 public:
   FDRPCChannel(int InFD, int OutFD) : InFD(InFD), OutFD(OutFD) {}
 
@@ -73,4 +71,4 @@ private:
   int InFD, OutFD;
 };
 
-#endif // LLVM_TOOLS_LLI_REMOTEJITUTILS_H
+#endif

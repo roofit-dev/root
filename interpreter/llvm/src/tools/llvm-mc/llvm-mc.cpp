@@ -66,7 +66,8 @@ CompressDebugSections("compress-debug-sections", cl::ValueOptional,
     clEnumValN(DebugCompressionType::DCT_Zlib, "zlib",
       "Use zlib compression"),
     clEnumValN(DebugCompressionType::DCT_ZlibGnu, "zlib-gnu",
-      "Use zlib-gnu compression (deprecated)")));
+      "Use zlib-gnu compression (depricated)"),
+    clEnumValEnd));
 
 static cl::opt<bool>
 ShowInst("show-inst", cl::desc("Show internal instruction representation"));
@@ -86,10 +87,6 @@ PrintImmHex("print-imm-hex", cl::init(false),
 static cl::list<std::string>
 DefineSymbol("defsym", cl::desc("Defines a symbol to be an integer constant"));
 
-static cl::opt<bool>
-    PreserveComments("preserve-comments",
-                     cl::desc("Preserve Comments in outputted assembly"));
-
 enum OutputFileType {
   OFT_Null,
   OFT_AssemblyFile,
@@ -104,7 +101,8 @@ FileType("filetype", cl::init(OFT_AssemblyFile),
        clEnumValN(OFT_Null, "null",
                   "Don't emit anything (for timing purposes)"),
        clEnumValN(OFT_ObjectFile, "obj",
-                  "Emit a native object ('.o') file")));
+                  "Emit a native object ('.o') file"),
+       clEnumValEnd));
 
 static cl::list<std::string>
 IncludeDirs("I", cl::desc("Directory of include files"),
@@ -146,7 +144,8 @@ CMModel("code-model",
                    clEnumValN(CodeModel::Medium, "medium",
                               "Medium code model"),
                    clEnumValN(CodeModel::Large, "large",
-                              "Large code model")));
+                              "Large code model"),
+                   clEnumValEnd));
 
 static cl::opt<bool>
 NoInitialTextSection("n", cl::desc("Don't assume assembly file starts "
@@ -187,7 +186,8 @@ Action(cl::desc("Action to perform:"),
                   clEnumValN(AC_Disassemble, "disassemble",
                              "Disassemble strings of hex bytes"),
                   clEnumValN(AC_MDisassemble, "mdis",
-                             "Marked up disassembly of strings of hex bytes")));
+                             "Marked up disassembly of strings of hex bytes"),
+                  clEnumValEnd));
 
 static const Target *GetTarget(const char *ProgName) {
   // Figure out the target triple.
@@ -310,78 +310,6 @@ static int AsLexInput(SourceMgr &SrcMgr, MCAsmInfo &MAI,
     case AsmToken::Slash:          OS << "Slash"; break;
     case AsmToken::Star:           OS << "Star"; break;
     case AsmToken::Tilde:          OS << "Tilde"; break;
-    case AsmToken::PercentCall16:
-      OS << "PercentCall16";
-      break;
-    case AsmToken::PercentCall_Hi:
-      OS << "PercentCall_Hi";
-      break;
-    case AsmToken::PercentCall_Lo:
-      OS << "PercentCall_Lo";
-      break;
-    case AsmToken::PercentDtprel_Hi:
-      OS << "PercentDtprel_Hi";
-      break;
-    case AsmToken::PercentDtprel_Lo:
-      OS << "PercentDtprel_Lo";
-      break;
-    case AsmToken::PercentGot:
-      OS << "PercentGot";
-      break;
-    case AsmToken::PercentGot_Disp:
-      OS << "PercentGot_Disp";
-      break;
-    case AsmToken::PercentGot_Hi:
-      OS << "PercentGot_Hi";
-      break;
-    case AsmToken::PercentGot_Lo:
-      OS << "PercentGot_Lo";
-      break;
-    case AsmToken::PercentGot_Ofst:
-      OS << "PercentGot_Ofst";
-      break;
-    case AsmToken::PercentGot_Page:
-      OS << "PercentGot_Page";
-      break;
-    case AsmToken::PercentGottprel:
-      OS << "PercentGottprel";
-      break;
-    case AsmToken::PercentGp_Rel:
-      OS << "PercentGp_Rel";
-      break;
-    case AsmToken::PercentHi:
-      OS << "PercentHi";
-      break;
-    case AsmToken::PercentHigher:
-      OS << "PercentHigher";
-      break;
-    case AsmToken::PercentHighest:
-      OS << "PercentHighest";
-      break;
-    case AsmToken::PercentLo:
-      OS << "PercentLo";
-      break;
-    case AsmToken::PercentNeg:
-      OS << "PercentNeg";
-      break;
-    case AsmToken::PercentPcrel_Hi:
-      OS << "PercentPcrel_Hi";
-      break;
-    case AsmToken::PercentPcrel_Lo:
-      OS << "PercentPcrel_Lo";
-      break;
-    case AsmToken::PercentTlsgd:
-      OS << "PercentTlsgd";
-      break;
-    case AsmToken::PercentTlsldm:
-      OS << "PercentTlsldm";
-      break;
-    case AsmToken::PercentTprel_Hi:
-      OS << "PercentTprel_Hi";
-      break;
-    case AsmToken::PercentTprel_Lo:
-      OS << "PercentTprel_Lo";
-      break;
     }
 
     // Print the token string.
@@ -393,22 +321,22 @@ static int AsLexInput(SourceMgr &SrcMgr, MCAsmInfo &MAI,
   return Error;
 }
 
-static int fillCommandLineSymbols(MCAsmParser &Parser) {
-  for (auto &I: DefineSymbol) {
+static int fillCommandLineSymbols(MCAsmParser &Parser){
+  for(auto &I: DefineSymbol){
     auto Pair = StringRef(I).split('=');
-    auto Sym = Pair.first;
-    auto Val = Pair.second;
-
-    if (Sym.empty() || Val.empty()) {
-      errs() << "error: defsym must be of the form: sym=value: " << I << "\n";
+    if(Pair.second.empty()){
+      errs() << "error: defsym must be of the form: sym=value: " << I;
       return 1;
     }
     int64_t Value;
-    if (Val.getAsInteger(0, Value)) {
-      errs() << "error: Value is not an integer: " << Val << "\n";
+    if(Pair.second.getAsInteger(0, Value)){
+      errs() << "error: Value is not an integer: " << Pair.second;
       return 1;
     }
-    Parser.getContext().setSymbolValue(Parser.getStreamer(), Sym, Value);
+    auto &Context = Parser.getContext();
+    auto Symbol = Context.getOrCreateSymbol(Pair.first);
+    Parser.getStreamer().EmitAssignment(Symbol,
+                                        MCConstantExpr::create(Value, Context));
   }
   return 0;
 }
@@ -502,7 +430,6 @@ int main(int argc, char **argv) {
     }
     MAI->setCompressDebugSections(CompressDebugSections);
   }
-  MAI->setPreserveAsmComments(PreserveComments);
 
   // FIXME: This is not pretty. MCContext has a ptr to MCObjectFileInfo and
   // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
@@ -516,7 +443,7 @@ int main(int argc, char **argv) {
   Ctx.setGenDwarfForAssembly(GenDwarfForAssembly);
   // Default to 4 for dwarf version.
   unsigned DwarfVersion = MCOptions.DwarfVersion ? MCOptions.DwarfVersion : 4;
-  if (DwarfVersion < 2 || DwarfVersion > 5) {
+  if (DwarfVersion < 2 || DwarfVersion > 4) {
     errs() << ProgName << ": Dwarf version " << DwarfVersion
            << " is not supported." << '\n';
     return 1;
@@ -563,14 +490,6 @@ int main(int argc, char **argv) {
     IP = TheTarget->createMCInstPrinter(Triple(TripleName), OutputAsmVariant,
                                         *MAI, *MCII, *MRI);
 
-    if (!IP) {
-      errs()
-          << "error: unable to create instruction printer for target triple '"
-          << TheTriple.normalize() << "' with assembly variant "
-          << OutputAsmVariant << ".\n";
-      return 1;
-    }
-
     // Set the display preference for hex vs. decimal immediates.
     IP->setPrintImmHex(PrintImmHex);
 
@@ -579,7 +498,7 @@ int main(int argc, char **argv) {
     MCAsmBackend *MAB = nullptr;
     if (ShowEncoding) {
       CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, Ctx);
-      MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU, MCOptions);
+      MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU);
     }
     auto FOut = llvm::make_unique<formatted_raw_ostream>(*OS);
     Str.reset(TheTarget->createAsmStreamer(
@@ -600,8 +519,7 @@ int main(int argc, char **argv) {
     }
 
     MCCodeEmitter *CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, Ctx);
-    MCAsmBackend *MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU,
-                                                      MCOptions);
+    MCAsmBackend *MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU);
     Str.reset(TheTarget->createMCObjectStreamer(
         TheTriple, Ctx, *MAB, *OS, CE, *STI, MCOptions.MCRelaxAll,
         MCOptions.MCIncrementalLinkerCompatible,

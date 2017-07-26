@@ -1,4 +1,4 @@
-//===- llvm/CodeGen/TargetSchedule.h - Sched Machine Model ------*- C++ -*-===//
+//===-- llvm/CodeGen/TargetSchedule.h - Sched Machine Model -----*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -23,8 +23,10 @@
 
 namespace llvm {
 
-class MachineInstr;
+class TargetRegisterInfo;
+class TargetSubtargetInfo;
 class TargetInstrInfo;
+class MachineInstr;
 
 /// Provide an instruction scheduling machine model to CodeGen passes.
 class TargetSchedModel {
@@ -32,8 +34,8 @@ class TargetSchedModel {
   // processor.
   MCSchedModel SchedModel;
   InstrItineraryData InstrItins;
-  const TargetSubtargetInfo *STI = nullptr;
-  const TargetInstrInfo *TII = nullptr;
+  const TargetSubtargetInfo *STI;
+  const TargetInstrInfo *TII;
 
   SmallVector<unsigned, 16> ResourceFactors;
   unsigned MicroOpFactor; // Multiply to normalize microops to resource units.
@@ -42,7 +44,7 @@ class TargetSchedModel {
   unsigned computeInstrLatency(const MCSchedClassDesc &SCDesc) const;
 
 public:
-  TargetSchedModel() : SchedModel(MCSchedModel::GetDefaultSchedModel()) {}
+  TargetSchedModel(): SchedModel(MCSchedModel::GetDefaultSchedModel()), STI(nullptr), TII(nullptr) {}
 
   /// \brief Initialize the machine model for instruction scheduling.
   ///
@@ -90,13 +92,6 @@ public:
 
   /// \brief Maximum number of micro-ops that may be scheduled per cycle.
   unsigned getIssueWidth() const { return SchedModel.IssueWidth; }
-
-  /// \brief Return true if new group must begin.
-  bool mustBeginGroup(const MachineInstr *MI,
-                          const MCSchedClassDesc *SC = nullptr) const;
-  /// \brief Return true if current group must end.
-  bool mustEndGroup(const MachineInstr *MI,
-                          const MCSchedClassDesc *SC = nullptr) const;
 
   /// \brief Return the number of issue slots required for this MI.
   unsigned getNumMicroOps(const MachineInstr *MI,
@@ -183,18 +178,13 @@ public:
                                bool UseDefaultDefLatency = true) const;
   unsigned computeInstrLatency(unsigned Opcode) const;
 
-
   /// \brief Output dependency latency of a pair of defs of the same register.
   ///
   /// This is typically one cycle.
   unsigned computeOutputLatency(const MachineInstr *DefMI, unsigned DefIdx,
                                 const MachineInstr *DepMI) const;
-
-  /// \brief Compute the reciprocal throughput of the given instruction.
-  Optional<double> computeInstrRThroughput(const MachineInstr *MI) const;
-  Optional<double> computeInstrRThroughput(unsigned Opcode) const;
 };
 
-} // end namespace llvm
+} // namespace llvm
 
-#endif // LLVM_CODEGEN_TARGETSCHEDULE_H
+#endif

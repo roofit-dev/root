@@ -42,7 +42,6 @@
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/SMLoc.h"
 #include <map>
-#include <system_error>
 #include <utility>
 
 namespace llvm {
@@ -76,11 +75,9 @@ std::string escape(StringRef Input);
 class Stream {
 public:
   /// \brief This keeps a reference to the string referenced by \p Input.
-  Stream(StringRef Input, SourceMgr &, bool ShowColors = true,
-         std::error_code *EC = nullptr);
+  Stream(StringRef Input, SourceMgr &, bool ShowColors = true);
 
-  Stream(MemoryBufferRef InputBuffer, SourceMgr &, bool ShowColors = true,
-         std::error_code *EC = nullptr);
+  Stream(MemoryBufferRef InputBuffer, SourceMgr &, bool ShowColors = true);
   ~Stream();
 
   document_iterator begin();
@@ -147,12 +144,12 @@ public:
   unsigned int getType() const { return TypeID; }
 
   void *operator new(size_t Size, BumpPtrAllocator &Alloc,
-                     size_t Alignment = 16) noexcept {
+                     size_t Alignment = 16) LLVM_NOEXCEPT {
     return Alloc.Allocate(Size, Alignment);
   }
 
   void operator delete(void *Ptr, BumpPtrAllocator &Alloc,
-                       size_t Size) noexcept {
+                       size_t Size) LLVM_NOEXCEPT {
     Alloc.Deallocate(Ptr, Size);
   }
 
@@ -160,7 +157,7 @@ protected:
   std::unique_ptr<Document> &Doc;
   SMRange SourceRange;
 
-  void operator delete(void *) noexcept = delete;
+  void operator delete(void *) LLVM_NOEXCEPT = delete;
 
   ~Node() = default;
 

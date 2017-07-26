@@ -7,7 +7,6 @@ add_clang_library(clangAST
   ASTDiagnostic.cpp
   ASTDumper.cpp
   ASTImporter.cpp
-  ASTStructuralEquivalence.cpp
   ASTTypeTraits.cpp
   AttrImpl.cpp
   CXXInheritance.cpp
@@ -32,7 +31,6 @@ add_clang_library(clangAST
   ExprConstant.cpp
   ExprCXX.cpp
   ExprObjC.cpp
-  ExternalASTMerger.cpp
   ExternalASTSource.cpp
   InheritViz.cpp
   ItaniumCXXABI.cpp
@@ -42,7 +40,6 @@ add_clang_library(clangAST
   MicrosoftMangle.cpp
   NestedNameSpecifier.cpp
   NSAPI.cpp
-  ODRHash.cpp
   OpenMPClause.cpp
   ParentMap.cpp
   RawCommentList.cpp

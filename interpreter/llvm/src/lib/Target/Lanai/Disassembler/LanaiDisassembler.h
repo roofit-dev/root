@@ -20,11 +20,14 @@
 
 namespace llvm {
 
+class MCInst;
+class raw_ostream;
+
 class LanaiDisassembler : public MCDisassembler {
 public:
   LanaiDisassembler(const MCSubtargetInfo &STI, MCContext &Ctx);
 
-  ~LanaiDisassembler() override = default;
+  ~LanaiDisassembler() override {}
 
   // getInstruction - See MCDisassembler.
   MCDisassembler::DecodeStatus
@@ -33,6 +36,6 @@ public:
                  raw_ostream &CStream) const override;
 };
 
-} // end namespace llvm
+} // namespace llvm
 
 #endif // LLVM_LIB_TARGET_LANAI_DISASSEMBLER_LANAIDISASSEMBLER_H

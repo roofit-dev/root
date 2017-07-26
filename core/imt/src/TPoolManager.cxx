@@ -37,6 +37,7 @@ namespace ROOT {
             fSched->terminate();
             fgPoolSize = 0;
          }
+         GetWP().reset();
       }
 
       //Number of threads the PoolManager has been initialized with.
@@ -48,7 +49,7 @@ namespace ROOT {
       //Factory function returning a shared pointer to the only instance of the PoolManager.
       std::shared_ptr<TPoolManager> GetPoolManager(UInt_t nThreads)
       {
-         if (GetWP().expired()) {
+         if (GetWP().lock() == nullptr) {
             std::shared_ptr<TPoolManager> shared(new TPoolManager(nThreads));
             GetWP() = shared;
             return GetWP().lock();

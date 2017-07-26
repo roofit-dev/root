@@ -30,9 +30,9 @@ using namespace llvm::opt;
 ///
 /// \return A CompilerInvocation, or 0 if none was built for the given
 /// argument vector.
-std::unique_ptr<CompilerInvocation> clang::createInvocationFromCommandLine(
-    ArrayRef<const char *> ArgList,
-    IntrusiveRefCntPtr<DiagnosticsEngine> Diags) {
+CompilerInvocation *
+clang::createInvocationFromCommandLine(ArrayRef<const char *> ArgList,
+                            IntrusiveRefCntPtr<DiagnosticsEngine> Diags) {
   if (!Diags.get()) {
     // No diagnostics engine was provided, so create our own diagnostics object
     // with the default options.
@@ -60,25 +60,25 @@ std::unique_ptr<CompilerInvocation> clang::createInvocationFromCommandLine(
   }
 
   // We expect to get back exactly one command job, if we didn't something
-  // failed. Offload compilation is an exception as it creates multiple jobs. If
-  // that's the case, we proceed with the first job. If caller needs a
-  // particular job, it should be controlled via options (e.g.
-  // --cuda-{host|device}-only for CUDA) passed to the driver.
+  // failed. CUDA compilation is an exception as it creates multiple jobs. If
+  // that's the case, we proceed with the first job. If caller needs particular
+  // CUDA job, it should be controlled via --cuda-{host|device}-only option
+  // passed to the driver.
   const driver::JobList &Jobs = C->getJobs();
-  bool OffloadCompilation = false;
+  bool CudaCompilation = false;
   if (Jobs.size() > 1) {
     for (auto &A : C->getActions()){
       // On MacOSX real actions may end up being wrapped in BindArchAction
       if (isa<driver::BindArchAction>(A))
         A = *A->input_begin();
-      if (isa<driver::OffloadAction>(A)) {
-        OffloadCompilation = true;
+      if (isa<driver::CudaDeviceAction>(A)) {
+        CudaCompilation = true;
         break;
       }
     }
   }
   if (Jobs.size() == 0 || !isa<driver::Command>(*Jobs.begin()) ||
-      (Jobs.size() > 1 && !OffloadCompilation)) {
+      (Jobs.size() > 1 && !CudaCompilation)) {
     SmallString<256> Msg;
     llvm::raw_svector_ostream OS(Msg);
     Jobs.Print(OS, "; ", true);
@@ -93,12 +93,12 @@ std::unique_ptr<CompilerInvocation> clang::createInvocationFromCommandLine(
   }
 
   const ArgStringList &CCArgs = Cmd.getArguments();
-  auto CI = llvm::make_unique<CompilerInvocation>();
+  std::unique_ptr<CompilerInvocation> CI(new CompilerInvocation());
   if (!CompilerInvocation::CreateFromArgs(*CI,
                                      const_cast<const char **>(CCArgs.data()),
                                      const_cast<const char **>(CCArgs.data()) +
                                      CCArgs.size(),
                                      *Diags))
     return nullptr;
-  return CI;
+  return CI.release();
 }

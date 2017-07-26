@@ -32,7 +32,7 @@ class GlobalValue;
 class StringRef;
 class Triple;
 
-class AArch64Subtarget final : public AArch64GenSubtargetInfo {
+class AArch64Subtarget : public AArch64GenSubtargetInfo {
 public:
   enum ARMProcFamilyEnum : uint8_t {
     Others,
@@ -43,13 +43,8 @@ public:
     CortexA73,
     Cyclone,
     ExynosM1,
-    Falkor,
     Kryo,
-    ThunderX2T99,
-    ThunderX,
-    ThunderXT81,
-    ThunderXT83,
-    ThunderXT88
+    Vulcan
   };
 
 protected:
@@ -63,13 +58,10 @@ protected:
   bool HasNEON = false;
   bool HasCrypto = false;
   bool HasCRC = false;
-  bool HasLSE = false;
   bool HasRAS = false;
-  bool HasRDM = false;
   bool HasPerfMon = false;
   bool HasFullFP16 = false;
   bool HasSPE = false;
-  bool HasLSLFast = false;
 
   // HasZeroCycleRegMove - Has zero-cycle register mov instructions.
   bool HasZeroCycleRegMove = false;
@@ -79,22 +71,16 @@ protected:
 
   // StrictAlign - Disallow unaligned memory accesses.
   bool StrictAlign = false;
-
-  // NegativeImmediates - transform instructions with negative immediates
-  bool NegativeImmediates = true;
-
+  bool MergeNarrowLoads = false;
   bool UseAA = false;
   bool PredictableSelectIsExpensive = false;
   bool BalanceFPOps = false;
   bool CustomAsCheapAsMove = false;
   bool UsePostRAScheduler = false;
   bool Misaligned128StoreIsSlow = false;
-  bool Paired128IsSlow = false;
+  bool AvoidQuadLdStPairs = false;
   bool UseAlternateSExtLoadCVTF32Pattern = false;
-  bool HasArithmeticBccFusion = false;
-  bool HasArithmeticCbzFusion = false;
-  bool HasFuseAES = false;
-  bool HasFuseLiterals = false;
+  bool HasMacroOpFusion = false;
   bool DisableLatencySchedHeuristic = false;
   bool UseRSqrt = false;
   uint8_t MaxInterleaveFactor = 2;
@@ -105,13 +91,14 @@ protected:
   unsigned MaxPrefetchIterationsAhead = UINT_MAX;
   unsigned PrefFunctionAlignment = 0;
   unsigned PrefLoopAlignment = 0;
-  unsigned MaxJumpTableSize = 0;
-  unsigned WideningBaseCost = 0;
 
   // ReserveX18 - X18 is not available as a general purpose register.
   bool ReserveX18;
 
   bool IsLittle;
+
+  /// CPUString - String name of used CPU.
+  std::string CPUString;
 
   /// TargetTriple - What processor and OS we're targeting.
   Triple TargetTriple;
@@ -125,14 +112,11 @@ protected:
   /// an optional library.
   std::unique_ptr<GISelAccessor> GISel;
 
-  bool ForCodeSize;
-
 private:
   /// initializeSubtargetDependencies - Initializes using CPUString and the
   /// passed in feature string so that we can use initializer lists for
   /// subtarget initialization.
-  AArch64Subtarget &initializeSubtargetDependencies(StringRef FS,
-                                                    StringRef CPUString);
+  AArch64Subtarget &initializeSubtargetDependencies(StringRef FS);
 
   /// Initialize properties based on the selected processor family.
   void initializeProperties();
@@ -142,7 +126,7 @@ public:
   /// of the specified triple.
   AArch64Subtarget(const Triple &TT, const std::string &CPU,
                    const std::string &FS, const TargetMachine &TM,
-                   bool LittleEndian, bool ForCodeSize);
+                   bool LittleEndian);
 
   /// This object will take onwership of \p GISelAccessor.
   void setGISelAccessor(GISelAccessor &GISel) {
@@ -163,8 +147,6 @@ public:
     return &getInstrInfo()->getRegisterInfo();
   }
   const CallLowering *getCallLowering() const override;
-  const InstructionSelector *getInstructionSelector() const override;
-  const LegalizerInfo *getLegalizerInfo() const override;
   const RegisterBankInfo *getRegBankInfo() const override;
   const Triple &getTargetTriple() const { return TargetTriple; }
   bool enableMachineScheduler() const override { return true; }
@@ -189,30 +171,24 @@ public:
 
   bool requiresStrictAlign() const { return StrictAlign; }
 
-  bool isXRaySupported() const override { return true; }
-
   bool isX18Reserved() const { return ReserveX18; }
   bool hasFPARMv8() const { return HasFPARMv8; }
   bool hasNEON() const { return HasNEON; }
   bool hasCrypto() const { return HasCrypto; }
   bool hasCRC() const { return HasCRC; }
-  bool hasLSE() const { return HasLSE; }
   bool hasRAS() const { return HasRAS; }
-  bool hasRDM() const { return HasRDM; }
+  bool mergeNarrowLoads() const { return MergeNarrowLoads; }
   bool balanceFPOps() const { return BalanceFPOps; }
   bool predictableSelectIsExpensive() const {
     return PredictableSelectIsExpensive;
   }
   bool hasCustomCheapAsMoveHandling() const { return CustomAsCheapAsMove; }
   bool isMisaligned128StoreSlow() const { return Misaligned128StoreIsSlow; }
-  bool isPaired128Slow() const { return Paired128IsSlow; }
+  bool avoidQuadLdStPairs() const { return AvoidQuadLdStPairs; }
   bool useAlternateSExtLoadCVTF32Pattern() const {
     return UseAlternateSExtLoadCVTF32Pattern;
   }
-  bool hasArithmeticBccFusion() const { return HasArithmeticBccFusion; }
-  bool hasArithmeticCbzFusion() const { return HasArithmeticCbzFusion; }
-  bool hasFuseAES() const { return HasFuseAES; }
-  bool hasFuseLiterals() const { return HasFuseLiterals; }
+  bool hasMacroOpFusion() const { return HasMacroOpFusion; }
   bool useRSqrt() const { return UseRSqrt; }
   unsigned getMaxInterleaveFactor() const { return MaxInterleaveFactor; }
   unsigned getVectorInsertExtractBaseCost() const {
@@ -227,10 +203,6 @@ public:
   unsigned getPrefFunctionAlignment() const { return PrefFunctionAlignment; }
   unsigned getPrefLoopAlignment() const { return PrefLoopAlignment; }
 
-  unsigned getMaximumJumpTableSize() const { return MaxJumpTableSize; }
-
-  unsigned getWideningBaseCost() const { return WideningBaseCost; }
-
   /// CPU has TBI (top byte of addresses is ignored during HW address
   /// translation) and OS enables it.
   bool supportsAddressTopByteIgnored() const;
@@ -238,7 +210,6 @@ public:
   bool hasPerfMon() const { return HasPerfMon; }
   bool hasFullFP16() const { return HasFullFP16; }
   bool hasSPE() const { return HasSPE; }
-  bool hasLSLFast() const { return HasLSLFast; }
 
   bool isLittleEndian() const { return IsLittle; }
 
@@ -247,7 +218,6 @@ public:
   bool isTargetLinux() const { return TargetTriple.isOSLinux(); }
   bool isTargetWindows() const { return TargetTriple.isOSWindows(); }
   bool isTargetAndroid() const { return TargetTriple.isAndroid(); }
-  bool isTargetFuchsia() const { return TargetTriple.isOSFuchsia(); }
 
   bool isTargetCOFF() const { return TargetTriple.isOSBinFormatCOFF(); }
   bool isTargetELF() const { return TargetTriple.isOSBinFormatELF(); }
@@ -255,19 +225,9 @@ public:
 
   bool useAA() const override { return UseAA; }
 
-  bool useSmallAddressing() const {
-    switch (TLInfo.getTargetMachine().getCodeModel()) {
-      case CodeModel::Kernel:
-        // Kernel is currently allowed only for Fuchsia targets,
-        // where it is the same as Small for almost all purposes.
-      case CodeModel::Small:
-        return true;
-      default:
-        return false;
-    }
-  }
-
-  bool getForCodeSize() const { return ForCodeSize; }
+  /// getMaxInlineSizeThreshold - Returns the maximum memset / memcpy size
+  /// that still makes it profitable to inline the call.
+  unsigned getMaxInlineSizeThreshold() const { return 64; }
 
   /// ParseSubtargetFeatures - Parses features string setting specified
   /// subtarget options.  Definition of function is auto generated by tblgen.
@@ -277,9 +237,6 @@ public:
   /// how a global value should be referenced for the current subtarget.
   unsigned char ClassifyGlobalReference(const GlobalValue *GV,
                                         const TargetMachine &TM) const;
-
-  unsigned char classifyGlobalFunctionReference(const GlobalValue *GV,
-                                                const TargetMachine &TM) const;
 
   /// This function returns the name of a function which has an interface
   /// like the non-standard bzero function, if such a function exists on

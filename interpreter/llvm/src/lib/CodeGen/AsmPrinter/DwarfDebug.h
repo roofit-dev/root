@@ -22,7 +22,6 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/CodeGen/DIE.h"
@@ -54,7 +53,7 @@ class MachineModuleInfo;
 ///
 /// Variables can be created from allocas, in which case they're generated from
 /// the MMI table.  Such variables can have multiple expressions and frame
-/// indices.
+/// indices.  The \a Expr and \a FrameIndices array must match.
 ///
 /// Variables can be created from \c DBG_VALUE instructions.  Those whose
 /// location changes over time use \a DebugLocListIndex, while those with a
@@ -64,16 +63,11 @@ class MachineModuleInfo;
 class DbgVariable {
   const DILocalVariable *Var;                /// Variable Descriptor.
   const DILocation *IA;                      /// Inlined at location.
+  SmallVector<const DIExpression *, 1> Expr; /// Complex address.
   DIE *TheDIE = nullptr;                     /// Variable DIE.
   unsigned DebugLocListIndex = ~0u;          /// Offset in DebugLocs.
   const MachineInstr *MInsn = nullptr;       /// DBG_VALUE instruction.
-
-  struct FrameIndexExpr {
-    int FI;
-    const DIExpression *Expr;
-  };
-  mutable SmallVector<FrameIndexExpr, 1>
-      FrameIndexExprs; /// Frame index + expression.
+  SmallVector<int, 1> FrameIndex;            /// Frame index.
 
 public:
   /// Construct a DbgVariable.
@@ -85,18 +79,21 @@ public:
 
   /// Initialize from the MMI table.
   void initializeMMI(const DIExpression *E, int FI) {
-    assert(FrameIndexExprs.empty() && "Already initialized?");
+    assert(Expr.empty() && "Already initialized?");
+    assert(FrameIndex.empty() && "Already initialized?");
     assert(!MInsn && "Already initialized?");
 
     assert((!E || E->isValid()) && "Expected valid expression");
-    assert(FI != INT_MAX && "Expected valid index");
+    assert(~FI && "Expected valid index");
 
-    FrameIndexExprs.push_back({FI, E});
+    Expr.push_back(E);
+    FrameIndex.push_back(FI);
   }
 
   /// Initialize from a DBG_VALUE instruction.
   void initializeDbgValue(const MachineInstr *DbgValue) {
-    assert(FrameIndexExprs.empty() && "Already initialized?");
+    assert(Expr.empty() && "Already initialized?");
+    assert(FrameIndex.empty() && "Already initialized?");
     assert(!MInsn && "Already initialized?");
 
     assert(Var == DbgValue->getDebugVariable() && "Wrong variable");
@@ -105,15 +102,16 @@ public:
     MInsn = DbgValue;
     if (auto *E = DbgValue->getDebugExpression())
       if (E->getNumElements())
-        FrameIndexExprs.push_back({0, E});
+        Expr.push_back(E);
   }
 
   // Accessors.
   const DILocalVariable *getVariable() const { return Var; }
   const DILocation *getInlinedAt() const { return IA; }
+  ArrayRef<const DIExpression *> getExpression() const { return Expr; }
   const DIExpression *getSingleExpression() const {
-    assert(MInsn && FrameIndexExprs.size() <= 1);
-    return FrameIndexExprs.size() ? FrameIndexExprs[0].Expr : nullptr;
+    assert(MInsn && Expr.size() <= 1);
+    return Expr.size() ? Expr[0] : nullptr;
   }
   void setDIE(DIE &D) { TheDIE = &D; }
   DIE *getDIE() const { return TheDIE; }
@@ -121,9 +119,7 @@ public:
   unsigned getDebugLocListIndex() const { return DebugLocListIndex; }
   StringRef getName() const { return Var->getName(); }
   const MachineInstr *getMInsn() const { return MInsn; }
-  /// Get the FI entries, sorted by fragment offset.
-  ArrayRef<FrameIndexExpr> getFrameIndexExprs() const;
-  bool hasFrameIndexExprs() const { return !FrameIndexExprs.empty(); }
+  ArrayRef<int> getFrameIndex() const { return FrameIndex; }
 
   void addMMIEntry(const DbgVariable &V) {
     assert(DebugLocListIndex == ~0U && !MInsn && "not an MMI entry");
@@ -131,15 +127,16 @@ public:
     assert(V.Var == Var && "conflicting variable");
     assert(V.IA == IA && "conflicting inlined-at location");
 
-    assert(!FrameIndexExprs.empty() && "Expected an MMI entry");
-    assert(!V.FrameIndexExprs.empty() && "Expected an MMI entry");
+    assert(!FrameIndex.empty() && "Expected an MMI entry");
+    assert(!V.FrameIndex.empty() && "Expected an MMI entry");
+    assert(Expr.size() == FrameIndex.size() && "Mismatched expressions");
+    assert(V.Expr.size() == V.FrameIndex.size() && "Mismatched expressions");
 
-    FrameIndexExprs.append(V.FrameIndexExprs.begin(), V.FrameIndexExprs.end());
-    assert(all_of(FrameIndexExprs,
-                  [](FrameIndexExpr &FIE) {
-                    return FIE.Expr && FIE.Expr->isFragment();
-                  }) &&
-           "conflicting locations for variable");
+    Expr.append(V.Expr.begin(), V.Expr.end());
+    FrameIndex.append(V.FrameIndex.begin(), V.FrameIndex.end());
+    assert(std::all_of(Expr.begin(), Expr.end(), [](const DIExpression *E) {
+             return E && E->isBitPiece();
+           }) && "conflicting locations for variable");
   }
 
   // Translate tag to proper Dwarf tag.
@@ -169,11 +166,11 @@ public:
 
   bool hasComplexAddress() const {
     assert(MInsn && "Expected DBG_VALUE, not MMI variable");
-    assert((FrameIndexExprs.empty() ||
-            (FrameIndexExprs.size() == 1 &&
-             FrameIndexExprs[0].Expr->getNumElements())) &&
-           "Invalid Expr for DBG_VALUE");
-    return !FrameIndexExprs.empty();
+    assert(FrameIndex.empty() && "Expected DBG_VALUE, not MMI variable");
+    assert(
+        (Expr.empty() || (Expr.size() == 1 && Expr.back()->getNumElements())) &&
+        "Invalid Expr for DBG_VALUE");
+    return !Expr.empty();
   }
   bool isBlockByrefVariable() const;
   const DIType *getType() const;
@@ -210,6 +207,7 @@ class DwarfDebug : public DebugHandlerBase {
   DenseMap<const MCSymbol *, uint64_t> SymSize;
 
   /// Collection of abstract variables.
+  DenseMap<const MDNode *, std::unique_ptr<DbgVariable>> AbstractVariables;
   SmallVector<std::unique_ptr<DbgVariable>, 64> ConcreteVariables;
 
   /// Collection of DebugLocEntry. Stored in a linked list so that DIELocLists
@@ -218,9 +216,7 @@ class DwarfDebug : public DebugHandlerBase {
 
   /// This is a collection of subprogram MDNodes that are processed to
   /// create DIEs.
-  SetVector<const DISubprogram *, SmallVector<const DISubprogram *, 16>,
-            SmallPtrSet<const DISubprogram *, 16>>
-      ProcessedSPNodes;
+  SmallPtrSet<const MDNode *, 16> ProcessedSPNodes;
 
   /// If nonnull, stores the current machine function we're processing.
   const MachineFunction *CurFn;
@@ -257,6 +253,9 @@ class DwarfDebug : public DebugHandlerBase {
 
   /// Whether to emit all linkage names, or just abstract subprograms.
   bool UseAllLinkageNames;
+
+  /// Version of dwarf we're emitting.
+  unsigned DwarfVersion;
 
   /// DWARF5 Experimental Options
   /// @{
@@ -312,16 +311,20 @@ class DwarfDebug : public DebugHandlerBase {
 
   typedef DbgValueHistoryMap::InlinedVariable InlinedVariable;
 
-  void ensureAbstractVariableIsCreated(DwarfCompileUnit &CU, InlinedVariable Var,
+  /// Find abstract variable associated with Var.
+  DbgVariable *getExistingAbstractVariable(InlinedVariable IV,
+                                           const DILocalVariable *&Cleansed);
+  DbgVariable *getExistingAbstractVariable(InlinedVariable IV);
+  void createAbstractVariable(const DILocalVariable *DV, LexicalScope *Scope);
+  void ensureAbstractVariableIsCreated(InlinedVariable Var,
                                        const MDNode *Scope);
-  void ensureAbstractVariableIsCreatedIfScoped(DwarfCompileUnit &CU, InlinedVariable Var,
+  void ensureAbstractVariableIsCreatedIfScoped(InlinedVariable Var,
                                                const MDNode *Scope);
 
-  DbgVariable *createConcreteVariable(DwarfCompileUnit &TheCU,
-                                      LexicalScope &Scope, InlinedVariable IV);
+  DbgVariable *createConcreteVariable(LexicalScope &Scope, InlinedVariable IV);
 
   /// Construct a DIE for this abstract scope.
-  void constructAbstractSubprogramScopeDIE(DwarfCompileUnit &SrcCU, LexicalScope *Scope);
+  void constructAbstractSubprogramScopeDIE(LexicalScope *Scope);
 
   void finishVariableDefinitions();
 
@@ -440,18 +443,9 @@ class DwarfDebug : public DebugHandlerBase {
   void buildLocationList(SmallVectorImpl<DebugLocEntry> &DebugLoc,
                          const DbgValueHistoryMap::InstrRanges &Ranges);
 
-  /// Collect variable information from the side table maintained by MF.
-  void collectVariableInfoFromMFTable(DwarfCompileUnit &TheCU,
-                                      DenseSet<InlinedVariable> &P);
-
-protected:
-  /// Gather pre-function debug information.
-  void beginFunctionImpl(const MachineFunction *MF) override;
-
-  /// Gather and emit post-function debug information.
-  void endFunctionImpl(const MachineFunction *MF) override;
-
-  void skippedNonDebugFunction() override;
+  /// Collect variable information from the side table maintained
+  /// by MMI.
+  void collectVariableInfoFromMMITable(DenseSet<InlinedVariable> &P);
 
 public:
   //===--------------------------------------------------------------------===//
@@ -467,6 +461,12 @@ public:
 
   /// Emit all Dwarf sections that should come after the content.
   void endModule() override;
+
+  /// Gather pre-function debug information.
+  void beginFunction(const MachineFunction *MF) override;
+
+  /// Gather and emit post-function debug information.
+  void endFunction(const MachineFunction *MF) override;
 
   /// Process beginning of an instruction.
   void beginInstruction(const MachineInstr *MI) override;
@@ -514,10 +514,8 @@ public:
   /// split dwarf proposal support.
   bool useSplitDwarf() const { return HasSplitDwarf; }
 
-  bool shareAcrossDWOCUs() const;
-
   /// Returns the Dwarf Version.
-  uint16_t getDwarfVersion() const;
+  unsigned getDwarfVersion() const { return DwarfVersion; }
 
   /// Returns the previous CU that was being updated
   const DwarfCompileUnit *getPrevCU() const { return PrevCU; }
@@ -539,6 +537,11 @@ public:
     return Ref.resolve();
   }
 
+  /// Find the DwarfCompileUnit for the given CU Die.
+  DwarfCompileUnit *lookupUnit(const DIE *CU) const {
+    return CUDieMap.lookup(CU);
+  }
+
   void addSubprogramNames(const DISubprogram *SP, DIE &Die);
 
   AddressPool &getAddressPool() { return AddrPool; }
@@ -556,6 +559,12 @@ public:
   /// A helper function to check whether the DIE for a given Scope is
   /// going to be null.
   bool isLexicalScopeDIENull(LexicalScope *Scope);
+
+  // FIXME: Sink these functions down into DwarfFile/Dwarf*Unit.
+
+  SmallPtrSet<const MDNode *, 16> &getProcessedSPNodes() {
+    return ProcessedSPNodes;
+  }
 };
 } // End of namespace llvm
 

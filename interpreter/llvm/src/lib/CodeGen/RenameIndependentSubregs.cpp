@@ -48,7 +48,7 @@ public:
   static char ID;
   RenameIndependentSubregs() : MachineFunctionPass(ID) {}
 
-  StringRef getPassName() const override {
+  const char *getPassName() const override {
     return "Rename Disconnected Subregister Components";
   }
 
@@ -184,7 +184,7 @@ bool RenameIndependentSubregs::findComponents(IntEqClasses &Classes,
     unsigned MergedID = ~0u;
     for (RenameIndependentSubregs::SubRangeInfo &SRInfo : SubRangeInfos) {
       const LiveInterval::SubRange &SR = *SRInfo.SR;
-      if ((SR.LaneMask & LaneMask).none())
+      if ((SR.LaneMask & LaneMask) == 0)
         continue;
       SlotIndex Pos = LIS->getInstructionIndex(*MO.getParent());
       Pos = MO.isDef() ? Pos.getRegSlot(MO.isEarlyClobber())
@@ -219,23 +219,24 @@ void RenameIndependentSubregs::rewriteOperands(const IntEqClasses &Classes,
     if (!MO.isDef() && !MO.readsReg())
       continue;
 
-    SlotIndex Pos = LIS->getInstructionIndex(*MO.getParent());
-    Pos = MO.isDef() ? Pos.getRegSlot(MO.isEarlyClobber())
-                     : Pos.getBaseIndex();
+    MachineInstr &MI = *MO.getParent();
+
+    SlotIndex Pos = LIS->getInstructionIndex(MI);
     unsigned SubRegIdx = MO.getSubReg();
     LaneBitmask LaneMask = TRI.getSubRegIndexLaneMask(SubRegIdx);
 
     unsigned ID = ~0u;
     for (const SubRangeInfo &SRInfo : SubRangeInfos) {
       const LiveInterval::SubRange &SR = *SRInfo.SR;
-      if ((SR.LaneMask & LaneMask).none())
+      if ((SR.LaneMask & LaneMask) == 0)
         continue;
-      const VNInfo *VNI = SR.getVNInfoAt(Pos);
-      if (VNI == nullptr)
+      LiveRange::const_iterator I = SR.find(Pos);
+      if (I == SR.end())
         continue;
 
+      const VNInfo &VNI = *I->valno;
       // Map to local representant ID.
-      unsigned LocalID = SRInfo.ConEQ.getEqClass(VNI);
+      unsigned LocalID = SRInfo.ConEQ.getEqClass(&VNI);
       // Global ID
       ID = Classes[LocalID + SRInfo.Index];
       break;
@@ -353,24 +354,19 @@ void RenameIndependentSubregs::computeMainRangesFixFlags(
     if (I == 0)
       LI.clear();
     LIS->constructMainRangeFromSubranges(LI);
-    // A def of a subregister may be a use of other register lanes. Replacing
-    // such a def with a def of a different register will eliminate the use,
-    // and may cause the recorded live range to be larger than the actual
-    // liveness in the program IR.
-    LIS->shrinkToUses(&LI);
   }
 }
 
 bool RenameIndependentSubregs::runOnMachineFunction(MachineFunction &MF) {
   // Skip renaming if liveness of subregister is not tracked.
-  MRI = &MF.getRegInfo();
-  if (!MRI->subRegLivenessEnabled())
+  if (!MF.getSubtarget().enableSubRegLiveness())
     return false;
 
   DEBUG(dbgs() << "Renaming independent subregister live ranges in "
         << MF.getName() << '\n');
 
   LIS = &getAnalysis<LiveIntervals>();
+  MRI = &MF.getRegInfo();
   TII = MF.getSubtarget().getInstrInfo();
 
   // Iterate over all vregs. Note that we query getNumVirtRegs() the newly

@@ -1,4 +1,4 @@
-//===- llvm/LLVMContext.h - Class for managing "global" state ---*- C++ -*-===//
+//===-- llvm/LLVMContext.h - Class for managing "global" state --*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,32 +15,25 @@
 #ifndef LLVM_IR_LLVMCONTEXT_H
 #define LLVM_IR_LLVMCONTEXT_H
 
-#include "llvm-c/Types.h"
 #include "llvm/Support/CBindingWrapping.h"
 #include "llvm/Support/Options.h"
-#include <cstdint>
-#include <memory>
-#include <string>
 
 namespace llvm {
 
-class DiagnosticInfo;
-enum DiagnosticSeverity : char;
-class Function;
-class Instruction;
 class LLVMContextImpl;
-class Module;
-class OptBisect;
-template <typename T> class SmallVectorImpl;
-class SMDiagnostic;
 class StringRef;
 class Twine;
-
-namespace yaml {
-
-class Output;
-
-} // end namespace yaml
+class Instruction;
+class Module;
+class MDString;
+class DICompositeType;
+class SMDiagnostic;
+class DiagnosticInfo;
+enum DiagnosticSeverity : char;
+template <typename T> class SmallVectorImpl;
+class Function;
+class DebugLoc;
+class OptBisect;
 
 /// This is an important class for using LLVM in a threaded context.  It
 /// (opaquely) owns and manages the core "global" data of LLVM's core
@@ -51,8 +44,6 @@ class LLVMContext {
 public:
   LLVMContextImpl *const pImpl;
   LLVMContext();
-  LLVMContext(LLVMContext &) = delete;
-  LLVMContext &operator=(const LLVMContext &) = delete;
   ~LLVMContext();
 
   // Pinned metadata names, which always have the same value.  This is a
@@ -78,9 +69,6 @@ public:
     MD_align = 17,                    // "align"
     MD_loop = 18,                     // "llvm.loop"
     MD_type = 19,                     // "type"
-    MD_section_prefix = 20,           // "section_prefix"
-    MD_absolute_symbol = 21,          // "absolute_symbol"
-    MD_associated = 22,               // "associated"
   };
 
   /// Known operand bundle tag IDs, which always have the same value.  All
@@ -136,17 +124,17 @@ public:
   void enableDebugTypeODRUniquing();
   void disableDebugTypeODRUniquing();
 
-  using InlineAsmDiagHandlerTy = void (*)(const SMDiagnostic&, void *Context,
-                                          unsigned LocCookie);
+  typedef void (*InlineAsmDiagHandlerTy)(const SMDiagnostic&, void *Context,
+                                         unsigned LocCookie);
 
   /// Defines the type of a diagnostic handler.
   /// \see LLVMContext::setDiagnosticHandler.
   /// \see LLVMContext::diagnose.
-  using DiagnosticHandlerTy = void (*)(const DiagnosticInfo &DI, void *Context);
+  typedef void (*DiagnosticHandlerTy)(const DiagnosticInfo &DI, void *Context);
 
   /// Defines the type of a yield callback.
   /// \see LLVMContext::setYieldCallback.
-  using YieldCallbackTy = void (*)(LLVMContext *Context, void *OpaqueHandle);
+  typedef void (*YieldCallbackTy)(LLVMContext *Context, void *OpaqueHandle);
 
   /// setInlineAsmDiagnosticHandler - This method sets a handler that is invoked
   /// when problems with inline asm are detected by the backend.  The first
@@ -185,24 +173,6 @@ public:
   /// getDiagnosticContext - Return the diagnostic context set by
   /// setDiagnosticContext.
   void *getDiagnosticContext() const;
-
-  /// \brief Return if a code hotness metric should be included in optimization
-  /// diagnostics.
-  bool getDiagnosticHotnessRequested() const;
-  /// \brief Set if a code hotness metric should be included in optimization
-  /// diagnostics.
-  void setDiagnosticHotnessRequested(bool Requested);
-
-  /// \brief Return the YAML file used by the backend to save optimization
-  /// diagnostics.  If null, diagnostics are not saved in a file but only
-  /// emitted via the diagnostic handler.
-  yaml::Output *getDiagnosticsOutputFile();
-  /// Set the diagnostics output file used for optimization diagnostics.
-  ///
-  /// By default or if invoked with null, diagnostics are not saved in a file
-  /// but only emitted via the diagnostic handler.  Even if an output file is
-  /// set, the handler is invoked for each diagnostic message.
-  void setDiagnosticsOutputFile(std::unique_ptr<yaml::Output> F);
 
   /// \brief Get the prefix that should be printed in front of a diagnostic of
   ///        the given \p Severity
@@ -267,8 +237,8 @@ public:
   /// analysis.
   OptBisect &getOptBisect();
 private:
-  // Module needs access to the add/removeModule methods.
-  friend class Module;
+  LLVMContext(LLVMContext&) = delete;
+  void operator=(LLVMContext&) = delete;
 
   /// addModule - Register a module as being instantiated in this context.  If
   /// the context is deleted, the module will be deleted as well.
@@ -276,6 +246,9 @@ private:
 
   /// removeModule - Unregister a module from this context.
   void removeModule(Module*);
+
+  // Module needs access to the add/removeModule methods.
+  friend class Module;
 };
 
 // Create wrappers for C Binding types (see CBindingWrapping.h).
@@ -291,6 +264,6 @@ inline LLVMContextRef *wrap(const LLVMContext **Tys) {
   return reinterpret_cast<LLVMContextRef*>(const_cast<LLVMContext**>(Tys));
 }
 
-} // end namespace llvm
+}
 
-#endif // LLVM_IR_LLVMCONTEXT_H
+#endif

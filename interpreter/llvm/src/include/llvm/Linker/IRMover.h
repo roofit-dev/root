@@ -71,11 +71,8 @@ public:
   ///   not present in ValuesToLink. The GlobalValue and a ValueAdder callback
   ///   are passed as an argument, and the callback is expected to be called
   ///   if the GlobalValue needs to be added to the \p ValuesToLink and linked.
-  /// - \p IsPerformingImport is true when this IR link is to perform ThinLTO
-  ///   function importing from Src.
   Error move(std::unique_ptr<Module> Src, ArrayRef<GlobalValue *> ValuesToLink,
-             std::function<void(GlobalValue &GV, ValueAdder Add)> AddLazyFor,
-             bool IsPerformingImport);
+             std::function<void(GlobalValue &GV, ValueAdder Add)> AddLazyFor);
   Module &getModule() { return Composite; }
 
 private:

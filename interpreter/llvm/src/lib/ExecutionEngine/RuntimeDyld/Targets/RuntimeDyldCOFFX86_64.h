@@ -33,7 +33,7 @@ private:
 
 public:
   RuntimeDyldCOFFX86_64(RuntimeDyld::MemoryManager &MM,
-                        JITSymbolResolver &Resolver)
+                        RuntimeDyld::SymbolResolver &Resolver)
     : RuntimeDyldCOFF(MM, Resolver) {}
 
   unsigned getMaxStubSize() override {
@@ -193,6 +193,9 @@ public:
       RegisteredEHFrameSections.push_back(EHFrameSID);
     }
     UnregisteredEHFrameSections.clear();
+  }
+  void deregisterEHFrames() override {
+    // Stub
   }
   Error finalizeLoad(const ObjectFile &Obj,
                      ObjSectionToIDMap &SectionMap) override {

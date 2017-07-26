@@ -20,6 +20,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/Type.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace clang;
@@ -118,7 +119,7 @@ static QualType Desugar(ASTContext &Context, QualType QT, bool &ShouldAKA) {
         if (DesugarArgument) {
           ShouldAKA = true;
           QT = Context.getTemplateSpecializationType(
-              TST->getTemplateName(), Args, QT);
+              TST->getTemplateName(), Args.data(), Args.size(), QT);
         }
         break;
       }
@@ -916,8 +917,6 @@ class TemplateDiff {
       /// template argument.
       InternalIterator(const TemplateSpecializationType *TST)
           : TST(TST), Index(0), CurrentTA(nullptr), EndTA(nullptr) {
-        if (!TST) return;
-
         if (isEnd()) return;
 
         // Set to first template argument.  If not a parameter pack, done.
@@ -936,18 +935,13 @@ class TemplateDiff {
         ++(*this);
       }
 
-      /// Return true if the iterator is non-singular.
-      bool isValid() const { return TST; }
-
       /// isEnd - Returns true if the iterator is one past the end.
       bool isEnd() const {
-        assert(TST && "InternalIterator is invalid with a null TST.");
         return Index >= TST->getNumArgs();
       }
 
       /// &operator++ - Increment the iterator to the next template argument.
       InternalIterator &operator++() {
-        assert(TST && "InternalIterator is invalid with a null TST.");
         if (isEnd()) {
           return *this;
         }
@@ -983,7 +977,6 @@ class TemplateDiff {
 
       /// operator* - Returns the appropriate TemplateArgument.
       reference operator*() const {
-        assert(TST && "InternalIterator is invalid with a null TST.");
         assert(!isEnd() && "Index exceeds number of arguments.");
         if (CurrentTA == EndTA)
           return TST->getArg(Index);
@@ -993,26 +986,25 @@ class TemplateDiff {
 
       /// operator-> - Allow access to the underlying TemplateArgument.
       pointer operator->() const {
-        assert(TST && "InternalIterator is invalid with a null TST.");
         return &operator*();
       }
     };
 
+    bool UseDesugaredIterator;
     InternalIterator SugaredIterator;
     InternalIterator DesugaredIterator;
 
   public:
     TSTiterator(ASTContext &Context, const TemplateSpecializationType *TST)
-        : SugaredIterator(TST),
+        : UseDesugaredIterator(TST->isSugared() && !TST->isTypeAlias()),
+          SugaredIterator(TST),
           DesugaredIterator(
-              (TST->isSugared() && !TST->isTypeAlias())
-                  ? GetTemplateSpecializationType(Context, TST->desugar())
-                  : nullptr) {}
+              GetTemplateSpecializationType(Context, TST->desugar())) {}
 
     /// &operator++ - Increment the iterator to the next template argument.
     TSTiterator &operator++() {
       ++SugaredIterator;
-      if (DesugaredIterator.isValid())
+      if (UseDesugaredIterator)
         ++DesugaredIterator;
       return *this;
     }
@@ -1035,12 +1027,12 @@ class TemplateDiff {
     /// hasDesugaredTA - Returns true if there is another TemplateArgument
     /// available.
     bool hasDesugaredTA() const {
-      return DesugaredIterator.isValid() && !DesugaredIterator.isEnd();
+      return UseDesugaredIterator && !DesugaredIterator.isEnd();
     }
 
     /// getDesugaredTA - Returns the desugared TemplateArgument.
     reference getDesugaredTA() const {
-      assert(DesugaredIterator.isValid() &&
+      assert(UseDesugaredIterator &&
              "Desugared TemplateArgument should not be used.");
       return *DesugaredIterator;
     }
@@ -1068,7 +1060,8 @@ class TemplateDiff {
 
     Ty = Context.getTemplateSpecializationType(
              TemplateName(CTSD->getSpecializedTemplate()),
-             CTSD->getTemplateArgs().asArray(),
+             CTSD->getTemplateArgs().data(),
+             CTSD->getTemplateArgs().size(),
              Ty.getLocalUnqualifiedType().getCanonicalType());
 
     return Ty->getAs<TemplateSpecializationType>();

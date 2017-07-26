@@ -95,7 +95,7 @@ SDValue ARMSelectionDAGInfo::EmitSpecializedLibcall(
 
     Entry.Node = Src; 
     Entry.Ty = Type::getInt32Ty(*DAG.getContext());
-    Entry.IsSExt = false;
+    Entry.isSExt = false;
     Args.push_back(Entry);
   } else {
     Entry.Node = Src;
@@ -114,11 +114,11 @@ SDValue ARMSelectionDAGInfo::EmitSpecializedLibcall(
   TargetLowering::CallLoweringInfo CLI(DAG);
   CLI.setDebugLoc(dl)
       .setChain(Chain)
-      .setLibCallee(
-          TLI->getLibcallCallingConv(LC), Type::getVoidTy(*DAG.getContext()),
-          DAG.getExternalSymbol(FunctionNames[AEABILibcall][AlignVariant],
-                                TLI->getPointerTy(DAG.getDataLayout())),
-          std::move(Args))
+      .setCallee(
+           TLI->getLibcallCallingConv(LC), Type::getVoidTy(*DAG.getContext()),
+           DAG.getExternalSymbol(FunctionNames[AEABILibcall][AlignVariant],
+                                 TLI->getPointerTy(DAG.getDataLayout())),
+           std::move(Args))
       .setDiscardResult();
   std::pair<SDValue,SDValue> CallResult = TLI->LowerCallTo(CLI);
   
@@ -198,22 +198,22 @@ SDValue ARMSelectionDAGInfo::EmitTargetCodeForMemcpy(
     return Chain;
 
   // Issue loads / stores for the trailing (1 - 3) bytes.
-  auto getRemainingValueType = [](unsigned BytesLeft) {
-    return (BytesLeft >= 2) ? MVT::i16 : MVT::i8;
-  };
-  auto getRemainingSize = [](unsigned BytesLeft) {
-    return (BytesLeft >= 2) ? 2 : 1;
-  };
-
   unsigned BytesLeftSave = BytesLeft;
   i = 0;
   while (BytesLeft) {
-    VT = getRemainingValueType(BytesLeft);
-    VTSize = getRemainingSize(BytesLeft);
+    if (BytesLeft >= 2) {
+      VT = MVT::i16;
+      VTSize = 2;
+    } else {
+      VT = MVT::i8;
+      VTSize = 1;
+    }
+
     Loads[i] = DAG.getLoad(VT, dl, Chain,
                            DAG.getNode(ISD::ADD, dl, MVT::i32, Src,
                                        DAG.getConstant(SrcOff, dl, MVT::i32)),
-                           SrcPtrInfo.getWithOffset(SrcOff));
+                           SrcPtrInfo.getWithOffset(SrcOff),
+                           false, false, false, 0);
     TFOps[i] = Loads[i].getValue(1);
     ++i;
     SrcOff += VTSize;
@@ -225,12 +225,18 @@ SDValue ARMSelectionDAGInfo::EmitTargetCodeForMemcpy(
   i = 0;
   BytesLeft = BytesLeftSave;
   while (BytesLeft) {
-    VT = getRemainingValueType(BytesLeft);
-    VTSize = getRemainingSize(BytesLeft);
+    if (BytesLeft >= 2) {
+      VT = MVT::i16;
+      VTSize = 2;
+    } else {
+      VT = MVT::i8;
+      VTSize = 1;
+    }
+
     TFOps[i] = DAG.getStore(Chain, dl, Loads[i],
                             DAG.getNode(ISD::ADD, dl, MVT::i32, Dst,
                                         DAG.getConstant(DstOff, dl, MVT::i32)),
-                            DstPtrInfo.getWithOffset(DstOff));
+                            DstPtrInfo.getWithOffset(DstOff), false, false, 0);
     ++i;
     DstOff += VTSize;
     BytesLeft -= VTSize;

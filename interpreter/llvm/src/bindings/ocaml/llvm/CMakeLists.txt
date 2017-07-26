@@ -8,4 +8,4 @@ configure_file(
   "${LLVM_LIBRARY_DIR}/ocaml/META.llvm")
 
 install(FILES "${LLVM_LIBRARY_DIR}/ocaml/META.llvm"
-        DESTINATION "${LLVM_OCAML_INSTALL_PATH}")
+        DESTINATION lib/ocaml)

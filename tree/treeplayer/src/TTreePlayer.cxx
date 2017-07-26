@@ -90,7 +90,7 @@ R__EXTERN Foption_t Foption;
 
 TVirtualFitter *tFitter=0;
 
-ClassImp(TTreePlayer);
+ClassImp(TTreePlayer)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default Tree constructor.
@@ -114,7 +114,7 @@ TTreePlayer::TTreePlayer()
    fInput->Add(new TNamed("selection",""));
    fSelector->SetInputList(fInput);
    {
-      R__LOCKGUARD(gROOTMutex);
+      R__LOCKGUARD2(gROOTMutex);
       gROOT->GetListOfCleanups()->Add(this);
    }
    TClass::GetClass("TRef")->AdoptReferenceProxy(new TRefProxy());
@@ -131,7 +131,7 @@ TTreePlayer::~TTreePlayer()
    DeleteSelectorFromFile();
    fInput->Delete();
    delete fInput;
-   R__LOCKGUARD(gROOTMutex);
+   R__LOCKGUARD2(gROOTMutex);
    gROOT->GetListOfCleanups()->Remove(this);
 }
 

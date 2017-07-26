@@ -49,7 +49,7 @@ public:
     init(this->SV.begin(), this->SV.end(), false);
   }
 
-  StringRef getBufferIdentifier() const override { return BufferName; }
+  const char* getBufferIdentifier() const override { return BufferName.c_str(); }
 
   BufferKind getBufferKind() const override { return MemoryBuffer_Malloc; }
 

@@ -239,8 +239,7 @@ public:
   bool VisitUnresolvedUsingValueDecl(UnresolvedUsingValueDecl *D);
   bool VisitUnresolvedUsingTypenameDecl(UnresolvedUsingTypenameDecl *D);
   bool VisitStaticAssertDecl(StaticAssertDecl *D);
-  bool VisitFriendDecl(FriendDecl *D);
-
+  
   // Name visitor
   bool VisitDeclarationNameInfo(DeclarationNameInfo Name);
   bool VisitNestedNameSpecifier(NestedNameSpecifier *NNS, SourceRange Range);

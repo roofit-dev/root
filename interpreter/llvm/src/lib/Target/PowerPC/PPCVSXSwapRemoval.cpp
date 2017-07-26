@@ -522,7 +522,7 @@ bool PPCVSXSwapRemoval::gatherVectorInstructions() {
 
   if (RelevantFunction) {
     DEBUG(dbgs() << "Swap vector when first built\n\n");
-    DEBUG(dumpSwapVector());
+    dumpSwapVector();
   }
 
   return RelevantFunction;
@@ -692,7 +692,6 @@ void PPCVSXSwapRemoval::recordUnoptimizableWebs() {
       MachineInstr *MI = SwapVector[EntryIdx].VSEMI;
       unsigned UseReg = MI->getOperand(0).getReg();
       MachineInstr *DefMI = MRI->getVRegDef(UseReg);
-      unsigned DefReg = DefMI->getOperand(0).getReg();
       int DefIdx = SwapMap[DefMI];
 
       if (!SwapVector[DefIdx].IsSwap || SwapVector[DefIdx].IsLoad ||
@@ -708,30 +707,11 @@ void PPCVSXSwapRemoval::recordUnoptimizableWebs() {
         DEBUG(MI->dump());
         DEBUG(dbgs() << "\n");
       }
-
-      // Ensure all uses of the register defined by DefMI feed store
-      // instructions
-      for (MachineInstr &UseMI : MRI->use_nodbg_instructions(DefReg)) {
-        int UseIdx = SwapMap[&UseMI];
-
-        if (SwapVector[UseIdx].VSEMI->getOpcode() != MI->getOpcode()) {
-          SwapVector[Repr].WebRejected = 1;
-
-          DEBUG(dbgs() <<
-                format("Web %d rejected for swap not feeding only stores\n",
-                       Repr));
-          DEBUG(dbgs() << "  def " << " : ");
-          DEBUG(DefMI->dump());
-          DEBUG(dbgs() << "  use " << UseIdx << ": ");
-          DEBUG(SwapVector[UseIdx].VSEMI->dump());
-          DEBUG(dbgs() << "\n");
-        }
-      }
     }
   }
 
   DEBUG(dbgs() << "Swap vector after web analysis:\n\n");
-  DEBUG(dumpSwapVector());
+  dumpSwapVector();
 }
 
 // Walk the swap vector entries looking for swaps fed by permuting loads
@@ -936,9 +916,9 @@ bool PPCVSXSwapRemoval::removeSwaps() {
       Changed = true;
       MachineInstr *MI = SwapVector[EntryIdx].VSEMI;
       MachineBasicBlock *MBB = MI->getParent();
-      BuildMI(*MBB, MI, MI->getDebugLoc(), TII->get(TargetOpcode::COPY),
-              MI->getOperand(0).getReg())
-          .add(MI->getOperand(1));
+      BuildMI(*MBB, MI, MI->getDebugLoc(),
+              TII->get(TargetOpcode::COPY), MI->getOperand(0).getReg())
+        .addOperand(MI->getOperand(1));
 
       DEBUG(dbgs() << format("Replaced %d with copy: ",
                              SwapVector[EntryIdx].VSEId));
@@ -951,78 +931,76 @@ bool PPCVSXSwapRemoval::removeSwaps() {
   return Changed;
 }
 
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 // For debug purposes, dump the contents of the swap vector.
-LLVM_DUMP_METHOD void PPCVSXSwapRemoval::dumpSwapVector() {
+void PPCVSXSwapRemoval::dumpSwapVector() {
 
   for (unsigned EntryIdx = 0; EntryIdx < SwapVector.size(); ++EntryIdx) {
 
     MachineInstr *MI = SwapVector[EntryIdx].VSEMI;
     int ID = SwapVector[EntryIdx].VSEId;
 
-    dbgs() << format("%6d", ID);
-    dbgs() << format("%6d", EC->getLeaderValue(ID));
-    dbgs() << format(" BB#%3d", MI->getParent()->getNumber());
-    dbgs() << format("  %14s  ", TII->getName(MI->getOpcode()).str().c_str());
+    DEBUG(dbgs() << format("%6d", ID));
+    DEBUG(dbgs() << format("%6d", EC->getLeaderValue(ID)));
+    DEBUG(dbgs() << format(" BB#%3d", MI->getParent()->getNumber()));
+    DEBUG(dbgs() << format("  %14s  ", TII->getName(MI->getOpcode())));
 
     if (SwapVector[EntryIdx].IsLoad)
-      dbgs() << "load ";
+      DEBUG(dbgs() << "load ");
     if (SwapVector[EntryIdx].IsStore)
-      dbgs() << "store ";
+      DEBUG(dbgs() << "store ");
     if (SwapVector[EntryIdx].IsSwap)
-      dbgs() << "swap ";
+      DEBUG(dbgs() << "swap ");
     if (SwapVector[EntryIdx].MentionsPhysVR)
-      dbgs() << "physreg ";
+      DEBUG(dbgs() << "physreg ");
     if (SwapVector[EntryIdx].MentionsPartialVR)
-      dbgs() << "partialreg ";
+      DEBUG(dbgs() << "partialreg ");
 
     if (SwapVector[EntryIdx].IsSwappable) {
-      dbgs() << "swappable ";
+      DEBUG(dbgs() << "swappable ");
       switch(SwapVector[EntryIdx].SpecialHandling) {
       default:
-        dbgs() << "special:**unknown**";
+        DEBUG(dbgs() << "special:**unknown**");
         break;
       case SH_NONE:
         break;
       case SH_EXTRACT:
-        dbgs() << "special:extract ";
+        DEBUG(dbgs() << "special:extract ");
         break;
       case SH_INSERT:
-        dbgs() << "special:insert ";
+        DEBUG(dbgs() << "special:insert ");
         break;
       case SH_NOSWAP_LD:
-        dbgs() << "special:load ";
+        DEBUG(dbgs() << "special:load ");
         break;
       case SH_NOSWAP_ST:
-        dbgs() << "special:store ";
+        DEBUG(dbgs() << "special:store ");
         break;
       case SH_SPLAT:
-        dbgs() << "special:splat ";
+        DEBUG(dbgs() << "special:splat ");
         break;
       case SH_XXPERMDI:
-        dbgs() << "special:xxpermdi ";
+        DEBUG(dbgs() << "special:xxpermdi ");
         break;
       case SH_COPYWIDEN:
-        dbgs() << "special:copywiden ";
+        DEBUG(dbgs() << "special:copywiden ");
         break;
       }
     }
 
     if (SwapVector[EntryIdx].WebRejected)
-      dbgs() << "rejected ";
+      DEBUG(dbgs() << "rejected ");
     if (SwapVector[EntryIdx].WillRemove)
-      dbgs() << "remove ";
+      DEBUG(dbgs() << "remove ");
 
-    dbgs() << "\n";
+    DEBUG(dbgs() << "\n");
 
     // For no-asserts builds.
     (void)MI;
     (void)ID;
   }
 
-  dbgs() << "\n";
+  DEBUG(dbgs() << "\n");
 }
-#endif
 
 } // end default namespace
 

@@ -14,20 +14,14 @@
 #ifndef LLVM_EXECUTIONENGINE_ORC_LAZYEMITTINGLAYER_H
 #define LLVM_EXECUTIONENGINE_ORC_LAZYEMITTINGLAYER_H
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ExecutionEngine/JITSymbol.h"
+#include "JITSymbol.h"
+#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
-#include <algorithm>
-#include <cassert>
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include <list>
-#include <memory>
-#include <string>
 
 namespace llvm {
 namespace orc {
@@ -45,8 +39,8 @@ public:
 private:
   class EmissionDeferredSet {
   public:
-    EmissionDeferredSet() = default;
-    virtual ~EmissionDeferredSet() = default;
+    EmissionDeferredSet() : EmitState(NotEmitted) {}
+    virtual ~EmissionDeferredSet() {}
 
     JITSymbol find(StringRef Name, bool ExportedSymbolsOnly, BaseLayerT &B) {
       switch (EmitState) {
@@ -56,9 +50,9 @@ private:
           // (a StringRef) may go away before the lambda is executed.
           // FIXME: Use capture-init when we move to C++14.
           std::string PName = Name;
-          JITSymbolFlags Flags = JITSymbolFlags::fromGlobalValue(*GV);
+          JITSymbolFlags Flags = JITSymbolBase::flagsFromGlobalValue(*GV);
           auto GetAddress =
-            [this, ExportedSymbolsOnly, PName, &B]() -> JITTargetAddress {
+            [this, ExportedSymbolsOnly, PName, &B]() -> TargetAddress {
               if (this->EmitState == Emitting)
                 return 0;
               else if (this->EmitState == NotEmitted) {
@@ -112,7 +106,7 @@ private:
     virtual BaseLayerHandleT emitToBaseLayer(BaseLayerT &BaseLayer) = 0;
 
   private:
-    enum { NotEmitted, Emitting, Emitted } EmitState = NotEmitted;
+    enum { NotEmitted, Emitting, Emitted } EmitState;
     BaseLayerHandleT Handle;
   };
 
@@ -127,6 +121,7 @@ private:
           Resolver(std::move(Resolver)) {}
 
   protected:
+
     const GlobalValue* searchGVs(StringRef Name,
                                  bool ExportedSymbolsOnly) const override {
       // FIXME: We could clean all this up if we had a way to reliably demangle
@@ -282,6 +277,7 @@ public:
   void emitAndFinalize(ModuleSetHandleT H) {
     (*H)->emitAndFinalize(BaseLayer);
   }
+
 };
 
 template <typename BaseLayerT>
@@ -297,7 +293,7 @@ LazyEmittingLayer<BaseLayerT>::EmissionDeferredSet::create(
                                 std::move(Resolver));
 }
 
-} // end namespace orc
-} // end namespace llvm
+} // End namespace orc.
+} // End namespace llvm.
 
 #endif // LLVM_EXECUTIONENGINE_ORC_LAZYEMITTINGLAYER_H

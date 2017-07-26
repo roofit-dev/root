@@ -74,8 +74,7 @@ void ModuleDebugInfoPrinter::print(raw_ostream &O, const Module *M) const {
   // filenames), so just print a few useful things.
   for (DICompileUnit *CU : Finder.compile_units()) {
     O << "Compile unit: ";
-    auto Lang = dwarf::LanguageString(CU->getSourceLanguage());
-    if (!Lang.empty())
+    if (const char *Lang = dwarf::LanguageString(CU->getSourceLanguage()))
       O << Lang;
     else
       O << "unknown-language(" << CU->getSourceLanguage() << ")";
@@ -91,8 +90,7 @@ void ModuleDebugInfoPrinter::print(raw_ostream &O, const Module *M) const {
     O << '\n';
   }
 
-  for (auto GVU : Finder.global_variables()) {
-    const auto *GV = GVU->getVariable();
+  for (const DIGlobalVariable *GV : Finder.global_variables()) {
     O << "Global variable: " << GV->getName();
     printFile(O, GV->getFilename(), GV->getDirectory(), GV->getLine());
     if (!GV->getLinkageName().empty())
@@ -107,15 +105,14 @@ void ModuleDebugInfoPrinter::print(raw_ostream &O, const Module *M) const {
     printFile(O, T->getFilename(), T->getDirectory(), T->getLine());
     if (auto *BT = dyn_cast<DIBasicType>(T)) {
       O << " ";
-      auto Encoding = dwarf::AttributeEncodingString(BT->getEncoding());
-      if (!Encoding.empty())
+      if (const char *Encoding =
+              dwarf::AttributeEncodingString(BT->getEncoding()))
         O << Encoding;
       else
         O << "unknown-encoding(" << BT->getEncoding() << ')';
     } else {
       O << ' ';
-      auto Tag = dwarf::TagString(T->getTag());
-      if (!Tag.empty())
+      if (const char *Tag = dwarf::TagString(T->getTag()))
         O << Tag;
       else
         O << "unknown-tag(" << T->getTag() << ")";

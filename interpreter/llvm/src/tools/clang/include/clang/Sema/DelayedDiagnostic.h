@@ -113,16 +113,16 @@ private:
 /// the complete parsing of the current declaration.
 class DelayedDiagnostic {
 public:
-  enum DDKind : unsigned char { Availability, Access, ForbiddenType };
+  enum DDKind { Deprecation, Unavailable, Access, ForbiddenType };
 
-  DDKind Kind;
+  unsigned char Kind; // actually a DDKind
   bool Triggered;
 
   SourceLocation Loc;
 
   void Destroy();
 
-  static DelayedDiagnostic makeAvailability(AvailabilityResult AR,
+  static DelayedDiagnostic makeAvailability(Sema::AvailabilityDiagnostic AD,
                                             SourceLocation Loc,
                                             const NamedDecl *D,
                                             const ObjCInterfaceDecl *UnknownObjCClass,
@@ -164,19 +164,17 @@ public:
     return *reinterpret_cast<const AccessedEntity*>(AccessData);
   }
 
-  const NamedDecl *getAvailabilityDecl() const {
-    assert(Kind == Availability && "Not an availability diagnostic.");
-    return AvailabilityData.Decl;
+  const NamedDecl *getDeprecationDecl() const {
+    assert((Kind == Deprecation || Kind == Unavailable) &&
+           "Not a deprecation diagnostic.");
+    return DeprecationData.Decl;
   }
 
-  StringRef getAvailabilityMessage() const {
-    assert(Kind == Availability && "Not an availability diagnostic.");
-    return StringRef(AvailabilityData.Message, AvailabilityData.MessageLen);
-  }
-
-  AvailabilityResult getAvailabilityResult() const {
-    assert(Kind == Availability && "Not an availability diagnostic.");
-    return AvailabilityData.AR;
+  StringRef getDeprecationMessage() const {
+    assert((Kind == Deprecation || Kind == Unavailable) &&
+           "Not a deprecation diagnostic.");
+    return StringRef(DeprecationData.Message,
+                           DeprecationData.MessageLen);
   }
 
   /// The diagnostic ID to emit.  Used like so:
@@ -197,28 +195,27 @@ public:
     assert(Kind == ForbiddenType && "not a forbidden-type diagnostic");
     return QualType::getFromOpaquePtr(ForbiddenTypeData.OperandType);
   }
-
+  
   const ObjCInterfaceDecl *getUnknownObjCClass() const {
-    return AvailabilityData.UnknownObjCClass;
+    return DeprecationData.UnknownObjCClass;
   }
 
   const ObjCPropertyDecl *getObjCProperty() const {
-    return AvailabilityData.ObjCProperty;
+    return DeprecationData.ObjCProperty;
   }
-
+    
   bool getObjCPropertyAccess() const {
-    return AvailabilityData.ObjCPropertyAccess;
+    return DeprecationData.ObjCPropertyAccess;
   }
-
+  
 private:
 
-  struct AD {
+  struct DD {
     const NamedDecl *Decl;
     const ObjCInterfaceDecl *UnknownObjCClass;
     const ObjCPropertyDecl  *ObjCProperty;
     const char *Message;
     size_t MessageLen;
-    AvailabilityResult AR;
     bool ObjCPropertyAccess;
   };
 
@@ -229,7 +226,8 @@ private:
   };
 
   union {
-    struct AD AvailabilityData;
+    /// Deprecation
+    struct DD DeprecationData;
     struct FTD ForbiddenTypeData;
 
     /// Access control.

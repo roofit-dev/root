@@ -3,7 +3,7 @@
 # @author Pere Mato, CERN
 ############################################################################
 
-ROOT_GENERATE_DICTIONARY(G__Pythia6 *.h  MODULE EGPythia6 LINKDEF LinkDef.h DEPENDENCIES EG Graf VMC Physics)
+ROOT_GENERATE_DICTIONARY(G__Pythia6 *.h  MODULE EGPythia6 LINKDEF LinkDef.h)
 
 if(pythia6_nolink)
   set(PYTHIA6_LIBRARIES)

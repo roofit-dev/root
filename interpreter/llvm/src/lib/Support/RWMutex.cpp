@@ -13,6 +13,7 @@
 
 #include "llvm/Config/config.h"
 #include "llvm/Support/RWMutex.h"
+#include <cstring>
 
 //===----------------------------------------------------------------------===//
 //=== WARNING: Implementation here must contain only TRULY operating system
@@ -21,31 +22,29 @@
 
 #if !defined(LLVM_ENABLE_THREADS) || LLVM_ENABLE_THREADS == 0
 // Define all methods as no-ops if threading is explicitly disabled
-
-using namespace llvm;
+namespace llvm {
 using namespace sys;
-
-RWMutexImpl::RWMutexImpl() = default;
-RWMutexImpl::~RWMutexImpl() = default;
-
+RWMutexImpl::RWMutexImpl() { }
+RWMutexImpl::~RWMutexImpl() { }
 bool RWMutexImpl::reader_acquire() { return true; }
 bool RWMutexImpl::reader_release() { return true; }
 bool RWMutexImpl::writer_acquire() { return true; }
 bool RWMutexImpl::writer_release() { return true; }
-
+}
 #else
 
 #if defined(HAVE_PTHREAD_H) && defined(HAVE_PTHREAD_RWLOCK_INIT)
 
 #include <cassert>
-#include <cstdlib>
 #include <pthread.h>
+#include <stdlib.h>
 
-using namespace llvm;
+namespace llvm {
 using namespace sys;
 
 // Construct a RWMutex using pthread calls
 RWMutexImpl::RWMutexImpl()
+  : data_(nullptr)
 {
   // Declare the pthread_rwlock data structures
   pthread_rwlock_t* rwlock =
@@ -112,6 +111,8 @@ RWMutexImpl::writer_release()
 
   int errorcode = pthread_rwlock_unlock(rwlock);
   return errorcode == 0;
+}
+
 }
 
 #elif defined(LLVM_ON_UNIX)

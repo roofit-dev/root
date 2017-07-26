@@ -14,13 +14,12 @@
 #include "LinkDiagnosticInfo.h"
 #include "llvm-c/Linker.h"
 #include "llvm/ADT/SetVector.h"
-#include "llvm/IR/Comdat.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/IR/DiagnosticPrinter.h"
-#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Transforms/Utils/FunctionImportUtils.h"
 using namespace llvm;
 
 namespace {
@@ -32,17 +31,14 @@ class ModuleLinker {
   std::unique_ptr<Module> SrcM;
 
   SetVector<GlobalValue *> ValuesToLink;
+  StringSet<> Internalize;
 
   /// For symbol clashes, prefer those from Src.
   unsigned Flags;
 
-  /// List of global value names that should be internalized.
-  StringSet<> Internalize;
-
-  /// Function that will perform the actual internalization. The reason for a
-  /// callback is that the linker cannot call internalizeModule without
-  /// creating a circular dependency between IPO and the linker.
-  std::function<void(Module &, const StringSet<> &)> InternalizeCallback;
+  /// Functions to import from source module, all other functions are
+  /// imported as declarations instead of definitions.
+  DenseSet<const GlobalValue *> *GlobalsToImport;
 
   /// Used as the callback for lazy linking.
   /// The mover has just hit GV and we have to decide if it, and other members
@@ -50,8 +46,14 @@ class ModuleLinker {
   /// to Add.
   void addLazyFor(GlobalValue &GV, const IRMover::ValueAdder &Add);
 
+  bool shouldLinkReferencedLinkOnce() {
+    return !(Flags & Linker::DontForceLinkLinkonceODR);
+  }
   bool shouldOverrideFromSrc() { return Flags & Linker::OverrideFromSrc; }
   bool shouldLinkOnlyNeeded() { return Flags & Linker::LinkOnlyNeeded; }
+  bool shouldInternalizeLinkedSymbols() {
+    return Flags & Linker::InternalizeLinkedSymbols;
+  }
 
   bool shouldLinkFromSource(bool &LinkFromSrc, const GlobalValue &Dest,
                             const GlobalValue &Src);
@@ -106,15 +108,29 @@ class ModuleLinker {
 
   bool linkIfNeeded(GlobalValue &GV);
 
+  /// Helper method to check if we are importing from the current source
+  /// module.
+  bool isPerformingImport() const { return GlobalsToImport != nullptr; }
+
+  /// If we are importing from the source module, checks if we should
+  /// import SGV as a definition, otherwise import as a declaration.
+  bool doImportAsDefinition(const GlobalValue *SGV);
+
 public:
   ModuleLinker(IRMover &Mover, std::unique_ptr<Module> SrcM, unsigned Flags,
-               std::function<void(Module &, const StringSet<> &)>
-                   InternalizeCallback = {})
+               DenseSet<const GlobalValue *> *GlobalsToImport = nullptr)
       : Mover(Mover), SrcM(std::move(SrcM)), Flags(Flags),
-        InternalizeCallback(std::move(InternalizeCallback)) {}
+        GlobalsToImport(GlobalsToImport) {}
 
   bool run();
 };
+}
+
+bool ModuleLinker::doImportAsDefinition(const GlobalValue *SGV) {
+  if (!isPerformingImport())
+    return false;
+  return FunctionImportGlobalProcessing::doImportAsDefinition(SGV,
+                                                              GlobalsToImport);
 }
 
 static GlobalValue::VisibilityTypes
@@ -250,7 +266,15 @@ bool ModuleLinker::shouldLinkFromSource(bool &LinkFromSrc,
 
   // We always have to add Src if it has appending linkage.
   if (Src.hasAppendingLinkage()) {
+    // Should have prevented importing for appending linkage in linkIfNeeded.
+    assert(!isPerformingImport());
     LinkFromSrc = true;
+    return false;
+  }
+
+  if (isPerformingImport()) {
+    // LinkFromSrc iff this is a global requested for importing.
+    LinkFromSrc = GlobalsToImport->count(&Src);
     return false;
   }
 
@@ -359,9 +383,19 @@ bool ModuleLinker::linkIfNeeded(GlobalValue &GV) {
     GV.setUnnamedAddr(UnnamedAddr);
   }
 
-  if (!DGV && !shouldOverrideFromSrc() &&
-      (GV.hasLocalLinkage() || GV.hasLinkOnceLinkage() ||
-       GV.hasAvailableExternallyLinkage()))
+  // Don't want to append to global_ctors list, for example, when we
+  // are importing for ThinLTO, otherwise the global ctors and dtors
+  // get executed multiple times for local variables (the latter causing
+  // double frees).
+  if (GV.hasAppendingLinkage() && isPerformingImport())
+    return false;
+
+  if (isPerformingImport()) {
+    if (!doImportAsDefinition(&GV))
+      return false;
+  } else if (!DGV && !shouldOverrideFromSrc() &&
+             (GV.hasLocalLinkage() || GV.hasLinkOnceLinkage() ||
+              GV.hasAvailableExternallyLinkage()))
     return false;
 
   if (GV.isDeclaration())
@@ -384,12 +418,17 @@ bool ModuleLinker::linkIfNeeded(GlobalValue &GV) {
 }
 
 void ModuleLinker::addLazyFor(GlobalValue &GV, const IRMover::ValueAdder &Add) {
-  // Add these to the internalize list
-  if (!GV.hasLinkOnceLinkage() && !GV.hasAvailableExternallyLinkage() &&
-      !shouldLinkOnlyNeeded())
+  if (!shouldLinkReferencedLinkOnce())
+    // For ThinLTO we don't import more than what was required.
+    // The client has to guarantee that the linkonce will be availabe at link
+    // time (by promoting it to weak for instance).
     return;
 
-  if (InternalizeCallback)
+  // Add these to the internalize list
+  if (!GV.hasLinkOnceLinkage() && !shouldLinkOnlyNeeded())
+    return;
+
+  if (shouldInternalizeLinkedSymbols())
     Internalize.insert(GV.getName());
   Add(GV);
 
@@ -403,7 +442,7 @@ void ModuleLinker::addLazyFor(GlobalValue &GV, const IRMover::ValueAdder &Add) {
       return;
     if (!LinkFromSrc)
       continue;
-    if (InternalizeCallback)
+    if (shouldInternalizeLinkedSymbols())
       Internalize.insert(GV2->getName());
     Add(*GV2);
   }
@@ -532,7 +571,7 @@ bool ModuleLinker::run() {
     }
   }
 
-  if (InternalizeCallback) {
+  if (shouldInternalizeLinkedSymbols()) {
     for (GlobalValue *GV : ValuesToLink)
       Internalize.insert(GV->getName());
   }
@@ -543,8 +582,7 @@ bool ModuleLinker::run() {
   if (Error E = Mover.move(std::move(SrcM), ValuesToLink.getArrayRef(),
                            [this](GlobalValue &GV, IRMover::ValueAdder Add) {
                              addLazyFor(GV, Add);
-                           },
-                           /* IsPerformingImport */ false)) {
+                           })) {
     handleAllErrors(std::move(E), [&](ErrorInfoBase &EIB) {
       DstM.getContext().diagnose(LinkDiagnosticInfo(DS_Error, EIB.message()));
       HasErrors = true;
@@ -553,19 +591,19 @@ bool ModuleLinker::run() {
   if (HasErrors)
     return true;
 
-  if (InternalizeCallback)
-    InternalizeCallback(DstM, Internalize);
+  for (auto &P : Internalize) {
+    GlobalValue *GV = DstM.getNamedValue(P.first());
+    GV->setLinkage(GlobalValue::InternalLinkage);
+  }
 
   return false;
 }
 
 Linker::Linker(Module &M) : Mover(M) {}
 
-bool Linker::linkInModule(
-    std::unique_ptr<Module> Src, unsigned Flags,
-    std::function<void(Module &, const StringSet<> &)> InternalizeCallback) {
-  ModuleLinker ModLinker(Mover, std::move(Src), Flags,
-                         std::move(InternalizeCallback));
+bool Linker::linkInModule(std::unique_ptr<Module> Src, unsigned Flags,
+                          DenseSet<const GlobalValue *> *GlobalsToImport) {
+  ModuleLinker ModLinker(Mover, std::move(Src), Flags, GlobalsToImport);
   return ModLinker.run();
 }
 
@@ -578,11 +616,10 @@ bool Linker::linkInModule(
 /// true is returned and ErrorMsg (if not null) is set to indicate the problem.
 /// Upon failure, the Dest module could be in a modified state, and shouldn't be
 /// relied on to be consistent.
-bool Linker::linkModules(
-    Module &Dest, std::unique_ptr<Module> Src, unsigned Flags,
-    std::function<void(Module &, const StringSet<> &)> InternalizeCallback) {
+bool Linker::linkModules(Module &Dest, std::unique_ptr<Module> Src,
+                         unsigned Flags) {
   Linker L(Dest);
-  return L.linkInModule(std::move(Src), Flags, std::move(InternalizeCallback));
+  return L.linkInModule(std::move(Src), Flags);
 }
 
 //===----------------------------------------------------------------------===//

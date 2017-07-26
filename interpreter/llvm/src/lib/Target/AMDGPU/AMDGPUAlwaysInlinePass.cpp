@@ -24,12 +24,10 @@ namespace {
 class AMDGPUAlwaysInline : public ModulePass {
   static char ID;
 
-  bool GlobalOpt;
-
 public:
-  AMDGPUAlwaysInline(bool GlobalOpt) : ModulePass(ID), GlobalOpt(GlobalOpt) { }
+  AMDGPUAlwaysInline() : ModulePass(ID) { }
   bool runOnModule(Module &M) override;
-  StringRef getPassName() const override { return "AMDGPU Always Inline Pass"; }
+  const char *getPassName() const override { return "AMDGPU Always Inline Pass"; }
 };
 
 } // End anonymous namespace
@@ -37,21 +35,7 @@ public:
 char AMDGPUAlwaysInline::ID = 0;
 
 bool AMDGPUAlwaysInline::runOnModule(Module &M) {
-  std::vector<GlobalAlias*> AliasesToRemove;
   std::vector<Function *> FuncsToClone;
-
-  for (GlobalAlias &A : M.aliases()) {
-    if (Function* F = dyn_cast<Function>(A.getAliasee())) {
-      A.replaceAllUsesWith(F);
-      AliasesToRemove.push_back(&A);
-    }
-  }
-
-  if (GlobalOpt) {
-    for (GlobalAlias* A : AliasesToRemove) {
-      A->eraseFromParent();
-    }
-  }
 
   for (Function &F : M) {
     if (!F.hasLocalLinkage() && !F.isDeclaration() && !F.use_empty() &&
@@ -74,6 +58,6 @@ bool AMDGPUAlwaysInline::runOnModule(Module &M) {
   return false;
 }
 
-ModulePass *llvm::createAMDGPUAlwaysInlinePass(bool GlobalOpt) {
-  return new AMDGPUAlwaysInline(GlobalOpt);
+ModulePass *llvm::createAMDGPUAlwaysInlinePass() {
+  return new AMDGPUAlwaysInline();
 }

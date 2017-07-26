@@ -57,7 +57,7 @@ private:
   /// True if this 'friend' declaration is unsupported.  Eventually we
   /// will support every possible friend declaration, but for now we
   /// silently ignore some and set this flag to authorize all access.
-  unsigned UnsupportedFriend : 1;
+  bool UnsupportedFriend : 1;
 
   // The number of "outer" template parameter lists in non-templatic
   // (currently unsupported) friend type declarations, such as
@@ -167,7 +167,6 @@ public:
 
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
-  friend class ASTNodeImporter;
   friend TrailingObjects;
 };
 

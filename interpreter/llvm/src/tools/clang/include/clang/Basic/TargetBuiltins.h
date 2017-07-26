@@ -85,16 +85,12 @@ namespace clang {
 
   /// \brief X86 builtins
   namespace X86 {
-  enum {
-    LastTIBuiltin = clang::Builtin::FirstTSBuiltin - 1,
+    enum {
+        LastTIBuiltin = clang::Builtin::FirstTSBuiltin-1,
 #define BUILTIN(ID, TYPE, ATTRS) BI##ID,
 #include "clang/Basic/BuiltinsX86.def"
-    FirstX86_64Builtin,
-    LastX86CommonBuiltin = FirstX86_64Builtin - 1,
-#define BUILTIN(ID, TYPE, ATTRS) BI##ID,
-#include "clang/Basic/BuiltinsX86_64.def"
-    LastTSBuiltin
-  };
+        LastTSBuiltin
+    };
   }
 
   /// \brief Flags to identify the types for overloaded Neon builtins.
