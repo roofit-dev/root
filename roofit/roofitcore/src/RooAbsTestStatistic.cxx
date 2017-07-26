@@ -1011,6 +1011,10 @@ void RooAbsTestStatistic::_collectEvaluatePartitionTimings(Bool_t clear_timings)
 }
 
 void RooAbsTestStatistic::setVerboseMPFE(Bool_t clientFlag, Bool_t serverFlag) {
+  if (!_init) {
+    // TODO: const_cast is not very pretty, change either 1) so that initialize is const and it changes mutable members only or 2) so that initialize is called from the ctors
+    const_cast<RooAbsTestStatistic*>(this)->initialize() ;
+  }
   if (MPMaster == _gofOpMode) {
     for (Int_t i = 0; i < _nCPU; ++i) {
       _mpfeArray[i]->setVerbose(clientFlag, serverFlag);
