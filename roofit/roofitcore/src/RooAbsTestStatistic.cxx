@@ -952,17 +952,8 @@ void RooAbsTestStatistic::setTimeEvaluatePartition(const std::string & name, Boo
   if (MPMaster == _gofOpMode) {
     cxcoutD(Optimization) << "RooAbsTestStatistic::setTimeEvaluatePartition(" << GetName() << "): in MPMaster mode, on pid" << getpid() << std::endl;
     for (Int_t i = 0; i < _nCPU; ++i) {
-      pRooRealMPFE mpfe = _mpfeArray[i];
-      const RooAbsTestStatistic *gof = dynamic_cast<const RooAbsTestStatistic *>(&(mpfe->_arg.arg()));
-      if (gof->_gofOpMode == SimMaster) {
-        cxcoutD(Optimization) << "... passing on name " << name << " to MPFE subprocess " << i << "'s setTimingEvaluatePartitions(name, flag)" << std::endl;
-        mpfe->setTimingEvaluatePartitions(name, flag);
-//        auto mangled_name = Form("%s_GOF%d",GetName(),i);
-//        mpfe->setTimingEvaluatePartitions(mangled_name, flag);
-      } else {
-        cxcoutD(Optimization) << "... passing on to MPFE subprocess " << i << "'s setTimingEvaluatePartitions(flag)" << std::endl;
-        mpfe->setTimingEvaluatePartitions(flag);
-      }
+      cxcoutD(Optimization) << "... passing on name " << name << " to MPFE subprocess " << i << "'s setTimingEvaluatePartitions(name, flag)" << std::endl;
+      _mpfeArray[i]->setTimingEvaluatePartitions(name, flag);
     }
   } else if (SimMaster == _gofOpMode) {
     for (Int_t i = 0 ; i < _nGof; ++i) {
@@ -974,7 +965,7 @@ void RooAbsTestStatistic::setTimeEvaluatePartition(const std::string & name, Boo
       }
     }
   } else {
-    std::cout << "WARNING in RooAbsTestStatistic::setTimeEvaluatePartition (" << GetName() << "): no named simultaneous components to set in this pdf!" << std::endl;
+    std::cout << "WARNING in RooAbsTestStatistic::setTimeEvaluatePartition (" << GetName() << ") on pid" << getpid() << ": no named simultaneous components to set in this pdf!" << std::endl;
   }
 }
 

@@ -612,52 +612,24 @@ void RooRealMPFE::serverLoop() {
         break;
       }
 
-
       case DisableTimingNumInts: {
         dynamic_cast<RooAbsTestStatistic*>(_arg.absArg())->_setNumIntTimingInPdfs(kFALSE);
         break;
       }
 
       case EnableTimingEvaluatePartitions: {
-        // This must be done server-side, otherwise you have to copy all timing flags to server manually anyway
-//        RooTimer::set_time_evaluate_partition(kTRUE);
         dynamic_cast<RooAbsTestStatistic*>(_arg.absArg())->setTimeEvaluatePartition(kTRUE);
         break;
       }
 
       case DisableTimingEvaluatePartitions: {
-//        RooTimer::set_time_evaluate_partition(kFALSE);
         dynamic_cast<RooAbsTestStatistic*>(_arg.absArg())->setTimeEvaluatePartition(kFALSE);
         break;
       }
 
-//      case EnableTimingEvaluatePartitionsForGOF: {
-////        std::string name;
-////        *_pipe >> name;
-////        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
-////        if (object) {
-//        dynamic_cast<const RooAbsTestStatistic &>(_arg.arg()).setTimeEvaluatePartition(kTRUE);
-////        }
-//        break;
-//      }
-//
-//      case DisableTimingEvaluatePartitionsForGOF: {
-////        std::string name;
-////        *_pipe >> name;
-////        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
-////        if (object) {
-//        dynamic_cast<const RooAbsTestStatistic &>(_arg.arg()).setTimeEvaluatePartition(kFALSE);
-////        }
-//        break;
-//      }
-
       case EnableTimingEvaluatePartitionsForNamedSimComponent: {
         std::string name;
         *_pipe >> name;
-//        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
-//        if (object) {
-//          object->setTimeEvaluatePartition(name, kTRUE);
-//        }
         dynamic_cast<const RooAbsTestStatistic &>(_arg.arg()).setTimeEvaluatePartition(name, kTRUE);
         break;
       }
@@ -665,13 +637,10 @@ void RooRealMPFE::serverLoop() {
       case DisableTimingEvaluatePartitionsForNamedSimComponent: {
         std::string name;
         *_pipe >> name;
-//        RooNLLVar* object = dynamic_cast<RooNLLVar*>(_findComponent(name));
-//        if (object) {
-//          object->setTimeEvaluatePartition(name, kFALSE);
-//        }
         dynamic_cast<const RooAbsTestStatistic &>(_arg.arg()).setTimeEvaluatePartition(name, kFALSE);
         break;
       }
+
 
       case MeasureCommunicationTime: {
         // Measure end time asap, since time of arrival at this case block is what we need to measure

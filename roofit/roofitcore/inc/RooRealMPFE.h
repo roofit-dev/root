@@ -72,7 +72,6 @@ public:
     RetrieveTimings,
     GetPID,
     EnableTimingEvaluatePartitions, DisableTimingEvaluatePartitions,
-//    EnableTimingEvaluatePartitionsForGOF, DisableTimingEvaluatePartitionsForGOF,
     EnableTimingEvaluatePartitionsForNamedSimComponent, DisableTimingEvaluatePartitionsForNamedSimComponent
   };
 
