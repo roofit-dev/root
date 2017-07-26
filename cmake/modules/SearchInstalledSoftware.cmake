@@ -231,6 +231,40 @@ if(builtin_lzma)
 endif()
 
 
+#---Check for LZ4--------------------------------------------------------------------
+if(NOT builtin_lz4)
+  message(STATUS "Looking for LZ4")
+  find_package(LZ4)
+  if(LZ4_FOUND)
+  else()
+    message(STATUS "LZ4 not found. Switching on builtin_lz4 option")
+    set(builtin_lz4 ON CACHE BOOL "" FORCE)
+  endif()
+endif()
+# Note: the above if-statement may change the value of builtin_lz4 to ON.
+if(builtin_lz4)
+  set(lz4_version v1.7.5)
+  message(STATUS "Building LZ4 version ${lz4_version} included in ROOT itself")
+  if(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+    set(LZ4_CFLAGS "-Wno-format-nonliteral")
+  elseif( CMAKE_CXX_COMPILER_ID STREQUAL Intel)
+    set(LZ4_CFLAGS "-wd188 -wd181 -wd1292 -wd10006 -wd10156 -wd2259 -wd981 -wd128 -wd3179")
+  endif()
+  set(LZ4_LIBRARIES ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}lz4${CMAKE_STATIC_LIBRARY_SUFFIX})
+  ExternalProject_Add(
+    LZ4
+    URL ${lcgpackages}/lz4-${lz4_version}.tar.gz
+    URL_MD5 c9610c5ce97eb431dddddf0073d919b9
+    INSTALL_DIR ${CMAKE_BINARY_DIR}
+    CONFIGURE_COMMAND  /bin/sh -c "PREFIX=<INSTALL_DIR> CMAKE_PARAMS='-DCMAKE_C_COMPILER=\\\"${CMAKE_C_COMPILER}\\\" -DCMAKE_C_FLAGS=\\\"${CMAKE_C_FLAGS}\\\" -DCMAKE_OSX_SYSROOT=\\\"${CMAKE_OSX_SYSROOT}\\\"' make cmake"
+    BUILD_COMMAND /bin/sh -c "PREFIX=<INSTALL_DIR> MOREFLAGS=-fPIC make"
+    INSTALL_COMMAND /bin/sh -c "PREFIX=<INSTALL_DIR> make install"
+    LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1 BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS ${LZ4_LIBRARIES})
+  set(LZ4_INCLUDE_DIR ${CMAKE_BINARY_DIR}/include)
+endif()
+
+
 #---Check for X11 which is mandatory lib on Unix--------------------------------------
 if(x11)
   message(STATUS "Looking for X11")
@@ -306,7 +340,7 @@ if(asimage)
 endif()
 
 #---Check for AfterImage---------------------------------------------------------------
-if(NOT builtin_afterimage)
+if(asimage AND NOT builtin_afterimage)
   message(STATUS "Looking for AfterImage")
   find_package(AfterImage)
   if(NOT AFTERIMAGE_FOUND)
@@ -941,7 +975,7 @@ if(cling)
   #---These are the libraries that we link ROOT with CLING---------------------------
   set(CLING_LIBRARIES clingInterpreter clingMetaProcessor clingUtils)
   add_custom_target(CLING)
-  add_dependencies(CLING ${CLING_LIBRARIES} clang-headers)
+  add_dependencies(CLING ${CLING_LIBRARIES} clang-headers intrinsics_gen)
 endif()
 
 #---Check for gfal-------------------------------------------------------------------
@@ -1156,8 +1190,12 @@ if(imt)
     find_package(TBB)
     if(TBB_FOUND)
       if(${TBB_VERSION} VERSION_LESS 4.3)
-        message(STATUS "TBB version < 4.3. Switching on builtin_tbb option")
-        set(builtin_tbb ON CACHE BOOL "" FORCE)
+        if(fail-on-missing)
+          message(FATAL_ERROR "TBB version < 4.3. You can enable the option 'builtin_tbb' to build the library internally")
+        else()
+          message(STATUS "TBB version < 4.3. Switching on builtin_tbb option")
+          set(builtin_tbb ON CACHE BOOL "" FORCE)
+        endif()
       endif()
     endif()  
     if(NOT TBB_FOUND)
@@ -1266,13 +1304,18 @@ elseif(vc)
       set(vc OFF CACHE BOOL "" FORCE)
     endif()
   endif()
+  if(Vc_FOUND)
+    # FIXME - The altenative is to add include_dirs to all packages that include any Math headers
+    execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/include)
+    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${Vc_INCLUDE_DIR}/Vc ${CMAKE_BINARY_DIR}/include/Vc)
+  endif()
 endif()
 
 if(vc AND NOT Vc_FOUND AND NOT (veccore OR builtin_veccore))
-  set(Vc_VERSION "1.3.0")
+  set(Vc_VERSION "1.3.2")
   set(Vc_PROJECT "Vc-${Vc_VERSION}")
   set(Vc_SRC_URI "${lcgpackages}/${Vc_PROJECT}.tar.gz")
-  set(Vc_SRC_MD5 "a248e904f0b1a330ad8f37ec50cbad30")
+  set(Vc_SRC_MD5 "f996a2dcab9f0ef3e21ba0d0feba9c3e")
   set(Vc_DESTDIR "${CMAKE_BINARY_DIR}/VC-prefix/install")
   set(Vc_ROOTDIR "${Vc_DESTDIR}/${CMAKE_INSTALL_PREFIX}")
   set(Vc_LIBNAME "${CMAKE_STATIC_LIBRARY_PREFIX}Vc${CMAKE_STATIC_LIBRARY_SUFFIX}")
@@ -1340,18 +1383,23 @@ elseif(veccore)
       set(veccore OFF CACHE BOOL "" FORCE)
     endif()
   endif()
+  if(VecCore_FOUND)
+    # FIXME - The altenative is to add include_dirs to all packages that include any Math headers
+    execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/include)
+    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${VecCore_INCLUDE_DIR}/VecCore ${CMAKE_BINARY_DIR}/include/VecCore)
+  endif()
 endif()
 
 if(veccore AND NOT VecCore_FOUND)
-  set(VecCore_VERSION "0.4.0")
+  set(VecCore_VERSION "0.4.1")
   set(VecCore_PROJECT "VecCore-${VecCore_VERSION}")
   set(VecCore_SRC_URI "${lcgpackages}/${VecCore_PROJECT}.tar.gz")
-  set(VecCore_SRC_MD5 "c719909eaffbcc1d7a7680b25b6e5019")
+  set(VecCore_SRC_MD5 "7728dc706744e54a79fcb80059a31529")
   set(VecCore_DESTDIR "${CMAKE_BINARY_DIR}/VECCORE-prefix/install")
   set(VecCore_ROOTDIR "${VecCore_DESTDIR}/${CMAKE_INSTALL_PREFIX}")
 
   if(builtin_vc)
-    set(Vc_VERSION "1.3.1") # version built by VecCore
+    set(Vc_VERSION "1.3.2") # version built by VecCore
     set(Vc_LIBNAME "${CMAKE_STATIC_LIBRARY_PREFIX}Vc${CMAKE_STATIC_LIBRARY_SUFFIX}")
     set(Vc_LIBRARY "${VecCore_ROOTDIR}/lib/${Vc_LIBNAME}")
   endif()
@@ -1408,6 +1456,20 @@ if(veccore AND NOT VecCore_FOUND)
     FOUND_VAR VecCore_FOUND
     REQUIRED_VARS VecCore_INCLUDE_DIRS
     VERSION_VAR VecCore_VERSION)
+
+  # The following few lines are a temporary fix for a breakage introduced
+  # recently in math/mathcore VecCore integration. Once the proper solution
+  # is found, the lines below should be removed from here and added to the
+  # proper targets.
+  add_definitions(${VecCore_DEFINITIONS})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${VecCore_DEFINITIONS}")
+  include_directories(SYSTEM BEFORE ${VecCore_INCLUDE_DIRS})
+
+  # Copy Vc and VecCore headers to build directory, otherwise dictionary generation breaks
+  add_custom_command(TARGET VECCORE POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${VecCore_INCLUDE_DIRS}/ ${CMAKE_BINARY_DIR}/include)
+
+  ### End of temporary fix
 
   install(DIRECTORY ${VecCore_ROOTDIR}/ DESTINATION ".")
 endif()
@@ -1472,16 +1534,16 @@ endif()
 #---Download googletest--------------------------------------------------------------
 if (testing)
   # FIXME: Remove our version of gtest in roottest. We can reuse this one.
-  # Add gtest
+  # Add googletest
   # http://stackoverflow.com/questions/9689183/cmake-googletest
 
-  set(_byproduct_binary_dir
+  set(_gtest_byproduct_binary_dir
     ${CMAKE_CURRENT_BINARY_DIR}/googletest-prefix/src/googletest-build/googlemock/)
-  set(_byproducts
-    ${_byproduct_binary_dir}/gtest/libgtest.a
-    ${_byproduct_binary_dir}/gtest/libgtest_main.a
-    ${_byproduct_binary_dir}/libgmock.a
-    ${_byproduct_binary_dir}/libgmock_main.a
+  set(_gtest_byproducts
+    ${_gtest_byproduct_binary_dir}/gtest/libgtest.a
+    ${_gtest_byproduct_binary_dir}/gtest/libgtest_main.a
+    ${_gtest_byproduct_binary_dir}/libgmock.a
+    ${_gtest_byproduct_binary_dir}/libgmock_main.a
     )
 
   ExternalProject_Add(
@@ -1504,7 +1566,7 @@ if (testing)
                   -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
     # Disable install step
     INSTALL_COMMAND ""
-    BUILD_BYPRODUCTS ${_byproducts}
+    BUILD_BYPRODUCTS ${_gtest_byproducts}
     # Wrap download, configure and build steps in a script to log output
     LOG_DOWNLOAD ON
     LOG_CONFIGURE ON
@@ -1519,25 +1581,15 @@ if (testing)
   ExternalProject_Get_Property(googletest binary_dir)
   set(_G_LIBRARY_PATH ${binary_dir}/googlemock/)
 
-  # gtest
-  add_library(gtest IMPORTED STATIC GLOBAL)
+  # Register gtest, gtest_main, gmock, gmock_main
+  foreach (lib gtest gtest_main gmock gmock_main)
+    add_library(${lib} IMPORTED STATIC GLOBAL)
+    add_dependencies(${lib} googletest)
+  endforeach()
   set_property(TARGET gtest PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/gtest/libgtest.a)
-  add_dependencies(gtest googletest)
-
-  # gtest_main
-  add_library(gtest_main IMPORTED STATIC GLOBAL)
   set_property(TARGET gtest_main PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/gtest/libgtest_main.a)
-  add_dependencies(gtest_main googletest)
-
-  # gmock
-  add_library(gmock IMPORTED STATIC GLOBAL)
   set_property(TARGET gmock PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/libgmock.a)
-  add_dependencies(gmock googletest)
-
-  # gmock_main
-  add_library(gmock_main IMPORTED STATIC GLOBAL)
   set_property(TARGET gmock_main PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/libgmock_main.a)
-  add_dependencies(gmock_main googletest)
 
 endif()
 

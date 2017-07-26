@@ -104,6 +104,7 @@ public:
       fGrad = rhs.fGrad;
       fIsExtended = rhs.fIsExtended;
       fWeight = rhs.fWeight;
+      fExecutionPolicy = rhs.fExecutionPolicy;
    }
 
 
@@ -153,12 +154,7 @@ private:
     */
    virtual double DoEval (const double * x) const {
       this->UpdateNCalls();
-
-#ifdef R__HAS_VECCORE
       return FitUtil::Evaluate<T>::EvalLogL(BaseFCN::ModelFunction(), BaseFCN::Data(), x, fWeight, fIsExtended, fNEffPoints, fExecutionPolicy);
-#else
-      return FitUtil::EvaluateLogL(BaseFCN::ModelFunction(), BaseFCN::Data(), x, fWeight, fIsExtended, fNEffPoints, fExecutionPolicy);
-#endif
    }
 
    // for derivatives
@@ -177,8 +173,7 @@ private:
 
    mutable std::vector<double> fGrad; // for derivatives
 
-   unsigned fExecutionPolicy;
-
+   ROOT::Fit::ExecutionPolicy fExecutionPolicy; // Execution policy
 };
       // define useful typedef's
       // using LogLikelihoodFunction_v = LogLikelihoodFCN<ROOT::Math::IMultiGenFunction, ROOT::Math::IParametricFunctionMultiDimTempl<T>>;

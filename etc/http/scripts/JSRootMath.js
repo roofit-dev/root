@@ -6,8 +6,10 @@
 
 (function( factory ) {
    if ( typeof define === "function" && define.amd ) {
-      // AMD. Register as an anonymous module.
       define( ['JSRootCore'], factory );
+   } else
+   if (typeof exports === 'object' && typeof module !== 'undefined') {
+       factory(require("./JSRootCore.js"));
    } else {
       if (typeof JSROOT == 'undefined')
          throw new Error("This extension requires JSRootCore.js", "JSRootMath.js");
@@ -19,6 +21,8 @@
    }
 } (function(JSROOT) {
    // math methods for Javascript ROOT
+
+   JSROOT.sources.push("math");
 
    JSROOT.Math = {};
 
@@ -257,6 +261,10 @@
       if ( code != 0 )
          x = -x;
       return( x );
+   };
+
+   JSROOT.Math.normal_quantile = function(z, sigma) {
+      return  sigma * JSROOT.Math.ndtri(z);
    };
 
    /** @memberOf JSROOT.Math */
