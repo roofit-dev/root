@@ -72,6 +72,8 @@ public:
   void setTimeEvaluatePartition(Bool_t flag) const;
   void setTimeEvaluatePartition(const std::string & name, Bool_t flag) const;
 
+  void RooAbsTestStatistic::setVerboseMPFE(Bool_t clientFlag=kTRUE, Bool_t serverFlag=kTRUE);
+
 protected:
 
   virtual void printCompactTreeHook(std::ostream& os, const char* indent="") ;

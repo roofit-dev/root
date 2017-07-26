@@ -1009,3 +1009,11 @@ void RooAbsTestStatistic::_collectEvaluatePartitionTimings(Bool_t clear_timings)
     }
   }
 }
+
+void RooAbsTestStatistic::setVerboseMPFE(Bool_t clientFlag, Bool_t serverFlag) {
+  if (MPMaster == _gofOpMode) {
+    for (Int_t i = 0; i < _nCPU; ++i) {
+      _mpfeArray[i]->setVerbose(clientFlag, serverFlag);
+    }
+  }
+}
