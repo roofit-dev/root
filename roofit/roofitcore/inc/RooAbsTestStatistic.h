@@ -21,7 +21,8 @@
 #include "RooRealProxy.h"
 #include "TStopwatch.h"
 #include <string>
-#include "RooTimer.h"
+#include "RooTimer.h" // not just for timers, also for timespec from <ctime>, which is used explicitly here
+#include <vector>
 
 class RooArgSet ;
 class RooAbsData ;
@@ -168,6 +169,8 @@ private:
   void _initTiming();
 
   mutable Bool_t _timeEvaluatePartition;  //! mutable so that it can be set from RooRealMPFE::_arg.arg(), which gives a const reference
+
+  std::vector<timespec> _MPFE_fork_timings_begin; //! for measuring CPU times on the MPFE forked processes
 
   ClassDef(RooAbsTestStatistic,3) // Abstract base class for real-valued test statistics
 };

@@ -9,6 +9,11 @@
 #include "RooJsonListFile.h"
 #include "Rtypes.h"
 
+namespace RooFit {
+  long long nanoseconds_from_timespec(timespec time_point);
+  double diff_seconds_timespecs(timespec begin, timespec end);
+}
+
 class RooTimer {
 public:
   virtual void start() = 0;
@@ -32,12 +37,16 @@ public:
   static Bool_t time_evaluate_partition();
   static void set_time_evaluate_partition(Bool_t flag);
 
+  static Bool_t time_MPFE_forks();
+  static void set_time_MPFE_forks(Bool_t flag);
+
 private:
   double _timing_s;
 
   static int _timing_flag;
   static Bool_t _time_numInts;
   static Bool_t _time_evaluate_partition;
+  static Bool_t _time_MPFE_forks;
 };
 
 class RooWallTimer: public RooTimer {

@@ -16,6 +16,7 @@
 #ifndef ROO_REAL_MPFE
 #define ROO_REAL_MPFE
 
+#include <ctime>  // for struct timespec
 #include "RooAbsReal.h"
 #include "RooRealProxy.h"
 #include "RooListProxy.h"
@@ -70,7 +71,7 @@ public:
     EnableTimingNumInts, DisableTimingNumInts,
     MeasureCommunicationTime,
     RetrieveTimings,
-    GetPID,
+    GetPID, GetCPUTime,
     EnableTimingEvaluatePartitions, DisableTimingEvaluatePartitions,
     EnableTimingEvaluatePartitionsForNamedSimComponent, DisableTimingEvaluatePartitionsForNamedSimComponent
   };
@@ -109,6 +110,8 @@ public:
 
   void setTimingEvaluatePartitions(Bool_t flag);
   void setTimingEvaluatePartitions(const std::string &name, Bool_t flag);
+
+  timespec getCPUTimeFromServer() const;
 
 private:
   std::unique_ptr<RooArgSet> _components;

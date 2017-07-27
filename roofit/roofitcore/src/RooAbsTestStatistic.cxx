@@ -55,6 +55,7 @@ combined in the main thread.
 #include "RooRealIntegral.h"
 
 #include <string>
+#include <list>
 #include <fstream>
 #include <sstream>
 
@@ -77,7 +78,7 @@ RooAbsTestStatistic::RooAbsTestStatistic() :
   _verbose(kFALSE), _init(kFALSE), _gofOpMode(Slave), _nEvents(0), _setNum(0),
   _numSets(0), _extSet(0), _nGof(0), _gofArray(0), _nCPU(1), _mpfeArray(0),
   _mpinterl(RooFit::BulkPartition), _CPUAffinity(1), _doOffset(kFALSE), _offset(0),
-  _offsetCarry(0), _evalCarry(0), _timeEvaluatePartition(kFALSE)
+  _offsetCarry(0), _evalCarry(0), _timeEvaluatePartition(kFALSE), _MPFE_fork_timings_begin()
 {
 }
 
@@ -121,7 +122,8 @@ RooAbsTestStatistic::RooAbsTestStatistic(const char *name, const char *title, Ro
   _offset(0),
   _offsetCarry(0),
   _evalCarry(0),
-  _timeEvaluatePartition(kFALSE)
+  _timeEvaluatePartition(kFALSE),
+  _MPFE_fork_timings_begin()
 {
   // Register all parameters as servers
   RooArgSet* params = real.getParameters(&data) ;
@@ -182,7 +184,8 @@ RooAbsTestStatistic::RooAbsTestStatistic(const RooAbsTestStatistic& other, const
   _offset(other._offset),
   _offsetCarry(other._offsetCarry),
   _evalCarry(other._evalCarry),
-  _timeEvaluatePartition(other._timeEvaluatePartition)
+  _timeEvaluatePartition(other._timeEvaluatePartition),
+  _MPFE_fork_timings_begin(other._MPFE_fork_timings_begin)
 {
   // Our parameters are those of original
   _paramSet.add(other._paramSet) ;
@@ -224,6 +227,18 @@ RooAbsTestStatistic::RooAbsTestStatistic(const RooAbsTestStatistic& other, const
 RooAbsTestStatistic::~RooAbsTestStatistic()
 {
   if (MPMaster == _gofOpMode && _init) {
+    if (RooTimer::time_MPFE_forks()) {
+      RooJsonListFile outfile("timings_MPFE_forks_cputime.json");
+      std::list<std::string> members = {"time_s", "pid", "mpfe_pid"};
+      outfile.set_member_names(members.begin(), members.end());
+      for (Int_t i = 0; i < _nCPU; ++i) {
+        timespec timing_end = _mpfeArray[i]->getCPUTimeFromServer();
+        timespec timing_begin =_MPFE_fork_timings_begin[i];
+        double timing = RooFit::diff_seconds_timespecs(timing_begin, timing_end);
+        outfile << timing << getpid() << _mpfeArray[i]->getPIDFromServer();
+      }
+    }
+
     for (Int_t i = 0; i < _nCPU; ++i) delete _mpfeArray[i];
     delete[] _mpfeArray ;
   }
@@ -597,6 +612,10 @@ void RooAbsTestStatistic::initMPMode(RooAbsReal *real, RooAbsData *data, const R
 
     if (_CPUAffinity == kTRUE) {
       _mpfeArray[i]->setCpuAffinity(i);
+    }
+
+    if (RooTimer::time_MPFE_forks()) {
+      _MPFE_fork_timings_begin.push_back(_mpfeArray[i]->getCPUTimeFromServer());
     }
 
     if (RooTimer::time_numInts() == kTRUE) {

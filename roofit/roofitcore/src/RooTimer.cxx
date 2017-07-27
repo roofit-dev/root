@@ -39,11 +39,22 @@ void RooCPUTimer::start() {
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &_timing_begin);
 }
 
+namespace RooFit {
+  long long nanoseconds_from_timespec(timespec time_point) {
+    long long timing_nsec = time_point.tv_nsec + 1000000000 * time_point.tv_sec; // 1'000'000'000 in c++14
+    return timing_nsec;
+  }
+
+  double diff_seconds_timespecs(timespec begin, timespec end) {
+    long long timing_end_nsec = nanoseconds_from_timespec(end);
+    long long timing_begin_nsec = nanoseconds_from_timespec(begin);
+    return (timing_end_nsec - timing_begin_nsec) / 1.e9;
+  }
+}
+
 void RooCPUTimer::stop() {
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &_timing_end);
-  long long timing_end_nsec = _timing_end.tv_nsec + 1000000000 * _timing_end.tv_sec; // 1'000'000'000 in c++14
-  long long timing_begin_nsec = _timing_begin.tv_nsec + 1000000000 * _timing_begin.tv_sec; // 1'000'000'000 in c++14
-  set_timing_s((timing_end_nsec - timing_begin_nsec) / 1.e9);
+  set_timing_s(RooFit::diff_seconds_timespecs(_timing_begin, _timing_end));
 }
 
 
@@ -91,5 +102,15 @@ void RooTimer::set_time_evaluate_partition(Bool_t flag) {
   _time_evaluate_partition = flag;
 }
 
+Bool_t RooTimer::time_MPFE_forks() {
+  return _time_MPFE_forks;
+}
+
+void RooTimer::set_time_MPFE_forks(Bool_t flag) {
+  std::cout << "WARNING: RooTimer::set_time_MPFE_forks() is best set before using RooRealMPFE to fork to multiple processes. When resetting the flag value after forking, the new setting is not synchronized to other processes." << std::endl;
+  _time_MPFE_forks = flag;
+}
+
 Bool_t RooTimer::_time_numInts = kFALSE;
 Bool_t RooTimer::_time_evaluate_partition = kFALSE;
+Bool_t RooTimer::_time_MPFE_forks = kFALSE;

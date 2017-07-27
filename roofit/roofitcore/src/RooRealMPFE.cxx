@@ -356,21 +356,42 @@ void RooRealMPFE::setCpuAffinity(int cpu) {
 /// Pipe stream operators for timing type.
 namespace RooFit {
   using WallClock = std::chrono::system_clock;
-  using TimePoint = WallClock::time_point;
-  using Duration = WallClock::duration;
+  using WallTimePoint_t = WallClock::time_point;
+  using WallDuration_t = WallClock::duration;
 
-  BidirMMapPipe& BidirMMapPipe::operator<< (const TimePoint& wall) {
-    Duration::rep const ns = wall.time_since_epoch().count();
+  BidirMMapPipe& BidirMMapPipe::operator<< (const WallTimePoint_t& wall) {
+    WallDuration_t::rep const ns = wall.time_since_epoch().count();
     write(&ns, sizeof(ns));
     return *this;
   }
 
-  BidirMMapPipe& BidirMMapPipe::operator>> (TimePoint& wall) {
-    Duration::rep ns;
+  BidirMMapPipe& BidirMMapPipe::operator>> (WallTimePoint_t& wall) {
+    WallDuration_t::rep ns;
     read(&ns, sizeof(ns));
 
-    Duration const d(ns);
-    wall = TimePoint(d);
+    WallDuration_t const d(ns);
+    wall = WallTimePoint_t(d);
+
+    return *this;
+  }
+
+  BidirMMapPipe& BidirMMapPipe::operator<< (const timespec& time_point) {
+    const long long seconds = time_point.tv_sec;
+    const long long nanoseconds = time_point.tv_nsec;
+
+    write(&seconds, sizeof(seconds));
+    write(&nanoseconds, sizeof(nanoseconds));
+    return *this;
+  }
+
+  BidirMMapPipe& BidirMMapPipe::operator>> (timespec& time_point) {
+    long long seconds, nanoseconds;
+    read(&seconds, sizeof(seconds));
+    read(&nanoseconds, sizeof(nanoseconds));
+
+    time_point = timespec();
+    time_point.tv_sec = seconds;
+    time_point.tv_nsec = nanoseconds;
 
     return *this;
   }
@@ -647,7 +668,7 @@ void RooRealMPFE::serverLoop() {
         // communication overhead, i.e. time between sending message and corresponding action taken.
         // Defining the end time variable can reasonably be called overhead too, since many other
         // messages also define a piped-message-receiving variable.
-        TimePoint comm_wallclock_begin, comm_wallclock_end;
+        WallTimePoint_t comm_wallclock_begin, comm_wallclock_end;
         comm_wallclock_end = WallClock::now();
 
         *_pipe >> comm_wallclock_begin;
@@ -686,6 +707,13 @@ void RooRealMPFE::serverLoop() {
 
       case GetPID: {
         *_pipe << getpid() << BidirMMapPipe::flush;
+        break;
+      }
+
+      case GetCPUTime: {
+        timespec cpu_time;
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &cpu_time);
+        *_pipe << cpu_time << BidirMMapPipe::flush;
         break;
       }
 
@@ -1196,9 +1224,17 @@ pid_t RooRealMPFE::getPIDFromServer() const {
   return pid;
 }
 
+timespec RooRealMPFE::getCPUTimeFromServer() const {
+  *_pipe << GetCPUTime << BidirMMapPipe::flush;
+  timespec cpu_time;
+  *_pipe >> cpu_time;
+  return cpu_time;
+}
+
+
 void RooRealMPFE::_time_communication_overhead() const {
   // test communication overhead timing
-  TimePoint comm_wallclock_begin_c2s, comm_wallclock_begin_s2c, comm_wallclock_end_s2c;
+  WallTimePoint_t comm_wallclock_begin_c2s, comm_wallclock_begin_s2c, comm_wallclock_end_s2c;
   // ... from client to server
   comm_wallclock_begin_c2s = WallClock::now();
   *_pipe << MeasureCommunicationTime << comm_wallclock_begin_c2s << BidirMMapPipe::flush;
@@ -1267,6 +1303,7 @@ std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value){
     PROCESS_VAL(RooRealMPFE::EnableTimingNumInts);
     PROCESS_VAL(RooRealMPFE::DisableTimingNumInts);
     PROCESS_VAL(RooRealMPFE::GetPID);
+    PROCESS_VAL(RooRealMPFE::GetCPUTime);
     PROCESS_VAL(RooRealMPFE::EnableTimingEvaluatePartitions);
     PROCESS_VAL(RooRealMPFE::DisableTimingEvaluatePartitions);
     PROCESS_VAL(RooRealMPFE::EnableTimingEvaluatePartitionsForNamedSimComponent);

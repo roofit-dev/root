@@ -855,20 +855,35 @@ class BidirMMapPipe {
 
 
         using WallClock = std::chrono::system_clock;
-        using TimePoint = WallClock::time_point;
+        using WallTimePoint_t = WallClock::time_point;
         /** @brief write a std::chrono::system_clock::time_point object
          *
          * @param wall time_point to write
          * @returns pipe written to
          */
-        BidirMMapPipe &operator<<(const TimePoint &wall);
+        BidirMMapPipe &operator<<(const WallTimePoint_t &wall);
 
         /** @brief read a std::chrono::system_clock::time_point object
          *
-         * @param wall string to be read
+         * @param wall time_point to be read
          * @returns pipe read from
          */
-        BidirMMapPipe &operator>>(TimePoint &wall);
+        BidirMMapPipe &operator>>(WallTimePoint_t &wall);
+
+        /** @brief write a timespec object
+         *
+         * @param time_point timespec object to write
+         * @returns pipe written to
+         */
+        BidirMMapPipe &operator<<(const timespec &time_point);
+
+        /** @brief read a timespec object
+         *
+         * @param time_point timespec object to be read
+         * @returns pipe read from
+         */
+        BidirMMapPipe &operator>>(timespec &time_point);
+
 
         /// for usage a la "pipe << flush;"
         static BidirMMapPipe& flush(BidirMMapPipe& pipe) { pipe.flush(); return pipe; }
