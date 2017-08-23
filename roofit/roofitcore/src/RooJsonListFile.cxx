@@ -9,16 +9,19 @@ void RooJsonListFile::open(const std::string & filename) {
   // do not use ios::app for opening out!
   // app moves put pointer to end of file before each write, which makes seekp useless.
   // See http://en.cppreference.com/w/cpp/io/basic_filebuf/open
-  _out.open(filename, std::ios_base::in | std::ios_base::out);  // "mode r+"
-  if (!_out.is_open()) {
-    _out.clear();
-    // new file
-    _out.open(filename, std::ios_base::out);  // "mode w"
-    _out << "[\n";
-  } else {
-    // existing file that, presumably, has been closed with close_json_list() and thus ends with "\n]".
-    _out.seekp(-2, std::ios_base::end);
-    _out << ",\n";
+  if (!_out.is_open()) {  // guard against multiple openings
+    _out.open(filename, std::ios_base::in | std::ios_base::out);  // "mode r+"
+
+    if (!_out.is_open()) {  // this is for when it cannot be opened in "r+" mode, i.e. file does not yet exist
+      _out.clear();
+      // new file
+      _out.open(filename, std::ios_base::out);  // "mode w"
+      _out << "[\n";
+    } else {
+      // existing file that, presumably, has been closed with close_json_list() and thus ends with "\n]".
+      _out.seekp(-2, std::ios_base::end);
+      _out << ",\n";
+    }
   }
 }
 
