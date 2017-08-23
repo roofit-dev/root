@@ -864,14 +864,14 @@ void RooRealMPFE::calculate() const
 	  int msg = SendReal ;
 	  Double_t val = ((RooAbsReal*)var)->getVal() ;
 	  Bool_t isC = var->isConstant() ;
-	  *_pipe << msg << i << val << isC << BidirMMapPipe::flush;
+	  *_pipe << msg << i << val << isC;
 
 	  if (_verboseServer) cout << "RooRealMPFE::calculate(" << GetName()
 				   << ") IPC toServer> SendReal [" << i << "]=" << val << (isC?" (Constant)":"") <<  endl ;
 	} else if (dynamic_cast<RooAbsCategory*>(var)) {
 	  int msg = SendCat ;
 	  UInt_t idx = ((RooAbsCategory*)var)->getIndex() ;
-	  *_pipe << msg << i << idx << BidirMMapPipe::flush;
+	  *_pipe << msg << i << idx;
 	  if (_verboseServer) cout << "RooRealMPFE::calculate(" << GetName()
 				   << ") IPC toServer> SendCat [" << i << "]=" << idx << endl ;
 	}
@@ -880,7 +880,7 @@ void RooRealMPFE::calculate() const
     }
 
     int msg = hideOffset() ? Calculate : CalculateNoOffset;
-    *_pipe << msg << BidirMMapPipe::flush;
+    *_pipe << msg;
     if (_verboseServer) cout << "RooRealMPFE::calculate(" << GetName()
 			     << ") IPC toServer> Calculate " << endl ;
 
