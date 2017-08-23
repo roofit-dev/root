@@ -284,7 +284,8 @@ std::vector<double> RooAbsTestStatistic::getMPFEforksCPUruntime() {
 
 Double_t RooAbsTestStatistic::evaluate() const
 {
-  RooWallTimer timer;
+  RooWallTimer wtimer;
+  RooCPUTimer ctimer;
 
     // One-time Initialization
   if (!_init) {
@@ -296,7 +297,8 @@ Double_t RooAbsTestStatistic::evaluate() const
 
   if (SimMaster == _gofOpMode) {
     if (RooTimer::timing_flag() == 2) {
-      timer.start();
+      wtimer.start();
+      ctimer.start();
     }
     // Evaluate array of owned GOF objects
 
@@ -326,14 +328,17 @@ Double_t RooAbsTestStatistic::evaluate() const
     }
 
     if (RooTimer::timing_flag() == 2) {
-      timer.stop();
+      ctimer.stop();
+      wtimer.stop();
       // set ppid to -1, to signify that this is not a slave process
-      RooTimer::timing_outfiles[0] << timer.timing_s() << getpid() << -1 << "SimMaster";
+      RooTimer::timing_outfiles[0] << wtimer.timing_s() << "wall" << getpid() << -1 << "SimMaster";
+      RooTimer::timing_outfiles[0] << ctimer.timing_s() << "cpu"  << getpid() << -1 << "SimMaster";
     }
 
   } else if (MPMaster == _gofOpMode) {
     if (RooTimer::timing_flag() == 2) {
-      timer.start();
+      wtimer.start();
+      ctimer.start();
     }
     if (RooTimer::timing_flag() == 3) {
       RooTimer::timings.reserve(_nCPU);
@@ -346,7 +351,7 @@ Double_t RooAbsTestStatistic::evaluate() const
 
     for (Int_t i = 0; i < _nCPU; ++i) {
       if (RooTimer::timing_flag() == 3) {
-        timer.start();
+        wtimer.start();
       }
       Double_t y = _mpfeArray[i]->getValV();
       carry += _mpfeArray[i]->getCarry();
@@ -355,8 +360,8 @@ Double_t RooAbsTestStatistic::evaluate() const
       carry = (t - sum) - y;
       sum = t;
       if (RooTimer::timing_flag() == 3) {
-        timer.stop();
-        RooTimer::timings[i] = timer.timing_s();
+        wtimer.stop();
+        RooTimer::timings[i] = wtimer.timing_s();
       }
     }
 
@@ -370,13 +375,16 @@ Double_t RooAbsTestStatistic::evaluate() const
     _evalCarry = carry;
 
     if (RooTimer::timing_flag() == 2) {
-      timer.stop();
+      ctimer.stop();
+      wtimer.stop();
       // set ppid to -1, to signify that this is not a slave process
-      RooTimer::timing_outfiles[0] << timer.timing_s() << getpid() << -1 << "MPMaster";
+      RooTimer::timing_outfiles[0] << wtimer.timing_s() << "wall" << getpid() << -1 << "MPMaster";
+      RooTimer::timing_outfiles[0] << ctimer.timing_s() << "cpu"  << getpid() << -1 << "MPMaster";
     }
   } else {
     if (RooTimer::timing_flag() == 2) {
-      timer.start();
+      wtimer.start();
+      ctimer.start();
     }
 
     // Evaluate as straight FUNC
@@ -415,7 +423,8 @@ Double_t RooAbsTestStatistic::evaluate() const
     }
 
     if (RooTimer::timing_flag() == 2) {
-      timer.stop();
+      ctimer.stop();
+      wtimer.stop();
       int ppid;
       if (Slave == _gofOpMode) {
         ppid = getppid();
@@ -423,7 +432,8 @@ Double_t RooAbsTestStatistic::evaluate() const
         // set ppid to -1, to signify that this is not a slave process
         ppid = -1;
       }
-      RooTimer::timing_outfiles[0] << timer.timing_s() << getpid() << ppid << "other";
+      RooTimer::timing_outfiles[0] << wtimer.timing_s() << "wall" << getpid() << ppid << "other";
+      RooTimer::timing_outfiles[0] << ctimer.timing_s() << "cpu"  << getpid() << ppid << "other";
     }
   }
 
@@ -481,24 +491,24 @@ void RooAbsTestStatistic::_initTiming() {
     case 2: {
       if (SimMaster == _gofOpMode) {
         RooTimer::timing_outfiles[0].open("timing_RATS_evaluate_full.json");
-        std::string names[4] = {"RATS_evaluate_wall_s", "pid", "ppid", "mode"};
-        RooTimer::timing_outfiles[0].set_member_names(names, names + 4);
+        std::vector<std::string> names = {"time_s", "cpu/wall", "pid", "ppid", "mode"};
+        RooTimer::timing_outfiles[0].set_member_names(names.begin(), names.end());
       } else if (MPMaster == _gofOpMode) {
         RooTimer::timing_outfiles[0].open("timing_RATS_evaluate_full.json");
-        std::string names[4] = {"RATS_evaluate_wall_s", "pid", "ppid", "mode"};
-        RooTimer::timing_outfiles[0].set_member_names(names, names + 4);
+        std::vector<std::string> names = {"time_s", "cpu/wall", "pid", "ppid", "mode"};
+        RooTimer::timing_outfiles[0].set_member_names(names.begin(), names.end());
       } else {
         RooTimer::timing_outfiles[0].open("timing_RATS_evaluate_full.json");
-        std::string names[4] = {"RATS_evaluate_wall_s", "pid", "ppid", "mode"};
-        RooTimer::timing_outfiles[0].set_member_names(names, names + 4);
+        std::vector<std::string> names = {"time_s", "cpu/wall", "pid", "ppid", "mode"};
+        RooTimer::timing_outfiles[0].set_member_names(names.begin(), names.end());
       }
       break;
     }
     case 3: {
       if (MPMaster == _gofOpMode) {
         RooTimer::timing_outfiles[0].open("timing_RATS_evaluate_mpmaster_perCPU.json");
-        std::string names[3] = {"RATS_evaluate_mpmaster_it_wall_s", "it_nr", "pid"};
-        RooTimer::timing_outfiles[0].set_member_names(names, names + 3);
+        std::vector<std::string> names = {"RATS_evaluate_mpmaster_it_wall_s", "it_nr", "pid"};
+        RooTimer::timing_outfiles[0].set_member_names(names.begin(), names.end());
       }
       break;
     }
