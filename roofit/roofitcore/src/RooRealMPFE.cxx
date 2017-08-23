@@ -274,8 +274,8 @@ void RooRealMPFE::_initTiming() {
         stringstream filename_ss;
         filename_ss << "timing_RRMPFE_serverloop_while_p" << proc_id << ".json";
         RooTimer::timing_outfiles[0].open(filename_ss.str().c_str());
-        std::string names[3] = {"RRMPFE_serverloop_while_wall_s", "pid", "ppid"};
-        RooTimer::timing_outfiles[0].set_member_names(names, names + 3);
+        std::vector<std::string> names = {"time_s", "cpu/wall", "segment", "message", "pid", "ppid"};
+        RooTimer::timing_outfiles[0].set_member_names(names.begin(), names.end());
         break;
       }
       default: {
@@ -430,7 +430,10 @@ RooAbsArg* RooRealMPFE::_findComponent(std::string name) {
 
 void RooRealMPFE::serverLoop() {
 #ifndef _WIN32
-  RooWallTimer timer;
+  RooWallTimer wtimer;
+  RooCPUTimer ctimer;
+  RooWallTimer wtimer_msg;
+  RooCPUTimer ctimer_msg;
 
   int msg;
 
@@ -442,10 +445,18 @@ void RooRealMPFE::serverLoop() {
 
   while (*_pipe && !_pipe->eof()) {
     if (RooTimer::timing_flag() == 9) {
-      timer.start();
+      wtimer.start();
+      ctimer.start();
+      wtimer_msg.start();
+      ctimer_msg.start();
     }
 
     *_pipe >> msg;
+
+    if (RooTimer::timing_flag() == 9) {
+      wtimer_msg.stop();
+      ctimer_msg.stop();
+    }
 
     if (Terminate == msg) {
       if (_verboseServer)
@@ -727,8 +738,14 @@ void RooRealMPFE::serverLoop() {
 
     // end timing
     if (RooTimer::timing_flag() == 9) {
-      timer.stop();
-      RooTimer::timing_outfiles[0] << timer.timing_s() << getpid() << getppid();
+      ctimer.stop();
+      wtimer.stop();
+      // total iteration time
+      RooTimer::timing_outfiles[0] << wtimer.timing_s() << "wall" << "total" << toString(static_cast<Message>(msg)) << getpid() << getppid();
+      RooTimer::timing_outfiles[0] << ctimer.timing_s() << "cpu"  << "total" << toString(static_cast<Message>(msg)) << getpid() << getppid();
+      // waiting for msg from pipe time
+      RooTimer::timing_outfiles[0] << wtimer_msg.timing_s() << "wall" << "msg_pipe" << toString(static_cast<Message>(msg)) << getpid() << getppid();
+      RooTimer::timing_outfiles[0] << ctimer_msg.timing_s() << "cpu"  << "msg_pipe" << toString(static_cast<Message>(msg)) << getpid() << getppid();
     }
 
     if (Terminate == msg) {
@@ -765,6 +782,8 @@ void RooRealMPFE::setTimingNumInts(Bool_t flag) {
 void RooRealMPFE::calculate() const
 {
   RooWallTimer timer;
+//  RooCPUTimer ct;
+//  RooWallTimer wt;
 
   // Start asynchronous calculation of arg value
   if (_state==Initialize) {
@@ -887,6 +906,9 @@ void RooRealMPFE::calculate() const
 	 << ") ERROR not in Client or Inline mode" << endl ;
   }
 
+//  ct.stop();
+//  wt.stop();
+//  std::cout << "RooRealMPFE::calculate, pid " << getpid() << ", CPU " << ct.timing_s() << "s, wall " << wt.timing_s() << "s." << std::endl;
 
 #endif // _WIN32
 }
@@ -1281,7 +1303,7 @@ void RooRealMPFE::setTimingEvaluatePartitions(const std::string &name, Bool_t fl
 /// readable by printing the actual message name instead of its numerical value.
 /// The numerical value is not specified and can differ for each compilation.
 
-std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value){
+std::string RooRealMPFE::toString(const RooRealMPFE::Message value) {
   const char* s = 0;
 #define PROCESS_VAL(p) case(p): s = #p; break;
   switch(value){
@@ -1315,7 +1337,9 @@ std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value){
   }
 #undef PROCESS_VAL
 
-  return out << s;
+  return std::string(s);
 }
 
-
+std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value){
+  return out << RooRealMPFE::toString(value);
+}

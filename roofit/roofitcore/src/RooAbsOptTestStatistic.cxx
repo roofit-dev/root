@@ -61,6 +61,10 @@ parallelized calculation of test statistics
 #include "RooTrace.h"
 #include "RooVectorDataStore.h" 
 
+#include "RooTimer.h"
+// getpid and getppid:
+#include "unistd.h"
+
 using namespace std;
 
 ClassImp(RooAbsOptTestStatistic)
@@ -507,6 +511,8 @@ void RooAbsOptTestStatistic::constOptimizeTestStatistic(ConstOpCode opcode, Bool
 {
   //   cout << "ROATS::constOpt(" << GetName() << ") funcClone structure dump BEFORE const-opt" << endl ;
   //   _funcClone->Print("t") ;
+  RooCPUTimer ct;
+  RooWallTimer wt;
 
   RooAbsTestStatistic::constOptimizeTestStatistic(opcode,doAlsoTrackingOpt);
   if (operMode()!=Slave) return ;
@@ -561,6 +567,10 @@ void RooAbsOptTestStatistic::constOptimizeTestStatistic(ConstOpCode opcode, Bool
 
     break ;
   }
+
+  ct.stop();
+  wt.stop();
+  std::cout << "RooAbsOptTestStatistic::constOptimizeTestStatistic, pid " << getpid() << ", CPU " << ct.timing_s() << "s, wall " << wt.timing_s() << "s." << std::endl;
 
 //   cout << "ROATS::constOpt(" << GetName() << ") funcClone structure dump AFTER const-opt" << endl ;
 //   _funcClone->Print("t") ;

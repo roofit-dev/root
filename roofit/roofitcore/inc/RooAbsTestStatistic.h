@@ -75,6 +75,8 @@ public:
 
   void setVerboseMPFE(Bool_t clientFlag=kTRUE, Bool_t serverFlag=kTRUE);
 
+  std::vector<double> getMPFEforksCPUruntime();
+
 protected:
 
   virtual void printCompactTreeHook(std::ostream& os, const char* indent="") ;

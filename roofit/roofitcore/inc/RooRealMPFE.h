@@ -52,7 +52,7 @@ public:
   void enableOffsetting(Bool_t flag) ;
 
   void followAsSlave(RooRealMPFE& master) { _updateMaster = &master ; }
-  
+
   protected:
 
   // Function evaluation
@@ -77,6 +77,7 @@ public:
   };
 
   friend std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value);
+  static std::string toString(const Message value);
 
   void initialize() ;
   void initVars() ;

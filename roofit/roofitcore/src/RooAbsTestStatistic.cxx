@@ -231,11 +231,9 @@ RooAbsTestStatistic::~RooAbsTestStatistic()
       RooJsonListFile outfile("timings_MPFE_forks_cputime.json");
       std::list<std::string> members = {"time_s", "pid", "mpfe_pid"};
       outfile.set_member_names(members.begin(), members.end());
+      auto timings = getMPFEforksCPUruntime();
       for (Int_t i = 0; i < _nCPU; ++i) {
-        timespec timing_end = _mpfeArray[i]->getCPUTimeFromServer();
-        timespec timing_begin =_MPFE_fork_timings_begin[i];
-        double timing = RooFit::diff_seconds_timespecs(timing_begin, timing_end);
-        outfile << timing << getpid() << _mpfeArray[i]->getPIDFromServer();
+        outfile << timings[i] << getpid() << _mpfeArray[i]->getPIDFromServer();
       }
     }
 
@@ -252,6 +250,29 @@ RooAbsTestStatistic::~RooAbsTestStatistic()
 
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get current MPFE forks' total CPU runtime.
+/// Note: only use when in MPMaster mode and initialized! Otherwise it will
+/// throw.
+std::vector<double> RooAbsTestStatistic::getMPFEforksCPUruntime() {
+  std::vector<double> timings_s;
+  if (MPMaster == _gofOpMode && _init) {
+    if (RooTimer::time_MPFE_forks()) {
+      for (Int_t i = 0; i < _nCPU; ++i) {
+        timespec timing_end = _mpfeArray[i]->getCPUTimeFromServer();
+        timespec timing_begin =_MPFE_fork_timings_begin[i];
+        double timing = RooFit::diff_seconds_timespecs(timing_begin, timing_end);
+        timings_s.push_back(timing);
+      }
+    } else {
+      coutI(Optimization) << "MPFE forks are not timed, RooAbsTestStatistic::getMPFEforkCPUruntime will return empty." << std::endl;
+    }
+  } else {
+    throw("RooAbsTestStatistic::getMPFEforkCPUruntime can only be used in MPMaster mode and after call to initialize()!");
+  }
+  return timings_s;
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -990,13 +1011,13 @@ void RooAbsTestStatistic::setTimeEvaluatePartition(const std::string & name, Boo
 
 
 void RooAbsTestStatistic::_collectEvaluatePartitionTimings(Bool_t clear_timings) const {
+  std::vector<std::string> member_names = {"time_s", "cpu/wall", "name", "pid", "ppid", "MPMaster"};
   for (std::string cpu_wall : {"cpu", "wall"}) {
     std::string category = std::string("evaluate_partition_") + cpu_wall;
     if (MPMaster == _gofOpMode) {
-      std::vector<std::string> member_names = {"time_s", "cpu/wall", "name", "ix_cpu", "pid", "ppid"};
       for (Int_t i = 0; i < _nCPU; ++i) {
         auto timings = _mpfeArray[i]->collectTimingsFromServer(category, clear_timings);
-        if (timings.size() > 0) {
+        if (!timings.empty()) {
           RooJsonListFile timing_json("timings_evaluate_partitions.json");
           timing_json.set_member_names(member_names.begin(), member_names.end());
 
@@ -1004,22 +1025,26 @@ void RooAbsTestStatistic::_collectEvaluatePartitionTimings(Bool_t clear_timings)
           for (auto it = timings.begin(); it != timings.end(); ++it) {
             std::string name = it->first;
             double timing_s = it->second;
-            timing_json << timing_s << cpu_wall << name << i << pid << getpid();
+            timing_json << timing_s << cpu_wall << name << pid << getpid() << "true";
           }
         }
       }
     } else {
-      std::vector<std::string> member_names = {"time_s", "cpu/wall", "name", "pid"};
-      if (RooTimer::objectTiming[category].size() > 0) {
-        RooJsonListFile timing_json("timings_evaluate_partitions.json");
+      if (!RooTimer::objectTiming[category].empty()) {
+        pid_t pid = getpid();
+
+        stringstream filename_ss;
+        filename_ss << "timings_evaluate_partitions_p" << pid << ".json";
+
+        RooJsonListFile timing_json(filename_ss.str());
         timing_json.set_member_names(member_names.begin(), member_names.end());
 
-        pid_t pid = getpid();
+        pid_t ppid = getppid();
         for (auto it = RooTimer::objectTiming[category].begin();
              it != RooTimer::objectTiming[category].end(); ++it) {
           std::string name = it->first;
           double timing_s = it->second;
-          timing_json << timing_s << cpu_wall << name << pid;
+          timing_json << timing_s << cpu_wall << name << pid << ppid << "false";
         }
         if (clear_timings == kTRUE) {
           RooTimer::objectTiming[category].clear();
