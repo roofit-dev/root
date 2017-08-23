@@ -489,19 +489,9 @@ void RooAbsTestStatistic::_initTiming() {
 
   switch (RooTimer::timing_flag()) {
     case 2: {
-      if (SimMaster == _gofOpMode) {
-        RooTimer::timing_outfiles[0].open("timing_RATS_evaluate_full.json");
-        std::vector<std::string> names = {"time_s", "cpu/wall", "pid", "ppid", "mode"};
-        RooTimer::timing_outfiles[0].set_member_names(names.begin(), names.end());
-      } else if (MPMaster == _gofOpMode) {
-        RooTimer::timing_outfiles[0].open("timing_RATS_evaluate_full.json");
-        std::vector<std::string> names = {"time_s", "cpu/wall", "pid", "ppid", "mode"};
-        RooTimer::timing_outfiles[0].set_member_names(names.begin(), names.end());
-      } else {
-        RooTimer::timing_outfiles[0].open("timing_RATS_evaluate_full.json");
-        std::vector<std::string> names = {"time_s", "cpu/wall", "pid", "ppid", "mode"};
-        RooTimer::timing_outfiles[0].set_member_names(names.begin(), names.end());
-      }
+      RooTimer::timing_outfiles[0].open("timing_RATS_evaluate_full.json");
+      std::vector<std::string> names = {"time_s", "cpu/wall", "pid", "ppid", "mode"};
+      RooTimer::timing_outfiles[0].set_member_names(names.begin(), names.end());
       break;
     }
     case 3: {
