@@ -295,11 +295,12 @@ Double_t RooAbsTestStatistic::evaluate() const
 
   Double_t ret;
 
+  if (RooTimer::timing_flag() == 2) {
+    wtimer.start();
+    ctimer.start();
+  }
+
   if (SimMaster == _gofOpMode) {
-    if (RooTimer::timing_flag() == 2) {
-      wtimer.start();
-      ctimer.start();
-    }
     // Evaluate array of owned GOF objects
 
     if (_mpinterl == RooFit::BulkPartition || _mpinterl == RooFit::Interleave ) {
@@ -327,19 +328,7 @@ Double_t RooAbsTestStatistic::evaluate() const
       _evalCarry /= norm;
     }
 
-    if (RooTimer::timing_flag() == 2) {
-      ctimer.stop();
-      wtimer.stop();
-      // set ppid to -1, to signify that this is not a slave process
-      RooTimer::timing_outfiles[0] << wtimer.timing_s() << "wall" << getpid() << -1 << "SimMaster";
-      RooTimer::timing_outfiles[0] << ctimer.timing_s() << "cpu"  << getpid() << -1 << "SimMaster";
-    }
-
   } else if (MPMaster == _gofOpMode) {
-    if (RooTimer::timing_flag() == 2) {
-      wtimer.start();
-      ctimer.start();
-    }
     if (RooTimer::timing_flag() == 3) {
       RooTimer::timings.reserve(_nCPU);
     }
@@ -374,19 +363,7 @@ Double_t RooAbsTestStatistic::evaluate() const
     ret = sum ;
     _evalCarry = carry;
 
-    if (RooTimer::timing_flag() == 2) {
-      ctimer.stop();
-      wtimer.stop();
-      // set ppid to -1, to signify that this is not a slave process
-      RooTimer::timing_outfiles[0] << wtimer.timing_s() << "wall" << getpid() << -1 << "MPMaster";
-      RooTimer::timing_outfiles[0] << ctimer.timing_s() << "cpu"  << getpid() << -1 << "MPMaster";
-    }
   } else {
-    if (RooTimer::timing_flag() == 2) {
-      wtimer.start();
-      ctimer.start();
-    }
-
     // Evaluate as straight FUNC
     Int_t nFirst(0), nLast(_nEvents), nStep(1) ;
 
@@ -421,20 +398,26 @@ Double_t RooAbsTestStatistic::evaluate() const
       ret /= norm;
       _evalCarry /= norm;
     }
+  }
 
-    if (RooTimer::timing_flag() == 2) {
-      ctimer.stop();
-      wtimer.stop();
-      int ppid;
-      if (Slave == _gofOpMode) {
-        ppid = getppid();
-      } else {
-        // set ppid to -1, to signify that this is not a slave process
-        ppid = -1;
-      }
-      RooTimer::timing_outfiles[0] << wtimer.timing_s() << "wall" << getpid() << ppid << "other";
-      RooTimer::timing_outfiles[0] << ctimer.timing_s() << "cpu"  << getpid() << ppid << "other";
+  if (RooTimer::timing_flag() == 2) {
+    ctimer.stop();
+    wtimer.stop();
+    int ppid;
+    if (Slave == _gofOpMode) {
+      ppid = getppid();
+    } else {
+      // set ppid to -1, to signify that this is not a slave process
+      ppid = -1;
     }
+    std::string mode;
+    switch (_gofOpMode) {
+      case SimMaster: mode = "SimMaster"; break;
+      case MPMaster: mode = "MPMaster"; break;
+      default: mode = "other";
+    }
+    RooTimer::timing_outfiles[0] << wtimer.timing_s() << "wall" << getpid() << ppid << mode;
+    RooTimer::timing_outfiles[0] << ctimer.timing_s() << "cpu"  << getpid() << ppid << mode;
   }
 
   if (RooTimer::time_numInts() == kTRUE) {
