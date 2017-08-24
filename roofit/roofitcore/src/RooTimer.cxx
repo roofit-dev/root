@@ -114,3 +114,10 @@ void RooTimer::set_time_MPFE_forks(Bool_t flag) {
 Bool_t RooTimer::_time_numInts = kFALSE;
 Bool_t RooTimer::_time_evaluate_partition = kFALSE;
 Bool_t RooTimer::_time_MPFE_forks = kFALSE;
+
+// Output streamer; stops time, streams the timing_s value and restarts the timer afterwards
+std::ostream& operator<<(std::ostream& out, RooTimer &timer){
+  timer.stop();
+  return out << timer.timing_s();
+  timer.start();
+}

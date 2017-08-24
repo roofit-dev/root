@@ -265,14 +265,24 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
     ctimer.start();
   }
 
+  std::stringstream timing_preSS;
+  timing_preSS << "RooNLLVar::evaluatePartition(" << GetName() << ", pid" << getpid() << ", object " << this << ") timing: ";
+  std::string timing_prestr = timing_preSS.str();
+  RooWallTimer wt;
+  RooCPUTimer ct;
+
   Int_t i ;
   Double_t result(0), carry(0);
 
   RooAbsPdf* pdfClone = (RooAbsPdf*) _funcClone ;
 
+  std::cout << timing_prestr << "init-stuff, wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
   // cout << "RooNLLVar::evaluatePartition(" << GetName() << ") projDeps = " << (_projDeps?*_projDeps:RooArgSet()) << endl ;
 
   _dataClone->store()->recalculateCache( _projDeps, firstEvent, lastEvent, stepSize,(_binnedPdf?kFALSE:kTRUE) ) ;
+
+  std::cout << timing_prestr << "recalculateCache, wall " << wt << "s, cpu " << ct << "s" << std::endl;
 
   Double_t sumWeight(0), sumWeightCarry(0);
 
@@ -283,15 +293,22 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
 
       _dataClone->get(i) ;
 
+      std::cout << timing_prestr << "binnedPdf, data->get(i) i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
       if (!_dataClone->valid()) continue;
+
+      std::cout << timing_prestr << "binnedPdf, data->is valid i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
 
       Double_t eventWeight = _dataClone->weight();
 
+      std::cout << timing_prestr << "binnedPdf, data->weight() i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
 
       // Calculate log(Poisson(N|mu) for this bin
       Double_t N = eventWeight ;
       Double_t mu = _binnedPdf->getVal()*_binw[i] ;
       //cout << "RooNLLVar::binnedL(" << GetName() << ") N=" << N << " mu = " << mu << endl ;
+
+      std::cout << timing_prestr << "binnedPdf, _binnedPdf->getVal()*_binw[i] i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
 
       if (mu<=0 && N>0) {
 
@@ -318,6 +335,9 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
 	t = result + y;
 	carry = (t - result) - y;
 	result = t;
+
+        std::cout << timing_prestr << "binnedPdf, result calculation i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
       }
     }
 
@@ -328,14 +348,24 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
 
       _dataClone->get(i) ;
 
+      std::cout << timing_prestr << "not-binnedPdf, data->get(i) i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
       if (!_dataClone->valid()) continue;
 
+      std::cout << timing_prestr << "not-binnedPdf, data->is valid i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
       Double_t eventWeight = _dataClone->weight();
+
+      std::cout << timing_prestr << "not-binnedPdf, data->weight() i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
       if (0. == eventWeight * eventWeight) continue ;
       if (_weightSq) eventWeight = _dataClone->weightSquared() ;
 
+      std::cout << timing_prestr << "not-binnedPdf, data->weight squared stuff i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
       Double_t term = -eventWeight * pdfClone->getLogVal(_normSet);
 
+      std::cout << timing_prestr << "not-binnedPdf, -eventWeight * pdfClone->getLogVal(_normSet) i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
 
       Double_t y = eventWeight - sumWeightCarry;
       Double_t t = sumWeight + y;
@@ -346,6 +376,8 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
       t = result + y;
       carry = (t - result) - y;
       result = t;
+
+      std::cout << timing_prestr << "not-binnedPdf, kahan sum weight and result = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
     }
 
     // include the extended maximum likelihood term, if requested
@@ -356,15 +388,25 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
 	Double_t sumW2(0), sumW2carry(0);
 	for (i=0 ; i<_dataClone->numEntries() ; i++) {
 	  _dataClone->get(i);
-	  Double_t y = _dataClone->weightSquared() - sumW2carry;
-	  Double_t t = sumW2 + y;
+          std::cout << timing_prestr << "not-binnedPdf, extended term, data->get(i) i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
+          Double_t y = _dataClone->weightSquared() - sumW2carry;
+
+          std::cout << timing_prestr << "not-binnedPdf, extended term, data->weightSquared() i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
+          Double_t t = sumW2 + y;
 	  sumW2carry = (t - sumW2) - y;
 	  sumW2 = t;
-	}
+
+          std::cout << timing_prestr << "not-binnedPdf, extended term, rest of kahan sum weight i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
+        }
 
 	Double_t expected= pdfClone->expectedEvents(_dataClone->get());
 
-	// Adjust calculation of extended term with W^2 weighting: adjust poisson such that
+        std::cout << timing_prestr << "not-binnedPdf, extended term, expectedEvents i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
+        // Adjust calculation of extended term with W^2 weighting: adjust poisson such that
 	// estimate of Nexpected stays at the same value, but has a different variance, rescale
         // both the observed and expected count of the Poisson with a factor sum[w] / sum[w^2] which is
         // the effective weight of the Poisson term.
@@ -381,20 +423,28 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
         //  and since the weights are constants in the likelihood we can use log(expected) instead of log(expectedW)
 
 	Double_t expectedW2 = expected * sumW2 / _dataClone->sumEntries() ;
-	Double_t extra= expectedW2 - sumW2*log(expected );
+        std::cout << timing_prestr << "not-binnedPdf, extended term, data->sumEntries() i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
 
-	// Double_t y = pdfClone->extendedTerm(sumW2, _dataClone->get()) - carry;
+        Double_t extra= expectedW2 - sumW2*log(expected );
+
+        std::cout << timing_prestr << "not-binnedPdf, extended term, expectedW2 - sumW2*log(expected) i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
+        // Double_t y = pdfClone->extendedTerm(sumW2, _dataClone->get()) - carry;
 
 	Double_t y = extra - carry ;
 
 	Double_t t = result + y;
 	carry = (t - result) - y;
 	result = t;
+
+        std::cout << timing_prestr << "not-binnedPdf, extended term, kahan sum result i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
+
       } else {
 	Double_t y = pdfClone->extendedTerm(_dataClone->sumEntries(), _dataClone->get()) - carry;
 	Double_t t = result + y;
 	carry = (t - result) - y;
 	result = t;
+        std::cout << timing_prestr << "not-binnedPdf, extended term not weightSq, kahan sum result i = " << i << ", wall " << wt << "s, cpu " << ct << "s" << std::endl;
       }
     }
   }
@@ -407,6 +457,8 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
     Double_t t = result + y;
     carry = (t - result) - y;
     result = t;
+
+    std::cout << timing_prestr << "simCount>1, kahan sum result, wall " << wt << "s, cpu " << ct << "s" << std::endl;
   }
 
   if (timeEvaluatePartition()) {
@@ -429,6 +481,7 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
   if (_first) {
     _first = kFALSE ;
     _funcClone->wireAllCaches() ;
+    std::cout << timing_prestr << "first, wire all caches, wall " << wt << "s, cpu " << ct << "s" << std::endl;
   }
 
 
@@ -447,6 +500,7 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
     Double_t t = result + y;
     carry = (t - result) - y;
     result = t;
+    std::cout << timing_prestr << "doOffset, kahan subtract result, wall " << wt << "s, cpu " << ct << "s" << std::endl;
   }
 
 

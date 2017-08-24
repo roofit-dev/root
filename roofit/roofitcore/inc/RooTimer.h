@@ -73,4 +73,6 @@ private:
   struct timespec _timing_begin, _timing_end;
 };
 
+std::ostream& operator<<(std::ostream& out, RooTimer &timer);
+
 #endif
