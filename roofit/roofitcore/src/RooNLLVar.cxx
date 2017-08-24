@@ -237,6 +237,13 @@ void RooNLLVar::applyWeightSquared(Bool_t flag)
 }
 
 
+inline void add_kahan(Double_t &result, Double_t add, Double_t &carry) {
+  Double_t y = add - carry;
+  Double_t t = result + y;
+  carry = (t - result) - y;
+  result = t;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Calculate and return likelihood on subset of data from firstEvent to lastEvent
@@ -246,6 +253,11 @@ void RooNLLVar::applyWeightSquared(Bool_t flag)
 
 Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t stepSize) const
 {
+  // Return immediately if the range is empty.
+  if (firstEvent == lastEvent) {
+    return 0;
+  }
+
   // Throughout the calculation, we use Kahan's algorithm for summing to
   // prevent loss of precision - this is a factor four more expensive than
   // straight addition, but since evaluating the PDF is usually much more
@@ -265,7 +277,11 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
 
   // cout << "RooNLLVar::evaluatePartition(" << GetName() << ") projDeps = " << (_projDeps?*_projDeps:RooArgSet()) << endl ;
 
+//  RooWallTimer timer_rcc;
+//  RooCPUTimer ctimer_rcc;
   _dataClone->store()->recalculateCache( _projDeps, firstEvent, lastEvent, stepSize,(_binnedPdf?kFALSE:kTRUE) ) ;
+//  timer_rcc.stop(); ctimer_rcc.stop();
+//  std::cout << "RooNLLVar::evaluatePartition(" << GetName() << ", pid" << getpid() << "): recalculate cache, WALL " << timer_rcc.timing_s() << "s, CPU " << ctimer_rcc.timing_s() << "s" << std::endl;
 
   Double_t sumWeight(0), sumWeightCarry(0);
 
@@ -414,6 +430,9 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
     timer.store_object_timing(partition_name.str(), "evaluate_partition_wall");
     ctimer.store_object_timing(partition_name.str(), "evaluate_partition_cpu");
   }
+//  ctimer.stop();
+//  timer.stop();
+//  std::cout << "RooNLLVar::evaluatePartition(" << GetName() << ", pid" << getpid() << "): total timing, WALL " << timer.timing_s() << "s, CPU " << ctimer.timing_s() << "s" << std::endl;
 
   //timer.Stop() ;
   //cout << "RooNLLVar::evalPart(" << GetName() << ") SET=" << _setNum << " first=" << firstEvent << ", last=" << lastEvent << ", step=" << stepSize << ") result = " << result << " CPU = " << timer.CpuTime() << endl ;
