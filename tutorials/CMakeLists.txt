@@ -166,6 +166,7 @@ set(extra_veto
   rootlogoff.C         # Helper macro
   rootmarks.C          # Instrumentation. Not a standalone tutorial
   memstat/memstatExample.C   # Instrumentation. Not a standalone tutorial
+  multicore/mp_H1_lambdas.C # not a tutorial; used by mp104_processH1.C et al.
   html/*.C
   net/*.C
   proof/*.C
@@ -232,7 +233,6 @@ set(returncode_1 fit/fit2a.C fit/graph2dfit.C
                  hist/ContourList.C
                  hist/hstack.C
                  hist/hbars.C
-                 hist/h2proj.C
                  hist/th2polyBoxes.C
                  hist/statsEditing.C
                  hist/cumulative.C
@@ -345,6 +345,10 @@ if(ROOT_python_FOUND)
              histfactory/makeQuickModel.py # not a tutorial
              eve/lineset.py         # requires GUI
              )
+  if(NOT ROOT_mathmore_FOUND)
+    list(APPEND pyveto math/Legendre.py)
+  endif()
+  
   list(REMOVE_ITEM pytutorials ${pyveto})
   if(ROOT_CLASSIC_BUILD)
     set(classic_veto_py dataframe/tdf*.py)

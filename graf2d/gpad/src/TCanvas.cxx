@@ -707,7 +707,7 @@ void TCanvas::Clear(Option_t *option)
 {
    if (fCanvasID == -1) return;
 
-   R__LOCKGUARD2(gROOTMutex);
+   R__LOCKGUARD(gROOTMutex);
 
    TString opt = option;
    opt.ToLower();
@@ -767,7 +767,7 @@ void TCanvas::Close(Option_t *option)
          return;
       }
 
-      R__LOCKGUARD2(gROOTMutex);
+      R__LOCKGUARD(gROOTMutex);
 
       FeedbackMode(kFALSE);
 
@@ -779,7 +779,8 @@ void TCanvas::Close(Option_t *option)
 
          DeleteCanvasPainter();
 
-         if (fCanvasImp) fCanvasImp->Close();
+         if (fCanvasImp)
+            fCanvasImp->Close();
       }
       fCanvasID = -1;
       fBatch    = kTRUE;
@@ -787,7 +788,8 @@ void TCanvas::Close(Option_t *option)
       gROOT->GetListOfCanvases()->Remove(this);
 
       // Close actual window on screen
-      SafeDelete(fCanvasImp);
+      if (fCanvasImp)
+         SafeDelete(fCanvasImp);
    }
 
    if (cansave == this) {
@@ -1120,7 +1122,7 @@ void TCanvas::UseCurrentStyle()
       return;
    }
 
-   R__LOCKGUARD2(gROOTMutex);
+   R__LOCKGUARD(gROOTMutex);
 
    TPad::UseCurrentStyle();
 
@@ -1566,7 +1568,7 @@ void TCanvas::Resize(Option_t *)
       return;
    }
 
-   R__LOCKGUARD2(gROOTMutex);
+   R__LOCKGUARD(gROOTMutex);
 
    TPad *padsav  = (TPad*)gPad;
    cd();
@@ -1776,10 +1778,15 @@ void TCanvas::SaveSource(const char *filename, Option_t *option)
 //    out <<""<<std::endl;
    Int_t p = mname.Last('.');
    Int_t s = mname.Last('/')+1;
-   out <<"void " << mname(s,p-s) << "()" <<std::endl;
+
+   // A named macro is generated only if the function name is valid. If not, the
+   // macro is unnamed.
+   TString first(mname(s,s+1));
+   if (!first.IsDigit()) out <<"void " << mname(s,p-s) << "()" << std::endl;
+
    out <<"{"<<std::endl;
    out <<"//=========Macro generated from canvas: "<<GetName()<<"/"<<GetTitle()<<std::endl;
-   out <<"//=========  ("<<t.AsString()<<") by ROOT version"<<gROOT->GetVersion()<<std::endl;
+   out <<"//=========  ("<<t.AsString()<<") by ROOT version "<<gROOT->GetVersion()<<std::endl;
 
    if (gStyle->GetCanvasPreferGL())
       out <<std::endl<<"   gStyle->SetCanvasPreferGL(kTRUE);"<<std::endl<<std::endl;
@@ -2240,18 +2247,21 @@ void TCanvas::Update()
       return;
    }
 
-   R__LOCKGUARD2(gROOTMutex);
+   R__LOCKGUARD(gROOTMutex);
 
    fUpdating = kTRUE;
 
-   if (!IsBatch()) FeedbackMode(kFALSE);      // Goto double buffer mode
+   if (!fCanvasImp->PerformUpdate()) {
 
-   if (!UseGL())
-      PaintModified();           // Repaint all modified pad's
+      if (!IsBatch()) FeedbackMode(kFALSE); // Goto double buffer mode
 
-   Flush();                   // Copy all pad pixmaps to the screen
+      if (!UseGL()) PaintModified(); // Repaint all modified pad's
 
-   SetCursor(kCross);
+      Flush(); // Copy all pad pixmaps to the screen
+
+      SetCursor(kCross);
+   }
+
    fUpdating = kFALSE;
 }
 
@@ -2294,9 +2304,11 @@ void TCanvas::CreatePainter()
 {
    //Even for batch mode painter is still required, just to delegate
    //some calls to batch "virtual X".
-   if (!UseGL() || fBatch)
-      fPainter = new TPadPainter;//Do not need plugin manager for this!
-   else {
+   if (!UseGL() || fBatch) {
+      fPainter = 0;
+      if (fCanvasImp) fPainter = fCanvasImp->CreatePadPainter();
+      if (!fPainter) fPainter = new TPadPainter; // Do not need plugin manager for this!
+   } else {
       fPainter = TVirtualPadPainter::PadPainter("gl");
       if (!fPainter) {
          Error("CreatePainter", "GL Painter creation failed! Will use default!");

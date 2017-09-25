@@ -67,7 +67,7 @@ parallelized calculation of test statistics
 
 using namespace std;
 
-ClassImp(RooAbsOptTestStatistic)
+ClassImp(RooAbsOptTestStatistic);
 ;
 
 

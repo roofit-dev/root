@@ -111,9 +111,7 @@ int websocket_data_handler(struct mg_connection *conn, int, char *data, size_t l
    arg.SetWSId(TString::Hash((void *)conn, sizeof(void *)));
    arg.SetMethod("WS_DATA");
 
-   void *buf = malloc(len + 1); // one byte more for null-termination
-   memcpy(buf, data, len);
-   arg.SetPostData(buf, len);
+   arg.SetPostData(data, len, kTRUE); // make copy of original data
 
    serv->ExecuteHttp(&arg);
 
@@ -320,7 +318,7 @@ static int begin_request_handler(struct mg_connection *conn, void *)
 //                                                                      //
 //////////////////////////////////////////////////////////////////////////
 
-ClassImp(TCivetweb)
+ClassImp(TCivetweb);
 
    ////////////////////////////////////////////////////////////////////////////////
    /// constructor
@@ -371,7 +369,7 @@ Bool_t TCivetweb::Create(const char *args)
    //((struct mg_callbacks *) fCallbacks)->begin_request = begin_request_handler;
    ((struct mg_callbacks *)fCallbacks)->log_message = log_message_handler;
    TString sport = "8080", num_threads = "5", websocket_timeout = "300000";
-   TString auth_file, auth_domain, log_file;
+   TString auth_file, auth_domain, log_file, ssl_cert;
 
    // extract arguments
    if ((args != 0) && (strlen(args) > 0)) {
@@ -403,6 +401,9 @@ Bool_t TCivetweb::Create(const char *args)
 
             const char *adomain = url.GetValueFromOptions("auth_domain");
             if (adomain != 0) auth_domain = adomain;
+
+            const char *sslc = url.GetValueFromOptions("ssl_cert");
+            if (sslc != 0) ssl_cert = sslc;
 
             Int_t wtmout = url.GetIntValueFromOptions("websocket_timeout");
             if (wtmout > 0) websocket_timeout.Format("%d", wtmout * 1000);
@@ -436,6 +437,11 @@ Bool_t TCivetweb::Create(const char *args)
    if (log_file.Length() > 0) {
       options[op++] = "error_log_file";
       options[op++] = log_file.Data();
+   }
+
+   if (ssl_cert.Length() > 0) {
+      options[op++] = "ssl_certificate";
+      options[op++] = ssl_cert.Data();
    }
 
    options[op++] = 0;

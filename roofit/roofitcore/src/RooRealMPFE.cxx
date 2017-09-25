@@ -87,7 +87,7 @@ RooMPSentinel RooRealMPFE::_sentinel ;
 using namespace std;
 using namespace RooFit;
 
-ClassImp(RooRealMPFE)
+ClassImp(RooRealMPFE);
   ;
 
 

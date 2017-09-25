@@ -46,7 +46,7 @@ In extended mode, a (Nexpect - Nobserved*log(NExpected) term is added
 #include "RooProdPdf.h"
 #include "RooTimer.h"
 
-ClassImp(RooNLLVar)
+ClassImp(RooNLLVar);
 ;
 
 RooArgSet RooNLLVar::_emptySet ;

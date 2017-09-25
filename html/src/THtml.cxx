@@ -1204,7 +1204,7 @@ to process directives.</p>
 END_HTML */
 ////////////////////////////////////////////////////////////////////////////////
 
-ClassImp(THtml)
+ClassImp(THtml);
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a THtml object.
 /// In case output directory does not exist an error
@@ -1590,8 +1590,6 @@ void THtml::CreateListOfClasses(const char* filter)
       if (!strcmp(cname, "timespec")) continue;
       // "tuple"s are synthetic in the interpreter
       if (!strncmp(cname, "tuple<", 6)) continue;
-      // TSelectorCint is on its way out.
-      if (!strcmp(cname, "TSelectorCint")) continue;
 
       // get class & filename - use TROOT::GetClass, as we also
       // want those classes without decl file name!

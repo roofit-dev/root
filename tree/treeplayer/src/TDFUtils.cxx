@@ -9,7 +9,7 @@
  *************************************************************************/
 
 #include "RConfigure.h"      // R__USE_IMT
-#include "ROOT/TDFNodes.hxx" // ColumnName2ColumnTypeName requires TCustomColumnBase
+#include "ROOT/TDFNodes.hxx" // ColumnName2ColumnTypeName -> TCustomColumnBase, FindUnknownColumns -> TLoopManager
 #include "ROOT/TDFUtils.hxx"
 #include "TBranch.h"
 #include "TBranchElement.h"
@@ -27,9 +27,14 @@ namespace TDF {
 
 /// Return a string containing the type of the given branch. Works both with real TTree branches and with temporary
 /// column created by Define.
-std::string ColumnName2ColumnTypeName(const std::string &colName, TTree &tree, TCustomColumnBase *tmpBranch)
+std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, TCustomColumnBase *tmpBranch)
 {
-   if (auto branch = tree.GetBranch(colName.c_str())) {
+   TBranch* branch = nullptr;
+   if (tree) branch = tree->GetBranch(colName.c_str());
+   if (!branch and !tmpBranch) {
+      throw std::runtime_error("Column \"" + colName + "\" is not in a file and has not been defined.");
+   }
+   if (branch) {
       // this must be a real TTree branch
       static const TClassRef tbranchelRef("TBranchElement");
       if (branch->InheritsFrom(tbranchelRef)) {
@@ -126,34 +131,53 @@ unsigned int GetNSlots()
    return nSlots;
 }
 
-void CheckTmpBranch(const std::string &branchName, TTree *treePtr)
+void CheckTmpBranch(std::string_view branchName, TTree *treePtr)
 {
    if (treePtr != nullptr) {
-      auto branch = treePtr->GetBranch(branchName.c_str());
+      std::string branchNameInt(branchName);
+      auto branch = treePtr->GetBranch(branchNameInt.c_str());
       if (branch != nullptr) {
-         auto msg = "branch \"" + branchName + "\" already present in TTree";
+         auto msg = "branch \"" + branchNameInt + "\" already present in TTree";
          throw std::runtime_error(msg);
       }
    }
 }
 
-/// Returns local BranchNames or default BranchNames according to which one should be used
-const ColumnNames_t &PickBranchNames(unsigned int nArgs, const ColumnNames_t &bl, const ColumnNames_t &defBl)
+/// Choose between local column names or default column names, throw in case of errors.
+const ColumnNames_t SelectColumns(unsigned int nRequiredNames, const ColumnNames_t &names,
+                                  const ColumnNames_t &defaultNames)
 {
-   bool useDefBl = false;
-   if (nArgs != bl.size()) {
-      if (bl.size() == 0 && nArgs == defBl.size()) {
-         useDefBl = true;
-      } else {
-         auto msg = "mismatch between number of filter/define arguments (" + std::to_string(nArgs) +
-                    ") and number of columns specified (" + std::to_string(bl.size() ? bl.size() : defBl.size()) +
-                    "). Please check the number of arguments of the function/lambda/functor and the number of branches "
-                    "specified.";
-         throw std::runtime_error(msg);
-      }
+   // TODO fix grammar in case nRequiredNames == 1 or names.size() == 1
+   if (names.empty()) {
+      // use default column names
+      if (defaultNames.size() < nRequiredNames)
+         throw std::runtime_error(std::to_string(nRequiredNames) +
+                                  " column names are required but none were provided and the default list has size " +
+                                  std::to_string(defaultNames.size()));
+      // return first nRequiredNames default column names
+      return ColumnNames_t(defaultNames.begin(), defaultNames.begin() + nRequiredNames);
+   } else {
+      // use column names provided by the user to this particular transformation/action
+      if (names.size() != nRequiredNames)
+         throw std::runtime_error(std::to_string(nRequiredNames) + " column names are required but " +
+                                  std::to_string(names.size()) + " were provided.");
+      return names;
    }
+}
 
-   return useDefBl ? defBl : bl;
+ColumnNames_t FindUnknownColumns(const ColumnNames_t &columns, const TLoopManager &lm)
+{
+   const auto customColumns = lm.GetBookedBranches();
+   auto *const tree = lm.GetTree();
+   ColumnNames_t unknownColumns;
+   for (auto &column : columns) {
+      const auto isTreeBranch = (tree != nullptr && tree->GetBranch(column.c_str()) != nullptr);
+      if (isTreeBranch) continue;
+      const auto isCustomColumn = (customColumns.find(column) != customColumns.end());
+      if (isCustomColumn) continue;
+      unknownColumns.emplace_back(column);
+   }
+   return unknownColumns;
 }
 
 } // end NS TDF
