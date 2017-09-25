@@ -15,6 +15,7 @@
 #include "TList.h"
 #include "TError.h"
 
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <memory>
@@ -193,6 +194,16 @@ namespace ROOT {
          return fObjPointers[i];
       }
 
+      /// Access a particular slot which corresponds to a single thread.
+      /// This overload is faster than the GetAtSlotUnchecked method but
+      /// the caller is responsible to make sure that an object is
+      /// initialised for the particular slot and that the returned pointer
+      /// will not outlive the TThreadedObject that returned it.
+      T* GetAtSlotRaw(unsigned i) const
+      {
+         return fObjPointers[i].get();
+      }
+
       /// Access the pointer corresponding to the current slot. This method is
       /// not adequate for being called inside tight loops as it implies a
       /// lookup in a mapping between the threadIDs and the slot indices.
@@ -276,7 +287,7 @@ namespace ROOT {
 
    };
 
-   template<class T> unsigned TThreadedObject<T>::fgMaxSlots = 64;
+   template<class T> unsigned TThreadedObject<T>::fgMaxSlots = std::max(std::thread::hardware_concurrency(), 64u);
 
 } // End ROOT namespace
 

@@ -98,19 +98,17 @@ void ROOT::Experimental::TMenuItems::PopulateObjectMenu(void *obj, TClass *cl)
       }
    }
 
-   // delete lst;
+   delete lst;
 }
 
 std::string ROOT::Experimental::TMenuItems::ProduceJSON()
 {
    TClass *cl = gROOT->GetClass("std::vector<ROOT::Experimental::Detail::TMenuItem*>");
 
-   // printf("Got items %d class %p %s\n", (int) fItems.size(), cl, cl->GetName());
-
    // FIXME: got problem with std::list<TMenuItem>, can be generic TBufferJSON
    TString res = TBufferJSON::ConvertToJSON(&fItems, cl);
 
-   printf("Got JSON %s\n", res.Data());
+   // printf("Got JSON %s\n", res.Data());
 
    return res.Data();
 }

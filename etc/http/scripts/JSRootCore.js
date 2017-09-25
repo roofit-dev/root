@@ -93,7 +93,9 @@
    }
 } (function(JSROOT) {
 
-   JSROOT.version = "dev 26/07/2017";
+   "use strict";
+
+   JSROOT.version = "dev 24/08/2017";
 
    JSROOT.source_dir = "";
    JSROOT.source_min = false;
@@ -695,7 +697,8 @@
          if (typeof user_call_back == 'function') user_call_back.call(xhr, res);
       }
 
-      var pthis = this, method = "GET";
+      var pthis = this, method = "GET", async = true, p = kind.indexOf(";sync");
+      if (p>0) { kind.substr(0,p); async = false; }
       if (kind === "head") method = "HEAD"; else
       if ((kind === "multi") || (kind==="posttext")) method = "POST";
 
@@ -747,7 +750,6 @@
             var filecontent = "", u8Arr = new Uint8Array(xhr.response);
             for (var i = 0; i < u8Arr.length; ++i)
                filecontent += String.fromCharCode(u8Arr[i]);
-            delete u8Arr;
 
             return callback(filecontent);
          }
@@ -755,7 +757,7 @@
          callback(xhr.response);
       }
 
-      xhr.open(method, url, true);
+      xhr.open(method, url, async);
 
       if ((kind == "bin") || (kind == "buf")) xhr.responseType = 'arraybuffer';
 
@@ -1789,12 +1791,12 @@
          m.getBinEffectiveEntries = function(bin) {
             if (bin < 0 || bin >= this.fNcells) return 0;
             var sumOfWeights = this.fBinEntries[bin];
-            if ( this.fBinSumw2 == null || this.fBinSumw2.length != this.fNcells) {
+            if ( !this.fBinSumw2 || this.fBinSumw2.length != this.fNcells) {
                // this can happen  when reading an old file
                return sumOfWeights;
             }
-            var sumOfWeightsSquare = this.fSumw2[bin];
-            return ( sumOfWeightsSquare > 0 ? sumOfWeights * sumOfWeights / sumOfWeightsSquare : 0 );
+            var sumOfWeightsSquare = this.fBinSumw2[bin];
+            return (sumOfWeightsSquare > 0) ? sumOfWeights * sumOfWeights / sumOfWeightsSquare : 0;
          };
          m.getBinError = function(bin) {
             if (bin < 0 || bin >= this.fNcells) return 0;
@@ -1808,9 +1810,7 @@
             if (this.fErrorMode === EErrorType.kERRORSPREADG)
                return 1.0/Math.sqrt(sum);
             // compute variance in y (eprim2) and standard deviation in y (eprim)
-            var contsum = cont/sum;
-            var eprim2  = Math.abs(err2/sum - contsum*contsum);
-            var eprim   = Math.sqrt(eprim2);
+            var contsum = cont/sum, eprim = Math.sqrt(Math.abs(err2/sum - contsum*contsum));
             if (this.fErrorMode === EErrorType.kERRORSPREADI) {
                if (eprim != 0) return eprim/Math.sqrt(neff);
                // in case content y is an integer (so each my has an error +/- 1/sqrt(12)

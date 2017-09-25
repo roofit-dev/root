@@ -16,12 +16,15 @@
 #ifndef ROOT7_TVirtualCanvasPainter
 #define ROOT7_TVirtualCanvasPainter
 
-#include <memory>
-
 #include "ROOT/TDisplayItem.hxx"
+
+#include <memory>
+#include <functional>
 
 namespace ROOT {
 namespace Experimental {
+
+using CanvasCallback_t = std::function<void(bool)>;
 
 class TCanvas;
 
@@ -53,8 +56,16 @@ public:
    /// add display item to the canvas
    virtual void AddDisplayItem(TDisplayItem *item) = 0;
 
+   /// indicate that canvas changed, provides current version of the canvas
+   virtual void CanvasUpdated(uint64_t, bool, CanvasCallback_t) = 0;
+
+   /// return true if canvas modified since last painting
+   virtual bool IsCanvasModified(uint64_t) const = 0;
+
    /// perform special action when drawing is ready
-   virtual void DoWhenReady(const std::string &, const std::string &) = 0;
+   virtual void DoWhenReady(const std::string &, const std::string &, bool, CanvasCallback_t) = 0;
+
+   virtual void NewDisplay(const std::string &where) = 0;
 
    /// Loads the plugin that implements this class.
    static std::unique_ptr<TVirtualCanvasPainter> Create(const TCanvas &canv, bool batch_mode = false);

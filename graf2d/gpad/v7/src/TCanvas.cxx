@@ -15,9 +15,6 @@
 
 #include "ROOT/TCanvas.hxx"
 
-#include "ROOT/TDrawable.hxx"
-#include "ROOT/TLogger.hxx"
-
 #include <memory>
 #include <stdio.h>
 #include <string.h>
@@ -30,7 +27,7 @@ static std::vector<std::shared_ptr<ROOT::Experimental::TCanvas>> &GetHeldCanvase
    static std::vector<std::shared_ptr<ROOT::Experimental::TCanvas>> sCanvases;
    return sCanvases;
 }
-}
+} // namespace
 
 const std::vector<std::shared_ptr<ROOT::Experimental::TCanvas>> &ROOT::Experimental::TCanvas::GetCanvases()
 {
@@ -43,8 +40,16 @@ const std::vector<std::shared_ptr<ROOT::Experimental::TCanvas>> &ROOT::Experimen
 //  }
 // }
 
-void ROOT::Experimental::TCanvas::Update()
+bool ROOT::Experimental::TCanvas::IsModified() const
 {
+   return fPainter ? fPainter->IsCanvasModified(fModified) : fModified;
+}
+
+void ROOT::Experimental::TCanvas::Update(bool async, CanvasCallback_t callback)
+{
+   if (fPainter)
+      fPainter->CanvasUpdated(fModified, async, callback);
+
    // SnapshotList_t lst;
    // for (auto&& drw: fPrimitives) {
    //   TSnapshot *snap = drw->CreateSnapshot(*this);
@@ -60,20 +65,58 @@ std::shared_ptr<ROOT::Experimental::TCanvas> ROOT::Experimental::TCanvas::Create
    return pCanvas;
 }
 
-void ROOT::Experimental::TCanvas::Show()
+//////////////////////////////////////////////////////////////////////////
+/// Create new display for the canvas
+/// Parameter \par where specifies which program could be used for display creation
+/// Possible values:
+///
+///      cef - Chromium Embeded Framework, local display, local communication
+///      qt5 - Qt5 WebEngine (when running via rootqt5), local display, local communication
+///  browser - default system web-browser, communication via random http port from range 8800 - 9800
+///  <prog> - any program name which will be started instead of default browser, like firefox or /usr/bin/opera
+///           one could also specify $url in program name, which will be replaced with canvas URL
+///  native - either any available local display or default browser
+///
+///  Canvas can be displayed in several different places
+
+void ROOT::Experimental::TCanvas::Show(const std::string &where)
 {
-   if (fPainter) return;
+   if (fPainter) {
+      if (!where.empty())
+         fPainter->NewDisplay(where);
+      return;
+   }
+
    bool batch_mode = gROOT->IsBatch();
+   if (!fModified)
+      fModified = 1; // 0 is special value, means no changes and no drawings
+
    fPainter = Internal::TVirtualCanvasPainter::Create(*this, batch_mode);
+   if (fPainter) {
+      fPainter->NewDisplay(where);
+      fPainter->CanvasUpdated(fModified, true, nullptr); // trigger async display
+   }
 }
 
-void ROOT::Experimental::TCanvas::SaveAs(const std::string &filename)
+//////////////////////////////////////////////////////////////////////////
+/// Close all canvas displays
+
+void ROOT::Experimental::TCanvas::Hide()
 {
-   if (!fPainter) fPainter = Internal::TVirtualCanvasPainter::Create(*this, true);
+   if (fPainter)
+      delete fPainter.release();
+}
+
+void ROOT::Experimental::TCanvas::SaveAs(const std::string &filename, bool async, CanvasCallback_t callback)
+{
+   if (!fPainter)
+      fPainter = Internal::TVirtualCanvasPainter::Create(*this, true);
    if (filename.find(".svg") != std::string::npos)
-      fPainter->DoWhenReady("SVG", filename);
+      fPainter->DoWhenReady("SVG", filename, async, callback);
    else if (filename.find(".png") != std::string::npos)
-      fPainter->DoWhenReady("PNG", filename);
+      fPainter->DoWhenReady("PNG", filename, async, callback);
+   else if ((filename.find(".jpg") != std::string::npos) || (filename.find(".jpeg") != std::string::npos))
+      fPainter->DoWhenReady("JPEG", filename, async, callback);
 }
 
 // TODO: removal from GetHeldCanvases().

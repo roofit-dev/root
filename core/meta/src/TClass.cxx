@@ -437,7 +437,7 @@ IdMap_t *TClass::GetIdMap() {
 
 #ifdef R__COMPLETE_MEM_TERMINATION
    static IdMap_t gIdMapObject;
-   return &gIdMap;
+   return &gIdMapObject;
 #else
    static IdMap_t *gIdMap = new IdMap_t;
    return gIdMap;
@@ -448,7 +448,7 @@ DeclIdMap_t *TClass::GetDeclIdMap() {
 
 #ifdef R__COMPLETE_MEM_TERMINATION
    static DeclIdMap_t gDeclIdMapObject;
-   return &gIdMap;
+   return &gDeclIdMapObject;
 #else
    static DeclIdMap_t *gDeclIdMap = new DeclIdMap_t;
    return gDeclIdMap;
@@ -3734,7 +3734,7 @@ void TClass::GetMissingDictionariesForBaseClasses(TCollection& result, TCollecti
    TIter nextBase(lb);
    TBaseClass* base = 0;
    while ((base = (TBaseClass*)nextBase())) {
-      TClass* baseCl = base->Class();
+      TClass* baseCl = base->GetClassPointer();
       if (baseCl) {
             baseCl->GetMissingDictionariesWithRecursionCheck(result, visited, recurse);
       }
@@ -3761,13 +3761,14 @@ void TClass::GetMissingDictionariesForMembers(TCollection& result, TCollection& 
       // If it is a built-in data type.
       TClass* dmTClass = 0;
       if (dm->GetDataType()) {
-         dmTClass = dm->GetDataType()->Class();
+         // We have a basic datatype.
+         dmTClass = nullptr;
          // Otherwise get the string representing the type.
       } else if (dm->GetTypeName()) {
-            dmTClass = TClass::GetClass(dm->GetTypeName());
+         dmTClass = TClass::GetClass(dm->GetTypeName());
       }
       if (dmTClass) {
-            dmTClass->GetMissingDictionariesWithRecursionCheck(result, visited, recurse);
+         dmTClass->GetMissingDictionariesWithRecursionCheck(result, visited, recurse);
       }
    }
 }
@@ -4198,19 +4199,15 @@ TMethod *TClass::GetMethod(const char *method, const char *params,
 /// Find a method with decl id in this class or its bases.
 
 TMethod* TClass::FindClassOrBaseMethodWithId(DeclId_t declId) {
-   TFunction *f = GetMethodList()->Get(declId);
-   if (f) return (TMethod*)f;
+   if (TFunction* method = GetMethodList()->Get(declId))
+      return static_cast<TMethod *>(method);
 
-   TBaseClass *base;
-   TIter       next(GetListOfBases());
-   while ((base = (TBaseClass *) next())) {
-      TClass *clBase = base->GetClassPointer();
-      if (clBase) {
-         f = clBase->FindClassOrBaseMethodWithId(declId);
-         if (f) return (TMethod*)f;
-      }
-   }
-   return 0;
+   for (auto item : *GetListOfBases())
+      if (auto base = static_cast<TBaseClass *>(item)->GetClassPointer())
+         if (TFunction* method = base->FindClassOrBaseMethodWithId(declId))
+            return static_cast<TMethod *>(method);
+
+   return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4362,29 +4359,46 @@ Int_t TClass::GetNmethods()
 
 TVirtualStreamerInfo* TClass::GetStreamerInfo(Int_t version /* = 0 */) const
 {
-   TVirtualStreamerInfo *guess = fLastReadInfo;
-   if (guess && guess->GetClassVersion() == version) {
-      // If the StreamerInfo is assigned to the fLastReadInfo, we are
-      // guaranteed it was built and compiled.
-      return guess;
-   }
+   TVirtualStreamerInfo *sinfo = fLastReadInfo;
+
+   // Version 0 is special, it means the currently loaded version.
+   // We need to set it at the beginning to be able to guess it correctly.
+
+   if (version == 0)
+      version = fClassVersion;
+
+   // If the StreamerInfo is assigned to the fLastReadInfo, we are
+   // guaranteed it was built and compiled.
+   if (sinfo && sinfo->GetClassVersion() == version)
+      return sinfo;
+
+   // Note that the access to fClassVersion above is technically not thread-safe with a low probably of problems.
+   // fClassVersion is not an atomic and is modified TClass::SetClassVersion (called from RootClassVersion via
+   // ROOT::ResetClassVersion) and is 'somewhat' protected by the atomic fVersionUsed.
+   // However, direct access to fClassVersion should be replaced by calls to GetClassVersion to set fVersionUsed.
+   // Even with such a change the code here and in these functions need to be reviewed as a cursory look seem
+   // to indicates they are not yet properly protection against mutli-thread access.
+   //
+   // However, the use of these functions is rare and mostly done at library loading time which should
+   // in almost all cases preceeds the possibility of GetStreamerInfo being called from multiple thread
+   // on that same TClass object.
+   //
+   // Summary: need careful review but risk of problem is extremely low.
 
    R__LOCKGUARD(gInterpreterMutex);
 
-   // Handle special version, 0 means currently loaded version.
-   // Warning:  This may be -1 for an emulated class.
-   // If version == -2, the user is requested the emulated streamerInfo
-   // for an abstract base class even though we have a dictionary for it.
-   if (version == 0) {
-      version = fClassVersion;
-   }
-   Int_t ninfos = fStreamerInfo->GetSize();
-   if ((version < -1) || (version >= ninfos)) {
+   // Warning: version may be -1 for an emulated class, or -2 if the
+   //          user requested the emulated streamerInfo for an abstract
+   //          base class, even though we have a dictionary for it.
+
+   if ((version < -1) || (version >= fStreamerInfo->GetSize())) {
       Error("GetStreamerInfo", "class: %s, attempting to access a wrong version: %d", GetName(), version);
       // FIXME: Shouldn't we go to -1 here, or better just abort?
-      version = 0;
+      version = fClassVersion;
    }
-   TVirtualStreamerInfo* sinfo = (TVirtualStreamerInfo*) fStreamerInfo->At(version);
+
+   sinfo = (TVirtualStreamerInfo *)fStreamerInfo->At(version);
+
    if (!sinfo && (version != fClassVersion)) {
       // When the requested version does not exist we return
       // the TVirtualStreamerInfo for the currently loaded class version.
@@ -4394,6 +4408,7 @@ TVirtualStreamerInfo* TClass::GetStreamerInfo(Int_t version /* = 0 */) const
       // This is also the code path take for unversioned classes.
       sinfo = (TVirtualStreamerInfo*) fStreamerInfo->At(fClassVersion);
    }
+
    if (!sinfo) {
       // We just were not able to find a streamer info, we have to make a new one.
       TMmallocDescTemp setreset;
@@ -4405,7 +4420,6 @@ TVirtualStreamerInfo* TClass::GetStreamerInfo(Int_t version /* = 0 */) const
       if (HasDataMemberInfo() || fCollectionProxy) {
          // If we do not have a StreamerInfo for this version and we do not
          // have dictionary information nor a proxy, there is nothing to build!
-         //
          sinfo->Build();
       }
    } else {
@@ -4416,12 +4430,15 @@ TVirtualStreamerInfo* TClass::GetStreamerInfo(Int_t version /* = 0 */) const
          sinfo->BuildOld();
       }
    }
+
    // Cache the current info if we now have it.
-   if (version == fClassVersion) {
+   if (version == fClassVersion)
       fCurrentInfo = sinfo;
-   }
+
    // If the compilation succeeded, remember this StreamerInfo.
-   if (sinfo->IsCompiled()) fLastReadInfo = sinfo;
+   if (sinfo->IsCompiled())
+      fLastReadInfo = sinfo;
+
    return sinfo;
 }
 

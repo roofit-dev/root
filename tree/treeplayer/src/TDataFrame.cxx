@@ -366,7 +366,7 @@ number indicating which thread (0, 1, 2 , ..., poolSize - 1) the function is bei
 ~~~{.cpp}
 // Thread-safe evaluation of RMS of branch "b" using ForeachSlot
 ROOT::EnableImplicitMT();
-unsigned int nSlots = ROOT::GetImplicitMTPoolSize();
+const unsigned int nSlots = ROOT::GetImplicitMTPoolSize();
 std::vector<double> sumSqs(nSlots, 0.);
 std::vector<unsigned int> ns(nSlots, 0);
 
@@ -523,7 +523,7 @@ note that all actions are only executed for events that pass all preceding filte
 |---------------------|-----------------|
 | Foreach | Execute a user-defined function on each entry. Users are responsible for the thread-safety of this lambda when executing with implicit multi-threading enabled. |
 | ForeachSlot | Same as `Foreach`, but the user-defined function must take an extra `unsigned int slot` as its first parameter. `slot` will take a different value, `0` to `nThreads - 1`, for each thread of execution. This is meant as a helper in writing thread-safe `Foreach` actions when using `TDataFrame` after `ROOT::EnableImplicitMT()`. `ForeachSlot` works just as well with single-thread execution: in that case `slot` will always be `0`. |
-| Snapshot | Writes processed data-set to disk, in a new `TTree` and `TFile`. Custom columns can be saved as well, filtered entries are not saved. Users can specify which columns to save (default is all). |
+| Snapshot | Writes processed data-set to disk, in a new `TTree` and `TFile`. Custom columns can be saved as well, filtered entries are not saved. Users can specify which columns to save (default is all). Snapshot overwrites the output file if it already exists. |
 
 | **Queries** | **Description** |
 |-----------|-----------------|
@@ -558,17 +558,17 @@ thread-safety, see [here](#generic-actions).
 TDataFrame::TDataFrame(std::string_view treeName, TDirectory *dirPtr, const ColumnNames_t &defaultBranches)
    : TInterface<TDFDetail::TLoopManager>(std::make_shared<TDFDetail::TLoopManager>(nullptr, defaultBranches))
 {
-   const std::string treeNameInt(treeName);
    if (!dirPtr) {
       auto msg = "Invalid TDirectory!";
       throw std::runtime_error(msg);
    }
+   const std::string treeNameInt(treeName);
    auto tree = static_cast<TTree *>(dirPtr->Get(treeNameInt.c_str()));
    if (!tree) {
       auto msg = "Tree \"" + treeNameInt + "\" cannot be found!";
       throw std::runtime_error(msg);
    }
-   fProxiedPtr->SetTree(std::shared_ptr<TTree>(tree, [](TTree *) {}));
+   GetProxiedPtr()->SetTree(std::shared_ptr<TTree>(tree, [](TTree *) {}));
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -581,21 +581,20 @@ TDataFrame::TDataFrame(std::string_view treeName, TDirectory *dirPtr, const Colu
 /// booking of actions or transformations.
 /// See TInterface for the documentation of the
 /// methods available.
-TDataFrame::TDataFrame(std::string_view treeName, std::string_view filenameglob,
-                       const ColumnNames_t &defaultBranches)
+TDataFrame::TDataFrame(std::string_view treeName, std::string_view filenameglob, const ColumnNames_t &defaultBranches)
    : TInterface<TDFDetail::TLoopManager>(std::make_shared<TDFDetail::TLoopManager>(nullptr, defaultBranches))
 {
    const std::string treeNameInt(treeName);
    const std::string filenameglobInt(filenameglob);
-   auto chain = new TChain(treeNameInt.c_str());
+   auto chain = std::make_shared<TChain>(treeNameInt.c_str());
    chain->Add(filenameglobInt.c_str());
-   fProxiedPtr->SetTree(std::shared_ptr<TTree>(static_cast<TTree *>(chain)));
+   GetProxiedPtr()->SetTree(chain);
 }
 
 ////////////////////////////////////////////////////////////////////////////
 /// \brief Build the dataframe
 /// \param[in] tree The tree or chain to be studied.
-/// \param[in] defaultBranches Collection of default branches.
+/// \param[in] defaultBranches Collection of default column names to fall back to when none is specified.
 ///
 /// The default branches are looked at in case no branch is specified in the
 /// booking of actions or transformations.
@@ -607,7 +606,7 @@ TDataFrame::TDataFrame(TTree &tree, const ColumnNames_t &defaultBranches)
 }
 
 //////////////////////////////////////////////////////////////////////////
-/// \brief Build the dataframe
+/// \brief Build a dataframe that generates numEntries entries.
 /// \param[in] numEntries The number of entries to generate.
 ///
 /// An empty-source dataframe constructed with a number of entries will
@@ -615,5 +614,16 @@ TDataFrame::TDataFrame(TTree &tree, const ColumnNames_t &defaultBranches)
 /// and it will do so for all the previously-defined temporary branches.
 TDataFrame::TDataFrame(ULong64_t numEntries)
    : TInterface<TDFDetail::TLoopManager>(std::make_shared<TDFDetail::TLoopManager>(numEntries))
+{
+}
+
+//////////////////////////////////////////////////////////////////////////
+/// \brief Build dataframe associated to datasource.
+/// \param[in] ds The data-source object.
+/// \param[in] defaultBranches Collection of default column names to fall back to when none is specified.
+///
+/// A dataframe associated to a datasource will query it to access column values.
+TDataFrame::TDataFrame(std::unique_ptr<TDataSource> ds, const ColumnNames_t &defaultBranches)
+   : TInterface<TDFDetail::TLoopManager>(std::make_shared<TDFDetail::TLoopManager>(std::move(ds), defaultBranches))
 {
 }
