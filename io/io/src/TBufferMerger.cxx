@@ -21,7 +21,7 @@ namespace ROOT {
 namespace Experimental {
 
 TBufferMerger::TBufferMerger(const char *name, Option_t *option, Int_t compress)
-   : fName(name), fOption(option), fCompress(compress),
+   : fName(name), fOption(option), fCompress(compress), fAutoSave(0),
      fMergingThread(new std::thread([&]() { this->WriteOutputFile(); }))
 {
 }
@@ -63,10 +63,15 @@ void TBufferMerger::Push(TBufferFile *buffer)
    fDataAvailable.notify_one();
 }
 
+void TBufferMerger::SetAutoSave(size_t size)
+{
+   fAutoSave = size;
+}
+
 void TBufferMerger::WriteOutputFile()
 {
-   TDirectoryFile::TContext context;
-   std::unique_ptr<TMemFile> memfile;
+   size_t buffered = 0;
+   std::vector<TMemFile *> memfiles;
    std::unique_ptr<TBufferFile> buffer;
    TFileMerger merger;
 
@@ -85,28 +90,36 @@ void TBufferMerger::WriteOutputFile()
       fQueue.pop();
       lock.unlock();
 
-      if (!buffer) return;
+      if (!buffer)
+         break;
 
       Long64_t length;
       buffer->SetReadMode();
       buffer->SetBufferOffset();
       buffer->ReadLong64(length);
+      buffered += length;
 
       {
-         TDirectory::TContext ctxt;
-         {
-            R__LOCKGUARD(gROOTMutex);
-            memfile.reset(new TMemFile(fName.c_str(), buffer->Buffer() + buffer->Length(), length, "read"));
-            buffer->SetBufferOffset(buffer->Length() + length);
-            merger.AddFile(memfile.get(), false);
+         R__LOCKGUARD(gROOTMutex);
+         memfiles.push_back(new TMemFile(fName.c_str(), buffer->Buffer() + buffer->Length(), length, "read"));
+         buffer->SetBufferOffset(buffer->Length() + length);
+         merger.AddFile(memfiles.back(), false);
+
+         if (buffered > fAutoSave) {
+            buffered = 0;
             merger.PartialMerge();
+            merger.Reset();
+            memfiles.clear();
          }
-         merger.Reset();
       }
 
       if (fCallback)
          fCallback();
    }
+
+   R__LOCKGUARD(gROOTMutex);
+   merger.PartialMerge();
+   merger.Reset();
 }
 
 } // namespace Experimental
