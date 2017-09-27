@@ -40,6 +40,10 @@ of a given set of other RooAbsReal objects
 #include "RooMsgService.h"
 #include "RooTrace.h"
 
+#include <sstream>
+#include "RooTimer.h"
+#include "unistd.h"
+
 using namespace std ;
 
 ClassImp(RooProduct);
@@ -366,19 +370,62 @@ const char* RooProduct::makeFPName(const char *pfx,const RooArgSet& terms) const
 
 Double_t RooProduct::evaluate() const 
 {
+//  std::stringstream timing_preSS;
+//  timing_preSS << "RooProduct::evaluate(" << GetName() << ", pid" << getpid() << ", object " << this << ") timing: ";
+//  std::string timing_prestr = timing_preSS.str();
+//  Int_t while_ix(0);
+//  RooWallTimer wt;
+//  RooCPUTimer ct;
+
   Double_t prod(1) ;
 
   RooFIter compRIter = _compRSet.fwdIterator() ;
+
+//  ct.stop(); wt.stop();
+//  std::cout << timing_prestr << "_compRSet.fwdIterator, wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//  ct.start(); wt.start();
+
   RooAbsReal* rcomp ;
   const RooArgSet* nset = _compRSet.nset() ;
+
+//  ct.stop(); wt.stop();
+//  std::cout << timing_prestr << "_compRSet.nset, wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//  ct.start(); wt.start();
+
   while((rcomp=(RooAbsReal*)compRIter.next())) {
+//    ct.stop(); wt.stop();
+//    std::cout << timing_prestr << "compRIter.next, wh.it." << while_ix << ", wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//    ct.start(); wt.start();
+
     prod *= rcomp->getVal(nset) ;
+
+//    ct.stop(); wt.stop();
+//    std::cout << timing_prestr << "rcomp->getVal, wh.it." << while_ix << ", wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//    ct.start(); wt.start();
+//
+//    ++while_ix;
   }
   
   RooFIter compCIter = _compCSet.fwdIterator() ;
+
+//  ct.stop(); wt.stop();
+//  std::cout << timing_prestr << "_compCSet.fwdIterator, wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//  ct.start(); wt.start();
+//  while_ix = 0;
+
   RooAbsCategory* ccomp ;
   while((ccomp=(RooAbsCategory*)compCIter.next())) {
+//    ct.stop(); wt.stop();
+//    std::cout << timing_prestr << "compCIter.next, wh.it." << while_ix << ", wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//    ct.start(); wt.start();
+
     prod *= ccomp->getIndex() ;
+
+//    ct.stop(); wt.stop();
+//    std::cout << timing_prestr << "ccomp->getIndex, wh.it." << while_ix << ", wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//    ct.start(); wt.start();
+//
+//    ++while_ix;
   }
   
   return prod ;

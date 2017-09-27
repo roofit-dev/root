@@ -104,6 +104,8 @@
 
 #include <sstream>
 
+#include "unistd.h"
+
 using namespace std ;
 
 ClassImp(RooAbsReal);
@@ -249,8 +251,10 @@ Double_t RooAbsReal::getValV(const RooArgSet* nset) const
   if (nset && nset!=_lastNSet) {
     ((RooAbsReal*) this)->setProxyNormSet(nset) ;
     _lastNSet = (RooArgSet*) nset ;
+//    std::cout << "RooAbsReal::getValV (" << GetName() << ", pid" << getpid() << "): nset && nset!=_lastNSet" << std::endl;
   }
 
+//  std::cout << "RooAbsReal::getValV will now call RooAbsArg::isValueDirtyAndClear (" << GetName() << ", pid" << getpid() << "): inhibitDirty() = " << inhibitDirty() << ", _operMode = " << _operMode << ", _valueDirty = " << _valueDirty << ", isDerived() = " << isDerived() << std::endl;
   if (isValueDirtyAndClear()) {
     _value = traceEval(nset) ;
     //     clearValueDirty() ;

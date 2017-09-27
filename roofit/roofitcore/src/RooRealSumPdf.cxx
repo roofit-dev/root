@@ -52,6 +52,10 @@ In the present version \f$coef_i\f$ may not depend on x, but this limitation may
 #include <algorithm>
 
 #include "TError.h"
+#include "RooTimer.h"
+
+#include <sstream>
+#include <unistd.h>
 
 using namespace std;
 
@@ -228,33 +232,85 @@ RooAbsPdf::ExtendMode RooRealSumPdf::extendMode() const
 
 Double_t RooRealSumPdf::evaluate() const 
 {
+//  std::stringstream timing_preSS;
+//  timing_preSS << "RooRealSumPdf::evaluate(" << GetName() << ", pid" << getpid() << ", object " << this << ") timing: ";
+//  std::string timing_prestr = timing_preSS.str();
+//  Int_t timer_while_i = 0;
+//  RooWallTimer wt;
+//  RooCPUTimer ct;
+
   Double_t value(0) ;
 
   // Do running sum of coef/func pairs, calculate lastCoef.
   RooFIter funcIter = _funcList.fwdIterator() ;
   RooFIter coefIter = _coefList.fwdIterator() ;
+
+//  ct.stop(); wt.stop();
+//  std::cout << timing_prestr << "fwdIterators, wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//  ct.start(); wt.start();
+
   RooAbsReal* coef ;
   RooAbsReal* func ;
       
   // N funcs, N-1 coefficients 
   Double_t lastCoef(1) ;
   while((coef=(RooAbsReal*)coefIter.next())) {
+//    ct.stop(); wt.stop();
+//    std::cout << timing_prestr << "while iteration " << timer_while_i << ", wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//    ct.start(); wt.start();
+
     func = (RooAbsReal*)funcIter.next() ;
+
+//    ct.stop(); wt.stop();
+//    std::cout << timing_prestr << "wh.it." << timer_while_i << ", funcIter.next(), wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//    ct.start(); wt.start();
+
     Double_t coefVal = coef->getVal() ;
+//    ct.stop(); wt.stop();
+//    std::cout << timing_prestr << "wh.it." << timer_while_i << ", coef->getVal(), wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//    ct.start(); wt.start();
+
     if (coefVal) {
       cxcoutD(Eval) << "RooRealSumPdf::eval(" << GetName() << ") coefVal = " << coefVal << " funcVal = " << func->IsA()->GetName() << "::" << func->GetName() << " = " << func->getVal() << endl ;
       if (func->isSelectedComp()) {
-	value += func->getVal()*coefVal ;
+//        ct.stop(); wt.stop();
+//        std::cout << timing_prestr << "wh.it." << timer_while_i << ", coefVal, func->isSelectedComp(), wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//        ct.start(); wt.start();
+
+        value += func->getVal()*coefVal ;
+//        ct.stop(); wt.stop();
+//        std::cout << timing_prestr << "wh.it." << timer_while_i << ", coefVal, func->isSelectedComp(), func->getVal(), wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//        ct.start(); wt.start();
+//        std::cout << "wh.it." << timer_while_i++ << ", coefVal, func->isSelectedComp(), func->getVal(), func->GetName: " << func->GetName() << ", func->Class: " << func->ClassName() << std::endl;
+
       }
       lastCoef -= coef->getVal() ;
+//      ct.stop(); wt.stop();
+//      std::cout << timing_prestr << "wh.it." << timer_while_i << ", coefVal, coef->getVal(), wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//      ct.start(); wt.start();
+
     }
+//    ++timer_while_i;
   }
   
   if (!_haveLastCoef) {
     // Add last func with correct coefficient
     func = (RooAbsReal*) funcIter.next() ;
+//    ct.stop(); wt.stop();
+//    std::cout << timing_prestr << "!haveLastCoef, funcIter.next(), wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//    ct.start(); wt.start();
+
     if (func->isSelectedComp()) {
+//      ct.stop(); wt.stop();
+//      std::cout << timing_prestr << "!haveLastCoef, func->isSelectedComp(), wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//      ct.start(); wt.start();
+
       value += func->getVal()*lastCoef ;
+//      ct.stop(); wt.stop();
+//      std::cout << timing_prestr << "!haveLastCoef, func->isSelectedComp(), func->getVal(), wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//      ct.start(); wt.start();
+
+
     }
 
     cxcoutD(Eval) << "RooRealSumPdf::eval(" << GetName() << ") lastCoef = " << lastCoef << " funcVal = " << func->getVal() << endl ;
@@ -271,7 +327,12 @@ Double_t RooRealSumPdf::evaluate() const
   if (value<0 && (_doFloor || _doFloorGlobal)) {
     value = 0 ;
   }
-  
+
+//  ct.stop(); wt.stop();
+//  std::cout << timing_prestr << "finishing stuff, wall " << wt.timing_s() << "s, cpu " << ct.timing_s() << "s" << std::endl;
+//  ct.start(); wt.start();
+
+
   return value ;
 }
 

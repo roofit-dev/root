@@ -389,6 +389,9 @@ Double_t RooAbsTestStatistic::evaluate() const
       break ;
     }
 
+//    std::cout << "RooAbsTestStatistic::evaluate, calling evaluatePartition("
+//              << nFirst << ", " << nLast << ", " << nStep
+//              << "), PID " << getpid() << ", ptr " << this << ", name " << GetName() << std::endl;
     ret = evaluatePartition(nFirst,nLast,nStep);
 
     if (numSets()==1) {
@@ -595,10 +598,16 @@ void RooAbsTestStatistic::initMPMode(RooAbsReal *real, RooAbsData *data, const R
   _mpfeArray = new pRooRealMPFE[_nCPU];
 
   // Create proto-goodness-of-fit
-  RooAbsTestStatistic* gof = create(GetName(),GetTitle(),*real,*data,*projDeps,rangeName,addCoefRangeName,1,_mpinterl,_CPUAffinity,_verbose,_splitRange);
-  gof->recursiveRedirectServers(_paramSet);
+//  RooAbsTestStatistic* gof = create(GetName(),GetTitle(),*real,*data,*projDeps,rangeName,addCoefRangeName,1,_mpinterl,_CPUAffinity,_verbose,_splitRange);
+//  std::cout << "RooAbsTestStatistic::initMPMode, gof ptr " << gof << std::endl;
+//  gof->recursiveRedirectServers(_paramSet);
 
   for (Int_t i = 0; i < _nCPU; ++i) {
+
+    RooAbsTestStatistic* gof = create(GetName(),GetTitle(),*real,*data,*projDeps,rangeName,addCoefRangeName,1,_mpinterl,_CPUAffinity,_verbose,_splitRange);
+//    std::cout << "RooAbsTestStatistic::initMPMode, gof ptr " << gof << std::endl;
+    gof->recursiveRedirectServers(_paramSet);
+
     gof->setMPSet(i,_nCPU);
     gof->SetName(Form("%s_GOF%d",GetName(),i));
     gof->SetTitle(Form("%s_GOF%d",GetTitle(),i));
@@ -623,8 +632,10 @@ void RooAbsTestStatistic::initMPMode(RooAbsReal *real, RooAbsData *data, const R
     if (RooTimer::time_numInts() == kTRUE) {
       _mpfeArray[i]->setTimingNumInts();
     }
+
+    _mpfeArray[i]->addOwnedComponents(*gof);
   }
-  _mpfeArray[_nCPU - 1]->addOwnedComponents(*gof);
+//  _mpfeArray[_nCPU - 1]->addOwnedComponents(*gof);
   coutI(Eval) << "RooAbsTestStatistic::initMPMode: started " << _nCPU << " remote server process." << endl;
   //cout << "initMPMode --- done" << endl ;
   return ;
@@ -741,6 +752,7 @@ void RooAbsTestStatistic::initSimMode(RooSimultaneous* simpdf, RooAbsData* data,
       // WVE END HACK
       // Below here directly pass binnedPdf instead of PROD(binnedPdf,constraints) as constraints are evaluated elsewhere anyway
       // and omitting them reduces model complexity and associated handling/cloning times
+//      std::cout << "RooAbsTestStatistic::initSimMode: creating slave calculator #" << n << " for state " << type->GetName() << ": binnedL = " << binnedL << ", binnedPdf = " << binnedPdf << std::endl;
       if (_splitRange && rangeName) {
 	_gofArray[n] = create(type->GetName(),type->GetName(),(binnedPdf?*binnedPdf:*pdf),*dset,*projDeps,
 			      Form("%s_%s",rangeName,type->GetName()),addCoefRangeName,_nCPU*(_mpinterl?-1:1),_mpinterl,_CPUAffinity,_verbose,_splitRange,binnedL);
