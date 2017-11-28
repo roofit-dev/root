@@ -33,7 +33,7 @@ namespace Internal {
 namespace TDF {
 // Match expression against names of branches passed as parameter
 // Return vector of names of the branches used in the expression
-std::vector<std::string> FindUsedColumnNames(std::string_view expression, TObjArray *branches,
+std::vector<std::string> FindUsedColumnNames(std::string_view expression, const ColumnNames_t &branches,
                                              const ColumnNames_t &customColumns, const ColumnNames_t &dsColumns,
                                              const std::map<std::string, std::string> &aliasMap)
 {
@@ -54,14 +54,11 @@ std::vector<std::string> FindUsedColumnNames(std::string_view expression, TObjAr
    }
 
    // Check which tree branches match
-   if (branches) {
-      for (auto bro : *branches) {
-         auto brName = bro->GetName();
-         std::string bNameRegexContent = regexBit + brName + regexBit;
-         TRegexp bNameRegex(bNameRegexContent.c_str());
-         if (-1 != bNameRegex.Index(paddedExpr.c_str(), &paddedExprLen)) {
-            usedBranches.emplace_back(brName);
-         }
+   for (auto &brName : branches) {
+      std::string bNameRegexContent = regexBit + brName + regexBit;
+      TRegexp bNameRegex(bNameRegexContent.c_str());
+      if (-1 != bNameRegex.Index(paddedExpr.c_str(), &paddedExprLen)) {
+         usedBranches.emplace_back(brName);
       }
    }
 
@@ -95,7 +92,7 @@ std::vector<std::string> FindUsedColumnNames(std::string_view expression, TObjAr
 // Return pointer to the new functional chain node returned by the call, cast to Long_t
 Long_t JitTransformation(void *thisPtr, std::string_view methodName, std::string_view interfaceTypeName,
                          std::string_view name, std::string_view expression,
-                         const std::map<std::string, std::string> &aliasMap, TObjArray *branches,
+                         const std::map<std::string, std::string> &aliasMap, const ColumnNames_t &branches,
                          const std::vector<std::string> &customColumns,
                          const std::map<std::string, TmpBranchBasePtr_t> &tmpBookedBranches, TTree *tree,
                          std::string_view returnTypeName, TDataSource *ds)
@@ -110,7 +107,7 @@ Long_t JitTransformation(void *thisPtr, std::string_view methodName, std::string
    std::vector<std::string> usedBranchesTypes;
    static unsigned int iNs = 0U;
    std::stringstream dummyDecl;
-   dummyDecl << "namespace __tdf_" << std::to_string(iNs++) << "{ void f(){\n";
+   dummyDecl << "namespace __tdf_" << std::to_string(iNs++) << "{ auto __tdf_lambda = []() {";
 
    // Declare variables with the same name as the column used by this transformation
    auto aliasMapEnd = aliasMap.end();
@@ -129,9 +126,18 @@ Long_t JitTransformation(void *thisPtr, std::string_view methodName, std::string
       }
    }
 
-   // Put the expression used for the transformation in the function
-   dummyDecl << "auto __tdfexprres = " << expression << ";}}"; // close scopes of f and namespace __tdf_N
-   // Try to declare the dummy function, error out if it does not compile
+   TRegexp re("[^a-zA-Z0-9_]return[^a-zA-Z0-9_]");
+   int exprSize = expression.size();
+   bool hasReturnStmt = re.Index(std::string(expression), &exprSize) != -1;
+
+   // Now that branches are declared as variables, put the body of the
+   // lambda in dummyDecl and close scopes of f and namespace __tdf_N
+   if (hasReturnStmt)
+      dummyDecl << expression << "\n;};}";
+   else
+      dummyDecl << "return " << expression << "\n;};}";
+
+   // Try to declare the dummy lambda, error out if it does not compile
    if (!gInterpreter->Declare(dummyDecl.str().c_str())) {
       auto msg =
          "Cannot interpret the following expression:\n" + std::string(expression) + "\n\nMake sure it is valid C++.";
@@ -144,9 +150,9 @@ Long_t JitTransformation(void *thisPtr, std::string_view methodName, std::string
    for (unsigned int i = 0; i < usedBranchesTypes.size(); ++i) {
       // We pass by reference to avoid expensive copies
       // It can't be const reference in general, as users might want/need to call non-const methods on the values
-      // In the special case of arguments of type `std::array_view`, it *has* to be a const ref as we will pass in
+      // In the special case of arguments of type `TArrayBranch`, it *has* to be a const ref as we will pass in
       // temporaries converted from TTreeReaderArrays.
-      if (usedBranchesTypes[i].find_first_of("std::array_view<") == 0u)
+      if (usedBranchesTypes[i].find_first_of("ROOT::Experimental::TDF::TArrayBranch<") == 0u)
          ss << "const ";
       // Here we do not replace anything: the name of the parameters of the lambda does not need to be the real
       // column name, it must be an alias to compile.
@@ -154,7 +160,12 @@ Long_t JitTransformation(void *thisPtr, std::string_view methodName, std::string
    }
    if (!usedBranchesTypes.empty())
       ss.seekp(-2, ss.cur);
-   ss << "){ return " << expression << ";}";
+
+   if (hasReturnStmt)
+      ss << "){\n" << expression << "\n}";
+   else
+      ss << "){return " << expression << "\n;}";
+
    auto filterLambda = ss.str();
 
    // The TInterface type to convert the result to. For example, Filter returns a TInterface<TFilter<F,P>> but when
@@ -203,7 +214,7 @@ Long_t JitTransformation(void *thisPtr, std::string_view methodName, std::string
 std::string JitBuildAndBook(const ColumnNames_t &bl, const std::string &prevNodeTypename, void *prevNode,
                             const std::type_info &art, const std::type_info &at, const void *rOnHeap, TTree *tree,
                             const unsigned int nSlots, const std::map<std::string, TmpBranchBasePtr_t> &customColumns,
-                            TDataSource *ds)
+                            TDataSource *ds, const std::shared_ptr<TActionBase *> *const actionPtrPtr)
 {
    auto nBranches = bl.size();
 
@@ -246,18 +257,22 @@ std::string JitBuildAndBook(const ColumnNames_t &bl, const std::string &prevNode
 
    // createAction_str will contain the following:
    // ROOT::Internal::TDF::CallBuildAndBook<actionType, branchType1, branchType2...>(
-   //   *reinterpret_cast<PrevNodeType*>(prevNode), { bl[0], bl[1], ... }, reinterpret_cast<actionResultType*>(rOnHeap))
+   //   *reinterpret_cast<PrevNodeType*>(prevNode), { bl[0], bl[1], ... }, reinterpret_cast<actionResultType*>(rOnHeap),
+   //   reinterpret_cast<shared_ptr<TActionBase*>*>(actionPtrPtr))
    std::stringstream createAction_str;
    createAction_str << "ROOT::Internal::TDF::CallBuildAndBook"
                     << "<" << actionTypeName;
-   for (auto &colType : columnTypeNames) createAction_str << ", " << colType;
+   for (auto &colType : columnTypeNames)
+      createAction_str << ", " << colType;
    createAction_str << ">(*reinterpret_cast<" << prevNodeTypename << "*>(" << prevNode << "), {";
    for (auto i = 0u; i < bl.size(); ++i) {
       if (i != 0u)
          createAction_str << ", ";
       createAction_str << '"' << bl[i] << '"';
    }
-   createAction_str << "}, " << nSlots << ", reinterpret_cast<" << actionResultTypeName << "*>(" << rOnHeap << "));";
+   createAction_str << "}, " << nSlots << ", reinterpret_cast<" << actionResultTypeName << "*>(" << rOnHeap << ")"
+                    << ", reinterpret_cast<const std::shared_ptr<ROOT::Internal::TDF::TActionBase*>*>(" << actionPtrPtr
+                    << "));";
    return createAction_str.str();
 }
 
