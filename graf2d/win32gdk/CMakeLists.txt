@@ -27,6 +27,8 @@ else()
   set(nmcxxflags "${CMAKE_CXX_FLAGS}")
 endif()
 
+string(REPLACE "-std=c++14" "" nmcxxflags "${nmcxxflags}")
+
 # Build iconv
 
 add_custom_command( OUTPUT ${iconvliba} ${iconvdlla}
@@ -83,8 +85,9 @@ set_target_properties(GDKLIB PROPERTIES FOLDER Builtins)
 
 ROOT_STANDARD_LIBRARY_PACKAGE(Win32gdk
                               HEADERS TGWin32.h TGWin32GL.h
-                              DEPENDENCIES Cling Core Graf
                               SOURCES *.cxx *.c
+                              DICTIONARY_OPTIONS "-writeEmptyRootPCM"
+                              DEPENDENCIES Cling Core Graf
                               LIBRARIES ${FREETYPE_LIBRARIES} ${gdklib} ${gliblib} Glu32.lib Opengl32.lib
                               BUILTINS FREETYPE)
 

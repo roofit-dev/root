@@ -22,6 +22,7 @@
 #include <thread>
 
 class TBufferFile;
+class TFile;
 
 namespace ROOT {
 namespace Experimental {
@@ -50,6 +51,11 @@ public:
     */
    TBufferMerger(const char *name, Option_t *option = "RECREATE", Int_t compress = 1);
 
+   /** Constructor
+    * @param output Output \c TFile
+    */
+   TBufferMerger(std::unique_ptr<TFile> output);
+
    /** Destructor */
    virtual ~TBufferMerger();
 
@@ -75,6 +81,9 @@ public:
     */
    void RegisterCallback(const std::function<void(void)> &f);
 
+   /** Returns the current value of the auto save setting in bytes (default = 0). */
+   size_t GetAutoSave() const;
+
    /** By default, TBufferMerger will call TFileMerger::PartialMerge() for each
     *  buffer pushed onto its merge queue. This function lets the user change
     *  this behaviour by telling TBufferMerger to accumulate at least @param size
@@ -97,12 +106,12 @@ private:
    /** TBufferMerger has no copy operator */
    TBufferMerger &operator=(const TBufferMerger &);
 
+   void Init(std::unique_ptr<TFile>);
+
    void Push(TBufferFile *buffer);
    void WriteOutputFile();
 
-   const std::string fName;
-   const std::string fOption;
-   const Int_t fCompress;
+   TFile* fFile;                                                 //< Output file.
    size_t fAutoSave;                                             //< AutoSave only every fAutoSave bytes
    std::mutex fQueueMutex;                                       //< Mutex used to lock fQueue
    std::condition_variable fDataAvailable;                       //< Condition variable used to wait for data
