@@ -41,6 +41,7 @@ namespace RooFit {
       fFunction(&f),
       fN(f.NDim()),
       fG(f.NDim()),
+      ExtOfInt(f.NDim()),
       _always_exactly_mimic_minuit2(always_exactly_mimic_minuit2)
   {}
 
@@ -53,11 +54,9 @@ namespace RooFit {
       Up(error_level),
       fN(f.NDim()),
       fG(f.NDim()),
+      ExtOfInt(f.NDim()),
       _always_exactly_mimic_minuit2(always_exactly_mimic_minuit2)
-  {
-    //number of dimensions, will look at vector size
-    _parameter_has_limits.resize(f.NDim());
-  }
+  {}
 
 // copy constructor
   NumericalDerivatorMinuit2::NumericalDerivatorMinuit2(const RooFit::NumericalDerivatorMinuit2 &other) :
@@ -68,23 +67,25 @@ namespace RooFit {
       Up(other.Up),
       fVal(other.fVal),
       fN(other.fN),
+      N_free_parameters(other.N_free_parameters),
       fG(other.fG),
-      _parameter_has_limits(other._parameter_has_limits),
+      ExtOfInt(other.ExtOfInt),
       precision(other.precision),
       _always_exactly_mimic_minuit2(other._always_exactly_mimic_minuit2)
   {}
 
   RooFit::NumericalDerivatorMinuit2& NumericalDerivatorMinuit2::operator=(const RooFit::NumericalDerivatorMinuit2 &other) {
     if(&other != this) {
-      fG = other.fG;
-      _parameter_has_limits = other._parameter_has_limits;
       fFunction = other.fFunction;
       fStepTolerance = other.fStepTolerance;
       fGradTolerance = other.fGradTolerance;
       fNCycles = other.fNCycles;
+      Up = other.Up;
       fVal = other.fVal;
       fN = other.fN;
-      Up = other.Up;
+      N_free_parameters = other.N_free_parameters;
+      fG = other.fG;
+      ExtOfInt = other.ExtOfInt;
       precision = other.precision;
       _always_exactly_mimic_minuit2 = other._always_exactly_mimic_minuit2;
     }
@@ -107,17 +108,34 @@ namespace RooFit {
     // TODO Auto-generated destructor stub
   }
 
-  ROOT::Minuit2::FunctionGradient NumericalDerivatorMinuit2::Differentiate(const double* cx,
+  std::size_t NumericalDerivatorMinuit2::count_free_parameters(const std::vector<ROOT::Fit::ParameterSettings>& parameters) const {
+    std::size_t N = 0;
+    for (auto parameter = parameters.begin(); parameter != parameters.end(); ++parameter) {
+      if (!parameter->IsFixed()) {
+        ++N;
+      }
+    }
+    return N;
+  }
+
+  ROOT::Minuit2::FunctionGradient NumericalDerivatorMinuit2::Differentiate(const std::vector<double> & cx,
                                                                            const std::vector<ROOT::Fit::ParameterSettings>& parameters) {
     assert(fFunction != 0);
     assert(fFunction->NDim() == fN);
-    std::vector<double> vx(fFunction->NDim()), vx_external(fFunction->NDim());
+    assert(N_free_parameters <= fN);
 
-    std::copy (cx, cx+fFunction->NDim(), vx.data());
+    std::vector<double> vx(N_free_parameters), vx_external(N_free_parameters);
+    std::copy (cx, cx + N_free_parameters, vx.data());
+
 
     // convert to Minuit external parameters
-    for (unsigned i = 0; i < fFunction->NDim(); i++) {
-      vx_external[i] = Int2ext(parameters[i], vx[i]);
+    std::size_t i_free = 0, ix = 0;
+    for (auto parameter = parameters.begin(); parameter != parameters.end(); ++parameter, ++ix) {
+      if (!parameter->IsFixed()) {
+        vx_external[i_free] = Int2ext(*parameter, vx[i_free]);
+        ExtOfInt[i_free] = ix;
+        ++i_free;
+      }
     }
 
     fVal = (*fFunction)(vx_external.data());  // value of function at given points
@@ -137,7 +155,8 @@ namespace RooFit {
     double dfmin = 8. * precision.Eps2() * (std::abs(fVal) + Up);
     double vrysml = 8. * precision.Eps() * precision.Eps();
 
-    for (int i = 0; i < int(fN); i++) {
+    for (std::size_t i = 0; i < N_free_parameters; i++) {
+      auto parameter = parameters[ExtOfInt[i]];
       double xtf = vx[i];
       double epspri = precision.Eps2() + std::abs(grad_vec(i) * precision.Eps2());
       double step_old = 0.;
@@ -148,7 +167,7 @@ namespace RooFit {
         // MODIFIED: in Minuit2 we have here the following condition:
         //   if(Trafo().Parameter(Trafo().ExtOfInt(i)).HasLimits()) {
         // We replaced it by this:
-        if (parameters[i].IsBound()) {
+        if (parameter.IsBound()) {
           if(step > 0.5) step = 0.5;
         }
         // See the discussion above NumericalDerivatorMinuit2::SetInitialGradient
@@ -165,13 +184,13 @@ namespace RooFit {
         gstep_vec(i) = step;
         step_old = step;
         vx[i] = xtf + step;
-        vx_external[i] = Int2ext(parameters[i], vx[i]);
+        vx_external[i] = Int2ext(parameter, vx[i]);
         double fs1 = (*fFunction)(vx_external.data());
         vx[i] = xtf - step;
-        vx_external[i] = Int2ext(parameters[i], vx[i]);
+        vx_external[i] = Int2ext(parameter, vx[i]);
         double fs2 = (*fFunction)(vx_external.data());
         vx[i] = xtf;
-        vx_external[i] = Int2ext(parameters[i], vx[i]);
+        vx_external[i] = Int2ext(parameter, vx[i]);
 
         double fGrd_old = grad_vec(i);
         grad_vec(i) = 0.5*(fs1-fs2)/step;
@@ -191,21 +210,10 @@ namespace RooFit {
     return fG;
   }
 
-  ROOT::Minuit2::FunctionGradient NumericalDerivatorMinuit2::operator()(const double* x, const std::vector<ROOT::Fit::ParameterSettings>& parameters) {
+  ROOT::Minuit2::FunctionGradient NumericalDerivatorMinuit2::operator()(const std::vector<double> & x, const std::vector<ROOT::Fit::ParameterSettings>& parameters) {
     return NumericalDerivatorMinuit2::Differentiate(x, parameters);
   }
 
-
-  void NumericalDerivatorMinuit2::SetParameterHasLimits(std::vector<ROOT::Fit::ParameterSettings>& parameters) const {
-    if (_parameter_has_limits.size() != fN) {
-      _parameter_has_limits.resize(fN);
-    }
-
-    unsigned ix = 0;
-    for (auto parameter = parameters.begin(); parameter != parameters.end(); ++parameter, ++ix) {
-      _parameter_has_limits[ix] = parameter->IsBound();
-    }
-  }
 
   double NumericalDerivatorMinuit2::Int2ext(const ROOT::Fit::ParameterSettings& parameter, double val) const {
     // return external value from internal value for parameter i
@@ -293,21 +301,35 @@ namespace RooFit {
   // MODIFIED:
 // This function was not implemented as in Minuit2. Now it copies the behavior
 // of InitialGradientCalculator. See https://github.com/roofit-dev/root/issues/10
-  void NumericalDerivatorMinuit2::SetInitialGradient(std::vector<ROOT::Fit::ParameterSettings>& parameters) const {
+  void NumericalDerivatorMinuit2::SetInitialGradient(std::vector<ROOT::Fit::ParameterSettings>& parameters) {
     // set an initial gradient using some given steps
     // (used in the first iteration)
 
     assert(fFunction != 0);
     assert(fFunction->NDim() == fN);
 
+    N_free_parameters = count_free_parameters(parameters);
+
+    assert(N_free_parameters <= fN);
+
+    ExtOfInt.resize(N_free_parameters);
+
+    std::size_t i_free = 0, ix = 0;
+    for (auto parameter = parameters.begin(); parameter != parameters.end(); ++parameter, ++ix) {
+      if (!parameter->IsFixed()) {
+        ExtOfInt[i_free] = ix;
+        ++i_free;
+      }
+    }
+
     double eps2 = precision.Eps2();
 
-    ROOT::Minuit2::MnAlgebraicVector grad_vec(fFunction->NDim()),
-                                     gr2_vec(fFunction->NDim()),
-                                     gstep_vec(fFunction->NDim());
+    ROOT::Minuit2::MnAlgebraicVector grad_vec(N_free_parameters),
+                                     gr2_vec(N_free_parameters),
+                                     gstep_vec(N_free_parameters);
 
-    unsigned ix = 0;
-    for (auto parameter = parameters.begin(); parameter != parameters.end(); ++parameter, ++ix) {
+    for (ix = 0; ix < N_free_parameters; ++ix) {
+      auto parameter = &parameters[ExtOfInt[ix]];
       // What Minuit2 calls "Error" is stepsize on the ROOT side.
       double werr = parameter->StepSize();
 

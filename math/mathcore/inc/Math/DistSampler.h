@@ -135,7 +135,7 @@ public:
    void SetRange(double xmin, double xmax, int icoord = 0);
 
    /// set range for all dimensions
-   void SetRange(const double * xmin, const double * xmax);
+   void SetRange(const std::vector<double> & xmin, const std::vector<double> & xmax);
 
    /// set range using DataRange class
    void SetRange(const ROOT::Fit::DataRange & range);
@@ -159,23 +159,23 @@ public:
       better implementation could be provided by the derived classes
    */
    virtual double Sample1D() {
-      Sample(&fData[0]);
+      Sample(fData);
       return fData[0];
    }
 
    /**
       sample one event and rerturning array x with coordinates
     */
-   const double *  Sample() {
-      Sample(&fData[0]);
-      return &fData.front();
+   const std::vector<double> &  Sample() {
+      Sample(fData);
+      return fData;
    }
 
    /**
       sample one event in multi-dimension by filling the given array
       return false if sampling failed
    */
-   virtual bool Sample(double * x) = 0;
+   virtual bool Sample(std::vector<double> & x) = 0;
 
    /**
       sample one bin given an estimated of the pdf in the bin
@@ -184,9 +184,9 @@ public:
       By default do not do random sample, just return the function values
       Typically Poisson statistics will be used
     */
-   virtual bool SampleBin(double prob, double & value, double * error = 0) {
+   virtual bool SampleBin(double prob, double & value, double * error = nullptr) {
       value = prob;
-      if (error) *error = 0;
+      if (error != nullptr) *error = 0;
       return true;
    }
    /**
@@ -195,9 +195,9 @@ public:
       will be equal to the total number of events to be generated
       For sampling the bins indipendently, SampleBin should be used
     */
-   virtual bool SampleBins(unsigned int n, const double * prob, double * values, double * errors  = 0)  {
-      std::copy(prob,prob+n, values);
-      if (errors) std::fill(errors,errors+n,0);
+   virtual bool SampleBins(unsigned int n, const std::vector<double> & prob, std::vector<double> & values, double * errors = nullptr)  {
+      std::copy(prob.begin(), prob.end(), values.begin());
+      if (errors != nullptr) std::fill(errors,errors+n,0);
       return true;
    }
 

@@ -45,11 +45,11 @@ public:
 
 private:
 
-   virtual double DoEval(const double * x) const {
+   virtual double DoEval(const std::vector<double> & x) const {
       double fval = 0;
       int dim = fDim;
       // call with flag 4
-      fFCN(dim, 0, fval, const_cast<double *>(x), 4);
+      fFCN(dim, 0, fval, const_cast<double *>(x.data()), 4);
       return fval;
    }
 

@@ -129,7 +129,7 @@ namespace FitUtil {
   class IntegralEvaluator {
 
   public:
-     IntegralEvaluator(const ParamFunc &func, const double *p, bool useIntegral = true)
+     IntegralEvaluator(const ParamFunc &func, const std::vector<double> &p, bool useIntegral = true)
         : fDim(0), fParams(0), fFunc(0), fIg1Dim(0), fIgNDim(0), fFunc1Dim(0), fFuncNDim(0)
      {
         if (useIntegral) {
@@ -137,7 +137,7 @@ namespace FitUtil {
         }
      }
 
-     void SetFunction(const ParamFunc &func, const double *p = 0)
+     void SetFunction(const ParamFunc &func, const std::vector<double> &p)// = 0)
      {
         // set the integrand function and create required wrapper
         // to perform integral in (x) of a generic  f(x,p)
@@ -158,7 +158,7 @@ namespace FitUtil {
            fIg1Dim->SetFunction(static_cast<const ROOT::Math::IGenFunction &>(*fFunc1Dim));
         } else if (fDim > 1) {
            fFuncNDim =
-              new ROOT::Math::WrappedMemMultiFunction<IntegralEvaluator, double (IntegralEvaluator::*)(const double *)
+              new ROOT::Math::WrappedMemMultiFunction<IntegralEvaluator, double (IntegralEvaluator::*)(const std::vector<double> &)
                                                                             const>(*this, &IntegralEvaluator::FN, fDim);
            fIgNDim = new ROOT::Math::IntegratorMultiDim();
            fIgNDim->SetFunction(*fFuncNDim);
@@ -166,7 +166,7 @@ namespace FitUtil {
            assert(fDim > 0);
      }
 
-     void SetParameters(const double *p)
+     void SetParameters(const std::vector<double> &p)
      {
         // copy just the pointer
         fParams = p;
@@ -188,24 +188,24 @@ namespace FitUtil {
      // evaluation of integrand function (one-dim)
      double F1(double x) const
      {
-        double xx = x;
-        return ExecFunc(fFunc, &xx, fParams);
+        std::vector<double> xx {x};
+        return ExecFunc(fFunc, xx, fParams);
      }
      // evaluation of integrand function (multi-dim)
-     double FN(const double *x) const { return ExecFunc(fFunc, x, fParams); }
+     double FN(const std::vector<double> &x) const { return ExecFunc(fFunc, x, fParams); }
 
-     double Integral(const double *x1, const double *x2)
+     double Integral(const std::vector<double> &x1, const std::vector<double> &x2)
      {
         // return unormalized integral
-        return (fIg1Dim) ? fIg1Dim->Integral(*x1, *x2) : fIgNDim->Integral(x1, x2);
+        return (fIg1Dim) ? fIg1Dim->Integral(x1, x2) : fIgNDim->Integral(x1, x2);
      }
 
-     double operator()(const double *x1, const double *x2)
+     double operator()(const std::vector<double> &x1, const std::vector<double> &x2)
      {
         // return normalized integral, divided by bin volume (dx1*dx...*dxn)
         if (fIg1Dim) {
-           double dV = *x2 - *x1;
-           return fIg1Dim->Integral(*x1, *x2) / dV;
+           double dV = x2[0] - x1[0];
+           return fIg1Dim->Integral(x1, x2) / dV;
         } else if (fIgNDim) {
            double dV = 1;
            for (unsigned int i = 0; i < fDim; ++i)
@@ -220,7 +220,7 @@ namespace FitUtil {
 
   private:
      template <class T>
-     inline double ExecFunc(T *f, const double *x, const double *p) const
+     inline double ExecFunc(T *f, const std::vector<double> &x, const std::vector<double> &p) const
      {
         return (*f)(x, p);
      }
@@ -250,7 +250,7 @@ namespace FitUtil {
      IntegralEvaluator &operator=(const IntegralEvaluator &rhs);
 
      unsigned int fDim;
-     const double *fParams;
+     const std::vector<double> fParams;
      // ROOT::Math::IParamMultiFunction * fFunc;  // copy of function in order to be able to change parameters
      // const ParamFunc * fFunc;       //  reference to a generic parametric function
      const ParamFunc *fFunc;
@@ -266,7 +266,7 @@ namespace FitUtil {
       evaluate the Chi2 given a model function and the data at the point x.
       return also nPoints as the effective number of used points in the Chi2 evaluation
   */
-  double EvaluateChi2(const IModelFunction &func, const BinData &data, const double *x, unsigned int &nPoints,
+  double EvaluateChi2(const IModelFunction &func, const BinData &data, const std::vector<double> &x, unsigned int &nPoints,
                       ROOT::Fit::ExecutionPolicy executionPolicy, unsigned nChunks = 0);
 
   /**
@@ -274,13 +274,13 @@ namespace FitUtil {
       The effective chi2 uses the errors on the coordinates : W = 1/(sigma_y**2 + ( sigma_x_i * df/dx_i )**2 )
       return also nPoints as the effective number of used points in the Chi2 evaluation
   */
-  double EvaluateChi2Effective(const IModelFunction &func, const BinData &data, const double *x, unsigned int &nPoints);
+  double EvaluateChi2Effective(const IModelFunction &func, const BinData &data, const std::vector<double> &x, unsigned int &nPoints);
 
   /**
       evaluate the Chi2 gradient given a model function and the data at the point x.
       return also nPoints as the effective number of used points in the Chi2 evaluation
   */
-  void EvaluateChi2Gradient(const IModelFunction &func, const BinData &data, const double *x, double *grad,
+  void EvaluateChi2Gradient(const IModelFunction &func, const BinData &data, const std::vector<double> &x, std::vector<double> &grad,
                             unsigned int &nPoints,
                             ROOT::Fit::ExecutionPolicy executionPolicy = ROOT::Fit::ExecutionPolicy::kSerial,
                             unsigned nChunks = 0);
@@ -289,21 +289,21 @@ namespace FitUtil {
       evaluate the LogL given a model function and the data at the point x.
       return also nPoints as the effective number of used points in the LogL evaluation
   */
-  double EvaluateLogL(const IModelFunction &func, const UnBinData &data, const double *p, int iWeight, bool extended,
+  double EvaluateLogL(const IModelFunction &func, const UnBinData &data, const std::vector<double> &p, int iWeight, bool extended,
                       unsigned int &nPoints, ROOT::Fit::ExecutionPolicy executionPolicy, unsigned nChunks = 0);
 
   /**
       evaluate the LogL gradient given a model function and the data at the point x.
       return also nPoints as the effective number of used points in the LogL evaluation
   */
-  void EvaluateLogLGradient(const IModelFunction &func, const UnBinData &data, const double *x, double *grad,
+  void EvaluateLogLGradient(const IModelFunction &func, const UnBinData &data, const std::vector<double> &x, std::vector<double> &grad,
                             unsigned int &nPoints,
                             ROOT::Fit::ExecutionPolicy executionPolicy = ROOT::Fit::ExecutionPolicy::kSerial,
                             unsigned nChunks = 0);
 
   // #ifdef R__HAS_VECCORE
   //    template <class NotCompileIfScalarBackend = std::enable_if<!(std::is_same<double, ROOT::Double_v>::value)>>
-  //    void EvaluateLogLGradient(const IModelFunctionTempl<ROOT::Double_v> &, const UnBinData &, const double *, double
+  //    void EvaluateLogLGradient(const IModelFunctionTempl<ROOT::Double_v> &, const UnBinData &, const std::vector<double> &, double
   //    *, unsigned int & ) {}
   // #endif
 
@@ -312,7 +312,7 @@ namespace FitUtil {
       return also nPoints as the effective number of used points in the LogL evaluation
       By default is extended, pass extedend to false if want to be not extended (MultiNomial)
   */
-  double EvaluatePoissonLogL(const IModelFunction &func, const BinData &data, const double *x, int iWeight,
+  double EvaluatePoissonLogL(const IModelFunction &func, const BinData &data, const std::vector<double> &x, int iWeight,
                              bool extended, unsigned int &nPoints, ROOT::Fit::ExecutionPolicy executionPolicy,
                              unsigned nChunks = 0);
 
@@ -320,7 +320,7 @@ namespace FitUtil {
       evaluate the Poisson LogL given a model function and the data at the point x.
       return also nPoints as the effective number of used points in the LogL evaluation
   */
-  void EvaluatePoissonLogLGradient(const IModelFunction &func, const BinData &data, const double *x, double *grad,
+  void EvaluatePoissonLogLGradient(const IModelFunction &func, const BinData &data, const std::vector<double> &x, std::vector<double> &grad,
                                    unsigned int &nPoints,
                                    ROOT::Fit::ExecutionPolicy executionPolicy = ROOT::Fit::ExecutionPolicy::kSerial,
                                    unsigned nChunks = 0);
@@ -333,8 +333,8 @@ namespace FitUtil {
       If the function provides parameter derivatives they are used otherwise a simple derivative calculation
       is used
   */
-  double EvaluateChi2Residual(const IModelFunction &func, const BinData &data, const double *x, unsigned int ipoint,
-                              double *g = 0);
+  double EvaluateChi2Residual(const IModelFunction &func, const BinData &data, const std::vector<double> &x, unsigned int ipoint,
+                              std::vector<double> &g);
 
   /**
       evaluate the pdf contribution to the LogL given a model function and the BinPoint data.
@@ -343,7 +343,7 @@ namespace FitUtil {
       is used
   */
   double
-  EvaluatePdf(const IModelFunction &func, const UnBinData &data, const double *x, unsigned int ipoint, double *g = 0);
+  EvaluatePdf(const IModelFunction &func, const UnBinData &data, const std::vector<double> &x, unsigned int ipoint, std::vector<double> &g);
 
 #ifdef R__HAS_VECCORE
    template <class NotCompileIfScalarBackend = std::enable_if<!(std::is_same<double, ROOT::Double_v>::value)>>
@@ -364,7 +364,7 @@ namespace FitUtil {
        If the function provides parameter derivatives they are used otherwise a simple derivative calculation
        is used
    */
-   double EvaluatePoissonBinPdf(const IModelFunction & func, const BinData & data, const double * x, unsigned int ipoint, double * g = 0);
+   double EvaluatePoissonBinPdf(const IModelFunction & func, const BinData & data, const std::vector<double> & x, unsigned int ipoint, std::vector<double> &g);
 
    unsigned setAutomaticChunking(unsigned nEvents);
 
@@ -1442,7 +1442,7 @@ namespace FitUtil {
    struct Evaluate<double>{
 #endif
 
-      static double EvalChi2(const IModelFunction &func, const BinData &data, const double *p, unsigned int &nPoints,
+      static double EvalChi2(const IModelFunction &func, const BinData &data, const std::vector<double> &p, unsigned int &nPoints,
                              ROOT::Fit::ExecutionPolicy executionPolicy, unsigned nChunks = 0)
       {
          // evaluate the chi2 given a  function reference, the data and returns the value and also in nPoints
@@ -1456,44 +1456,44 @@ namespace FitUtil {
          return FitUtil::EvaluateChi2(func, data, p, nPoints, executionPolicy, nChunks);
       }
 
-      static double EvalLogL(const IModelFunctionTempl<double> &func, const UnBinData &data, const double *p,
+      static double EvalLogL(const IModelFunctionTempl<double> &func, const UnBinData &data, const std::vector<double> &p,
                              int iWeight, bool extended, unsigned int &nPoints,
                              ROOT::Fit::ExecutionPolicy executionPolicy, unsigned nChunks = 0)
       {
          return FitUtil::EvaluateLogL(func, data, p, iWeight, extended, nPoints, executionPolicy, nChunks);
       }
 
-      static double EvalPoissonLogL(const IModelFunctionTempl<double> &func, const BinData &data, const double *p,
+      static double EvalPoissonLogL(const IModelFunctionTempl<double> &func, const BinData &data, const std::vector<double> &p,
                                     int iWeight, bool extended, unsigned int &nPoints,
                                     ROOT::Fit::ExecutionPolicy executionPolicy, unsigned nChunks = 0)
       {
          return FitUtil::EvaluatePoissonLogL(func, data, p, iWeight, extended, nPoints, executionPolicy, nChunks);
       }
 
-      static double EvalChi2Effective(const IModelFunctionTempl<double> &func, const BinData & data, const double * p, unsigned int &nPoints)
+      static double EvalChi2Effective(const IModelFunctionTempl<double> &func, const BinData & data, const std::vector<double> & p, unsigned int &nPoints)
       {
          return FitUtil::EvaluateChi2Effective(func, data, p, nPoints);
       }
-      static void EvalChi2Gradient(const IModelFunctionTempl<double> &func, const BinData &data, const double *p,
-                                   double *g, unsigned int &nPoints,
+      static void EvalChi2Gradient(const IModelFunctionTempl<double> &func, const BinData &data, const std::vector<double> &p,
+                                   std::vector<double> &g, unsigned int &nPoints,
                                    ROOT::Fit::ExecutionPolicy executionPolicy = ROOT::Fit::ExecutionPolicy::kSerial,
                                    unsigned nChunks = 0)
       {
          FitUtil::EvaluateChi2Gradient(func, data, p, g, nPoints, executionPolicy, nChunks);
       }
-      static double EvalChi2Residual(const IModelFunctionTempl<double> &func, const BinData & data, const double * p, unsigned int i, double *g = 0)
+      static double EvalChi2Residual(const IModelFunctionTempl<double> &func, const BinData & data, const std::vector<double> & p, unsigned int i, std::vector<double> &g)
       {
          return FitUtil::EvaluateChi2Residual(func, data, p, i, g);
       }
 
       /// evaluate the pdf (Poisson) contribution to the logl (return actually log of pdf)
       /// and its gradient
-      static double EvalPoissonBinPdf(const IModelFunctionTempl<double> &func, const BinData & data, const double *p, unsigned int i, double *g ) {
+      static double EvalPoissonBinPdf(const IModelFunctionTempl<double> &func, const BinData & data, const std::vector<double> &p, unsigned int i, std::vector<double> &g ) {
          return FitUtil::EvaluatePoissonBinPdf(func, data, p, i, g);
       }
 
       static void
-      EvalPoissonLogLGradient(const IModelFunctionTempl<double> &func, const BinData &data, const double *p, double *g,
+      EvalPoissonLogLGradient(const IModelFunctionTempl<double> &func, const BinData &data, const std::vector<double> &p, std::vector<double> &g,
                               unsigned int &nPoints,
                               ROOT::Fit::ExecutionPolicy executionPolicy = ROOT::Fit::ExecutionPolicy::kSerial,
                               unsigned nChunks = 0)
@@ -1501,8 +1501,8 @@ namespace FitUtil {
          FitUtil::EvaluatePoissonLogLGradient(func, data, p, g, nPoints, executionPolicy, nChunks);
       }
 
-      static void EvalLogLGradient(const IModelFunctionTempl<double> &func, const UnBinData &data, const double *p,
-                                   double *g, unsigned int &nPoints,
+      static void EvalLogLGradient(const IModelFunctionTempl<double> &func, const UnBinData &data, const std::vector<double> &p,
+                                   std::vector<double> &g, unsigned int &nPoints,
                                    ROOT::Fit::ExecutionPolicy executionPolicy = ROOT::Fit::ExecutionPolicy::kSerial,
                                    unsigned nChunks = 0)
       {

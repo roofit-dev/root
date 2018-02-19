@@ -65,8 +65,8 @@ public:
    can be used to create a Gradient function type.
 
    In the case of multi-dimension the function evaluation object must implement
-   double operator()(const double *x). If it implements a method:
-   double Derivative(const double *x, int icoord)
+   double operator()(const std::vector<double> &x). If it implements a method:
+   double Derivative(const std::vector<double> &x, int icoord)
    can be used to create a Gradient function type.
 
    @ingroup  Functor_int
@@ -116,7 +116,7 @@ private :
       return fFunc(x);
    }
 
-   inline double DoEval (const double * x) const {
+   inline double DoEval (const std::vector<double> & x) const {
       return fFunc(x);
    }
 
@@ -124,7 +124,7 @@ private :
       return fFunc.Derivative(x);
    }
 
-   inline double DoDerivative (const double * x, unsigned int icoord ) const {
+   inline double DoDerivative (const std::vector<double> & x, unsigned int icoord ) const {
       return fFunc.Derivative(x,icoord);
    }
 
@@ -143,8 +143,8 @@ private :
    In the case of one dimension the function evaluation object and the derivative function object must implement
    double operator() (double x).
    In the case of multi-dimension the function evaluation object must implement
-   double operator() (const double * x) and the gradient function object must implement
-   double operator() (const double * x, int icoord)
+   double operator() (const std::vector<double> & x) and the gradient function object must implement
+   double operator() (const std::vector<double> & x, int icoord)
 
    @ingroup  Functor_int
 */
@@ -191,7 +191,7 @@ private :
       return fFunc(x);
    }
 
-   inline double DoEval (const double * x) const {
+   inline double DoEval (const std::vector<double> & x) const {
       return fFunc(x);
    }
 
@@ -199,7 +199,7 @@ private :
       return fGradFunc(x);
    }
 
-   inline double DoDerivative (const double * x, unsigned int icoord ) const {
+   inline double DoDerivative (const std::vector<double> & x, unsigned int icoord ) const {
       return fGradFunc(x, icoord);
    }
 
@@ -216,7 +216,7 @@ private :
    The member function type must be (XXX means any name is allowed) :
    double XXX ( double x) for 1D functions
    and
-   double XXXX (const double *x) for multi-dimensional functions
+   double XXXX (const std::vector<double> &x) for multi-dimensional functions
 
    @ingroup  Functor_int
 */
@@ -259,7 +259,7 @@ private :
       return ((*fObj).*fMemFn)(x);
    }
 
-   inline double DoEval (const double * x) const {
+   inline double DoEval (const std::vector<double> & x) const {
       return ((*fObj).*fMemFn)(x);
    }
 
@@ -274,8 +274,8 @@ private :
    and the gradient.
    The member function type must be (XXX means any name is allowed) :
    double XXX ( double x) for 1D function and derivative evaluation
-   double XXX (const double *x) for multi-dimensional function evaluation and
-   double XXX (cost double *x, int icoord) for partial derivatives evaluation
+   double XXX (const std::vector<double> &x) for multi-dimensional function evaluation and
+   double XXX (cost std::vector<double> &x, int icoord) for partial derivatives evaluation
 
    @ingroup  Functor_int
 
@@ -328,7 +328,7 @@ private :
       return ((*fObj).*fMemFn)(x);
    }
 
-   inline double DoEval (const double * x) const {
+   inline double DoEval (const std::vector<double> & x) const {
       return ((*fObj).*fMemFn)(x);
    }
 
@@ -336,7 +336,7 @@ private :
       return ((*fObj).*fGradMemFn)(x);
    }
 
-   inline double DoDerivative (const double * x, unsigned int icoord ) const {
+   inline double DoDerivative (const std::vector<double> & x, unsigned int icoord ) const {
       return ((*fObj).*fGradMemFn)(x,icoord);
    }
 
@@ -379,9 +379,9 @@ private :
    It is used to wrap in a very simple and convenient way multi-dimensional function objects.
    It can wrap all the following types:
    <ul>
-   <li> any C++ callable object implemention double operator()( const double *  )
-   <li> a free C function of type double ()(const double * )
-   <li> a member function with the correct signature like Foo::Eval(const double * ).
+   <li> any C++ callable object implemention double operator()( const std::vector<double> &  )
+   <li> a free C function of type double ()(const std::vector<double> & )
+   <li> a member function with the correct signature like Foo::Eval(const std::vector<double> & ).
        In this case one pass the object pointer and a pointer to the member function (&Foo::Eval)
    </ul>
    The function dimension is required when constructing the functor.
@@ -415,7 +415,7 @@ public:
 
    /**
       construct from a callable object of multi-dimension
-      with the right signature (implementing operator()(double *x)
+      with the right signature (implementing operator()(std::vector<double> &x)
     */
    template <typename Func>
    Functor( const Func & f, unsigned int dim ) :
@@ -459,7 +459,7 @@ public:
 private :
 
 
-   inline double DoEval (const double * x) const {
+   inline double DoEval (const std::vector<double> & x) const {
       return (*fImpl)(x);
    }
 
@@ -561,13 +561,13 @@ private :
    It can be constructed in three different way:
    <ol>
    <li> from an object implementing both
-        double operator()( const double * ) for the function evaluation  and
-        double Derivative(const double *, int icoord) for the partial derivatives
-    <li>from an object implementing any member function like Foo::XXX(const double *) for the function evaluation
-        and any member function like Foo::XXX(const double *, int icoord) for the partial derivatives
+        double operator()( const std::vector<double> & ) for the function evaluation  and
+        double Derivative(const std::vector<double> &, int icoord) for the partial derivatives
+    <li>from an object implementing any member function like Foo::XXX(const std::vector<double> &) for the function evaluation
+        and any member function like Foo::XXX(const std::vector<double> &, int icoord) for the partial derivatives
     <li>from an function object implementing
-        double operator()( const double * ) for the function evaluation and another function object implementing
-        double operator() (const double *, int icoord) for the partial derivatives
+        double operator()( const std::vector<double> & ) for the function evaluation and another function object implementing
+        double operator() (const std::vector<double> &, int icoord) for the partial derivatives
    </ol>
    The function dimension is required when constructing the functor.
 
@@ -590,8 +590,8 @@ public:
 
    /**
       construct from a callable object of multi-dimension
-      implementing operator()(const double *x) and
-      Derivative(const double * x,icoord)
+      implementing operator()(const std::vector<double> &x) and
+      Derivative(const std::vector<double> & x,icoord)
     */
    template <typename Func>
    GradFunctor( const Func & f, unsigned int dim ) :
@@ -652,12 +652,12 @@ public:
 private :
 
 
-   inline double DoEval (const double * x) const {
+   inline double DoEval (const std::vector<double> & x) const {
       return (*fImpl)(x);
    }
 
 
-   inline double DoDerivative (const double * x, unsigned int icoord  ) const {
+   inline double DoDerivative (const std::vector<double> & x, unsigned int icoord  ) const {
       return fImpl->Derivative(x,icoord);
    }
 

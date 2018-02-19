@@ -45,7 +45,7 @@ void DistSampler::SetRange(double xmin, double xmax, int icoord) {
    fRange->SetRange(icoord,xmin,xmax);
 }
 
-void DistSampler::SetRange(const double * xmin, const double * xmax) {
+void DistSampler::SetRange(const std::vector<double> & xmin, const std::vector<double> & xmax) {
    // set range specifying a vector for all coordinates
    if (!fRange) {
       MATH_ERROR_MSG("DistSampler::SetRange","Need to set function before setting the range");
@@ -88,7 +88,7 @@ bool DistSampler::IsInitialized()  {
    if (fFunc == 0) return false;
    if (fFunc->NDim() != NDim() ) return false;
    // test one event
-   if (!Sample(&fData[0]) ) return false;
+   if (!Sample(fData) ) return false;
    return true;
 }
 
@@ -102,7 +102,7 @@ bool DistSampler::Generate(unsigned int nevt, ROOT::Fit::UnBinData & data) {
 
    data.Append( nevt, NDim() );
    for (unsigned int i = 0; i < nevt; ++i) {
-      const double * x = Sample();
+      const std::vector<double> & x = Sample();
       data.Add( x );
    }
    return true;
@@ -148,10 +148,10 @@ bool DistSampler::Generate(unsigned int nevt, ROOT::Fit::UnBinData & data) {
       bool ret = true;
       for (int j = NDim()-1; j >=0; --j) {
          for (int i = 0; i < nbins[j]; ++i) {
-            //const double * v = Sample();
+            //const std::vector<double> & v = Sample();
             double val = 0;
             double eval = 0;
-            double yval = (ParentPdf())(&x.front());
+            double yval = (ParentPdf())(x);
             double nexp = yval * nnorm;
             ret &= SampleBin(nexp,val,&eval);
             data.Add(&x.front(), val, eval);

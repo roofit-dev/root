@@ -46,8 +46,10 @@ namespace RooFit {
     //   NumericalDerivatorMinuit2(const ROOT::Math::IBaseFunctionMultiDim &f, const ROOT::Fit::Fitter &fitter, const ROOT::Minuit2::MnStrategy &strategy);
     virtual ~NumericalDerivatorMinuit2();
 
-    ROOT::Minuit2::FunctionGradient Differentiate(const double* x, const std::vector<ROOT::Fit::ParameterSettings>& parameters);
-    ROOT::Minuit2::FunctionGradient operator() (const double* x, const std::vector<ROOT::Fit::ParameterSettings>& parameters);
+    std::size_t count_free_parameters(const std::vector<ROOT::Fit::ParameterSettings>& parameters) const;
+
+    ROOT::Minuit2::FunctionGradient Differentiate(const std::vector<double> & x, const std::vector<ROOT::Fit::ParameterSettings>& parameters);
+    ROOT::Minuit2::FunctionGradient operator() (const std::vector<double> & x, const std::vector<ROOT::Fit::ParameterSettings>& parameters);
     double GetFValue() const {
       return fVal;
     }
@@ -64,8 +66,7 @@ namespace RooFit {
     double D2Int2Ext(const ROOT::Fit::ParameterSettings& parameter, double val) const;
     double GStepInt2Ext(const ROOT::Fit::ParameterSettings& parameter, double val) const;
 
-    void SetInitialGradient(std::vector<ROOT::Fit::ParameterSettings>& parameters) const;
-    void SetParameterHasLimits(std::vector<ROOT::Fit::ParameterSettings>& parameters) const;
+    void SetInitialGradient(std::vector<ROOT::Fit::ParameterSettings>& parameters);
 
     void set_step_tolerance(double step_tolerance);
     void set_grad_tolerance(double grad_tolerance);
@@ -93,13 +94,14 @@ namespace RooFit {
     double Up = 1;
     double fVal = 0;
     unsigned int fN;
+    std::size_t N_free_parameters;
 
     // these are mutable because SetInitialGradient must be const because it's called
     // from InitGradient which is const because DoDerivative must be const because the
     // ROOT::Math::IMultiGradFunction interface requires this
     mutable ROOT::Minuit2::FunctionGradient fG;
     // same story for SetParameterHasLimits
-    mutable std::vector <bool> _parameter_has_limits;
+    mutable std::vector<size_t> ExtOfInt;
 
     // MODIFIED: Minuit2 determines machine precision in a slightly different way than
     // std::numeric_limits<double>::epsilon()). We go with the Minuit2 one.

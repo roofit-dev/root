@@ -60,7 +60,7 @@ MinimTransformFunction::MinimTransformFunction ( const IMultiGradFunction * f, c
 }
 
 
-void MinimTransformFunction::Transformation( const double * x, double * xext) const {
+void MinimTransformFunction::Transformation( const std::vector<double> & x, std::vector<double> & xext) const {
    // transform from internal to external
 
    unsigned int nfree = fIndex.size();
@@ -84,7 +84,7 @@ void MinimTransformFunction::Transformation( const double * x, double * xext) co
 
 }
 
-void  MinimTransformFunction::InvTransformation(const double * xExt,  double * xInt) const {
+void  MinimTransformFunction::InvTransformation(const std::vector<double> & xExt,  std::vector<double> & xInt) const {
    // inverse function transformation (external -> internal)
    for (unsigned int i = 0; i < NDim(); ++i ) {
       unsigned int extIndex = fIndex[i];
@@ -97,7 +97,7 @@ void  MinimTransformFunction::InvTransformation(const double * xExt,  double * x
    }
 }
 
-void  MinimTransformFunction::InvStepTransformation(const double * x, const double * sExt,  double * sInt) const {
+void  MinimTransformFunction::InvStepTransformation(const std::vector<double> & x, const std::vector<double> & sExt,  std::vector<double> & sInt) const {
    // inverse function transformation for steps (external -> internal)
    for (unsigned int i = 0; i < NDim(); ++i ) {
       unsigned int extIndex = fIndex[i];
@@ -118,7 +118,7 @@ void  MinimTransformFunction::InvStepTransformation(const double * x, const doub
    }
 }
 
-void  MinimTransformFunction::GradientTransformation(const double * x, const double *gExt, double * gInt) const {
+void  MinimTransformFunction::GradientTransformation(const std::vector<double> & x, const std::vector<double> &gExt, std::vector<double> & gInt) const {
    //transform gradient vector (external -> internal) at internal point x
    unsigned int nfree = fIndex.size();
    for (unsigned int i = 0; i < nfree; ++i ) {
@@ -133,7 +133,7 @@ void  MinimTransformFunction::GradientTransformation(const double * x, const dou
 }
 
 
-void  MinimTransformFunction::MatrixTransformation(const double * x, const double *covInt, double * covExt) const {
+void  MinimTransformFunction::MatrixTransformation(const std::vector<double> & x, const std::vector<double> &covInt, std::vector<double> & covExt) const {
    //transform covariance matrix (internal -> external) at internal point x
    // use row storages for matrices  m(i,j) = rep[ i * dim + j]
    // ignore fixed points

@@ -131,10 +131,12 @@ bool BasicMinimizer::SetVariableValue(unsigned int ivar, double val) {
    return true;
 }
 
-bool BasicMinimizer::SetVariableValues( const double * x) {
+bool BasicMinimizer::SetVariableValues( const std::vector<double> & x) {
    // set all variable values in minimizer
-   if (x == 0) return false;
-   std::copy(x,x+fValues.size(), fValues.begin() );
+//   if (x == 0) return false;
+   // EGP: removed null pointer check to be able to change argument to const vector reference;
+   //      I suspect this feature is also not used often, so perhaps this could be permanent...
+   std::copy(x.begin(), x.begin()+fValues.size(), fValues.begin() );
    return true;
 }
 
@@ -292,7 +294,7 @@ MinimTransformFunction * BasicMinimizer::CreateTransformation(std::vector<double
       // minim transform function manages the passed function pointer (gradObjFunc)
       trFunc =  new MinimTransformFunction ( gradObjFunc, fVarTypes, fValues, fBounds );
       // transform from external to internal
-      trFunc->InvTransformation(&fValues.front(), &startValues[0]);
+      trFunc->InvTransformation(fValues, startValues);
       // size can be different since internal parameter can have smaller size
       // if there are fixed parameters
       startValues.resize( trFunc->NDim() );
@@ -320,17 +322,17 @@ bool BasicMinimizer::Minimize() {
    return false;
 }
 
-void BasicMinimizer::SetFinalValues(const double * x) {
+void BasicMinimizer::SetFinalValues(const std::vector<double> & x) {
    // check to see if a transformation need to be applied
    const MinimTransformFunction * trFunc = TransformFunction();
    if (trFunc) {
       assert(fValues.size() >= trFunc->NTot() );
-      trFunc->Transformation(x, &fValues[0]);
+      trFunc->Transformation(x, fValues);
    }
    else {
       // case of no transformation applied
       assert( fValues.size() >= NDim() );
-      std::copy(x, x + NDim(),  fValues.begin() );
+      std::copy(x.begin(), x.end(),  fValues.begin() );
    }
 }
 

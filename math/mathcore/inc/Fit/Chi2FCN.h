@@ -118,13 +118,17 @@ public:
 
 
    /// i-th chi-square residual
-   virtual double DataElement(const double *x, unsigned int i, double *g) const {
+   virtual double DataElement(const std::vector<double> &x, unsigned int i, std::vector<double> &g) const {
       if (i==0) this->UpdateNCalls();
       return FitUtil::Evaluate<T>::EvalChi2Residual(BaseFCN::ModelFunction(), BaseFCN::Data(), x, i, g);
    }
+  virtual double DataElement(const std::vector<double> &x, unsigned int i, std::vector<double> &g) const {
+     if (i==0) this->UpdateNCalls();
+     return FitUtil::Evaluate<T>::EvalChi2Residual(BaseFCN::ModelFunction(), BaseFCN::Data(), x, i, g);
+  }
 
    // need to be virtual to be instantiated
-   virtual void Gradient(const double *x, double *g) const {
+   virtual void Gradient(const std::vector<double> &x, std::vector<double> &g) const {
       // evaluate the chi2 gradient
       FitUtil::Evaluate<T>::EvalChi2Gradient(BaseFCN::ModelFunction(), BaseFCN::Data(), x, g, fNEffPoints,
                                              fExecutionPolicy);
@@ -144,7 +148,7 @@ private:
    /**
       Evaluation of the  function (required by interface)
     */
-   virtual double DoEval (const double * x) const {
+   virtual double DoEval (const std::vector<double> & x) const {
       this->UpdateNCalls();
       if (BaseFCN::Data().HaveCoordErrors() || BaseFCN::Data().HaveAsymErrors())
          return FitUtil::Evaluate<T>::EvalChi2Effective(BaseFCN::ModelFunction(), BaseFCN::Data(), x, fNEffPoints);
@@ -153,7 +157,7 @@ private:
    }
 
    // for derivatives
-   virtual double  DoDerivative(const double * x, unsigned int icoord ) const {
+   virtual double  DoDerivative(const std::vector<double> & x, unsigned int icoord ) const {
       Gradient(x, fGrad.data());
       return fGrad[icoord];
    }

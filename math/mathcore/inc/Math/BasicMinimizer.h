@@ -105,7 +105,7 @@ public:
    /// set the value of an existing variable
    virtual bool SetVariableValue(unsigned int ivar, double val );
    /// set the values of all existing variables (array must be dimensioned to the size of existing parameters)
-   virtual bool SetVariableValues(const double * x);
+   virtual bool SetVariableValues(const std::vector<double> & x);
    /// set the step size of an already existing variable
    virtual bool SetVariableStepSize(unsigned int ivar, double step );
    /// set the lower-limit of an already existing variable
@@ -170,7 +170,7 @@ protected:
 
    MinimTransformFunction * CreateTransformation(std::vector<double> & startValues, const ROOT::Math::IMultiGradFunction * func = 0);
 
-   void SetFinalValues(const double * x);
+   void SetFinalValues(const std::vector<double> & x);
 
    void SetMinValue(double val) { fMinVal = val; }
 

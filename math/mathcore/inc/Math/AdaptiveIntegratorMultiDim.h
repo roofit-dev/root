@@ -116,13 +116,13 @@ public:
    /**
       evaluate the integral with the previously given function between xmin[] and xmax[]
    */
-   double Integral(const double* xmin, const double * xmax) {
+   double Integral(const std::vector<double> & xmin, const std::vector<double> & xmax) {
       return DoIntegral(xmin,xmax, false);
    }
 
 
    /// evaluate the integral passing a new function
-   double Integral(const IMultiGenFunction &f, const double* xmin, const double * xmax);
+   double Integral(const IMultiGenFunction &f, const std::vector<double> & xmin, const std::vector<double> & xmax);
 
    /// set the integration function (must implement multi-dim function interface: IBaseFunctionMultiDim)
    void SetFunction(const IMultiGenFunction &f);
@@ -175,7 +175,7 @@ public:
 protected:
 
    // internal function to compute the integral (if absVal is true compute abs value of function integral
-   double DoIntegral(const double* xmin, const double * xmax, bool absVal = false);
+   double DoIntegral(const std::vector<double> & xmin, const std::vector<double> & xmax, bool absVal = false);
 
  private:
 

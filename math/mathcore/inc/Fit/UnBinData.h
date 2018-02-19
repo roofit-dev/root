@@ -84,8 +84,8 @@ public :
   /**
     constructor for 1D external data (data are not copied inside)
   */
-  UnBinData(unsigned int n, const double * dataX ) :
-    FitData( n, dataX ),
+  UnBinData(unsigned int n, const std::vector<double> & dataX ) :
+    FitData( n, dataX.data() ),
     fWeighted( false )
   {
   }
@@ -94,9 +94,9 @@ public :
     constructor for 2D external data (data are not copied inside)
     or 1D data with a weight (if isWeighted = true)
   */
-  UnBinData(unsigned int n, const double * dataX, const double * dataY,
+  UnBinData(unsigned int n, const std::vector<double> & dataX, const std::vector<double> & dataY,
     bool isWeighted = false ) :
-    FitData( n, dataX, dataY ),
+    FitData( n, dataX.data(), dataY.data() ),
     fWeighted( isWeighted )
   {
   }
@@ -105,9 +105,9 @@ public :
     constructor for 3D external data (data are not copied inside)
     or 2D data with a weight (if isWeighted = true)
   */
-  UnBinData(unsigned int n, const double * dataX, const double * dataY,
-    const double * dataZ, bool isWeighted = false ) :
-    FitData( n, dataX, dataY, dataZ ),
+  UnBinData(unsigned int n, const std::vector<double> & dataX, const std::vector<double> & dataY,
+    const std::vector<double> & dataZ, bool isWeighted = false ) :
+    FitData( n, dataX.data(), dataY.data(), dataZ.data() ),
     fWeighted( isWeighted )
   {
   }
@@ -132,8 +132,8 @@ public :
   /**
     constructor for 1D data and a range (data are copied inside according to the given range)
   */
-  UnBinData(unsigned int maxpoints, const double * dataX, const DataRange & range) :
-    FitData( range, maxpoints, dataX ),
+  UnBinData(unsigned int maxpoints, const std::vector<double> & dataX, const DataRange & range) :
+    FitData( range, maxpoints, dataX.data() ),
     fWeighted( false )
   {
   }
@@ -143,9 +143,9 @@ public :
     constructor for 2D data and a range (data are copied inside according to the given range)
     or 1 1D data set + weight. If is weighted  dataY is the pointer to the list of the weights
   */
-  UnBinData(unsigned int maxpoints, const double * dataX, const double * dataY,
+  UnBinData(unsigned int maxpoints, const std::vector<double> & dataX, const std::vector<double> & dataY,
     const DataRange & range, bool isWeighted = false) :
-    FitData( range, maxpoints, dataX, dataY ),
+    FitData( range, maxpoints, dataX.data(), dataY.data() ),
     fWeighted( isWeighted )
   {
   }
@@ -154,9 +154,9 @@ public :
     constructor for 3D data and a range (data are copied inside according to the given range)
     or a 2D data set + weights. If is weighted  dataZ is the pointer to the list of the weights
   */
-  UnBinData(unsigned int maxpoints, const double * dataX, const double * dataY,
-    const double * dataZ, const DataRange & range, bool isWeighted = false) :
-    FitData( range, maxpoints, dataX, dataY, dataZ ),
+  UnBinData(unsigned int maxpoints, const std::vector<double> & dataX, const std::vector<double> & dataY,
+    const std::vector<double> & dataZ, const DataRange & range, bool isWeighted = false) :
+    FitData( range, maxpoints, dataX.data(), dataY.data(), dataZ.data() ),
     fWeighted( isWeighted )
   {
   }
@@ -232,23 +232,23 @@ public:
   /**
     add multi-dim coordinate data
   */
-  void Add( const double* x )
+  void Add( const std::vector<double> & x )
   {
-    FitData::Add( x );
+    FitData::Add( x.data() );
   }
 
   /**
     add multi-dim coordinate data + weight
   */
-  void Add(const double *x, double w)
+  void Add(const std::vector<double> &x, double w)
   {
     assert( fWeighted );
 
     std::vector<double> tmpVec(fDim);
-    std::copy( x, x + fDim - 1, tmpVec.begin() );
+    std::copy( x.begin(), x.begin() + fDim - 1, tmpVec.begin() );
     tmpVec[fDim-1] = w;
 
-    FitData::Add( &tmpVec.front() );
+    FitData::Add( tmpVec.data() );
   }
 
   /**

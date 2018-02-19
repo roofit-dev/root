@@ -179,7 +179,7 @@ public:
       return false;
    }
    /// set the values of all existing variables (array must be dimensioned to the size of the existing parameters)
-   virtual bool SetVariableValues(const double * x) {
+   virtual bool SetVariableValues(const std::vector<double> & x) {
       bool ret = true;
       unsigned int i = 0;
       while ( i <= NDim() && ret) {

@@ -64,9 +64,12 @@ public:
       method returning the data i-th contribution to the fit objective function
       For example the residual for the least square functions or the pdf element for the
       likelihood functions.
-      Estimating eventually also the gradient of the data element if the passed pointer  is not null
+      The second overload with passed g vector also estimates the gradient of the data element.
     */
-   virtual double DataElement(const double *x, unsigned int i, double *g = 0) const = 0;
+   virtual double DataElement(const std::vector<double> &x, unsigned int i, std::vector<double> &g) const = 0;
+   virtual double DataElement(const std::vector<double> &x, unsigned int i) const {
+      DataElement(x, i, );
+   };
 
 
    /**

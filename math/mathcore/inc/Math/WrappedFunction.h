@@ -177,7 +177,7 @@ class WrappedMultiFunction : public IMultiGenFunction {
 
 private:
 
-   virtual double DoEval (const double * x) const {
+   virtual double DoEval (const std::vector<double> & x) const {
       return fFunc( x );
    }
 
@@ -216,7 +216,7 @@ class WrappedMemMultiFunction : public IMultiGenFunction {
 
 private:
 
-   virtual double DoEval (const double * x) const {
+   virtual double DoEval (const std::vector<double> & x) const {
       return ((*fObj).*fMemFunc)( x );
    }
 

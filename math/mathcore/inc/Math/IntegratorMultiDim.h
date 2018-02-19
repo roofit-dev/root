@@ -90,7 +90,7 @@ public:
 
     /** Template Constructor of multi dimensional Integrator passing a generic function. By default uses the adaptive integration method
 
-       @param f      integration function (generic function implementin operator()(const double *)
+       @param f      integration function (generic function implementin operator()(const std::vector<double> &)
        @param dim    function dimension
        @param type   integration type (adaptive, MC methods, etc..)
        @param absTol desired absolute Error
@@ -122,26 +122,26 @@ public:
    /**
       evaluate the integral with the previously given function between xmin[] and xmax[]
    */
-   double Integral(const double* xmin, const double * xmax) {
+   double Integral(const std::vector<double> & xmin, const std::vector<double> & xmax) {
       return fIntegrator == 0 ? 0 : fIntegrator->Integral(xmin,xmax);
    }
 
    /// evaluate the integral passing a new function
-   double Integral(const IMultiGenFunction &f, const double* xmin, const double * xmax) {
+   double Integral(const IMultiGenFunction &f, const std::vector<double> & xmin, const std::vector<double> & xmax) {
       SetFunction(f);
       return Integral(xmin,xmax);
    }
 
    /// evaluate the integral passing a new generic function
    template<class Function>
-   double Integral(Function & f , unsigned int dim, const double* xmin, const double * xmax) {
+   double Integral(Function & f , unsigned int dim, const std::vector<double> & xmin, const std::vector<double> & xmax) {
       SetFunction<Function>(f,dim);
       return Integral(xmin, xmax);
    }
 
 
    /**
-       set integration function using a generic function implementing the operator()(double *x)
+       set integration function using a generic function implementing the operator()(std::vector<double> &x)
        The dimension of the function is in this case required
    */
    template <class Function>

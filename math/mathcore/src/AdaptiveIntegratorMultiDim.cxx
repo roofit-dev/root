@@ -73,7 +73,7 @@ void AdaptiveIntegratorMultiDim::SetRelTolerance(double relTol){ this->fRelTol =
 void AdaptiveIntegratorMultiDim::SetAbsTolerance(double absTol){ this->fAbsTol = absTol; }
 
 
-double AdaptiveIntegratorMultiDim::DoIntegral(const double* xmin, const double * xmax, bool absValue)
+double AdaptiveIntegratorMultiDim::DoIntegral(const std::vector<double> & xmin, const std::vector<double> & xmax, bool absValue)
 {
    // References:
    //
@@ -96,7 +96,8 @@ double AdaptiveIntegratorMultiDim::DoIntegral(const double* xmin, const double *
    double relerr; //an estimation of the relative accuracy of the result
 
 
-   double ctr[15], wth[15], wthl[15], z[15];
+   double ctr[15], wth[15], wthl[15];
+   std::vector<double> z(15);
 
    static const double xl2 = 0.358568582800318073;//lambda_2
    static const double xl4 = 0.948683298050513796;//lambda_4
@@ -190,7 +191,7 @@ L20:
       rgnvol *= wth[j]; //region volume
       z[j]    = ctr[j]; //temporary node
    }
-   sum1 = (*fFun)((const double*)z);//EvalPar(z,fParams); //evaluate function
+   sum1 = (*fFun)(z);//EvalPar(z,fParams); //evaluate function
 
    difmax = 0;
    sum2   = 0;
@@ -382,7 +383,7 @@ L160: //to divide or not
 
 
 
-double AdaptiveIntegratorMultiDim::Integral(const IMultiGenFunction &f, const double* xmin, const double * xmax)
+double AdaptiveIntegratorMultiDim::Integral(const IMultiGenFunction &f, const std::vector<double> & xmin, const std::vector<double> & xmax)
 {
    // calculate integral passing a function object
    fFun = &f;

@@ -59,7 +59,7 @@ namespace ROOT {
          /**
             Access the parameter values
          */
-         virtual const double *Parameters() const = 0;
+         virtual const std::vector<double> & Parameters() const = 0;
 
          /**
             Set the parameter values
@@ -68,7 +68,7 @@ namespace ROOT {
             to be defined:  can user change number of params ? At the moment no.
 
          */
-         virtual void SetParameters(const double *p) = 0;
+         virtual void SetParameters(const std::vector<double> &p) = 0;
 
 
          /**
@@ -117,12 +117,12 @@ namespace ROOT {
 
          /* Reimplementation instead of using BaseParamFunc::operator();
          until the bug in VS is fixed */
-         T operator()(const T *x, const double   *p) const
+         T operator()(const std::vector<T> &x, const std::vector<double> &p) const
          {
             return DoEvalPar(x, p);
          }
 
-         T operator()(const T *x) const
+         T operator()(const std::vector<T> &x) const
          {
             return DoEval(x);
          }
@@ -132,12 +132,12 @@ namespace ROOT {
             Implementation of the evaluation function using the x values and the parameters.
             Must be implemented by derived classes
          */
-         virtual T DoEvalPar(const T *x, const double *p) const = 0;
+         virtual T DoEvalPar(const std::vector<T> &x, const std::vector<double> &p) const = 0;
 
          /**
             Implement the ROOT::Math::IBaseFunctionMultiDim interface DoEval(x) using the cached parameter values
          */
-         virtual T DoEval(const T *x) const
+         virtual T DoEval(const std::vector<T> &x) const
          {
             return DoEvalPar(x, Parameters());
          }
@@ -172,7 +172,7 @@ namespace ROOT {
             called.
             Use the pure virtual function DoEvalPar to implement it
          */
-         double operator()(double x, const double   *p) const
+         double operator()(double x, const std::vector<double> &p) const
          {
             return DoEvalPar(x, p);
          }
@@ -181,9 +181,9 @@ namespace ROOT {
          /**
             multidim-like interface
          */
-         double operator()(const double *x, const double   *p) const
+         double operator()(const std::vector<double> &x, const std::vector<double> &p) const
          {
-            return DoEvalPar(*x, p);
+            return DoEvalPar(x[0], p);
          }
 
       private:
@@ -192,7 +192,7 @@ namespace ROOT {
             Implementation of the evaluation function using the x value and the parameters.
             Must be implemented by derived classes
          */
-         virtual double DoEvalPar(double x, const double *p) const = 0;
+         virtual double DoEvalPar(double x, const std::vector<double> &p) const = 0;
 
          /**
             Implement the ROOT::Math::IBaseFunctionOneDim interface DoEval(x) using the cached parameter values
@@ -237,12 +237,12 @@ namespace ROOT {
 
          /* Reimplementation instead of using BaseParamFunc::operator();
          until the bug in VS is fixed */
-         T operator()(const T *x, const double   *p) const
+         T operator()(const std::vector<T> &x, const std::vector<double> &p) const
          {
             return DoEvalPar(x, p);
          }
 
-         T operator()(const T *x) const
+         T operator()(const std::vector<T> &x) const
          {
             return DoEval(x);
          }
@@ -251,7 +251,7 @@ namespace ROOT {
             Evaluate the all the derivatives (gradient vector) of the function with respect to the parameters at a point x.
             It is optional to be implemented by the derived classes for better efficiency
          */
-         virtual void ParameterGradient(const T *x, const double *p, T *grad) const
+         virtual void ParameterGradient(const std::vector<T> &x, const std::vector<double> &p, std::vector<T> &grad) const
          {
             unsigned int npar = NPar();
             for (unsigned int ipar  = 0; ipar < npar; ++ipar)
@@ -261,7 +261,7 @@ namespace ROOT {
          /**
             Evaluate the partial derivative w.r.t a parameter ipar from values and parameters
           */
-         T ParameterDerivative(const T *x, const double *p, unsigned int ipar = 0) const
+         T ParameterDerivative(const std::vector<T> &x, const std::vector<double> &p, unsigned int ipar = 0) const
          {
             return DoParameterDerivative(x, p, ipar);
          }
@@ -269,11 +269,11 @@ namespace ROOT {
          /**
             Evaluate all derivatives using cached parameter values
          */
-         void ParameterGradient(const T *x, T *grad) const { return ParameterGradient(x, Parameters(), grad); }
+         void ParameterGradient(const std::vector<T> &x, std::vector<T> &grad) const { return ParameterGradient(x, Parameters(), grad); }
          /**
             Evaluate partial derivative using cached parameter values
          */
-         T ParameterDerivative(const T *x, unsigned int ipar = 0) const
+         T ParameterDerivative(const std::vector<T> &x, unsigned int ipar = 0) const
          {
             return DoParameterDerivative(x, Parameters() , ipar);
          }
@@ -283,9 +283,9 @@ namespace ROOT {
          /**
             Evaluate the partial derivative w.r.t a parameter ipar , to be implemented by the derived classes
           */
-         virtual T DoParameterDerivative(const T *x, const double *p, unsigned int ipar) const = 0;
-         virtual T DoEvalPar(const T *x, const double *p) const = 0;
-         virtual T DoEval(const T *x) const
+         virtual T DoParameterDerivative(const std::vector<T> &x, const std::vector<double> &p, unsigned int ipar) const = 0;
+         virtual T DoEvalPar(const std::vector<T> &x, const std::vector<double> &p) const = 0;
+         virtual T DoEval(const std::vector<T> &x) const
          {
             return DoEvalPar(x, Parameters());
          }
@@ -329,7 +329,7 @@ namespace ROOT {
             Evaluate the derivatives of the function with respect to the parameters at a point x.
             It is optional to be implemented by the derived classes for better efficiency if needed
          */
-         virtual void ParameterGradient(double x , const double *p, double *grad) const
+         virtual void ParameterGradient(double x , const std::vector<double> &p, std::vector<double> &grad) const
          {
             unsigned int npar = NPar();
             for (unsigned int ipar  = 0; ipar < npar; ++ipar)
@@ -339,7 +339,7 @@ namespace ROOT {
          /**
             Evaluate all derivatives using cached parameter values
          */
-         void ParameterGradient(double  x , double *grad) const
+         void ParameterGradient(double  x , std::vector<double> &grad) const
          {
             return ParameterGradient(x, Parameters(), grad);
          }
@@ -347,24 +347,24 @@ namespace ROOT {
          /**
             Compatibility interface with multi-dimensional functions
          */
-         void ParameterGradient(const double *x , const double *p, double *grad) const
+         void ParameterGradient(const std::vector<double> &x , const std::vector<double> &p, std::vector<double> &grad) const
          {
-            ParameterGradient(*x, p, grad);
+            ParameterGradient(x[0], p, grad);
          }
 
          /**
             Evaluate all derivatives using cached parameter values (multi-dim like interface)
          */
-         void ParameterGradient(const double *x , double *grad) const
+         void ParameterGradient(const std::vector<double> &x , std::vector<double> &grad) const
          {
-            return ParameterGradient(*x, Parameters(), grad);
+            return ParameterGradient(x[0], Parameters(), grad);
          }
 
 
          /**
             Partial derivative with respect a parameter
           */
-         double ParameterDerivative(double x, const double *p, unsigned int ipar = 0) const
+         double ParameterDerivative(double x, const std::vector<double> &p, unsigned int ipar = 0) const
          {
             return DoParameterDerivative(x, p, ipar);
          }
@@ -381,18 +381,18 @@ namespace ROOT {
             Partial derivative with respect a parameter
             Compatibility interface with multi-dimensional functions
          */
-         double ParameterDerivative(const double *x, const double *p, unsigned int ipar = 0) const
+         double ParameterDerivative(const std::vector<double> &x, const std::vector<double> &p, unsigned int ipar = 0) const
          {
-            return DoParameterDerivative(*x, p, ipar);
+            return DoParameterDerivative(x[0], p, ipar);
          }
 
 
          /**
             Evaluate partial derivative using cached parameter values (multi-dim like interface)
          */
-         double ParameterDerivative(const double *x, unsigned int ipar = 0) const
+         double ParameterDerivative(const std::vector<double> &x, unsigned int ipar = 0) const
          {
-            return DoParameterDerivative(*x, Parameters() , ipar);
+            return DoParameterDerivative(x[0], Parameters() , ipar);
          }
 
 
@@ -403,7 +403,7 @@ namespace ROOT {
          /**
             Evaluate the gradient, to be implemented by the derived classes
           */
-         virtual double DoParameterDerivative(double x, const double *p, unsigned int ipar) const = 0;
+         virtual double DoParameterDerivative(double x, const std::vector<double> &p, unsigned int ipar) const = 0;
 
 
       };

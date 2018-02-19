@@ -171,7 +171,7 @@ public:
    virtual ~VirtualIntegratorMultiDim() {}
 
    /// evaluate multi-dim integral
-   virtual double Integral(const double*, const double*)  = 0;
+   virtual double Integral(const std::vector<double> &, const std::vector<double> &)  = 0;
 
    /// setting a multi-dim function
    virtual void SetFunction(const IMultiGenFunction &)  = 0;

@@ -120,13 +120,13 @@ public:
    virtual unsigned int NFitPoints() const { return fNEffPoints; }
 
    /// i-th likelihood element and its gradient
-   virtual double DataElement(const double * x, unsigned int i, double * g) const {
+   virtual double DataElement(const std::vector<double> & x, unsigned int i, std::vector<double> & g) const {
       if (i==0) this->UpdateNCalls();
       return FitUtil::Evaluate<typename BaseFCN::T>::EvalPoissonBinPdf(BaseFCN::ModelFunction(), BaseFCN::Data(), x, i, g);
    }
 
    /// evaluate gradient
-   virtual void Gradient(const double *x, double *g) const
+   virtual void Gradient(const std::vector<double> &x, std::vector<double> &g) const
    {
       // evaluate the Poisson gradient
       FitUtil::Evaluate<typename BaseFCN::T>::EvalPoissonLogLGradient(BaseFCN::ModelFunction(), BaseFCN::Data(), x, g,
@@ -161,15 +161,15 @@ private:
    /**
       Evaluation of the  function (required by interface)
     */
-   virtual double DoEval (const double * x) const {
+   virtual double DoEval (const std::vector<double> & x) const {
       this->UpdateNCalls();
       return FitUtil::Evaluate<T>::EvalPoissonLogL(BaseFCN::ModelFunction(), BaseFCN::Data(), x, fWeight, fIsExtended,
                                                    fNEffPoints, fExecutionPolicy);
    }
 
    // for derivatives
-   virtual double  DoDerivative(const double * x, unsigned int icoord ) const {
-      Gradient(x, &fGrad[0]);
+   virtual double  DoDerivative(const std::vector<double> & x, unsigned int icoord ) const {
+      Gradient(x, fGrad);
       return fGrad[icoord];
    }
 

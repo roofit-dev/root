@@ -158,6 +158,14 @@ TEST(GradMinimizer, Gaussian2DVarToConst) {
   m0.migrad();
   wtimer.stop();
 
+  RooFitResult *m0result_var = m0.lastMinuitFit();
+  double minNll_0_var = m0result_var->minNll();
+  double edm_0_var = m0result_var->edm();
+  double mu1_0_var = mu1->getVal();
+  double muerr1_0_var = mu1->getError();
+  double mu2_0_var = mu2->getVal();
+  double muerr2_0_var = mu2->getError();
+
   values = *savedValues;
   mu1->setConstant(kTRUE);
 
@@ -165,48 +173,63 @@ TEST(GradMinimizer, Gaussian2DVarToConst) {
   m0.migrad();
   wtimer.stop();
 
-  RooFitResult *m0result = m0.lastMinuitFit();
-  double minNll0 = m0result->minNll();
-  double edm0 = m0result->edm();
-  double mu1_0 = mu1->getVal();
-  double muerr1_0 = mu1->getError();
-  double mu2_0 = mu2->getVal();
-  double muerr2_0 = mu2->getError();
+  RooFitResult *m0result_cst = m0.lastMinuitFit();
+  double minNll_0_cst = m0result_cst->minNll();
+  double edm_0_cst = m0result_cst->edm();
+  double mu1_0_cst = mu1->getVal();
+  double muerr1_0_cst = mu1->getError();
+  double mu2_0_cst = mu2->getVal();
+  double muerr2_0_cst = mu2->getError();
 
-  values = *savedValues;
   mu1->setConstant(kFALSE);
+  values = *savedValues;
 
-  RooGradMinimizer m1(*nll);
-  m1.setMinimizerType("Minuit2");
+  RooGradMinimizer mRGM(*nll);
+  mRGM.setMinimizerType("Minuit2");
 
-  m1.setStrategy(0);
-  m1.setPrintLevel(-1);
+  mRGM.setStrategy(0);
+  mRGM.setPrintLevel(-1);
 
   wtimer.start();
-  m1.migrad();
+  mRGM.migrad();
   wtimer.stop();
+
+  RooFitResult *mRGMresult_var = mRGM.lastMinuitFit();
+  double minNll_RGM_var = mRGMresult_var->minNll();
+  double edm_RGM_var = mRGMresult_var->edm();
+  double mu1_RGM_var = mu1->getVal();
+  double muerr1_RGM_var = mu1->getError();
+  double mu2_RGM_var = mu2->getVal();
+  double muerr2_RGM_var = mu2->getError();
 
   values = *savedValues;
   mu1->setConstant(kTRUE);
 
   wtimer.start();
-  m1.migrad();
+  mRGM.migrad();
   wtimer.stop();
 
-  RooFitResult *m1result = m1.lastMinuitFit();
-  double minNll1 = m1result->minNll();
-  double edm1 = m1result->edm();
-  double mu1_1 = mu1->getVal();
-  double muerr1_1 = mu1->getError();
-  double mu2_1 = mu2->getVal();
-  double muerr2_1 = mu2->getError();
+  RooFitResult *mRGMresult = mRGM.lastMinuitFit();
+  double minNll_RGM_cst = mRGMresult->minNll();
+  double edm_RGM_cst = mRGMresult->edm();
+  double mu1_RGM_cst = mu1->getVal();
+  double muerr1_RGM_cst = mu1->getError();
+  double mu2_RGM_cst = mu2->getVal();
+  double muerr2_RGM_cst = mu2->getError();
 
-  EXPECT_EQ(minNll0, minNll1);
-  EXPECT_EQ(mu1_0, mu1_1);
-  EXPECT_EQ(muerr1_0, muerr1_1);
-  EXPECT_EQ(mu2_0, mu2_1);
-  EXPECT_EQ(muerr2_0, muerr2_1);
-  EXPECT_EQ(edm0, edm1);
+  EXPECT_EQ(minNll_0_var, minNll_RGM_var);
+  EXPECT_EQ(mu1_0_var, mu1_RGM_var);
+  EXPECT_EQ(muerr1_0_var, muerr1_RGM_var);
+  EXPECT_EQ(mu2_0_var, mu2_RGM_var);
+  EXPECT_EQ(muerr2_0_var, muerr2_RGM_var);
+  EXPECT_EQ(edm_0_var, edm_RGM_var);
+
+  EXPECT_EQ(minNll_0_cst, minNll_RGM_cst);
+  EXPECT_EQ(mu1_0_cst, mu1_RGM_cst);
+  EXPECT_EQ(muerr1_0_cst, muerr1_RGM_cst);
+  EXPECT_EQ(mu2_0_cst, mu2_RGM_cst);
+  EXPECT_EQ(muerr2_0_cst, muerr2_RGM_cst);
+  EXPECT_EQ(edm_0_cst, edm_RGM_cst);
 }
 
 TEST(GradMinimizer, Gaussian2DConstToVar) {
@@ -271,55 +294,78 @@ TEST(GradMinimizer, Gaussian2DConstToVar) {
   m0.migrad();
   wtimer.stop();
 
-  values = *savedValues;
+  RooFitResult *m0result_cst = m0.lastMinuitFit();
+  double minNll_0_cst = m0result_cst->minNll();
+  double edm_0_cst = m0result_cst->edm();
+  double mu1_0_cst = mu1->getVal();
+  double muerr1_0_cst = mu1->getError();
+  double mu2_0_cst = mu2->getVal();
+  double muerr2_0_cst = mu2->getError();
+
   mu1->setConstant(kFALSE);
+  values = *savedValues;
 
   wtimer.start();
   m0.migrad();
   wtimer.stop();
 
-  RooFitResult *m0result = m0.lastMinuitFit();
-  double minNll0 = m0result->minNll();
-  double edm0 = m0result->edm();
-  double mu1_0 = mu1->getVal();
-  double muerr1_0 = mu1->getError();
-  double mu2_0 = mu2->getVal();
-  double muerr2_0 = mu2->getError();
+  RooFitResult *m0result_var = m0.lastMinuitFit();
+  double minNll_0_var = m0result_var->minNll();
+  double edm_0_var = m0result_var->edm();
+  double mu1_0_var = mu1->getVal();
+  double muerr1_0_var = mu1->getError();
+  double mu2_0_var = mu2->getVal();
+  double muerr2_0_var = mu2->getError();
 
   values = *savedValues;
   mu1->setConstant(kTRUE);
 
-  RooGradMinimizer m1(*nll);
-  m1.setMinimizerType("Minuit2");
+  RooGradMinimizer mRGM(*nll);
+  mRGM.setMinimizerType("Minuit2");
 
-  m1.setStrategy(0);
-  m1.setPrintLevel(-1);
+  mRGM.setStrategy(0);
+  mRGM.setPrintLevel(-1);
 
   wtimer.start();
-  m1.migrad();
+  mRGM.migrad();
   wtimer.stop();
 
-  values = *savedValues;
+  RooFitResult *mRGMresult = mRGM.lastMinuitFit();
+  double minNll_RGM_cst = mRGMresult->minNll();
+  double edm_RGM_cst = mRGMresult->edm();
+  double mu1_RGM_cst = mu1->getVal();
+  double muerr1_RGM_cst = mu1->getError();
+  double mu2_RGM_cst = mu2->getVal();
+  double muerr2_RGM_cst = mu2->getError();
+
   mu1->setConstant(kFALSE);
+  values = *savedValues;
 
   wtimer.start();
-  m1.migrad();
+  mRGM.migrad();
   wtimer.stop();
 
-  RooFitResult *m1result = m1.lastMinuitFit();
-  double minNll1 = m1result->minNll();
-  double edm1 = m1result->edm();
-  double mu1_1 = mu1->getVal();
-  double muerr1_1 = mu1->getError();
-  double mu2_1 = mu2->getVal();
-  double muerr2_1 = mu2->getError();
+  RooFitResult *mRGMresult_var = mRGM.lastMinuitFit();
+  double minNll_RGM_var = mRGMresult_var->minNll();
+  double edm_RGM_var = mRGMresult_var->edm();
+  double mu1_RGM_var = mu1->getVal();
+  double muerr1_RGM_var = mu1->getError();
+  double mu2_RGM_var = mu2->getVal();
+  double muerr2_RGM_var = mu2->getError();
 
-  EXPECT_EQ(minNll0, minNll1);
-  EXPECT_EQ(mu1_0, mu1_1);
-  EXPECT_EQ(muerr1_0, muerr1_1);
-  EXPECT_EQ(mu2_0, mu2_1);
-  EXPECT_EQ(muerr2_0, muerr2_1);
-  EXPECT_EQ(edm0, edm1);
+  EXPECT_EQ(minNll_0_cst, minNll_RGM_cst);
+  EXPECT_EQ(mu1_0_cst, mu1_RGM_cst);
+  EXPECT_EQ(muerr1_0_cst, muerr1_RGM_cst);
+  EXPECT_EQ(mu2_0_cst, mu2_RGM_cst);
+  EXPECT_EQ(muerr2_0_cst, muerr2_RGM_cst);
+  EXPECT_EQ(edm_0_cst, edm_RGM_cst);
+
+  EXPECT_EQ(minNll_0_var, minNll_RGM_var);
+  EXPECT_EQ(mu1_0_var, mu1_RGM_var);
+  EXPECT_EQ(muerr1_0_var, muerr1_RGM_var);
+  EXPECT_EQ(mu2_0_var, mu2_RGM_var);
+  EXPECT_EQ(muerr2_0_var, muerr2_RGM_var);
+  EXPECT_EQ(edm_0_var, edm_RGM_var);
 }
 
 

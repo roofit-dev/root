@@ -71,6 +71,8 @@ class RooGradientFunction : public ROOT::Math::IMultiGradFunction {
     void set_nDim(unsigned int ndim) const;
 
     void updateFloatVec();
+    Bool_t synchronize_parameter_settings(std::vector<ROOT::Fit::ParameterSettings>& parameter_settings,
+                                          Bool_t optConst = kTRUE, Bool_t verbose = kFALSE);
 
     inline Bool_t SetPdfParamVal(const Int_t &index, const Double_t &value) const {
       RooRealVar* par = (RooRealVar*)_floatParamVec[index];
@@ -86,7 +88,7 @@ class RooGradientFunction : public ROOT::Math::IMultiGradFunction {
     }
 
   private:
-    double DoEval(const double *x) const override;
+    double DoEval(const std::vector<double> & x) const override;
     mutable unsigned int _nDim = 0;
   };
 
@@ -109,15 +111,15 @@ private:
   mutable std::vector<double> _grad_params;
   mutable std::vector<ROOT::Fit::ParameterSettings> _parameter_settings;
 
-  double DoEval(const double *x) const override;
-  double DoDerivative(const double *x, unsigned int icoord) const override;
+  double DoEval(const std::vector<double> & x) const override;
+  double DoDerivative(const std::vector<double> & x, unsigned int icoord) const override;
 
-  void run_derivator(const double *x) const;
+  void run_derivator(const std::vector<double> & x) const;
 
   bool hasG2ndDerivative() const override;
-  double DoSecondDerivative(const double *x, unsigned int icoord) const override;
+  double DoSecondDerivative(const std::vector<double> & x, unsigned int icoord) const override;
   bool hasGStepSize() const override;
-  double DoStepSize(const double *x, unsigned int icoord) const override;
+  double DoStepSize(const std::vector<double> & x, unsigned int icoord) const override;
 
   virtual std::vector<ROOT::Fit::ParameterSettings>& parameter_settings() const;
 
@@ -141,7 +143,6 @@ public:
 
   Bool_t synchronize_parameter_settings(std::vector<ROOT::Fit::ParameterSettings>& parameter_settings,
                                         Bool_t optConst = kTRUE, Bool_t verbose = kFALSE);
-  void synchronize_gradient_parameter_settings(std::vector<ROOT::Fit::ParameterSettings>& parameter_settings) const;
 
   bool returnsInMinuit2ParameterSpace() const override;
 

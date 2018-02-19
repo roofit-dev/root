@@ -51,10 +51,10 @@ namespace ROOT {
         Documentation for the abstract class IBaseFunctionMultiDim.
         Interface (abstract class) for generic functions objects of multi-dimension
         Provides a method to evaluate the function given a vector of coordinate values,
-        by implementing operator() (const double *).
+        by implementing operator() (const std::vector<double> &).
         In addition it defines the interface for copying functions via the pure virtual method Clone()
         and the interface for getting the function dimension via the NDim() method.
-        Derived classes must implement the pure private virtual method DoEval(const double *) for the
+        Derived classes must implement the pure private virtual method DoEval(const std::vector<double> &) for the
         function evaluation in addition to NDim() and Clone().
 
         @ingroup  GenFunc
@@ -91,7 +91,7 @@ namespace ROOT {
           Evaluate the function at a point x[].
           Use the pure virtual private method DoEval which must be implemented by the sub-classes
       */
-      T operator()(const T *x) const
+      T operator()(const std::vector<T> &x) const
       {
         return DoEval(x);
       }
@@ -115,7 +115,7 @@ namespace ROOT {
       /**
          Implementation of the evaluation function. Must be implemented by derived classes
       */
-      virtual T DoEval(const T *x) const = 0;
+      virtual T DoEval(const std::vector<T> &x) const = 0;
 
 
     };
@@ -166,9 +166,9 @@ namespace ROOT {
           Evaluate the function at a point x[].
           Compatible method with multi-dimensional functions
       */
-      double operator()(const double *x) const
+      double operator()(const std::vector<double> &x) const
       {
-        return DoEval(*x);
+        return DoEval(x[0]);
       }
 
 
@@ -190,9 +190,9 @@ namespace ROOT {
        Gradient interface (abstract class) defining the signature for calculating the gradient of a
        multi-dimensional function.
        Three methods are provided:
-       - Gradient(const double *x, double * grad) evaluate the full gradient vector at the vector value x
-       - Derivative(const double * x, int icoord) evaluate the partial derivative for the icoord coordinate
-       - FdF(const double *x, double &f, double * g) evaluate at the same time gradient and function/
+       - Gradient(const std::vector<double> &x, std::vector<double> & grad) evaluate the full gradient vector at the vector value x
+       - Derivative(const std::vector<double> & x, int icoord) evaluate the partial derivative for the icoord coordinate
+       - FdF(const std::vector<double> &x, double &f, std::vector<double> & g) evaluate at the same time gradient and function/
 
        Concrete classes should derive from ROOT::Math::IGradientFunctionMultiDim and not from this class.
 
@@ -211,15 +211,15 @@ namespace ROOT {
           Evaluate all the vector of function derivatives (gradient)  at a point x.
           Derived classes must re-implement if it is more efficient than evaluting one at a time
       */
-      virtual void Gradient(const T *x, T *grad) const = 0;
+      virtual void Gradient(const std::vector<T> &x, std::vector<T> &grad) const = 0;
 
       /**
          Return the partial derivative with respect to the passed coordinate
       */
-      T Derivative(const T *x, unsigned int icoord = 0) const { return DoDerivative(x, icoord); }
+      T Derivative(const std::vector<T> &x, unsigned int icoord = 0) const { return DoDerivative(x, icoord); }
 
-      T SecondDerivative(const T *x, unsigned int icoord) const { return DoSecondDerivative(x, icoord); }
-      T StepSize(const T *x, unsigned int icoord) const { return DoStepSize(x, icoord); }
+      T SecondDerivative(const std::vector<T> &x, unsigned int icoord) const { return DoSecondDerivative(x, icoord); }
+      T StepSize(const std::vector<T> &x, unsigned int icoord) const { return DoStepSize(x, icoord); }
       /**
           Optimized method to evaluate at the same time the function value and derivative at a point x.
           Often both value and derivatives are needed and it is often more efficient to compute them at the same time.
@@ -227,7 +227,7 @@ namespace ROOT {
           evaluate value and derivative at the same time
 
       */
-      virtual void FdF(const T *x, T &f, T *df) const = 0;
+      virtual void FdF(const std::vector<T> &x, T &f, std::vector<T> &df) const = 0;
 
     private:
 
@@ -235,7 +235,7 @@ namespace ROOT {
       /**
          function to evaluate the derivative with respect each coordinate. To be implemented by the derived class
       */
-      virtual T DoDerivative(const T *x, unsigned int icoord) const = 0;
+      virtual T DoDerivative(const std::vector<T> &x, unsigned int icoord) const = 0;
 
       /**
        function to evaluate the second derivative with respect to each coordinate.
@@ -244,7 +244,7 @@ namespace ROOT {
        a separate subclass that can do second derivatives (and step sizes, see DoStepSize), but this
        was chosen because of easier integration into the existing Minuit2 / Fitter framework.
       */
-      virtual T DoSecondDerivative(const T */*x*/, unsigned int /*icoord*/) const {
+      virtual T DoSecondDerivative(const std::vector<T> &/*x*/, unsigned int /*icoord*/) const {
         throw std::runtime_error("IGradientMultiDimTempl<T>::DoSecondDerivative not defined!");
       };
 
@@ -255,7 +255,7 @@ namespace ROOT {
        a separate subclass that can do step sizes (and second derivatives, see DoSecondDerivative), but this
        was chosen because of easier integration into the existing Minuit2 / Fitter framework.
       */
-      virtual T DoStepSize(const T */*x*/, unsigned int /*icoord*/) const {
+      virtual T DoStepSize(const std::vector<T> &/*x*/, unsigned int /*icoord*/) const {
         throw std::runtime_error("IGradientMultiDimTempl<T>::DoStepSize not defined!");
       };
 
@@ -301,25 +301,25 @@ namespace ROOT {
       /**
          Compatibility method with multi-dimensional interface for partial derivative
        */
-      double Derivative(const double *x) const
+      double Derivative(const std::vector<double> &x) const
       {
-        return DoDerivative(*x);
+        return DoDerivative(x[0]);
       }
 
       /**
          Compatibility method with multi-dimensional interface for Gradient
        */
-      void Gradient(const double *x, double *g) const
+      void Gradient(const std::vector<double> &x, std::vector<double> &g) const
       {
-        g[0] = DoDerivative(*x);
+        g[0] = DoDerivative(x[0]);
       }
 
       /**
          Compatibility method with multi-dimensional interface for Gradient and function evaluation
        */
-      void FdF(const double *x, double &f, double *df) const
+      void FdF(const std::vector<double> &x, double &f, std::vector<double> &df) const
       {
-        FdF(*x, f, *df);
+        FdF(x[0], f, df[0]);
       }
 
 
@@ -366,7 +366,7 @@ namespace ROOT {
          Evaluate all the vector of function derivatives (gradient)  at a point x.
          Derived classes must re-implement it if more efficient than evaluting one at a time
       */
-      virtual void Gradient(const T *x, T *grad) const
+      virtual void Gradient(const std::vector<T> &x, std::vector<T> &grad) const
       {
         unsigned int ndim = NDim();
         for (unsigned int icoord  = 0; icoord < ndim; ++icoord)
@@ -381,20 +381,20 @@ namespace ROOT {
          Derived class should implement this method if performances play an important role and if it is faster to
          evaluate value and derivative at the same time
       */
-      virtual void FdF(const T *x, T &f, T *df) const
+      virtual void FdF(const std::vector<T> &x, T &f, std::vector<T> &df) const
       {
         f = BaseFunc::operator()(x);
         Gradient(x, df);
       }
 
-      virtual void G2ndDerivative(const T *x, T *g2) const {
+      virtual void G2ndDerivative(const std::vector<T> &x, std::vector<T> &g2) const {
         unsigned int ndim = NDim();
         for (unsigned int icoord  = 0; icoord < ndim; ++icoord) {
           g2[icoord] = BaseGrad::SecondDerivative(x, icoord);
         }
       }
 
-      virtual void GStepSize(const T *x, T *gstep) const {
+      virtual void GStepSize(const std::vector<T> &x, std::vector<T> &gstep) const {
         unsigned int ndim = NDim();
         for (unsigned int icoord  = 0; icoord < ndim; ++icoord) {
           gstep[icoord] = BaseGrad::StepSize(x, icoord);

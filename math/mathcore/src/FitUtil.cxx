@@ -528,7 +528,7 @@ double FitUtil::EvaluateChi2Effective(const IModelFunction & func, const BinData
 ///  integral option is also not yet implemented
 ///  one can use in that case normal chi2 method
 
-double FitUtil::EvaluateChi2Residual(const IModelFunction & func, const BinData & data, const double * p, unsigned int i, double * g) {
+double FitUtil::EvaluateChi2Residual(const IModelFunction & func, const BinData & data, const std::vector<double> & p, unsigned int i, std::vector<double> & g) {
    if (data.GetErrorType() == BinData::kCoordError && data.Opt().fCoordErrors ) {
       MATH_ERROR_MSG("FitUtil::EvaluateChi2Residual","Error on the coordinates are not used in calculating Chi2 residual");
       return 0; // it will assert otherwise later in GetPoint
