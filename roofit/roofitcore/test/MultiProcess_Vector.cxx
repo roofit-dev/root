@@ -20,6 +20,8 @@
 #include <type_traits>  // is_enum, is_convertible
 #include <memory>  // make_shared
 #include <algorithm>  // all_of
+#include <thread>
+#include "ROOT/RMakeUnique.hxx"  // make_unique backport for C++ <= 11
 
 #include <RooRealVar.h>
 #include <../src/BidirMMapPipe.h>
@@ -454,15 +456,9 @@ namespace RooFit {
         if (_is_director) {
           // on master we only have to set the activated flag so that we can start
           // queuing tasks
+          queue_thread = std::make_unique<std::thread>(queue_loop);
           queue_activated = true;
           // it's not important on the other processes
-        } else if (_is_queue) {
-          std::cout << "activate on PID " << getpid() << " starting queue_loop" << std::endl;
-          queue_loop();
-          // the queue_loop can end when all jobs sent return_control_to_master,
-          // in which case the director already terminated itself
-          std::cout << "activate on PID " << getpid() << " ended queue_loop, now terminating workers" << std::endl;
-          terminate_workers();
         } else { // is worker
           queue_activated = true;
         }
@@ -619,7 +615,7 @@ namespace RooFit {
 
 
       void queue_loop() {
-        if (_is_queue) {
+//        if (_is_queue) {
           bool carry_on = true;
           auto poll_vector = get_poll_vector();
 
@@ -663,7 +659,8 @@ namespace RooFit {
               } while (it->pipe->bytesReadableNonBlocking() > 0);
             }
           }
-        }
+//        }
+        queue_activated = false;
       }
 
 
@@ -743,6 +740,7 @@ namespace RooFit {
       // TODO: add RooAbsCategory handling to results!
       std::map<JobTask, double> results;
       bool queue_activated = false;
+      std::unique_ptr<std::thread> queue_thread;
 
       static std::map<std::size_t, Job *> job_objects;
 //      static std::map<std::size_t, bool> job_returned;
