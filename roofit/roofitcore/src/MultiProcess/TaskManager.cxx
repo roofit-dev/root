@@ -12,6 +12,7 @@
  *****************************************************************************/
 
 #include <memory>  // make_shared
+#include <thread>  // hardware_concurrency
 
 #include <MultiProcess/TaskManager.h>
 #include <MultiProcess/Job.h>
@@ -21,45 +22,43 @@ namespace RooFit {
   namespace MultiProcess {
 
     // static function
-    std::shared_ptr<TaskManager> TaskManager::instance(std::size_t N_workers) {
-      std::shared_ptr<TaskManager> tmp;
-      tmp = _instance.lock();
-      if (!tmp) {
-        assert(N_workers != 0);
-        tmp = std::make_shared<TaskManager>(N_workers);
-        // assign to weak_ptr _instance
-        _instance = tmp;
-      } else {
-        // some sanity checks
-        if(tmp->is_master() && N_workers != tmp->worker_pipes.size()) {
-          std::cout << "On PID " << getpid() << ": N_workers != tmp->worker_pipes.size())! N_workers = " << N_workers << ", tmp->worker_pipes.size() = " << tmp->worker_pipes.size() << std::endl;
-          throw std::logic_error("");
-        } else if (tmp->is_worker()) {
-          if (tmp->get_worker_id() + 1 != tmp->worker_pipes.size()) {
-            std::cout << "On PID " << getpid() << ": tmp->get_worker_id() + 1 != tmp->worker_pipes.size())! tmp->get_worker_id() = " << tmp->get_worker_id() << ", tmp->worker_pipes.size() = " << tmp->worker_pipes.size() << std::endl;
-            throw std::logic_error("");
-          }
-
-          // use of shared_ptrs in combination with BidirMMapPipe's self-cleanup functionality makes the following test a bit harder to do, so we leave it as an exercise for the reader:
-//          if (1 != std::accumulate(tmp->worker_pipes.begin(), tmp->worker_pipes.end(), 0,
-//                                   [](int a, std::shared_ptr<BidirMMapPipe>& b) {
-//                                     return a + (b->closed() ? 1 : 0);
-//                                   })) {
-//            std::cout << "On PID " << getpid() << ": worker has multiple open worker pipes, should only be one!" << std::endl;
-//            throw std::logic_error("");
-//          }
-
+    std::size_t TaskManager::get_N_workers() {
+      if (N_workers == 0) {
+        auto N_cores = std::thread::hardware_concurrency();
+        if (N_cores == 0) {
+          throw std::runtime_error("In TaskManager::get_N_workers: N_workers was not yet set and cannot be determined automatically!");
+        } else {
+          set_N_workers(N_cores);
         }
       }
-      return tmp;
+      return N_workers;
+    }
+
+    // static function
+    // Only call set_N_workers before defining jobs.
+    void TaskManager::set_N_workers(std::size_t _N_workers) {
+      if (N_workers == 0 && job_objects.empty() && !instance_created()) {
+        N_workers = _N_workers;
+      } else {
+        throw std::runtime_error("TaskManager::set_N_workers must be called before creating the TaskManager instance and can only be used to change N_workers once!");
+      }
+    }
+
+    // static function
+    bool TaskManager::instance_created() {
+      return !(!_instance.lock());
     }
 
     // static function
     std::shared_ptr<TaskManager> TaskManager::instance() {
-      if (!_instance.lock()) {
-        throw std::runtime_error("in TaskManager::instance(): no instance was created yet! Call TaskManager::instance(std::size_t N_workers) first.");
+      std::shared_ptr<TaskManager> tmp;
+      tmp = _instance.lock();
+      if (!tmp) {
+        tmp = std::make_shared<TaskManager>(get_N_workers());
+        // assign to weak_ptr _instance
+        _instance = tmp;
       }
-      return _instance.lock();
+      return tmp;
     }
 
     void TaskManager::identify_processes() {
@@ -466,6 +465,7 @@ namespace RooFit {
     std::map<std::size_t, Job *> TaskManager::job_objects;
     std::size_t TaskManager::job_counter = 0;
     std::weak_ptr<TaskManager> TaskManager::_instance {};
+    std::size_t N_workers = 0;
 
   } // namespace MultiProcess
 } // namespace RooFit

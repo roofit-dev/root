@@ -63,7 +63,9 @@ namespace RooFit {
     // immediately after creation, so one need not worry about the above.
     class TaskManager {
      public:
-      static std::shared_ptr <TaskManager> instance(std::size_t N_workers);
+      static std::size_t get_N_workers();
+      static void set_N_workers(std::size_t _N_workers);
+      static bool instance_created();
 
       static std::shared_ptr <TaskManager> instance();
 
@@ -168,6 +170,7 @@ namespace RooFit {
       static std::map<std::size_t, Job *> job_objects;
       static std::size_t job_counter;
       static std::weak_ptr <TaskManager> _instance;
+      static std::size_t N_workers;
     };
 
   } // namespace MultiProcess

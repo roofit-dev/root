@@ -160,6 +160,7 @@ TEST_P(MultiProcessVectorSingleJob, getResult) {
   EXPECT_EQ(Hex(y[3]), Hex(y_expected[3]));
 
   std::size_t NumCPU = GetParam();
+  RooFit::MultiProcess::TaskManager::set_N_workers(NumCPU);
 
   // start parallel test
 
@@ -191,6 +192,7 @@ TEST_P(MultiProcessVectorMultiJob, getResult) {
   std::vector<double> y_expected{3, 4, 7, 12};
 
   std::size_t NumCPU = GetParam();
+  RooFit::MultiProcess::TaskManager::set_N_workers(NumCPU);
 
   // define jobs
   xSquaredPlusBVectorParallel x_sq_plus_b_parallel(NumCPU, b_initial, x);
@@ -299,6 +301,7 @@ TEST_P(MultiProcessVectorNLL, getVal) {
 
   std::size_t NumCPU = std::get<0>(GetParam());
   RooFit::MultiProcess::NLLVarTask mp_task_mode = std::get<1>(GetParam());
+  RooFit::MultiProcess::TaskManager::set_N_workers(NumCPU);
 
   RooFit::MultiProcess::NLLVar nll_mp(NumCPU, mp_task_mode, *dynamic_cast<RooNLLVar*>(nll));
 
@@ -324,6 +327,7 @@ TEST_P(MultiProcessVectorNLL, setVal) {
 
   std::size_t NumCPU = std::get<0>(GetParam());
   RooFit::MultiProcess::NLLVarTask mp_task_mode = std::get<1>(GetParam());
+  RooFit::MultiProcess::TaskManager::set_N_workers(NumCPU);
 
   RooFit::MultiProcess::NLLVar nll_mp(NumCPU, mp_task_mode, *dynamic_cast<RooNLLVar*>(nll));
 
@@ -365,6 +369,7 @@ TEST_P(NLLMultiProcessVsMPFE, getVal) {
   std::size_t NumCPU = std::get<0>(GetParam());
   RooFit::MultiProcess::NLLVarTask mp_task_mode = std::get<1>(GetParam());
   std::size_t seed = std::get<2>(GetParam());
+  RooFit::MultiProcess::TaskManager::set_N_workers(NumCPU);
 
   RooRandom::randomGenerator()->SetSeed(seed);
 
@@ -405,6 +410,7 @@ TEST_P(NLLMultiProcessVsMPFE, minimize) {
   std::size_t NumCPU = std::get<0>(GetParam());
   RooFit::MultiProcess::NLLVarTask mp_task_mode = std::get<1>(GetParam());
   std::size_t seed = std::get<2>(GetParam());
+  RooFit::MultiProcess::TaskManager::set_N_workers(NumCPU);
 
   RooRandom::randomGenerator()->SetSeed(seed);
 
@@ -517,6 +523,7 @@ TEST_P(MultiProcessVsNominal, GradMinimizer) {
   std::size_t NWorkers = std::get<0>(GetParam());
 //  RooFit::MultiProcess::NLLVarTask mp_task_mode = std::get<1>(GetParam());
   std::size_t seed = std::get<1>(GetParam());
+  RooFit::MultiProcess::TaskManager::set_N_workers(NWorkers);
 
   RooRandom::randomGenerator()->SetSeed(seed);
 
