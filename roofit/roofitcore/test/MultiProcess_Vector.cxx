@@ -32,6 +32,7 @@
 #include <exception>
 #include <numeric> // accumulate
 #include <tuple>   // for google test Combine in parameterized test
+#include <sstream>
 
 #include <RooRealVar.h>
 #include <RooRandom.h>
@@ -362,18 +363,221 @@ void count_NLL_components(RooAbsReal *nll) {
         ++nll_component_count;
       }
     }
-    std::cout << "...containing " << nll_component_count << " RooNLLVar components.";
+    std::cout << "...containing " << nll_component_count << " RooNLLVar components." << std::endl;
   } else if (dynamic_cast<RooNLLVar*>(nll) != nullptr) {
     std::cout << "the NLL object is a RooNLLVar*" << std::endl;
   }
 }
 
 
-TEST_P(MultiProcessVectorNLL, getValRooAddition) {
+enum class CreateNLLType {
+  NLL, AddNLL, AddConstraintMultiNLL, AddConstraintSingleNLL
+};
+
+
+CreateNLLType detect_createNLL_type(RooAbsReal *nll) {
+  // RooAbsPdf::createNLL can create four types of NLLs:
+  //  1. RooNLLVar*
+  //  2. RooAddition* (of RooNLLVars)
+  //  3. RooAddition* (of RooConstraintSum and RooAddition (of RooNLLVars))
+  //  4. RooAddition* (of RooConstraintSum and RooNLLVar)
+  // This function detects which one it is and throws a runtime_error if it is
+  // none of them.
+  if (dynamic_cast<RooNLLVar*>(nll) != nullptr) {
+    // type 1
+    return CreateNLLType::NLL;
+  } else if (dynamic_cast<RooAddition*>(nll) != nullptr) {
+    bool has_rooconstraintsum = false;
+    bool has_free_roonllvar = false;
+    RooFIter nll_component_iter = nll->getComponents()->fwdIterator();
+    nll_component_iter.next();  // skip the first one, it is the nll object itself
+    RooAbsArg *nll_component;
+    while ((nll_component = nll_component_iter.next())) {
+      if (nll_component->IsA() == RooConstraintSum::Class()) {
+        has_rooconstraintsum = true;
+      } else if (nll_component->IsA() == RooNLLVar::Class()) {
+        has_free_roonllvar = true;
+      } else if (nll_component->IsA() == RooAddition::Class()) {
+        RooFIter nll_sub_component_iter = nll_component->getComponents()->fwdIterator();
+        nll_sub_component_iter.next();  // skip the first one, again
+        RooAbsArg *nll_sub_component;
+        while ((nll_sub_component = nll_sub_component_iter.next())) {
+          if (nll_sub_component->IsA() != RooNLLVar::Class()) {
+            std::stringstream ss;
+            ss << "RooAddition* type NLL object contains a RooAddition component which contains a non-RooNLLVar component: " << nll_sub_component->ClassName();
+            throw std::runtime_error(ss.str().c_str());
+          }
+        }
+      } else {
+        std::stringstream ss;
+        ss << "RooAddition* type NLL object contains an unexpected component class: " << nll_component->ClassName();
+        throw std::runtime_error(ss.str().c_str());
+      }
+    }
+    if (!has_rooconstraintsum && has_free_roonllvar) {
+      // type 2
+      return CreateNLLType::AddNLL;
+    } else if (has_rooconstraintsum && !has_free_roonllvar) {
+      // type 3
+      return CreateNLLType::AddConstraintMultiNLL;
+    } else if (has_rooconstraintsum && has_free_roonllvar) {
+      // type 4
+      return CreateNLLType::AddConstraintSingleNLL;
+    } else {
+      throw std::runtime_error("This object is a RooAddition* without any components");
+    }
+  }
+}
+
+
+RooFit::MultiProcess::NLLVar* create_MPNLL_from_RooNLL(RooNLLVar * nll, std::size_t N_workers,
+                                    RooFit::MultiProcess::NLLVarTask mp_task_mode,
+                                    bool destroy_replaced_NLL) {
+  RooFit::MultiProcess::NLLVar* new_nll = new RooFit::MultiProcess::NLLVar(N_workers, mp_task_mode, *nll);
+  if (destroy_replaced_NLL) {
+    delete nll;
+  }
+  return new_nll;
+}
+
+
+RooAddition* create_MPAddNLL_from_RooAddNLL(RooAddition * add_nll, std::size_t N_workers,
+                                            RooFit::MultiProcess::NLLVarTask mp_task_mode,
+                                            bool destroy_replaced_AddNLL) {
+  RooFIter nll_component_iter = add_nll->list().fwdIterator();
+  RooAbsArg *nll_component;
+  RooArgList mp_nll_components;
+
+  while ((nll_component = nll_component_iter.next())) {
+    mp_nll_components.add(*create_MPNLL_from_RooNLL(dynamic_cast<RooNLLVar *>(nll_component), N_workers, mp_task_mode, false));
+  }
+
+  RooAddition* new_add_nll = new RooAddition(add_nll->GetName(), add_nll->GetTitle(), mp_nll_components, kTRUE);
+  if (destroy_replaced_AddNLL) {
+    delete add_nll;
+  }
+  return new_add_nll;
+}
+
+/*
+ * Caution: this function deletes nll! Do not use it after this function.
+ */
+RooAbsReal * replace_RooNLLs_by_MPNLLs(RooAbsReal *nll, std::size_t N_workers,
+                               RooFit::MultiProcess::NLLVarTask mp_task_mode) {
+  RooAbsReal* new_nll;
+  switch (detect_createNLL_type(nll)) {
+    // WARNING: the static castss below are only possible because detect_createNLL_type already checked dynamically!
+    case CreateNLLType::NLL: {
+      new_nll = create_MPNLL_from_RooNLL(dynamic_cast<RooNLLVar *>(nll), N_workers, mp_task_mode, true);
+      break;
+    }
+
+    case CreateNLLType::AddNLL: {
+      new_nll = create_MPAddNLL_from_RooAddNLL(dynamic_cast<RooAddition *>(nll), N_workers, mp_task_mode, true);
+      break;
+    }
+
+    case CreateNLLType::AddConstraintMultiNLL:
+    case CreateNLLType::AddConstraintSingleNLL: {
+      RooFIter nll_component_iter = dynamic_cast<RooAddition *>(nll)->list().fwdIterator();
+      RooAbsArg *nll_component;
+      RooArgList mp_nll_components;
+      while ((nll_component = nll_component_iter.next())) {
+        if (nll_component->IsA() == RooConstraintSum::Class()) {
+          mp_nll_components.add(*nll_component);
+        } else if (nll_component->IsA() == RooNLLVar::Class()) {
+          mp_nll_components.add(*create_MPNLL_from_RooNLL(dynamic_cast<RooNLLVar *>(nll_component), N_workers, mp_task_mode, false));
+        } else {  // a RooAddition, otherwise detect_createNLL_type should have complained
+          mp_nll_components.add(*create_MPAddNLL_from_RooAddNLL(dynamic_cast<RooAddition *>(nll_component), N_workers, mp_task_mode, false));
+        }
+      }
+      new_nll = new RooAddition(nll->GetName(), nll->GetTitle(), mp_nll_components, kTRUE) ;
+      delete nll;
+      break;
+    }
+  }
+  return new_nll;
+}
+
+
+TEST_P(MultiProcessVectorNLL, replaceMPgetValRooNLLVar) {
   RooMsgService::instance().setGlobalKillBelow(RooFit::ERROR);
 
   std::size_t NumCPU = std::get<0>(GetParam());
+  RooFit::MultiProcess::NLLVarTask mp_task_mode = std::get<1>(GetParam());
+  RooRandom::randomGenerator()->SetSeed(std::get<2>(GetParam()));
 
+  RooWorkspace w;
+  w.factory("Gaussian::g(x[-10,10],mu[0,-3,3],sigma[1])");
+
+  RooRealVar *x = w.var("x");
+
+  RooAbsPdf *pdf = w.pdf("g");
+  RooDataSet *data = pdf->generate(*x, 10000);
+
+  RooAbsReal *nll = pdf->createNLL(*data);
+
+  auto nominal_result = nll->getVal();
+
+//  check_NLL_type(nll);
+//  count_NLL_components(nll);
+
+  nll = replace_RooNLLs_by_MPNLLs(nll, NumCPU, mp_task_mode);
+
+  auto mp_result = nll->getVal();
+
+  EXPECT_DOUBLE_EQ(Hex(nominal_result), Hex(mp_result));
+  if (HasFailure()) {
+    std::cout << "failed test had parameters NumCPU = " << NumCPU << ", task_mode = " << mp_task_mode << ", seed = " << std::get<2>(GetParam()) << std::endl;
+  }
+
+  delete nll;
+  delete data;
+}
+
+
+TEST_P(MultiProcessVectorNLL, replaceMPgetValRooNLLVarWithRange) {
+  RooMsgService::instance().setGlobalKillBelow(RooFit::ERROR);
+
+  std::size_t NumCPU = std::get<0>(GetParam());
+  RooFit::MultiProcess::NLLVarTask mp_task_mode = std::get<1>(GetParam());
+  RooRandom::randomGenerator()->SetSeed(std::get<2>(GetParam()));
+
+  RooWorkspace w;
+  w.factory("Gaussian::g(x[-10,10],mu[0,-3,3],sigma[1])");
+
+  RooRealVar *x = w.var("x");
+  x->setRange("x_range",-3,0);
+
+  RooAbsPdf *pdf = w.pdf("g");
+  RooDataSet *data = pdf->generate(*x, 10000);
+
+  RooAbsReal *nll = pdf->createNLL(*data, RooFit::Range("x_range"));
+
+  auto nominal_result = nll->getVal();
+
+  check_NLL_type(nll);
+//  count_NLL_components(nll);
+
+  nll = replace_RooNLLs_by_MPNLLs(nll, NumCPU, mp_task_mode);
+
+  auto mp_result = nll->getVal();
+
+  EXPECT_DOUBLE_EQ(Hex(nominal_result), Hex(mp_result));
+  if (HasFailure()) {
+    std::cout << "failed test had parameters NumCPU = " << NumCPU << ", task_mode = " << mp_task_mode << ", seed = " << std::get<2>(GetParam()) << std::endl;
+  }
+
+  delete nll;
+  delete data;
+}
+
+
+TEST_P(MultiProcessVectorNLL, replaceMPgetValRooAddition) {
+  RooMsgService::instance().setGlobalKillBelow(RooFit::ERROR);
+
+  std::size_t NumCPU = std::get<0>(GetParam());
+  RooFit::MultiProcess::NLLVarTask mp_task_mode = std::get<1>(GetParam());
   RooRandom::randomGenerator()->SetSeed(std::get<2>(GetParam()));
 
   RooWorkspace w;
@@ -386,18 +590,28 @@ TEST_P(MultiProcessVectorNLL, getValRooAddition) {
   RooAbsPdf *pdf = w.pdf("g");
   RooDataSet *data = pdf->generate(*x, 10000);
 
-  RooAbsReal *nll = pdf->createNLL(*data, RooFit::NumCPU(NumCPU),
-      RooFit::Range("x_range"), RooFit::Range("another_range"));
+  RooAbsReal *nll = pdf->createNLL(*data, RooFit::Range("x_range"), RooFit::Range("another_range"));
 
-  check_NLL_type(nll);
-  count_NLL_components(nll);
+  auto nominal_result = nll->getVal();
+
+//  check_NLL_type(nll);
+//  count_NLL_components(nll);
+
+  nll = replace_RooNLLs_by_MPNLLs(nll, NumCPU, mp_task_mode);
+
+  auto mp_result = nll->getVal();
+
+  EXPECT_DOUBLE_EQ(Hex(nominal_result), Hex(mp_result));
+  if (HasFailure()) {
+    std::cout << "failed test had parameters NumCPU = " << NumCPU << ", task_mode = " << mp_task_mode << ", seed = " << std::get<2>(GetParam()) << std::endl;
+  }
 
   delete nll;
   delete data;
 }
 
 
-TEST_P(MultiProcessVectorNLL, getValRooConstraintSumAddition) {
+TEST_P(MultiProcessVectorNLL, replaceMPgetValRooConstraintSumAddition) {
   // modified from https://github.com/roofit-dev/rootbench/blob/43d12f33e8dac7af7d587b53a2804ddf6717e92f/root/roofit/roofit/RooFitASUM.cxx#L417
 
   RooMsgService::instance().setGlobalKillBelow(RooFit::ERROR);

@@ -419,6 +419,7 @@ Double_t RooNLLVar::evaluatePartition(Int_t firstEvent, Int_t lastEvent, Int_t s
     result = t;
   }
 
+  std::cout << "in RooNLLVar::evaluate_partition: result = " << result << ", carry = " << carry << std::endl;
 
   _evalCarry = carry;
   return result ;

@@ -164,6 +164,15 @@ namespace RooFit {
     TaskManager* Job::get_manager() {
       if (!_manager) {
         _manager = TaskManager::instance(N_workers);
+
+//        std::cout << "DEBUGGER NU AANKOPPELEN";
+//        if (_manager->is_queue()) {
+//          std::cout << ", queue PID " << getpid();
+//        } else if (_manager->is_worker()) {
+//          std::cout << ", worker PID " << getpid();
+//        }
+//        std::cout << std::endl;
+//        sleep(10);
       }
 
       // N.B.: must check for activation here, otherwise get_manager is not callable

@@ -154,6 +154,7 @@ namespace RooFit {
     void NLLVar::send_back_task_result_from_worker(std::size_t task) {
       result = get_task_result(task);
       carry = getCarry();
+      std::cout << "worker " << get_manager()->get_worker_id() << " sending result " << result << " and carry " << carry << std::endl;
       get_manager()->send_from_worker_to_queue(id, task, result, carry);
     }
 
