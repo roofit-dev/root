@@ -24,3 +24,4 @@ steps:
     script: 'make'
     workingDirectory: '$(Build.SourcesDirectory)/build-cmake-debug'
     failOnStderr: true
+  timeoutInMinutes: 120
