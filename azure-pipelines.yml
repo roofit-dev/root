@@ -10,10 +10,10 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
-
 - script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    sudo apt install -y fftw3 gfortran gcc-8
+
+- task: CMake@1
+  inputs:
+    workingDirectory: 'build-cmake-debug'
+    cmakeArgs: '-Droofit=ON -Dminuit2=ON -DLLVM_BUILD_TYPE=Debug -Dtesting=ON'
