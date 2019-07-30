@@ -12,7 +12,7 @@ pool:
 steps:
 - script: |
     sudo apt update -y
-    sudo apt install -y fftw3 gfortran gcc-8
+    sudo apt install -y fftw3 gfortran gcc-8 libxpm-dev
 
 - task: CMake@1
   inputs:
