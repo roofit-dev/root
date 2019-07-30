@@ -16,5 +16,11 @@ steps:
 
 - task: CMake@1
   inputs:
-    workingDirectory: 'build-cmake-debug'
-    cmakeArgs: '-Droofit=ON -Dminuit2=ON -DLLVM_BUILD_TYPE=Debug -Dtesting=ON'
+    workingDirectory: '$(Build.SourcesDirectory)/build-cmake-debug'
+    cmakeArgs: '$(Build.SourcesDirectory) -DCMAKE_BUILD_TYPE=Debug -Droofit=ON -Dminuit2=ON -DLLVM_BUILD_TYPE=Debug -Dtesting=ON'
+
+- task: CmdLine@2
+  inputs:
+    script: 'make'
+    workingDirectory: '$(Build.SourcesDirectory)/build-cmake-debug'
+    failOnStderr: true
