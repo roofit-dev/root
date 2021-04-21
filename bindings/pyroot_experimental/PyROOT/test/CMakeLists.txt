@@ -16,3 +16,12 @@ ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_setbranchaddress ttree_setbranchaddress.py
                     COPY_TO_BUILDDIR TreeHelper.h)
 ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_branch ttree_branch.py
                     COPY_TO_BUILDDIR TreeHelper.h)
+
+# TCollection and subclasses pythonizations
+ROOT_ADD_PYUNITTEST(pyroot_pyz_tcollection_len tcollection_len.py)
+
+# TArray and subclasses pythonizations
+ROOT_ADD_PYUNITTEST(pyroot_pyz_tarray_len tarray_len.py)
+
+# RooAbsCollection and subclasses pythonizations
+ROOT_ADD_PYUNITTEST(pyroot_pyz_rooabscollection_len rooabscollection_len.py)
