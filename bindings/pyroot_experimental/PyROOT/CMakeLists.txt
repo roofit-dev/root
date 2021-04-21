@@ -17,7 +17,11 @@ set(py_sources
   ROOT/pythonization/_tdirectory.py
   ROOT/pythonization/_tdirectoryfile.py
   ROOT/pythonization/_tfile.py
+  ROOT/pythonization/_titer.py
+  ROOT/pythonization/_tobject.py
   ROOT/pythonization/_tseqcollection.py
+  ROOT/pythonisation/_tstring.py
+  ROOT/pythonisation/_tobjstring.py
   ROOT/pythonization/_ttree.py
 )
 
@@ -25,14 +29,15 @@ set(sources
   src/PyROOTModule.cxx
   src/PyROOTStrings.cxx
   src/PyROOTWrapper.cxx
+  src/GenericPyz.cxx
+  src/RVecPyz.cxx
+  src/TClassPyz.cxx
+  src/TClonesArrayPyz.cxx
   src/TDirectoryPyz.cxx
   src/TFilePyz.cxx
   src/TTreePyz.cxx
-  src/TClonesArrayPyz.cxx
-  src/GenericPyz.cxx
-  src/RVecPyz.cxx
-  src/PyzPythonHelpers.cxx
   src/PyzCppHelpers.cxx
+  src/PyzPythonHelpers.cxx
 )
 
 file(COPY python/ROOT DESTINATION ${localruntimedir})

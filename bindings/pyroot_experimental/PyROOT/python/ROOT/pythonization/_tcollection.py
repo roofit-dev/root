@@ -11,8 +11,6 @@
 from ROOT import pythonization
 import cppyy
 
-from ._generic import add_len
-
 
 # Python-list-like methods
 
@@ -88,10 +86,9 @@ def _iter_pyz(self):
     # Parameters:
     # - self: collection to be iterated
     it = cppyy.gbl.TIter(self)
-    o = it.Next()
-    while o:
+    # TIter instances are iterable
+    for o in it:
         yield o
-        o = it.Next()
 
 
 @pythonization()
@@ -102,7 +99,7 @@ def pythonize_tcollection(klass, name):
 
     if name == 'TCollection':
         # Support `len(c)` as `c.GetEntries()`
-        add_len(klass, 'GetEntries')
+        klass.__len__ = klass.GetEntries
 
         # Add Python lists methods
         klass.append = klass.Add
