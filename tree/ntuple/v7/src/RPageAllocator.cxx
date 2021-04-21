@@ -1,7 +1,7 @@
-/// \file RPageStorage.cxx
+/// \file RPageAllocator.cxx
 /// \ingroup NTuple ROOT7
 /// \author Jakob Blomer <jblomer@cern.ch>
-/// \date 2018-10-04
+/// \date 2019-06-25
 /// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
 /// is welcome!
 
@@ -13,32 +13,21 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <ROOT/RPageStorage.hxx>
-#include <ROOT/RColumn.hxx>
-#include <ROOT/RPagePool.hxx>
 
-#include <ROOT/RStringView.hxx>
+#include <ROOT/RPageAllocator.hxx>
 
-ROOT::Experimental::Detail::RPageStorage::RPageStorage(std::string_view name) : fNTupleName(name)
+#include <TError.h>
+
+ROOT::Experimental::Detail::RPage ROOT::Experimental::Detail::RPageAllocatorHeap::NewPage(
+   ColumnId_t columnId, std::size_t elementSize, std::size_t nElements)
 {
+   R__ASSERT((elementSize > 0) && (nElements > 0));
+   auto nbytes = elementSize * nElements;
+   auto buffer = new unsigned char[nbytes];
+   return RPage(columnId, buffer, nbytes, elementSize);
 }
 
-ROOT::Experimental::Detail::RPageStorage::~RPageStorage()
+void ROOT::Experimental::Detail::RPageAllocatorHeap::DeletePage(const RPage& page)
 {
-}
-
-ROOT::Experimental::Detail::RPageSource::RPageSource(std::string_view name) : RPageStorage(name)
-{
-}
-
-ROOT::Experimental::Detail::RPageSource::~RPageSource()
-{
-}
-
-ROOT::Experimental::Detail::RPageSink::RPageSink(std::string_view name) : RPageStorage(name)
-{
-}
-
-ROOT::Experimental::Detail::RPageSink::~RPageSink()
-{
+   delete[] reinterpret_cast<unsigned char *>(page.GetBuffer());
 }
