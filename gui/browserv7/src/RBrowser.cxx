@@ -16,13 +16,16 @@
 #include <ROOT/RBrowser.hxx>
 
 #include <ROOT/RWebWindowsManager.hxx>
-#include <ROOT/RHistDrawable.hxx>
+#include <ROOT/RBrowserItem.hxx>
 #include <ROOT/TLogger.hxx>
 #include "ROOT/TDirectory.hxx"
+#include "ROOT/RMakeUnique.hxx"
 
 #include "TString.h"
+#include "TSystem.h"
 #include "TROOT.h"
 #include "TBufferJSON.h"
+
 #include <sstream>
 #include <iostream>
 #include <algorithm>
@@ -30,192 +33,6 @@
 #include <mutex>
 #include <thread>
 
-ROOT::Experimental::RFileItem::RFileItem(int _id, const char *name, FileStat_t &stat) : RBaseItem(_id, name)
-{
-   char tmp[256];
-   Long64_t _fsize, bsize;
-
-   int type = stat.fMode;
-   size     = stat.fSize;
-   uid      = stat.fUid;
-   gid      = stat.fGid;
-   modtime  = stat.fMtime;
-   islink   = stat.fIsLink;
-   isdir    = R_ISDIR(type);
-
-   // file size
-   _fsize = bsize = size;
-   if (_fsize > 1024) {
-      _fsize /= 1024;
-      if (_fsize > 1024) {
-         // 3.7MB is more informative than just 3MB
-         snprintf(tmp, sizeof(tmp), "%lld.%lldM", _fsize/1024, (_fsize%1024)/103);
-      } else {
-         snprintf(tmp, sizeof(tmp), "%lld.%lldK", bsize/1024, (bsize%1024)/103);
-      }
-   } else {
-      snprintf(tmp, sizeof(tmp), "%lld", bsize);
-   }
-   fsize = tmp;
-
-   // modification time
-   struct tm *newtime;
-   time_t loctime = (time_t) modtime;
-   newtime = localtime(&loctime);
-   if (newtime) {
-      snprintf(tmp, sizeof(tmp), "%d-%02d-%02d %02d:%02d", newtime->tm_year + 1900,
-               newtime->tm_mon+1, newtime->tm_mday, newtime->tm_hour,
-               newtime->tm_min);
-      mtime = tmp;
-   }
-   else
-      mtime = "1901-01-01 00:00";
-
-   // file type
-   snprintf(tmp, sizeof(tmp), "%c%c%c%c%c%c%c%c%c%c",
-            (islink ?
-             'l' :
-             R_ISREG(type) ?
-             '-' :
-             (R_ISDIR(type) ?
-              'd' :
-              (R_ISCHR(type) ?
-               'c' :
-               (R_ISBLK(type) ?
-                'b' :
-                (R_ISFIFO(type) ?
-                 'p' :
-                 (R_ISSOCK(type) ?
-                  's' : '?' )))))),
-            ((type & kS_IRUSR) ? 'r' : '-'),
-            ((type & kS_IWUSR) ? 'w' : '-'),
-            ((type & kS_ISUID) ? 's' : ((type & kS_IXUSR) ? 'x' : '-')),
-            ((type & kS_IRGRP) ? 'r' : '-'),
-            ((type & kS_IWGRP) ? 'w' : '-'),
-            ((type & kS_ISGID) ? 's' : ((type & kS_IXGRP) ? 'x' : '-')),
-            ((type & kS_IROTH) ? 'r' : '-'),
-            ((type & kS_IWOTH) ? 'w' : '-'),
-            ((type & kS_ISVTX) ? 't' : ((type & kS_IXOTH) ? 'x' : '-')));
-   ftype = tmp;
-   {
-      struct UserGroup_t *user_group;
-
-      user_group = gSystem->GetUserInfo(uid);
-      if (user_group) {
-         fuid = user_group->fUser;
-         fgid = user_group->fGroup;
-         delete user_group;
-      } else {
-         fuid = std::to_string(uid);
-         fgid = std::to_string(gid);
-      }
-   }
-}
-
-void ROOT::Experimental::RBrowserFSDescription::AddFolder(const char *name)
-{
-   FileStat_t sbuf;
-   int cnt = 0;
-
-   if (gSystem->GetPathInfo(name, sbuf)) {
-      if (sbuf.fIsLink) {
-         std::cout << "AddFile : Broken symlink of " << name << std::endl;
-      } else {
-         std::cerr << "Can't read file attributes of \"" <<  name << "\": " << gSystem->GetError() << std::endl;;
-      }
-      return;
-   }
-   if (R_ISDIR(sbuf.fMode))
-      fDesc.emplace_back(cnt++, name, sbuf);
-}
-
-void ROOT::Experimental::RBrowserFSDescription::AddFile(const char *name)
-{
-   FileStat_t sbuf;
-   int cnt = 0;
-
-   if (gSystem->GetPathInfo(name, sbuf)) {
-      if (sbuf.fIsLink) {
-         std::cout << "AddFile : Broken symlink of " << name << std::endl;
-      } else {
-         std::cerr << "Can't read file attributes of \"" <<  name << "\": " << gSystem->GetError() << std::endl;;
-      }
-      return;
-   }
-   if (!R_ISDIR(sbuf.fMode))
-      fDesc.emplace_back(cnt++, name, sbuf);
-}
-
-/////////////////////////////////////////////////////////////////////
-/// Collect information about file system hierarchy into flat list
-
-void ROOT::Experimental::RBrowserFSDescription::Build(const std::string &path)
-{
-   void *dirp;
-   const char *name;
-   std::string spath = path;
-   spath.insert(0, ".");
-   fDesc.clear();
-
-   std::string savdir = gSystem->WorkingDirectory();
-   if (!gSystem->ChangeDirectory(spath.c_str())) return;
-
-   if ((dirp = gSystem->OpenDirectory(".")) == 0) {
-      gSystem->FreeDirectory(dirp);
-      gSystem->ChangeDirectory(savdir.c_str());
-      return;
-   }
-   while ((name = gSystem->GetDirEntry(dirp)) != 0) {
-      if (strncmp(name, ".", 1) && strncmp(name, "..", 2))
-         AddFolder(name);
-      gSystem->ProcessEvents();
-   }
-   gSystem->FreeDirectory(dirp);
-   if ((dirp = gSystem->OpenDirectory(".")) == 0) {
-      gSystem->FreeDirectory(dirp);
-      gSystem->ChangeDirectory(savdir.c_str());
-      return;
-   }
-   while ((name = gSystem->GetDirEntry(dirp)) != 0) {
-      if (strncmp(name, ".", 1) && strncmp(name, "..", 2))
-         AddFile(name);
-      gSystem->ProcessEvents();
-   }
-   gSystem->FreeDirectory(dirp);
-   gSystem->ChangeDirectory(savdir.c_str());
-}
-
-std::string ROOT::Experimental::RBrowserFSDescription::ProcessBrowserRequest(const std::string &msg)
-{
-   std::string res;
-   RRootBrowserRequest *request = nullptr;
-
-   if (msg.empty()) {
-      request = new RRootBrowserRequest;
-      request->path = "/";
-      request->first = 0;
-      request->number = 100;
-   } else if (!TBufferJSON::FromJSON(request, msg.c_str())) {
-      return res;
-   }
-
-   if (1) { //((request->path.compare("/") == 0) && (request->first == 0)) {
-      Build(request->path);
-      RRootBrowserReply reply;
-      reply.path = request->path;
-      reply.first = request->first;
-      reply.nchilds = fDesc.size();
-
-      for (auto &node : fDesc) {
-         reply.nodes.emplace_back(node.name, node.fsize, node.mtime, node.ftype, node.fuid, node.fgid, node.isdir);
-      }
-      res = "BREPL:";
-      res.append(TBufferJSON::ToJSON(&reply, 103).Data());
-   }
-   
-   delete request;
-   return res;
-}
 
 /** \class ROOT::Experimental::RBrowser
 \ingroup webdisplay
@@ -233,7 +50,7 @@ ROOT::Experimental::RBrowser::RBrowser()
 
    // this is call-back, invoked when message received via websocket
    fWebWindow->SetDataCallBack([this](unsigned connid, const std::string &arg) { this->WebWindowCallback(connid, arg); });
-   fWebWindow->SetGeometry(900, 700); // configure predefined window geometry
+   fWebWindow->SetGeometry(1200, 700); // configure predefined window geometry
    fWebWindow->SetConnLimit(1); // the only connection is allowed
    fWebWindow->SetMaxQueueLength(30); // number of allowed entries in the window queue
    Show();
@@ -244,12 +61,192 @@ ROOT::Experimental::RBrowser::RBrowser()
 
 ROOT::Experimental::RBrowser::~RBrowser()
 {
+}
 
+/////////////////////////////////////////////////////////////////////
+/// Collect information for provided directory
+
+void ROOT::Experimental::RBrowser::Build(const std::string &path)
+{
+   fDescPath = path;
+
+   void *dirp;
+   const char *name;
+   std::string spath = path;
+   spath.insert(0, ".");
+   fDesc.clear();
+   fSorted.clear();
+
+   std::string savdir = gSystem->WorkingDirectory();
+   if (!gSystem->ChangeDirectory(spath.c_str())) return;
+
+   if ((dirp = gSystem->OpenDirectory(".")) != nullptr) {
+      while ((name = gSystem->GetDirEntry(dirp)) != nullptr) {
+         if ((strncmp(name, ".", 1)==0) || (strncmp(name, "..", 2)==0)) continue;
+
+         FileStat_t stat;
+
+         if (gSystem->GetPathInfo(name, stat)) {
+            if (stat.fIsLink) {
+               std::cout << "AddFile : Broken symlink of " << name << std::endl;
+            } else {
+               std::cerr << "Can't read file attributes of \"" <<  name << "\": " << gSystem->GetError() << std::endl;;
+            }
+            continue;
+         }
+
+         int nchilds = R_ISDIR(stat.fMode) ? 1 : 0;
+
+         fDesc.emplace_back(name, nchilds);
+
+         auto &item = fDesc.back();
+
+         // this is construction of current item
+
+         char tmp[256];
+         Long64_t _fsize, bsize;
+
+         item.type     = stat.fMode;
+         item.size     = stat.fSize;
+         item.uid      = stat.fUid;
+         item.gid      = stat.fGid;
+         item.modtime  = stat.fMtime;
+         item.islink   = stat.fIsLink;
+         item.isdir    = R_ISDIR(stat.fMode);
+
+         // file size
+         _fsize = bsize = item.size;
+         if (_fsize > 1024) {
+            _fsize /= 1024;
+            if (_fsize > 1024) {
+               // 3.7MB is more informative than just 3MB
+               snprintf(tmp, sizeof(tmp), "%lld.%lldM", _fsize/1024, (_fsize%1024)/103);
+            } else {
+               snprintf(tmp, sizeof(tmp), "%lld.%lldK", bsize/1024, (bsize%1024)/103);
+            }
+         } else {
+            snprintf(tmp, sizeof(tmp), "%lld", bsize);
+         }
+         item.fsize = tmp;
+
+         // modification time
+         time_t loctime = (time_t) item.modtime;
+         struct tm *newtime = localtime(&loctime);
+         if (newtime) {
+            snprintf(tmp, sizeof(tmp), "%d-%02d-%02d %02d:%02d", newtime->tm_year + 1900,
+                     newtime->tm_mon+1, newtime->tm_mday, newtime->tm_hour,
+                     newtime->tm_min);
+            item.mtime = tmp;
+         } else {
+            item.mtime = "1901-01-01 00:00";
+         }
+
+         // file type
+         snprintf(tmp, sizeof(tmp), "%c%c%c%c%c%c%c%c%c%c",
+                  (item.islink ?
+                   'l' :
+                   R_ISREG(item.type) ?
+                   '-' :
+                   (R_ISDIR(item.type) ?
+                    'd' :
+                    (R_ISCHR(item.type) ?
+                     'c' :
+                     (R_ISBLK(item.type) ?
+                      'b' :
+                      (R_ISFIFO(item.type) ?
+                       'p' :
+                       (R_ISSOCK(item.type) ?
+                        's' : '?' )))))),
+                  ((item.type & kS_IRUSR) ? 'r' : '-'),
+                  ((item.type & kS_IWUSR) ? 'w' : '-'),
+                  ((item.type & kS_ISUID) ? 's' : ((item.type & kS_IXUSR) ? 'x' : '-')),
+                  ((item.type & kS_IRGRP) ? 'r' : '-'),
+                  ((item.type & kS_IWGRP) ? 'w' : '-'),
+                  ((item.type & kS_ISGID) ? 's' : ((item.type & kS_IXGRP) ? 'x' : '-')),
+                  ((item.type & kS_IROTH) ? 'r' : '-'),
+                  ((item.type & kS_IWOTH) ? 'w' : '-'),
+                  ((item.type & kS_ISVTX) ? 't' : ((item.type & kS_IXOTH) ? 'x' : '-')));
+         item.ftype = tmp;
+
+         struct UserGroup_t *user_group = gSystem->GetUserInfo(item.uid);
+         if (user_group) {
+            item.fuid = user_group->fUser;
+            item.fgid = user_group->fGroup;
+            delete user_group;
+         } else {
+            item.fuid = std::to_string(item.uid);
+            item.fgid = std::to_string(item.gid);
+         }
+
+         gSystem->ProcessEvents();
+      }
+
+      gSystem->FreeDirectory(dirp);
+   }
+
+   gSystem->ChangeDirectory(savdir.c_str());
+
+   // now build sorted list - first folders, then files
+   // later more complex sorting rules can be applied
+
+   for (auto &item : fDesc)
+      if (item.isdir)
+         fSorted.emplace_back(&item);
+
+   for (auto &item : fDesc)
+      if (!item.isdir)
+         fSorted.emplace_back(&item);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+/// constructor
+
+std::string ROOT::Experimental::RBrowser::ProcessBrowserRequest(const std::string &msg)
+{
+   std::string res;
+
+   auto request = TBufferJSON::FromJSON<RBrowserRequest>(msg);
+
+   if (msg.empty() && !request) {
+      request = std::make_unique<RBrowserRequest>();
+      request->path = "/";
+      request->first = 0;
+      request->number = 100;
+   }
+
+   if (!request)
+      return res;
+
+   // rebuild list only when selected directory changed
+   if (!IsBuild() || (request->path != fDescPath)) {
+      fDescPath = request->path;
+      Build(request->path);
+   }
+
+   RBrowserReply reply;
+   reply.path = request->path;
+   reply.first = request->first;
+   reply.nchilds = fDesc.size();
+
+   // return only requested number of nodes
+   // no items ownership, RRootBrowserReply must be always temporary object
+   // TODO: implement different sorting
+   int seq = 0;
+   for (auto &node : fSorted) {
+      if ((seq >= request->first) && ((seq < request->first + request->number) || (request->number == 0)))
+         reply.nodes.emplace_back(node);
+      seq++;
+   }
+
+   res = "BREPL:";
+   res.append(TBufferJSON::ToJSON(&reply, 103).Data());
+
+   return res;
 }
 
 /////////////////////////////////////////////////////////////////////////////////
-/// Show or update geometry in web window
-/// If web browser already started - just refresh drawing like "reload" button does
+/// Show or update RBrowser in web window
+/// If web window already started - just refresh it like "reload" button does
 /// If no web window exists or \param always_start_new_browser configured, starts new window
 
 void ROOT::Experimental::RBrowser::Show(const RWebDisplayArgs &args, bool always_start_new_browser)
@@ -284,19 +281,16 @@ void ROOT::Experimental::RBrowser::WebWindowCallback(unsigned connid, const std:
 
    if (arg == "CONN_READY") {
 
-   } else if (arg == "GETDRAW") {
+      fConnId = connid;
 
    } else if (arg == "QUIT_ROOT") {
 
       RWebWindowsManager::Instance()->Terminate();
 
-   } else if ((arg.compare(0, 7, "SETVI0:") == 0) || (arg.compare(0, 7, "SETVI1:") == 0)) {
-      // change visibility for specified nodeid
-
    } else if (arg.compare(0,6, "BRREQ:") == 0) {
       // central place for processing browser requests
       //if (!fDesc.IsBuild()) fDesc.Build();
-      auto json = fDesc.ProcessBrowserRequest(arg.substr(6));
+      auto json = ProcessBrowserRequest(arg.substr(6));
       if (json.length() > 0) fWebWindow->Send(connid, json);
    }
 }

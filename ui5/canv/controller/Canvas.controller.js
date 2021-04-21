@@ -68,7 +68,7 @@ sap.ui.define([
          }
 
          if (method.fName == "Inspect") {
-            this.showInspector(painter.GetObject());
+            painter.ShowInspector();
             return true;
          }
 
@@ -77,8 +77,7 @@ sap.ui.define([
             return true;
          }
 
-         if ((method.fName == "DrawPanel") || (method.fName == "SetLineAttributes") ||
-             (method.fName == "SetFillAttributes") || (method.fName == "SetMarkerAttributes") || (method.fName == "SetTextAttributes")) {
+         if (method.fName == "Editor") {
             this.openuiActivateGed(painter);
             return true;
          }
@@ -100,29 +99,6 @@ sap.ui.define([
             canvp.ProcessChanges("sbits", canvp);
       },
 
-      closeInspector: function() {
-         this.inspectorDialog.close();
-         this.inspectorDialog.destroy();
-         delete this.inspectorDialog;
-      },
-
-      showInspector: function(obj) {
-
-         if (!obj) return;
-
-         Fragment.load({
-            name: "rootui5.canv.view.Inspector",
-            type: "XML",
-            controller: this
-         }).then(function(_obj, oFragm) {
-            this.inspectorDialog = oFragm;
-            // FIXME: global id is used, should find better solution later
-            var view = sap.ui.getCore().byId("object_inspector");
-            view.getController().setObject(_obj);
-            this.inspectorDialog.open();
-         }.bind(this, obj));
-      },
-
       getCanvasPainter : function(also_without_websocket) {
          var elem = this.getView().byId("MainPanel");
 
@@ -130,7 +106,6 @@ sap.ui.define([
 
          return (p && (p._websocket || also_without_websocket)) ? p : null;
       },
-
 
       closeMethodDialog : function(painter, method, menu_obj_id) {
 
