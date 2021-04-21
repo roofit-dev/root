@@ -1299,7 +1299,7 @@ elseif(vc)
 endif()
 
 if(vc AND NOT Vc_FOUND)
-  set(Vc_VERSION "1.3.3")
+  set(Vc_VERSION "1.4.0")
   set(Vc_PROJECT "Vc-${Vc_VERSION}")
   set(Vc_SRC_URI "${lcgpackages}/${Vc_PROJECT}.tar.gz")
   set(Vc_DESTDIR "${CMAKE_BINARY_DIR}/externals")
@@ -1309,7 +1309,7 @@ if(vc AND NOT Vc_FOUND)
 
   ExternalProject_Add(VC
     URL     ${Vc_SRC_URI}
-    URL_HASH SHA256=08c629d2e14bfb8e4f1a10f09535e4a3c755292503c971ab46637d2986bdb4fe
+    URL_HASH SHA256=e6cfc056eb3a72a57751e768ba63236ebf2711d267fbd1dc0acfee0ac16fdf68
     BUILD_IN_SOURCE 0
     BUILD_BYPRODUCTS ${Vc_LIBRARY}
     LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1
@@ -1380,7 +1380,7 @@ elseif(veccore)
 endif()
 
 if(veccore AND NOT VecCore_FOUND)
-  set(VecCore_VERSION "0.5.1")
+  set(VecCore_VERSION "0.5.2")
   set(VecCore_PROJECT "VecCore-${VecCore_VERSION}")
   set(VecCore_SRC_URI "${lcgpackages}/${VecCore_PROJECT}.tar.gz")
   set(VecCore_DESTDIR "${CMAKE_BINARY_DIR}/externals")
@@ -1388,7 +1388,7 @@ if(veccore AND NOT VecCore_FOUND)
 
   ExternalProject_Add(VECCORE
     URL     ${VecCore_SRC_URI}
-    URL_HASH SHA256=20f4ab8f599b9d12becc3e27e8dbb0f4ec0aa2de958053eb550020a9c95a6d62
+    URL_HASH SHA256=6c8740342bfa1d9c6ef55a19f57b95674a94e5f9ea156e9b329635718b0b4049
     BUILD_IN_SOURCE 0
     LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1
     CMAKE_ARGS -G ${CMAKE_GENERATOR}
@@ -1458,13 +1458,13 @@ if(vdt OR builtin_vdt)
     endif()
   endif()
   if(builtin_vdt)
-    set(vdt_version 0.4.1)
+    set(vdt_version 0.4.2)
     set(VDT_FOUND True)
     set(VDT_LIBRARIES ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vdt${CMAKE_SHARED_LIBRARY_SUFFIX})
     ExternalProject_Add(
       VDT
       URL ${lcgpackages}/vdt-${vdt_version}.tar.gz
-      URL_HASH SHA256=020ae76518d67476c3cb9a3fdf0683ee982d6b1a5898739000072ce34063072c
+      URL_HASH SHA256=643136a38d6890c1cf18074bd494f99a4f269429ac552c57907e28c0091df8e6
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       CMAKE_ARGS
         -DSSE=OFF # breaks on ARM without this
