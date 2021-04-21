@@ -96,7 +96,7 @@
       diamand: { path: "M256,0L384,256L256,511L128,256z" },
       rect: { path: "M80,80h352v352h-352z" },
       cross: { path: "M80,40l176,176l176,-176l40,40l-176,176l176,176l-40,40l-176,-176l-176,176l-40,-40l176,-176l-176,-176z" },
-
+      vrgoggles: { size: "245.82 141.73", path: 'M175.56,111.37c-22.52,0-40.77-18.84-40.77-42.07S153,27.24,175.56,27.24s40.77,18.84,40.77,42.07S198.08,111.37,175.56,111.37ZM26.84,69.31c0-23.23,18.25-42.07,40.77-42.07s40.77,18.84,40.77,42.07-18.26,42.07-40.77,42.07S26.84,92.54,26.84,69.31ZM27.27,0C11.54,0,0,12.34,0,28.58V110.9c0,16.24,11.54,30.83,27.27,30.83H99.57c2.17,0,4.19-1.83,5.4-3.7L116.47,118a8,8,0,0,1,12.52-.18l11.51,20.34c1.2,1.86,3.22,3.61,5.39,3.61h72.29c15.74,0,27.63-14.6,27.63-30.83V28.58C245.82,12.34,233.93,0,218.19,0H27.27Z'},
       CreateSVG : function(group,btn,size,title) {
          var svg = group.append("svg:svg")
                      .attr("class", "svg_toolbar_btn")
@@ -1752,6 +1752,51 @@
 
    // ========================================================================================
 
+   function FileDumpSocket(receiver) {
+      this.receiver = receiver;
+      this.protocol = [];
+      this.cnt = 0;
+      JSROOT.NewHttpRequest("protocol.json", "text", this.get_protocol.bind(this)).send();
+   }
+
+   FileDumpSocket.prototype.get_protocol = function(res) {
+      if (!res) return;
+      this.protocol = JSON.parse(res);
+      if (typeof this.onopen == 'function') this.onopen();
+      this.next_operation();
+   }
+
+   FileDumpSocket.prototype.send = function(str) {
+      if (this.protocol[this.cnt] == "send") {
+         this.cnt++;
+         // use timeout to let process other callbacks before next portion will be produced
+         setTimeout(this.next_operation.bind(this), 10);
+      }
+   }
+
+   FileDumpSocket.prototype.close = function() {
+   }
+
+   FileDumpSocket.prototype.next_operation = function() {
+      var fname = this.protocol[this.cnt];
+      if (!fname) return;
+      if (fname == "send") return; // waiting for send
+      // console.log("getting file", fname);
+      JSROOT.NewHttpRequest(fname, (fname.indexOf(".bin") > 0 ? "buf" : "text"), this.get_file.bind(this)).send();
+      this.cnt++;
+   }
+
+   FileDumpSocket.prototype.get_file = function(res) {
+      // console.log('got file', typeof res, !!res, res);
+      if (!res) return;
+      if (this.receiver.ProvideData)
+         this.receiver.ProvideData(res, 0);
+      // use timeout to let process other callbacks before next portion will be produced
+      setTimeout(this.next_operation.bind(this), 10);
+   }
+
+   // ========================================================================================
+
 
    /** Client communication handle for TWebWindow.
     *
@@ -1897,7 +1942,7 @@
 
          if (pthis.state != 0) return;
 
-         // if (!first_time) console.log("try connect window again" + (new Date()).getTime());
+         if (!first_time) console.log("try connect window again" + (new Date()).getTime());
 
          if (pthis._websocket) pthis._websocket.close();
          delete pthis._websocket;
@@ -1916,7 +1961,11 @@
 
          var path = href;
 
-         if ((pthis.kind === 'websocket') && first_time) {
+         if (pthis.kind == "file") {
+            path += "root.filedump";
+            conn = new FileDumpSocket(pthis);
+            console.log('configure protocol log ' + path);
+         } else if ((pthis.kind === 'websocket') && first_time) {
             path = path.replace("http://", "ws://").replace("https://", "wss://") + "root.websocket";
             if (args) path += "?" + args;
             console.log('configure websocket ' + path);
@@ -2086,7 +2135,6 @@
       if (arg.first_recv) {
          arg.receiver = {
             OnWebsocketOpened: function(handle) {
-               console.log('Connected');
             },
 
             OnWebsocketMsg: function(handle, msg) {
@@ -2122,7 +2170,6 @@
       } else if (!arg.first_recv) {
          JSROOT.CallBack(arg.callback, handle, arg);
       }
-
    }
 
    // ========================================================================================
