@@ -189,12 +189,17 @@ public:
    /// \return the `entry`'s read status, i.e. whether the entry is available.
    EEntryStatus SetLocalEntry(Long64_t entry) { return SetEntryBase(entry, kTRUE); }
 
-   ///  Sets the entry that `Next()` will stop iteration on.
+   ///  Set the begin and end entry numbers
    ///
    /// \param beginEntry The first entry that `Next()` will load.
    /// \param endEntry The entry that `Next()` will return `kFALSE` on (i.e. not
    ///   load anymore).
    EEntryStatus SetEntriesRange(Long64_t beginEntry, Long64_t endEntry);
+
+   ///  Get the begin and end entry numbers
+   ///
+   /// \return a pair contained the begin and end entry numbers.
+   std::pair<Long64_t, Long64_t> GetEntriesRange() const { return std::make_pair(fBeginEntry, fEndEntry); }
 
    /// Restart a Next() loop from entry 0 (of TEntryList index 0 of fEntryList is set).
    void Restart();
