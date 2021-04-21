@@ -27,7 +27,7 @@
    JSROOT.sources.push("v6");
 
    // identifier used in TWebCanvas painter
-   JSROOT.WebSnapIds = { kNone: 0,  kObject: 1, kSVG: 2, kSubPad: 3, kColors: 4 };
+   JSROOT.WebSnapIds = { kNone: 0,  kObject: 1, kSVG: 2, kSubPad: 3, kColors: 4, kStyle: 5 };
 
    // =======================================================================
 
@@ -577,7 +577,7 @@
       if (!disable_axis_drawing && !optionUnlab) {
 
          var label_color = this.get_color(axis.fLabelColor),
-             labeloffset = Math.round(axis.fLabelOffset*text_scaling_size),
+             labeloffset = Math.round(Math.abs(axis.fLabelOffset)*text_scaling_size),
              center_lbls = this.IsCenterLabels(),
              rotate_lbls = axis.TestBit(JSROOT.EAxisBits.kLabelsVert),
              textscale = 1, maxtextlen = 0, lbls_tilt = false, labelfont = null,
@@ -1709,7 +1709,7 @@
 
       var hintsg = this.hints_layer().select(".objects_hints");
       // if tooltips were visible before, try to reconstruct them after short timeout
-      if (!hintsg.empty() && this.tooltip_allowed && (hintsg.property("hints_pad") == this.pad_name))
+      if (!hintsg.empty() && this.IsTooltipAllowed() && (hintsg.property("hints_pad") == this.pad_name))
          setTimeout(this.ProcessTooltipEvent.bind(this, hintsg.property('last_point')), 10);
    }
 
@@ -1824,8 +1824,8 @@
          menu.add("separator");
       }
 
-      menu.addchk(this.tooltip_allowed, "Show tooltips", function() {
-         this.tooltip_allowed = !this.tooltip_allowed;
+      menu.addchk(this.IsTooltipAllowed(), "Show tooltips", function() {
+         this.SetTooltipAllowed("toggle");
       });
       this.FillAttContextMenu(menu,alone ? "" : "Frame ");
       menu.add("separator");
@@ -2556,7 +2556,7 @@
       //   return;
       //}
 
-      var menu_painter = this, frame_corner = false, fp = null; // object used to show context menu
+      var menu_painter = this, exec_painter = null, frame_corner = false, fp = null; // object used to show context menu
 
       if (!evnt) {
          d3.event.preventDefault();
@@ -2569,7 +2569,7 @@
                 pp = this.pad_painter(),
                 pnt = null, sel = null;
 
-            fp = this.frame_painter();
+            fp = this;
 
             if (tch.length === 1) pnt = { x: tch[0][0], y: tch[0][1], touch: true }; else
             if (ms.length === 2) pnt = { x: ms[0], y: ms[1], touch: false };
@@ -2584,17 +2584,20 @@
                   }
             }
 
-            if (sel!==null) menu_painter = sel; else
-            if (fp!==null) kind = "frame";
+            if (sel) menu_painter = sel; else kind = "frame";
 
-            if (pnt!==null) frame_corner = (pnt.x>0) && (pnt.x<20) && (pnt.y>0) && (pnt.y<20);
+            if (pnt) frame_corner = (pnt.x>0) && (pnt.x<20) && (pnt.y>0) && (pnt.y<20);
 
-            if (fp) fp.SetLastEventPos(pnt);
+            fp.SetLastEventPos(pnt);
+         } else if ((kind=="x") || (kind=="y") || (kind=="z")) {
+            exec_painter = this.main_painter(); // histogram painter delivers items for axis menu
          }
       }
 
       // one need to copy event, while after call back event may be changed
       menu_painter.ctx_menu_evnt = evnt;
+
+      if (!exec_painter) exec_painter = menu_painter;
 
       JSROOT.Painter.createMenu(menu_painter, function(menu) {
          var domenu = menu.painter.FillContextMenu(menu, kind, obj);
@@ -2604,10 +2607,10 @@
             domenu = fp.FillContextMenu(menu);
 
          if (domenu)
-            menu.painter.FillObjectExecMenu(menu, kind, function() {
+            exec_painter.FillObjectExecMenu(menu, kind, function() {
                 // suppress any running zooming
                 menu.painter.SwitchTooltip(false);
-                menu.show(menu.painter.ctx_menu_evnt, menu.painter.SwitchTooltip.bind(menu.painter, true) );
+                menu.show(menu.painter.ctx_menu_evnt, menu.painter.SwitchTooltip.bind(menu.painter, true));
             });
 
       });  // end menu creation
@@ -2742,6 +2745,7 @@
 
       delete this.frame_painter_ref;
       delete this.pads_cache;
+      delete this.custom_palette;
 
       this.painters = [];
       this.pad = null;
@@ -2767,8 +2771,25 @@
     * @private
     */
    TPadPainter.prototype.CreateAutoColor = function() {
+      var pp = this.canv_painter(),
+          pad = this.root_pad(),
+          numprimitives = pad && pad.fPrimitves ? pad.fPrimitves.arr.length : 5;
+
+      var pal = this.get_palette(true);
+
       var indx = this._auto_color || 0;
-      this._auto_color = (indx + 1) % 8;
+      this._auto_color = indx+1;
+
+      if (pal) {
+         if (numprimitives<2) numprimitives = 2;
+         if (indx >= numprimitives) indx = numprimitives - 1;
+         var palindx = Math.round(indx * (pal.getLength()-3) / (numprimitives-1));
+         var colvalue = pal.getColor(palindx);
+         var colindx = this.add_color(colvalue);
+         return colindx;
+      }
+
+      this._auto_color = this._auto_color % 8;
       return indx+2;
    }
 
@@ -2789,16 +2810,6 @@
 
    TPadPainter.prototype.ButtonSize = function(fact) {
       return Math.round((!fact ? 1 : fact) * (this.iscan || !this.has_canvas ? 16 : 12));
-   }
-
-   TPadPainter.prototype.IsTooltipAllowed = function() {
-      var fp = this.frame_painter();
-      return fp ? fp.tooltip_allowed : undefined;
-   }
-
-   TPadPainter.prototype.SetTooltipAllowed = function(on) {
-      var fp = this.frame_painter();
-      if (fp) fp.tooltip_allowed = on;
    }
 
    /// Retrive different event when object selected or pad is redrawn
@@ -3106,7 +3117,7 @@
                if (!col) { console.log('Fail to create color for palette'); arr = null; break; }
                arr.push(col);
             }
-            if (arr) this.CanvasPalette = new JSROOT.ColorPalette(arr);
+            if (arr) this.custom_palette = new JSROOT.ColorPalette(arr);
          }
 
          if (!this.options || this.options.GlobalColors) // set global list of colors
@@ -3128,7 +3139,8 @@
                console.log('Missing color with index ' + n); missing = true;
             }
          }
-         if (!this.options || (!missing && !this.options.IgnorePalette)) this.CanvasPalette = new JSROOT.ColorPalette(arr);
+         if (!this.options || (!missing && !this.options.IgnorePalette))
+            this.custom_palette = new JSROOT.ColorPalette(arr);
          return true;
       }
 
@@ -3264,9 +3276,7 @@
       else
          menu.add("header: Canvas");
 
-      var tooltipon = this.IsTooltipAllowed();
-      if (tooltipon !== undefined)
-         menu.addchk(tooltipon, "Show tooltips", this.SetTooltipAllowed.bind(this, !tooltipon));
+      menu.addchk(this.IsTooltipAllowed(), "Show tooltips", this.SetTooltipAllowed.bind(this, "toggle"));
 
       if (!this._websocket) {
 
@@ -3526,6 +3536,12 @@
             continue; // call next
          }
 
+         // gStyle object
+         if (snap.fKind === JSROOT.WebSnapIds.kStyle) {
+            JSROOT.extend(JSROOT.gStyle, snap.fSnapshot);
+            continue;
+         }
+
          // list of colors
          if (snap.fKind === JSROOT.WebSnapIds.kColors) {
 
@@ -3554,7 +3570,7 @@
                for (var n=0;n<snap.fSnapshot.fBuf.length;++n)
                   palette[n] = ListOfColors[Math.round(snap.fSnapshot.fBuf[n])];
 
-               this.CanvasPalette = new JSROOT.ColorPalette(palette);
+               this.custom_palette = new JSROOT.ColorPalette(palette);
             }
 
             continue;
@@ -4344,6 +4360,7 @@
    function TCanvasPainter(canvas) {
       TPadPainter.call(this, canvas, true);
       this._websocket = null;
+      this.tooltip_allowed = (JSROOT.gStyle.Tooltip > 0);
    }
 
    TCanvasPainter.prototype = Object.create(TPadPainter.prototype);
