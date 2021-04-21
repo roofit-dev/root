@@ -17,8 +17,9 @@
 #include "TROOT.h"
 #include "TMath.h"
 #include "TPad.h"
-#include "TWebVirtualX.h"
 #include "TWebCanvas.h"
+
+#include "ROOT/RMakeUnique.hxx"
 
 /** \class TWebPadPainter
 \ingroup gpad
@@ -34,10 +35,6 @@ Implement TVirtualPadPainter which abstracts painting operations.
 TWebPadPainter::~TWebPadPainter()
 {
    ResetPainting();
-   if (fAttr) {
-      delete fAttr;
-      fAttr = nullptr;
-   }
 }
 
 void TWebPadPainter::SetWebCanvasSize(UInt_t w, UInt_t h)
@@ -66,8 +63,8 @@ void TWebPadPainter::ResetPainting()
 TWebPainterAttributes *TWebPadPainter::Attr()
 {
    fAttrChanged = kTRUE;
-   if (!fAttr) fAttr = new TWebPainterAttributes();
-   return fAttr;
+   if (!fAttr) fAttr = std::make_unique<TWebPainterAttributes>();
+   return fAttr.get();
 }
 
 Float_t *TWebPadPainter::Reserve(Int_t sz)
@@ -128,7 +125,7 @@ void TWebPadPainter::StoreOperation(const char* opt, TObject* obj, unsigned attr
 Int_t TWebPadPainter::CreateDrawable(UInt_t /* w */, UInt_t /* h */)
 {
    // return gVirtualX->OpenPixmap(Int_t(w), Int_t(h));
-   return TWebVirtualX::WebId; // one should return positive value to overcome problem
+   return 111222333; // magic number, should not be used at all
 }
 
 
