@@ -119,6 +119,9 @@ public:
          return ret;
       }
 
+      bool operator==(const Path &rhs) const { return fStr == rhs.fStr; }
+      bool operator!=(const Path &rhs) const { return !(*this == rhs); }
+
       const std::string Str() const { return fStr; }
    };
 
@@ -141,7 +144,18 @@ protected:
    /// Construct a default, unnamed, unconnected attribute.
    RDrawingAttrBase() = default;
 
+   /// Return `true` if the attribute's value comes from the
+   /// styles, i.e. through `RDrawingAttrHolder::GetAttrFromStyle()`, instead
+   /// if from our `RDrawingAttrHolder` (i.e. explicitly set through `Set()`).
+   bool IsFromStyle(const Path &path) const;
+
 public:
+   /// Construct as a copy.
+   RDrawingAttrBase(const RDrawingAttrBase& other) = default;
+
+   /// Construct as a moved-to.
+   RDrawingAttrBase(RDrawingAttrBase&& other) = default;
+
    /// Construct a named attribute that does not have a parent; e.g.
    /// because it's the top-most attribute in a drawing option object.
    RDrawingAttrBase(const Name &name): fPath{name.fStr} {}
@@ -160,6 +174,21 @@ public:
    /// tag overload taking an `FromOption_t`.
    RDrawingAttrBase(const Name &name, RDrawingOptsBase &opts):
       RDrawingAttrBase(FromOption, name, opts) {}
+
+   /// Copy-assign: this assigns the attribute values to this attribute, *without*
+   /// changing the connected drawing options object / holder or attribute path!
+   ///
+   /// It gives value semantics to attributes:
+   /// ```
+   /// DrawingOpts1 o1;
+   /// DrawingOpts2 o2;
+   /// RAttrLine l1 = o1.DogLine();
+   /// RAttrLine l2 = o2.CatLine();
+   /// l1.SetWidth(42);
+   /// l2 = l1;
+   /// // Now o2.CatLine().GetWidth() is 42!
+   /// ```
+   RDrawingAttrBase &operator=(const RDrawingAttrBase& rhs);
 
    /// Return `true` if the attribute's value comes from the
    /// styles, i.e. through `RDrawingAttrHolder::GetAttrFromStyle()`, instead
@@ -189,6 +218,19 @@ public:
 
    /// Actual attribute holder.
    const std::weak_ptr<RDrawingAttrHolder> &GetHolderPtr() const { return fHolder; }
+
+   /// Equality compare to other RDrawingAttrBase.
+   /// They are equal if
+   /// - the same set of attributes are custom set (versus are determined from the style), and
+   /// - the values of all the custom set ones compare equal.
+   /// The set of styles to be taken into account is not compared.
+   bool operator==(const RDrawingAttrBase &other) const;
+
+   /// Compare unequal to other RDrawingAttrBase. Returns the negated `operator==`.
+   bool operator!=(const RDrawingAttrBase &other) const
+   {
+      return !(*this == other);
+   }
 };
 
 
@@ -197,10 +239,11 @@ public:
  */
 class RDrawingAttrHolder {
 public:
-   using Name_t = RDrawingAttrBase::Path;
+   using Path_t = RDrawingAttrBase::Path;
+   using Map_t = std::unordered_map<std::string, std::string>;
 private:
-   /// Map attribute names to their values.
-   std::unordered_map<std::string, std::string> fAttrNameVals;
+   /// Map attribute paths to their values.
+   Map_t fAttrNameVals;
 
    /// Attribute style classes of these options that will be "summed" in order,
    /// e.g. {"trigger", "efficiency"} will look attributes up in the `RDrawingAttrHolderBase` base class,
@@ -216,16 +259,31 @@ public:
    RDrawingAttrHolder(const std::vector<std::string> &styleClasses): fStyleClasses(styleClasses) {}
 
    /// Get an attribute value as string, given its name path.
-   std::string &At(const Name_t &attrName) { return fAttrNameVals[attrName.fStr]; }
+   std::string &At(const Path_t &path) { return fAttrNameVals[path.fStr]; }
 
    /// Get an attribute value as pointer to string, given its name path, or
    /// `nullptr` if the attribute does not exist.
-   const std::string *AtIf(const Name_t &attrName) const;
+   const std::string *AtIf(const Path_t &path) const;
 
-   /// Get the (stringified) value of the names attribute from the Style.
+   /// Get the (stringified) value of the named attribute from the Style.
    /// Return the empty string if no such value exists - which means that the attribute
    /// name is unknown even for the (implicit) default style!
-   std::string GetAttrFromStyle(const Name_t &attrName);
+   std::string GetAttrFromStyle(const Path_t &path);
+
+   /// Equality compare the attributes within `path` to those of `other` within `otherpath`.
+   /// Takes all sub-attributes contained in the respective paths (i.e. those starting with that path)
+   /// into account. They compare equal if their set of (sub-)attributes and their respective values are equal.
+   bool Equal(const RDrawingAttrHolder &other, const Path_t &thisPath, const Path_t &otherPath);
+
+   /// Extract contained attributes for a given path (including sub-attributes); returns iterators
+   /// to a subset of fAttrNameVals.
+   std::vector<Map_t::const_iterator> GetAttributesInPath(const Path_t &path) const;
+
+   /// Erase all custom set attributes for a given path (including sub-attributes).
+   void EraseAttributesInPath(const Path_t &path);
+
+   /// Copy attributes within otherPath into
+   void CopyAttributesInPath(const Path_t &targetPath, const RDrawingAttrHolder &source, const Path_t &sourcePath);
 
    /// Get the attribute style classes of these options.
    const std::vector<std::string> &GetStyleClasses() const { return fStyleClasses; }
