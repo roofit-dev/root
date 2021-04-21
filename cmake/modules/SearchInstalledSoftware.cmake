@@ -901,7 +901,7 @@ if(xrootd)
   endif()
 endif()
 if(builtin_xrootd)
-  set(XROOTD_VERSION 4.8.2)
+  set(XROOTD_VERSION 4.8.5)
   set(XROOTD_VERSIONNUM 400060001)
   set(XROOTD_SRC_URI ${lcgpackages}/xrootd-${XROOTD_VERSION}.tar.gz)
   set(XROOTD_DESTDIR ${CMAKE_BINARY_DIR})
@@ -917,7 +917,7 @@ if(builtin_xrootd)
   ExternalProject_Add(
     XROOTD
     URL ${XROOTD_SRC_URI}
-    URL_HASH SHA256=8f28ec53e799d4aa55bd0cc4ab278d9762e0e57ac40a4b02af7fc53dcd1bef39
+    URL_HASH SHA256=42e4d2cc6f8b442135f09bcc12c7be38b1a0c623a005cb5e69ff3d27997bdf73
     INSTALL_DIR ${XROOTD_ROOTDIR}
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
@@ -1273,38 +1273,6 @@ if(geocad)
       message(STATUS "OpenCascade libraries not found. Set variable CASROOT to point to your OpenCascade installation")
       message(STATUS "For the time being switching OFF 'geocad' option")
       set(geocad OFF CACHE BOOL "Disabled because OpenCascade not found (${geocad_description})" FORCE)
-    endif()
-  endif()
-endif()
-
-#---Check for Vc compatibility-----------------------------------------------------------
-if(vc OR builtin_vc)
-  if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.3.0)
-      message(STATUS "Vc requires GCC version >= 5.3.0; switching OFF 'vc' option")
-      set(vc OFF CACHE BOOL "Disabled because Vc requires GCC version >= 5.3.0 (${vc_description})" FORCE)
-      set(builtin_vc OFF CACHE BOOL "Disabled because Vc requires GCC version >= 5.3.0 (${builtin_vc_description})" FORCE)
-    endif()
-    if(cxx17 OR CMAKE_CXX_STANDARD EQUAL 17)
-      message(STATUS "Vc uses std::for_each_n(), which is not available in GCC; switching OFF 'vc' option")
-      set(vc OFF CACHE BOOL "Disabled because std::for_each_n() is not available in GCC (${vc_description})" FORCE)
-      set(builtin_vc OFF CACHE BOOL "Disabled because std::for_each_n() is not available in GCC (${builtin_vc_description})" FORCE)
-    endif()
-  elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-    if ( APPLE AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5)
-      message(STATUS "Vc requires Apple Clang version >= 5.0; switching OFF 'vc' option")
-      set(vc OFF CACHE BOOL "Disabled because Apple Clang version >= 5.0 required (${vc_description})" FORCE)
-      set(builtin_vc OFF CACHE BOOL "Disabled because Apple Clang version >= 5.0 required (${builtin_vc_description})" FORCE)
-    elseif (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.1)
-      message(STATUS "Vc requires Clang version >= 3.1; switching OFF 'vc' option")
-      set(vc OFF CACHE BOOL "Disabled because Clang version >= 3.1 required (${vc_description})" FORCE)
-      set(builtin_vc OFF CACHE BOOL "Disabled because Clang version >= 3.1 required (${builtin_vc_description})" FORCE)
-    endif()
-  elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 17.0)  # equivalent to MSVC 2010
-      message(STATUS "Vc requires MSVC version >= 2011; switching OFF 'vc' option")
-      set(vc OFF CACHE BOOL "Disabled because MSVC version >= 2011 required (${vc_description})" FORCE)
-      set(builtin_vc OFF CACHE BOOL "Disabled because MSVC version >= 2011 required (${builtin_vc_description})" FORCE)
     endif()
   endif()
 endif()
