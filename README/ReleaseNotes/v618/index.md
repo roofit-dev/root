@@ -15,6 +15,7 @@ The following people have contributed to this new version:
  Bertrand Bellenot, CERN/SFT,\
  Rene Brun, CERN/SFT,\
  Philippe Canal, FNAL,\
+ Javier Cervantes Villanueva, CERN/SFT \
  Olivier Couet, CERN/SFT,\
  Gerri Ganis, CERN/SFT,\
  Andrei Gheata, CERN/SFT,\
@@ -89,7 +90,7 @@ Added necessary changes to allow [XRootD local redirection](https://github.com/x
     Therefore the range and bits specifier has to be attached to the type character.
   - All functionalities of the other datatypes have been reimplemented.
   - The documentation of `TTree` and `TBuffer` has been updated accordingly.
-  - The following exmple shows how to use the new features:
+  - The following example shows how to use the new features:
 ~~~ {.cpp}
       {
          Float16_t  floatVal;
@@ -112,6 +113,9 @@ Added necessary changes to allow [XRootD local redirection](https://github.com/x
   - Add to the documentation of TLorentzVector a link to ROOT::Math::LorentzVector, which is a superior tool.
   - Add `T RVec<T>::at>(size_t, T)` method to allow users to specify a default value to be returned in case the vector is shorter than the position specified. No exception is thrown.
   - Add the `Concatenate` helper to merge the content of two `RVec<T>` instances.
+  - Generalise the `VecOps::Map` utility allowing to apply a callable on a set of RVecs and not only to one.
+  - Add the `DeltaR2` and `DeltaR` helpers for RVec.
+  - Add the `Max`, `Min`, `ArgMax`, and `ArgMin` helpers for RVec.
 
 ## RooFit Libraries
 ### HistFactory
@@ -186,6 +190,7 @@ The legacy iterators have been flagged with a special deprecation macro that can
       }
 ~~~
   - `ChangeLabel` is now available for alphanumeric axis.
+  - Implement transparency for lines, texts and markers in the TeX output.
 
 ## 3D Graphics Libraries
 
