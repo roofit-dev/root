@@ -70,7 +70,11 @@ namespace RDF {
 std::set<std::string> GetPotentialColumnNames(const std::string &expr)
 {
    lexertk::generator generator;
-   generator.process(expr);
+   const auto ok = generator.process(expr);
+   if (!ok) {
+      const auto msg = "Failed to tokenize expression:\n" + expr + "\n\nMake sure it is valid C++.";
+      throw std::runtime_error(msg);
+   }
 
    std::set<std::string> potCols;
    const auto nToks = generator.size();
@@ -576,9 +580,10 @@ BuildLambdaString(const std::string &expr, const ColumnNames_t &vars, const Colu
       ss.seekp(-2, ss.cur);
 
    if (hasReturnStmt)
-      ss << "){\n" << expr << "\n}";
+      ss << "){";
    else
-      ss << "){return " << expr << "\n;}";
+      ss << "){return ";
+   ss << expr << "\n;}";
 
    return ss.str();
 }
@@ -608,7 +613,7 @@ void BookFilterJit(RJittedFilter *jittedFilter, void *prevNodeOnHeap, std::strin
    const auto usedColTypes =
       ColumnTypesAsString(usedBranches, varNames, aliasMap, tree, ds, dotlessExpr, namespaceID, customCols);
 
-   TRegexp re("[^a-zA-Z0-9_]return[^a-zA-Z0-9_]");
+   TRegexp re("[^a-zA-Z0-9_]?return[^a-zA-Z0-9_]");
    Ssiz_t matchedLen;
    const bool hasReturnStmt = re.Index(dotlessExpr, &matchedLen) != -1;
 
@@ -661,7 +666,7 @@ void BookDefineJit(std::string_view name, std::string_view expression, RLoopMana
    const auto usedColTypes =
       ColumnTypesAsString(usedBranches, varNames, aliasMap, tree, ds, dotlessExpr, namespaceID, customCols);
 
-   TRegexp re("[^a-zA-Z0-9_]return[^a-zA-Z0-9_]");
+   TRegexp re("[^a-zA-Z0-9_]?return[^a-zA-Z0-9_]");
    Ssiz_t matchedLen;
    const bool hasReturnStmt = re.Index(dotlessExpr, &matchedLen) != -1;
 

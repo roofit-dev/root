@@ -85,11 +85,6 @@ else()
   endif()
 endif()
 
-set(SYSLIBS "-lm -ldl ${CMAKE_THREAD_LIBS_INIT} -rdynamic")
-set(XLIBS "${XPMLIBDIR} ${XPMLIB} ${X11LIBDIR} -lXext -lX11")
-set(CILIBS "-lm -ldl -rdynamic")
-set(CRYPTLIBS "-lcrypt")
-set(CMAKE_M_LIBS -lm)
 # JIT must be able to resolve symbols from all ROOT binaries.
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
 
