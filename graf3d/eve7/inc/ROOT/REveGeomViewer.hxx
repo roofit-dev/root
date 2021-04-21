@@ -13,6 +13,7 @@
 #define ROOT7_REveGeomViewer
 
 #include <ROOT/RWebDisplayArgs.hxx>
+#include <ROOT/REveGeomData.hxx>
 
 #include <memory>
 
@@ -31,6 +32,7 @@ class REveGeomViewer {
 protected:
 
    TGeoManager *fGeoManager{nullptr};        ///<! geometry to show
+   REveGeomDescription fDesc;                ///<! description
 
    std::shared_ptr<RWebWindow> fWebWindow;   ///<! web window to show geometry
 
@@ -40,6 +42,10 @@ public:
 
    REveGeomViewer(TGeoManager *mgr);
    virtual ~REveGeomViewer();
+
+   void SelectVolume(const std::string &volname);
+
+   void SetDrawOptions(const std::string &opt) { fDesc.SetDrawOptions(opt); }
 
    void Show(const RWebDisplayArgs &args = "");
 
