@@ -392,7 +392,7 @@ private:
 public:
    TGLLine3(const TGLVertex3 & start, const TGLVertex3 & end);
    TGLLine3(const TGLVertex3 & start, const TGLVector3 & vector);
-   virtual ~TGLLine3();
+   ~TGLLine3() = default;
 
    void Set(const TGLVertex3 & start, const TGLVertex3 & end);
    void Set(const TGLVertex3 & start, const TGLVector3 & vector);
@@ -407,7 +407,7 @@ public:
    // Debug
    void Draw() const;
 
-   ClassDef(TGLLine3,0); // GL line wrapper class
+   ClassDefNV(TGLLine3,0); // GL line wrapper class
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -536,7 +536,9 @@ public:
    TGLPlane(Double_t eq[4]);
    TGLPlane(const TGLVector3 & norm, const TGLVertex3 & point);
    TGLPlane(const TGLVertex3 & p1, const TGLVertex3 & p2, const TGLVertex3 & p3);
-   virtual ~TGLPlane();
+   ~TGLPlane() = default;
+
+   TGLPlane &operator=(const TGLPlane &src);
 
    // Manipulators
    void Set(const TGLPlane & other);
@@ -562,7 +564,7 @@ public:
 
    void Dump() const;
 
-   ClassDef(TGLPlane,0); // GL plane helper/wrapper class
+   ClassDefNV(TGLPlane,0); // GL plane helper/wrapper class
 };
 
 typedef std::vector<TGLPlane>                 TGLPlaneSet_t;
@@ -817,7 +819,7 @@ public:
 
    TString AsString() const;
 
-   ClassDef(TGLColor, 0); // Color in preferred GL format - RGBA.
+   ClassDefNV(TGLColor, 0); // Color in preferred GL format - RGBA.
 };
 
 
@@ -840,7 +842,8 @@ protected:
 
 public:
    TGLColorSet();
-   virtual ~TGLColorSet();
+   TGLColorSet(const TGLColorSet& s);
+   ~TGLColorSet() = default;
 
    TGLColorSet& operator=(const TGLColorSet& s);
 
@@ -859,7 +862,7 @@ public:
    void StdDarkBackground();
    void StdLightBackground();
 
-   ClassDef(TGLColorSet, 0); // Collection of colors used for GL rendering.
+   ClassDefNV(TGLColorSet, 0); // Collection of colors used for GL rendering.
 };
 
 //////////////////////////////////////////////////////////////////////////

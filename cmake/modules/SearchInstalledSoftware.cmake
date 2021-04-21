@@ -482,6 +482,20 @@ if(opengl AND NOT builtin_gl2ps)
   endif()
 endif()
 
+#---Check for Graphviz installation-------------------------------------------------------
+if(gviz)
+  message(STATUS "Looking for Graphviz")
+  find_package(Graphviz)
+  if(NOT GRAPHVIZ_FOUND)
+    if(fail-on-missing)
+      message(FATAL_ERROR "Graphviz package not found and gviz option required")
+    else()
+      message(STATUS "Graphviz not found. Switching off gviz option")
+      set(gviz OFF CACHE BOOL "Disabled because Graphviz not found (${gviz_description})" FORCE)
+    endif()
+  endif()
+endif()
+
 #---Check for XML Parser Support-----------------------------------------------------------
 if(xml)
   message(STATUS "Looking for LibXml2")
@@ -753,9 +767,10 @@ if(xrootd)
     endif()
   endif()
 endif()
+
 if(builtin_xrootd)
-  set(XROOTD_VERSION 4.8.5)
-  set(XROOTD_VERSIONNUM 400060001)
+  set(XROOTD_VERSION 4.9.1)
+  set(XROOTD_VERSIONNUM 400090001)
   set(XROOTD_SRC_URI ${lcgpackages}/xrootd-${XROOTD_VERSION}.tar.gz)
   set(XROOTD_DESTDIR ${CMAKE_BINARY_DIR})
   set(XROOTD_ROOTDIR ${XROOTD_DESTDIR})
@@ -770,7 +785,7 @@ if(builtin_xrootd)
   ExternalProject_Add(
     XROOTD
     URL ${XROOTD_SRC_URI}
-    URL_HASH SHA256=42e4d2cc6f8b442135f09bcc12c7be38b1a0c623a005cb5e69ff3d27997bdf73
+    URL_HASH SHA256=de47160348d52a655f8d601520ad9146b9ee76eb5d2352cdf232a6fafce27adb
     INSTALL_DIR ${XROOTD_ROOTDIR}
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
