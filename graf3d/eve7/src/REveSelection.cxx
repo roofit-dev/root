@@ -259,6 +259,8 @@ void REveSelection::SelectionCleared()
 {
    // XXXX
    // Emit("SelectionCleared()");
+   fMap.clear();
+   StampObjProps();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -419,18 +421,22 @@ void REveSelection::NewElementPicked(ElementId_t id, bool multi, bool secondary,
 
    REveElement *pel = REX::gEve->FindElementById(id);
 
-   if ( ! pel) throw eh + "picked element id=" + id + " not found.";
+   if (!pel) throw eh + "picked element id=" + id + " not found.";
 
    REveElement *el  = MapPickedToSelected(pel);
 
-   printf("REveSelection::NewElementPicked %p -> %p, multi: %d, secondary: %d", pel, el, multi, secondary);
-   if (secondary)
-   {
-      printf(" { ");
-      for (auto si : secondary_idcs) printf("%d ", si);
-      printf("}");
+   if (gDebug > 0) {
+      std::string debug_secondary;
+      if (secondary) {
+         debug_secondary = " {";
+         for (auto si : secondary_idcs) {
+            debug_secondary.append(" ");
+            debug_secondary.append(std::to_string(si));
+         }
+         debug_secondary.append(" }");
+      }
+      ::Info("REveSelection::NewElementPicked", "%p -> %p, multi: %d, secondary: %d  %s", pel, el, multi, secondary, debug_secondary.c_str());
    }
-   printf("\n");
 
    Record *rec = find_record(el);
 
@@ -468,21 +474,30 @@ void REveSelection::NewElementPicked(ElementId_t id, bool multi, bool secondary,
       {
          if (rec)
          {
-            if (secondary || rec->is_secondary()) // ??? should actually be && ???
+            if (secondary)
             {
+               // Could check rec->is_secondary() and compare indices.
                // if sets are identical, issue SelectionRepeated()
                // else modify record for the new one, issue Repeated
+
+               rec->f_is_sec   = true;
+               rec->f_sec_idcs = secondary_idcs;
             }
             else
             {
-               // clear selection
-               // ??? should keep the newly clicked?
+               RemoveNiece(el);
             }
          }
          else
          {
             if (HasNieces()) RemoveNieces();
             AddNiece(el);
+            if (secondary)
+            {
+               rec = find_record(el);
+               rec->f_is_sec   = true;
+               rec->f_sec_idcs = secondary_idcs;
+            }
          }
       }
       else // Single selection with zero element --> clear selection.
