@@ -74,9 +74,6 @@ WINRTDEBUG     := @winrtdebug@
 CTORSINITARRAY := @ctorsinitarray@
 CXXMKDEPFLAGS  := @cxxmkdepflags@
 
-GLBPATCHFLAGS  := @glbpatchcflags@
-EXTRA_AUTHFLAGS:= @krb5extracflags@ @glbextracflags@ @sslextracflags@
-
 BINDIR         := @bindir@
 LIBDIR         := @libdir@
 INCDIR         := @incdir@
@@ -97,7 +94,6 @@ X11INCDIR      := $(filter-out /usr/include, @x11incdir@)
 X11LIBDIR      := @x11libdir@
 XPMLIBDIR      := @xpmlibdir@
 XPMLIB         := @xpmlib@
-XFTLIB         := @enable_xft@
 
 BUILDCOCOA     := @buildcocoa@
 MACOSXVERS     := @macosxvers@
@@ -152,11 +148,6 @@ BUILTINGL2PS   := @builtingl2ps@
 GL2PSLIBDIR    := @gl2pslibdir@
 GL2PSLIB       := @gl2pslib@
 GL2PSINCDIR    := $(filter-out /usr/include, @gl2psincdir@)
-
-BUILDLDAP      := @buildldap@
-LDAPLIBDIR     := @ldaplibdir@
-LDAPCLILIB     := @ldaplib@
-LDAPINCDIR     := $(filter-out /usr/include, @ldapincdir@)
 
 BUILDMYSQL     := @buildmysql@
 MYSQLLIBDIR    := @mysqllibdir@
@@ -284,17 +275,6 @@ BUILDXRDCLT    := @buildxrdclt@
 
 ALLOCLIB       := @alloclib@
 ALLOCLIBDIR    := @alloclibdir@
-
-BUILDKRB5      := @buildkrb5@
-KRB5LIB        := @krb5lib@
-KRB5LIBDIR     := @krb5libdir@
-KRB5INCDIR     := $(filter-out /usr/include, @krb5incdir@)
-KRB5INIT       := @krb5init@
-
-COMERRLIB      := @comerrlib@
-COMERRLIBDIR   := @comerrlibdir@
-
-RESOLVLIB      := @resolvlib@
 
 BUILDMONALISA  := @buildmonalisa@
 MONALISALIBDIR := @monalisalibdir@
