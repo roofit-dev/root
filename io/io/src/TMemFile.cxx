@@ -17,6 +17,7 @@ A TMemFile is like a normal TFile except that it reads and writes
 only from memory.
 */
 
+#include "TBufferFile.h"
 #include "TMemFile.h"
 #include "TError.h"
 #include "TSystem.h"
@@ -115,23 +116,49 @@ TMemFile::EMode TMemFile::ParseOption(Option_t *option)
 /// Constructor to create a TMemFile re-using external storage.
 
 TMemFile::TMemFile(const char *path, ExternalDataPtr_t data) :
-   TFile(path, "WEB", "read-only memfile", 0 /*compress*/),
+   TFile(path, "WEB", "read-only TMemFile", 0 /*compress*/),
    fBlockList(reinterpret_cast<UChar_t*>(const_cast<char*>(data->data())), data->size()),
    fExternalData(std::move(data)), fSize(fExternalData->size()), fSysOffset(0), fBlockSeek(nullptr), fBlockOffset(0)
 {
-   EMode optmode = ParseOption("READ");
-   if (NeedsToWrite(optmode)) {
-      SysError("TMemFile", "file %s can not be opened", path);
-      // Error in opening file; make this a zombie
+   fD = 0;
+   fOption = "READ";
+   fWritable = kFALSE;
+
+   // This is read-only, so become a zombie if created with an empty buffer
+   if (!fBlockList.fBuffer) {
       MakeZombie();
       gDirectory = gROOT;
       return;
    }
 
-   fD = 0;
-   fWritable = kFALSE;
+   Init(/* create */ false);
+}
 
-   Init(!NeedsExistingFile(optmode));
+////////////////////////////////////////////////////////////////////////////////////
+/// Constructor to create a read-only TMemFile using an std::unique_ptr<TBufferFile>
+
+TMemFile::TMemFile(const char *name, std::unique_ptr<TBufferFile> buffer) :
+   TFile(name, "WEB", "read-only TMemFile", 0 /* compress */),
+   fBlockList(reinterpret_cast<UChar_t*>(buffer->Buffer()), buffer->BufferSize()),
+   fSize(buffer->BufferSize()), fSysOffset(0), fBlockSeek(&(fBlockList)), fBlockOffset(0)
+{
+   fD = 0;
+   fOption = "READ";
+   fWritable = false;
+
+   // Note: We need to release the buffer here to avoid double delete.
+   // The memory of a TBufferFile is allocated with new[], so we can let
+   // TMemBlock delete it, as its destructor calls "delete [] fBuffer;"
+   buffer.release();
+
+   // This is read-only, so become a zombie if created with an empty buffer
+   if (!fBlockList.fBuffer) {
+      MakeZombie();
+      gDirectory = gROOT;
+      return;
+   }
+
+   Init(/* create */ false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
