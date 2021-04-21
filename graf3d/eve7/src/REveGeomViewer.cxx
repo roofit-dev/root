@@ -16,6 +16,7 @@
 
 #include "TSystem.h"
 #include "TROOT.h"
+#include "TEnv.h"
 #include "THttpServer.h"
 #include "TBufferJSON.h"
 #include "TGeoManager.h"
@@ -35,6 +36,8 @@ ROOT::Experimental::REveGeomViewer::REveGeomViewer(TGeoManager *mgr)
    fWebWindow->SetMaxQueueLength(30); // number of allowed entries in the window queue
 
    if (mgr) SetGeometry(mgr);
+
+   fDesc.SetPreferredOffline(gEnv->GetValue("WebGui.PreferredOffline",0) != 0);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -101,12 +104,13 @@ void ROOT::Experimental::REveGeomViewer::Show(const RWebDisplayArgs &args, bool 
 //////////////////////////////////////////////////////////////////////////////////////////////
 /// convert JSON into stack array
 
-std::vector<int> ROOT::Experimental::REveGeomViewer::GetStackFromJson(const std::string &json)
+std::vector<int> ROOT::Experimental::REveGeomViewer::GetStackFromJson(const std::string &json, bool node_ids)
 {
    std::vector<int> *stack{nullptr}, res;
 
    if (TBufferJSON::FromJSON(stack, json.c_str())) {
-      res = *stack;
+      if (node_ids) res = fDesc.MakeStackByIds(*stack);
+               else res = *stack;
       delete stack;
    } else {
       R__ERROR_HERE("webeve") << "Fail convert " << json << " into vector<int>";
@@ -116,15 +120,10 @@ std::vector<int> ROOT::Experimental::REveGeomViewer::GetStackFromJson(const std:
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-/// Send geometry description and principal drawing nodes
+/// Send data for principal geometry draw
 
 void ROOT::Experimental::REveGeomViewer::SendGeometry(unsigned connid)
 {
-   std::string sbuf = "DESCR:";
-   sbuf.append(TBufferJSON::ToJSON(&fDesc,103).Data());
-   printf("Send description %d\n", (int) sbuf.length());
-   fWebWindow->Send(connid, sbuf);
-
    if (!fDesc.HasDrawData())
       fDesc.CollectVisibles();
 
@@ -146,10 +145,9 @@ void ROOT::Experimental::REveGeomViewer::WebWindowCallback(unsigned connid, cons
 {
    printf("Recv %s\n", arg.c_str());
 
-   if ((arg == "CONN_READY") || (arg == "RELOAD")) {
+   if (arg == "CONN_READY") {
 
-      if (arg == "RELOAD")
-         fDesc.Build(fGeoManager);
+   } else if (arg == "GETDRAW") {
 
       SendGeometry(connid);
 
@@ -158,20 +156,25 @@ void ROOT::Experimental::REveGeomViewer::WebWindowCallback(unsigned connid, cons
       RWebWindowsManager::Instance()->Terminate();
 
    } else if (arg.compare(0, 7, "SEARCH:") == 0) {
+
       std::string query = arg.substr(7);
 
-      std::string json;
+      std::string hjson, json;
       std::vector<char> binary;
 
-      auto nmatches = fDesc.SearchVisibles(query, json, binary);
+      auto nmatches = fDesc.SearchVisibles(query, hjson, json, binary);
 
-      printf("Searches %s found %d json %d binary %d\n", query.c_str(), nmatches, (int) json.length(), (int) binary.size());
+      printf("Searches %s found %d hjson %d json %d binary %d\n", query.c_str(), nmatches, (int) hjson.length(), (int) json.length(), (int) binary.size());
 
       // send reply with appropriate header - NOFOUND, FOUND0:, FOUND1:
-      fWebWindow->Send(connid, json);
+      fWebWindow->Send(connid, hjson);
+
+      if (!json.empty())
+         fWebWindow->Send(connid, json);
 
       if (binary.size() > 0)
          fWebWindow->SendBinary(connid, &binary[0], binary.size());
+
    } else if (arg.compare(0,4,"GET:") == 0) {
       // provide exact shape
 
@@ -191,7 +194,35 @@ void ROOT::Experimental::REveGeomViewer::WebWindowCallback(unsigned connid, cons
       if (binary.size() > 0)
          fWebWindow->SendBinary(connid, &binary[0], binary.size());
 
-   } else if ((arg.compare(0,7,"SETVI0:") == 0) || (arg.compare(0,7,"SETVI1:") == 0)) {
+   } else if (arg.compare(0, 6, "HOVER:") == 0) {
+
+      std::string msg = arg.substr(6), json;
+
+      if (msg.compare("OFF") != 0) {
+         auto stack = fDesc.MakeStackByPath(msg);
+         if (stack.size() > 0)
+            json = TBufferJSON::ToJSON(&stack, 103);
+      }
+
+      if (json.empty()) json = "OFF";
+      json = std::string("HOVER:") + json;
+      fWebWindow->Send(connid, json);
+
+   } else if (arg.compare(0, 6, "HIGHL:") == 0) {
+
+      std::string msg = arg.substr(6), json;
+
+      if (msg.compare("OFF") != 0) {
+         auto stack = GetStackFromJson(msg);
+
+         json = fDesc.MakePathByStack(stack);
+      }
+
+      if (json.empty()) json = "OFF";
+      json = std::string("HIGHL:") + json;
+      fWebWindow->Send(connid, json);
+
+   } else if ((arg.compare(0, 7, "SETVI0:") == 0) || (arg.compare(0, 7, "SETVI1:") == 0)) {
       // change visibility for specified nodeid
 
       auto nodeid = std::stoi(arg.substr(7));
@@ -226,8 +257,20 @@ void ROOT::Experimental::REveGeomViewer::WebWindowCallback(unsigned connid, cons
             // just resend full geometry
             // TODO: one can improve here and send only nodes which are not exists on client
             // TODO: for that one should remember all information send to client
+
+            auto json = fDesc.ProcessBrowserRequest();
+            if (json.length() > 0) fWebWindow->Send(connid, json);
+
             SendGeometry(connid);
          }
       }
+   } else if (arg.compare(0,6, "BRREQ:") == 0) {
+
+      // central place for processing browser requests
+
+      if (!fDesc.IsBuild()) fDesc.Build(fGeoManager);
+
+      auto json = fDesc.ProcessBrowserRequest(arg.substr(6));
+      if (json.length() > 0) fWebWindow->Send(connid, json);
    }
 }
