@@ -29,6 +29,23 @@ class TJSONStackObj;
 class TBufferJSON : public TBufferText {
 
 public:
+
+   enum {
+     // values 0..3 are exclusive, define text formating, JSON data are same
+     kNoCompress    = 0,             ///< no any compression, maximal size of JSON (default)
+     kNoIndent      = 1,             ///< remove spaces in the beginning showing JSON indentation level
+     kNoNewLine     = 2,             ///< no indent plus skip newline symbols
+     kNoSpaces      = 3,             ///< no new lines plus remove all spaces around "," and ":" symbols
+
+     kMapAsObject   = 5,             ///< store std::map, std::unodered_map as JSON object
+
+     // algorithms for array compression
+     kZeroSuppression = 10,          ///< if array has much zeros in begin and/or end, they will be removed
+     kSameSuppression = 20,          ///< zero suppression plus compress many similar values together
+
+     kSkipTypeInfo  = 100            // do not store typenames in JSON
+   };
+
    TBufferJSON(TBuffer::EMode mode = TBuffer::kWrite);
    virtual ~TBufferJSON();
 
@@ -297,14 +314,15 @@ protected:
    TString fValue;                     ///<!  buffer for current value
    unsigned fJsonrCnt{0};              ///<!  counter for all objects, used for referencing
    std::deque<TJSONStackObj *> fStack; ///<!  hierarchy of currently streamed element
-   Int_t fCompact{0};  ///<!  0 - no any compression, 1 - no spaces in the begin, 2 - no new lines, 3 - no spaces at all
-   TString fSemicolon; ///<!  depending from compression level, " : " or ":"
-   Int_t fArrayCompact{0}; ///<!  0 - no array compression, 1 - exclude leading/trailing zeros, 2 - check value repetition
-   TString fArraySepar;    ///<!  depending from compression level, ", " or ","
-   TString fNumericLocale; ///<!  stored value of setlocale(LC_NUMERIC), which should be recovered at the end
-   TString fTypeNameTag;   ///<! JSON member used for storing class name, when empty - no class name will be stored
-   TString fTypeVersionTag;  ///<! JSON member used to store class version, default empty
-   TObjArray *fSkipClasses{nullptr}; ///<! list of classes, which class info is not stored
+   Int_t fCompact{0};                  ///<!  0 - no any compression, 1 - no spaces in the begin, 2 - no new lines, 3 - no spaces at all
+   Bool_t fMapAsObject{kFALSE};        ///<! when true, std::map will be converted into JSON object
+   TString fSemicolon;                 ///<!  depending from compression level, " : " or ":"
+   Int_t fArrayCompact{0};             ///<!  0 - no array compression, 1 - exclude leading/trailing zeros, 2 - check value repetition
+   TString fArraySepar;                ///<!  depending from compression level, ", " or ","
+   TString fNumericLocale;             ///<!  stored value of setlocale(LC_NUMERIC), which should be recovered at the end
+   TString fTypeNameTag;               ///<! JSON member used for storing class name, when empty - no class name will be stored
+   TString fTypeVersionTag;            ///<! JSON member used to store class version, default empty
+   TObjArray *fSkipClasses{nullptr};   ///<! list of classes, which class info is not stored
 
    ClassDef(TBufferJSON, 1) // a specialized TBuffer to only write objects into JSON format
 };

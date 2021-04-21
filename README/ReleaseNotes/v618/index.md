@@ -83,6 +83,40 @@ Added necessary changes to allow [XRootD local redirection](https://github.com/x
   - Uses standard VectorReadLimits and does not query a XRootD data server (which is unknown in local redirection), when it is redirected to a local file
   - Adds a new constructor with a const char *lurl to TNetXNGFile and passes it to TFile, if set. This allows redirection to files that have a different name in the local file system and is important to allow derivation (for example to TAlien and TJAlienFile) while still keeping functionality via TArchiveFile when the file name in the local file system does not match `*.zip`
 
+### TBufferJSON
+Add possibility to convert STL `std::map`, `std::multimap`, `std::unordered_map`,
+`std::unordered_multimap` classes into JSON object. This only possible when key typename
+is `std::string` (or compatible) and contains only valid JSON identifiers. By default these classes converted
+into JSON array of `std::pair` objects. To enable new feature, compact parameter should be 5:
+
+~~~ {.cpp}
+   std::map<std::string,int> obj;
+   obj["name1"] = 11;
+   obj["name1"] = 22;
+   auto json = TBufferJSON::ToJSON(&obj, 5);
+   // {"_typename": "map<string,int>", "name1": 11, "name2": 22}
+   auto dflt_json = TBufferJSON::ToJSON(&obj);
+   // [{"$pair" : "pair<string,int>", "first" : "name1", "second" : 11}, {"$pair" : "pair<string,int>", "first" : "name2", "second" : 22}]
+~~~
+
+Also one could put "JSON_object" string in class-member comments to enable this feature:
+
+~~~ {.cpp}
+class Container {
+   int field{5};
+   std::unordered_map<std::string,double> data;  ///< JSON_object indicates conversion
+};
+~~~
+
+Now one could disable storage of type information - "_typename" field. For that compact parameter
+has to include value 100. Be aware that such JSON representation may not be recognized by JSROOT.
+Maximal compression of JSON can be achieved now with compact parameter 128 = 100 + 20 + 5 + 3:
+   3 - remove all spaces and new lines
+   5 - convert map->object (when applicable)
+   20 - special compression of large arrays (auto-detected in JSROOT)
+   100 - suppressing _typename for all classes
+
+
 ## TTree Libraries
 
 ### RDataFrame
@@ -98,6 +132,7 @@ Added necessary changes to allow [XRootD local redirection](https://github.com/x
   - Add `HasColumn` method to check whether a column is available to a given RDF node
   - PyROOT: add `AsRNode` helper function to convert RDF nodes to the common RNode type
   - PyROOT: add `AsNumpy` method to export contents of a RDataFrame as a dictionary of numpy arrays
+  - The `Stats` method has been added, allowing to retrieve a `TStatistic` object filled with the values of a column and, optionally, the values of a second column to be used as weights.
 
 ### TLeafF16 and TLeafD32
   - New leaf classes allowing to store `Float16_t` and `Double32_t` values using the truncation methods from `TBuffer`
@@ -135,7 +170,7 @@ Added necessary changes to allow [XRootD local redirection](https://github.com/x
 ## Histogram Libraries
 
 ### TH1
-  - Add a search range to the `TH1::FindFirstBinAbove(..)` and `TH1::FindLastBinAvove(..)` functions 
+  - Add a search range to the `TH1::FindFirstBinAbove(..)` and `TH1::FindLastBinAvove(..)` functions
 
 ### TH2Poly
   - Add implementation of SetBinError and fix a bug in GetBinError in case of weighted events.
@@ -149,6 +184,7 @@ Added necessary changes to allow [XRootD local redirection](https://github.com/x
 
 ## Math Libraries
   - Add to the documentation of TLorentzVector a link to ROOT::Math::LorentzVector, which is a superior tool.
+  - Add new implementation of `TStatistic::Merge` able to deal silently with empty TStatistic objects. This implementation is useful when filling TStatistics with one of ROOT's implicitly parallelised utilities such as `RDataFrame` or `TThreadExecutor`.
   - Add `T RVec<T>::at>(size_t, T)` method to allow users to specify a default value to be returned in case the vector is shorter than the position specified. No exception is thrown.
   - Add the `Concatenate` helper to merge the content of two `RVec<T>` instances.
   - Generalise the `VecOps::Map` utility allowing to apply a callable on a set of RVecs and not only to one.
@@ -225,12 +261,12 @@ In addition we have :
   - New `TMVA::Executor` class to control the multi-thread running of TMVA. By default now MT running will be enabled only when `ROOT::EnabledImplicitMT()` is called. But we can take the control of the threads by using `TMVA::gConfig().EnableMT(...)` and `TMVA::gConfig().DisableMT()`
 
 
-### PyMVA 
+### PyMVA
   - add support when using the Tensorflow backend in Keras to control the number of threads
   - add possibility to control options for configuring GPU running. FOr example we can now set the mode to allocate memory only as needed. This is required when using the new RTX gaming cards from NVIDIA
 
 
-  
+
 
 ## 2D Graphics Libraries
 
@@ -292,9 +328,24 @@ In addition we have :
 
 ## JavaScript ROOT
 
+### New functionality
+
+   - Add support of TProfile2Poly class
+   - Add support of TGeoOverlap class
+   - Implement update of TF2 drawings, see tutorials/graphics/anim.C
+   - Improve windows handling in flex(ible) layout
+   - Use requestAnimationFrame when do monitoring, improves performance
+   - Better position for text in TH2Poly drawings
+   - Upgrade three.js 86 -> 102, use SoftwareRenderer instead of CanvasRenderer
+   - Support eve7 geometry viewer - render data generated in ROOT itself
+   - Provide initial WebVR support, thanks to Diego Marcos
+   - Use gStyle attributes to draw histogram title
+
 ### New files location
 
-JSROOT sources were moved from `etc/http/` into `js/` subfolder in ROOT sources tree. After ROOT compilation  procedure JSROOT can be found in `$ROOTSYS/js/` subfolder.
+JSROOT sources were moved from `etc/http/` into `js/` subfolder in ROOT sources tree.
+OpenUI5 files were moved to `ui5/` subfolder. After ROOT compilation they can be found in
+`$ROOTSYS/js/` and `$ROOTSYS/ui5/` subfolders respectively.
 
 
 ## Tutorials
@@ -309,7 +360,7 @@ JSROOT sources were moved from `etc/http/` into `js/` subfolder in ROOT sources 
 ### Header location and `ROOT_GENERATE_DICTIONARY` / `ROOT_STANDARD_LIBRARY_PACKAGE`
 
 A change in the argument handling of `ROOT_GENERATE_DICTIONARY` and `ROOT_STANDARD_LIBRARY_PACKAGE` might need your attention:
-these macros now respect whether a header file was passed with its fulla relative path (the common case), or with a full path.
+these macros now respect whether a header file was passed with its full relative path (the common case), or with a full path.
 The latter allows to find headers at runtime - at the cost of a loss of relocatability: you cannot move the library containing
 that dictionary to a different directory, because the header location is stored in the dictionary. This case is used by roottest
 but should likely not be used by anything but test suites.
