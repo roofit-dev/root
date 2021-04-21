@@ -125,9 +125,7 @@ enum EMessageTypes {
    kROOTD_KRB5           = 2030,         //krb5 authentication follows
    kROOTD_PROTOCOL2      = 2031,         //client proto follows, returns rootd proto
    kROOTD_BYE            = 2032,         //terminate rootd
-   kROOTD_GLOBUS         = 2033,         //Globus authetication follows
    kROOTD_CLEANUP        = 2034,         //cleanup things
-   kROOTD_RFIO           = 2036,         //RFIO-like authentication follows
    kROOTD_NEGOTIA        = 2037,         //negotiation follows
    kROOTD_RSAKEY         = 2038,         //RSA public key exchange
    kROOTD_ENCRYPT        = 2039,         //an encrypted message follows
