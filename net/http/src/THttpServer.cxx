@@ -706,23 +706,19 @@ void THttpServer::ProcessRequest(std::shared_ptr<THttpCallArg> arg)
 {
    if (fTerminated) {
       arg->Set404();
-   } else if ((arg->fFileName == "root.websocket") || (arg->fFileName == "root.longpoll")) {
-      ExecuteWS(arg);
-   } else {
-      ProcessRequest(arg.get());
+      return;
    }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// \deprecated  One should use signature with std::shared_ptr
-/// Process single http request
-/// Depending from requested path and filename different actions will be performed.
-/// In most cases information is provided by TRootSniffer class
+   if ((arg->fFileName == "root.websocket") || (arg->fFileName == "root.longpoll")) {
+      ExecuteWS(arg);
+      return;
+   }
 
-void THttpServer::ProcessRequest(THttpCallArg *arg)
-{
-   if (fTerminated) {
-      arg->Set404();
+   // this is just to support old Process(THttpCallArg*), should be deprecated after 6.20
+   fOldProcessSignature = kTRUE;
+   ProcessRequest(arg.get());
+   if (fOldProcessSignature) {
+      Error("ProcessRequest", "Deprecated signature is used, please used std::shared_ptr<THttpCallArg>");
       return;
    }
 
@@ -749,8 +745,9 @@ void THttpServer::ProcessRequest(THttpCallArg *arg)
                TString resolve;
                if (!IsFileRequested(fname, resolve)) resolve = fname;
                arg->fContent = ReadFileContent(resolve.Data());
-               arg->AddNoCacheHeader();
             }
+
+            handler->VerifyDefaultPageContent(arg);
 
             arg->CheckWSPageContent(handler);
          }
@@ -944,7 +941,7 @@ void THttpServer::ProcessRequest(THttpCallArg *arg)
       arg->SetContentType(GetMimeType(filename.Data()));
    } else {
       // miss request, user may process
-      MissedRequest(arg);
+      MissedRequest(arg.get());
    }
 
    if (arg->Is404())
@@ -966,6 +963,14 @@ void THttpServer::ProcessRequest(THttpCallArg *arg)
    // potentially add cors header
    if (IsCors())
       arg->AddHeader("Access-Control-Allow-Origin", GetCors());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// \deprecated  One should use signature with std::shared_ptr
+
+void THttpServer::ProcessRequest(THttpCallArg *)
+{
+   fOldProcessSignature = kFALSE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
