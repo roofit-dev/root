@@ -220,6 +220,7 @@ if(all)
  set(mathmore_defvalue ON)
  set(memstat_defvalue ON)
  set(minuit2_defvalue ON)
+ set(mlp_defvalue ON)
  set(monalisa_defvalue ON)
  set(mysql_defvalue ON)
  set(odbc_defvalue ON)
@@ -327,13 +328,13 @@ endif()
 #---webgui by default always build together with root7-----------------------------------------
 set(webgui_defvalue ${root7_defvalue})
 
+#---Define at moment the options with the selected default values-----------------------------
+ROOT_APPLY_OPTIONS()
+
 #---roottest option implies testing
 if(roottest OR rootbench)
   set(testing ON CACHE BOOL "" FORCE)
 endif()
-
-#---Define at moment the options with the selected default values-----------------------------
-ROOT_APPLY_OPTIONS()
 
 if(root7)
   if(NOT CMAKE_CXX_STANDARD)
