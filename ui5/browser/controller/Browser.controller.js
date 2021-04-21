@@ -44,6 +44,16 @@ sap.ui.define(['sap/ui/core/Component',
             // create model only for browser - no need for anybody else
             this.model = new BrowserModel();
 
+            // copy extra attributes from element to node in the browser
+            // later can be done automatically
+            this.model.addNodeAttributes = function(node, elem) {
+               node.fsize = elem.fsize;
+               node.mtime = elem.mtime;
+               node.ftype = elem.ftype;
+               node.fuid = elem.fuid;
+               node.fgid = elem.fgid;
+            }
+
             var t = this.getView().byId("treeTable");
 
             t.setModel(this.model);
@@ -129,9 +139,9 @@ sap.ui.define(['sap/ui/core/Component',
 		  }
 		  var file = oEvent.getParameter("files")[0];
 		  var filename = file.name;
-		  if (filename.endsWith(".c") || filename.endsWith(".cc") || filename.endsWith(".cpp") ||
-				filename.endsWith(".cxx") || filename.endsWith(".h") || filename.endsWith(".hh") ||
-				filename.endsWith(".hxx"))
+		  if (filename.endsWith(".C") || filename.endsWith(".c") || filename.endsWith(".cc") ||
+		      filename.endsWith(".cpp") || filename.endsWith(".cxx") || filename.endsWith(".h") ||
+		      filename.endsWith(".hh") || filename.endsWith(".hxx"))
           this.getView().byId("aCodeEditor").setType('c_cpp');
         else if (filename.endsWith(".py"))
           this.getView().byId("aCodeEditor").setType('python');
@@ -194,8 +204,20 @@ sap.ui.define(['sap/ui/core/Component',
             this.parseDescription(msg, false);
             break;
          case "BREPL:":   // browser reply
-            if (this.model)
-               this.model.processResponse(JSON.parse(msg));
+            if (this.model) {
+               var bresp = JSON.parse(msg);
+
+               this.model.processResponse(bresp);
+
+               if (bresp.path === '/') {
+                  var tt = this.getView().byId("treeTable");
+                  var cols = tt.getColumns();
+                  tt.autoResizeColumn(2);
+                  tt.autoResizeColumn(1);
+                  // for (var k=0;k<cols.length;++k)
+                  //    tt.autoResizeColumn(k);
+               }
+            }
             break;
          case "MODIF:":
             this.modifyDescription(msg);

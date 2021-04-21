@@ -316,40 +316,6 @@ R__EXTERN int optind;
 // The functions are used to bridge cling/clang/llvm compiled with no-rtti and
 // ROOT (which uses rtti)
 
-//______________________________________________________________________________
-
-// Class extracting recursively every Enum type defined for a class.
-class EnumVisitor : public RecursiveASTVisitor<EnumVisitor> {
-private:
-   llvm::SmallVector<EnumDecl*,128> &fClassEnums;
-public:
-   EnumVisitor(llvm::SmallVector<EnumDecl*,128> &enums) : fClassEnums(enums)
-   {}
-
-   bool TraverseStmt(Stmt*) {
-      // Don't descend into function bodies.
-      return true;
-   }
-
-   bool shouldVisitTemplateInstantiations() const { return true; }
-
-   bool TraverseClassTemplateDecl(ClassTemplateDecl*) {
-      // Don't descend into templates (but only instances thereof).
-      return true; // returning false will abort the in-depth traversal.
-   }
-
-   bool TraverseClassTemplatePartialSpecializationDecl(ClassTemplatePartialSpecializationDecl*) {
-      // Don't descend into templates partial specialization (but only instances thereof).
-      return true; // returning false will abort the in-depth traversal.
-   }
-
-   bool VisitEnumDecl(EnumDecl *TEnumD) {
-      if (!TEnumD->getDeclContext()->isDependentContext())
-         fClassEnums.push_back(TEnumD);
-      return true; // returning false will abort the in-depth traversal.
-   }
-};
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Print a StackTrace!
 
@@ -1502,30 +1468,16 @@ static bool R__InitStreamerInfoFactory()
 ////////////////////////////////////////////////////////////////////////////////
 /// Tries to load a PCM; returns true on success.
 
-bool TCling::LoadPCM(TString pcmFileName,
-                     const char** headers,
-                     void (*triggerFunc)()) const {
-   // pcmFileName is an intentional copy; updated by FindFile() below.
+bool TCling::LoadPCM(const std::string& pcmFileNameFullPath) const {
 
-   TString searchPath;
-
-   if (triggerFunc) {
-      const char *libraryName = FindLibraryName(triggerFunc);
-      if (libraryName) {
-         searchPath = llvm::sys::path::parent_path(libraryName);
-#ifdef R__WIN32
-         searchPath += ";";
-#else
-         searchPath += ":";
-#endif
-      }
+   assert(!pcmFileNameFullPath.empty());
+   assert(llvm::sys::path::is_absolute(pcmFileNameFullPath));
+   if (!llvm::sys::fs::exists(pcmFileNameFullPath)) {
+     return false;
    }
-   // Note: if we know where the library is, we probably shouldn't even
-   // look in other places.
-   searchPath.Append( gSystem->GetDynamicPath() );
 
-   if (!gSystem->FindFile(searchPath, pcmFileName))
-      return kFALSE;
+   // Easier to work with the ROOT interfaces.
+   TString pcmFileName = pcmFileNameFullPath;
 
    // Prevent the ROOT-PCMs hitting this during auto-load during
    // JITting - which will cause recursive compilation.
@@ -1990,8 +1942,31 @@ void TCling::RegisterModule(const char* modulename,
    }
 
    if (gIgnoredPCMNames.find(modulename) == gIgnoredPCMNames.end()) {
-      TString pcmFileName(ROOT::TMetaUtils::GetModuleFileName(modulename).c_str());
-      if (!LoadPCM(pcmFileName, headers, triggerFunc)) {
+      llvm::SmallString<256> pcmFileNameFullPath;
+      if (dyLibName)
+         pcmFileNameFullPath = dyLibName;
+      else {
+         // if we were in the case of late registration
+         assert(lateRegistration);
+         pcmFileNameFullPath = FindLibraryName(triggerFunc);
+         // FIXME: A horrible workaround for ctest. ROOT_ADD_TEST adds a test by
+         // invoking ${CMAKE_COMMAND} -DCMD=blah. This does not work well with
+         // statically linked executables such as stress* (referencing libEvent)
+         // because FindLibraryName relies on dladdr which gets confused by the
+         // outer executable. Explicitly add the current working directory to
+         // the library.
+         // Note, we do not take this branch outside of ctest.
+         if (!llvm::sys::path::is_absolute(pcmFileNameFullPath)) {
+            llvm::SmallString<128> curr_path;
+            llvm::sys::fs::current_path(curr_path);
+            llvm::sys::fs::make_absolute(curr_path, pcmFileNameFullPath);
+         }
+      }
+      llvm::sys::path::remove_filename(pcmFileNameFullPath);
+
+      llvm::sys::path::append(pcmFileNameFullPath,
+                              ROOT::TMetaUtils::GetModuleFileName(modulename));
+      if (!LoadPCM(pcmFileNameFullPath.str().str())) {
          ::Error("TCling::RegisterModule", "cannot find dictionary module %s",
                  ROOT::TMetaUtils::GetModuleFileName(modulename).c_str());
       }
