@@ -1250,7 +1250,7 @@ void TROOT::EndOfProcessCleanups()
    CloseFiles();
 
    if (gInterpreter) {
-      gInterpreter->ResetGlobals();
+      gInterpreter->ShutDown();
    }
 
    // Now delete the objects 'held' by the TFiles so that it
@@ -2143,9 +2143,6 @@ void TROOT::InitInterpreter()
    // load the libraries for the classes concerned even-though the user is
    // *not* using them.
    TClass::ReadRules(); // Read the default customization rules ...
-
-   // Enable autoloading
-   fInterpreter->EnableAutoLoading();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3109,6 +3106,17 @@ const TString& TROOT::GetTutorialDir() {
       return roottutdir;
    }
 #endif
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Shut down ROOT.
+
+void TROOT::ShutDown()
+{
+   if (gROOT)
+      gROOT->EndOfProcessCleanups();
+   else if (gInterpreter)
+      gInterpreter->ShutDown();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
