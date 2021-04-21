@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
-// Author: Matevz Tadel, Jochen Thaeder 2009
+// @(#)root/eve7:$Id$
+// Author: Matevz Tadel, Jochen Thaeder 2009, 2018
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -15,6 +15,7 @@
 #include <ROOT/REveRenderData.hxx>
 
 #include "TMath.h"
+#include "TClass.h"
 
 #include <cassert>
 
@@ -77,7 +78,7 @@ void  REveJetCone::SetNDiv(Int_t n)
 ////////////////////////////////////////////////////////////////////////////////
 /// Fill core part of JSON representation.
 
-Int_t REveJetCone::WriteCoreJson(nlohmann::json& j, Int_t rnr_offset)
+Int_t REveJetCone::WriteCoreJson(nlohmann::json &j, Int_t rnr_offset)
 {
    Int_t ret = REveElement::WriteCoreJson(j, rnr_offset);
 
@@ -127,7 +128,7 @@ void REveJetCone::ComputeBBox()
 
 TClass* REveJetCone::ProjectedClass(const REveProjection*) const
 {
-   return REveJetConeProjected::Class();
+   return TClass::GetClass<REveJetConeProjected>();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

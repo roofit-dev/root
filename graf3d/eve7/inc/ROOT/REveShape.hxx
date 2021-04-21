@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
-// Author: Matevz Tadel, 2010
+// @(#)root/eve7:$Id$
+// Author: Matevz Tadel, 2010, 2018
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -21,6 +21,11 @@
 namespace ROOT {
 namespace Experimental {
 
+// =========================================================================
+// REveShape
+// Abstract base-class for 2D/3D shapes.
+// =========================================================================
+
 class REveShape : public REveElement,
                   public TAttBBox
 {
@@ -30,7 +35,6 @@ private:
 
 public:
    typedef std::vector<REveVector2> vVector2_t;
-   typedef vVector2_t::iterator     vVector2_i;
 
 protected:
    Color_t fFillColor; // fill color of polygons
@@ -42,13 +46,13 @@ protected:
    Bool_t fMiniFrame;      // draw minimal frame
 
 public:
-   REveShape(const std::string& n = "REveShape", const std::string& t = "");
+   REveShape(const std::string &n = "REveShape", const std::string &t = "");
    virtual ~REveShape();
 
-   Int_t WriteCoreJson(nlohmann::json &j, Int_t rnr_offset); // override;
+   Int_t WriteCoreJson(nlohmann::json &j, Int_t rnr_offset) override;
 
    // Rendering parameters.
-   virtual void SetMainColor(Color_t color);
+   void SetMainColor(Color_t color) override;
 
    virtual Color_t GetFillColor() const { return fFillColor; }
    virtual Color_t GetLineColor() const { return fLineColor; }
@@ -66,8 +70,8 @@ public:
 
    // ----------------------------------------------------------------
 
-   virtual void CopyVizParams(const REveElement *el);
-   virtual void WriteVizParams(std::ostream &out, const TString &var);
+   void CopyVizParams(const REveElement *el) override;
+   void WriteVizParams(std::ostream &out, const TString &var) override;
 
    // ----------------------------------------------------------------
 
@@ -76,15 +80,13 @@ public:
 
    // ----------------------------------------------------------------
 
-   static Int_t FindConvexHull(const vVector2_t &pin, vVector2_t &pout, REveElement *caller = 0);
+   static Int_t FindConvexHull(const vVector2_t &pin, vVector2_t &pout, REveElement *caller = nullptr);
 
    static Bool_t IsBoxOrientationConsistentEv(const REveVector box[8]);
    static Bool_t IsBoxOrientationConsistentFv(const Float_t box[8][3]);
 
    static void CheckAndFixBoxOrientationEv(REveVector box[8]);
    static void CheckAndFixBoxOrientationFv(Float_t box[8][3]);
-
-   ClassDef(REveShape, 0); // Abstract base-class for 2D/3D shapes.
 };
 
 } // namespace Experimental

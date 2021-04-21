@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
-// Authors: Matevz Tadel & Alja Mrak-Tadel: 2006, 2007
+// @(#)root/eve7:$Id$
+// Authors: Matevz Tadel & Alja Mrak-Tadel: 2006, 2007, 2018
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -18,6 +18,7 @@
 #include <ROOT/RWebWindow.hxx>
 
 #include "json.hpp"
+
 #include <cassert>
 
 
@@ -255,9 +256,8 @@ void REveScene::StreamRepresentationChanges()
 
    // jarr.push_back(jhdr);
 
-   for (Set_i i = fChangedElements.begin(); i != fChangedElements.end(); ++i)
+   for (auto &el: fChangedElements)
    {
-      REveElement* el = *i;
       UChar_t bits = el->GetChangeBits();
 
       nlohmann::json jobj = {};
@@ -420,10 +420,10 @@ void REveScene::RetransHierarchicallyRecurse(REveElement* el, const REveTrans& t
 
    if (el->GetRnrChildren())
    {
-      for (List_i i = el->BeginChildren(); i != el->EndChildren(); ++i)
+      for (auto &c: el->RefChildren())
       {
-         if ((*i)->GetRnrAnything())
-            RetransHierarchicallyRecurse(*i, t);
+         if (c->GetRnrAnything())
+            RetransHierarchicallyRecurse(c, t);
       }
    }
 }
@@ -438,9 +438,9 @@ void REveScene::Paint(Option_t* option)
 {
    if (GetRnrState())
    {
-      for(List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
+      for (auto &c: fChildren)
       {
-         // (*i)->PadPaint(option);
+         // c->PadPaint(option);
       }
    }
 }
@@ -482,16 +482,16 @@ List of Scenes providing common operations on REveScene collections.
 REveSceneList::REveSceneList(const std::string& n, const std::string& t) :
    REveElement(n, t)
 {
-   SetChildClass(REveScene::Class());
+   SetChildClass(TClass::GetClass<REveScene>());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Destroy all scenes and their contents.
-/// Tho object with non-zero deny-destroy will still survive.
+/// The object with non-zero deny-destroy will still survive.
 
 void REveSceneList::DestroyScenes()
 {
-   List_i i = fChildren.begin();
+   auto i = fChildren.begin();
    while (i != fChildren.end())
    {
       REveScene* s = (REveScene*) *(i++);
@@ -505,9 +505,9 @@ void REveSceneList::DestroyScenes()
 
 void REveSceneList::AcceptChanges(bool on)
 {
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
+   for (auto &c: fChildren)
    {
-      REveScene* s = (REveScene*) *i;
+      REveScene *s = (REveScene *)c;
       if (on)
          s->BeginAcceptingChanges();
       else
@@ -520,9 +520,9 @@ void REveSceneList::AcceptChanges(bool on)
 
 void REveSceneList::RepaintChangedScenes(Bool_t dropLogicals)
 {
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
+   for (auto &c: fChildren)
    {
-      REveScene* s = (REveScene*) *i;
+      REveScene* s = (REveScene*) c;
       if (s->IsChanged())
       {
          s->Repaint(dropLogicals);
@@ -535,9 +535,9 @@ void REveSceneList::RepaintChangedScenes(Bool_t dropLogicals)
 
 void REveSceneList::RepaintAllScenes(Bool_t dropLogicals)
 {
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
+   for (auto &c: fChildren)
    {
-      ((REveScene*) *i)->Repaint(dropLogicals);
+      ((REveScene *)c)->Repaint(dropLogicals);
    }
 }
 
@@ -549,9 +549,9 @@ void REveSceneList::DestroyElementRenderers(REveElement* element)
    static const REveException eh("REveSceneList::DestroyElementRenderers ");
 
    TObject* obj = element->GetRenderObject(eh);
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
+   for (auto &c: fChildren)
    {
-      ((REveScene*)*i)->DestroyElementRenderers(obj);
+      ((REveScene *)c)->DestroyElementRenderers(obj);
    }
 }
 
