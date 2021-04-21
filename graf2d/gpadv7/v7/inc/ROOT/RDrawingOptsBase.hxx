@@ -16,32 +16,33 @@
 #ifndef ROOT7_RDrawingOptsBase
 #define ROOT7_RDrawingOptsBase
 
-#include <functional>
+#include <ROOT/RDrawingAttr.hxx>
+
 #include <string>
+#include <vector>
 
 namespace ROOT {
 namespace Experimental {
-class RDrawingAttrBase;
 
 class RDrawingOptsBase {
-   /// Attribute style class of these options.
-   std::string fStyleClass;
+public:
+   /// The RDrawingAttrHolder of the attribute values.
+   std::shared_ptr<RDrawingAttrHolder> fHolder;    ///<!  I/O does not work
+   RDrawingAttrHolder    *fHolderIO{nullptr};      ///<   only for I/O, should be fixed in the fututre
 
 public:
-   /// Initialize the options with a (possibly empty) style class.
-   RDrawingOptsBase(const std::string &styleClass = {}): fStyleClass(styleClass) {}
+   RDrawingOptsBase() = default;
 
-   using VisitFunc_t = std::function<void(RDrawingAttrBase&)>;
-   virtual ~RDrawingOptsBase();
+   /// Initialize the options with a (possibly empty) set of style classes.
+   RDrawingOptsBase(const std::vector<std::string> &styleClasses);
 
-   /// Get the attribute style class of these options.
-   const std::string &GetStyleClass() const { return fStyleClass; }
+   /// Get the attribute style classes of these options.
+   const std::vector<std::string> &GetStyleClasses() const;
 
-   /// Invoke func with each attribute as argument.
-   void VisitAttributes(const VisitFunc_t &func);
+   /// Get the attribute style classes of these options.
+   void SetStyleClasses(const std::vector<std::string> &styles);
 
-   /// Synchronize all shared attributes into their local copy.
-   void Snapshot();
+   std::shared_ptr<RDrawingAttrHolder> &GetHolder();
 };
 
 } // namespace Experimental
