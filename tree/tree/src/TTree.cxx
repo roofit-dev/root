@@ -2385,7 +2385,7 @@ TBranch* TTree::BronchExec(const char* name, const char* classname, void* addr, 
    }
 
    if (splitlevel < 0 || ((splitlevel == 0) && hasCustomStreamer && cl->IsTObject())) {
-      TBranchObject* branch = new TBranchObject(this, name, classname, addr, bufsize, 0, /*compress=*/ ROOT::kInheritCompressionAlgorithm, isptrptr);
+      TBranchObject* branch = new TBranchObject(this, name, classname, addr, bufsize, 0, /*compress=*/ ROOT::RCompressionSetting::EAlgorithm::kInherit, isptrptr);
       fBranches.Add(branch);
       return branch;
    }
@@ -2606,7 +2606,8 @@ TFile* TTree::ChangeFile(TFile* file)
    file->cd();
    Write();
    Reset();
-   char* fname = new char[2000];
+   constexpr auto kBufSize = 2000;
+   char* fname = new char[kBufSize];
    ++fFileNumber;
    char uscore[10];
    for (Int_t i = 0; i < 10; ++i) {
@@ -2617,30 +2618,30 @@ TFile* TTree::ChangeFile(TFile* file)
    while (nus < 10) {
       uscore[nus] = '_';
       fname[0] = 0;
-      strlcpy(fname, file->GetName(),2000);
+      strlcpy(fname, file->GetName(), kBufSize);
 
       if (fFileNumber > 1) {
          char* cunder = strrchr(fname, '_');
          if (cunder) {
-            snprintf(cunder,2000-Int_t(cunder-fname), "%s%d", uscore, fFileNumber);
+            snprintf(cunder, kBufSize - Int_t(cunder - fname), "%s%d", uscore, fFileNumber);
             const char* cdot = strrchr(file->GetName(), '.');
             if (cdot) {
-               strlcat(fname, cdot,2000);
+               strlcat(fname, cdot, kBufSize);
             }
          } else {
-            char fcount[10];
-            snprintf(fcount,10, "%s%d", uscore, fFileNumber);
-            strlcat(fname, fcount,2000);
+            char fcount[21];
+            snprintf(fcount,21, "%s%d", uscore, fFileNumber);
+            strlcat(fname, fcount, kBufSize);
          }
       } else {
          char* cdot = strrchr(fname, '.');
          if (cdot) {
-            snprintf(cdot,2000-Int_t(fname-cdot), "%s%d", uscore, fFileNumber);
-            strlcat(fname, strrchr(file->GetName(), '.'),2000);
+            snprintf(cdot, kBufSize - Int_t(fname-cdot), "%s%d", uscore, fFileNumber);
+            strlcat(fname, strrchr(file->GetName(), '.'), kBufSize);
          } else {
-            char fcount[10];
-            snprintf(fcount,10, "%s%d", uscore, fFileNumber);
-            strlcat(fname, fcount,2000);
+            char fcount[21];
+            snprintf(fcount,21, "%s%d", uscore, fFileNumber);
+            strlcat(fname, fcount, kBufSize);
          }
       }
       if (gSystem->AccessPathName(fname)) {
@@ -6878,7 +6879,7 @@ void TTree::OptimizeBaskets(ULong64_t maxMemory, Float_t minComp, Option_t *opti
          if (branch->GetZipBytes() > 0) comp = totBytes/Double_t(branch->GetZipBytes());
          if (comp > 1 && comp < minComp) {
             if (pDebug) Info("OptimizeBaskets", "Disabling compression for branch : %s\n",branch->GetName());
-            branch->SetCompressionSettings(ROOT::kUseGlobalCompressionAlgorithm);
+            branch->SetCompressionSettings(ROOT::RCompressionSetting::EAlgorithm::kUseGlobal);
          }
       }
       // coverity[divide_by_zero] newMemsize can not be zero as there is at least one leaf
@@ -8517,7 +8518,7 @@ void TTree::SetCircular(Long64_t maxEntries)
       //a file, reset the compression level to the file compression level
       if (fDirectory) {
          TFile* bfile = fDirectory->GetFile();
-         Int_t compress = ROOT::kUseGeneralPurposeCompressionSetting;
+         Int_t compress = ROOT::RCompressionSetting::EDefaults::kUseGeneralPurpose;
          if (bfile) {
             compress = bfile->GetCompressionSettings();
          }
