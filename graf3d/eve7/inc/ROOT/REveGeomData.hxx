@@ -34,15 +34,17 @@ class REveRenderData;
 
 class REveGeomNode {
 public:
+
+   enum EVis { vis_off = 0, vis_this = 1, vis_chlds = 2, vis_lvl1 = 4 };
+
    int id{0};               ///< node id, index in array
    int sortid{0};           ///< place in sorted array, to check cuts
    std::vector<int> chlds;  ///< list of childs id
    std::string name;        ///< node name
    std::vector<float> matr; ///< matrix for the node, can have reduced number of elements
-   int vis{0};              ///< visibility flag, also delivered to client, use int for shorter JSON
+   int vis{vis_off};        ///< visibility flag, 0 - off, 1 - volume, 2 - daughters, 4 - single lvl
    double vol{0};           ///<! volume estimation
    int nfaces{0};           ///<! number of shape faces
-   int visdepth{0};         ///<! how far to check daughters visibility
    int numvischld{0};       ///<! number of visible childs, if all can be jump over
    int idshift{0};          ///<! used to jump over then scan all geom hierarchy
 
@@ -52,6 +54,9 @@ public:
    /** True when there is shape and it can be displayed */
    bool CanDisplay() const { return (vol > 0.) && (nfaces > 0); }
 
+   bool IsVisible() const { return vis & vis_this; }
+
+   int GetVisDepth() const { return (vis & vis_chlds) ? 999999 : ((vis & vis_lvl1) ? 1 : 0); }
 };
 
 class REveShapeRenderInfo {
@@ -140,9 +145,6 @@ public:
    /** Number of unique nodes in the geometry */
    int GetNumNodes() const { return fDesc.size(); }
 
-   /** Return summary object for specified nodeid */
-   REveGeomNode &GetGeomNode(int nodeid) { return fDesc[nodeid]; }
-
    /** Set maximal number of nodes which should be selected for drawing */
    void SetMaxVisNodes(int cnt) { fNodesLimit = cnt; }
 
@@ -157,7 +159,7 @@ public:
 
    bool CollectVisibles();
 
-   bool IsPrincipalNode(int nodeid);
+   bool IsPrincipalEndNode(int nodeid);
 
    bool HasDrawData() const { return (fDrawJson.length() > 0) && (fDrawBinary.size() > 0) && (fDrawIdCut > 0); }
    const std::string &GetDrawJson() const { return fDrawJson; }
@@ -168,7 +170,9 @@ public:
 
    int FindNodeId(const std::vector<int> &stack);
 
-   bool ProduceDrawingFor(int nodeid, std::string &json, std::vector<char> &binary);
+   std::string ProduceModifyReply(int nodeid);
+
+   bool ProduceDrawingFor(int nodeid, std::string &json, std::vector<char> &binary, bool check_volume = false);
 
    bool ChangeNodeVisibility(int nodeid, bool selected);
 

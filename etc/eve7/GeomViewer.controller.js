@@ -157,7 +157,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             return;
          }
 
-         var msg = "SETVI" + (oEvent.getParameter("selected") ? 1 : 0) + ":" + JSON.stringify(nodeid);
+         var msg = "SETVI" + (oEvent.getParameter("selected") ? "1:" : "0:") + JSON.stringify(nodeid);
          
          // send info message to client to change visibility  
          this.websocket.Send(msg);
@@ -183,8 +183,8 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          
          if (!this.geo_painter) return;
          
-         var found_mesh = this.geo_painter.HighlightMesh(null, 0x00ff00, null, this._hover_stack, true);
-
+         var found_mesh = this.geo_painter.HighlightMesh(null, 0x00ff00, null, undefined, this._hover_stack, true);
+         
          // request given stack
          if (this._hover_stack && !found_mesh) 
             this.submitSearchQuery(this._hover_stack, true);
@@ -222,15 +222,19 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       },
       
       /** Callback from geo painter when mesh object is highlighted. Use for update of TreeTable */
-      HighlightMesh: function(active_mesh, color, geo_object, geo_stack) {
-         var rows = this.getView().byId("treeTable").getRows();
+      HighlightMesh: function(active_mesh, color, geo_object, geo_index, geo_stack) {
+         var rows = this.getView().byId("treeTable").getRows(), best_cmp = 0, best_indx = 0;
          
          for (var i=0;i<rows.length;++i) {
-            var col = "";
-            if (geo_stack && JSROOT.GEO.IsSameStack(this.getRowStack(rows[i]), geo_stack))
-               col = "yellow";
-            rows[i].$().css("background-color", col);
+            rows[i].$().css("background-color", "");
+            if (geo_stack) {
+               var cmp = JSROOT.GEO.CompareStacks(geo_stack, this.getRowStack(rows[i]));
+               if (cmp > best_cmp) { best_cmp = cmp; best_indx = i; }
+            }
          }
+         
+         if (best_cmp > 0)
+            rows[best_indx].$().css("background-color", best_cmp == geo_stack.length ? "yellow" : "lightgrey");
       },
       
       /** Extract shapes from binary data using appropriate draw message 
@@ -315,7 +319,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             break;
          case "APPND:":
             this.append_msg = JSROOT.parse(msg); // use JSROOT.parse while refs are used
-            this.setNodesDrawProperties(this.append_msg);
+            this.setNodesDrawProperties(this.append_msg); // set properties
             break;
          case "FOUND:": 
             this.processSearchReply(msg, false);
@@ -379,42 +383,47 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       
       /** When single node element is modified from server side */ 
       modifyDescription: function(msg) {
-         var newitem = JSON.parse(msg);
+         var arr = JSON.parse(msg), can_refresh = true;
          
-         if (!newitem || !this.geo_clones) return;
+         if (!arr || !this.geo_clones) return;
          
-         this.formatNodeElement(newitem);
-         
-         var item = this.geo_clones.nodes[newitem.id];
-         
-         item.vis = newitem.vis;
-         item.matrix = newitem.matrix;
+         for (var k=0;k<arr.length;++k) {
+            var moditem = arr[k];
 
-         // console.log('Modify item', item.id, newitem.id);
+            this.formatNodeElement(moditem);
          
-         this.buildTree();
+            var item = this.geo_clones.nodes[moditem.id];
          
-         if (!item.vis && this.geo_painter) 
-            this.geo_painter.RemoveDrawnNode(item.id);
-      },
-      
-      buildTreeNode: function(cache, indx) {
-         var tnode = cache[indx];
-         if (tnode) return tnode;
+            if (!item)
+               return console.error('Fail to find item ' + moditem.id);
+         
+            item.vis = moditem.vis;
+            item.matrix = moditem.matrix;
 
-         var node = this.geo_clones.nodes[indx];
-         
-         cache[indx] = tnode = { title: node.name, id: indx, color_visible: false, node_visible: node.vis != 0 };
-         
-         if (node.chlds && (node.chlds.length>0)) {
-            tnode.chlds = [];
-            for (var k=0;k<node.chlds.length;++k) 
-               tnode.chlds.push(this.buildTreeNode(cache, node.chlds[k]));
-         } else {
-            tnode.end_node = true;
+            var dnode = this.originalCache ? this.originalCache[moditem.id] : null;
+
+            if (dnode) {
+               // here we can modify only node which was changed
+               dnode.title = moditem.name;
+               dnode.color_visible = false;
+               dnode.node_visible = moditem.vis != 0;
+            } else {
+               can_refresh = false;
+            }
+            
+            if (!moditem.vis && this.geo_painter)
+               this.geo_painter.RemoveDrawnNode(moditem.id);
          }
          
-         return tnode;
+         if (can_refresh) {
+            this.model.refresh();
+         } else {
+            // rebuild complete tree for TreeBrowser
+            this.buildTree();
+            // set all available properties
+            this.setNodesDrawProperties(this.last_draw_msg);
+         }
+         
       },
       
       // here try to append only given stack to the tree
@@ -437,8 +446,27 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          }
          
          prnt.end_node = true;
-         prnt.color = "rgb(" + color + ")";
-         prnt.color_visible = true;
+         prnt.color = color ? "rgb(" + color + ")" : "";
+         prnt.color_visible = prnt.color.length > 0;
+      },
+
+      buildTreeNode: function(cache, indx) {
+         var tnode = cache[indx];
+         if (tnode) return tnode;
+
+         var node = this.geo_clones.nodes[indx];
+         
+         cache[indx] = tnode = { title: node.name, id: indx, color_visible: false, node_visible: node.vis != 0 };
+         
+         if (node.chlds && (node.chlds.length>0)) {
+            tnode.chlds = [];
+            for (var k=0;k<node.chlds.length;++k) 
+               tnode.chlds.push(this.buildTreeNode(cache, node.chlds[k]));
+         } else {
+            tnode.end_node = true;
+         }
+         
+         return tnode;
       },
       
       /** Build complete tree of all existing nodes. 
@@ -446,7 +474,9 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       buildTree: function() {
          if (!this.geo_clones) return;
          
-         this.data.Nodes = [ this.buildTreeNode([], 0) ];
+         this.originalCache = [];
+         
+         this.data.Nodes = [ this.buildTreeNode(this.originalCache, 0) ];
          
          this.originalNodes = this.data.Nodes; 
          
@@ -461,8 +491,8 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             var dnode = this.data.Nodes[0];
             for (var n=0;n<item.stack.length;++n)
                dnode = dnode.chlds[item.stack[n]];
-            dnode.color = "rgb(" + item.color + ")";
-            dnode.color_visible = true;
+            dnode.color = item.color ? "rgb(" + item.color + ")" : "";
+            dnode.color_visible = dnode.color.length > 0;
          }
          this.model.refresh(); // refresh browser
       },
@@ -549,7 +579,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          if (!this.geo_painter) return; 
          this.geo_painter.appendMoreNodes(matches);
          if (this._hover_stack)
-            this.geo_painter.HighlightMesh(null, 0x00ff00, null, this._hover_stack, true);
+            this.geo_painter.HighlightMesh(null, 0x00ff00, null, undefined, this._hover_stack, true);
       },
 
       OnWebsocketClosed: function() {
