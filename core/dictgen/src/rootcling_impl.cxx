@@ -1280,8 +1280,7 @@ void WriteClassFunctions(const clang::CXXRecordDecl *cl, std::ostream &dictStrea
 
    // Trigger autoloading if dictionary is split
    if (autoLoad)
-      dictStream << "   gInterpreter->EnableAutoLoading();\n"
-                 << "   gInterpreter->AutoLoad(\"" << fullname << "\");\n";
+      dictStream << "   gInterpreter->AutoLoad(\"" << fullname << "\");\n";
    dictStream    << "   fgIsA = ::ROOT::GenerateInitInstanceLocal((const ::" << fullname
                  << "*)0x0)->GetClass();" << std::endl
                  << "   return fgIsA;\n"
@@ -3513,7 +3512,7 @@ const std::string GenerateStringFromHeadersForClasses(const HeadersDeclsMap_t &h
 
    if (genreflex::verbose)
       std::cout << "Class-headers Mapping:\n";
-   std::string headersClassesMapString = "static const char* classesHeaders[]={\n";
+   std::string headersClassesMapString = "";
    for (auto const & classHeaders : headersClassesMap) {
       if (genreflex::verbose)
          std::cout << " o " << classHeaders.first << " --> ";
@@ -3531,7 +3530,7 @@ const std::string GenerateStringFromHeadersForClasses(const HeadersDeclsMap_t &h
          std::cout << std::endl;
       headersClassesMapString += ", \"@\",\n";
    }
-   headersClassesMapString += "nullptr};\n";
+   headersClassesMapString += "nullptr";
    return headersClassesMapString;
 }
 
