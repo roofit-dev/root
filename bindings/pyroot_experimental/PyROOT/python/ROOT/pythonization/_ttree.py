@@ -1,5 +1,5 @@
 
-from libROOTPython import AddBranchAttrSyntax, SetBranchAddressPyz
+from libROOTPython import AddBranchAttrSyntax, SetBranchAddressPyz, BranchPyz
 
 from ROOT import pythonization
 
@@ -24,7 +24,20 @@ def _SetBranchAddress(self, *args):
     if res is None:
         # Fall back to the original implementation for the rest of overloads
         res = self._OriginalSetBranchAddress(*args)
-    
+
+    return res
+
+def _Branch(self, *args):
+    # Modify the behaviour if args is one of:
+    # ( const char*, void*, const char*, Int_t = 32000 )
+    # ( const char*, const char*, T**, Int_t = 32000, Int_t = 99 )
+    # ( const char*, T**, Int_t = 32000, Int_t = 99 )
+    res = BranchPyz(self, *args)
+
+    if res is None:
+        # Fall back to the original implementation for the rest of overloads
+        res = self._OriginalBranch(*args)
+
     return res
 
 @pythonization
@@ -53,6 +66,11 @@ def pythonize_ttree(klass, name):
         AddBranchAttrSyntax(klass)
 
         # SetBranchAddress
+        klass._OriginalSetBranchAddress = klass.SetBranchAddress
         klass.SetBranchAddress = _SetBranchAddress
+
+        # Branch
+        klass._OriginalBranch = klass.Branch
+        klass.Branch = _Branch
 
     return True
