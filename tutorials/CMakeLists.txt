@@ -83,9 +83,19 @@ if(NOT ROOT_xml_FOUND)
                 unfold/*.C)        # unfold requires xml
 endif()
 
+if(NOT XROOTD_FOUND)
+  set(xrootd_veto dataframe/df102_NanoAODDimuonAnalysis.C
+                  dataframe/df101_h1Analysis.C)
+endif()
+
 # variables identifying the package must have the package name  in lower case (it corresponds to the CMake option name)
 if(NOT ROOT_r_FOUND)
   set(r_veto  r/*.C)
+endif()
+
+# FIXME: Temporary workaround for runtime_cxxmodule
+if (FIXME_TEMPORARILY_EXCLUDED_FOR_RUNTIME_CXXMODULES)
+  set(runtime_cxxmodules_veto r/Function.C)
 endif()
 
 if(WIN32)
@@ -238,6 +248,7 @@ set(all_veto hsimple.C
              ${opengl_veto}
              ${gviz_veto}
              ${r_veto}
+             ${runtime_cxxmodules_veto}
              ${histfactory_veto}
              ${tbb_veto}
              ${imt_veto}
@@ -245,6 +256,7 @@ set(all_veto hsimple.C
              ${pythia_veto}
              ${root7_veto}
              ${bits32_veto}
+             ${xrootd_veto}
              )
 
 file(GLOB_RECURSE tutorials RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.C)
