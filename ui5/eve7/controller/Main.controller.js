@@ -1,8 +1,9 @@
-sap.ui.define(['sap/ui/core/mvc/Controller',
+sap.ui.define(['sap/ui/core/Component',
+               'sap/ui/core/mvc/Controller',
                'sap/ui/layout/Splitter',
                'sap/ui/layout/SplitterLayoutData',
                'rootui5/eve7/lib/EveManager'
-], function(Controller, Splitter, SplitterLayoutData, EveManager) {
+], function(Component, Controller, Splitter, SplitterLayoutData, EveManager) {
 
    "use strict";
 
@@ -13,11 +14,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
          this.mgr = new EveManager();
 
-         this.mgr.UseConnection(this.getView().getViewData().conn_handle);
+         var conn_handle = Component.getOwnerComponentFor(this.getView()).getComponentData().conn_handle;
+         this.mgr.UseConnection(conn_handle);
+         // this.mgr.UseConnection(this.getView().getViewData().conn_handle);
 
          // method to found summary controller by ID and set manager to it
          var elem = this.byId("Summary");
-         var ctrl = sap.ui.getCore().byId(elem.getId()).getController();
+         var ctrl = elem.getController();
          ctrl.SetMgr(this.mgr);
 
          this.mgr.RegisterUpdate(this, "onManagerUpdate");
@@ -48,22 +51,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          var viewers = this.mgr.FindViewers();
 
          // first check number of views to create
-         var need_geom = false, staged = [];
+         var staged = [];
          for (var n=0;n<viewers.length;++n) {
-            var elem = viewers[n];
-            if (!elem.$view_created && elem.fRnrSelf) {
-               staged.push(elem);
-               if (viewers[n].fName != "Table") need_geom = true;
-            }
+            var el = viewers[n];
+            if (!el.$view_created && el.fRnrSelf) staged.push(el);
          }
-
          if (staged.length == 0) return;
          
-         // if geometry loading was requested - do it now
-         // TODO: this should be done via sap.define[] API
-         if (need_geom && !loading_done)
-            return JSROOT.AssertPrerequisites("geom", this.updateViewers.bind(this, true));
-
          console.log("FOUND viewers", viewers.length, "not yet exists", staged.length);
 
          var main = this, vv = null, count = 0, sv = this.getView().byId("MainAreaSplitter");
@@ -83,12 +77,15 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
             var vtype = "rootui5.eve7.view.GL";
             if (elem.fName === "Table") vtype = "rootui5.eve7.view.EveTable"; // AMT temporary solution
-
-            var view = new JSROOT.sap.ui.xmlview({
-               id: viewid,
-               viewName: vtype,
-               viewData: { mgr: main.mgr, elementid: elem.fElementId, kind: (count==1) ? "3D" : "2D" },
-               layoutData: oLd
+            
+            var oOwnerComponent = Component.getOwnerComponentFor(this.getView());
+            var view = oOwnerComponent.runAsOwner(function() {
+               return new JSROOT.sap.ui.xmlview({
+                  id: viewid,
+                  viewName: vtype,
+                  viewData: { mgr: main.mgr, elementid: elem.fElementId, kind: (count==1) ? "3D" : "2D" },
+                  layoutData: oLd
+               });
             });
 
             if (count == 1) {
