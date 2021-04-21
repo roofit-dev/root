@@ -155,7 +155,7 @@ ROOT_BUILD_OPTION(tcmalloc OFF "Use tcmalloc memory allocator")
 ROOT_BUILD_OPTION(thread ON "Enable support for multi-threading (cannot be disabled)")
 ROOT_BUILD_OPTION(tmva ON "Build TMVA multi variate analysis library")
 ROOT_BUILD_OPTION(tmva-cpu ON "Build TMVA with CPU support for deep learning (requires BLAS)")
-ROOT_BUILD_OPTION(tmva-gpu ON "Build TMVA with GPU support for deep learning (requries CUDA)")
+ROOT_BUILD_OPTION(tmva-gpu OFF "Build TMVA with GPU support for deep learning (requries CUDA)")
 ROOT_BUILD_OPTION(tmva-pymva ON "Enable support for Python in TMVA (requires numpy)")
 ROOT_BUILD_OPTION(tmva-rmva OFF "Enable support for R in TMVA")
 ROOT_BUILD_OPTION(unuran OFF "Enable support for UNURAN (package for generating non-uniform random numbers)")
@@ -183,21 +183,6 @@ set(gcctoolchain "" CACHE PATH "Set path to GCC toolchain used to build llvm/cla
 if (runtime_cxxmodules)
   set(pch_defvalue OFF)
 endif(runtime_cxxmodules)
-
-#--- TMVA --------------------------------------------------------------------------------------
-# User can specify either old name or new name for enabling rmva
-if (tmva)
-  if (r OR tmva-rmva)
-    set(r ON)
-    set(tmva-rmva ON)
-  endif()
-else()
-  set(tmva-cpu OFF CACHE BOOL "Disabled because tmva is disabled (${tmva-cpu_description})" FORCE)
-  set(tmva-gpu OFF CACHE BOOL "Disabled because tmva is disabled (${tmva-gpu_description})" FORCE)
-  set(tmva-rmva OFF CACHE BOOL "Disabled because tmva is disabled (${tmva-rmva_description})" FORCE)
-  set(tmva-pymva OFF CACHE BOOL "Disabled because tmva is disabled (${tmva-pymva_description})" FORCE)
-endif()
-
 
 #--- Compression algorithms in ROOT-------------------------------------------------------------
 set(compression_default "zlib" CACHE STRING "Default compression algorithm (zlib (default), lz4, or lzma)")
