@@ -134,9 +134,6 @@ foreach(var ${variables})
   endif()
 endforeach()
 
-#---Make sure the Jupyter ROOT C++ kernel runs with the same Python version as ROOT-----
-configure_file(${CMAKE_SOURCE_DIR}/etc/notebook/kernels/root/kernel.json.in ${CMAKE_BINARY_DIR}/etc/notebook/kernels/root/kernel.json)
-
 #---Move (copy) directories to binary tree------------------------------------------------------
 set(stamp_file ${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/move_artifacts.stamp)
 add_custom_command(OUTPUT ${stamp_file}
@@ -423,7 +420,8 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_INSTALL_PREFIX)
                          PATTERN "rootd.xinetd" EXCLUDE
                          PATTERN "proofd.xinetd" EXCLUDE
                          PATTERN "root.mimes" EXCLUDE
-                         PATTERN "cmake" EXCLUDE )
+                         PATTERN "cmake" EXCLUDE
+                         PATTERN "*.in" EXCLUDE)
   install(DIRECTORY fonts/  DESTINATION ${CMAKE_INSTALL_FONTDIR})
   install(DIRECTORY icons/  DESTINATION ${CMAKE_INSTALL_ICONDIR})
   install(DIRECTORY macros/ DESTINATION ${CMAKE_INSTALL_MACRODIR})
@@ -433,6 +431,12 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_INSTALL_PREFIX)
   install(DIRECTORY cmake/modules DESTINATION ${CMAKE_INSTALL_CMAKEDIR} PATTERN "Find*.cmake" EXCLUDE)
   install(FILES build/misc/root.m4 DESTINATION ${CMAKE_INSTALL_ACLOCALDIR})
 endif()
+
+#---Make sure the Jupyter ROOT C++ kernel runs with the same Python version as ROOT-----
+set(root_kernel_dir  notebook/kernels/root)
+set(root_kernel_file kernel.json)
+configure_file(etc/${root_kernel_dir}/${root_kernel_file}.in etc/${root_kernel_dir}/${root_kernel_file})
+install(FILES ${CMAKE_BINARY_DIR}/etc/${root_kernel_dir}/${root_kernel_file} DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/${root_kernel_dir})
 
 #---Configure Testing using CTest----------------------------------------------------------------
 configure_file(${CMAKE_SOURCE_DIR}/cmake/modules/CTestCustom.cmake ${CMAKE_BINARY_DIR} COPYONLY)
