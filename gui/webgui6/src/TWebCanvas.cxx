@@ -86,6 +86,7 @@ Bool_t TWebCanvas::IsJSSupportedClass(TObject *obj)
                             {"TLatex", false},
                             {"TMathText", false},
                             {"TMarker", false},
+                            {"TPolyMarker", false},
                             {"TPolyMarker3D", false},
                             {"TGraph2D", false},
                             {nullptr, false}};
@@ -176,11 +177,8 @@ void TWebCanvas::CreateObjectSnapshot(TPadWebSnapshot &master, TPad *pad, TObjec
       return;
    }
 
-   TWebPadPainter *painter = dynamic_cast<TWebPadPainter *>(Canvas()->GetCanvasPainter());
-   if (!painter) {
-      Error("CreateObjectSnapshot", "Not found WebPadPainter when paint class %s", obj->ClassName());
-      return;
-   }
+   // painter is not necessary for batch canvas, but keep configuring it for a while
+   auto *painter = dynamic_cast<TWebPadPainter *>(Canvas()->GetCanvasPainter());
 
    fHasSpecials = kTRUE;
 
@@ -189,7 +187,7 @@ void TWebCanvas::CreateObjectSnapshot(TPadWebSnapshot &master, TPad *pad, TObjec
 
    pad->cd();
 
-   if (obj->InheritsFrom(TAtt3D::Class())) {
+   if (obj->InheritsFrom(TAtt3D::Class()) && !pad->GetView()) {
       pad->GetViewer3D("pad");
       view = TView::CreateView(1, 0, 0); // Cartesian view by default
       pad->SetView(view);
@@ -202,7 +200,8 @@ void TWebCanvas::CreateObjectSnapshot(TPadWebSnapshot &master, TPad *pad, TObjec
 
    TWebPS ps;
    gVirtualPS = masterps ? masterps : &ps;
-   painter->SetPainting(ps.GetPainting());
+   if (painter)
+      painter->SetPainting(ps.GetPainting());
 
    // calling Paint function for the object
    obj->Paint(opt);
@@ -214,21 +213,16 @@ void TWebCanvas::CreateObjectSnapshot(TPadWebSnapshot &master, TPad *pad, TObjec
       pad->SetView(nullptr);
    }
 
-   painter->SetPainting(nullptr);
+   if (painter)
+      painter->SetPainting(nullptr);
 
    gVirtualPS = saveps;
    if (savepad)
       savepad->cd();
 
-   // if there are master PS, do not create single entries
-   if (masterps || ps.IsEmptyPainting())
-      return;
-
-   auto p = ps.TakePainting();
-
-   // when paint method was used and produce output
-
-   master.NewPrimitive(obj, opt).SetSnapshot(TWebSnapshot::kSVG, p, kTRUE);
+   // if there are master PS, do not create separate entries
+   if (!masterps && !ps.IsEmptyPainting())
+      master.NewPrimitive(obj, opt).SetSnapshot(TWebSnapshot::kSVG, ps.TakePainting(), kTRUE);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -255,18 +249,18 @@ void TWebCanvas::AddCanvasSpecials(TPadWebSnapshot &master)
 
    TArrayI pal = TColor::GetPalette();
 
-   TWebPainting *listofcols = new TWebPainting;
+   auto *listofcols = new TWebPainting;
    for (Int_t n = 0; n <= colors->GetLast(); ++n)
       if (colors->At(n))
          listofcols->AddColor(n, (TColor *)colors->At(n));
 
    // store palette in the buffer
-   Float_t *tgt = listofcols->Reserve(pal.GetSize());
+   auto *tgt = listofcols->Reserve(pal.GetSize());
    for (Int_t i = 0; i < pal.GetSize(); i++)
       tgt[i] = pal[i];
    listofcols->FixSize();
 
-   master.NewPrimitive().SetSnapshot(TWebSnapshot::kColors, listofcols, kTRUE);
+   master.NewSpecials().SetSnapshot(TWebSnapshot::kColors, listofcols, kTRUE);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -277,9 +271,6 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
    paddata.SetActive(pad == gPad);
    paddata.SetObjectIDAsPtr(pad);
    paddata.SetSnapshot(TWebSnapshot::kSubPad, pad);
-
-   if (resfunc && (version <= 0))
-      AddCanvasSpecials(paddata);
 
    TList *primitives = pad->GetListOfPrimitives();
 
@@ -343,6 +334,10 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
 
    if (!resfunc)
       return;
+
+   // add specials after painting is performed - new colors may be generated only during painting
+   if (version <= 0)
+      AddCanvasSpecials(paddata);
 
    // now move all primitives and functions into separate list to perform I/O
 
@@ -447,8 +442,6 @@ TString TWebCanvas::CreateWebWindow(int limit)
       fWindow->SetDefaultPage("file:$jsrootsys/files/canvas6.htm");
 
       fWindow->SetDataCallBack([this](unsigned connid, const std::string &arg) { ProcessData(connid, arg); });
-
-      // fWindow->SetGeometry(500,300);
    }
 
    std::string url = fWindow->GetUrl(false);
@@ -473,8 +466,11 @@ THttpServer *TWebCanvas::GetServer()
 
 void TWebCanvas::ShowWebWindow(const ROOT::Experimental::RWebDisplayArgs &args)
 {
-   if (fWindow)
+   if (fWindow) {
+      if ((Canvas()->GetWw()>0) && (Canvas()->GetWw()<50000) && (Canvas()->GetWh()>0) && (Canvas()->GetWh()<30000))
+         fWindow->SetGeometry(Canvas()->GetWw()+6, Canvas()->GetWh()+22);
       fWindow->Show(args);
+   }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -586,9 +582,12 @@ Bool_t TWebCanvas::DecodeAllRanges(const char *arg)
 
       pad->SetTicks(r.tickx, r.ticky);
       pad->SetGrid(r.gridx, r.gridy);
-      pad->SetLogx(r.logx);
-      pad->SetLogy(r.logy);
-      pad->SetLogz(r.logz);
+      if (r.logx != pad->GetLogx())
+         pad->SetLogx(r.logx);
+      if (r.logy != pad->GetLogy())
+         pad->SetLogy(r.logy);
+      if (r.logz != pad->GetLogz())
+         pad->SetLogz(r.logz);
 
       pad->SetLeftMargin(r.mleft);
       pad->SetRightMargin(r.mright);
@@ -868,18 +867,20 @@ Bool_t TWebCanvas::IsAnyPadModified(TPad *pad)
    }
 
    TIter iter(pad->GetListOfPrimitives());
-   TObject *obj = 0;
-   while ((obj = iter()) != 0) {
-      if (obj->InheritsFrom(TPad::Class()) && IsAnyPadModified((TPad *)obj))
+   TObject *obj = nullptr;
+   while ((obj = iter()) != nullptr) {
+      if (obj->InheritsFrom(TPad::Class()) && IsAnyPadModified(static_cast<TPad *>(obj)))
          res = kTRUE;
    }
 
    return res;
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////
+/// Returns window geometry including borders and menus
+
 UInt_t TWebCanvas::GetWindowGeometry(Int_t &x, Int_t &y, UInt_t &w, UInt_t &h)
 {
-   // reset dimension in gVirtualX  - it will be requested immediately
    x = 0;
    y = 0;
    w = Canvas()->GetWw() + 4;
