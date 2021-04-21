@@ -21,12 +21,31 @@ pythonizations.
 #include "CPPInstance.h"
 #include "TClass.h"
 
+// Call method with signature: obj->meth()
 PyObject *CallPyObjMethod(PyObject *obj, const char *meth)
 {
-   // Helper; call method with signature: obj->meth()
-   return PyObject_CallMethod(obj, const_cast<char*>(meth), const_cast<char*>(""));
+   return PyObject_CallMethod(obj, const_cast<char *>(meth), const_cast<char *>(""));
 }
 
+// Call method with signature: obj->meth(arg1)
+PyObject *CallPyObjMethod(PyObject *obj, const char *meth, PyObject *arg1)
+{
+   return PyObject_CallMethod(obj, const_cast<char *>(meth), const_cast<char *>("O"), arg1);
+}
+
+// Convert generic python object into a boolean value
+PyObject *BoolNot(PyObject *value)
+{
+   if (PyObject_IsTrue(value) == 1) {
+      Py_DECREF(value);
+      Py_RETURN_FALSE;
+   } else {
+      Py_XDECREF(value);
+      Py_RETURN_TRUE;
+   }
+}
+
+// Get the TClass of the C++ object proxied by pyobj
 TClass *GetTClass(const CPyCppyy::CPPInstance *pyobj)
 {
    return TClass::GetClass(Cppyy::GetFinalName(pyobj->ObjectIsA()).c_str());
