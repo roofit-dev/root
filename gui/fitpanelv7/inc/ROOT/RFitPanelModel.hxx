@@ -27,6 +27,7 @@
 
 class TH1;
 class TF1;
+class TFitResult;
 
 namespace ROOT {
 namespace Experimental {
@@ -35,12 +36,30 @@ namespace Experimental {
 
 struct RFitPanelModel {
 
+   enum EFitObjectType {
+      kObjectNone,
+      kObjectHisto,
+      kObjectGraph,
+      kObjectGraph2D,
+      kObjectHStack,
+   //   kObjectTree,
+      kObjectMultiGraph,
+      kObjectNotSupported
+   };
+
    /// Generic item for ui5 ComboBox
    struct RComboBoxItem {
       std::string key;
       std::string value;
       RComboBoxItem() = default;
       RComboBoxItem(const std::string &_key, const std::string &_value) : key(_key), value(_value) {}
+   };
+
+   struct RMethodInfo {
+      int id{0};                 // method id
+      std::string text;          // text shown in combobox
+      RMethodInfo() = default;
+      RMethodInfo(int _id, const std::string &_text) : id(_id), text(_text) {}
    };
 
    /// Entry in minimizer algorithm combo
@@ -88,24 +107,24 @@ struct RFitPanelModel {
       void Clear();
    };
 
-   std::string fTitle;                      ///< title of the fit panel
+   std::string fTitle;                    ///< title of the fit panel
 
-   std::vector<RItemInfo> fDataSet;     ///< list of available data sources
-   std::string fSelectedData;               ///< selected data
+   std::vector<RItemInfo> fDataSet;       ///< list of available data sources
+   std::string fSelectedData;             ///< selected data
+   EFitObjectType fDataType{kObjectNone}; ///< selected object type, provided by server
 
-   int fDim{0};                             ///< number of dimensions in selected data object
+   int fDim{0};                           ///< number of dimensions in selected data object
 
-   std::vector<RItemInfo> fFuncList;     ///< all available fit functions
-   std::string fSelectedFunc;               ///< id of selected fit function like dflt::gaus
+   std::vector<RItemInfo> fFuncList;      ///< all available fit functions
+   std::string fSelectedFunc;             ///< id of selected fit function like dflt::gaus
 
-
-   std::string fSelectedTab;               ///< key of selected tab, useful for drawing
+   std::string fSelectedTab;              ///< key of selected tab, useful for drawing
 
    // General tab
 
    // Method
-   std::vector<RComboBoxItem> fFitMethods;   ///< all supported fit methods
-   std::string fFitMethod;                   ///< selected fit method
+   std::vector<RMethodInfo> fFitMethods;  ///< all supported for selected data
+   int fFitMethod{0};                     ///< selected fit method
 
    bool fLinearFit{false};
    bool fRobust{false};
@@ -157,31 +176,29 @@ struct RFitPanelModel {
 
    RFuncParsList fFuncPars;
 
-   /////////Advanced Options
+   /// Advanced Options
 
    bool fHasAdvanced{false};
    std::string fAdvancedTab;
+   std::vector<RComboBoxItem> fAdvancedPars;
+   float fConfidenceLevel{0.683};
 
-   std::vector<RComboBoxItem> fContour1;
-   std::string fContourPar1Id;
-   std::vector<RComboBoxItem> fContour2;
-   std::string fContourPar2Id;
-   std::vector<RComboBoxItem> fScan;
-   std::string fScanId;
-
-   // Contour Tab
-   int fContourPar1{0};
-   int fContourPar2{0};
+   /// Contour sub-tab
    int fContourPoints{0};
-   float fConfLevel{0.};
-   bool fContourImpose{false};
-   std::string fColorContour[3];
+   std::string fContourPar1Id;
+   std::string fContourPar2Id;
+   std::string fContourColor;
+   bool fContourSuperImpose{false};
 
-   // Scan Tab
+   // Scan sub-tab
    int fScanPoints{0};
-   int fScanPar{0};
-   int fScanMin{0};
-   int fScanMax{0};
+   std::string fScanId;
+   float fScanMin{0};
+   float fScanMax{0};
+   std::string fScanColor;
+
+   /// Confidence sub-tab
+   std::string fConfidenceColor;
 
    bool fInitialized{false};        ///<! indicates if data were initialized
 
@@ -191,13 +208,15 @@ struct RFitPanelModel {
 
    bool SelectHistogram(const std::string &hname, TH1 *hist);
 
+   void SetObjectKind(EFitObjectType kind);
+
    bool HasFunction(const std::string &id);
 
    void SelectedFunc(const std::string &name, TF1 *func);
 
    void UpdateRange(TH1 *hist);
 
-   void UpdateAdvanced(TF1 *func);
+   void UpdateAdvanced(TFitResult *res);
 
    bool IsDataSelected() const { return !fSelectedData.empty(); }
 
