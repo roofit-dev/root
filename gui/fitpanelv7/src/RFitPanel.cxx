@@ -16,7 +16,6 @@
 
 #include <ROOT/RFitPanel.hxx>
 
-#include <ROOT/RWebWindowsManager.hxx>
 #include <ROOT/RMakeUnique.hxx>
 #include <ROOT/RLogger.hxx>
 
@@ -104,11 +103,21 @@ ROOT::Experimental::RFitPanel::~RFitPanel()
 std::shared_ptr<ROOT::Experimental::RWebWindow> ROOT::Experimental::RFitPanel::GetWindow()
 {
    if (!fWindow) {
-      fWindow = RWebWindowsManager::Instance()->CreateWindow();
+      fWindow = RWebWindow::Create();
 
       fWindow->SetPanelName("rootui5.fitpanel.view.FitPanel");
 
-      fWindow->SetDataCallBack([this](unsigned connid, const std::string &arg) { ProcessData(connid, arg); });
+      fWindow->SetCallBacks(
+            [this](unsigned connid)
+            {
+               fConnId = connid;
+               fWindow->Send(fConnId, "INITDONE");
+               if (!model().fInitialized)
+                  SelectObject("$$$");
+               SendModel();
+            },
+            [this](unsigned connid, const std::string &arg) { ProcessData(connid, arg); },
+            [this](unsigned) { fConnId = 0; });
 
       fWindow->SetGeometry(400, 650); // configure predefined geometry
    }
@@ -385,21 +394,9 @@ void ROOT::Experimental::RFitPanel::SendModel()
 /// Process data from FitPanel
 /// OpenUI5-based FitPanel sends commands or status changes
 
-void ROOT::Experimental::RFitPanel::ProcessData(unsigned connid, const std::string &arg)
+void ROOT::Experimental::RFitPanel::ProcessData(unsigned, const std::string &arg)
 {
-   if (arg == "CONN_READY") {
-      fConnId = connid;
-      fWindow->Send(fConnId, "INITDONE");
-      if (!model().fInitialized)
-         SelectObject("$$$");
-
-      SendModel();
-
-   } else if (arg == "CONN_CLOSED") {
-
-      fConnId = 0;
-
-   } else if (arg == "RELOAD") {
+   if (arg == "RELOAD") {
 
       GetFunctionsFromSystem();
 
