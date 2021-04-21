@@ -432,6 +432,16 @@ THttpServer *TWebCanvas::GetServer()
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
+/// Show canvas in specified place.
+/// If parameter where not specified, default ROOT web display will be used
+
+void TWebCanvas::ShowWebWindow(const std::string &where)
+{
+   if (fWindow)
+      fWindow->Show(where);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
 /// Show canvas in browser window
 
 void TWebCanvas::Show()
@@ -440,7 +450,7 @@ void TWebCanvas::Show()
 
    fWaitNewConnection = kTRUE;
 
-   fWindow->Show();
+   ShowWebWindow();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -761,6 +771,12 @@ void TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
 
          Info("ProcessWS", "File %s has been created", filename.Data());
       }
+      CheckDataToSend();
+
+   } else if (strncmp(cdata, "PRODUCE:", 8) == 0) {
+
+      Canvas()->Print(cdata+8);
+
       CheckDataToSend();
 
    } else if (strncmp(cdata, "PADCLICKED:", 11) == 0) {
