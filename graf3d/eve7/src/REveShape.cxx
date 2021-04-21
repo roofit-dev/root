@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
+// @(#)root/eve7:$Id$
 // Author: Matevz Tadel, 2010
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -33,7 +33,7 @@ It provides:
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor.
 
-REveShape::REveShape(const std::string& n, const std::string& t) :
+REveShape::REveShape(const std::string &n, const std::string &t) :
    REveElement(n, t),
    fFillColor(5),
    fLineColor(5),
@@ -57,7 +57,7 @@ REveShape::~REveShape()
 ////////////////////////////////////////////////////////////////////////////////
 /// Fill core part of JSON representation.
 
-Int_t REveShape::WriteCoreJson(nlohmann::json& j, Int_t rnr_offset)
+Int_t REveShape::WriteCoreJson(nlohmann::json &j, Int_t rnr_offset)
 {
    Int_t ret = REveElement::WriteCoreJson(j, rnr_offset);
 
@@ -152,9 +152,8 @@ Int_t REveShape::FindConvexHull(const vVector2_t& pin, vVector2_t& pout, REveEle
    {
       std::vector<Int_t> new_idcs;
       new_idcs.push_back(idcs[0]);
-      std::vector<Int_t>::iterator a, b;
-      a = idcs.begin(); ++a;
-      b = a; ++b;
+      auto a = idcs.begin(); ++a;
+      auto b = a; ++b;
       while (b != idcs.end())
       {
          if (TMath::Abs(angles[*a] - angles[*b]) < 1e-5f)

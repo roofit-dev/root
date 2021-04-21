@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
+// @(#)root/eve7:$Id$
 // Author: Matevz Tadel 2007
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -77,24 +77,24 @@ void REveSelection::SetHighlightMode()
 /// Select element indicated by the entry and fill its
 /// implied-selected set.
 
-void REveSelection::DoElementSelect(SelMap_i entry)
+void REveSelection::DoElementSelect(SelMap_i &entry)
 {
    Set_t &imp_set = entry->second.f_implied;
 
    entry->first->FillImpliedSelectedSet(imp_set);
 
-   for (auto &imp_el : imp_set)  imp_el->IncImpliedSelected();
+   for (auto &imp_el: imp_set) imp_el->IncImpliedSelected();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Deselect element indicated by the entry and clear its
 /// implied-selected set.
 
-void REveSelection::DoElementUnselect(SelMap_i entry)
+void REveSelection::DoElementUnselect(SelMap_i &entry)
 {
    Set_t &imp_set = entry->second.f_implied;
 
-   for (auto &imp_el : imp_set)  imp_el->DecImpliedSelected();
+   for (auto &imp_el: imp_set) imp_el->DecImpliedSelected();
 
    imp_set.clear();
 }
@@ -122,7 +122,7 @@ bool REveSelection::HasNieces() const
 bool REveSelection::AcceptNiece(REveElement* el)
 {
    return el != this && fMap.find(el) == fMap.end() &&
-          el->IsA()->InheritsFrom(REveSelection::Class()) == kFALSE;
+          el->IsA()->InheritsFrom(TClass::GetClass<REveSelection>()) == kFALSE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -130,10 +130,9 @@ bool REveSelection::AcceptNiece(REveElement* el)
 
 void REveSelection::AddNieceInternal(REveElement* el)
 {
-   SelMap_i i = fMap.insert(std::make_pair(el, Record(el))).first;
-   if (fActive)
-   {
-      DoElementSelect(i);
+   auto res = fMap.emplace(el, Record(el));
+   if (fActive) {
+      DoElementSelect(res.first);
       SelectionAdded(el);
    }
 }
@@ -143,7 +142,7 @@ void REveSelection::AddNieceInternal(REveElement* el)
 
 void REveSelection::RemoveNieceInternal(REveElement* el)
 {
-   SelMap_i i = fMap.find(el);
+   auto i = fMap.find(el);
 
    if (i != fMap.end())
    {
@@ -167,7 +166,7 @@ void REveSelection::RemoveNieceInternal(REveElement* el)
 
 void REveSelection::RemoveNieces()
 {
-   for (SelMap_i i = fMap.begin(); i != fMap.end(); ++i)
+   for (auto i = fMap.begin(); i != fMap.end(); ++i)
    {
       i->first->RemoveAunt(this);
       DoElementUnselect(i);
@@ -183,13 +182,12 @@ void REveSelection::RemoveNieces()
 /// REveManager::PreDeleteElement() and should not be called
 /// directly.
 
-void REveSelection::RemoveImpliedSelected(REveElement* el)
+void REveSelection::RemoveImpliedSelected(REveElement *el)
 {
-   for (SelMap_i i = fMap.begin(); i != fMap.end(); ++i)
-   {
-      Set_i j = i->second.f_implied.find(el);
-      if (j != i->second.f_implied.end())
-         i->second.f_implied.erase(j);
+   for (auto &i : fMap) {
+      auto j = i.second.f_implied.find(el);
+      if (j != i.second.f_implied.end())
+         i.second.f_implied.erase(j);
    }
 }
 
@@ -198,16 +196,16 @@ void REveSelection::RemoveImpliedSelected(REveElement* el)
 /// Add new elements to implied-selected set and increase their
 /// implied-selected count.
 
-void REveSelection::RecheckImpliedSet(SelMap_i smi)
+void REveSelection::RecheckImpliedSet(SelMap_i &smi)
 {
    Set_t set;
    smi->first->FillImpliedSelectedSet(set);
-   for (auto i = set.begin(); i != set.end(); ++i)
+   for (auto &i: set)
    {
-      if (smi->second.f_implied.find(*i) == smi->second.f_implied.end())
+      if (smi->second.f_implied.find(i) == smi->second.f_implied.end())
       {
-         smi->second.f_implied.insert(*i);
-         (*i)->IncImpliedSelected();
+         smi->second.f_implied.insert(i);
+         i->IncImpliedSelected();
       }
    }
 }
@@ -216,11 +214,11 @@ void REveSelection::RecheckImpliedSet(SelMap_i smi)
 /// If given element is selected or implied-selected within this
 /// selection then recheck implied-set for given selection entry.
 
-void REveSelection::RecheckImpliedSetForElement(REveElement* el)
+void REveSelection::RecheckImpliedSetForElement(REveElement *el)
 {
    // Top-level selected.
    {
-      SelMap_i i = fMap.find(el);
+      auto i = fMap.find(el);
       if (i != fMap.end())
          RecheckImpliedSet(i);
    }
@@ -229,7 +227,7 @@ void REveSelection::RecheckImpliedSetForElement(REveElement* el)
    // then we need to loop over all.
    if (el->GetImpliedSelected() > 0)
    {
-      for (SelMap_i i = fMap.begin(); i != fMap.end(); ++i)
+      for (auto i = fMap.begin(); i != fMap.end(); ++i)
       {
          if (i->second.f_implied.find(el) != i->second.f_implied.end())
             RecheckImpliedSet(i);
@@ -281,8 +279,7 @@ void REveSelection::ActivateSelection()
    if (fActive) return;
 
    fActive = kTRUE;
-   for (SelMap_i i = fMap.begin(); i != fMap.end(); ++i)
-   {
+   for (auto i = fMap.begin(); i != fMap.end(); ++i) {
       DoElementSelect(i);
       SelectionAdded(i->first);
    }
@@ -293,10 +290,9 @@ void REveSelection::ActivateSelection()
 
 void REveSelection::DeactivateSelection()
 {
-   if ( ! fActive) return;
+   if (!fActive) return;
 
-   for (SelMap_i i = fMap.begin(); i != fMap.end(); ++i)
-   {
+   for (auto i = fMap.begin(); i != fMap.end(); ++i) {
       DoElementUnselect(i);
    }
    SelectionCleared();
@@ -506,20 +502,17 @@ int REveSelection::RemoveImpliedSelectedReferencesTo(REveElement *el)
 {
    int count = 0;
 
-   for (SelMap_i i = fMap.begin(); i != fMap.end(); ++i)
-   {
-      auto j = i->second.f_implied.find(el);
+   for (auto &i : fMap) {
+      auto j = i.second.f_implied.find(el);
 
-      if (j != i->second.f_implied.end())
-      {
-         i->second.f_implied.erase(j);
+      if (j != i.second.f_implied.end()) {
+         i.second.f_implied.erase(j);
          ++count;
       }
    }
 
    return count;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Write core json. If rnr_offset negative, render data will not be written
@@ -530,18 +523,18 @@ Int_t REveSelection::WriteCoreJson(nlohmann::json &j, Int_t /* rnr_offset */)
 
    nlohmann::json sel_list = nlohmann::json::array();
 
-   for (SelMap_i i = fMap.begin(); i != fMap.end(); ++i)
+   for (auto &i : fMap)
    {
       nlohmann::json rec = {}, imp = nlohmann::json::array(), sec = nlohmann::json::array();
 
-      rec["primary"] = i->first->GetElementId();
+      rec["primary"] = i.first->GetElementId();
 
       // XXX if not empty ???
-      for (auto &imp_el : i->second.f_implied) imp.push_back(imp_el->GetElementId());
+      for (auto &imp_el : i.second.f_implied) imp.push_back(imp_el->GetElementId());
       rec["implied"]  = imp;
 
       // XXX if not empty / f_is_sec is false ???
-      for (auto &sec_id : i->second.f_sec_idcs) sec.push_back(sec_id);
+      for (auto &sec_id : i.second.f_sec_idcs) sec.push_back(sec_id);
       rec["sec_idcs"] = sec;
 
       sel_list.push_back(rec);
@@ -550,8 +543,6 @@ Int_t REveSelection::WriteCoreJson(nlohmann::json &j, Int_t /* rnr_offset */)
    j["sel_list"] = sel_list;
 
    j["UT_PostStream"] = "UT_Selection_Refresh_State"; // XXXX to be canonized
-
-   // std::cout << j.dump(2) << std::endl;
 
    return 0;
 }

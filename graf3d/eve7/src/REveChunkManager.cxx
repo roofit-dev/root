@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
+// @(#)root/eve7:$Id$
 // Authors: Matevz Tadel & Alja Mrak-Tadel: 2006, 2007
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -111,14 +111,14 @@ Char_t* REveChunkManager::NewChunk()
 
 Bool_t REveChunkManager::iterator::next()
 {
-   if (fSelection == 0)
+   if (fSelection == nullptr)
    {
       if (fAtomsToGo <= 0)
       {
-         if (fNextChunk < fPlex->VecSize())
+         if (fNextChunk < fPlex.VecSize())
          {
-            fCurrent   = fPlex->Chunk(fNextChunk);
-            fAtomsToGo = fPlex->NAtoms(fNextChunk);
+            fCurrent   = fPlex.Chunk(fNextChunk);
+            fAtomsToGo = fPlex.NAtoms(fNextChunk);
             ++fNextChunk;
          }
          else
@@ -128,7 +128,7 @@ Bool_t REveChunkManager::iterator::next()
       }
       else
       {
-         fCurrent += fPlex->S();
+         fCurrent += fPlex.S();
       }
       ++fAtomIndex;
       --fAtomsToGo;
@@ -144,7 +144,7 @@ Bool_t REveChunkManager::iterator::next()
       if (fSelectionIterator != fSelection->end())
       {
          fAtomIndex = *fSelectionIterator;
-         fCurrent   =  fPlex->Atom(fAtomIndex);
+         fCurrent   =  fPlex.Atom(fAtomIndex);
          return kTRUE;
       }
       else

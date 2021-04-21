@@ -1,7 +1,22 @@
+// @(#)root/eve7:$Id$
+// Authors: Matevz Tadel & Alja Mrak-Tadel, 2018
+
+/*************************************************************************
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
+ * All rights reserved.                                                  *
+ *                                                                       *
+ * For the licensing terms see $ROOTSYS/LICENSE.                         *
+ * For the list of contributors see $ROOTSYS/README/CREDITS.             *
+ *************************************************************************/
+
+
 #include <ROOT/REveDataProxyBuilderBase.hxx>
 #include <ROOT/REveProjectionManager.hxx>
 #include <ROOT/REveViewContext.hxx>
 #include <ROOT/REveCompound.hxx>
+
+#include <cassert>
+
 
 using namespace ROOT::Experimental;
 namespace REX = ROOT::Experimental;
@@ -16,9 +31,9 @@ REveDataProxyBuilderBase::Product::Product(std::string iViewType, const REveView
 //______________________________________________________________________________
 
 
-REveDataProxyBuilderBase::REveDataProxyBuilderBase(std::string type):
+REveDataProxyBuilderBase::REveDataProxyBuilderBase(const std::string &type):
    m_type(type),
-   m_collection(0),
+   m_collection(nullptr),
    //   m_interactionList(0),
    m_haveWindow(false)
 {
@@ -71,22 +86,22 @@ void REveDataProxyBuilderBase::Build()
       printf("Base %p %s %s\n", m_collection, m_collection->GetCName(), m_type.c_str());
       try
       {
-         size_t itemSize = (size_t)m_collection->GetNItems(); //cashed
+         auto itemSize = m_collection->GetNItems(); //cashed
 
          Clean();
-         for (Product_it i = m_products.begin(); i != m_products.end(); ++i)
+         for (auto &pp: m_products)
          {
             printf("build() %s \n", m_collection->GetCName());
-            REveElement* elms = (*i)->m_elements;
-            size_t oldSize = elms->NumChildren();
+            REveElement* elms = pp->m_elements;
+            auto oldSize = elms->NumChildren();
 
             if (HaveSingleProduct())
             {
-               Build(m_collection, elms, (*i)->m_viewContext);
+               Build(m_collection, elms, pp->m_viewContext);
             }
             else
             {
-               BuildViewType(m_collection, elms, (*i)->m_viewType, (*i)->m_viewContext);
+               BuildViewType(m_collection, elms, pp->m_viewType, pp->m_viewContext);
             }
 
             // Project all children of current product.
@@ -96,41 +111,43 @@ void REveDataProxyBuilderBase::Build()
             if (pable->HasProjecteds())
             {
                // loop projected holders
-               for (REveProjectable::ProjList_i pi = pable->BeginProjecteds(); pi != pable->EndProjecteds(); ++pi)
+               for (auto &prj: pable->RefProjecteds())
                {
-                  REveProjectionManager *pmgr = (*pi)->GetManager();
+                  REveProjectionManager *pmgr = prj->GetManager();
                   Float_t oldDepth = pmgr->GetCurrentDepth();
                   pmgr->SetCurrentDepth(m_layer);
-                  size_t cnt = 0;
+                  Int_t cnt = 0;
 
-                  REveElement* projectedAsElement = (*pi)->GetProjectedAsElement();
-                  REveElement::List_i parentIt = projectedAsElement->BeginChildren();
-                  for (REveElement::List_i prodIt = elms->BeginChildren(); prodIt != elms->EndChildren(); ++prodIt, ++cnt)
+                  REveElement *projectedAsElement = prj->GetProjectedAsElement();
+                  auto parentIt = projectedAsElement->RefChildren().begin();
+                  for (auto &prod: elms->RefChildren())
                   {
                       // reused projected holder
                      if (cnt < oldSize)
                      {
+                        /*
+                        // AMT no use case for this at the moment
                         if ((*parentIt)->NumChildren()) {
                             // update projected (mislleading name)
                            for ( REveElement::List_i pci = (*parentIt)->BeginChildren(); pci != (*parentIt)->EndChildren(); pci++)
-                               pmgr->ProjectChildrenRecurse(*parentIt);
+                               pmgr->ProjectChildrenRecurse(*pci);
                         }
-                        else {
-                            // import projectable
-                           pmgr->SubImportChildren(*prodIt, *parentIt);
-                        }
+                        */
+                        // import projectable
+                        pmgr->SubImportChildren(prod, *parentIt);
 
                         ++parentIt;
                      }
                      else if (cnt < itemSize)
                      {
                         // new product holder
-                        pmgr->SubImportElements(*prodIt, projectedAsElement);
+                        pmgr->SubImportElements(prod, projectedAsElement);
                      }
                      else
                      {
                         break;
                      }
+                     ++cnt;
                   }
                   pmgr->SetCurrentDepth(oldDepth);
                }
@@ -139,7 +156,7 @@ void REveDataProxyBuilderBase::Build()
             /*
             if (m_interactionList && itemSize > oldSize)
             {
-               REveElement::List_i elIt = elms->BeginChildren();
+               auto elIt = elms->RefChildren().begin();
                for (size_t cnt = 0; cnt < itemSize; ++cnt, ++elIt)
                {
                   if (cnt >= oldSize )
@@ -185,15 +202,15 @@ REveDataProxyBuilderBase::CreateProduct( std::string viewType, const REveViewCon
       }
       else {
 
-         for (Product_it i = m_products.begin(); i!= m_products.end(); ++i)
+         for (auto &prod: m_products)
          {
-            if (viewType == (*i)->m_viewType)
-               return (*i)->m_elements;
+            if (viewType == prod->m_viewType)
+               return prod->m_elements;
          }
       }
    }
 
-   Product* product = new Product(viewType, viewContext);
+   auto product = new Product(viewType, viewContext);
    m_products.push_back(product);
 
    if (m_collection)
@@ -205,22 +222,20 @@ REveDataProxyBuilderBase::CreateProduct( std::string viewType, const REveViewCon
 }
 
 //______________________________________________________________________________
-
-//namespace {
-//   void applyVisAttrToChildren(REveElement* p) {
-//      for (auto it = p->BeginChildren(); it != p->EndChildren(); ++it)
-//      {
-//         REveElement* c = *it;
-//         if (c->GetMainColor() != p->GetMainColor())
-//         {
-//            c->SetMainColor(p->GetMainColor());
-//            printf("apply color %d to %s\n", p->GetMainColor(), c->GetCName());
-//         }
-//         c->SetRnrSelf(p->GetRnrSelf());
-//         applyVisAttrToChildren(c);
-//      }
-//   }
-//}
+namespace {
+   void applyColorAttrToChildren(REveElement* p) {
+      for (auto &it: p->RefChildren())
+      {
+         REveElement* c = it;
+         if (c->GetMainColor() != p->GetMainColor())
+         {
+            c->SetMainColor(p->GetMainColor());
+            // printf("apply color %d to %s\n", p->GetMainColor(), c->GetCName());
+         }
+         applyColorAttrToChildren(c);
+      }
+   }
+}
 
 void
 REveDataProxyBuilderBase::ModelChanges(const REveDataCollection::Ids_t& iIds, Product* p)
@@ -229,26 +244,25 @@ REveDataProxyBuilderBase::ModelChanges(const REveDataCollection::Ids_t& iIds, Pr
    REveElement* elms = p->m_elements;
    assert(m_collection && static_cast<int>(m_collection->GetNItems()) <= elms->NumChildren() && "can not use default modelChanges implementation");
 
-   for (REveDataCollection::Ids_t::const_iterator it = iIds.begin(); it != iIds.end(); ++it)
+   for (auto itemIdx: iIds)
    {
-      int itemIdx = *it;
-      REveDataItem* item = m_collection->GetDataItem(itemIdx);
+      REveDataItem *item = m_collection->GetDataItem(itemIdx);
 
       // printf("Edit compound for item index %d \n", itemIdx);
       // imitate FWInteractionList::modelChanges
-      REveElement::List_i itElement = elms->BeginChildren();
+      auto itElement = elms->RefChildren().begin();
       std::advance(itElement, itemIdx);
       REveElement* comp = *itElement;
-      comp->SetMainColor(item->GetMainColor());
-      comp->SetRnrSelf(item->GetRnrSelf());
+      bool visible = (!item->GetFiltered()) && item->GetRnrSelf();
+      comp->SetRnrSelf(visible);
+      comp->SetRnrChildren(visible);
 
-      // AMT temporary workaround for use of compunds
-      // applyVisAttrToChildren(comp);
+      if (item->GetMainColor() != comp->GetMainColor()) comp->SetMainColor(item->GetMainColor());
+      applyColorAttrToChildren(comp);
 
-      if (VisibilityModelChanges(*it, *itElement, p->m_viewContext))
-      {
-         elms->ProjectChild(*itElement);
-         printf("---REveDataProxyBuilderBase project child\n ");
+      if (VisibilityModelChanges(itemIdx, comp, p->m_viewContext)) {
+         elms->ProjectChild(comp);
+         printf("---REveDataProxyBuilderBase project child\n");
       }
    }
 }
@@ -260,13 +274,13 @@ void
 REveDataProxyBuilderBase::ModelChanges(const REveDataCollection::Ids_t& iIds)
 {
   if(m_haveWindow) {
-    for (Product_it i = m_products.begin(); i!= m_products.end(); ++i)
+     for (auto &prod: m_products)
     {
-       ModelChanges(iIds, *i);
+       ModelChanges(iIds, prod);
     }
-    m_modelsChanged=false;
+    m_modelsChanged = false;
   } else {
-    m_modelsChanged=true;
+    m_modelsChanged = true;
   }
 }
 
@@ -337,50 +351,45 @@ REveDataProxyBuilderBase::CreateCompound(bool set_color, bool propagate_color_to
 
 //______________________________________________________________________________
 
-void
-REveDataProxyBuilderBase::Clean()
+void REveDataProxyBuilderBase::Clean()
 {
    // Cleans local common element list.
-   for (Product_it i = m_products.begin(); i != m_products.end(); ++i)
+   for (auto &prod: m_products)
    {
-      if ((*i)->m_elements)
-         (*i)->m_elements->DestroyElements();
+      if (prod->m_elements)
+         prod->m_elements->DestroyElements();
    }
 
    CleanLocal();
 }
 
-void
-REveDataProxyBuilderBase::CleanLocal()
+void REveDataProxyBuilderBase::CleanLocal()
 {
    // Cleans local common element list.
 }
 
-void
-REveDataProxyBuilderBase::CollectionBeingDestroyed(const REveDataCollection* /*iItem*/)
+void REveDataProxyBuilderBase::CollectionBeingDestroyed(const REveDataCollection* /*iItem*/)
 {
-   m_collection = 0;
+   m_collection = nullptr;
 
    CleanLocal();
 
-   for (Product_it i = m_products.begin(); i!= m_products.end(); i++)
+   for (auto &prod: m_products)
    {
 
       // (*i)->m_scaleConnection.disconnect();
-      delete (*i);
+      delete prod;
    }
 
    m_products.clear();
 }
 
-bool
-REveDataProxyBuilderBase::VisibilityModelChanges(int, REveElement*, const REveViewContext*)
+bool REveDataProxyBuilderBase::VisibilityModelChanges(int, REveElement *, const REveViewContext *)
 {
    return false;
 }
 
-void
-REveDataProxyBuilderBase::SetHaveAWindow(bool iHaveAWindow)
+void REveDataProxyBuilderBase::SetHaveAWindow(bool iHaveAWindow)
 {
    m_haveWindow = iHaveAWindow;
 }

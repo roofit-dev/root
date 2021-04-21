@@ -2,7 +2,7 @@
 // Authors: Matevz Tadel & Alja Mrak-Tadel: 2006, 2007
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -18,6 +18,8 @@
 
 #include "TColor.h"
 #include "TArrayI.h"
+#include "TClass.h"
+
 
 #include "json.hpp"
 
@@ -145,18 +147,14 @@ int REvePointSet::SetPoint(int n, float x, float y, float z)
 
 void REvePointSet::SetMarkerStyle(Style_t mstyle)
 {
-   static const REveException eh("REvePointSet::SetMarkerStyle ");
-
-   std::list<REveProjected*>::iterator pi = fProjectedList.begin();
-   while (pi != fProjectedList.end())
+   for (auto &pi: fProjectedList)
    {
-      REvePointSet* pt = dynamic_cast<REvePointSet*>(*pi);
+      REvePointSet* pt = dynamic_cast<REvePointSet *>(pi);
       if (pt)
       {
          pt->SetMarkerStyle(mstyle);
          pt->StampObjProps();
       }
-      ++pi;
    }
    TAttMarker::SetMarkerStyle(mstyle);
 }
@@ -166,18 +164,14 @@ void REvePointSet::SetMarkerStyle(Style_t mstyle)
 
 void REvePointSet::SetMarkerSize(Size_t msize)
 {
-   static const REveException eh("REvePointSet::SetMarkerSize ");
-
-   std::list<REveProjected*>::iterator pi = fProjectedList.begin();
-   while (pi != fProjectedList.end())
+   for (auto &pi: fProjectedList)
    {
-      REvePointSet* pt = dynamic_cast<REvePointSet*>(*pi);
+      REvePointSet* pt = dynamic_cast<REvePointSet *>(pi);
       if (pt)
       {
          pt->SetMarkerSize(msize);
          pt->StampObjProps();
       }
-      ++pi;
    }
    TAttMarker::SetMarkerSize(msize);
    StampObjProps();
@@ -212,7 +206,7 @@ void REvePointSet::WriteVizParams(std::ostream& out, const TString& var)
 
 TClass* REvePointSet::ProjectedClass(const REveProjection*) const
 {
-   return REvePointSetProjected::Class();
+   return TClass::GetClass<REvePointSetProjected>();
 }
 
 
