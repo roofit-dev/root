@@ -22,9 +22,11 @@
 #endif
 
 #include <ROOT/RAdoptAllocator.hxx>
+#include <ROOT/RIntegerSequence.hxx>
 #include <ROOT/TypeTraits.hxx>
 
 #include <algorithm>
+#define _USE_MATH_DEFINES // for M_PI on windows in cmath
 #include <cmath>
 #include <numeric> // for inner_product
 #include <sstream>
@@ -42,6 +44,44 @@ namespace VecOps {
 template <typename T>
 class RVec;
 }
+
+namespace Detail {
+namespace VecOps {
+
+template<typename T>
+using RVec = ROOT::VecOps::RVec<T>;
+
+template <typename F, typename... T>
+auto MapImpl(F &&f, const RVec<T> &... vs) -> RVec<decltype(f(vs[0]...))>
+{
+   constexpr const auto nArgs = sizeof...(T);
+   const std::size_t sizes[] = {vs.size()...};
+   if (nArgs > 1) {
+      for (auto i = 1UL; i < nArgs; i++) {
+         if (sizes[0] == sizes[i])
+            continue;
+         throw std::runtime_error("Map: input RVec instances have different lengths!");
+      }
+   }
+   RVec<decltype(f(vs[0]...))> ret(sizes[0]);
+
+   for (auto i = 0UL; i < sizes[0]; i++)
+      ret[i] = f(vs[i]...);
+
+   return ret;
+}
+
+template <typename Tuple_t, std::size_t... Is>
+auto MapFromTuple(Tuple_t &&t, std::index_sequence<Is...>)
+   -> decltype(MapImpl(std::get<std::tuple_size<Tuple_t>::value - 1>(t), std::get<Is>(t)...))
+{
+   constexpr const auto tupleSizeM1 = std::tuple_size<Tuple_t>::value - 1;
+   return MapImpl(std::get<tupleSizeM1>(t), std::get<Is>(t)...);
+}
+
+}
+}
+
 namespace Internal {
 namespace VecOps {
 
@@ -937,13 +977,32 @@ double StdDev(const RVec<T> &v)
 /// auto v_square = Map(v, [](float f){return f* 2.f;});
 /// v_square
 /// // (ROOT::VecOps::RVec<float> &) { 2.00000f, 4.00000f, 8.00000f }
+///
+/// RVec<float> x({1.f, 2.f, 3.f});
+/// RVec<float> y({4.f, 5.f, 6.f});
+/// RVec<float> z({7.f, 8.f, 9.f});
+/// auto mod = [](float x, float y, float z) { return sqrt(x * x + y * y + z * z); };
+/// auto v_mod = Map(x, y, z, mod);
+/// v_mod
+/// // (ROOT::VecOps::RVec<float> &) { 8.12404f, 9.64365f, 11.2250f }
 /// ~~~
-template <typename T, typename F>
-auto Map(const RVec<T> &v, F &&f) -> RVec<decltype(f(v[0]))>
+template <typename... Args>
+auto Map(Args &&... args)
+   -> decltype(ROOT::Detail::VecOps::MapFromTuple(std::forward_as_tuple(args...),
+                                                  std::make_index_sequence<sizeof...(args) - 1>()))
 {
-   RVec<decltype(f(v[0]))> ret(v.size());
-   std::transform(v.begin(), v.end(), ret.begin(), f);
-   return ret;
+   /*
+   Here the strategy in order to generalise the previous implementation of Map, i.e.
+   `RVec Map(RVec, F)`, here we need to move the last parameter of the pack in first
+   position in order to be able to invoke the Map function with automatic type deduction.
+   This is achieved in two steps:
+   1. Forward as tuple the pack to MapFromTuple
+   2. Invoke the MapImpl helper which has the signature `template<...T, F> RVec MapImpl(F &&f, RVec<T>...)`
+   NOTA BENE: the signature is very heavy but it is one of the lightest ways to manage in C++11
+   to build the return type based on the template args.
+   */
+   return ROOT::Detail::VecOps::MapFromTuple(std::forward_as_tuple(args...),
+                                             std::make_index_sequence<sizeof...(args) - 1>());
 }
 
 /// Create a new collection with the elements passing the filter expressed by the predicate
@@ -1447,6 +1506,177 @@ RVec<Common_t> Concatenate(const RVec<T0> &v0, const RVec<T1> &v1)
    return res;
 }
 
+/// Return the angle difference \f$\Delta \phi\f$ of two scalars.
+///
+/// The function computes the closest angle from v1 to v2 with sign and is
+/// therefore in the range \f$[-\pi, \pi]\f$.
+/// The computation is done per default in radians \f$c = \pi\f$ but can be switched
+/// to degrees \f$c = 180\f$.
+template <typename T>
+T DeltaPhi(T v1, T v2, const T c = M_PI)
+{
+   static_assert(std::is_floating_point<T>::value,
+                 "DeltaPhi must be called with floating point values.");
+   auto r = std::fmod(v2 - v1, 2.0 * c);
+   if (r < -c) {
+      r += 2.0 * c;
+   }
+   else if (r > c) {
+      r -= 2.0 * c;
+   }
+   return r;
+}
+
+/// Return the angle difference \f$\Delta \phi\f$ in radians of two vectors.
+///
+/// The function computes the closest angle from v1 to v2 with sign and is
+/// therefore in the range \f$[-\pi, \pi]\f$.
+/// The computation is done per default in radians \f$c = \pi\f$ but can be switched
+/// to degrees \f$c = 180\f$.
+template <typename T>
+RVec<T> DeltaPhi(const RVec<T>& v1, const RVec<T>& v2, const T c = M_PI)
+{
+   using size_type = typename RVec<T>::size_type;
+   const size_type size = v1.size();
+   auto r = RVec<T>(size);
+   for (size_type i = 0; i < size; i++) {
+      r[i] = DeltaPhi(v1[i], v2[i], c);
+   }
+   return r;
+}
+
+/// Return the angle difference \f$\Delta \phi\f$ in radians of a vector and a scalar.
+///
+/// The function computes the closest angle from v1 to v2 with sign and is
+/// therefore in the range \f$[-\pi, \pi]\f$.
+/// The computation is done per default in radians \f$c = \pi\f$ but can be switched
+/// to degrees \f$c = 180\f$.
+template <typename T>
+RVec<T> DeltaPhi(const RVec<T>& v1, T v2, const T c = M_PI)
+{
+   using size_type = typename RVec<T>::size_type;
+   const size_type size = v1.size();
+   auto r = RVec<T>(size);
+   for (size_type i = 0; i < size; i++) {
+      r[i] = DeltaPhi(v1[i], v2, c);
+   }
+   return r;
+}
+
+/// Return the angle difference \f$\Delta \phi\f$ in radians of a scalar and a vector.
+///
+/// The function computes the closest angle from v1 to v2 with sign and is
+/// therefore in the range \f$[-\pi, \pi]\f$.
+/// The computation is done per default in radians \f$c = \pi\f$ but can be switched
+/// to degrees \f$c = 180\f$.
+template <typename T>
+RVec<T> DeltaPhi(T v1, const RVec<T>& v2, const T c = M_PI)
+{
+   using size_type = typename RVec<T>::size_type;
+   const size_type size = v2.size();
+   auto r = RVec<T>(size);
+   for (size_type i = 0; i < size; i++) {
+      r[i] = DeltaPhi(v1, v2[i], c);
+   }
+   return r;
+}
+
+/// Return the square of the distance on the \f$\eta\f$-\f$\phi\f$ plane (\f$\Delta R\f$) from
+/// the collections eta1, eta2, phi1 and phi2.
+///
+/// The function computes \f$\Delta R^2 = (\eta_1 - \eta_2)^2 + (\phi_1 - \phi_2)^2\f$
+/// of the given collections eta1, eta2, phi1 and phi2. The angle \f$\phi\f$ can
+/// be set to radian or degrees using the optional argument c, see the documentation
+/// of the DeltaPhi helper.
+template <typename T>
+RVec<T> DeltaR2(const RVec<T>& eta1, const RVec<T>& eta2, const RVec<T>& phi1, const RVec<T>& phi2, const T c = M_PI)
+{
+   const auto dphi = DeltaPhi(phi1, phi2, c);
+   return (eta1 - eta2) * (eta1 - eta2) + dphi * dphi;
+}
+
+/// Return the distance on the \f$\eta\f$-\f$\phi\f$ plane (\f$\Delta R\f$) from
+/// the collections eta1, eta2, phi1 and phi2.
+///
+/// The function computes \f$\Delta R = \sqrt{(\eta_1 - \eta_2)^2 + (\phi_1 - \phi_2)^2}\f$
+/// of the given collections eta1, eta2, phi1 and phi2. The angle \f$\phi\f$ can
+/// be set to radian or degrees using the optional argument c, see the documentation
+/// of the DeltaPhi helper.
+template <typename T>
+RVec<T> DeltaR(const RVec<T>& eta1, const RVec<T>& eta2, const RVec<T>& phi1, const RVec<T>& phi2, const T c = M_PI)
+{
+   return sqrt(DeltaR2(eta1, eta2, phi1, phi2, c));
+}
+
+/// Return the distance on the \f$\eta\f$-\f$\phi\f$ plane (\f$\Delta R\f$) from
+/// the scalars eta1, eta2, phi1 and phi2.
+///
+/// The function computes \f$\Delta R = \sqrt{(\eta_1 - \eta_2)^2 + (\phi_1 - \phi_2)^2}\f$
+/// of the given scalars eta1, eta2, phi1 and phi2. The angle \f$\phi\f$ can
+/// be set to radian or degrees using the optional argument c, see the documentation
+/// of the DeltaPhi helper.
+template <typename T>
+T DeltaR(T eta1, T eta2, T phi1, T phi2, const T c = M_PI)
+{
+   const auto dphi = DeltaPhi(phi1, phi2, c);
+   return std::sqrt((eta1 - eta2) * (eta1 - eta2) + dphi * dphi);
+}
+
+/// Return the invariant mass of two particles given the collections of the quantities
+/// transverse momentum (pt), rapidity (eta), azimuth (phi) and mass.
+///
+/// The function computes the invariant mass of two particles with the four-vectors
+/// (pt1, eta2, phi1, mass1) and (pt2, eta2, phi2, mass2).
+template <typename T>
+RVec<T> InvariantMass(
+        const RVec<T>& pt1, const RVec<T>& eta1, const RVec<T>& phi1, const RVec<T>& mass1,
+        const RVec<T>& pt2, const RVec<T>& eta2, const RVec<T>& phi2, const RVec<T>& mass2)
+{
+   // Conversion from (pt, eta, phi, mass) to (x, y, z, e) coordinate system
+   const auto x1 = pt1 * cos(phi1);
+   const auto y1 = pt1 * sin(phi1);
+   const auto z1 = pt1 * sinh(eta1);
+   const auto e1 = sqrt(x1 * x1 + y1 * y1 + z1 * z1 + mass1 * mass1);
+
+   const auto x2 = pt2 * cos(phi2);
+   const auto y2 = pt2 * sin(phi2);
+   const auto z2 = pt2 * sinh(eta2);
+   const auto e2 = sqrt(x2 * x2 + y2 * y2 + z2 * z2 + mass2 * mass2);
+
+   // Addition of particle four-vectors
+   const auto e = e1 + e2;
+   const auto x = x1 + x2;
+   const auto y = y1 + y2;
+   const auto z = z1 + z2;
+
+   // Return invariant mass with (+, -, -, -) metric
+   return sqrt(e * e - x * x - y * y - z * z);
+}
+
+/// Return the invariant mass of multiple particles given the collections of the
+/// quantities transverse momentum (pt), rapidity (eta), azimuth (phi) and mass.
+///
+/// The function computes the invariant mass of multiple particles with the
+/// four-vectors (pt, eta, phi, mass).
+template <typename T>
+T InvariantMass(const RVec<T>& pt, const RVec<T>& eta, const RVec<T>& phi, const RVec<T>& mass)
+{
+   // Conversion from (mass, pt, eta, phi) to (e, x, y, z) coordinate system
+   const auto x = pt * cos(phi);
+   const auto y = pt * sin(phi);
+   const auto z = pt * sinh(eta);
+   const auto e = sqrt(x * x + y * y + z * z + mass * mass);
+
+   // Addition of particle four-vectors
+   const auto xs = Sum(x);
+   const auto ys = Sum(y);
+   const auto zs = Sum(z);
+   const auto es = Sum(e);
+
+   // Return invariant mass with (+, -, -, -) metric
+   return std::sqrt(es * es - xs * xs - ys * ys - zs * zs);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Print a RVec at the prompt:
 template <class T>
@@ -1652,4 +1882,6 @@ using ROOT::VecOps::RVec;
 
 } // namespace ROOT
 
-#endif
+#undef _USE_MATH_DEFINES // for M_PI on windows in cmath
+
+#endif // ROOT_TVEC
