@@ -186,27 +186,6 @@ set(odbclibdir ${OCDB_LIBRARY_DIR})
 set(odbclib ${OCDB_LIBRARY})
 set(odbcincdir ${OCDB_INCLUDE_DIR})
 
-set(buildqt ${value${qt}})
-set(buildqtpsi ${value${qtgsi}})
-set(qtlibdir ${QT_LIBRARY_DIR})
-set(qtlib ${QT_QT_LIBRARY})
-set(qtincdir ${QT_INCLUDE_DIR})
-set(qtvers ${QT_VERSION_MAJOR})
-set(qtmocexe ${QT_MOC_EXECUTABLE})
-
-set(buildrfio ${value${rfio}})
-set(shiftlibdir ${RFIO_LIBRARY_DIR})
-set(shiftlib ${RFIO_LIBRARY})
-set(shiftincdir ${RFIO_INCLUDE_DIR})
-set(shiftcflags)
-
-set(buildcastor ${value${castor}})
-set(castorlibdir ${CASTOR_LIBRARY_DIR})
-set(castorlib ${CASTOR_LIBRARY})
-set(castorincdir ${CASTOR_INCLUDE_DIR})
-set(castorcflags)
-
-
 set(builddavix ${value${davix}})
 set(davixlibdir ${DAVIX_LIBRARY_DIR})
 set(davixlib ${DAVIX_LIBRARY})
@@ -247,16 +226,6 @@ set(gfallib ${GFAL_LIBRARY})
 set(gfalincdir ${GFAL_INCLUDE_DIR})
 
 set(buildmemstat ${value${memstat}})
-
-set(buildbonjour ${value${bonjour}})
-set(dnssdlibdir ${BONJOUR_LIBRARY_DIR})
-set(dnssdlib ${BONJOUR_LIBRARY})
-set(dnsdincdir ${BONJOUR_INCLUDE_DIR})
-
-set(buildhdfs ${value${hdfs}})
-set(hdfslibdir ${HDFS_LIBRARY_DIR})
-set(hdfslib ${HDFS_LIBRARY})
-set(hdfsincdir ${HDFS_INCLUDE_DIR})
 
 set(buildalien ${value${alien}})
 set(alienlibdir ${ALIEN_LIBRARY_DIR})
@@ -299,12 +268,6 @@ set(fitsiolibdir ${FITSIO_LIBRARY_DIR})
 set(fitsiolib ${FITSIO_LIBRARY})
 set(fitsioincdir ${FITSIO_INCLUDE_DIR})
 
-set(buildgviz ${value${gviz}})
-set(gvizlibdir ${GVIZ_LIBRARY_DIR})
-set(gvizlib ${GVIZ_LIBRARY})
-set(gvizincdir ${GVIZ_INCLUDE_DIR})
-set(gvizcflags)
-
 set(buildpython ${value${python}})
 set(pythonlibdir ${PYTHON_LIBRARY_DIR})
 set(pythonlib ${PYTHON_LIBRARY})
@@ -338,12 +301,6 @@ set(resolvlib)
 set(cryptolib ${CRYPTLIBS})
 set(cryptolibdir)
 
-set(buildglobus ${value${globus}})
-set(globuslibdir ${GLOBUS_LIBRARY_DIR})
-set(globuslib ${GLOBUS_LIBRARY})
-set(globusincdir ${GLOBUS_INCLUDE_DIR})
-set(buildxrdgsi)
-
 set(buildmonalisa ${value${monalisa}})
 set(monalisalibdir ${MONALISA_LIBRARY_DIR})
 set(monalisalib ${MONALISA_LIBRARY})
@@ -367,7 +324,6 @@ set(buildminuit2 ${value${minuit2}})
 set(buildunuran ${value${unuran}})
 set(buildgdml ${value${gdml}})
 set(buildhttp ${value${http}})
-set(buildtable ${value${table}})
 set(buildtmva ${value${tmva}})
 
 set(cursesincdir ${CURSES_INCLUDE_DIR})
@@ -772,7 +728,6 @@ install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/thisroot.sh
 
 install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/memprobe
               ${CMAKE_BINARY_DIR}/installtree/root-config
-              ${CMAKE_SOURCE_DIR}/cmake/scripts/setenvwrap.csh
               ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/roots
               ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/proofserv
               PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
