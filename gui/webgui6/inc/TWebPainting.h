@@ -17,30 +17,40 @@
 #include "TAttText.h"
 #include "TAttMarker.h"
 #include "TArrayF.h"
+#include "TColor.h"
 
-/** Class to store actual drawing attributes */
-class TWebPainterAttributes : public TObject, public TAttFill, public TAttLine, public TAttMarker, public TAttText  {
-   public:
-      virtual ~TWebPainterAttributes() = default;
-
-      ClassDef(TWebPainterAttributes,1) // different draw attributes used by the painter
-};
+#include <vector>
+#include <string>
 
 /** Object used to store paint operations and deliver them to JSROOT */
 class TWebPainting : public TObject {
 
    protected:
-      TList   fOper;                /// list of last draw operations
-      Int_t   fSize{0};             ///!< filled buffer size
-      TArrayF fBuf;                 /// array of points for all operations
+      std::vector<std::string> fOper; /// list of operations
+      Int_t fSize{0};                 ///<! filled buffer size
+      TArrayF fBuf;                   /// array of points for all operations
+
+      TAttLine fLastLine;             ///<! last line attributes
+      TAttFill fLastFill;             ///<! last fill attributes
+      TAttMarker fLastMarker;         ///<! last marker attributes
 
    public:
 
-      TWebPainting()  { fOper.SetOwner(kTRUE); }
-      virtual ~TWebPainting() { fOper.Delete(); }
+      TWebPainting();
+      virtual ~TWebPainting() = default;
 
-      void Add(TObject *obj, const char *opt) { fOper.Add(obj, opt); }
+      Bool_t IsEmpty() const { return (fOper.size() == 0) && (fBuf.GetSize() == 0); }
+
+      void AddOper(const std::string &oper) { fOper.emplace_back(oper); }
+
+      void AddLineAttr(const TAttLine &attr);
+      void AddFillAttr(const TAttFill &attr);
+      void AddTextAttr(const TAttText &attr);
+      void AddMarkerAttr(const TAttMarker &attr);
+
       Float_t *Reserve(Int_t sz);
+
+      void AddColor(Int_t indx, TColor *col);
 
       // Set actual filled size
       void FixSize() { fBuf.Set(fSize); }
