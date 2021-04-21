@@ -184,31 +184,6 @@ ODBCLIBDIR     := @odbclibdir@
 ODBCCLILIB     := @odbclib@
 ODBCINCDIR     := $(filter-out /usr/include, @odbcincdir@)
 
-BUILDGEOCAD    := @buildgeocad@
-OCCLIBDIR      := @occlibdir@
-OCCLIB         := @occlib@
-OCCINCDIR      := $(filter-out /usr/include, @occincdir@)
-
-BUILDQT        := @buildqt@
-BUILDQTGSI     := @buildqtgsi@
-QTLIBDIR       := @qtlibdir@
-QTLIB          := @qtlib@
-QTINCDIR       := $(filter-out /usr/include, @qtincdir@)
-QTVERS	       := @qtvers@
-QTMOCEXE       := @qtmocexe@
-
-BUILDRFIO      := @buildrfio@
-SHIFTLIBDIR    := @shiftlibdir@
-SHIFTLIB       := @shiftlib@
-SHIFTINCDIR    := $(filter-out /usr/include, @shiftincdir@)
-SHIFTCFLAGS    := @shiftcflags@
-
-BUILDCASTOR    := @buildcastor@
-CASTORLIBDIR   := @castorlibdir@
-CASTORCLILIB   := @castorlib@
-CASTORINCDIR   := $(filter-out /usr/include, @castorincdir@)
-CASTORCFLAGS   := @castorcflags@
-
 BUILDDAVIX      := @builddavix@
 DAVIXLIBDIR     := @davixlibdir@
 DAVIXCLILIB     := @davixlib@
@@ -243,16 +218,6 @@ SRMIFCEINCDIR  := $(filter-out /usr/include, @srmifceincdir@)
 GLIB2INCDIR    := $(filter-out /usr/include, @glib2incdir@)
 
 BUILDMEMSTAT   := @buildmemstat@
-
-BUILDBONJOUR   := @buildbonjour@
-DNSSDLIBDIR    := @dnssdlibdir@
-DNSSDLIB       := @dnssdlib@
-DNSSDINCDIR    := $(filter-out /usr/include, @dnssdincdir@)
-
-BUILDHDFS      := @buildhdfs@
-HDFSLIBDIR     := @hdfslibdir@
-HDFSCLILIB     := @hdfslib@
-HDFSINCDIR     := $(filter-out /usr/include, @hdfsincdir@)
 
 BUILDALIEN     := @buildalien@
 ALIENLIBDIR    := @alienlibdir@
@@ -289,12 +254,6 @@ BUILDFITSIO    := @buildfitsio@
 CFITSIOLIBDIR  := @cfitsiolibdir@
 CFITSIOLIB     := @cfitsiolib@
 CFITSIOINCDIR  := $(filter-out /usr/include, @cfitsioincdir@)
-
-BUILDGVIZ      := @buildgviz@
-GRAPHVIZLIBDIR := @gvizlibdir@
-GRAPHVIZLIB    := @gvizlib@
-GRAPHVIZINCDIR := $(filter-out /usr/include, @gvizincdir@)
-GRAPHVIZCFLAGS := @gvizcflags@
 
 BUILDPYTHON    := @buildpython@
 PYTHONLIBDIR   := @pythonlibdir@
@@ -340,11 +299,6 @@ RESOLVLIB      := @resolvlib@
 
 CRYPTOLIB      := @cryptolib@
 CRYPTOLIBDIR   := @cryptolibdir@
-
-BUILDGLOBUS    := @buildglobus@
-GLOBUSLIB      := @globuslib@
-GLOBUSLIBDIR   := @globuslibdir@
-GLOBUSINCDIR   := $(filter-out /usr/include, @globusincdir@)
 
 BUILDMONALISA  := @buildmonalisa@
 MONALISALIBDIR := @monalisalibdir@
@@ -396,9 +350,6 @@ BUILDGDML      := @buildgdml@
 BUILDTABLE     := @buildtable@
 
 BUILDTMVA      := @buildtmva@
-
-BUILDAFDSMGRD  := @buildafdsmgrd@
-AFDSMGRDAPMON  := @afdsmgrdapmon@
 
 BUILDHTTP      := @buildhttp@
 USEFASCGI      := @usefastcgi@
