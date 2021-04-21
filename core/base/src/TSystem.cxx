@@ -29,6 +29,7 @@ allows a simple partial implementation for new OS'es.
 #include <algorithm>
 #include <sys/stat.h>
 
+#include <ROOT/FoundationUtils.hxx>
 #include "Riostream.h"
 #include "TSystem.h"
 #include "TApplication.h"
@@ -3523,16 +3524,11 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
    rcling += "\" -f \"";
    rcling.Append(dict).Append("\" ");
 
-   if (useCxxModules)
-      rcling += " -cxxmodule ";
-
-   if (produceRootmap) {
+   if (produceRootmap && !useCxxModules) {
       rcling += " -rml " + libname + " -rmf \"" + libmapfilename + "\" ";
-   }
-   rcling.Append(GetIncludePath()).Append(" -D__ACLIC__ ");
-   if (produceRootmap) {
       rcling.Append("-DR__ACLIC_ROOTMAP ");
    }
+   rcling.Append(GetIncludePath()).Append(" -D__ACLIC__ ");
    if (gEnv) {
       TString fromConfig = gEnv->GetValue("ACLiC.IncludePaths","");
       rcling.Append(fromConfig);
@@ -3540,7 +3536,8 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
 
    // Create a modulemap
    // FIXME: Merge the modulemap generation from cmake and here in rootcling.
-   if (useCxxModules) {
+   if (useCxxModules && produceRootmap) {
+      rcling += " -cxxmodule ";
       // TString moduleMapFileName = file_dirname + "/" + libname + ".modulemap";
       TString moduleName = libname + "_ACLiC_dict";
       if (moduleName.BeginsWith("lib"))
@@ -3551,9 +3548,11 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
       if (verboseLevel > 3 && !AccessPathName(moduleMapFullPath))
          ::Info("ACLiC", "File %s already exists!", moduleMapFullPath.Data());
 
+      std::string curDir = ROOT::FoundationUtils::GetCurrentDir();
+      std::string relative_path = ROOT::FoundationUtils::MakePathRelative(filename_fullpath.Data(), curDir);
       std::ofstream moduleMapFile(moduleMapFullPath, std::ios::out);
       moduleMapFile << "module \"" << moduleName << "\" {" << std::endl;
-      moduleMapFile << "  header \"" << filename_fullpath << "\"" << std::endl;
+      moduleMapFile << "  header \"" << relative_path << "\"" << std::endl;
       moduleMapFile << "  export *" << std::endl;
       moduleMapFile << "  link \"" << libname_ext << "\"" << std::endl;
       moduleMapFile << "}" << std::endl;
