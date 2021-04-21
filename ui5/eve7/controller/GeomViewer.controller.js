@@ -4,10 +4,12 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                'sap/m/Text',
                'sap/m/CheckBox',
                'sap/ui/layout/Splitter',
-               'sap/ui/layout/SplitterLayoutData',
                "sap/ui/core/ResizeHandler",
+               "sap/ui/layout/HorizontalLayout",
+               "sap/ui/table/Column",
                'rootui5/eve7/lib/EveElements'
-],function(Controller, CoreControl, JSONModel, mText, mCheckBox, MCSplitter, SplitterLayoutData, ResizeHandler, EveElements) {
+],function(Controller, CoreControl, JSONModel, mText, mCheckBox, Splitter, ResizeHandler, 
+           HorizontalLayout, tableColumn, EveElements) {
 
    "use strict";
    
@@ -127,9 +129,9 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          
             var vis_selected_handler = this.visibilitySelected.bind(this);
          
-            t.addColumn(new sap.ui.table.Column({
+            t.addColumn(new tableColumn({
                label: "Description",
-               template: new sap.ui.layout.HorizontalLayout({
+               template: new HorizontalLayout({
                   content: [
                      new mCheckBox({ enabled: true, visible: true, selected: "{node_visible}", select: vis_selected_handler }), 
                      new eve.ColorBox({color:"{color}", visible: "{color_visible}" }),
