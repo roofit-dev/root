@@ -136,13 +136,14 @@ protected:
    void     SetSkipZip(Bool_t skip = kTRUE) { fSkipZip = skip; }
    void     Init(const char *name, const char *leaflist, Int_t compress);
 
-   TBasket *GetFreshBasket();
+   TBasket *GetFreshBasket(TBuffer *user_buffer);
    TBasket *GetFreshCluster();
    Int_t    WriteBasket(TBasket* basket, Int_t where) { return WriteBasketImpl(basket, where, nullptr); }
 
    TString  GetRealFileName() const;
 
 private:
+   Int_t GetBasketAndFirst(TBasket*& basket, Long64_t& first, TBuffer* user_buffer);
    Int_t FillEntryBuffer(TBasket* basket,TBuffer* buf, Int_t& lnew);
    Int_t    WriteBasketImpl(TBasket* basket, Int_t where, ROOT::Internal::TBranchIMTHelper *);
    TBranch(const TBranch&) = delete;             // not implemented
@@ -169,7 +170,7 @@ public:
            Int_t     FlushOneBasket(UInt_t which);
 
    virtual char     *GetAddress() const {return fAddress;}
-           TBasket  *GetBasket(Int_t basket);
+           TBasket  *GetBasket(Int_t basket, TBuffer* user_buffer=nullptr);
            Int_t    *GetBasketBytes() const {return fBasketBytes;}
            Long64_t *GetBasketEntry() const {return fBasketEntry;}
    virtual Long64_t  GetBasketSeek(Int_t basket) const;
@@ -180,6 +181,8 @@ public:
            Int_t     GetCompressionLevel() const;
            Int_t     GetCompressionSettings() const;
    TDirectory       *GetDirectory() const {return fDirectory;}
+           Int_t     GetEntriesFast(Long64_t, TBuffer&);
+           Int_t     GetEntriesSerialized(Long64_t, TBuffer&);
    virtual Int_t     GetEntry(Long64_t entry=0, Int_t getall = 0);
    virtual Int_t     GetEntryExport(Long64_t entry, Int_t getall, TClonesArray *list, Int_t n);
            Int_t     GetEntryOffsetLen() const { return fEntryOffsetLen; }
@@ -243,6 +246,7 @@ public:
    virtual void      SetStatus(Bool_t status=1);
    virtual void      SetTree(TTree *tree) { fTree = tree;}
    virtual void      SetupAddresses();
+   Bool_t            SupportsBulkRead() const;
    virtual void      UpdateAddress() {;}
    virtual void      UpdateFile();
 
