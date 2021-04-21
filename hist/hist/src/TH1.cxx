@@ -3794,27 +3794,23 @@ TFitResultPtr TH1::Fit(const char *fname ,Option_t *option ,Option_t *goption, D
 {
    char *linear;
    linear= (char*)strstr(fname, "++");
-   TF1 *f1=0;
-   TF2 *f2=0;
-   TF3 *f3=0;
    Int_t ndim=GetDimension();
    if (linear){
       if (ndim<2){
-         f1=new TF1(fname, fname, xxmin, xxmax);
-         return Fit(f1,option,goption,xxmin,xxmax);
+         TF1 f1(fname, fname, xxmin, xxmax);
+         return Fit(&f1,option,goption,xxmin,xxmax);
       }
       else if (ndim<3){
-         f2=new TF2(fname, fname);
-         return Fit(f2,option,goption,xxmin,xxmax);
+         TF2 f2(fname, fname);
+         return Fit(&f2,option,goption,xxmin,xxmax);
       }
       else{
-         f3=new TF3(fname, fname);
-         return Fit(f3,option,goption,xxmin,xxmax);
+         TF3 f3(fname, fname);
+         return Fit(&f3,option,goption,xxmin,xxmax);
       }
    }
-
    else{
-      f1 = (TF1*)gROOT->GetFunction(fname);
+      TF1 * f1 = (TF1*)gROOT->GetFunction(fname);
       if (!f1) { Printf("Unknown function: %s",fname); return -1; }
       return Fit(f1,option,goption,xxmin,xxmax);
    }
