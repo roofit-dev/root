@@ -12,11 +12,6 @@
 #ifndef ROOT_TTreeReaderValue
 #define ROOT_TTreeReaderValue
 
-
-/** \class TTreeReaderValue
-A simple interface for reading data from trees or chains.
-*/
-
 #include "TString.h"
 #include "TDictionary.h"
 #include "TBranchProxy.h"
@@ -30,6 +25,10 @@ class TTreeReader;
 
 namespace ROOT {
 namespace Internal {
+
+/** \class TTreeReaderValueBase
+Base class of TTreeReaderValue.
+*/
 
    class TTreeReaderValueBase {
    public:
