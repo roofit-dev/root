@@ -25,6 +25,8 @@ RootWebView::RootWebView(QWidget *parent, unsigned width, unsigned height) :
    fWidth(width),
    fHeight(height)
 {
+   setObjectName("RootWebView");
+
    setPage(new RootWebPage());
 
    connect(page(), &QWebEnginePage::windowCloseRequested, this, &RootWebView::onWindowCloseRequested);
@@ -34,13 +36,10 @@ RootWebView::RootWebView(QWidget *parent, unsigned width, unsigned height) :
    setAcceptDrops(true);
 }
 
-RootWebView::~RootWebView()
-{
-}
-
 QSize RootWebView::sizeHint() const
 {
-   if (fWidth && fHeight) return QSize(fWidth, fHeight);
+   if (fWidth && fHeight)
+      return QSize(fWidth, fHeight);
    return QWebEngineView::sizeHint();
 }
 
@@ -63,11 +62,9 @@ void RootWebView::closeEvent(QCloseEvent *)
 
 void RootWebView::onLoadStarted()
 {
-   page()->runJavaScript("var jsroot_qt5_identifier = true;");
-   page()->runJavaScript("window.jsroot_qt5_identifier = true;");
-   page()->runJavaScript("console.log('window type = ' + typeof window + '  1: ' + typeof jsroot_qt5_identifier + '   2: ' +  typeof window.jsroot_qt5_identifier);");
-
-   printf("RootWebView::onLoadStarted\n");
+   // page()->runJavaScript("var jsroot_qt5_identifier = true;");
+   // page()->runJavaScript("window.jsroot_qt5_identifier = true;");
+   // page()->runJavaScript("console.log('window type = ' + typeof window + '  1: ' + typeof jsroot_qt5_identifier + '   2: ' +  typeof window.jsroot_qt5_identifier);");
 }
 
 void RootWebView::onWindowCloseRequested()
