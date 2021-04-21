@@ -78,8 +78,8 @@ Bool_t TWebCanvas::IsJSSupportedClass(TObject *obj)
                             {"TGaxis", false},
                             {"TPave", true},
                             {"TArrow", false},
-                            {"TBox", false},  // in principle, can be handled via TWebPainter
-                            {"TWbox", false}, // some extra calls which cannout be handled via TWebPainter
+//                            {"TBox", false},  // in principle, can be handled via TWebPainter
+                            {"TWbox", false}, // some extra calls which cannot be handled via TWebPainter
                             {"TLine", false}, // also can be handler via TWebPainter
                             {"TText", false},
                             {"TLatex", false},
@@ -87,15 +87,15 @@ Bool_t TWebCanvas::IsJSSupportedClass(TObject *obj)
                             {"TMarker", false},
                             {"TPolyMarker3D", false},
                             {"TGraph2D", false},
-                            {0, false}};
+                            {nullptr, false}};
 
    // fast check of class name
-   for (int i = 0; supported_classes[i].name != 0; ++i)
+   for (int i = 0; supported_classes[i].name != nullptr; ++i)
       if (strcmp(supported_classes[i].name, obj->ClassName()) == 0)
          return kTRUE;
 
    // now check inheritance only for configured classes
-   for (int i = 0; supported_classes[i].name != 0; ++i)
+   for (int i = 0; supported_classes[i].name != nullptr; ++i)
       if (supported_classes[i].with_derived)
          if (obj->InheritsFrom(supported_classes[i].name))
             return kTRUE;
@@ -168,66 +168,72 @@ TObject *TWebCanvas::FindPrimitive(const char *sid, TPad *pad, TObjLink **padlnk
 //////////////////////////////////////////////////////////////////////////////////////////////////
 /// Creates representation of the object for painting in web browser
 
-TWebSnapshot *TWebCanvas::CreateObjectSnapshot(TPad *pad, TObject *obj, const char *opt)
+TWebSnapshot *TWebCanvas::CreateObjectSnapshot(TPad *pad, TObject *obj, const char *opt, TWebPS *masterps)
 {
-   TWebSnapshot *sub = new TWebSnapshot();
-   sub->SetObjectIDAsPtr(obj);
-   sub->SetOption(opt);
-   TWebPainting *p = nullptr;
-
-   if (!IsJSSupportedClass(obj)) {
-      TWebPadPainter *painter = dynamic_cast<TWebPadPainter *>(Canvas()->GetCanvasPainter());
-      if (!painter) {
-         Error("CreateObjectSnapshot", "Not found WebPadPainter when paint class %s", obj->ClassName());
-      } else {
-         TView *view = nullptr;
-         TVirtualPad *savepad = gPad;
-         TVirtualPS *saveps = gVirtualPS;
-
-         painter->ResetPainting();                                        // ensure painter is created
-         painter->SetWebCanvasSize(Canvas()->GetWw(), Canvas()->GetWh()); // provide canvas dimension
-
-         pad->cd();
-
-         if (obj->InheritsFrom(TAtt3D::Class())) {
-            pad->GetViewer3D("pad");
-            view = TView::CreateView(1,0,0); // Cartesian view by default
-            pad->SetView(view);
-
-            // Set view to perform first auto-range (scaling) pass
-            view->SetAutoRange(kTRUE);
-
-            gVirtualPS = new TWebPS(*painter);
-         }
-
-         // calling Paint function for the object
-         obj->Paint(opt);
-
-         if (view) {
-            view->SetAutoRange(kFALSE);
-            // call 3D paint once again to make real drawing
-            obj->Paint(opt);
-            pad->SetView(nullptr);
-            delete gVirtualPS;
-            gVirtualPS = saveps;
-         }
-
-         p = painter->TakePainting();
-
-         fHasSpecials = kTRUE;
-
-         if (savepad) savepad->cd();
-      }
+   if (IsJSSupportedClass(obj)) {
+      auto sub = new TWebSnapshot();
+      sub->SetObjectIDAsPtr(obj);
+      sub->SetOption(opt);
+      sub->SetSnapshot(TWebSnapshot::kObject, obj);
+      return sub;
    }
+
+   TWebPadPainter *painter = dynamic_cast<TWebPadPainter *>(Canvas()->GetCanvasPainter());
+   if (!painter) {
+      Error("CreateObjectSnapshot", "Not found WebPadPainter when paint class %s", obj->ClassName());
+      return nullptr;
+   }
+
+   fHasSpecials = kTRUE;
+
+   TView *view = nullptr;
+   TVirtualPad *savepad = gPad;
+
+   pad->cd();
+
+   if (obj->InheritsFrom(TAtt3D::Class())) {
+      pad->GetViewer3D("pad");
+      view = TView::CreateView(1, 0, 0); // Cartesian view by default
+      pad->SetView(view);
+
+      // Set view to perform first auto-range (scaling) pass
+      view->SetAutoRange(kTRUE);
+   }
+
+   TVirtualPS *saveps = gVirtualPS;
+
+   TWebPS ps;
+   gVirtualPS = masterps ? masterps : &ps;
+   painter->SetPainting(ps.GetPainting());
+
+   // calling Paint function for the object
+   obj->Paint(opt);
+
+   if (view) {
+      view->SetAutoRange(kFALSE);
+      // call 3D paint once again to make real drawing
+      obj->Paint(opt);
+      pad->SetView(nullptr);
+   }
+
+   painter->SetPainting(nullptr);
+
+   gVirtualPS = saveps;
+   if (savepad)
+      savepad->cd();
+
+   // if there are master PS, do not create single entries
+   if (masterps || ps.IsEmptyPainting())
+      return nullptr;
+
+   auto p = ps.TakePainting();
 
    // when paint method was used and produce output
 
-   if (p) {
-      p->FixSize();
-      sub->SetSnapshot(TWebSnapshot::kSVG, p, kTRUE);
-   } else {
-      sub->SetSnapshot(TWebSnapshot::kObject, obj);
-   }
+   auto sub = new TWebSnapshot();
+   sub->SetObjectIDAsPtr(obj);
+   sub->SetOption(opt);
+   sub->SetSnapshot(TWebSnapshot::kSVG, p, kTRUE);
 
    return sub;
 }
@@ -237,35 +243,36 @@ TWebSnapshot *TWebCanvas::CreateObjectSnapshot(TPad *pad, TObject *obj, const ch
 
 Bool_t TWebCanvas::AddCanvasSpecials(TPadWebSnapshot *master)
 {
-   // if (!TColor::DefinedColors()) return 0;
+   if (!TColor::DefinedColors()) return kFALSE;
+
    TObjArray *colors = (TObjArray *)gROOT->GetListOfColors();
 
    if (!colors)
       return kFALSE;
-   Int_t cnt = 0;
+
+/*   Int_t cnt = 0;
    for (Int_t n = 0; n <= colors->GetLast(); ++n)
       if (colors->At(n) != nullptr)
          cnt++;
    if (cnt <= 598)
       return kFALSE; // normally there are 598 colors defined
+*/
+
+   TArrayI pal = TColor::GetPalette();
 
    TWebSnapshot *sub = new TWebSnapshot();
-   sub->SetSnapshot(TWebSnapshot::kSpecial, colors);
-   master->Add(sub);
+   TWebPainting *listofcols = new TWebPainting;
+   for (Int_t n = 0; n <= colors->GetLast(); ++n)
+      if (colors->At(n))
+         listofcols->AddColor(n, (TColor *)colors->At(n));
 
-   if (gDebug > 1)
-      Info("AddCanvasSpecials", "ADD COLORS TABLES %d", cnt);
+   // store palette in the buffer
+   Float_t *tgt = listofcols->Reserve(pal.GetSize());
+   for (Int_t i = 0; i < pal.GetSize(); i++)
+      tgt[i] = pal[i];
+   listofcols->FixSize();
 
-   // save the current palette
-   TArrayI pal = TColor::GetPalette();
-   Int_t palsize = pal.GetSize();
-   TObjArray *CurrentColorPalette = new TObjArray();
-   CurrentColorPalette->SetName("CurrentColorPalette");
-   for (Int_t i = 0; i < palsize; i++)
-      CurrentColorPalette->Add(gROOT->GetColor(pal[i]));
-
-   sub = new TWebSnapshot();
-   sub->SetSnapshot(TWebSnapshot::kSpecial, CurrentColorPalette, kTRUE);
+   sub->SetSnapshot(TWebSnapshot::kColors, listofcols, kTRUE);
    master->Add(sub);
 
    return kTRUE;
@@ -295,19 +302,39 @@ TString TWebCanvas::CreateSnapshot(TPad *pad, TPadWebSnapshot *master, TList *pr
 
    primitives_lst->Add(primitives); // add list of primitives
 
+   TWebPS masterps;
+   bool usemaster = primitives->GetSize() > 100;
+
    TIter iter(primitives);
    TObject *obj = nullptr;
+
+   auto flush_master = [&]() {
+      if (!usemaster || masterps.IsEmptyPainting()) return;
+
+      auto msub = new TWebSnapshot();
+      msub->SetObjectIDAsPtr(pad);
+      msub->SetSnapshot(TWebSnapshot::kSVG, masterps.TakePainting(), kTRUE);
+      curr->Add(msub);
+      masterps.CreatePainting(); // create for next operations
+   };
+
+   auto add_object = [&]() {
+      auto sub = new TWebSnapshot();
+      sub->SetObjectIDAsPtr(obj);
+      sub->SetOption(iter.GetOption());
+      sub->SetSnapshot(TWebSnapshot::kObject, obj);
+      curr->Add(sub);
+   };
+
    while ((obj = iter()) != nullptr) {
       if (obj->InheritsFrom(TPad::Class())) {
+         flush_master();
          CreateSnapshot((TPad *)obj, curr, primitives_lst);
       } else if (obj->InheritsFrom(TH1::Class())) {
-         TWebSnapshot *sub = new TWebSnapshot();
-         TH1 *hist = (TH1 *)obj;
-         sub->SetObjectIDAsPtr(hist);
-         sub->SetOption(iter.GetOption());
-         sub->SetSnapshot(TWebSnapshot::kObject, obj);
-         curr->Add(sub);
+         flush_master();
+         add_object();
 
+         TH1 *hist = (TH1 *)obj;
          TIter fiter(hist->GetListOfFunctions());
          TObject *fobj = nullptr;
          while ((fobj = fiter()) != nullptr)
@@ -316,12 +343,10 @@ TString TWebCanvas::CreateSnapshot(TPad *pad, TPadWebSnapshot *master, TList *pr
 
          primitives_lst->Add(hist->GetListOfFunctions());
       } else if (obj->InheritsFrom(TGraph::Class())) {
-         TWebSnapshot *sub = new TWebSnapshot();
+         flush_master();
+         add_object();
+
          TGraph *gr = (TGraph *)obj;
-         sub->SetObjectIDAsPtr(gr);
-         sub->SetOption(iter.GetOption());
-         sub->SetSnapshot(TWebSnapshot::kObject, obj);
-         curr->Add(sub);
 
          TIter fiter(gr->GetListOfFunctions());
          TObject *fobj = nullptr;
@@ -330,10 +355,16 @@ TString TWebCanvas::CreateSnapshot(TPad *pad, TPadWebSnapshot *master, TList *pr
                curr->Add(CreateObjectSnapshot(pad, fobj, fiter.GetOption()));
 
          primitives_lst->Add(gr->GetListOfFunctions());
+      } else if (IsJSSupportedClass(obj)) {
+         flush_master();
+         add_object();
       } else {
-         curr->Add(CreateObjectSnapshot(pad, obj, iter.GetOption()));
+         auto res = CreateObjectSnapshot(pad, obj, iter.GetOption(), usemaster ? &masterps : nullptr);
+         if (res) curr->Add(res);
       }
    }
+
+   flush_master();
 
    if (primitives_lst != &master_lst)
       return "";
@@ -355,7 +386,6 @@ TString TWebCanvas::CreateSnapshot(TPad *pad, TPadWebSnapshot *master, TList *pr
 
    TString res = TBufferJSON::ConvertToJSON(curr, 23);
 
-   // TODO: this is only for debugging, remove it later
    // static int filecnt = 0;
    // TBufferJSON::ExportToFile(TString::Format("snapshot_%d.json", (filecnt++) % 10).Data(), curr);
 
