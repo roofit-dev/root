@@ -41,8 +41,10 @@ class TWebPS;
 /// Class used to transport drawing options from the client
 class TWebObjectOptions {
 public:
-   std::string snapid; ///< id of the object
-   std::string opt;    ///< drawing options
+   std::string snapid;       ///< id of the object
+   std::string opt;          ///< drawing options
+   std::string fcust;        ///< custom string
+   std::vector<double> fopt; ///< custom float array
 };
 
 /// Class used to transport ranges from JSROOT canvas
@@ -135,8 +137,10 @@ protected:
    void CreateObjectSnapshot(TPadWebSnapshot &master, TPad *pad, TObject *obj, const char *opt, TWebPS *masterps = nullptr);
    void CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t version, PadPaintingReady_t func);
 
-   TObject *FindPrimitive(const char *id, TPad *pad = nullptr, TObjLink **padlnk = nullptr);
+   TObject *FindPrimitive(const char *id, TPad *pad = nullptr, TObjLink **padlnk = nullptr, TPad **objpad = nullptr);
+   TPad *ProcessObjectData(TWebObjectOptions &item, TPad *pad);
    Bool_t DecodeAllRanges(const char *arg);
+   Bool_t DecodeObjectData(const char *arg);
 
    Bool_t IsAnyPadModified(TPad *pad);
 
