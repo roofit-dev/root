@@ -6,7 +6,7 @@
 /// is welcome!
 
 /*************************************************************************
- * Copyright (C) 1995-2017, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -16,7 +16,7 @@
 #include "ROOT/RWebWindowsManager.hxx"
 
 #include <ROOT/TLogger.hxx>
-#include <ROOT/RWebBrowserArgs.hxx>
+#include <ROOT/RWebDisplayArgs.hxx>
 #include <ROOT/RWebDisplayHandle.hxx>
 #include <ROOT/RWebWindowsManager.hxx>
 
@@ -348,7 +348,7 @@ std::string ROOT::Experimental::RWebWindowsManager::GetUrl(const ROOT::Experimen
 ///
 ///   Http-server related parameters documented in RWebWindowsManager::CreateServer() method
 
-unsigned ROOT::Experimental::RWebWindowsManager::Show(ROOT::Experimental::RWebWindow &win, bool batch_mode, const std::string &_where)
+unsigned ROOT::Experimental::RWebWindowsManager::ShowWindow(ROOT::Experimental::RWebWindow &win, bool batch_mode, const RWebDisplayArgs &user_args)
 {
    // silently ignore regular Show() calls in batch mode
    if (!batch_mode && gROOT->IsWebDisplayBatch())
@@ -362,10 +362,6 @@ unsigned ROOT::Experimental::RWebWindowsManager::Show(ROOT::Experimental::RWebWi
       return 0;
    }
 
-   std::string where = _where;
-   if (where.empty())
-      where = gROOT->GetWebDisplay().Data();
-
    std::string key;
    int ntry = 100000;
 
@@ -377,16 +373,16 @@ unsigned ROOT::Experimental::RWebWindowsManager::Show(ROOT::Experimental::RWebWi
       return 0;
    }
 
-   RWebBrowserArgs args(where);
+   RWebDisplayArgs args(user_args);
 
    if (batch_mode && !args.IsSupportHeadless()) {
-      R__ERROR_HERE("WebDisplay") << "Cannot use batch mode with " << where;
+      R__ERROR_HERE("WebDisplay") << "Cannot use batch mode with " << args.GetBrowserName();
       return 0;
    }
 
    args.SetHeadless(batch_mode);
-   args.SetWidth(win.GetWidth());
-   args.SetHeight(win.GetHeight());
+   if (args.GetWidth() <= 0) args.SetWidth(win.GetWidth());
+   if (args.GetHeight() <= 0) args.SetHeight(win.GetHeight());
 
    std::string url = GetUrl(win, batch_mode, !args.IsLocalDisplay());
    if (url.empty()) {
@@ -402,12 +398,12 @@ unsigned ROOT::Experimental::RWebWindowsManager::Show(ROOT::Experimental::RWebWi
 
    args.SetUrl(url);
 
-   url.SetHttpServer(GetServer());
+   args.SetHttpServer(GetServer());
 
    auto handle = RWebDisplayHandle::Display(args);
 
    if (!handle) {
-      R__ERROR_HERE("WebDisplay") << "Cannot display window" << where;
+      R__ERROR_HERE("WebDisplay") << "Cannot display window in " << args.GetBrowserName();
       return 0;
    }
 
