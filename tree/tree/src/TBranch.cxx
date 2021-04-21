@@ -46,6 +46,7 @@
 #include "TVirtualPerfStats.h"
 
 #include "TBranchIMTHelper.h"
+#include "ROOT/TBulkBranchRead.hxx"
 
 #include "ROOT/TIOFeatures.hxx"
 
@@ -88,6 +89,7 @@ TBranch::TBranch()
 , fEntryOffsetLen(1000)
 , fWriteBasket(0)
 , fEntryNumber(0)
+, fExtraBasket(nullptr)
 , fOffset(0)
 , fMaxBaskets(10)
 , fNBaskets(0)
@@ -117,6 +119,7 @@ TBranch::TBranch()
 , fEntryBuffer(0)
 , fTransientBuffer(0)
 , fBrowsables(0)
+, fBulk(new ROOT::Experimental::Internal::TBulkBranchRead(*this))
 , fSkipZip(kFALSE)
 , fReadLeaves(&TBranch::ReadLeavesImpl)
 , fFillLeaves(&TBranch::FillLeavesImpl)
@@ -196,6 +199,7 @@ TBranch::TBranch(TTree *tree, const char *name, void *address, const char *leafl
 , fEntryOffsetLen(0)
 , fWriteBasket(0)
 , fEntryNumber(0)
+, fExtraBasket(nullptr)
 , fIOFeatures(tree ? tree->GetIOFeatures().GetFeatures() : 0)
 , fOffset(0)
 , fMaxBaskets(10)
@@ -226,6 +230,7 @@ TBranch::TBranch(TTree *tree, const char *name, void *address, const char *leafl
 , fEntryBuffer(0)
 , fTransientBuffer(0)
 , fBrowsables(0)
+, fBulk(new ROOT::Experimental::Internal::TBulkBranchRead(*this))
 , fSkipZip(kFALSE)
 , fReadLeaves(&TBranch::ReadLeavesImpl)
 , fFillLeaves(&TBranch::FillLeavesImpl)
@@ -248,6 +253,7 @@ TBranch::TBranch(TBranch *parent, const char *name, void *address, const char *l
 , fEntryOffsetLen(0)
 , fWriteBasket(0)
 , fEntryNumber(0)
+, fExtraBasket(nullptr)
 , fIOFeatures(parent->fIOFeatures)
 , fOffset(0)
 , fMaxBaskets(10)
@@ -278,6 +284,7 @@ TBranch::TBranch(TBranch *parent, const char *name, void *address, const char *l
 , fEntryBuffer(0)
 , fTransientBuffer(0)
 , fBrowsables(0)
+, fBulk(new ROOT::Experimental::Internal::TBulkBranchRead(*this))
 , fSkipZip(kFALSE)
 , fReadLeaves(&TBranch::ReadLeavesImpl)
 , fFillLeaves(&TBranch::FillLeavesImpl)
@@ -1192,7 +1199,7 @@ Int_t TBranch::FlushOneBasket(UInt_t ibasket)
 /// If a new buffer must be created and the user_buffer argument is non-null,
 /// then the memory in the user_bufer will be shared with the returned TBasket.
 
-TBasket* TBranch::GetBasket(Int_t basketnumber, TBuffer* user_buffer)
+TBasket* TBranch::GetBasketImpl(Int_t basketnumber, TBuffer* user_buffer)
 {
    // This counter in the sequential case collects errors coming also from
    // different files (suppose to have a program reading f1.root, f2.root ...)
@@ -1320,7 +1327,7 @@ Int_t TBranch::GetBasketAndFirst(TBasket*&basket, Long64_t &first,
 {
    Long64_t updatedNext = fNextBasketEntry;
    Long64_t entry = fReadEntry;
-   if (R__likely(fFirstBasketEntry <= entry && entry < fNextBasketEntry)) {
+   if (R__likely(fCurrentBasket && fFirstBasketEntry <= entry && entry < fNextBasketEntry)) {
       // We have found the basket containing this entry.
       // make sure basket buffers are in memory.
       basket = fCurrentBasket;
@@ -1351,7 +1358,7 @@ Int_t TBranch::GetBasketAndFirst(TBasket*&basket, Long64_t &first,
       // make sure basket buffers are in memory.
       basket = (TBasket*) fBaskets.UncheckedAt(fReadBasket);
       if (!basket) {
-         basket = GetBasket(fReadBasket, user_buffer);
+         basket = GetBasketImpl(fReadBasket, user_buffer);
          if (!basket) {
             fCurrentBasket = 0;
             fFirstBasketEntry = -1;
@@ -1371,7 +1378,12 @@ Int_t TBranch::GetBasketAndFirst(TBasket*&basket, Long64_t &first,
          fFirstBasketEntry = first;
          fNextBasketEntry = updatedNext;
       }
-      fCurrentBasket = basket;
+      if (user_buffer) {
+         fCurrentBasket = nullptr;
+         fBaskets[fReadBasket] = nullptr;
+      } else {
+         fCurrentBasket = basket;
+      }
    }
    return 1;
 }
@@ -1441,13 +1453,89 @@ Int_t TBranch::GetEntriesFast(Long64_t entry, TBuffer &user_buf)
    buf->SetBufferOffset(bufbegin);
 
    Int_t N = ((fNextBasketEntry < 0) ? fEntryNumber : fNextBasketEntry) - first;
-   //printf("Requesting %d events; fNextBasketEntry=%d; first=%d.\n", N, fNextBasketEntry, first);
+   //printf("Requesting %d events; fNextBasketEntry=%lld; first=%lld.\n", N, fNextBasketEntry, first);
    if (R__unlikely(!leaf->ReadBasketFast(*buf, N))) {printf("Leaf failed to read.\n"); return -1;}
    user_buf.SetBufferOffset(bufbegin);
+
+   fCurrentBasket = nullptr;
+   fBaskets[fReadBasket] = nullptr;
+   fExtraBasket = basket;
+   basket->DisownBuffer();
 
    return N;
 }
 
+// TODO: Template this and the call above; only difference is the TLeaf function (ReadBasketFast vs
+// ReadBasketSerialized
+Int_t
+TBranch::GetEntriesSerialized(Long64_t entry, TBuffer &user_buf, TBuffer *count_buf)
+{
+   // TODO: eventually support multiple leaves.
+   if (R__unlikely(fNleaves != 1)) {return -1;}
+   TLeaf *leaf = static_cast<TLeaf*>(fLeaves.UncheckedAt(0));
+   if (R__unlikely(leaf->GetDeserializeType() == TLeaf::DeserializeType::kDestructive)) {
+      printf("Encountered a branch with destructive deserialization; failing.\n");
+      return -1;
+   }
+
+   // Remember which entry we are reading.
+   fReadEntry = entry;
+
+   Bool_t enabled = !TestBit(kDoNotProcess);
+   if (R__unlikely(!enabled)) {return -1;}
+   TBasket *basket = nullptr;
+   Long64_t first;
+   Int_t result = GetBasketAndFirst(basket, first, &user_buf);
+   if (R__unlikely(result <= 0)) {return -1;}
+   // Only support reading from full clusters.
+   if (R__unlikely(entry != first)) {
+       printf("Failed to read from full cluster; first entry is %lld; requested entry is %lld.\n", first, entry);
+       return -1;
+   }
+
+   basket->PrepareBasket(entry);
+   TBuffer* buf = basket->GetBufferRef();
+
+   // Test for very old ROOT files.
+   if (R__unlikely(!buf)) {printf("Failed to get a new buffer.\n"); return -1;}
+   // Test for displacements, which aren't supported in fast mode.
+   if (R__unlikely(basket->GetDisplacement())) {printf("Basket has displacement.\n"); return -1;}
+
+   Int_t bufbegin = basket->GetKeylen();
+   buf->SetBufferOffset(bufbegin);
+
+   Int_t N = ((fNextBasketEntry < 0) ? fEntryNumber : fNextBasketEntry) - first;
+   //Info("GetEntriesSerialized", "Requesting %d events; fNextBasketEntry=%lld; first=%lld.\n", N, fNextBasketEntry, first);
+
+   if (R__unlikely(!leaf->ReadBasketSerialized(*buf, N))) {
+      printf("Leaf failed to read.\n");
+      return -1;
+   }
+   user_buf.SetBufferOffset(bufbegin);
+
+   if (count_buf) {
+      TLeaf *count_leaf = leaf->GetLeafCount();
+      if (count_leaf) {
+         //printf("Getting leaf count entries.\n");
+         TBranch *count_branch = count_leaf->GetBranch();
+         if (R__unlikely(count_branch->GetEntriesSerialized(entry, *count_buf) < 0)) {
+            printf("Failed to read count leaf.\n");
+            return -1;
+         }
+      } else {
+         // TODO: if you ask for a count on a fixed-size branch, maybe we should
+         // just fail?
+         Int_t entry_count = __builtin_bswap32(leaf->GetLenType() * leaf->GetNdata());
+         Int_t cur_offset = count_buf->GetCurrent() - count_buf->Buffer();
+         for (int idx=0; idx<N; idx++) {
+             *count_buf << entry_count;
+         }
+         count_buf->SetBufferOffset(cur_offset);
+      }
+   }
+
+   return N;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Read all leaves of entry and return total number of bytes read.
@@ -1556,7 +1644,7 @@ Int_t TBranch::GetEntryExport(Long64_t entry, Int_t /*getall*/, TClonesArray* li
 
    // We have found the basket containing this entry.
    // Make sure basket buffers are in memory.
-   TBasket* basket = GetBasket(fReadBasket, nullptr);
+   TBasket* basket = GetBasketImpl(fReadBasket, nullptr);
    fCurrentBasket = basket;
    if (!basket) {
       fFirstBasketEntry = -1;
@@ -1656,6 +1744,11 @@ TFile* TBranch::GetFile(Int_t mode)
 TBasket* TBranch::GetFreshBasket(TBuffer* user_buffer)
 {
    TBasket *basket = 0;
+   if (user_buffer && fExtraBasket) {
+      basket = fExtraBasket;
+      fExtraBasket = nullptr;
+      basket->AdoptBuffer(user_buffer);
+   }
    if (GetTree()->MemoryFull(0)) {
       if (fNBaskets==1) {
          // Steal the existing basket
@@ -1690,9 +1783,7 @@ TBasket* TBranch::GetFreshBasket(TBuffer* user_buffer)
    } else {
       basket = fTree->CreateBasket(this);
    }
-   if (user_buffer) {
-      user_buffer->SetSlaveBuffer(*basket->GetBufferRef());
-   }
+   basket->AdoptBuffer(user_buffer);
    return basket;
 }
 
@@ -2829,7 +2920,7 @@ void TBranch::Streamer(TBuffer& b)
       if (v < 2) {
          fBasketSeek = new Long64_t[fMaxBaskets];
          for (n=0;n<fWriteBasket;n++) {
-            TBasket *basket = GetBasket(n, nullptr);
+            TBasket *basket = GetBasketImpl(n, nullptr);
             fBasketSeek[n] = basket ? basket->GetSeekKey() : 0;
          }
       } else {
