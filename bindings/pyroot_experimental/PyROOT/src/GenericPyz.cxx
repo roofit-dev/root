@@ -1,4 +1,4 @@
-// Author: Stefan Wunsch CERN  06/2018
+// Author: Stefan Wunsch, Enric Tejedor CERN  06/2018
 // Original PyROOT code by Wim Lavrijsen, LBL
 
 /*************************************************************************
@@ -16,9 +16,6 @@
 #include "TInterpreter.h"
 #include "TInterpreterValue.h"
 
-#include <sstream>
-#include <algorithm>
-
 using namespace CPyCppyy;
 
 std::string GetCppName(CPPInstance *self)
@@ -29,15 +26,16 @@ std::string GetCppName(CPPInstance *self)
 PyObject *ClingPrintValue(CPPInstance *self)
 {
    const std::string className = GetCppName(self);
-   std::stringstream code;
-   code << "*((" << className << "*)" << self->GetObject() << ")";
-
-   auto value = gInterpreter->MakeInterpreterValue();
-   std::string pprint = "";
-   if (gInterpreter->Evaluate(code.str().c_str(), *value) == 1 /*success*/)
-      pprint = value->ToTypeAndValueString().second;
-   pprint.erase(std::remove(pprint.begin(), pprint.end(), '\n'), pprint.end());
-   return CPyCppyy_PyUnicode_FromString(pprint.c_str());
+   auto printResult = gInterpreter->ToString(className.c_str(), self->GetObject());
+   if (printResult.find("@0x") == 0) {
+      // Fall back to __repr__ if we just get an address from cling
+      auto method = PyObject_GetAttrString((PyObject*)self, "__repr__");
+      auto res = PyObject_CallObject(method, nullptr);
+      Py_DECREF(method);
+      return res;
+   } else {
+      return CPyCppyy_PyUnicode_FromString(printResult.c_str());
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////
