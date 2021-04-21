@@ -29,7 +29,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 if(NOT $ENV{ROOTSYS} STREQUAL "")
   string(REPLACE "$ENV{ROOTSYS}/bin" "" ENV_PATH "$ENV{PATH}")
   string(REPLACE "$ENV{ROOTSYS}/lib" "" ENV_LD_LIBRARY_PATH "$ENV{LD_LIBRARY_PATH}")
-  string(REPLACE "$ENV{ROOTSYS}/lib" "" ENV_PYTHONPATH $ENV{PYTHONPATH})
+  string(REPLACE "$ENV{ROOTSYS}/lib" "" ENV_PYTHONPATH "$ENV{PYTHONPATH}")
   string(REPLACE "$ENV{ROOTSYS}" "" ENV_CMAKE_PREFIX_PATH "$ENV{CMAKE_PREFIX_PATH}")
   set(ENV{PATH} "${ENV_PATH}")
   set(ENV{LD_LIBRARY_PATH} "${ENV_LD_LIBRARY_PATH}")
@@ -364,7 +364,7 @@ endif()
 add_custom_command(OUTPUT etc/dictpch/allLinkDefs.h
                           etc/dictpch/allHeaders.h
                           etc/dictpch/allCppflags.txt
-                   COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/build/unix/makepchinput.py ${CMAKE_SOURCE_DIR} . ${__clingetcpch} -- ${CMAKE_CXX_FLAGS_SEPARATE}
+                   COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/build/unix/makepchinput.py ${CMAKE_SOURCE_DIR} . ${pyroot_experimental} ${__clingetcpch} -- ${CMAKE_CXX_FLAGS_SEPARATE}
                    DEPENDS ${CMAKE_SOURCE_DIR}/build/unix/makepchinput.py ${__allFiles})
 
 get_property(incdirs DIRECTORY PROPERTY INCLUDE_DIRECTORIES)
@@ -471,11 +471,9 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_INSTALL_PREFIX)
      install(DIRECTORY js/     DESTINATION ${CMAKE_INSTALL_JSROOTDIR})
   endif()
   if(webui)
-     install(DIRECTORY ui5/    DESTINATION ${CMAKE_INSTALL_OPENUI5DIR}
-                               PATTERN "*.tar.gz" EXCLUDE)
+     install(DIRECTORY ui5/    DESTINATION ${CMAKE_INSTALL_OPENUI5DIR})
   endif()                             
   install(DIRECTORY man/    DESTINATION ${CMAKE_INSTALL_MANDIR})
-  install(DIRECTORY test/      DESTINATION ${CMAKE_INSTALL_TESTDIR} COMPONENT tests)
   install(DIRECTORY tutorials/ DESTINATION ${CMAKE_INSTALL_TUTDIR} COMPONENT tests)
   install(DIRECTORY cmake/modules DESTINATION ${CMAKE_INSTALL_CMAKEDIR} PATTERN "Find*.cmake" EXCLUDE)
 endif()

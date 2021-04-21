@@ -45,7 +45,7 @@ static ClustersAndEntries MakeClusters(const std::string &treeName, const std::v
    // analysis once, all necessary streamers will be loaded into memory.
    TDirectory::TContext c;
    const auto nFileNames = fileNames.size();
-   std::vector<std::vector<EntryCluster>> clustersPerFileProto;
+   std::vector<std::vector<EntryCluster>> clustersPerFile;
    std::vector<Long64_t> entriesPerFile; entriesPerFile.reserve(nFileNames);
    Long64_t offset = 0ll;
    for (const auto &fileName : fileNames) {
@@ -55,7 +55,7 @@ static ClustersAndEntries MakeClusters(const std::string &treeName, const std::v
          Error("TTreeProcessorMT::Process",
                "An error occurred while opening file %s: skipping it.",
                fileNameC);
-         clustersPerFileProto.emplace_back(std::vector<EntryCluster>());
+         clustersPerFile.emplace_back(std::vector<EntryCluster>());
          entriesPerFile.emplace_back(0ULL);
          continue;
       }
@@ -66,7 +66,7 @@ static ClustersAndEntries MakeClusters(const std::string &treeName, const std::v
          Error("TTreeProcessorMT::Process",
                "An error occurred while getting tree %s from file %s: skipping this file.",
                treeName.c_str(), fileNameC);
-         clustersPerFileProto.emplace_back(std::vector<EntryCluster>());
+         clustersPerFile.emplace_back(std::vector<EntryCluster>());
          entriesPerFile.emplace_back(0ULL);
          continue;
       }
@@ -82,7 +82,7 @@ static ClustersAndEntries MakeClusters(const std::string &treeName, const std::v
          clusters.emplace_back(EntryCluster{start + offset, end + offset});
       }
       offset += entries;
-      clustersPerFileProto.emplace_back(std::move(clusters));
+      clustersPerFile.emplace_back(std::move(clusters));
       entriesPerFile.emplace_back(entries);
    }
 
@@ -91,56 +91,46 @@ static ClustersAndEntries MakeClusters(const std::string &treeName, const std::v
    // the parallelisation detrimental for performance.
    // For example, this is the case when following a merging of many small files a file
    // contains a tree with many entries and with clusters of just a few entries.
-   // The criterium according to which we fuse clusters together is to have at most
+   // The criterion according to which we fuse clusters together is to have at most
    // TTreeProcessorMT::GetMaxTasksPerFilePerWorker() clusters per file per slot.
    // For example: given 2 files and 16 workers, at most
    // 16 * 2 * TTreeProcessorMT::GetMaxTasksPerFilePerWorker() clusters will be created, at most
    // 16 * TTreeProcessorMT::GetMaxTasksPerFilePerWorker() per file.
 
-   const auto maxClustersPerFile = TTreeProcessorMT::GetMaxTasksPerFilePerWorker() * ROOT::GetImplicitMTPoolSize();
-   std::vector<std::vector<EntryCluster>> clustersPerFile(clustersPerFileProto.size());
-   auto clustersPerFileProtoIt = clustersPerFileProto.begin();
+   const auto maxTasksPerFile = TTreeProcessorMT::GetMaxTasksPerFilePerWorker() * ROOT::GetImplicitMTPoolSize();
+   std::vector<std::vector<EntryCluster>> eventRangesPerFile(clustersPerFile.size());
    auto clustersPerFileIt = clustersPerFile.begin();
-   for (; clustersPerFileProtoIt != clustersPerFileProto.end(); clustersPerFileProtoIt++, clustersPerFileIt++) {
-      const auto clustersInThisFileSize = clustersPerFileProtoIt->size();
-      const auto nFolds = clustersInThisFileSize / maxClustersPerFile;
-      // If the number of clusters is less than maxClustersPerFile
+   auto eventRangesPerFileIt = eventRangesPerFile.begin();
+   for (; clustersPerFileIt != clustersPerFile.end(); clustersPerFileIt++, eventRangesPerFileIt++) {
+      const auto clustersInThisFileSize = clustersPerFileIt->size();
+      const auto nFolds = clustersInThisFileSize / maxTasksPerFile;
+      // If the number of clusters is less than maxTasksPerFile
       // we take the clusters as they are
       if (nFolds == 0) {
-         std::for_each(clustersPerFileProtoIt->begin(), clustersPerFileProtoIt->end(),
-                       [&clustersPerFileIt](const EntryCluster &clust) { clustersPerFileIt->emplace_back(clust); });
+         std::for_each(clustersPerFileIt->begin(), clustersPerFileIt->end(),
+                       [&eventRangesPerFileIt](const EntryCluster &clust) { eventRangesPerFileIt->emplace_back(clust); });
          continue;
       }
-      // Otherwise, we have to merge clusters, distributing the reminder eavenly
+      // Otherwise, we have to merge clusters, distributing the reminder evenly
       // onto the first clusters
-      auto nReminderClusters = clustersInThisFileSize % maxClustersPerFile;
-      auto clustIt = clustersPerFileProtoIt->begin();
-      Long64_t start = clustIt->start;
-      clustIt++;
-      Long64_t end = 0ULL;
-      auto clusterCursor = 1U;
-      for (; clustIt != clustersPerFileProtoIt->end(); clustIt++, clusterCursor++) {
-         const auto reminderCluster = nReminderClusters != 0 ? 1U : 0U;
-         if (clusterCursor == (nFolds + reminderCluster))
-         {
-            clustersPerFileIt->emplace_back(EntryCluster({start, end}));
-            start = clustIt->start;
-            clusterCursor = 0U;
-            if (nReminderClusters!=0) {
-               nReminderClusters--;
-            }
+      auto nReminderClusters = clustersInThisFileSize % maxTasksPerFile;
+      const auto clustersInThisFile = *clustersPerFileIt;
+      for(auto i = 0ULL; i < (clustersInThisFileSize-1); ++i) {
+         const auto start = clustersInThisFile[i].start;
+         // We lump together at least nFolds clusters, therefore
+         // we need to jump ahead of nFolds-1.
+         i += (nFolds - 1);
+         // We now add a cluster if we have some reminder left
+         if (nReminderClusters > 0) {
+            i += 1U;
+            nReminderClusters--;
          }
-         else {
-            end = clustIt->end;
-         }
+         const auto end = clustersInThisFile[i].end;
+         eventRangesPerFileIt->emplace_back(EntryCluster({start, end}));
       }
-      // Here we need to add the last cluster to the set because
-      // the iteration ends before we have the possibility to do this
-      clustersPerFileIt->emplace_back(EntryCluster({start, end}));
    }
 
-
-   return std::make_pair(std::move(clustersPerFile), std::move(entriesPerFile));
+   return std::make_pair(std::move(eventRangesPerFile), std::move(entriesPerFile));
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -374,22 +364,18 @@ void TTreeProcessorMT::Process(std::function<void(TTreeReader &)> func)
    // Parent task, spawns tasks that process each of the entry clusters for each input file
    using Internal::EntryCluster;
    auto processFile = [&](std::size_t fileIdx) {
-
-      // If cluster information is already present, build TChains with all input files and use global entry numbers
-      // Otherwise get cluster information only for the file we need to process and use local entry numbers
-      const bool shouldUseGlobalEntries = hasFriends || hasEntryList;
       // theseFiles contains either all files or just the single file to process
-      const auto &theseFiles = shouldUseGlobalEntries ? fFileNames : std::vector<std::string>({fFileNames[fileIdx]});
+      const auto &theseFiles = shouldRetrieveAllClusters ? fFileNames : std::vector<std::string>({fFileNames[fileIdx]});
       // Evaluate clusters (with local entry numbers) and number of entries for this file, if needed
       const auto theseClustersAndEntries =
-         shouldUseGlobalEntries ? Internal::ClustersAndEntries{} : Internal::MakeClusters(fTreeName, theseFiles);
+         shouldRetrieveAllClusters ? Internal::ClustersAndEntries{} : Internal::MakeClusters(fTreeName, theseFiles);
 
       // All clusters for the file to process, either with global or local entry numbers
-      const auto &thisFileClusters = shouldUseGlobalEntries ? clusters[fileIdx] : theseClustersAndEntries.first[0];
+      const auto &thisFileClusters = shouldRetrieveAllClusters ? clusters[fileIdx] : theseClustersAndEntries.first[0];
 
       // Either all number of entries or just the ones for this file
       const auto &theseEntries =
-         shouldUseGlobalEntries ? entries : std::vector<Long64_t>({theseClustersAndEntries.second[0]});
+         shouldRetrieveAllClusters ? entries : std::vector<Long64_t>({theseClustersAndEntries.second[0]});
 
       auto processCluster = [&](const Internal::EntryCluster &c) {
          std::unique_ptr<TTreeReader> reader;
