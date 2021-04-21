@@ -6,7 +6,7 @@
 /// is welcome!
 
 /*************************************************************************
- * Copyright (C) 1995-2017, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -15,7 +15,6 @@
 
 #ifndef ROOT7_RWebWindow
 #define ROOT7_RWebWindow
-
 
 #include <ROOT/RWebDisplayHandle.hxx>
 
@@ -238,14 +237,14 @@ public:
 
    void Run(double tm = 0.);
 
-   unsigned Show(const std::string &where = "");
+   unsigned Show(const RWebDisplayArgs &args = "");
 
    unsigned GetDisplayConnection();
 
    /// Returns true when window was shown at least once
    bool IsShown() { return GetDisplayConnection() != 0; }
 
-   unsigned MakeBatch(bool create_new = false, const std::string &where = "");
+   unsigned MakeBatch(bool create_new = false, const RWebDisplayArgs &args = "");
 
    unsigned FindBatch();
 
