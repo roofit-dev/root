@@ -11,9 +11,10 @@ struct MyStruct {
 // - vectorb: branch of type `std::vector<double>`, size `arraysize`
 // - structb: struct branch of type `MyStruct`
 // - structleafb: struct branch of type `MyStruct`, created as a leaf list
-void CreateTTree(const char *filename, const char *treename, int nentries, int arraysize, int more)
+void CreateTTree(const char *filename, const char *treename, int nentries, int arraysize, int more,
+                 const char* openmode)
 {
-   TFile f(filename, "RECREATE");
+   TFile f(filename, openmode);
    TTree t(treename, "Test tree");
 
    // Float branch
@@ -50,4 +51,29 @@ void CreateTTree(const char *filename, const char *treename, int nentries, int a
    f.Close();
 
    delete[] a;
+}
+
+// Writes a `TNtuple` and a `TNtupleD` on a file. Both tuples have three branches (x,y,z)
+void CreateTNtuple(const char *filename, const char *tuplename, int nentries, int more,
+                   const char* openmode)
+{
+   std::stringstream ss;
+   ss << tuplename << "D";
+   auto tuplenamed = ss.str().c_str();
+
+   TFile f(filename, openmode);
+   TNtuple ntuple(tuplename, "Test tuple", "x:y:z");
+   TNtupleD ntupled(tuplenamed, "Test tupled", "x:y:z");
+
+   float x, y, z;
+   for (int i = 0; i < nentries; ++i) {
+      x = i;
+      y = i + more;
+      z = i + 2 * more;
+      ntuple.Fill(x, y, z);
+      ntupled.Fill(x, y, z);
+   }
+
+   f.Write();
+   f.Close();
 }
