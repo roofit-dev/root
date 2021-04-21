@@ -20,24 +20,25 @@
 \ingroup Roofitcore
 
 RooProdPdf is an efficient implementation of a product of PDFs of the form
+\f[ \prod_{i=1}^{N} \mathrm{PDF}_i (x, \ldots) \f]
 
-\f[PDF_1 * PDF_2 * ... * PDF_N  \f]
+PDFs may share observables. If that is the case any irreducible subset
+of PDFs that share observables will be normalised with explicit numeric
+integration as any built-in normalisation will no longer be valid.
 
-PDFs may share observables. If that is the case any irreducable subset
-of PDFS that share observables will be normalized with explicit numeric
-integration as any built-in normalization will no longer be valid.
-Alternatively, products using conditional PDFs can be defined, e.g.
+Alternatively, products using conditional PDFs can be defined, *e.g.*
 
-\f[F(x|y) * G(y) \f]
+\f[ F(x|y) \cdot G(y), \f]
 
-meaning a pdf F(x) _given_ y and a PDF G(y). In this contruction F is only
-normalized w.r.t x and G is normalized w.r.t y. The product in this construction
-is properly normalized.
+meaning a PDF \f$ F(x) \f$ **given** \f$ y \f$ and a PDF \f$ G(y) \f$.
+In this construction, \f$ F \f$ is only
+normalised w.r.t \f$ x\f$, and \f$ G \f$ is normalised w.r.t \f$ y \f$. The product in this construction
+is properly normalised.
+
 If exactly one of the component PDFs supports extended likelihood fits, the
 product will also be usable in extended mode, returning the number of expected
 events from the extendable component PDF. The extendable component does not
 have to appear in any specific place in the list.
-
 **/
 
 #include "RooProdPdf.h"
@@ -170,7 +171,7 @@ RooProdPdf::RooProdPdf(const char *name, const char *title,
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Constructor from a list of PDFs
+/// Constructor from a list of PDFs.
 ///
 /// The optional cutOff parameter can be used as a speed optimization if
 /// one or more of the PDF have sizable regions with very small values,
@@ -522,7 +523,7 @@ Double_t RooProdPdf::calculate(const RooProdPdf::CacheElem& cache, Bool_t /*verb
     assert(cache._normList.size() == cache._partList.size());
     for (std::size_t i = 0; i < cache._partList.size(); ++i) {
       const auto& partInt = static_cast<const RooAbsReal&>(cache._partList[i]);
-      const auto normSet = cache._normList[i];
+      const auto normSet = cache._normList[i].get();
 
       const Double_t piVal = partInt.getVal(normSet->getSize() > 0 ? normSet : nullptr);
       value *= piVal ;
@@ -930,7 +931,7 @@ Int_t RooProdPdf::getPartIntList(const RooArgSet* nset, const RooArgSet* iset, c
 	cache->_partList.add(*func[0]);
 	if (isOwned) cache->_ownedList.addOwned(*func[0]);
 
-	cache->_normList.push_back(norm->snapshot(kFALSE));
+	cache->_normList.emplace_back(norm->snapshot(kFALSE));
 
 	cache->_numList.addOwned(*func[1]);
 	cache->_denList.addOwned(*func[2]);
@@ -1027,7 +1028,7 @@ Int_t RooProdPdf::getPartIntList(const RooArgSet* nset, const RooArgSet* iset, c
 
       cache->_numList.addOwned(*numtmp);
       cache->_denList.addOwned(*(RooAbsArg*)RooFit::RooConst(1).clone("1"));
-      cache->_normList.push_back(compTermNorm.snapshot(kFALSE));
+      cache->_normList.emplace_back(compTermNorm.snapshot(kFALSE));
     }
   }
 
@@ -1355,8 +1356,8 @@ void RooProdPdf::rearrangeProduct(RooProdPdf::CacheElem& cache) const
   // WVE DEBUG
   //RooMsgService::instance().debugWorkspace()->import(RooArgSet(*numerator,*norm)) ;
 
-  cache._rearrangedNum = numerator ;
-  cache._rearrangedDen = norm ;
+  cache._rearrangedNum.reset(numerator);
+  cache._rearrangedDen.reset(norm);
   cache._isRearranged = kTRUE ;
 
 }
@@ -1932,17 +1933,6 @@ void RooProdPdf::generateEvent(Int_t code)
     }
     i++ ;
   }
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooProdPdf::CacheElem::~CacheElem()
-{
-  if (_rearrangedNum) delete _rearrangedNum ;
-  if (_rearrangedDen) delete _rearrangedDen ;
 }
 
 

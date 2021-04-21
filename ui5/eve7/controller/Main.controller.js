@@ -1,11 +1,13 @@
 sap.ui.define(['sap/ui/core/Component',
+               'sap/ui/core/UIComponent',
                'sap/ui/core/mvc/Controller',
                'sap/ui/layout/Splitter',
                'sap/ui/layout/SplitterLayoutData',
                'sap/m/library',
                'sap/m/Button',
+               'sap/m/MenuItem',
                'rootui5/eve7/lib/EveManager'
-], function(Component, Controller, Splitter, SplitterLayoutData, MobileLibrary, mButton, EveManager) {
+], function(Component, UIComponent, Controller, Splitter, SplitterLayoutData, MobileLibrary, mButton, mMenuItem, EveManager) {
 
    "use strict";
 
@@ -49,6 +51,20 @@ sap.ui.define(['sap/ui/core/Component',
           }
       },
       
+      viewItemPressed: function (elem, oEvent) {
+         var item = oEvent.getSource();
+         console.log('item pressed', item.getText(), elem);
+         
+         var name = item.getText();
+         if (name.indexOf(" ")>0) name = name.substr(0, name.indexOf(" "));
+
+         // FIXME: one need better way to deliver parameters to the selected view
+         JSROOT.$eve7tmp = { mgr: this.mgr, elementid: elem.fElementId, kind: elem.view_kind };
+
+         var oRouter = UIComponent.getRouterFor(this);
+         oRouter.navTo("View", { viewName: name });
+      },
+      
       updateViewers: function(loading_done) {
          var viewers = this.mgr.FindViewers();
 
@@ -61,8 +77,16 @@ sap.ui.define(['sap/ui/core/Component',
          if (staged.length == 0) return;
          
          console.log("FOUND viewers", viewers.length, "not yet exists", staged.length);
+         
+         if (staged.length > 1) {
+            var vMenu = this.getView().byId("menuViewId");
+            var item = new mMenuItem({text:"Browse to"});
+            vMenu.addItem(item);
+            for (var n=0;n<staged.length;++n) 
+               item.addItem(new mMenuItem({text: staged[n].fName, press: this.viewItemPressed.bind(this, staged[n]) }));
+         }
 
-         var main = this, vv = null, count = 0, sv = this.getView().byId("MainAreaSplitter");
+         var main = this, vv = null, sv = this.getView().byId("MainAreaSplitter");
 
          for (var n=0;n<staged.length;++n) {
             var elem = staged[n];
@@ -71,26 +95,29 @@ sap.ui.define(['sap/ui/core/Component',
             // create missing view
             elem.$view_created = true;
             console.log("Creating view", viewid);
-            count++;
 
             var oLd = undefined;
-            if ((count == 1) && (staged.length > 1))
+            if ((n == 0) && (staged.length > 1))
                oLd = new SplitterLayoutData({ resizable: true, size: "50%" });
 
             var vtype = "rootui5.eve7.view.GL";
-            if (elem.fName === "Table") vtype = "rootui5.eve7.view.EveTable"; // AMT temporary solution
+            if (elem.fName === "Table") 
+               vtype = "rootui5.eve7.view.EveTable"; // AMT temporary solution
+            else
+               elem.view_kind = (n==0) ? "3D" : "2D"; // FIXME: should be property of GL view 
+            
             
             var oOwnerComponent = Component.getOwnerComponentFor(this.getView());
             var view = oOwnerComponent.runAsOwner(function() {
-               return new JSROOT.sap.ui.xmlview({
+               return new sap.ui.xmlview({
                   id: viewid,
                   viewName: vtype,
-                  viewData: { mgr: main.mgr, elementid: elem.fElementId, kind: (count==1) ? "3D" : "2D" },
+                  viewData: { mgr: main.mgr, elementid: elem.fElementId, kind: elem.view_kind },
                   layoutData: oLd
                });
             });
 
-            if (count == 1) {
+            if (n == 0) {
                sv.addContentArea(view);
                continue;
             }

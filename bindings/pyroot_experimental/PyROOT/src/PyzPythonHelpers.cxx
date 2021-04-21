@@ -72,25 +72,26 @@ PyObject *PyROOT::GetVectorDataPointer(PyObject * /*self*/, PyObject *args)
    std::string cppname = CPyCppyy_PyUnicode_AsString(pycppname);
 
    // Call interpreter to get pointer to data (using `data` method)
-   long pointer;
+   unsigned long long pointer;
    std::stringstream code;
    code << "*((long*)" << &pointer << ") = reinterpret_cast<long>(reinterpret_cast<" << cppname << "*>(" << cppobj
         << ")->data())";
    gInterpreter->Calc(code.str().c_str());
 
    // Return pointer as integer
-   PyObject *pypointer = PyInt_FromLong(pointer);
+   PyObject *pypointer = PyLong_FromUnsignedLongLong(pointer);
    return pypointer;
 }
 
 ////////////////////////////////////////////////////////////////////////////
 /// \brief Get endianess of the system
 /// \param[in] self Always null, since this is a module function.
+/// \param[in] args Pointer to an empty Python tuple.
 /// \param[out] Endianess as Python string
 ///
 /// This function returns endianess of the system as a Python integer. The
 /// return value is either '<' or '>' for little or big endian, respectively.
-PyObject *PyROOT::GetEndianess(PyObject * /* self */)
+PyObject *PyROOT::GetEndianess(PyObject * /* self */, PyObject * /* args */)
 {
 #ifdef R__BYTESWAP
    return CPyCppyy_PyUnicode_FromString("<");
