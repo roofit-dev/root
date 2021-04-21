@@ -118,18 +118,6 @@ std::set<std::string> GetPotentialColumnNames(const std::string &expr)
 // the one in the vector
 class RActionBase;
 
-bool InterpreterDeclare(const std::string &code)
-{
-   return gInterpreter->Declare(code.c_str());
-}
-
-std::pair<Long64_t, int> InterpreterCalc(const std::string &code)
-{
-   TInterpreter::EErrorCode errorCode(TInterpreter::kNoError);
-   auto res = gInterpreter->Calc(code.c_str(), &errorCode);
-   return std::make_pair(res, errorCode);
-}
-
 HeadNode_t CreateSnaphotRDF(const ColumnNames_t &validCols,
                             std::string_view treeName,
                             std::string_view fileName,
@@ -626,6 +614,8 @@ void BookFilterJit(RJittedFilter *jittedFilter, void *prevNodeOnHeap, std::strin
    Ssiz_t matchedLen;
    const bool hasReturnStmt = re.Index(dotlessExpr, &matchedLen) != -1;
 
+   auto lm = jittedFilter->GetLoopManagerUnchecked();
+   lm->JitDeclarations(); // TryToJitExpression might need some of the Define'd column type aliases
    TryToJitExpression(dotlessExpr, varNames, usedColTypes, hasReturnStmt);
 
    const auto filterLambda = BuildLambdaString(dotlessExpr, varNames, usedColTypes, hasReturnStmt);
@@ -655,7 +645,7 @@ void BookFilterJit(RJittedFilter *jittedFilter, void *prevNodeOnHeap, std::strin
                     << "reinterpret_cast<ROOT::Internal::RDF::RBookedCustomColumns*>(" << columnsOnHeapAddr << ")"
                     << ");";
 
-   jittedFilter->GetLoopManagerUnchecked()->ToJit(filterInvocation.str());
+   lm->ToJitExec(filterInvocation.str());
 }
 
 // Jit a Define call
@@ -679,6 +669,7 @@ void BookDefineJit(std::string_view name, std::string_view expression, RLoopMana
    Ssiz_t matchedLen;
    const bool hasReturnStmt = re.Index(dotlessExpr, &matchedLen) != -1;
 
+   lm.JitDeclarations(); // TryToJitExpression might need some of the Define'd column type aliases
    TryToJitExpression(dotlessExpr, varNames, usedColTypes, hasReturnStmt);
 
    const auto definelambda = BuildLambdaString(dotlessExpr, varNames, usedColTypes, hasReturnStmt);
@@ -695,7 +686,7 @@ void BookDefineJit(std::string_view name, std::string_view expression, RLoopMana
    const auto defineDeclaration =
       "namespace " + ns + " { auto " + lambdaName + " = " + definelambda + ";\n" + "using " + std::string(name) +
       customColID + "_type = typename ROOT::TypeTraits::CallableTraits<decltype(" + lambdaName + " )>::ret_type;  }\n";
-   gInterpreter->Declare(defineDeclaration.c_str());
+   lm.ToJitDeclare(defineDeclaration);
 
    std::stringstream defineInvocation;
    defineInvocation << "ROOT::Internal::RDF::JitDefineHelper(" << definelambda << ", {";
@@ -713,7 +704,7 @@ void BookDefineJit(std::string_view name, std::string_view expression, RLoopMana
                     << "reinterpret_cast<ROOT::Internal::RDF::RBookedCustomColumns*>(" << customColumnsAddr << ")"
                     << ");";
 
-   lm.ToJit(defineInvocation.str());
+   lm.ToJitExec(defineInvocation.str());
 }
 
 // Jit and call something equivalent to "this->BuildAndBook<BranchTypes...>(params...)"
