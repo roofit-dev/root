@@ -2305,7 +2305,9 @@ void TChain::ResetAfterMerge(TFileMergeInfo *info)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Save TChain as a C++ statement(s) on output stream out
+/// Save TChain as a C++ statements on output stream out.
+/// With the option "friend" save the description of all the 
+/// TChain's friend trees or chains as well.
 
 void TChain::SavePrimitive(std::ostream &out, Option_t *option)
 {
@@ -2314,7 +2316,7 @@ void TChain::SavePrimitive(std::ostream &out, Option_t *option)
    TString chName = gInterpreter->MapCppName(GetName());
    if (chName.IsNull())
       chName = "_chain";
-   chCounter++;
+   ++chCounter;
    chName += chCounter;
 
    TString opt = option;
@@ -2328,7 +2330,7 @@ void TChain::SavePrimitive(std::ostream &out, Option_t *option)
          TTree *frtree = ((TFriendElement *)frel)->GetTree();
          if (dynamic_cast<TChain *>(frtree)) {
             if (strcmp(frtree->GetName(), GetName()) != 0)
-               chCounter--; // make friends get the same chain counter
+               --chCounter; // make friends get the same chain counter
             frtree->SavePrimitive(out, opt.Data());
             out << "   " << chName.Data() << "->AddFriend(\"" << frtree->GetName() << "\");" << std::endl;
          } else { // ordinary friend TTree
