@@ -34,7 +34,7 @@ The following people have contributed to this new version:
  Enric Tejedor Saavedra, CERN/SFT,\
  Oksana Shadura, UNL,\
  Matevz Tadel, UCSD/CMS,\
- Yuka Takahashi, UCincinatti + CERN/SFT,\
+ Yuka Takahashi, Princeton,\
  Massimo Tumolo, Politecnico di Torino,\
  Xavier Valls, CERN/SFT,\
  Vassil Vassilev, Princeton/CMS,\
@@ -179,6 +179,17 @@ See `TFile::GetStreamerInfoListImpl` implementation for an example on how to imp
 
 
 ## Math Libraries
+
+### [Clad](https://github.com/vgvassilev/clad)
+  - Enable experimental automatic differentiation techniques to compute
+    derivatives and gradients of functions. Automatic differentiation is
+    superior to the slow symbolic or often inaccurate numerical differentiation.
+    It uses the fact that every computer program can be divided into a set of
+    elementary operations (-,+,*,/) and functions (sin, cos, log, etc). By
+    applying the chain rule repeatedly to these operations, derivatives of
+    arbitrary order can be computed.
+  - Implement experimental `TFormula::GradientPar` derivative engine which
+    employs clad.
 
 ### VecOps
   - Add `All` helper: return true if all of the elements equate to true, return false otherwise.
