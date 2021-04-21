@@ -16,10 +16,13 @@
 #include "TSystem.h"
 #include "TROOT.h"
 #include "THttpServer.h"
-
+#include "TBufferJSON.h"
+#include "TGeoManager.h"
 
 ROOT::Experimental::REveGeomViewer::REveGeomViewer(TGeoManager *mgr) : fGeoManager(mgr)
 {
+
+   fDesc.Build(fGeoManager);
 
    TString evedir = TString::Format("%s/eve7", TROOT::GetEtcDir().Data());
 
@@ -47,8 +50,40 @@ ROOT::Experimental::REveGeomViewer::~REveGeomViewer()
 
 void ROOT::Experimental::REveGeomViewer::WebWindowCallback(unsigned connid, const std::string &arg)
 {
+   printf("Get ARG %s\n", arg.c_str());
 
+   if (arg=="CONN_READY") {
+      TString buf = TBufferJSON::ToJSON(&fDesc,3);
+      std::string sbuf = buf.Data();
+      printf("Send description %d\n", buf.Length());
+      fWebWindow->Send(connid, sbuf);
+
+      std::string json;
+      std::vector<char> binary;
+      fDesc.CollectVisibles(100000, json, binary);
+
+      printf("Produce JSON %d binary %d\n", (int) json.length(), (int) binary.size());
+
+      fWebWindow->Send(connid, json);
+
+      fWebWindow->SendBinary(connid, &binary[0], binary.size());
+   }
 }
+
+/////////////////////////////////////////////////////////////////////////////////
+/// Select visible top volume, all other volumes will be disabled
+
+void ROOT::Experimental::REveGeomViewer::SelectVolume(const std::string &volname)
+{
+   if (!fGeoManager || volname.empty()) {
+      fDesc.SelectVolume(nullptr);
+   } else {
+      fDesc.SelectVolume(fGeoManager->GetVolume(volname.c_str()));
+   }
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+/// Show geometry in web browser
 
 void ROOT::Experimental::REveGeomViewer::Show(const RWebDisplayArgs &args)
 {

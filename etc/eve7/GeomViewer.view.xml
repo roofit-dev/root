@@ -1,4 +1,4 @@
-<mvc:View height="100%" width="100%" class="sapUiSizeCompact" controllerName="eve.Geom"
+<mvc:View height="100%" width="100%" class="sapUiSizeCompact" controllerName="eve.GeomViewer"
           xmlns="sap.m"
           xmlns:mvc="sap.ui.core.mvc"
           xmlns:m="sap.m"
@@ -68,7 +68,7 @@
            enableColumnReordering="false"
            expandFirstLevel="false"
            visibleRowCountMode="Auto"
-           rows="{ path:'/Nodes',  parameters : { arrayNames: ['childs']}}" >
+           rows="{ path:'/Nodes',  parameters : { arrayNames: ['chlds']}}" >
            
            <t:layoutData><l:SplitterLayoutData size="300px" /></t:layoutData>
 
