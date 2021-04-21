@@ -212,6 +212,20 @@ function(ROOT_GET_LIBRARY_OUTPUT_DIR result)
 endfunction(ROOT_GET_LIBRARY_OUTPUT_DIR)
 
 #---------------------------------------------------------------------------------------------------
+#---ROOT_GET_INSTALL_DIR( result_var )
+# Returns the path to the shared libraries installation directory. On Windows the pcms and rootmap
+# files must go in the $ROOTSYS/bin folder.
+function(ROOT_GET_INSTALL_DIR result)
+  set(shared_lib_install_dir)
+  if(MSVC)
+    set(shared_lib_install_dir ${CMAKE_INSTALL_BINDIR})
+  else()
+    set(shared_lib_install_dir ${CMAKE_INSTALL_LIBDIR})
+  endif()
+  SET(${result} "${shared_lib_install_dir}" PARENT_SCOPE)
+endfunction(ROOT_GET_INSTALL_DIR)
+
+#---------------------------------------------------------------------------------------------------
 #---ROOT_GENERATE_DICTIONARY( dictionary headerfiles NODEPHEADERS ghdr1 ghdr2 ...
 #                                                    MODULE module DEPENDENCIES dep1 dep2
 #                                                    BUILTINS dep1 dep2
@@ -435,18 +449,19 @@ function(ROOT_GENERATE_DICTIONARY dictionary)
     set_property(GLOBAL APPEND PROPERTY ROOT_DICTIONARY_TARGETS ${dictname})
     set_property(GLOBAL APPEND PROPERTY ROOT_DICTIONARY_FILES ${CMAKE_CURRENT_BINARY_DIR}/${dictionary}.cxx)
 
+    ROOT_GET_INSTALL_DIR(shared_lib_install_dir)
     # Install the C++ module if we generated one.
     if (cpp_module_file)
       install(FILES ${cpp_module_file}
-                    DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries)
+                    DESTINATION ${shared_lib_install_dir} COMPONENT libraries)
     endif()
 
     if(ARG_STAGE1)
       install(FILES ${rootmap_name}
-                    DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries)
+                    DESTINATION ${shared_lib_install_dir} COMPONENT libraries)
     else()
       install(FILES ${pcm_name} ${rootmap_name}
-                    DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries)
+                    DESTINATION ${shared_lib_install_dir} COMPONENT libraries)
     endif()
   endif()
 
@@ -535,7 +550,7 @@ function (ROOT_CXXMODULES_APPEND_TO_MODULEMAP library library_headers)
       set(modulemap_entry "${modulemap_entry}  module \"${header}\" { ${textual_header}header \"${header}\" export * }\n")
     endif()
   endforeach()
-  #set(modulemap_entry "${modulemap_entry}  link \"lib/${library}\"\n")
+  set(modulemap_entry "${modulemap_entry}  link \"${libprefix}${library}${libsuffix}\"\n")
   set(modulemap_entry "${modulemap_entry}  export *\n}\n\n")
   # Non ROOT projects need a modulemap generated for them in the current
   # directory. The same happens with test dictionaries in ROOT which are not

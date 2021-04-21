@@ -79,6 +79,7 @@ clang/LLVM technology.
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/GlobalDecl.h"
 #include "clang/AST/RecordLayout.h"
+#include "clang/AST/DeclVisitor.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/SourceLocation.h"
@@ -1203,13 +1204,20 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
    // to rootcling to set this flag depending on whether it wants to produce
    // C++ modules.
    TString vfsArg;
-   if (fCxxModulesEnabled && !fromRootCling) {
-      // We only set this flag, rest is done by the CIFactory.
-      interpArgs.push_back("-fmodules");
-      // We should never build modules during runtime, so let's enable the
-      // module build remarks from clang to make it easier to spot when we do
-      // this by accident.
-      interpArgs.push_back("-Rmodule-build");
+   if (fCxxModulesEnabled) {
+      if (!fromRootCling) {
+         // We only set this flag, rest is done by the CIFactory.
+         interpArgs.push_back("-fmodules");
+         // We should never build modules during runtime, so let's enable the
+         // module build remarks from clang to make it easier to spot when we do
+         // this by accident.
+         interpArgs.push_back("-Rmodule-build");
+      }
+      // ROOT implements its autoloading upon module's link directives. We
+      // generate module A { header "A.h" link "A.so" export * } where ROOT's
+      // facilities use the link directive to dynamically load the relevant
+      // library. So, we need to suppress clang's default autolink behavior.
+      interpArgs.push_back("-fno-autolink");
    }
 
 #ifdef R__FAST_MATH
@@ -4998,16 +5006,12 @@ const char* TCling::TypeName(const char* typeDesc)
 
 static bool requiresRootMap(const char* rootmapfile, cling::Interpreter* interp)
 {
-   if (!rootmapfile || !*rootmapfile)
-      return true;
+   assert(rootmapfile && *rootmapfile);
 
-   llvm::StringRef moduleName = llvm::sys::path::filename(rootmapfile);
-   moduleName.consume_front("lib");
-   moduleName.consume_back(".rootmap");
+   llvm::StringRef libName = llvm::sys::path::filename(rootmapfile);
+   libName.consume_back(".rootmap");
 
-   Module *M = interp->getCI()->getPreprocessor().getHeaderSearchInfo().lookupModule(moduleName);
-
-   return !(M && interp->getSema().isModuleVisible(M));
+   return !gInterpreter->HasPCMForLibrary(libName.str().c_str());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -5018,107 +5022,112 @@ static bool requiresRootMap(const char* rootmapfile, cling::Interpreter* interp)
 
 int TCling::ReadRootmapFile(const char *rootmapfile, TUniqueString *uniqueString)
 {
+   if (!(rootmapfile && *rootmapfile))
+      return 0;
+
+   if (!requiresRootMap(rootmapfile, fInterpreter))
+      return 0; // success
+
    // For "class ", "namespace ", "typedef ", "header ", "enum ", "var " respectively
    const std::map<char, unsigned int> keyLenMap = {{'c',6},{'n',10},{'t',8},{'h',7},{'e',5},{'v',4}};
 
-   if (rootmapfile && *rootmapfile) {
-      std::string rootmapfileNoBackslash(rootmapfile);
+   std::string rootmapfileNoBackslash(rootmapfile);
 #ifdef _MSC_VER
-      std::replace(rootmapfileNoBackslash.begin(), rootmapfileNoBackslash.end(), '\\', '/');
+   std::replace(rootmapfileNoBackslash.begin(), rootmapfileNoBackslash.end(), '\\', '/');
 #endif
-      // Add content of a specific rootmap file
-      if (fRootmapFiles->FindObject(rootmapfileNoBackslash.c_str()))
-         return -1;
+   // Add content of a specific rootmap file
+   if (fRootmapFiles->FindObject(rootmapfileNoBackslash.c_str()))
+      return -1;
 
-      if (uniqueString)
-         uniqueString->Append(std::string("\n#line 1 \"Forward declarations from ") + rootmapfileNoBackslash + "\"\n");
+   if (uniqueString)
+      uniqueString->Append(std::string("\n#line 1 \"Forward declarations from ") + rootmapfileNoBackslash + "\"\n");
 
-      std::ifstream file(rootmapfileNoBackslash);
-      std::string line; line.reserve(200);
-      std::string lib_name; line.reserve(100);
-      bool newFormat=false;
-      while (getline(file, line, '\n')) {
-         if (!newFormat &&
-             (line.compare(0, 8, "Library.") == 0 || line.compare(0, 8, "Declare.") == 0)) {
-            file.close();
-            return -3; // old format
-         }
-         newFormat=true;
+   std::ifstream file(rootmapfileNoBackslash);
+   std::string line;
+   line.reserve(200);
+   std::string lib_name;
+   line.reserve(100);
+   bool newFormat = false;
+   while (getline(file, line, '\n')) {
+      if (!newFormat && (line.compare(0, 8, "Library.") == 0 || line.compare(0, 8, "Declare.") == 0)) {
+         file.close();
+         return -3; // old format
+      }
+      newFormat = true;
 
-         if (line.compare(0, 9, "{ decls }") == 0 && requiresRootMap(rootmapfile, fInterpreter)) {
-            // forward declarations
+      if (line.compare(0, 9, "{ decls }") == 0) {
+         // forward declarations
 
-            while (getline(file, line, '\n')) {
-               if (line[0] == '[') break;
-               if (!uniqueString) {
-                  Error("ReadRootmapFile", "Cannot handle \"{ decls }\" sections in custom rootmap file %s",
-                        rootmapfileNoBackslash.c_str());
-                  return -4;
-               }
-               uniqueString->Append(line);
+         while (getline(file, line, '\n')) {
+            if (line[0] == '[')
+               break;
+            if (!uniqueString) {
+               Error("ReadRootmapFile", "Cannot handle \"{ decls }\" sections in custom rootmap file %s",
+                     rootmapfileNoBackslash.c_str());
+               return -4;
             }
-         }
-         const char firstChar=line[0];
-         if (firstChar == '[') {
-            // new section (library)
-            auto brpos = line.find(']');
-            if (brpos == string::npos) continue;
-            lib_name = line.substr(1, brpos-1);
-            size_t nspaces = 0;
-            while( lib_name[nspaces] == ' ' ) ++nspaces;
-            if (nspaces) lib_name.replace(0, nspaces, "");
-            if (gDebug > 3) {
-               TString lib_nameTstr(lib_name.c_str());
-               TObjArray* tokens = lib_nameTstr.Tokenize(" ");
-               const char* lib = ((TObjString *)tokens->At(0))->GetName();
-               const char* wlib = gSystem->DynamicPathName(lib, kTRUE);
-               if (wlib) {
-                  Info("ReadRootmapFile", "new section for %s", lib_nameTstr.Data());
-               }
-               else {
-                  Info("ReadRootmapFile", "section for %s (library does not exist)", lib_nameTstr.Data());
-               }
-               delete[] wlib;
-               delete tokens;
-            }
-         }
-         else {
-            auto keyLenIt = keyLenMap.find(firstChar);
-            if (keyLenIt == keyLenMap.end()) continue;
-            unsigned int keyLen = keyLenIt->second;
-            // Do not make a copy, just start after the key
-            const char *keyname = line.c_str()+keyLen;
-            if (gDebug > 6)
-               Info("ReadRootmapFile", "class %s in %s", keyname, lib_name.c_str());
-            TEnvRec* isThere = fMapfile->Lookup(keyname);
-            if (isThere){
-               if(lib_name != isThere->GetValue()){ // the same key for two different libs
-                  if (firstChar == 'n') {
-                     if (gDebug > 3)
-                        Info("ReadRootmapFile", "namespace %s found in %s is already in %s",
-                           keyname, lib_name.c_str(), isThere->GetValue());
-                  } else if (firstChar == 'h'){ // it is a header: add the libname to the list of libs to be loaded.
-                     lib_name+=" ";
-                     lib_name+=isThere->GetValue();
-                     fMapfile->SetValue(keyname, lib_name.c_str());
-                  }
-                  else if (!TClassEdit::IsSTLCont(keyname)) {
-                     Warning("ReadRootmapFile", "%s %s found in %s is already in %s", line.substr(0, keyLen).c_str(),
-                           keyname, lib_name.c_str(), isThere->GetValue());
-                  }
-               } else { // the same key for the same lib
-                  if (gDebug > 3)
-                        Info("ReadRootmapFile","Key %s was already defined for %s", keyname, lib_name.c_str());
-               }
-
-            } else {
-               fMapfile->SetValue(keyname, lib_name.c_str());
-            }
+            uniqueString->Append(line);
          }
       }
-      file.close();
+      const char firstChar = line[0];
+      if (firstChar == '[') {
+         // new section (library)
+         auto brpos = line.find(']');
+         if (brpos == string::npos)
+            continue;
+         lib_name = line.substr(1, brpos - 1);
+         size_t nspaces = 0;
+         while (lib_name[nspaces] == ' ')
+            ++nspaces;
+         if (nspaces)
+            lib_name.replace(0, nspaces, "");
+         if (gDebug > 3) {
+            TString lib_nameTstr(lib_name.c_str());
+            TObjArray *tokens = lib_nameTstr.Tokenize(" ");
+            const char *lib = ((TObjString *)tokens->At(0))->GetName();
+            const char *wlib = gSystem->DynamicPathName(lib, kTRUE);
+            if (wlib) {
+               Info("ReadRootmapFile", "new section for %s", lib_nameTstr.Data());
+            } else {
+               Info("ReadRootmapFile", "section for %s (library does not exist)", lib_nameTstr.Data());
+            }
+            delete[] wlib;
+            delete tokens;
+         }
+      } else {
+         auto keyLenIt = keyLenMap.find(firstChar);
+         if (keyLenIt == keyLenMap.end())
+            continue;
+         unsigned int keyLen = keyLenIt->second;
+         // Do not make a copy, just start after the key
+         const char *keyname = line.c_str() + keyLen;
+         if (gDebug > 6)
+            Info("ReadRootmapFile", "class %s in %s", keyname, lib_name.c_str());
+         TEnvRec *isThere = fMapfile->Lookup(keyname);
+         if (isThere) {
+            if (lib_name != isThere->GetValue()) { // the same key for two different libs
+               if (firstChar == 'n') {
+                  if (gDebug > 3)
+                     Info("ReadRootmapFile", "namespace %s found in %s is already in %s", keyname, lib_name.c_str(),
+                          isThere->GetValue());
+               } else if (firstChar == 'h') { // it is a header: add the libname to the list of libs to be loaded.
+                  lib_name += " ";
+                  lib_name += isThere->GetValue();
+                  fMapfile->SetValue(keyname, lib_name.c_str());
+               } else if (!TClassEdit::IsSTLCont(keyname)) {
+                  Warning("ReadRootmapFile", "%s %s found in %s is already in %s", line.substr(0, keyLen).c_str(),
+                          keyname, lib_name.c_str(), isThere->GetValue());
+               }
+            } else { // the same key for the same lib
+               if (gDebug > 3)
+                  Info("ReadRootmapFile", "Key %s was already defined for %s", keyname, lib_name.c_str());
+            }
+         } else {
+            fMapfile->SetValue(keyname, lib_name.c_str());
+         }
+      }
    }
-
+   file.close();
    return 0;
 }
 
@@ -5134,6 +5143,11 @@ int TCling::ReadRootmapFile(const char *rootmapfile, TUniqueString *uniqueString
 
 void TCling::InitRootmapFile(const char *name)
 {
+   assert(requiresRootMap(name, fInterpreter) && "We have a module!");
+
+   if (!requiresRootMap(name, fInterpreter))
+      return;
+
    Bool_t ignore = fMapfile->IgnoreDuplicates(kFALSE);
 
    fMapfile->SetRcName(name);
@@ -5200,7 +5214,11 @@ namespace {
 
 Int_t TCling::LoadLibraryMap(const char* rootmapfile)
 {
+   if (rootmapfile && *rootmapfile && !requiresRootMap(rootmapfile, fInterpreter))
+      return 0;
+
    R__LOCKGUARD(gInterpreterMutex);
+
    // open the [system].rootmap files
    if (!fMapfile) {
       fMapfile = new TEnv();
@@ -5211,9 +5229,6 @@ Int_t TCling::LoadLibraryMap(const char* rootmapfile)
       fRootmapFiles->SetOwner();
       InitRootmapFile(".rootmap");
    }
-   bool needsRootMap = true;
-   if (rootmapfile && *rootmapfile)
-      needsRootMap = requiresRootMap(rootmapfile, fInterpreter);
 
    // Prepare a list of all forward declarations for cling
    // For some experiments it is easily as big as 500k characters. To be on the
@@ -5259,11 +5274,7 @@ Int_t TCling::LoadLibraryMap(const char* rootmapfile)
                            if (gDebug > 4) {
                               Info("LoadLibraryMap", "   rootmap file: %s", p.Data());
                            }
-                           Int_t ret;
-                           if (needsRootMap)
-                              ret = ReadRootmapFile(p,&uniqueString);
-                           else
-                              ret = ReadRootmapFile(p);
+                           Int_t ret = ReadRootmapFile(p, &uniqueString);
 
                            if (ret == 0)
                               fRootmapFiles->Add(new TNamed(gSystem->BaseName(f), p.Data()));
@@ -5298,11 +5309,7 @@ Int_t TCling::LoadLibraryMap(const char* rootmapfile)
       }
    }
    if (rootmapfile && *rootmapfile) {
-      Int_t res;
-      if (needsRootMap)
-         res = ReadRootmapFile(rootmapfile, &uniqueString);
-      else
-         res = ReadRootmapFile(rootmapfile);
+      Int_t res = ReadRootmapFile(rootmapfile, &uniqueString);
       if (res == 0) {
          //TString p = gSystem->ConcatFileName(gSystem->pwd(), rootmapfile);
          //fRootmapFiles->Add(new TNamed(gSystem->BaseName(rootmapfile), p.Data()));
@@ -6699,6 +6706,96 @@ const char* TCling::GetSharedLibs()
    return fSharedLibs;
 }
 
+static std::string GetClassSharedLibsForModule(const char *cls, cling::LookupHelper &LH)
+{
+   if (!cls || !*cls)
+      return {};
+
+   using namespace clang;
+   if (const Decl *D = LH.findScope(cls, cling::LookupHelper::NoDiagnostics,
+                                    /*type*/ nullptr, /*instantiate*/ false)) {
+      if (!D->isFromASTFile()) {
+         if (gDebug > 5)
+            Warning("GetClassSharedLibsForModule", "Decl found for %s is not part of a module", cls);
+         return {};
+      }
+      class ModuleCollector : public ConstDeclVisitor<ModuleCollector> {
+         llvm::DenseSet<Module *> &m_TopLevelModules;
+
+      public:
+         ModuleCollector(llvm::DenseSet<Module *> &TopLevelModules) : m_TopLevelModules(TopLevelModules) {}
+         void Collect(const Decl *D) { Visit(D); }
+
+         void VisitDecl(const Decl *D)
+         {
+            // FIXME: Such case is described ROOT-7765 where
+            // ROOT_GENERATE_DICTIONARY does not contain the list of headers.
+            // They are specified as #includes in the LinkDef file. This leads to
+            // generation of incomplete modulemap files and this logic fails to
+            // compute the corresponding module of D.
+            // FIXME: If we want to support such a case, we should not rely on
+            // the contents of the modulemap but mangle D and look it up in the
+            // .so files.
+            if (!D->hasOwningModule())
+               return;
+            if (Module *M = D->getOwningModule()->getTopLevelModule())
+               m_TopLevelModules.insert(M);
+         }
+
+         void VisitTemplateArgument(const TemplateArgument &TA)
+         {
+            switch (TA.getKind()) {
+            case TemplateArgument::Null:
+            case TemplateArgument::Integral:
+            case TemplateArgument::Pack:
+            case TemplateArgument::NullPtr:
+            case TemplateArgument::Expression:
+            case TemplateArgument::Template:
+            case TemplateArgument::TemplateExpansion: return;
+            case TemplateArgument::Type:
+               if (const TagType *TagTy = dyn_cast<TagType>(TA.getAsType()))
+                  return Visit(TagTy->getDecl());
+               return;
+            case TemplateArgument::Declaration: return Visit(TA.getAsDecl());
+            }
+            llvm_unreachable("Invalid TemplateArgument::Kind!");
+         }
+
+         void VisitClassTemplateSpecializationDecl(const ClassTemplateSpecializationDecl *CTSD)
+         {
+            if (CTSD->getOwningModule())
+               VisitDecl(CTSD);
+            else
+               VisitDecl(CTSD->getSpecializedTemplate());
+            const TemplateArgumentList &ArgList = CTSD->getTemplateArgs();
+            for (const TemplateArgument *Arg = ArgList.data(), *ArgEnd = Arg + ArgList.size(); Arg != ArgEnd; ++Arg) {
+               VisitTemplateArgument(*Arg);
+            }
+         }
+      };
+
+      llvm::DenseSet<Module *> TopLevelModules;
+      ModuleCollector m(TopLevelModules);
+      m.Collect(D);
+      std::string result;
+      for (auto M : TopLevelModules) {
+         // ROOT-unaware modules (i.e. not processed by rootcling) do not have a
+         // link declaration.
+         if (!M->LinkLibraries.size())
+            continue;
+         // We have preloaded the Core module thus libCore.so
+         if (M->Name == "Core")
+            continue;
+         assert(M->LinkLibraries.size() == 1);
+         if (!result.empty())
+            result += ' ';
+         result += M->LinkLibraries[0].Library;
+      }
+      return result;
+   }
+   return {};
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Get the list of shared libraries containing the code for class cls.
 /// The first library in the list is the one containing the class, the
@@ -6707,6 +6804,25 @@ const char* TCling::GetSharedLibs()
 
 const char* TCling::GetClassSharedLibs(const char* cls)
 {
+   if (fCxxModulesEnabled) {
+      llvm::StringRef className = cls;
+      // If we get a class name containing lambda, we cannot parse it and we
+      // can exit early.
+      // FIXME: This works around a bug when we are instantiating a template
+      // make_unique and the substitution fails. Seen in most of the dataframe
+      // tests.
+      if (className.contains("(lambda)"))
+         return nullptr;
+      // Limit the recursion which can be induced by GetClassSharedLibsForModule.
+      SuspendAutoloadingRAII AutoloadingDisabled(this);
+      cling::LookupHelper &LH = fInterpreter->getLookupHelper();
+      std::string libs = GetClassSharedLibsForModule(cls, LH);
+      if (!libs.empty()) {
+         fAutoLoadLibStorage.push_back(libs);
+         return fAutoLoadLibStorage.back().c_str();
+      }
+   }
+
    if (!cls || !*cls) {
       return 0;
    }
