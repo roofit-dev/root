@@ -803,50 +803,53 @@ namespace cling {
     return DeclareInternal(input, CO, T);
   }
 
-  Interpreter::CompilationResult
-  Interpreter::loadModuleForHeader(const std::string& headerFile) {
+  ///\returns true if the module was loaded.
+  bool Interpreter::loadModule(const std::string& moduleName,
+                               bool complain /*= true*/) {
+    assert(getCI()->getLangOpts().Modules
+           && "Function only relevant when C++ modules are turned on!");
+
     Preprocessor& PP = getCI()->getPreprocessor();
-    //Copied from clang's PPDirectives.cpp
-    bool isAngled = false;
-    // Clang doc says:
-    // "LookupFrom is set when this is a \#include_next directive, it specifies
-    // the file to start searching from."
-    const DirectoryLookup* FromDir = 0;
-    const FileEntry* FromFile = 0;
-    const DirectoryLookup* CurDir = 0;
+    HeaderSearch &HS = PP.getHeaderSearchInfo();
 
-    ModuleMap::KnownHeader suggestedModule;
-    // PP::LookupFile uses it to issue 'nice' diagnostic
-    SourceLocation fileNameLoc;
-    PP.LookupFile(fileNameLoc, headerFile, isAngled, FromDir, FromFile, CurDir,
-                  /*SearchPath*/0, /*RelativePath*/ 0, &suggestedModule,
-                  0 /*IsMapped*/,
-                  /*SkipCache*/false, /*OpenFile*/ false, /*CacheFail*/ false);
-    if (!suggestedModule)
-      return Interpreter::kFailure;
+    if (Module *M = HS.lookupModule(moduleName, /*AllowSearch*/true,
+                                    /*AllowExtraSearch*/ true))
+      return loadModule(M, complain);
 
-    // Copied from PPDirectives.cpp
-    SmallVector<std::pair<IdentifierInfo *, SourceLocation>, 2> path;
-    for (auto mod = suggestedModule.getModule(); mod; mod = mod->Parent) {
-      IdentifierInfo* II
-        = &getSema().getPreprocessor().getIdentifierTable().get(mod->Name);
-      path.push_back(std::make_pair(II, fileNameLoc));
+   if (complain)
+     llvm::errs() << "Module " << moduleName << " not found.\n";
+
+
+   return false;
+  }
+
+  bool Interpreter::loadModule(clang::Module* M, bool complain /* = true*/) {
+    assert(getCI()->getLangOpts().Modules
+           && "Function only relevant when C++ modules are turned on!");
+    assert(M && "Module missing");
+    if (getSema().isModuleVisible(M))
+      return true;
+
+    Preprocessor& PP = getCI()->getPreprocessor();
+
+    IdentifierInfo *II = PP.getIdentifierInfo(M->Name);
+    SourceLocation ValidLoc = M->DefinitionLoc;
+    Interpreter::PushTransactionRAII RAII(this);
+    bool success = !getCI()->getSema().ActOnModuleImport(ValidLoc, ValidLoc,
+                                      std::make_pair(II, ValidLoc)).isInvalid();
+    if (success) {
+      // Also make the module visible in the preprocessor to export its macros.
+      PP.makeModuleVisible(M, ValidLoc);
+      return success;
+    }
+    if (complain) {
+      if (M->IsSystem)
+        llvm::errs() << "Failed to load module " << M->Name << "\n";
+      else
+        llvm::outs() << "Failed to load module " << M->Name << "\n";
     }
 
-    std::reverse(path.begin(), path.end());
-
-    // Pretend that the module came from an inclusion directive, so that clang
-    // will create an implicit import declaration to capture it in the AST.
-    bool isInclude = true;
-    SourceLocation includeLoc;
-    if (getCI()->loadModule(includeLoc, path, Module::AllVisible, isInclude)) {
-      // After module load we need to "force" Sema to generate the code for
-      // things like dynamic classes.
-      getSema().ActOnEndOfTranslationUnit();
-      return Interpreter::kSuccess;
-    }
-
-    return Interpreter::kFailure;
+   return false;
   }
 
   Interpreter::CompilationResult
@@ -1599,8 +1602,6 @@ namespace cling {
     if (!m_DynamicLookupDeclared && value) {
       // No dynlookup for the dynlookup header!
       m_DynamicLookupEnabled = false;
-      if (loadModuleForHeader("cling/Interpreter/DynamicLookupRuntimeUniverse.h")
-          != kSuccess)
       declare("#include \"cling/Interpreter/DynamicLookupRuntimeUniverse.h\"");
     }
     m_DynamicLookupDeclared = true;

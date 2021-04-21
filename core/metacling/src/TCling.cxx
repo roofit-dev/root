@@ -1074,40 +1074,26 @@ std::string TCling::ToString(const char* type, void* obj)
 ///\returns true if the module was loaded.
 static bool LoadModule(const std::string &ModuleName, cling::Interpreter &interp, bool Complain = true)
 {
-   clang::CompilerInstance &CI = *interp.getCI();
+   if (interp.loadModule(ModuleName, Complain))
+      return true;
 
-   assert(CI.getLangOpts().Modules && "Function only relevant when C++ modules are turned on!");
-
-   clang::Preprocessor &PP = CI.getPreprocessor();
-   clang::HeaderSearch &headerSearch = PP.getHeaderSearchInfo();
-
-   cling::Interpreter::PushTransactionRAII RAII(&interp);
-   if (clang::Module *M = headerSearch.lookupModule(ModuleName, true /*AllowSearch*/, true /*AllowExtraSearch*/)) {
-      clang::IdentifierInfo *II = PP.getIdentifierInfo(M->Name);
-      SourceLocation ValidLoc = M->DefinitionLoc;
-      bool success = !CI.getSema().ActOnModuleImport(ValidLoc, ValidLoc, std::make_pair(II, ValidLoc)).isInvalid();
-      if (success) {
-         // Also make the module visible in the preprocessor to export its macros.
-         PP.makeModuleVisible(M, ValidLoc);
-         return success;
-      }
-      if (Complain) {
-         if (M->IsSystem)
-            Error("TCling::LoadModule", "Module %s failed to load", M->Name.c_str());
-         else
-            Info("TCling::LoadModule", "Module %s failed to load", M->Name.c_str());
-      }
-   }
-
-   // Load modulemap if we have one in current directory
-   SourceManager& SM = PP.getSourceManager();
-   FileManager& FM = SM.getFileManager();
-   const clang::DirectoryEntry *DE = FM.getDirectory(".");
+   // When starting up ROOT, cling would load all modulemap files on the include
+   // paths. However, in a ROOT session, it is very common to run aclic which
+   // will invoke rootcling and possibly produce a modulemap and a module in
+   // the current folder.
+   //
+   // Before failing, try loading the modulemap in the current folder and try
+   // loading the requested module from it.
+   Preprocessor &PP = interp.getCI()->getPreprocessor();
+   FileManager& FM = PP.getFileManager();
+   // FIXME: In a ROOT session we can add an include path (through .I /inc/path)
+   // We should look for modulemap files there too.
+   const DirectoryEntry *DE = FM.getDirectory(".");
    if (DE) {
-      const clang::FileEntry *FE = headerSearch.lookupModuleMapFile(DE, /*IsFramework*/ false);
-      // Check if "./module.modulemap is already loaded or not
-      if (!gCling->IsLoaded("./module.modulemap") && FE) {
-         if(!headerSearch.loadModuleMapFile(FE, /*IsSystem*/ false))
+      HeaderSearch& HS = PP.getHeaderSearchInfo();
+      const FileEntry *FE = HS.lookupModuleMapFile(DE, /*IsFramework*/ false);
+      if (FE && !gCling->IsLoaded("./module.modulemap")) {
+         if (!HS.loadModuleMapFile(FE, /*IsSystem*/ false))
             return LoadModule(ModuleName, interp, Complain);
          Error("TCling::LoadModule", "Could not load modulemap in the current directory");
       }
@@ -1115,6 +1101,7 @@ static bool LoadModule(const std::string &ModuleName, cling::Interpreter &interp
 
    if (Complain)
       Error("TCling::LoadModule", "Module %s not found!", ModuleName.c_str());
+
    return false;
 }
 
@@ -1139,8 +1126,8 @@ static std::string GetModuleNameAsString(clang::Module *M, const clang::Preproce
 
    std::string ModuleFileName;
    if (!HSOpts.PrebuiltModulePaths.empty())
-      // Load the module from the prebuilt module path.
-      ModuleFileName = PP.getHeaderSearchInfo().getModuleFileName(M->Name, "", /*UsePrebuiltPath*/ true);
+      // Load the module from *only* in the prebuilt module path.
+      ModuleFileName = PP.getHeaderSearchInfo().getModuleFileName(M->Name, /*ModuleMapPath*/"", /*UsePrebuiltPath*/ true);
    if (ModuleFileName.empty()) return "";
 
    std::string ModuleName = llvm::sys::path::filename(ModuleFileName);
