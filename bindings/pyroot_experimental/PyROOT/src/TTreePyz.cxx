@@ -1,3 +1,13 @@
+// Author: Enric Tejedor CERN  06/2018
+// Original PyROOT code by Wim Lavrijsen, LBL
+
+/*************************************************************************
+ * Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.               *
+ * All rights reserved.                                                  *
+ *                                                                       *
+ * For the licensing terms see $ROOTSYS/LICENSE.                         *
+ * For the list of contributors see $ROOTSYS/README/CREDITS.             *
+ *************************************************************************/
 
 // Bindings
 #include "CPyCppyy.h"
@@ -6,6 +16,7 @@
 #include "ProxyWrappers.h"
 #include "Converters.h"
 #include "Utility.h"
+#include "PyzCppHelpers.hxx"
 
 // ROOT
 #include "TClass.h"
@@ -20,11 +31,6 @@
 #include "TStreamerInfo.h"
 
 using namespace CPyCppyy;
-
-static TClass *GetClass(const CPPInstance *pyobj)
-{
-   return TClass::GetClass(Cppyy::GetFinalName(pyobj->ObjectIsA()).c_str());
-}
 
 static TBranch *SearchForBranch(TTree *tree, const char *name)
 {
@@ -119,7 +125,7 @@ PyObject *GetAttr(const CPPInstance *self, PyObject *pyname)
       return 0;
 
    // get hold of actual tree
-   TTree *tree = (TTree *)GetClass(self)->DynamicCast(TTree::Class(), self->GetObject());
+   auto tree = (TTree *)GetTClass(self)->DynamicCast(TTree::Class(), self->GetObject());
 
    if (!tree) {
       PyErr_SetString(PyExc_ReferenceError, "attempt to access a null-pointer");
@@ -201,7 +207,7 @@ PyObject *PyROOT::SetBranchAddressPyz(PyObject * /* self */, PyObject *args)
    if (argc == 3 && PyArg_ParseTuple(args, const_cast<char *>(argParseStr), &treeObj, &name, &address)) {
 
       auto treeProxy = (CPPInstance *)treeObj;
-      TTree *tree = (TTree *)GetClass(treeProxy)->DynamicCast(TTree::Class(), treeProxy->GetObject());
+      auto tree = (TTree *)GetTClass(treeProxy)->DynamicCast(TTree::Class(), treeProxy->GetObject());
 
       if (!tree) {
          PyErr_SetString(PyExc_TypeError,
@@ -255,7 +261,7 @@ PyObject *TryBranchLeafListOverload(int argc, PyObject *args)
                         &PyInt_Type, &bufsize)) {
 
       auto treeProxy = (CPPInstance *)treeObj;
-      auto tree = (TTree *)GetClass(treeProxy)->DynamicCast(TTree::Class(), treeProxy->GetObject());
+      auto tree = (TTree *)GetTClass(treeProxy)->DynamicCast(TTree::Class(), treeProxy->GetObject());
       if (!tree) {
          PyErr_SetString(PyExc_TypeError, "TTree::Branch must be called with a TTree instance as first argument");
          return nullptr;
@@ -321,7 +327,7 @@ PyObject *TryBranchPtrToPtrOverloads(int argc, PyObject *args)
 
    if (bIsMatch) {
       auto treeProxy = (CPPInstance *)treeObj;
-      auto tree = (TTree *)GetClass(treeProxy)->DynamicCast(TTree::Class(), treeProxy->GetObject());
+      auto tree = (TTree *)GetTClass(treeProxy)->DynamicCast(TTree::Class(), treeProxy->GetObject());
       if (!tree) {
          PyErr_SetString(PyExc_TypeError, "TTree::Branch must be called with a TTree instance as first argument");
          return nullptr;
@@ -337,7 +343,7 @@ PyObject *TryBranchPtrToPtrOverloads(int argc, PyObject *args)
             buf = (void *)&((CPPInstance *)address)->fObject;
 
          if (!clName) {
-            klName = GetClass((CPPInstance *)address)->GetName();
+            klName = GetTClass((CPPInstance *)address)->GetName();
             argc += 1;
          }
       } else {
