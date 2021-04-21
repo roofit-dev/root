@@ -181,11 +181,6 @@ set(sqlitelibdir ${SQLITE_LIBRARY_DIR})
 set(sqlitelib ${SQLITE_LIBRARY})
 set(sqliteincdir ${SQLITE_INCLUDE_DIR})
 
-set(buildsapdb ${value${sapdb}})
-set(sapdblibdir ${SAPDB_LIBRARY_DIR})
-set(sapdblib ${SAPDB_LIBRARY})
-set(sapdbincdir ${SAPDB_INCLUDE_DIR})
-
 set(buildodbc ${value${odbc}})
 set(odbclibdir ${OCDB_LIBRARY_DIR})
 set(odbclib ${OCDB_LIBRARY})
@@ -250,11 +245,6 @@ set(buildgfal ${value${gfal}})
 set(gfallibdir ${GFAL_LIBRARY_DIR})
 set(gfallib ${GFAL_LIBRARY})
 set(gfalincdir ${GFAL_INCLUDE_DIR})
-
-set(buildglite ${value${glite}})
-set(glitelibdir ${GLITE_LIBRARY_DIR})
-set(glitelib ${GLITE_LIBRARY})
-set(gaw_cppflags)
 
 set(buildmemstat ${value${memstat}})
 
@@ -321,10 +311,6 @@ set(pythonlib ${PYTHON_LIBRARY})
 set(pythonincdir ${PYTHON_INCLUDE_DIR})
 set(pythonlibflags)
 
-if (ruby)
-  message(FATAL_ERROR "Ruby bindings are discontinued; please report to root-dev@cern.ch should you still need them!")
-endif()
-
 set(buildxml ${value${xml}})
 set(xmllibdir ${LIBXML2_LIBRARY_DIR})
 set(xmllib ${LIBXML2_LIBRARIES})
@@ -336,21 +322,6 @@ set(xrdincdir)
 set(xrdaddopts)
 set(extraxrdflags)
 set(xrdversion)
-
-set(srplibdir)
-set(srplib)
-set(srpincdir)
-
-set(buildsrputil)
-set(srputillibdir)
-set(srputillib)
-set(srputilincdir)
-
-set(afslib ${AFS_LIBRARY})
-set(afslibdir ${AFS_LIBRARY_DIR})
-set(afsincdir ${AFS_INCLUDE_DIR})
-set(afsextracflags)
-set(afsshared)
 
 set(alloclib)
 set(alloclibdir)
@@ -652,10 +623,6 @@ configure_file(${CMAKE_SOURCE_DIR}/config/rootauthrc.in ${CMAKE_BINARY_DIR}/etc/
 configure_file(${CMAKE_SOURCE_DIR}/config/rootdaemonrc.in ${CMAKE_BINARY_DIR}/etc/system.rootdaemonrc @ONLY NEWLINE_STYLE UNIX)
 
 configure_file(${CMAKE_SOURCE_DIR}/config/RConfigOptions.in include/RConfigOptions.h NEWLINE_STYLE UNIX)
-
-if(ruby)
-  file(APPEND ${CMAKE_BINARY_DIR}/include/RConfigOptions.h "\#define R__RUBY_MAJOR ${RUBY_MAJOR_VERSION}\n\#define R__RUBY_MINOR ${RUBY_MINOR_VERSION}\n")
-endif()
 
 configure_file(${CMAKE_SOURCE_DIR}/config/Makefile-comp.in config/Makefile.comp NEWLINE_STYLE UNIX)
 configure_file(${CMAKE_SOURCE_DIR}/config/Makefile.in config/Makefile.config NEWLINE_STYLE UNIX)
