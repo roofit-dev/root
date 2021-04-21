@@ -233,6 +233,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooUnitTest.h
     RooVectorDataStore.h
     RooWorkspace.h
+    RooWorkspaceHandle.h
     RooXYChi2Var.h
         RooTestStatMPDriver.h
         RooTimer.h
