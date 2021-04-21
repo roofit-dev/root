@@ -38,6 +38,7 @@
 
 namespace llvm {
    class GlobalValue;
+   class StringRef;
 }
 
 namespace clang {
@@ -59,6 +60,7 @@ namespace cling {
 
 class TClingCallbacks;
 class TEnv;
+class TFile;
 class THashTable;
 class TInterpreterValue;
 class TMethod;
@@ -82,6 +84,7 @@ extern "C" {
                               const char* canonicalName);
    void TCling__LibraryUnloaded(const void* dyLibHandle,
                                 const char* canonicalName);
+   void TCling__RegisterRdictForLoadPCM(const std::string &pcmFileNameFullPath, llvm::StringRef *pcmContent);
 }
 
 class TCling final : public TInterpreter {
@@ -578,7 +581,12 @@ private: // Private Utility Functions and Classes
    void RegisterLoadedSharedLibrary(const char* name);
    void AddFriendToClass(clang::FunctionDecl*, clang::CXXRecordDecl*) const;
 
+   std::map<std::string, llvm::StringRef> fPendingRdicts;
+   friend void TCling__RegisterRdictForLoadPCM(const std::string &pcmFileNameFullPath, llvm::StringRef *pcmContent);
+   void RegisterRdictForLoadPCM(const std::string &pcmFileNameFullPath, llvm::StringRef *pcmContent);
    bool LoadPCM(const std::string &pcmFileNameFullPath);
+   bool LoadPCMImpl(TFile &pcmFile);
+
    void InitRootmapFile(const char *name);
    int  ReadRootmapFile(const char *rootmapfile, TUniqueString* uniqueString = nullptr);
    Bool_t HandleNewTransaction(const cling::Transaction &T);
