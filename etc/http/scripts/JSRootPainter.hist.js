@@ -911,21 +911,28 @@
       } else {
 
          // for characters like 'p' or 'y' several more pixels required to stay in the box when drawn in last line
-         var stepy = height / nlines, has_head = false, margin_x = pt.fMargin * width;
+         var stepy = height / nlines, has_head = false, margin_x = pt.fMargin * width, max_font_size = 0;
 
-         this.StartTextDrawing(pt.fTextFont, height/(nlines * 1.2), text_g);
+         // for single line (typically title) limit font size
+         if ((nlines == 1) && (pt.fTextSize > 0)) {
+            max_font_size = Math.round(pt.fTextSize*can_height);
+            if (max_font_size < 3) max_font_size = 3;
+         }
+
+         this.StartTextDrawing(pt.fTextFont, height/(nlines * 1.2), text_g, max_font_size);
 
          for (var j = 0; j < nlines; ++j) {
             var arg = null, lj = lines[j];
 
             if (nlines == 1) {
-               arg = { align: pt.fTextAlign, x:0, y:0, width: width, height: height };
+               arg = { x:0, y:0, width: width, height: height };
             } else {
-               arg = { align: pt.fTextAlign, x: margin_x, y: j*stepy, width: width-2*margin_x, height: stepy };
+               arg = { x: margin_x, y: j*stepy, width: width-2*margin_x, height: stepy };
                if (lj.fTextColor) arg.color = this.get_color(lj.fTextColor);
                if (lj.fTextSize) arg.font_size = Math.round(lj.fTextSize*can_height);
             }
 
+            arg.align = pt.fTextAlign;
             arg.draw_g = text_g;
             arg.latex = (lj._typename == "TText" ? 0 : 1);
             arg.text = lj.fTitle;
@@ -1325,8 +1332,19 @@
             pave.fOptFit = obj.fOptFit;
             return true;
          case 'TLegend':
+            var oldprim = pave.fPrimitives;
             pave.fPrimitives = obj.fPrimitives;
             pave.fNColumns = obj.fNColumns;
+            if (oldprim && oldprim.arr && pave.fPrimitives && pave.fPrimitives.arr && (oldprim.arr.length == pave.fPrimitives.arr.length)) {
+               // try to sync object reference, new object does not displayed automatically
+               // in ideal case one should use snapids in the entries
+               for (var k=0;k<oldprim.arr.length;++k) {
+                  var oldobj = oldprim.arr[k].fObject, newobj = pave.fPrimitives.arr[k].fObject;
+
+                  if (oldobj && newobj && oldobj._typename == newobj._typename && oldobj.fName == newobj.fName)
+                     pave.fPrimitives.arr[k].fObject = oldobj;
+               }
+            }
             return true;
       }
 
@@ -1416,7 +1434,7 @@
          if (nbr1<=0) nbr1 = 8;
          axis.fTickSize = 0.6 * s_width / width; // adjust axis ticks size
 
-         if (contour) {
+         if (contour && framep) {
             zmin = Math.min(contour[0], framep.zmin);
             zmax = Math.max(contour[contour.length-1], framep.zmax);
          } else
@@ -1465,7 +1483,7 @@
                           .property("fill0", col)
                           .property("fill1", d3.rgb(col).darker(0.5).toString())
 
-               if (framep && framep.tooltip_allowed)
+               if (this.IsTooltipAllowed())
                   r.on('mouseover', function() {
                      d3.select(this).transition().duration(100).style("fill", d3.select(this).property('fill1'));
                   }).on('mouseout', function() {
@@ -1649,7 +1667,7 @@
               minimum: -1111, maximum: -1111 });
    }
 
-   THistDrawOptions.prototype.Decode = function(opt, hdim, histo, pad, fp) {
+   THistDrawOptions.prototype.Decode = function(opt, hdim, histo, pad, painter) {
       this.orginal = opt;
 
       var d = new JSROOT.DrawOptions(opt), check3dbox = "";
@@ -1676,8 +1694,8 @@
       if (d.check('NOSTAT')) this.NoStat = true;
       if (d.check('STAT')) this.ForceStat = true;
 
-      if (d.check('NOTOOLTIP') && fp) fp.tooltip_allowed = false;
-      if (d.check('TOOLTIP') && fp) fp.tooltip_allowed = true;
+      if (d.check('NOTOOLTIP') && painter) painter.SetTooltipAllowed(false);
+      if (d.check('TOOLTIP') && painter) painter.SetTooltipAllowed(true);
 
       if (d.check('LOGX') && pad) { pad.fLogx = 1; pad.fUxmin = 0; pad.fUxmax = 1; pad.fX1 = 0; pad.fX2 = 1; }
       if (d.check('LOGY') && pad) { pad.fLogy = 1; pad.fUymin = 0; pad.fUymax = 1; pad.fY1 = 0; pad.fY2 = 1; }
@@ -1975,7 +1993,7 @@
    }
 
    THistPainter.prototype.IsTH2Poly = function() {
-      return this.MatchObjectType(/^TH2Poly/);
+      return this.MatchObjectType(/^TH2Poly/) || this.MatchObjectType(/^TProfile2Poly/);
    }
 
    THistPainter.prototype.Clear3DScene = function() {
@@ -2012,15 +2030,14 @@
       /* decode string 'opt' and fill the option structure */
       var histo = this.GetHisto(),
           hdim = this.Dimension(),
-          pad = this.root_pad(),
-          fp = this.frame_painter();
+          pad = this.root_pad();
 
       if (!this.options)
          this.options = new THistDrawOptions;
       else
          this.options.Reset();
 
-      this.options.Decode(opt || histo.fOption, hdim, histo, pad, fp);
+      this.options.Decode(opt || histo.fOption, hdim, histo, pad, this);
 
       this.OptionsStore(opt); // opt will be return as default draw option, used in webcanvas
    }
@@ -2149,6 +2166,20 @@
             tgt.fLabels = src.fLabels;
             tgt.fXmin = src.fXmin;
             tgt.fXmax = src.fXmax;
+            tgt.fTimeDisplay = src.fTimeDisplay;
+            tgt.fTimeFormat = src.fTimeFormat;
+            // copy attributes
+            tgt.fAxisColor = src.fAxisColor;
+            tgt.fLabelColor = src.fLabelColor;
+            tgt.fLabelFont = src.fLabelFont;
+            tgt.fLabelOffset = src.fLabelOffset;
+            tgt.fLabelSize = src.fLabelSize;
+            tgt.fNdivisions = src.fNdivisions;
+            tgt.fTickLength = src.fTickLength;
+            tgt.fTitleColor = src.fTitleColor;
+            tgt.fTitleFont = src.fTitleFont;
+            tgt.fTitleOffset = src.fTitleOffset;
+            tgt.fTitleSize = src.fTitleSize;
          }
          CopyAxis(histo.fXaxis, obj.fXaxis);
          CopyAxis(histo.fYaxis, obj.fYaxis);
@@ -2325,25 +2356,42 @@
       // case when histogram drawn over other histogram (same option)
       if (!this.is_main_painter() || this.options.Same) return;
 
-      var histo = this.GetHisto(),
+      var histo = this.GetHisto(), st = JSROOT.gStyle,
           tpainter = this.FindPainterFor(null, "title"),
-          pavetext = tpainter ? tpainter.GetObject() : null;
+          pt = tpainter ? tpainter.GetObject() : null;
 
-      if (!pavetext) pavetext = this.FindInPrimitives("title");
-      if (pavetext && (pavetext._typename !== "TPaveText")) pavetext = null;
+      if (!pt) pt = this.FindInPrimitives("title");
+      if (pt && (pt._typename !== "TPaveText")) pt = null;
 
-      var draw_title = !histo.TestBit(JSROOT.TH1StatusBits.kNoTitle) && (JSROOT.gStyle.fOptTitle > 0);
+      var draw_title = !histo.TestBit(JSROOT.TH1StatusBits.kNoTitle) && (st.fOptTitle > 0);
 
-      if (pavetext) {
-         pavetext.Clear();
-         if (draw_title) pavetext.AddText(histo.fTitle);
+      if (pt) {
+         pt.Clear();
+         if (draw_title) pt.AddText(histo.fTitle);
          if (tpainter) tpainter.Redraw();
-      } else
-      if (draw_title && !tpainter && histo.fTitle) {
-         pavetext = JSROOT.Create("TPaveText");
-         JSROOT.extend(pavetext, { fName: "title", fX1NDC: 0.28, fY1NDC: 0.94, fX2NDC: 0.72, fY2NDC: 0.99 } );
-         pavetext.AddText(histo.fTitle);
-         tpainter = JSROOT.Painter.drawPave(this.divid, pavetext);
+      } else if (draw_title && !tpainter && histo.fTitle) {
+         pt = JSROOT.Create("TPaveText");
+
+         var fp = this.frame_painter(), midx = st.fTitleX, y2 = st.fTitleY, w = st.fTitleW, h = st.fTitleH;
+         if (!h && fp) h = (y2-fp.fY2NDC)*0.7;
+         if (!w && fp) w = fp.fX2NDC - fp.fX1NDC;
+         if (!h || isNaN(h) || (h<0)) h = 0.06;
+         if (!w || isNaN(w) || (w<0)) w = 0.44;
+         pt.fName = "title";
+         pt.fX1NDC = midx - w/2;
+         pt.fY1NDC = y2 - h;
+         pt.fX2NDC = midx + w/2;
+         pt.fY2NDC = y2;
+         pt.fTextFont = st.fTitleFont;
+         pt.fTextSize = st.fTitleFontSize;
+         pt.fTextColor = st.fTitleTextColor;
+         pt.fTextAlign = st.fTitleAlign;
+         pt.fFillColor = st.fTitleColor;
+         pt.fFillStyle = st.fTitleStyle;
+         pt.fBorderSize = st.fTitleBorderSize;
+
+         pt.AddText(histo.fTitle);
+         tpainter = JSROOT.Painter.drawPave(this.divid, pt);
          if (tpainter) tpainter.$secondary = true;
       }
    }
@@ -2358,9 +2406,9 @@
       if (arg==="check")
          return (!this.is_main_painter() || this.options.Same) ? null : histo;
 
-      var pavetext = tpainter.GetObject();
-      pavetext.Clear();
-      pavetext.AddText(histo.fTitle);
+      var pt = tpainter.GetObject();
+      pt.Clear();
+      pt.AddText(histo.fTitle);
 
       tpainter.Redraw();
    }
@@ -2478,8 +2526,6 @@
          if (!this.draw_content || !this.is_main_painter()) return null;
       }
 
-      this.create_stats = true;
-
       var stats = this.FindStat(), st = JSROOT.gStyle,
           optstat = this.options.optstat, optfit = this.options.optfit;
 
@@ -2497,13 +2543,17 @@
          optfit = st.fOptFit;
       }
 
+      if (!stats && !optstat && !optfit) return null;
+
+      this.create_stats = true;
+
       if (stats) return stats;
 
       stats = JSROOT.Create('TPaveStats');
-      JSROOT.extend(stats, { fName : 'stats',
+      JSROOT.extend(stats, { fName: 'stats',
                              fOptStat: optstat,
                              fOptFit: optfit,
-                             fBorderSize : 1} );
+                             fBorderSize: 1 });
 
       stats.fX1NDC = st.fStatX - st.fStatW;
       stats.fY1NDC = st.fStatY - st.fStatH;
@@ -2715,7 +2765,7 @@
             menu.painter.FillObjectExecMenu(menu, kind, function() {
                 // suppress any running zooming
                 menu.painter.SwitchTooltip(false);
-                menu.show(menu.painter.ctx_menu_evnt, menu.painter.SwitchTooltip.bind(menu.painter, true) );
+                menu.show(menu.painter.ctx_menu_evnt, menu.painter.SwitchTooltip.bind(menu.painter, true));
             });
 
       });  // end menu creation
@@ -2778,8 +2828,8 @@
 
          var main = this.main_painter() || this;
 
-         menu.addchk(fp.tooltip_allowed, 'Show tooltips', function() {
-            fp.tooltip_allowed = !fp.tooltip_allowed;
+         menu.addchk(main.IsTooltipAllowed(), 'Show tooltips', function() {
+            main.SetTooltipAllowed("toggle");
          });
 
          menu.addchk(fp.enable_highlight, 'Highlight bins', function() {
@@ -3025,10 +3075,8 @@
    }
 
    THistPainter.prototype.GetPalette = function(force) {
-      if (!this.fPalette || force) {
-         var pp = this.options.Palette ? null : this.canv_painter();
-         this.fPalette = (pp && pp.CanvasPalette) ? pp.CanvasPalette : JSROOT.Painter.GetColorPalette(this.options.Palette);
-      }
+      if (!this.fPalette || force)
+         this.fPalette = this.get_palette(true, this.options.Palette);
       return this.fPalette;
    }
 
