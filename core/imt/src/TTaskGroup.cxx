@@ -26,13 +26,16 @@
 \ingroup Parallelism
 \brief A class to manage the asynchronous execution of work items.
 
-A TTaskGroup represents concurrent execution of a group of tasks. Tasks may be dynamically added to the group as it is
-executing.
+A TTaskGroup represents concurrent execution of a group of tasks.
+Tasks may be dynamically added to the group as it is executing.
+Nesting TTaskGroup instances may result in a runtime overhead.
 */
 
 namespace ROOT {
+
 namespace Internal {
 
+#ifdef R__USE_IMT
 tbb::task_group *CastToTG(void* p) {
    return (tbb::task_group *) p;
 }
@@ -41,6 +44,8 @@ tbb::task_arena *CastToTA(void *p)
 {
    return (tbb::task_arena *)p;
 }
+
+#endif
 
 } // namespace Internal
 
