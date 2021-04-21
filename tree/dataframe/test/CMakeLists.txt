@@ -26,8 +26,7 @@ if (imt)
 endif()
 
 ROOT_ADD_GTEST(datasource_more datasource_more.cxx LIBRARIES ROOTDataFrame)
-# deactivate until sporadic crashes are understood, see ROOT-9174
-#ROOT_ADD_GTEST(datasource_root datasource_root.cxx LIBRARIES ROOTDataFrame)
+ROOT_ADD_GTEST(datasource_root datasource_root.cxx LIBRARIES ROOTDataFrame)
 ROOT_ADD_GTEST(datasource_trivial datasource_trivial.cxx LIBRARIES ROOTDataFrame)
 configure_file(RCsvDS_test_headers.csv . COPYONLY)
 configure_file(RCsvDS_test_noheaders.csv . COPYONLY)
@@ -44,7 +43,6 @@ ROOT_ADD_GTEST(datasource_csv datasource_csv.cxx LIBRARIES ROOTDataFrame)
 ROOT_ADD_GTEST(datasource_lazy datasource_lazy.cxx LIBRARIES ROOTDataFrame)
 
 #### PYTHON TESTS ####
-ROOT_ADD_PYUNITTEST(dataframe_misc dataframe_misc.py)
-ROOT_ADD_PYUNITTEST(dataframe_histograms dataframe_histograms.py)
-# deactivate until Cache will be available through PyROOT
-#ROOT_ADD_PYUNITTEST(dataframe_cache dataframe_cache.py)
+ROOT_ADD_PYUNITTEST(dataframe_misc dataframe_misc.py ${PYTESTS_WILLFAIL})
+ROOT_ADD_PYUNITTEST(dataframe_histograms dataframe_histograms.py ${PYTESTS_WILLFAIL})
+ROOT_ADD_PYUNITTEST(dataframe_cache dataframe_cache.py ${PYTESTS_WILLFAIL})
