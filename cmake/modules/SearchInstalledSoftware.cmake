@@ -1331,6 +1331,11 @@ if(cuda OR tmva-gpu)
 endif()
 
 #---TMVA and its dependencies------------------------------------------------------------
+if (tmva AND NOT mlp)
+  message(STATUS "TMVA is enabled while MLP is not: disabling TMVA")
+  set(tmva OFF CACHE BOOL "Disabled because mlp was not activated" FORCE)
+endif()
+
 if(tmva)
   if(tmva-cpu AND imt)
     message(STATUS "Looking for BLAS for optional parts of TMVA")
@@ -1439,6 +1444,10 @@ if (testing)
   foreach (lib gtest gtest_main gmock gmock_main)
     add_library(${lib} IMPORTED STATIC GLOBAL)
     add_dependencies(${lib} googletest)
+    if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND
+        ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 9)
+      target_compile_options(${lib} INTERFACE -Wno-deprecated-copy)
+    endif()
   endforeach()
   set_property(TARGET gtest PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/gtest/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX})
   set_property(TARGET gtest_main PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/gtest/${CMAKE_STATIC_LIBRARY_PREFIX}gtest_main${CMAKE_STATIC_LIBRARY_SUFFIX})
