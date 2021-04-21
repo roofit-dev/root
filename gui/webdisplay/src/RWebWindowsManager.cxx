@@ -169,6 +169,25 @@ bool ROOT::Experimental::RWebWindowsManager::CreateServer(bool with_http)
 
       if (gApplication)
          gApplication->Connect("Terminate(Int_t)", "THttpServer", fServer.get(), "SetTerminate()");
+
+
+      // this is location where all ROOT UI5 sources are collected
+      // normally it is $ROOTSYS/ui5 or <prefix>/ui5 location
+      TString ui5dir = gSystem->Getenv("ROOTUI5SYS");
+      if (ui5dir.Length() == 0)
+         ui5dir = gEnv->GetValue("WebGui.RootUi5Path","");
+
+      if (ui5dir.Length() == 0)
+         ui5dir.Form("%s/ui5", TROOT::GetDataDir().Data());
+
+      if (gSystem->ExpandPathName(ui5dir)) {
+         R__ERROR_HERE("WebDisplay") << "Path to ROOT ui5 sources " << ui5dir << " not found, set ROOTUI5SYS correctly";
+         ui5dir = ".";
+      }
+
+      printf("Assign UI5 dir %s\n", ui5dir.Data());
+
+      fServer->AddLocation("rootui5sys/", ui5dir);
    }
 
    if (!with_http || !fAddr.empty())
