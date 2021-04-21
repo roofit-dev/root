@@ -28,8 +28,8 @@
  * Silicon Graphics, Inc.
  */
 
-#ifndef __glu_h__
-#define __glu_h__
+#ifndef __GL_glu_h__
+#define __GL_glu_h__
 
 /*
 #if defined(USE_MGL_NAMESPACE)
@@ -51,17 +51,8 @@
 #define GLAPIENTRYP GLAPIENTRY *
 #endif
 
-#if (defined(_MSC_VER) || defined(__MINGW32__)) && defined(BUILD_GLU32)
-# undef GLAPI
-# define GLAPI __declspec(dllexport)
-#elif (defined(_MSC_VER) || defined(__MINGW32__)) && defined(_DLL)
-/* tag specifying we're building for DLL runtime support */
-# undef GLAPI
-# define GLAPI __declspec(dllimport)
-#elif !defined(GLAPI)
-/* for use with static link lib build of Win32 edition only */
-# define GLAPI extern
-#endif /* _STATIC_MESA support */
+// Sergey: we do not want export symbols, all functions for internal use
+#define GLAPI
 
 #ifdef __cplusplus
 extern "C" {
@@ -265,78 +256,112 @@ extern "C" {
 #define GLU_TESS_WINDING_NEGATIVE          100133
 #define GLU_TESS_WINDING_ABS_GEQ_TWO       100134
 
+
+/* Boolean values */
+#define GL_FALSE                               0
+#define GL_TRUE                                1
+#define GL_NONE                                0
+
+/* Datatypes */
+typedef unsigned int    GLenum;
+typedef unsigned char   GLboolean;
+typedef unsigned int    GLbitfield;
+typedef void            GLvoid;
+typedef signed char     GLbyte;         /* 1-byte signed */
+typedef short           GLshort;        /* 2-byte signed */
+typedef int             GLint;          /* 4-byte signed */
+typedef unsigned char   GLubyte;        /* 1-byte unsigned */
+typedef unsigned short  GLushort;       /* 2-byte unsigned */
+typedef unsigned int    GLuint;         /* 4-byte unsigned */
+typedef int             GLsizei;        /* 4-byte signed */
+typedef float           GLfloat;        /* single precision float */
+typedef float           GLclampf;       /* single precision float in [0,1] */
+typedef double          GLdouble;       /* double precision float */
+typedef double          GLclampd;       /* double precision float in [0,1] */
+
+/* Primitives */
+#define GL_POINTS                              0x0000
+#define GL_LINES                               0x0001
+#define GL_LINE_LOOP                           0x0002
+#define GL_LINE_STRIP                          0x0003
+#define GL_TRIANGLES                           0x0004
+#define GL_TRIANGLE_STRIP                      0x0005
+#define GL_TRIANGLE_FAN                        0x0006
+#define GL_QUADS                               0x0007
+#define GL_QUAD_STRIP                          0x0008
+#define GL_POLYGON                             0x0009
+
 /*************************************************************/
 
-
 #ifdef __cplusplus
-class GLUnurbs;
-class GLUquadric;
-class GLUtesselator;
+// struct GLUnurbs;
+// struct GLUquadric;
+struct GLUtesselator;
 #else
-typedef struct GLUnurbs GLUnurbs;
-typedef struct GLUquadric GLUquadric;
+// typedef struct GLUnurbs GLUnurbs;
+// typedef struct GLUquadric GLUquadric;
 typedef struct GLUtesselator GLUtesselator;
 #endif
 
-typedef GLUnurbs GLUnurbsObj;
-typedef GLUquadric GLUquadricObj;
-typedef GLUtesselator GLUtesselatorObj;
-typedef GLUtesselator GLUtriangulatorObj;
+// typedef GLUnurbs GLUnurbsObj;
+// typedef GLUquadric GLUquadricObj;
+// typedef GLUtesselator GLUtesselatorObj;
+// typedef GLUtesselator GLUtriangulatorObj;
 
 #define GLU_TESS_MAX_COORD 1.0e150
 
 /* Internal convenience typedefs */
 typedef void (GLAPIENTRYP _GLUfuncptr)(void);
 
-GLAPI void GLAPIENTRY gluBeginCurve (GLUnurbs* nurb);
+// GLAPI void GLAPIENTRY gluBeginCurve (GLUnurbs* nurb);
 GLAPI void GLAPIENTRY gluBeginPolygon (GLUtesselator* tess);
-GLAPI void GLAPIENTRY gluBeginSurface (GLUnurbs* nurb);
-GLAPI void GLAPIENTRY gluBeginTrim (GLUnurbs* nurb);
-GLAPI GLint GLAPIENTRY gluBuild1DMipmapLevels (GLenum target, GLint internalFormat, GLsizei width, GLenum format, GLenum type, GLint level, GLint base, GLint max, const void *data);
-GLAPI GLint GLAPIENTRY gluBuild1DMipmaps (GLenum target, GLint internalFormat, GLsizei width, GLenum format, GLenum type, const void *data);
-GLAPI GLint GLAPIENTRY gluBuild2DMipmapLevels (GLenum target, GLint internalFormat, GLsizei width, GLsizei height, GLenum format, GLenum type, GLint level, GLint base, GLint max, const void *data);
-GLAPI GLint GLAPIENTRY gluBuild2DMipmaps (GLenum target, GLint internalFormat, GLsizei width, GLsizei height, GLenum format, GLenum type, const void *data);
-GLAPI GLint GLAPIENTRY gluBuild3DMipmapLevels (GLenum target, GLint internalFormat, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, GLint level, GLint base, GLint max, const void *data);
-GLAPI GLint GLAPIENTRY gluBuild3DMipmaps (GLenum target, GLint internalFormat, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *data);
-GLAPI GLboolean GLAPIENTRY gluCheckExtension (const GLubyte *extName, const GLubyte *extString);
-GLAPI void GLAPIENTRY gluCylinder (GLUquadric* quad, GLdouble base, GLdouble top, GLdouble height, GLint slices, GLint stacks);
-GLAPI void GLAPIENTRY gluDeleteNurbsRenderer (GLUnurbs* nurb);
-GLAPI void GLAPIENTRY gluDeleteQuadric (GLUquadric* quad);
+// GLAPI void GLAPIENTRY gluBeginSurface (GLUnurbs* nurb);
+// GLAPI void GLAPIENTRY gluBeginTrim (GLUnurbs* nurb);
+// GLAPI GLint GLAPIENTRY gluBuild1DMipmapLevels (GLenum target, GLint internalFormat, GLsizei width, GLenum format, GLenum type, GLint level, GLint base, GLint max, const void *data);
+// GLAPI GLint GLAPIENTRY gluBuild1DMipmaps (GLenum target, GLint internalFormat, GLsizei width, GLenum format, GLenum type, const void *data);
+// GLAPI GLint GLAPIENTRY gluBuild2DMipmapLevels (GLenum target, GLint internalFormat, GLsizei width, GLsizei height, GLenum format, GLenum type, GLint level, GLint base, GLint max, const void *data);
+// GLAPI GLint GLAPIENTRY gluBuild2DMipmaps (GLenum target, GLint internalFormat, GLsizei width, GLsizei height, GLenum format, GLenum type, const void *data);
+// GLAPI GLint GLAPIENTRY gluBuild3DMipmapLevels (GLenum target, GLint internalFormat, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, GLint level, GLint base, GLint max, const void *data);
+// GLAPI GLint GLAPIENTRY gluBuild3DMipmaps (GLenum target, GLint internalFormat, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *data);
+// GLAPI GLboolean GLAPIENTRY gluCheckExtension (const GLubyte *extName, const GLubyte *extString);
+// GLAPI void GLAPIENTRY gluCylinder (GLUquadric* quad, GLdouble base, GLdouble top, GLdouble height, GLint slices, GLint stacks);
+// GLAPI void GLAPIENTRY gluDeleteNurbsRenderer (GLUnurbs* nurb);
+// GLAPI void GLAPIENTRY gluDeleteQuadric (GLUquadric* quad);
 GLAPI void GLAPIENTRY gluDeleteTess (GLUtesselator* tess);
-GLAPI void GLAPIENTRY gluDisk (GLUquadric* quad, GLdouble inner, GLdouble outer, GLint slices, GLint loops);
-GLAPI void GLAPIENTRY gluEndCurve (GLUnurbs* nurb);
+// GLAPI void GLAPIENTRY gluDisk (GLUquadric* quad, GLdouble inner, GLdouble outer, GLint slices, GLint loops);
+// GLAPI void GLAPIENTRY gluEndCurve (GLUnurbs* nurb);
 GLAPI void GLAPIENTRY gluEndPolygon (GLUtesselator* tess);
-GLAPI void GLAPIENTRY gluEndSurface (GLUnurbs* nurb);
-GLAPI void GLAPIENTRY gluEndTrim (GLUnurbs* nurb);
-GLAPI const GLubyte * GLAPIENTRY gluErrorString (GLenum error);
-GLAPI void GLAPIENTRY gluGetNurbsProperty (GLUnurbs* nurb, GLenum property, GLfloat* data);
-GLAPI const GLubyte * GLAPIENTRY gluGetString (GLenum name);
+// GLAPI void GLAPIENTRY gluEndSurface (GLUnurbs* nurb);
+// GLAPI void GLAPIENTRY gluEndTrim (GLUnurbs* nurb);
+// GLAPI const GLubyte * GLAPIENTRY gluErrorString (GLenum error);
+// GLAPI void GLAPIENTRY gluGetNurbsProperty (GLUnurbs* nurb, GLenum property, GLfloat* data);
+// GLAPI const GLubyte * GLAPIENTRY gluGetString (GLenum name);
 GLAPI void GLAPIENTRY gluGetTessProperty (GLUtesselator* tess, GLenum which, GLdouble* data);
-GLAPI void GLAPIENTRY gluLoadSamplingMatrices (GLUnurbs* nurb, const GLfloat *model, const GLfloat *perspective, const GLint *view);
-GLAPI void GLAPIENTRY gluLookAt (GLdouble eyeX, GLdouble eyeY, GLdouble eyeZ, GLdouble centerX, GLdouble centerY, GLdouble centerZ, GLdouble upX, GLdouble upY, GLdouble upZ);
-GLAPI GLUnurbs* GLAPIENTRY gluNewNurbsRenderer (void);
-GLAPI GLUquadric* GLAPIENTRY gluNewQuadric (void);
+// GLAPI void GLAPIENTRY gluLoadSamplingMatrices (GLUnurbs* nurb, const GLfloat *model, const GLfloat *perspective, const GLint *view);
+// GLAPI void GLAPIENTRY gluLookAt (GLdouble eyeX, GLdouble eyeY, GLdouble eyeZ, GLdouble centerX, GLdouble centerY, GLdouble centerZ, GLdouble upX, GLdouble upY, GLdouble upZ);
+// GLAPI GLUnurbs* GLAPIENTRY gluNewNurbsRenderer (void);
+// GLAPI GLUquadric* GLAPIENTRY gluNewQuadric (void);
 GLAPI GLUtesselator* GLAPIENTRY gluNewTess (void);
 GLAPI void GLAPIENTRY gluNextContour (GLUtesselator* tess, GLenum type);
-GLAPI void GLAPIENTRY gluNurbsCallback (GLUnurbs* nurb, GLenum which, _GLUfuncptr CallBackFunc);
-GLAPI void GLAPIENTRY gluNurbsCallbackData (GLUnurbs* nurb, GLvoid* userData);
-GLAPI void GLAPIENTRY gluNurbsCallbackDataEXT (GLUnurbs* nurb, GLvoid* userData);
-GLAPI void GLAPIENTRY gluNurbsCurve (GLUnurbs* nurb, GLint knotCount, GLfloat *knots, GLint stride, GLfloat *control, GLint order, GLenum type);
-GLAPI void GLAPIENTRY gluNurbsProperty (GLUnurbs* nurb, GLenum property, GLfloat value);
-GLAPI void GLAPIENTRY gluNurbsSurface (GLUnurbs* nurb, GLint sKnotCount, GLfloat* sKnots, GLint tKnotCount, GLfloat* tKnots, GLint sStride, GLint tStride, GLfloat* control, GLint sOrder, GLint tOrder, GLenum type);
-GLAPI void GLAPIENTRY gluOrtho2D (GLdouble left, GLdouble right, GLdouble bottom, GLdouble top);
-GLAPI void GLAPIENTRY gluPartialDisk (GLUquadric* quad, GLdouble inner, GLdouble outer, GLint slices, GLint loops, GLdouble start, GLdouble sweep);
-GLAPI void GLAPIENTRY gluPerspective (GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar);
-GLAPI void GLAPIENTRY gluPickMatrix (GLdouble x, GLdouble y, GLdouble delX, GLdouble delY, GLint *viewport);
-GLAPI GLint GLAPIENTRY gluProject (GLdouble objX, GLdouble objY, GLdouble objZ, const GLdouble *model, const GLdouble *proj, const GLint *view, GLdouble* winX, GLdouble* winY, GLdouble* winZ);
-GLAPI void GLAPIENTRY gluPwlCurve (GLUnurbs* nurb, GLint count, GLfloat* data, GLint stride, GLenum type);
-GLAPI void GLAPIENTRY gluQuadricCallback (GLUquadric* quad, GLenum which, _GLUfuncptr CallBackFunc);
-GLAPI void GLAPIENTRY gluQuadricDrawStyle (GLUquadric* quad, GLenum draw);
-GLAPI void GLAPIENTRY gluQuadricNormals (GLUquadric* quad, GLenum normal);
-GLAPI void GLAPIENTRY gluQuadricOrientation (GLUquadric* quad, GLenum orientation);
-GLAPI void GLAPIENTRY gluQuadricTexture (GLUquadric* quad, GLboolean texture);
-GLAPI GLint GLAPIENTRY gluScaleImage (GLenum format, GLsizei wIn, GLsizei hIn, GLenum typeIn, const void *dataIn, GLsizei wOut, GLsizei hOut, GLenum typeOut, GLvoid* dataOut);
-GLAPI void GLAPIENTRY gluSphere (GLUquadric* quad, GLdouble radius, GLint slices, GLint stacks);
+// GLAPI void GLAPIENTRY gluNurbsCallback (GLUnurbs* nurb, GLenum which, _GLUfuncptr CallBackFunc);
+// GLAPI void GLAPIENTRY gluNurbsCallbackData (GLUnurbs* nurb, GLvoid* userData);
+// GLAPI void GLAPIENTRY gluNurbsCallbackDataEXT (GLUnurbs* nurb, GLvoid* userData);
+// GLAPI void GLAPIENTRY gluNurbsCurve (GLUnurbs* nurb, GLint knotCount, GLfloat *knots, GLint stride, GLfloat *control, GLint order, GLenum type);
+// GLAPI void GLAPIENTRY gluNurbsProperty (GLUnurbs* nurb, GLenum property, GLfloat value);
+// GLAPI void GLAPIENTRY gluNurbsSurface (GLUnurbs* nurb, GLint sKnotCount, GLfloat* sKnots, GLint tKnotCount, GLfloat* tKnots, GLint sStride, GLint tStride, GLfloat* control, GLint sOrder, GLint tOrder, GLenum type);
+// GLAPI void GLAPIENTRY gluOrtho2D (GLdouble left, GLdouble right, GLdouble bottom, GLdouble top);
+// GLAPI void GLAPIENTRY gluPartialDisk (GLUquadric* quad, GLdouble inner, GLdouble outer, GLint slices, GLint loops, GLdouble start, GLdouble sweep);
+// GLAPI void GLAPIENTRY gluPerspective (GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar);
+// GLAPI void GLAPIENTRY gluPickMatrix (GLdouble x, GLdouble y, GLdouble delX, GLdouble delY, GLint *viewport);
+// GLAPI GLint GLAPIENTRY gluProject (GLdouble objX, GLdouble objY, GLdouble objZ, const GLdouble *model, const GLdouble *proj, const GLint *view, GLdouble* winX, GLdouble* winY, GLdouble* winZ);
+// GLAPI void GLAPIENTRY gluPwlCurve (GLUnurbs* nurb, GLint count, GLfloat* data, GLint stride, GLenum type);
+// GLAPI void GLAPIENTRY gluQuadricCallback (GLUquadric* quad, GLenum which, _GLUfuncptr CallBackFunc);
+// GLAPI void GLAPIENTRY gluQuadricDrawStyle (GLUquadric* quad, GLenum draw);
+// GLAPI void GLAPIENTRY gluQuadricNormals (GLUquadric* quad, GLenum normal);
+// GLAPI void GLAPIENTRY gluQuadricOrientation (GLUquadric* quad, GLenum orientation);
+// GLAPI void GLAPIENTRY gluQuadricTexture (GLUquadric* quad, GLboolean texture);
+// GLAPI GLint GLAPIENTRY gluScaleImage (GLenum format, GLsizei wIn, GLsizei hIn, GLenum typeIn, const void *dataIn, GLsizei wOut, GLsizei hOut, GLenum typeOut, GLvoid* dataOut);
+// GLAPI void GLAPIENTRY gluSphere (GLUquadric* quad, GLdouble radius, GLint slices, GLint stacks);
 GLAPI void GLAPIENTRY gluTessBeginContour (GLUtesselator* tess);
 GLAPI void GLAPIENTRY gluTessBeginPolygon (GLUtesselator* tess, GLvoid* data);
 GLAPI void GLAPIENTRY gluTessCallback (GLUtesselator* tess, GLenum which, _GLUfuncptr CallBackFunc);
@@ -345,11 +370,11 @@ GLAPI void GLAPIENTRY gluTessEndPolygon (GLUtesselator* tess);
 GLAPI void GLAPIENTRY gluTessNormal (GLUtesselator* tess, GLdouble valueX, GLdouble valueY, GLdouble valueZ);
 GLAPI void GLAPIENTRY gluTessProperty (GLUtesselator* tess, GLenum which, GLdouble data);
 GLAPI void GLAPIENTRY gluTessVertex (GLUtesselator* tess, GLdouble *location, GLvoid* data);
-GLAPI GLint GLAPIENTRY gluUnProject (GLdouble winX, GLdouble winY, GLdouble winZ, const GLdouble *model, const GLdouble *proj, const GLint *view, GLdouble* objX, GLdouble* objY, GLdouble* objZ);
-GLAPI GLint GLAPIENTRY gluUnProject4 (GLdouble winX, GLdouble winY, GLdouble winZ, GLdouble clipW, const GLdouble *model, const GLdouble *proj, const GLint *view, GLdouble nearVal, GLdouble farVal, GLdouble* objX, GLdouble* objY, GLdouble* objZ, GLdouble* objW);
+// GLAPI GLint GLAPIENTRY gluUnProject (GLdouble winX, GLdouble winY, GLdouble winZ, const GLdouble *model, const GLdouble *proj, const GLint *view, GLdouble* objX, GLdouble* objY, GLdouble* objZ);
+// GLAPI GLint GLAPIENTRY gluUnProject4 (GLdouble winX, GLdouble winY, GLdouble winZ, GLdouble clipW, const GLdouble *model, const GLdouble *proj, const GLint *view, GLdouble nearVal, GLdouble farVal, GLdouble* objX, GLdouble* objY, GLdouble* objZ, GLdouble* objW);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __glu_h__ */
+#endif /* __GL_glu_h__ */
