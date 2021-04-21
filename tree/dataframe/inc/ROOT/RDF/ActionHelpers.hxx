@@ -259,7 +259,9 @@ public:
       // Initialise all other slots
       for (unsigned int i = 1; i < nSlots; ++i) {
          fObjects[i] = new HIST(*fObjects[0]);
-         fObjects[i]->SetDirectory(nullptr);
+         if (auto objAsHist = dynamic_cast<TH1*>(fObjects[i])) {
+            objAsHist->SetDirectory(nullptr);
+         }
       }
    }
 

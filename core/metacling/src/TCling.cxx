@@ -1071,12 +1071,37 @@ std::string TCling::ToString(const char* type, void* obj)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+///\returns true if the module map was loaded, false on error or if the map was
+///         already loaded.
+static bool RegisterPrebuiltModulePath(clang::Preprocessor& PP,
+                                       const std::string& FullPath) {
+   assert(llvm::sys::path::is_absolute(FullPath));
+   FileManager& FM = PP.getFileManager();
+   // FIXME: In a ROOT session we can add an include path (through .I /inc/path)
+   // We should look for modulemap files there too.
+   const DirectoryEntry *DE = FM.getDirectory(FullPath);
+   if (DE) {
+      HeaderSearch& HS = PP.getHeaderSearchInfo();
+      const FileEntry *FE = HS.lookupModuleMapFile(DE, /*IsFramework*/ false);
+      // FIXME: Calling IsLoaded is slow! Replace this with the appropriate
+      // call to the clang::ModuleMap class.
+      if (FE && !gCling->IsLoaded(FE->getName().data())) {
+         if (!HS.loadModuleMapFile(FE, /*IsSystem*/ false)) {
+            // We have loaded successfully the modulemap. Add the path to the
+            // prebuilt module paths.
+            HS.getHeaderSearchOpts().AddPrebuiltModulePath(FullPath);
+            return true;
+         }
+         Error("TCling::LoadModule", "Could not load modulemap in the current directory");
+      }
+   }
+   return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 ///\returns true if the module was loaded.
 static bool LoadModule(const std::string &ModuleName, cling::Interpreter &interp, bool Complain = true)
 {
-   if (interp.loadModule(ModuleName, Complain))
-      return true;
-
    // When starting up ROOT, cling would load all modulemap files on the include
    // paths. However, in a ROOT session, it is very common to run aclic which
    // will invoke rootcling and possibly produce a modulemap and a module in
@@ -1084,25 +1109,11 @@ static bool LoadModule(const std::string &ModuleName, cling::Interpreter &interp
    //
    // Before failing, try loading the modulemap in the current folder and try
    // loading the requested module from it.
-   Preprocessor &PP = interp.getCI()->getPreprocessor();
-   FileManager& FM = PP.getFileManager();
-   // FIXME: In a ROOT session we can add an include path (through .I /inc/path)
-   // We should look for modulemap files there too.
-   const DirectoryEntry *DE = FM.getDirectory(".");
-   if (DE) {
-      HeaderSearch& HS = PP.getHeaderSearchInfo();
-      const FileEntry *FE = HS.lookupModuleMapFile(DE, /*IsFramework*/ false);
-      if (FE && !gCling->IsLoaded("./module.modulemap")) {
-         if (!HS.loadModuleMapFile(FE, /*IsSystem*/ false))
-            return LoadModule(ModuleName, interp, Complain);
-         Error("TCling::LoadModule", "Could not load modulemap in the current directory");
-      }
-   }
-
-   if (Complain)
-      Error("TCling::LoadModule", "Module %s not found!", ModuleName.c_str());
-
-   return false;
+   clang::Preprocessor& PP = interp.getCI()->getPreprocessor();
+   std::string currentDir = gSystem->WorkingDirectory();
+   assert(!currentDir.empty());
+   RegisterPrebuiltModulePath(PP, currentDir);
+   return interp.loadModule(ModuleName, Complain);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1296,10 +1307,10 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
       // This should be vector in order to be able to pass it to LoadModules
       std::vector<std::string> CoreModules = {"ROOT_Foundation_C","ROOT_Config",
          "ROOT_Foundation_Stage1_NoRTTI", "Core", "RIO"};
-      // These modules contain global variables which conflict with users' code such as "PI".
+
       // FIXME: Reducing those will let us be less dependent on rootmap files
-      static constexpr std::array<const char*, 4> ExcludeModules =
-         { { "Rtools", "RSQLite", "RInterface", "RMVA"} };
+      static constexpr std::array<const char*, 3> ExcludeModules =
+         { { "Rtools", "RSQLite", "RInterface"} };
 
       LoadModules(CoreModules, *fInterpreter);
 
@@ -1338,6 +1349,11 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
       // core modules have defined it:
       // https://www.gnu.org/software/libc/manual/html_node/Complex-Numbers.html
       fInterpreter->declare("#ifdef I\n #undef I\n #endif\n");
+
+      // These macros are from loading R related modules, which conflict with
+      // user's code.
+      fInterpreter->declare("#ifdef PI\n #undef PI\n #endif\n");
+      fInterpreter->declare("#ifdef ERROR\n #undef ERROR\n #endif\n");
    }
 
    // For the list to also include string, we have to include it now.
@@ -1486,30 +1502,16 @@ static bool R__InitStreamerInfoFactory()
 ////////////////////////////////////////////////////////////////////////////////
 /// Tries to load a PCM; returns true on success.
 
-bool TCling::LoadPCM(TString pcmFileName,
-                     const char** headers,
-                     void (*triggerFunc)()) const {
-   // pcmFileName is an intentional copy; updated by FindFile() below.
+bool TCling::LoadPCM(const std::string& pcmFileNameFullPath) const {
 
-   TString searchPath;
-
-   if (triggerFunc) {
-      const char *libraryName = FindLibraryName(triggerFunc);
-      if (libraryName) {
-         searchPath = llvm::sys::path::parent_path(libraryName);
-#ifdef R__WIN32
-         searchPath += ";";
-#else
-         searchPath += ":";
-#endif
-      }
+   assert(!pcmFileNameFullPath.empty());
+   assert(llvm::sys::path::is_absolute(pcmFileNameFullPath));
+   if (!llvm::sys::fs::exists(pcmFileNameFullPath)) {
+     return false;
    }
-   // Note: if we know where the library is, we probably shouldn't even
-   // look in other places.
-   searchPath.Append( gSystem->GetDynamicPath() );
 
-   if (!gSystem->FindFile(searchPath, pcmFileName))
-      return kFALSE;
+   // Easier to work with the ROOT interfaces.
+   TString pcmFileName = pcmFileNameFullPath;
 
    // Prevent the ROOT-PCMs hitting this during auto-load during
    // JITting - which will cause recursive compilation.
@@ -1974,8 +1976,18 @@ void TCling::RegisterModule(const char* modulename,
    }
 
    if (gIgnoredPCMNames.find(modulename) == gIgnoredPCMNames.end()) {
-      TString pcmFileName(ROOT::TMetaUtils::GetModuleFileName(modulename).c_str());
-      if (!LoadPCM(pcmFileName, headers, triggerFunc)) {
+      std::string pcmFileNameFullPath;
+      if (dyLibName)
+         pcmFileNameFullPath = dyLibName;
+      else {
+         // if we were in the case of late registration
+         assert(lateRegistration);
+         pcmFileNameFullPath = FindLibraryName(triggerFunc);
+      }
+      pcmFileNameFullPath =
+         llvm::sys::path::parent_path(pcmFileNameFullPath).str() + "/";
+      pcmFileNameFullPath += ROOT::TMetaUtils::GetModuleFileName(modulename);
+      if (!LoadPCM(pcmFileNameFullPath)) {
          ::Error("TCling::RegisterModule", "cannot find dictionary module %s",
                  ROOT::TMetaUtils::GetModuleFileName(modulename).c_str());
       }
@@ -1993,12 +2005,19 @@ void TCling::RegisterModule(const char* modulename,
       if (llvm::StringRef(modulename).startswith("lib"))
          ModuleName = llvm::StringRef(modulename).substr(3).str();
 
+      // In case we are directly loading the library via gSystem->Load() without
+      // specifying the relevant include paths we should try loading the
+      // modulemap next to the library location.
+      clang::Preprocessor &PP = TheSema.getPreprocessor();
+      // Can be nullptr in case of libCore.
+      if (dyLibName)
+         RegisterPrebuiltModulePath(PP, llvm::sys::path::parent_path(dyLibName));
+
       // FIXME: We should only complain for modules which we know to exist. For example, we should not complain about
       // modules such as GenVector32 because it needs to fall back to GenVector.
-      ModuleWasSuccessfullyLoaded = LoadModule(ModuleName, *fInterpreter, /*Complain=*/ false);
+      ModuleWasSuccessfullyLoaded = LoadModule(ModuleName, *fInterpreter, /*Complain=*/ !isACLiC);
       if (!ModuleWasSuccessfullyLoaded) {
          // Only report if we found the module in the modulemap.
-         clang::Preprocessor &PP = TheSema.getPreprocessor();
          clang::HeaderSearch &headerSearch = PP.getHeaderSearchInfo();
          clang::ModuleMap &moduleMap = headerSearch.getModuleMap();
          if (moduleMap.findModule(ModuleName))

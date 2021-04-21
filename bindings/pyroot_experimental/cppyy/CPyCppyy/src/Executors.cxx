@@ -32,20 +32,18 @@ namespace {
 
     class GILControl {
     public:
-        GILControl(CPyCppyy::CallContext* ctxt) :
-                fSave(nullptr), fRelease(ReleasesGIL(ctxt)) {
+        GILControl(CPyCppyy::CallContext* /*ctxt*/) : fSave(nullptr) {
 #ifdef WITH_THREAD
-            if (fRelease) fSave = PyEval_SaveThread();
+            fSave = PyEval_SaveThread();
 #endif
         }
         ~GILControl() {
 #ifdef WITH_THREAD
-            if (fRelease) PyEval_RestoreThread(fSave);
+            PyEval_RestoreThread(fSave);
 #endif
         }
     private:
         PyThreadState* fSave;
-        bool fRelease;
     };
 
 } // unnamed namespace
@@ -54,6 +52,8 @@ namespace {
 static inline rtype GILCall##tcode(                                          \
     Cppyy::TCppMethod_t method, Cppyy::TCppObject_t self, CPyCppyy::CallContext* ctxt)\
 {                                                                            \
+    if (!ReleasesGIL(ctxt))                                                  \
+        return Cppyy::Call##tcode(method, self, ctxt->GetSize(), ctxt->GetArgs());\
     GILControl gc(ctxt);                                                     \
     return Cppyy::Call##tcode(method, self, ctxt->GetSize(), ctxt->GetArgs());\
 }
@@ -70,21 +70,11 @@ CPPYY_IMPL_GILCALL(double,        D)
 CPPYY_IMPL_GILCALL(LongDouble_t,  LD)
 CPPYY_IMPL_GILCALL(void*,         R)
 
-/*
-// TODO: CallS may not have a use here; CallO is used instead for std::string
-static inline char* GILCallS(
-    Cppyy::TCppMethod_t method, Cppyy::TCppObject_t self, CPyCppyy::CallContext* ctxt)
-{
-    GILControl gc(ctxt);
-// TODO: make use of getting the string length returned ...
-    size_t len;
-    return Cppyy::CallS(method, self, ctxt->GetSize(), ctxt->GetArgs(), &len);
-}
-*/
-
 static inline Cppyy::TCppObject_t GILCallO(Cppyy::TCppMethod_t method,
     Cppyy::TCppObject_t self, CPyCppyy::CallContext* ctxt, Cppyy::TCppType_t klass)
 {
+    if (!ReleasesGIL(ctxt))
+        return Cppyy::CallO(method, self, ctxt->GetSize(), ctxt->GetArgs(), klass);
     GILControl gc(ctxt);
     return Cppyy::CallO(method, self, ctxt->GetSize(), ctxt->GetArgs(), klass);
 }
@@ -92,6 +82,8 @@ static inline Cppyy::TCppObject_t GILCallO(Cppyy::TCppMethod_t method,
 static inline Cppyy::TCppObject_t GILCallConstructor(
     Cppyy::TCppMethod_t method, Cppyy::TCppType_t klass, CPyCppyy::CallContext* ctxt)
 {
+    if (!ReleasesGIL(ctxt))
+        return Cppyy::CallConstructor(method, klass, ctxt->GetSize(), ctxt->GetArgs());
     GILControl gc(ctxt);
     return Cppyy::CallConstructor(method, klass, ctxt->GetSize(), ctxt->GetArgs());
 }
@@ -286,6 +278,10 @@ PyObject* CPyCppyy::name##RefExecutor::Execute(                              \
     Cppyy::TCppMethod_t method, Cppyy::TCppObject_t self, CallContext* ctxt) \
 {                                                                            \
     type* ref = (type*)GILCallR(method, self, ctxt);                         \
+    if (!ref) { /* can happen if wrapper compilation fails */                \
+        PyErr_SetString(PyExc_ReferenceError, "attempt to access a null-pointer");\
+        return nullptr;                                                      \
+    }                                                                        \
     if (!fAssignable)                                                        \
         return F1((stype)*ref);                                              \
     else {                                                                   \
