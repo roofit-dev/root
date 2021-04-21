@@ -66,13 +66,16 @@ public:
 
 class TPadWebSnapshot : public TWebSnapshot {
 protected:
-   bool fActive{false};                      ///< true when pad is active
-   std::vector<std::unique_ptr<TWebSnapshot>> fPrimitives;   ///< list of all primitives, drawn in the pad
+   bool fActive{false};                                    ///< true when pad is active
+   std::vector<std::unique_ptr<TWebSnapshot>> fPrimitives; ///< list of all primitives, drawn in the pad
 public:
    TPadWebSnapshot() { SetKind(kSubPad); }
 
    void SetActive(bool on = true) { fActive = on; }
-   void Add(TWebSnapshot *snap) { fPrimitives.emplace_back(snap); }
+
+   TWebSnapshot &NewPrimitive(TObject *obj = nullptr, const std::string &opt = "");
+
+   TPadWebSnapshot &NewSubPad();
 
    ClassDef(TPadWebSnapshot,1)  // Pad painting snapshot, used for JSROOT
 };
