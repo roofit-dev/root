@@ -4,7 +4,7 @@
    } else
    if (typeof exports === 'object' && typeof module !== 'undefined') {
       var jsroot = require("./JSRootCore.js");
-      factory(jsroot, require("./d3.min.js"));
+      factory(jsroot, require("d3"));
       if (jsroot.nodejs) jsroot.Painter.readStyleFromURL("?interactive=0&tooltip=0&nomenu&noprogress&notouch&toolbar=0&webgl=0");
    } else {
 
@@ -46,7 +46,7 @@
          d3.scaleLinear = d3.scale.linear;
          JSROOT._test_d3_ = 3;
       } else {
-         console.error('Fail to identify d3.js version '  + (d3 ? d3.version : "???"));
+         console.error('Fail to identify d3.js version ' + (d3 ? d3.version : "???"));
       }
    }
 
@@ -132,7 +132,7 @@
     * @constructor
     * @memberof JSROOT
     */
-   var DrawOptions = function(opt) {
+   function DrawOptions(opt) {
       this.opt = opt && (typeof opt=="string") ? opt.toUpperCase().trim() : "";
       this.part = "";
    }
@@ -982,7 +982,7 @@
    }
 
    /**
-    * Create sample element inside primitive SVG - used in context menu
+    * @summary Create sample element inside primitive SVG - used in context menu
     * @private
     */
 
@@ -2079,7 +2079,7 @@
 
    /** @summary Method used to initialize connection to web window.
     *
-    * @param {object} arg - arguemnts
+    * @param {object} arg - arguments
     * @param {string} [arg.prereq] - prerequicities, which should be loaded
     * @param {string} [arg.openui5src] - source of openui5, either URL like "https://openui5.hana.ondemand.com" or "jsroot" which provides its own reduced openui5 package
     * @param {string} [arg.openui5libs] - list of openui5 libraries loaded, default is "sap.m, sap.ui.layout, sap.ui.unified"
@@ -2261,26 +2261,23 @@
    }
 
    /** @summary Returns drawn object
-    *
-    * @abstract
-    */
+    * @abstract */
    TBasePainter.prototype.GetObject = function() {
-      return null;
    }
 
    /** @summary Returns true if type match with drawn object type
+    * @param {string} typename - type name to check with
+    * @returns {boolean} true if draw objects matches with provided type name
     * @abstract
-    * @private
-    */
-   TBasePainter.prototype.MatchObjectType = function(typ) {
-      return false;
+    * @private */
+   TBasePainter.prototype.MatchObjectType = function(typename) {
    }
 
    /** @summary Called to update drawn object content
+    * @returns {boolean} true if update can be performed
     * @abstract
     * @private */
    TBasePainter.prototype.UpdateObject = function(obj) {
-      return false;
    }
 
    /** @summary Redraw all objects in current pad
@@ -2302,24 +2299,23 @@
    }
 
    /** @summary Checks if draw elements were resized and drawing should be updated
+    * @returns {boolean} true if resize was detected
     * @abstract
     * @private */
    TBasePainter.prototype.CheckResize = function(arg) {
-      return false;
    }
 
    /** @summary Method called when interactively changes attribute in given class
     * @abstract
     * @private */
    TBasePainter.prototype.AttributeChange = function(class_name, member_name, new_value) {
-      // function called when user interactively changes attribute in given class
-
       // console.log("Changed attribute", class_name, member_name, new_value);
    }
 
-   /** @summary Returns d3.select for main element for drawing, defined with this.divid.
-    *
-    * @desc if main element was layouted, returns main element inside layout */
+   /** @summary access to main HTML element used for drawing - typically <div> element
+     * @desc if main element was layouted, returns main element inside layout
+    * @param {string} is_direct - if 'origin' specified, returns original element even if actual drawing moved to some other place
+    * @returns {object} d3.select for main element for drawing, defined with this.divid. */
    TBasePainter.prototype.select_main = function(is_direct) {
 
       if (!this.divid) return d3.select(null);
@@ -2591,7 +2587,6 @@
    }
 
    /** @summary Check if it makes sense to zoom inside specified axis range
-    *
     * @param {string} axis - name of axis like 'x', 'y', 'z'
     * @param {number} left - left axis range
     * @param {number} right - right axis range
@@ -2600,7 +2595,6 @@
     * @private
     */
    TBasePainter.prototype.CanZoomIn = function(axis,left,right) {
-      return false;
    }
 
    // ==============================================================================
@@ -2699,7 +2693,10 @@
     * @private */
    TObjectPainter.prototype.OptionsStore = function(original) {
       if (!this.options) return;
-      this.options.original = original || "";
+      if (!original) original = "";
+      var pp = original.indexOf(";;");
+      if (pp>=0) original = original.substr(0,pp);
+      this.options.original = original;
       this.options_store = JSROOT.extend({}, this.options);
    }
 
@@ -2917,12 +2914,14 @@
       if (!pad_name || c.empty()) return c;
 
       var cp = c.property('pad_painter');
-      if (cp.pads_cache && cp.pads_cache[pad_name])
+      if (cp && cp.pads_cache && cp.pads_cache[pad_name])
          return d3.select(cp.pads_cache[pad_name]);
 
       c = c.select(".primitives_layer .__root_pad_" + pad_name);
-      if (!cp.pads_cache) cp.pads_cache = {};
-      cp.pads_cache[pad_name] = c.node();
+      if (cp) {
+         if (!cp.pads_cache) cp.pads_cache = {};
+         cp.pads_cache[pad_name] = c.node();
+      }
       return c;
    }
 
@@ -3540,23 +3539,32 @@
       if (pp) pp.ForEachPainterInPad(userfunc, kind);
    }
 
-   /** @summary indicate that redraw was invoked via interactive action (like context menu)
-    * desc  use to catch such action by GED
+   /** @summary indicate that redraw was invoked via interactive action (like context menu or zooming)
+    * @desc Use to catch such action by GED
     * @private */
    TObjectPainter.prototype.InteractiveRedraw = function(arg, info) {
 
-      if (arg == "pad") this.RedrawPad(); else
-      if (arg !== true) this.Redraw();
+      if (arg == "pad") {
+         this.RedrawPad();
+      } else if (arg == "axes") {
+         var main = this.main_painter(true, this.this_pad_name); // works for pad and any object drawn in the pad
+         if (main && (typeof main.DrawAxes == 'function'))
+            main.DrawAxes();
+         else
+            this.RedrawPad();
+      } else if (arg !== false) {
+         this.Redraw();
+      }
 
       // inform GED that something changes
-      var pad_painter = this.pad_painter();
-      if (pad_painter && pad_painter.InteractiveObjectRedraw)
-         pad_painter.InteractiveObjectRedraw(this);
+      var pp = this.pad_painter();
+      if (pp && pp.InteractiveObjectRedraw)
+         pp.InteractiveObjectRedraw(this);
 
       // inform server that drawopt changes
       var canp = this.canv_painter();
       if (canp && canp.ProcessChanges)
-         canp.ProcessChanges(info, this.pad_painter());
+         canp.ProcessChanges(info, this);
    }
 
    /** @summary Redraw all objects in correspondent pad */
@@ -4001,6 +4009,24 @@
       delete this.markeratt;
    }
 
+   /** @summary Produce exec string for WebCanas to set color value
+    * @desc Color can be id or string, but should belong to list of known colors
+    * @private */
+   TObjectPainter.prototype.GetColorExec = function(col, method) {
+      var id = -1;
+      if (typeof col == "string") {
+         if (!col || (col == "none")) id = 0; else
+         for (var k=1;k<JSROOT.Painter.root_colors.length;++k)
+            if (JSROOT.Painter.root_colors[k] == col) {
+               id = k; break
+            }
+      } else if (!isNaN(col) && JSROOT.Painter.root_colors[col]) {
+         id = col;
+      }
+
+      return id < 0 ? "" : "exec:" + method + "(" + id + ")";
+   }
+
    /** @summary Fill context menu for graphical attributes
     * @private */
    TObjectPainter.prototype.FillAttContextMenu = function(menu, preffix) {
@@ -4013,16 +4039,16 @@
       if (this.lineatt && this.lineatt.used) {
          menu.add("sub:"+preffix+"Line att");
          this.AddSizeMenuEntry(menu, "width", 1, 10, 1, this.lineatt.width,
-                               function(arg) { this.lineatt.Change(undefined, parseInt(arg)); this.InteractiveRedraw(); }.bind(this));
+                               function(arg) { this.lineatt.Change(undefined, parseInt(arg)); this.InteractiveRedraw(true, "exec:SetLineWidth(" + arg + ")"); }.bind(this));
          this.AddColorMenuEntry(menu, "color", this.lineatt.color,
-                          function(arg) { this.lineatt.Change(arg); this.InteractiveRedraw(); }.bind(this));
+                          function(arg) { this.lineatt.Change(arg); this.InteractiveRedraw(true, this.GetColorExec(arg, "SetLineColor")); }.bind(this));
          menu.add("sub:style", function() {
             var id = prompt("Enter line style id (1-solid)", 1);
             if (id == null) return;
             id = parseInt(id);
             if (isNaN(id) || !JSROOT.Painter.root_line_styles[id]) return;
             this.lineatt.Change(undefined, undefined, id);
-            this.InteractiveRedraw();
+            this.InteractiveRedraw(true, "exec:SetLineStyle(" + id + ")");
          }.bind(this));
          for (var n=1;n<11;++n) {
 
@@ -4030,7 +4056,7 @@
 
             var svg = "<svg width='100' height='18'><text x='1' y='12' style='font-size:12px'>" + n + "</text><line x1='30' y1='8' x2='100' y2='8' stroke='black' stroke-width='3' stroke-dasharray='" + dash + "'></line></svg>";
 
-            menu.addchk((this.lineatt.style==n), svg, n, function(arg) { this.lineatt.Change(undefined, undefined, parseInt(arg)); this.InteractiveRedraw(); }.bind(this));
+            menu.addchk((this.lineatt.style==n), svg, n, function(arg) { this.lineatt.Change(undefined, undefined, parseInt(arg)); this.InteractiveRedraw(true, "exec:SetLineStyle(" + arg + ")"); }.bind(this));
          }
          menu.add("endsub:");
          menu.add("endsub:");
@@ -4055,14 +4081,14 @@
       if (this.fillatt && this.fillatt.used) {
          menu.add("sub:"+preffix+"Fill att");
          this.AddColorMenuEntry(menu, "color", this.fillatt.colorindx,
-               function(arg) { this.fillatt.Change(parseInt(arg), undefined, this.svg_canvas()); this.InteractiveRedraw(); }.bind(this), this.fillatt.kind);
+               function(arg) { this.fillatt.Change(parseInt(arg), undefined, this.svg_canvas()); this.InteractiveRedraw(true, this.GetColorExec(parseInt(arg), "SetFillColor")); }.bind(this), this.fillatt.kind);
          menu.add("sub:style", function() {
             var id = prompt("Enter fill style id (1001-solid, 3000..3010)", this.fillatt.pattern);
             if (id == null) return;
             id = parseInt(id);
             if (isNaN(id)) return;
             this.fillatt.Change(undefined, id, this.svg_canvas());
-            this.InteractiveRedraw();
+            this.InteractiveRedraw(true, "exec:SetFillStyle(" + id + ")");
          }.bind(this));
 
          var supported = [1, 1001, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3010, 3021, 3022];
@@ -4074,7 +4100,7 @@
 
             menu.addchk(this.fillatt.pattern == supported[n], svg, supported[n], function(arg) {
                this.fillatt.Change(undefined, parseInt(arg), this.svg_canvas());
-               this.InteractiveRedraw();
+               this.InteractiveRedraw(true, "exec:SetFillStyle(" + arg + ")");
             }.bind(this));
          }
          menu.add("endsub:");
@@ -4084,9 +4110,9 @@
       if (this.markeratt && this.markeratt.used) {
          menu.add("sub:"+preffix+"Marker att");
          this.AddColorMenuEntry(menu, "color", this.markeratt.color,
-                   function(arg) { this.markeratt.Change(arg); this.InteractiveRedraw(); }.bind(this));
+                   function(arg) { this.markeratt.Change(arg); this.InteractiveRedraw(true, this.GetColorExec(arg, "SetMarkerColor")); }.bind(this));
          this.AddSizeMenuEntry(menu, "size", 0.5, 6, 0.5, this.markeratt.size,
-               function(arg) { this.markeratt.Change(undefined, undefined, parseFloat(arg)); this.InteractiveRedraw(); }.bind(this));
+               function(arg) { this.markeratt.Change(undefined, undefined, parseFloat(arg)); this.InteractiveRedraw(true, "exec:SetMarkerSize(" + parseInt(arg) + ")"); }.bind(this));
 
          menu.add("sub:style");
          var supported = [1,2,3,4,5,6,7,8,21,22,23,24,25,26,27,28,29,30,31,32,33,34];
@@ -4097,7 +4123,7 @@
                 svg = "<svg width='60' height='18'><text x='1' y='12' style='font-size:12px'>" + supported[n].toString() + "</text><path stroke='black' fill='" + (clone.fill ? "black" : "none") + "' d='" + clone.create(40,8) + "'></path></svg>";
 
             menu.addchk(this.markeratt.style == supported[n], svg, supported[n],
-                     function(arg) { this.markeratt.Change(undefined, parseInt(arg)); this.InteractiveRedraw(); }.bind(this));
+                     function(arg) { this.markeratt.Change(undefined, parseInt(arg)); this.InteractiveRedraw(true, "exec:SetMarkerStyle(" + parseInt(arg) + ")"); }.bind(this));
          }
          menu.add("endsub:");
          menu.add("endsub:");
@@ -4147,7 +4173,6 @@
    /** @symmary Fill context menu for the object
     * @private */
    TObjectPainter.prototype.FillContextMenu = function(menu) {
-
       var title = this.GetTipName();
       if (this.GetObject() && ('_typename' in this.GetObject()))
          title = this.GetObject()._typename + "::" + title;
@@ -4288,7 +4313,7 @@
   }
 
    /** @summary Check if user-defined tooltip callback is configured
-    * @returns {Boolean}
+    * @returns {boolean}
     * @private */
    TObjectPainter.prototype.IsUserTooltipCallback = function() {
       return typeof this.UserTooltipCallback == 'function';
@@ -5496,7 +5521,7 @@
          if (!hint) continue;
 
          if (hint.painter && (hint.user_info!==undefined))
-            if (hint.painter.ProvideUserTooltip(hint.user_info));
+            if (hint.painter.ProvideUserTooltip(hint.user_info)) {};
 
          if (!hint.lines || (hint.lines.length===0)) {
             hints[n] = null; continue;
@@ -5884,10 +5909,10 @@
    JSROOT.addDrawFunc({ name: "TText", icon: "img_text", prereq: "more2d", func: "JSROOT.Painter.drawText", direct: true });
    JSROOT.addDrawFunc({ name: /^TH1/, icon: "img_histo1d", prereq: "v6;hist", func: "JSROOT.Painter.drawHistogram1D", opt:";hist;P;P0;E;E1;E2;E3;E4;E1X0;L;LF2;B;B1;A;TEXT;LEGO;same", ctrl: "l" });
    JSROOT.addDrawFunc({ name: "TProfile", icon: "img_profile", prereq: "v6;hist", func: "JSROOT.Painter.drawHistogram1D", opt:";E0;E1;E2;p;AH;hist"});
-   JSROOT.addDrawFunc({ name: "TH2Poly", icon: "img_histo2d", prereq: "v6;hist", func: "JSROOT.Painter.drawHistogram2D", opt:";COL;COL0;COLZ;LCOL;LCOL0;LCOLZ;LEGO;same", expand_item: "fBins", theonly: true });
+   JSROOT.addDrawFunc({ name: "TH2Poly", icon: "img_histo2d", prereq: "v6;hist", func: "JSROOT.Painter.drawHistogram2D", opt:";COL;COL0;COLZ;LCOL;LCOL0;LCOLZ;LEGO;TEXT;same", expand_item: "fBins", theonly: true });
    JSROOT.addDrawFunc({ name: "TProfile2Poly", sameas: "TH2Poly" });
    JSROOT.addDrawFunc({ name: "TH2PolyBin", icon: "img_histo2d", draw_field: "fPoly" });
-   JSROOT.addDrawFunc({ name: /^TH2/, icon: "img_histo2d", prereq: "v6;hist", func: "JSROOT.Painter.drawHistogram2D", opt:";COL;COLZ;COL0;COL1;COL0Z;COL1Z;COLA;BOX;BOX1;SCAT;TEXT;CONT;CONT1;CONT2;CONT3;CONT4;ARR;SURF;SURF1;SURF2;SURF4;SURF6;E;A;LEGO;LEGO0;LEGO1;LEGO2;LEGO3;LEGO4;same", ctrl: "colz" });
+   JSROOT.addDrawFunc({ name: /^TH2/, icon: "img_histo2d", prereq: "v6;hist", func: "JSROOT.Painter.drawHistogram2D", opt:";COL;COLZ;COL0;COL1;COL0Z;COL1Z;COLA;BOX;BOX1;PROJ;PROJX1;PROJX2;PROJX3;PROJY1;PROJY2;PROJY3;SCAT;TEXT;CONT;CONT1;CONT2;CONT3;CONT4;ARR;SURF;SURF1;SURF2;SURF4;SURF6;E;A;LEGO;LEGO0;LEGO1;LEGO2;LEGO3;LEGO4;same", ctrl: "colz" });
    JSROOT.addDrawFunc({ name: "TProfile2D", sameas: "TH2" });
    JSROOT.addDrawFunc({ name: /^TH3/, icon: 'img_histo3d', prereq: "v6;hist3d", func: "JSROOT.Painter.drawHistogram3D", opt:";SCAT;BOX;BOX2;BOX3;GLBOX1;GLBOX2;GLCOL" });
    JSROOT.addDrawFunc({ name: "THStack", icon: "img_histo1d", prereq: "v6;hist", func: "JSROOT.Painter.drawHStack", expand_item: "fHists", opt: "NOSTACK;HIST;E;PFC;PLC" });
@@ -6426,24 +6451,18 @@
    JSROOT.CheckElementResize = JSROOT.resize;
 
    /** @summary Returns main painter object for specified HTML element
-    * @param {string|object} divid - id or DOM element
-    */
-
+     * @param {string|object} divid - id or DOM element */
    JSROOT.GetMainPainter = function(divid) {
       var dummy = new JSROOT.TObjectPainter();
       dummy.SetDivId(divid, -1);
       return dummy.main_painter(true);
    }
 
-   /**
-    * @summary Safely remove all JSROOT objects from specified element
-    *
-    * @param {string|object} divid - id or DOM element
-    *
-    * @example
-    * JSROOT.cleanup("drawing");
-    * JSROOT.cleanup(document.querySelector("#drawing"));
-    */
+   /** @summary Safely remove all JSROOT objects from specified element
+     * @param {string|object} divid - id or DOM element
+     * @example
+     * JSROOT.cleanup("drawing");
+     * JSROOT.cleanup(document.querySelector("#drawing")); */
    JSROOT.cleanup = function(divid) {
       var dummy = new TObjectPainter(), lst = [];
       dummy.SetDivId(divid, -1);
@@ -6455,9 +6474,8 @@
       return lst;
    }
 
-   /** Display progress message in the left bottom corner.
-    *
-    * Previous message will be overwritten
+   /** @summary Display progress message in the left bottom corner.
+    *  @desc Previous message will be overwritten
     * if no argument specified, any shown messages will be removed
     * @param {string} msg - message to display
     * @param {number} tmout - optional timeout in milliseconds, after message will disappear
@@ -6497,11 +6515,9 @@
       }
    }
 
-   /** Tries to close current browser tab
-   *
-   * Many browsers do not allow simple window.close() call,
-   * therefore try several workarounds
-   */
+   /** @summary Tries to close current browser tab
+     * @desc Many browsers do not allow simple window.close() call,
+     * therefore try several workarounds */
 
    JSROOT.CloseCurrentWindow = function() {
       if (!window) return;

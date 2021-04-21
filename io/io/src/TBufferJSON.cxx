@@ -1254,7 +1254,7 @@ void TBufferJSON::JsonWriteObject(const void *obj, const TClass *cl, Bool_t chec
       stack->fValues.clear();
       AppendOutput(fValue.Data());
       fValue.Clear();
-   } else if ((special_kind > 0) && (special_kind <= TClassEdit::kBitSet)) {
+   } else if ((special_kind > 0) && (special_kind < ROOT::kSTLend)) {
       // here make STL container processing
 
       if (stack->fValues.empty()) {
@@ -1287,13 +1287,20 @@ void TBufferJSON::JsonWriteObject(const void *obj, const TClass *cl, Bool_t chec
                // Create entries like { '$pair': 'typename' , 'first' : key, 'second' : value }
 
                TString pairtype = cl->GetName();
-               if (pairtype.Index("multimap<") == 0)
+               if (pairtype.Index("unordered_map<") == 0)
+                  pairtype.Replace(0, 14, "pair<");
+               else if (pairtype.Index("unordered_multimap<") == 0)
+                  pairtype.Replace(0, 19, "pair<");
+               else if (pairtype.Index("multimap<") == 0)
                   pairtype.Replace(0, 9, "pair<");
                else if (pairtype.Index("map<") == 0)
                   pairtype.Replace(0, 4, "pair<");
                else
                   pairtype = "TPair";
-               pairtype = TString("\"") + pairtype + TString("\"");
+               if (fTypeNameTag.Length() == 0)
+                  pairtype = "1";
+               else
+                  pairtype = TString("\"") + pairtype + TString("\"");
                for (Int_t k = 1; k < (int) stack->fValues.size() - 1; k += 2) {
                   fValue.Append(separ);
                   separ = fArraySepar.Data();
