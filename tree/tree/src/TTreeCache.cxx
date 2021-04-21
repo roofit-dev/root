@@ -1060,6 +1060,9 @@ Bool_t TTreeCache::FillBuffer()
    Long64_t entry = tree->GetReadEntry();
    Long64_t fEntryCurrentMax = 0;
 
+   if (entry < fEntryMin || fEntryMax < entry)
+      return kFALSE;
+
    if (fEnablePrefetching) { // Prefetching mode
       if (fIsLearning) { // Learning mode
          if (fEntryNext >= 0 && entry >= fEntryNext) {
@@ -1220,7 +1223,7 @@ Bool_t TTreeCache::FillBuffer()
       if (fCurrentClusterStart != -1 || fNextClusterStart != -1) {
          if (!(fEntryCurrent < fCurrentClusterStart || fEntryCurrent >= fNextClusterStart)) {
             Error("FillBuffer", "Inconsistency: fCurrentClusterStart=%lld fEntryCurrent=%lld fNextClusterStart=%lld "
-                                "but fCurrentEntry should not be in between the two",
+                                "but fEntryCurrent should not be in between the two",
                   fCurrentClusterStart, fEntryCurrent, fNextClusterStart);
          }
       }
@@ -1519,7 +1522,7 @@ Bool_t TTreeCache::FillBuffer()
                b->fCacheInfo.SetIsInCache(j);
 
                if (showMore || gDebug > 6)
-                  Info("FillBuffer", "*** Registering branch %d basket %d", i, j);
+                  Info("FillBuffer", "*** Registering branch %d basket %d %s", i, j, b->GetName());
 
                if (!cursor[i].fLoadedOnce) {
                   cursor[i].fLoadedOnce = kTRUE;
@@ -2179,6 +2182,8 @@ void TTreeCache::LearnPrefill()
    Long64_t emaxOld = fEntryMax;
    Long64_t ecurrentOld = fEntryCurrent;
    Long64_t enextOld = fEntryNext;
+   auto currentClusterStartOld = fCurrentClusterStart;
+   auto nextClusterStartOld = fNextClusterStart;
 
    fEntryMin = fEntryCurrent;
    fEntryMax = fEntryNext;
@@ -2200,4 +2205,6 @@ void TTreeCache::LearnPrefill()
    fEntryMax = emaxOld;
    fEntryCurrent = ecurrentOld;
    fEntryNext = enextOld;
+   fCurrentClusterStart = currentClusterStartOld;
+   fNextClusterStart = nextClusterStartOld;
 }
