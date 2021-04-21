@@ -459,6 +459,9 @@ if(ROOT_python_FOUND)
                  tutorial-pyroot-tornado-py
                  tutorial-pyroot-tree-py
                  tutorial-roofit-rf106_plotdecoration-py
+                 tutorial-roofit-rf315_projectpdf-py
+                 tutorial-roofit-rf402_datahandling-py
+                 tutorial-roofit-rf610_visualerror-py
                  tutorial-vecops-vo004_SortAndSelect-py
                  tutorial-vecops-vo005_Combinations-py)
 
@@ -466,6 +469,7 @@ if(ROOT_python_FOUND)
     # These tests only fail in Py3 with PyROOT experimental
     list(APPEND pyexp_fail tutorial-pyroot-surfaces-py)
     list(APPEND pyexp_fail tutorial-pyroot-zdemo-py)
+    list(APPEND pyexp_fail tutorial-pyroot-first-py)
   endif()
 
   foreach(t ${pytutorials})
