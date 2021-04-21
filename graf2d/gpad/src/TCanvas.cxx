@@ -575,7 +575,15 @@ void TCanvas::Build()
    fCanvas         = this;
    fMother         = (TPad*)gPad;
 
-   if (!IsBatch()) {    //normal mode with a screen window
+   if (IsBatch()) {
+      // Make sure that batch interactive canvas sizes are the same
+      fCw -= 4;
+      fCh -= 28;
+   } else if (IsWeb()) {
+      // mark canvas as batch - avoid virtualx in many places
+      SetBatch(kTRUE);
+   } else {
+      //normal mode with a screen window
       // Set default physical canvas attributes
       //Should be done via gVirtualX, not via fPainter (at least now). No changes here.
       gVirtualX->SelectWindow(fCanvasID);
@@ -597,13 +605,9 @@ void TCanvas::Build()
       Int_t dum1, dum2;
       gVirtualX->GetGeometry(fCanvasID, dum1, dum2, fCw, fCh);
 
-      if (!fCanvasImp || !fCanvasImp->IsWeb())
-         fContextMenu = new TContextMenu("ContextMenu");
-   } else {
-      // Make sure that batch interactive canvas sizes are the same
-      fCw -= 4;
-      fCh -= 28;
+      fContextMenu = new TContextMenu("ContextMenu");
    }
+
    gROOT->GetListOfCanvases()->Add(this);
 
    if (!fPrimitives) {
@@ -1085,7 +1089,7 @@ void TCanvas::FeedbackMode(Bool_t set)
 
 void TCanvas::Flush()
 {
-   if (fCanvasID == -1) return;
+   if ((fCanvasID == -1) || IsWeb()) return;
 
    TPad *padsav = (TPad*)gPad;
    cd();
@@ -1471,7 +1475,7 @@ void TCanvas::MoveOpaque(Int_t set)
 
 void TCanvas::Paint(Option_t *option)
 {
-   if (fCanvasImp && fCanvasImp->IsWeb()) {
+   if (IsWeb()) {
       Update();
    } else if (fCanvas) {
       TPad::Paint(option);
@@ -1611,7 +1615,7 @@ void TCanvas::Resize(Option_t *)
    TPad *padsav  = (TPad*)gPad;
    cd();
 
-   if (!IsBatch()) {
+   if (!IsBatch() && !IsWeb()) {
       gVirtualX->SelectWindow(fCanvasID);      //select current canvas
       gVirtualX->ResizeWindow(fCanvasID);      //resize canvas and off-screen buffer
 
@@ -1898,7 +1902,7 @@ void TCanvas::SaveSource(const char *filename, Option_t *option)
 
 void TCanvas::SetBatch(Bool_t batch)
 {
-   if (gROOT->IsBatch())
+   if (gROOT->IsBatch() || IsWeb())
       fBatch = kTRUE;
    else
       fBatch = batch;
