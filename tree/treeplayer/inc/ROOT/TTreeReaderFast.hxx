@@ -45,11 +45,10 @@ public:
    class Iterator_t:
       public std::iterator<std::input_iterator_tag, const Long64_t, Long64_t> {
    private:
-      Int_t* fIdx{nullptr}; ///< Current offset inside this cluster.
-      Int_t fCount{0}; ///< Number of entries inside this cluster.
-      Int_t fTotCount{0}; ///< Number of entries we wish to iterate over.
-      Long64_t fEntry{-1}; ///< Entry number of the tree referenced by this iterator; -1 is invalid.
-      TTreeReaderFast* fReader{nullptr}; ///< The reader we select the entries on.
+      Int_t   *fIdx{nullptr}; ///< Current offset inside this cluster.
+      Int_t    fCount{0};     ///< Number of entries inside this cluster.
+      Long64_t fEntry{-1};    ///< Entry number of the tree referenced by this iterator; -1 is invalid.
+      TTreeReaderFast *fReader{nullptr}; ///< The reader we select the entries on.
 
       /// Whether the iterator points to a valid entry.
       bool IsValid() const { return fEntry >= 0; }
@@ -60,8 +59,8 @@ public:
 
       /// Initialize the iterator with the reader it steers and a
       /// tree entry number; -1 is invalid.
-      Iterator_t(TTreeReaderFast& reader, Long64_t first, Long64_t count):
-         fIdx(&(reader.fEvtIndex)), fTotCount(count), fEntry(first), fReader(&reader)
+      Iterator_t(TTreeReaderFast& reader, Long64_t first):
+         fIdx(&(reader.fEvtIndex)), fEntry(first), fReader(&reader)
       {
          //printf("Initializing new iterator; start of %lld, proceed for %lld events.\n", first, count);
          fCount = fReader->GetNextRange(fEntry);
@@ -137,7 +136,7 @@ public:
 
    /// Return an iterator to the 0th TTree entry.
    Iterator_t begin() {
-      return Iterator_t(*this, 0, fTree->GetEntries());
+      return Iterator_t(*this, 0);
    }
    Iterator_t end() const { return Iterator_t(); }
 
