@@ -17,6 +17,7 @@ The following people have contributed to this new version:
  Philippe Canal, FNAL,\
  Javier Cervantes Villanueva, CERN/SFT \
  Olivier Couet, CERN/SFT,\
+ Alexandra Dobrescu, CERN/SFT,\
  Gerri Ganis, CERN/SFT,\
  Andrei Gheata, CERN/SFT,\
  Stephan Hageboeck, CERN/SFT,\
@@ -226,7 +227,8 @@ JSROOT sources were moved from `etc/http/` into `js/` subfolder in ROOT sources 
 
 
 ## Tutorials
-
+  - Add `RSqliteDS` examples.
+  - Make RCsvDS and RLazyDS tutorials standalone, i.e. downloading input csv directly using `TFile::Cp` rather than relying on CMake.
 
 ## Class Reference Guide
 
