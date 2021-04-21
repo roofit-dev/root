@@ -104,6 +104,7 @@ ROOT_BUILD_OPTION(cocoa OFF "Use native Cocoa/Quartz graphics backend (MacOS X o
 ROOT_BUILD_OPTION(coverage OFF "Enable compile flags for coverage testing")
 ROOT_BUILD_OPTION(cuda OFF "Enable support for CUDA (requires CUDA toolkit >= 7.5)")
 ROOT_BUILD_OPTION(cxxmodules OFF "Enable support for C++ modules")
+ROOT_BUILD_OPTION(dataframe ON "Enable ROOT RDataFrame")
 ROOT_BUILD_OPTION(davix ON "Enable support for Davix (HTTP/WebDAV access)")
 ROOT_BUILD_OPTION(dcache OFF "Enable support for dCache (requires libdcap from DESY)")
 ROOT_BUILD_OPTION(exceptions ON "Enable compiler exception handling")
@@ -196,6 +197,7 @@ if(all)
  set(cefweb_defvalue ON)
  set(clad_defvalue ON)
  set(cuda_defvalue ON)
+ set(dataframe_defvalue ON)
  set(davix_defvalue ON)
  set(dcache_defvalue ON)
  set(fftw3_defvalue ON)
@@ -221,7 +223,7 @@ if(all)
  set(qt5web_defvalue ON)
  set(r_defvalue ON)
  set(roofit_defvalue ON)
- set(webui_defvalue ON)
+ set(webgui_defvalue ON)
  set(root7_defvalue ON)
  set(shadowpw_defvalue ON)
  set(sqlite_defvalue ON)
@@ -269,12 +271,10 @@ if(builtin_all)
   set(builtin_zlib_defvalue ON)
 endif()
 
-#---webgui by default always build together with root7-----------------------------------------
-set(webgui_defvalue ${root7})
-
 #---Changes in defaults due to platform-------------------------------------------------------
 if(WIN32)
   set(builtin_tbb_defvalue OFF)
+  set(dataframe_defvalue OFF)
   set(davix_defvalue OFF)
   set(imt_defvalue OFF)
   set(memstat_defvalue OFF)
@@ -287,6 +287,11 @@ if(WIN32)
 elseif(APPLE)
   set(cocoa_defvalue ON)
   set(x11_defvalue OFF)
+endif()
+
+# Disable RDataFrame on 32-bit UNIX platforms due to ROOT-9236
+if(UNIX AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(dataframe_defvalue OFF)
 endif()
 
 #---Options depending of CMake Generator-------------------------------------------------------
@@ -309,6 +314,9 @@ endforeach()
 if(NOT CMAKE_CXX_STANDARD GREATER 11)
   set(root7_defvalue OFF)
 endif()
+
+#---webgui by default always build together with root7-----------------------------------------
+set(webgui_defvalue ${root7_defvalue})
 
 #---roottest option implies testing
 if(roottest OR rootbench)

@@ -1713,6 +1713,19 @@ static const std::unordered_set<std::string> gIgnoredPCMNames = {"libCore",
                                                                  "G__GenVector32",
                                                                  "G__Smatrix32"};
 
+static void PrintDlError(const char *dyLibName, const char *modulename)
+{
+#ifdef R__WIN32
+   char dyLibError[1000];
+   FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                  dyLibError, sizeof(dyLibError), NULL);
+#else
+   const char *dyLibError = dlerror();
+#endif
+   ::Error("TCling::RegisterModule", "Cannot open shared library %s for dictionary %s:\n  %s", dyLibName, modulename,
+           (dyLibError) ? dyLibError : "");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Inject the module named "modulename" into cling; load all headers.
 /// headers is a 0-terminated array of header files to #include after
@@ -1820,27 +1833,13 @@ void TCling::RegisterModule(const char* modulename,
          // its symbols are not yet reachable from the process.
          // Recursive dlopen seems to work just fine.
          void* dyLibHandle = dlopen(dyLibName, RTLD_LAZY | RTLD_GLOBAL);
-         if (!dyLibHandle) {
-#ifdef R__WIN32
-            char dyLibError[1000];
-            FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                           dyLibError, sizeof(dyLibError), NULL);
-#else
-            const char* dyLibError = dlerror();
-            if (dyLibError)
-#endif
-            {
-               if (gDebug > 0) {
-                  ::Info("TCling::RegisterModule",
-                         "Cannot open shared library %s for dictionary %s:\n  %s",
-                         dyLibName, modulename, dyLibError);
-               }
-            }
-         } else {
+         if (dyLibHandle) {
             fRegisterModuleDyLibs.push_back(dyLibHandle);
             wasDlopened = true;
-         } // if (!dyLibHandle) .. else
-      } // if (dyLibName)
+         } else {
+            PrintDlError(dyLibName, modulename);
+         }
+      }
    } // if (!lateRegistration)
 
    if (hasHeaderParsingOnDemand && fwdDeclsCode){
@@ -3044,6 +3043,7 @@ void TCling::RegisterLoadedSharedLibrary(const char* filename)
 
 #if defined(R__MACOSX)
    // Check that this is not a system library
+   auto lenFilename = strlen(filename);
    if (!strncmp(filename, "/usr/lib/system/", 16)
        || !strncmp(filename, "/usr/lib/libc++", 15)
        || !strncmp(filename, "/System/Library/Frameworks/", 27)
@@ -3063,7 +3063,12 @@ void TCling::RegisterLoadedSharedLibrary(const char* filename)
        || strstr(filename, "/usr/lib/libCRFSuite")
        || strstr(filename, "/usr/lib/libpam")
        || strstr(filename, "/usr/lib/libOpenScriptingUtil")
-       || strstr(filename, "/usr/lib/libextension"))
+       || strstr(filename, "/usr/lib/libextension")
+       || strstr(filename, "/usr/lib/libAudioToolboxUtility")
+       // "cannot link directly with dylib/framework, your binary is not an allowed client of
+       // /Applications/Xcode-beta.app/Contents/Developer/Platforms/MacOSX.platform/Developer/
+       // SDKs/MacOSX.sdk/usr/lib/libAudioToolboxUtility.tbd for architecture x86_64
+       || (lenFilename > 4 && !strcmp(filename + lenFilename - 4, ".tbd")))
       return;
 #elif defined(__CYGWIN__)
    // Check that this is not a system library
