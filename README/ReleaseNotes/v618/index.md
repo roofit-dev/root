@@ -83,9 +83,12 @@ The methods could be replaced by equivalent methods with other signature:
   - The automatic placement of legend now "sees" TMultiGraph and THStack.
   - Improve and simplify the drawing the 2D histogram's option "ARR".
   - The option ARR can be combined with the option COL or COLZ.
+  - `TBox::DistancetoPrimitive` and `TBox::ExecuteEvent` now work in log scales (by Jérémie Dudouet).
 
 ## 3D Graphics Libraries
 
+  - Make sure a TF3 is painted the same way in GL and non-GL mode.
+    The mismatch was reported in [this post](https://root-forum.cern.ch/t/how-to-specify-the-level-value-in-isosurface-drawing-with-tf3-and-gl/32179)
 
 ## Geometry Libraries
 
