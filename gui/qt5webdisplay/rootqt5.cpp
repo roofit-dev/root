@@ -21,7 +21,7 @@
 #include <QWebEngineProfile>
 #include <QtGlobal>
 
-#if QT_VERSION >= 0x051200
+#if QT_VERSION >= 0x050C00
 #include <QWebEngineUrlScheme>
 #endif
 
@@ -74,8 +74,10 @@ protected:
 
       virtual ~Qt5Creator()
       {
-         if (fHandler)
-            QWebEngineProfile::defaultProfile()->removeUrlSchemeHandler(fHandler.get());
+         /** Code executed during exit and sometime crashes.
+          *  Disable it, while not clear if defaultProfile can be still used - seems to be not */
+         // if (fHandler)
+         //   QWebEngineProfile::defaultProfile()->removeUrlSchemeHandler(fHandler.get());
       }
 
       std::unique_ptr<RWebDisplayHandle> Display(const RWebDisplayArgs &args) override
@@ -90,7 +92,7 @@ protected:
                return nullptr;
             }
 
-            #if QT_VERSION >= 0x051200
+            #if QT_VERSION >= 0x050C00
             QWebEngineUrlScheme scheme("rootscheme");
             scheme.setSyntax(QWebEngineUrlScheme::Syntax::HostAndPort);
             scheme.setDefaultPort(2345);
@@ -100,7 +102,7 @@ protected:
 
             qargv[0] = gApplication->Argv(0);
             qargv[1] = nullptr;
-            
+
             qapp = new QApplication(qargc, qargv);
          }
 
