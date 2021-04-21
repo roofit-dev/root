@@ -9,14 +9,21 @@
  *************************************************************************/
 
 #include <ROOT/RDF/InterfaceUtils.hxx>
+#include <ROOT/RDataFrame.hxx>
+#include <ROOT/RDF/RInterface.hxx>
 #include <ROOT/RStringView.hxx>
 #include <ROOT/TSeq.hxx>
 #include <RtypesCore.h>
+#include <TDirectory.h>
+#include <TChain.h>
 #include <TClass.h>
+#include <TClassEdit.h>
 #include <TFriendElement.h>
 #include <TInterpreter.h>
 #include <TObject.h>
 #include <TRegexp.h>
+#include <TPRegexp.h>
+#include <TROOT.h>
 #include <TString.h>
 #include <TTree.h>
 
@@ -49,6 +56,106 @@ namespace RDF {
 // the one in the vector
 class RActionBase;
 
+bool InterpreterDeclare(const std::string &code)
+{
+   return gInterpreter->Declare(code.c_str());
+}
+
+std::pair<Long64_t, int> InterpreterCalc(const std::string &code)
+{
+   TInterpreter::EErrorCode errorCode(TInterpreter::kNoError);
+   auto res = gInterpreter->Calc(code.c_str(), &errorCode);
+   return std::make_pair(res, errorCode);
+}
+
+bool IsImplicitMTEnabled()
+{
+   return ROOT::IsImplicitMTEnabled();
+}
+
+HeadNode_t CreateSnaphotRDF(const ColumnNames_t &validCols,
+                            std::string_view treeName,
+                            std::string_view fileName,
+                            bool isLazy,
+                            RLoopManager &loopManager,
+                            std::unique_ptr<RDFInternal::RActionBase> actionPtr)
+{
+   // create new RDF
+   ::TDirectory::TContext ctxt;
+   auto snapshotRDF = std::make_shared<ROOT::RDataFrame>(treeName, fileName, validCols);
+   auto snapshotRDFResPtr = MakeResultPtr(snapshotRDF, loopManager, std::move(actionPtr));
+
+   if (!isLazy) {
+      *snapshotRDFResPtr;
+   }
+   return snapshotRDFResPtr;
+}
+
+std::string DemangleTypeIdName(const std::type_info &typeInfo)
+{
+   int dummy(0);
+   return TClassEdit::DemangleTypeIdName(typeInfo, dummy);
+}
+
+ColumnNames_t ConvertRegexToColumns(RDFInternal::RBookedCustomColumns & customColumns,
+                                    TTree *tree,
+                                    ROOT::RDF::RDataSource *dataSource,
+                                    std::string_view columnNameRegexp,
+                                    std::string_view callerName)
+{
+   const auto theRegexSize = columnNameRegexp.size();
+   std::string theRegex(columnNameRegexp);
+
+   const auto isEmptyRegex = 0 == theRegexSize;
+   // This is to avoid cases where branches called b1, b2, b3 are all matched by expression "b"
+   if (theRegexSize > 0 && theRegex[0] != '^')
+      theRegex = "^" + theRegex;
+   if (theRegexSize > 0 && theRegex[theRegexSize - 1] != '$')
+      theRegex = theRegex + "$";
+
+   ColumnNames_t selectedColumns;
+   selectedColumns.reserve(32);
+
+   // Since we support gcc48 and it does not provide in its stl std::regex,
+   // we need to use TRegexp
+   TPRegexp regexp(theRegex);
+   for (auto &&branchName : customColumns.GetNames()) {
+      if ((isEmptyRegex || 0 != regexp.Match(branchName.c_str())) &&
+            !RDFInternal::IsInternalColumn(branchName)) {
+         selectedColumns.emplace_back(branchName);
+      }
+   }
+
+   if (tree) {
+      auto branchNames = RDFInternal::GetTopLevelBranchNames(*tree);
+      for (auto &branchName : branchNames) {
+         if (isEmptyRegex || 0 != regexp.Match(branchName.c_str())) {
+            selectedColumns.emplace_back(branchName);
+         }
+      }
+   }
+
+   if (dataSource) {
+      auto &dsColNames = dataSource->GetColumnNames();
+      for (auto &dsColName : dsColNames) {
+         if ((isEmptyRegex || 0 != regexp.Match(dsColName.c_str())) &&
+               !RDFInternal::IsInternalColumn(dsColName)) {
+            selectedColumns.emplace_back(dsColName);
+         }
+      }
+   }
+
+   if (selectedColumns.empty()) {
+      std::string text(callerName);
+      if (columnNameRegexp.empty()) {
+         text = ": there is no column available to match.";
+      } else {
+         text = ": regex \"" + std::string(columnNameRegexp) + "\" did not match any column.";
+      }
+      throw std::runtime_error(text);
+   }
+   return selectedColumns;
+}
 
 void GetTopLevelBranchNamesImpl(TTree &t, std::set<std::string> &bNamesReg, ColumnNames_t &bNames,
                                 std::set<TTree *> &analysedTrees)
