@@ -70,6 +70,10 @@ if(NOT ROOT_mlp_FOUND)
    set(mlp_veto legacy/mlp/*.C)
 endif()
 
+if(NOT ROOT_spectrum_FOUND)
+   set(spectrum_veto spectrum/*.C)
+endif()
+
 if(NOT ROOT_roofit_FOUND)
   set(roofit_veto  fit/RoofitDemo.C
                    roofit/*.C roostats/*.C histfactory/*.C
@@ -223,10 +227,11 @@ endif()
 
 #---These ones are disabled !!! ------------------------------------
 set(extra_veto
+  legacy/benchmarks.C
   legacy/htmlex.C
   legacy/rootalias.C          # Helper macro
-  legacy/rootlogon.C          # Helper macro
-  legacy/rootlogoff.C         # Helper macro
+  rootlogon.C          # Helper macro
+  rootlogoff.C         # Helper macro
   legacy/rootmarks.C          # Instrumentation. Not a standalone tutorial
   legacy/memstat/memstatExample.C   # Instrumentation. Not a standalone tutorial
   multicore/mp_H1_lambdas.C # not a tutorial; used by mp104_processH1.C et al.
@@ -274,6 +279,7 @@ set(all_veto hsimple.C
              ${bits32_veto}
              ${xrootd_veto}
              ${mlp_veto}
+             ${spectrum_veto}
              )
 
 file(GLOB_RECURSE tutorials RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.C)
