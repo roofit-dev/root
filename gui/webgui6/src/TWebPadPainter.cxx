@@ -10,8 +10,6 @@
 
 #include "TWebPadPainter.h"
 #include "TCanvas.h"
-#include "TObjString.h"
-#include "TPoint.h"
 #include "TError.h"
 #include "TImage.h"
 #include "TROOT.h"
@@ -28,109 +26,28 @@ Implement TVirtualPadPainter which abstracts painting operations.
 */
 
 
-
-////////////////////////////////////////////////////////////////////////////////
-///Destructor. We should destruct all primitives.
-
-TWebPadPainter::~TWebPadPainter()
-{
-   ResetPainting();
-}
-
-void TWebPadPainter::SetWebCanvasSize(UInt_t w, UInt_t h)
-{
-   fCw = w;
-   fCh = h;
-   fKx = (w>0) ? 1./w : 1.;
-   fKy = (h>0) ? 1./h : 1.;
-}
-
-
-TWebPainting *TWebPadPainter::TakePainting()
-{
-   TWebPainting *res = fPainting;
-   fPainting = nullptr;
-   return res;
-}
-
-void TWebPadPainter::ResetPainting()
-{
-   if (fPainting) delete fPainting;
-   fPainting = nullptr;
-   if (fAttr) fAttrChanged = attrAll;
-}
-
-TWebPainterAttributes *TWebPadPainter::Attr(unsigned mask)
-{
-   fAttrChanged |= mask;
-   if (!fAttr) fAttr = std::make_unique<TWebPainterAttributes>();
-   return fAttr.get();
-}
-
-Float_t *TWebPadPainter::Reserve(Int_t sz)
-{
-   if (!fPainting) fPainting = new TWebPainting();
-   return fPainting->Reserve(sz);
-}
-
 //////////////////////////////////////////////////////////////////////////
 /// Store operation identifier with appropriate attributes
 
-void TWebPadPainter::StoreOperation(const char* opt, TObject* obj, unsigned attrmask)
+Float_t *TWebPadPainter::StoreOperation(const std::string &oper, unsigned attrkind, int opersize)
 {
-   if (!fPainting) fPainting = new TWebPainting();
+   if (!fPainting) return nullptr;
 
-   if (fAttrChanged & attrmask) {
-      fPainting->Add(fAttr->Clone(), "attr");
-      fAttrChanged = 0;
-   }
-   if (!obj) obj = new TObjString("any");
-   fPainting->Add(obj, opt);
-}
+   if (attrkind & attrLine)
+      fPainting->AddLineAttr(*this);
 
-////////////////////////////////////////////////////////////////////////////////
-/// Create a gVirtualX Pixmap.
+   if (attrkind & attrFill)
+      fPainting->AddFillAttr(*this);
 
-Int_t TWebPadPainter::CreateDrawable(UInt_t /* w */, UInt_t /* h */)
-{
-   // return gVirtualX->OpenPixmap(Int_t(w), Int_t(h));
-   return 111222333; // magic number, should not be used at all
-}
+   if (attrkind & attrMarker)
+      fPainting->AddMarkerAttr(*this);
 
+   if (attrkind & attrText)
+      fPainting->AddTextAttr(*this);
 
-////////////////////////////////////////////////////////////////////////////////
-/// Clear the current gVirtualX window.
+   fPainting->AddOper(oper);
 
-void TWebPadPainter::ClearDrawable()
-{
-   // gVirtualX->ClearWindow();
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Copy a gVirtualX pixmap.
-
-void TWebPadPainter::CopyDrawable(Int_t, Int_t, Int_t)
-{
-   // gVirtualX->CopyPixmap(id, px, py);
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Close the current gVirtualX pixmap.
-
-void TWebPadPainter::DestroyDrawable(Int_t /* device */)
-{
-   // gVirtualX->ClosePixmap();
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Select the window in which the graphics will go.
-
-void TWebPadPainter::SelectDrawable(Int_t /* device */)
-{
-   // gVirtualX->SelectWindow(device);
+   return fPainting->Reserve(opersize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -148,15 +65,16 @@ void TWebPadPainter::DrawPixels(const unsigned char * /*pixelData*/, UInt_t /*wi
 
 void TWebPadPainter::DrawLine(Double_t x1, Double_t y1, Double_t x2, Double_t y2)
 {
-   if (GetLineWidth()<=0) return;
+   if (GetLineWidth() <= 0)
+      return;
 
-   StoreOperation("line", nullptr, attrLine);
-
-   Float_t *buf = Reserve(4);
-   buf[0] = x1;
-   buf[1] = y1;
-   buf[2] = x2;
-   buf[3] = y2;
+   auto buf = StoreOperation("pline:2", attrLine, 4);
+   if (buf) {
+      buf[0] = x1;
+      buf[1] = y1;
+      buf[2] = x2;
+      buf[3] = y2;
+   }
 }
 
 
@@ -167,13 +85,15 @@ void TWebPadPainter::DrawLineNDC(Double_t u1, Double_t v1, Double_t u2, Double_t
 {
    if (GetLineWidth()<=0) return;
 
-   StoreOperation("linendc", nullptr, attrLine);
+   ::Error("DrawLineNDC", "Not supported correctly");
 
-   Float_t *buf = Reserve(4);
-   buf[0] = u1;
-   buf[1] = v1;
-   buf[2] = u2;
-   buf[3] = v2;
+   auto buf = StoreOperation("pline:2", attrLine, 4);
+   if (buf) {
+      buf[0] = u1;
+      buf[1] = v1;
+      buf[2] = u2;
+      buf[3] = v2;
+   }
 }
 
 
@@ -184,16 +104,19 @@ void TWebPadPainter::DrawBox(Double_t x1, Double_t y1, Double_t x2, Double_t y2,
 {
    if (GetLineWidth()<=0 && mode == TVirtualPadPainter::kHollow) return;
 
-   if (mode == TVirtualPadPainter::kHollow)
-      StoreOperation("rect", nullptr, attrLine); // only border
-   else
-      StoreOperation("box", nullptr, attrFill); // only fill
+   Float_t *buf = nullptr;
 
-   Float_t *buf = Reserve(4);
-   buf[0] = x1;
-   buf[1] = y1;
-   buf[2] = x2;
-   buf[3] = y2;
+   if (mode == TVirtualPadPainter::kHollow)
+      buf = StoreOperation("rect", attrLine, 4); // only border
+   else
+      buf = StoreOperation("bbox", attrFill, 4); // only fill
+
+   if (buf) {
+      buf[0] = x1;
+      buf[1] = y1;
+      buf[2] = x2;
+      buf[3] = y2;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -201,38 +124,31 @@ void TWebPadPainter::DrawBox(Double_t x1, Double_t y1, Double_t x2, Double_t y2,
 
 void TWebPadPainter::DrawFillArea(Int_t nPoints, const Double_t *xs, const Double_t *ys)
 {
-   if (nPoints < 3) {
-      ::Error("TWebPadPainter::DrawFillArea", "invalid number of points %d", nPoints);
+   if ((GetFillStyle() <= 0) || (nPoints < 3))
       return;
-   }
 
-   StoreOperation("fillarea", new TObjString(TString::Itoa(nPoints, 10)), attrFill);
-
-   Float_t *buf = Reserve(nPoints*2);
-   for (Int_t n=0;n<nPoints;++n) {
-      buf[n*2] = xs[n];
-      buf[n*2+1] = ys[n];
-   }
+   auto buf = StoreOperation("pfill:" + std::to_string(nPoints), attrFill, nPoints * 2);
+   if (buf)
+      for (Int_t n = 0; n < nPoints; ++n) {
+         buf[n * 2] = xs[n];
+         buf[n * 2 + 1] = ys[n];
+      }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Paint filled area.
 
 void TWebPadPainter::DrawFillArea(Int_t nPoints, const Float_t *xs, const Float_t *ys)
 {
-   if (nPoints < 3) {
-      ::Error("TWebPadPainter::DrawFillArea", "invalid number of points %d", nPoints);
+   if ((GetFillStyle() <= 0) || (nPoints < 3))
       return;
-   }
 
-   StoreOperation("fillarea", new TObjString(TString::Itoa(nPoints, 10)), attrFill);
-
-   Float_t *buf = Reserve(nPoints*2);
-   for (Int_t n=0;n<nPoints;++n) {
-      buf[n*2] = xs[n];
-      buf[n*2+1] = ys[n];
-   }
+   auto buf = StoreOperation("pfill:" + std::to_string(nPoints), attrFill, nPoints * 2);
+   if (buf)
+      for (Int_t n = 0; n < nPoints; ++n) {
+         buf[n * 2] = xs[n];
+         buf[n * 2 + 1] = ys[n];
+      }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -240,184 +156,135 @@ void TWebPadPainter::DrawFillArea(Int_t nPoints, const Float_t *xs, const Float_
 
 void TWebPadPainter::DrawPolyLine(Int_t nPoints, const Double_t *xs, const Double_t *ys)
 {
-   if (GetLineWidth()<=0) return;
-
-   if (nPoints < 2) {
-      ::Error("TWebPadPainter::DrawPolyLine", "invalid number of points");
+   if ((GetLineWidth() <= 0) || (nPoints < 2))
       return;
-   }
 
-   StoreOperation("polyline", new TObjString(TString::Itoa(nPoints, 10)), attrLine);
-
-   Float_t *buf = Reserve(nPoints*2);
-   for (Int_t n=0;n<nPoints;++n) {
-      buf[n*2] = xs[n];
-      buf[n*2+1] = ys[n];
-   }
+   auto buf = StoreOperation("pline:" + std::to_string(nPoints), attrLine, nPoints * 2);
+   if (buf)
+      for (Int_t n = 0; n < nPoints; ++n) {
+         buf[n * 2] = xs[n];
+         buf[n * 2 + 1] = ys[n];
+      }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Paint polyline.
 
 void TWebPadPainter::DrawPolyLine(Int_t nPoints, const Float_t *xs, const Float_t *ys)
 {
-   if (GetLineWidth()<=0) return;
-
-   if (nPoints < 2) {
-      ::Error("TWebPadPainter::DrawPolyLine", "invalid number of points");
+   if ((GetLineWidth() <= 0) || (nPoints < 2))
       return;
-   }
 
-   StoreOperation("polyline", new TObjString(TString::Itoa(nPoints, 10)), attrLine);
-
-   Float_t *buf = Reserve(nPoints*2);
-   for (Int_t n=0;n<nPoints;++n) {
-      buf[n*2] = xs[n];
-      buf[n*2+1] = ys[n];
-   }
+   auto buf = StoreOperation("pline:" + std::to_string(nPoints), attrLine, nPoints * 2);
+   if (buf)
+      for (Int_t n = 0; n < nPoints; ++n) {
+         buf[n * 2] = xs[n];
+         buf[n * 2 + 1] = ys[n];
+      }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Paint polyline in normalized coordinates.
 
 void TWebPadPainter::DrawPolyLineNDC(Int_t nPoints, const Double_t *u, const Double_t *v)
 {
-   if (GetLineWidth()<=0) return;
-
-   if (nPoints < 2) {
-      ::Error("TWebPadPainter::DrawPolyLineNDC", "invalid number of points %d", nPoints);
+   if ((GetLineWidth() <= 0) || (nPoints < 2))
       return;
-   }
 
-   StoreOperation("polylinendc", new TObjString(TString::Itoa(nPoints, 10)), attrLine);
+   ::Error("DrawPolyLineNDC", "Not supported correctly");
 
-   Float_t *buf = Reserve(nPoints*2);
-   for (Int_t n=0;n<nPoints;++n) {
-      buf[n*2] = u[n];
-      buf[n*2+1] = v[n];
-   }
+   auto buf = StoreOperation("pline:" + std::to_string(nPoints), attrLine, nPoints * 2);
+   if (buf)
+      for (Int_t n = 0; n < nPoints; ++n) {
+         buf[n * 2] = u[n];
+         buf[n * 2 + 1] = v[n];
+      }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Paint polymarker.
 
 void TWebPadPainter::DrawPolyMarker(Int_t nPoints, const Double_t *x, const Double_t *y)
 {
-   if (nPoints < 1) {
-      ::Error("TWebPadPainter::DrawPolyMarker", "invalid number of points %d", nPoints);
+   if (nPoints < 1)
       return;
-   }
 
-   StoreOperation("polymarker", new TObjString(TString::Itoa(nPoints, 10)), attrLine | attrMarker);
+   auto buf = StoreOperation(std::string("pmark:") + std::to_string(nPoints), attrLine | attrMarker, nPoints * 2);
 
-   Float_t *buf = Reserve(nPoints*2);
-   for (Int_t n=0;n<nPoints;++n) {
-      buf[n*2] = x[n];
-      buf[n*2+1] = y[n];
-   }
+   if (buf)
+      for (Int_t n = 0; n < nPoints; ++n) {
+         buf[n * 2] = x[n];
+         buf[n * 2 + 1] = y[n];
+      }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Paint polymarker.
 
 void TWebPadPainter::DrawPolyMarker(Int_t nPoints, const Float_t *x, const Float_t *y)
 {
-   if (nPoints < 1) {
-      ::Error("TWebPadPainter::DrawPolyMarker", "invalid number of points %d", nPoints);
+   if (nPoints < 1)
       return;
-   }
 
-   StoreOperation("polymarker", new TObjString(TString::Itoa(nPoints, 10)), attrLine | attrMarker);
+   auto buf = StoreOperation(std::string("pmark:") + std::to_string(nPoints), attrLine | attrMarker, nPoints * 2);
 
-   Float_t *buf = Reserve(nPoints*2);
-   for (Int_t n=0;n<nPoints;++n) {
-      buf[n*2] = x[n];
-      buf[n*2+1] = y[n];
-   }
+   if (buf)
+      for (Int_t n = 0; n < nPoints; ++n) {
+         buf[n * 2] = x[n];
+         buf[n * 2 + 1] = y[n];
+      }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Paint text.
 
 void TWebPadPainter::DrawText(Double_t x, Double_t y, const char *text, ETextMode /*mode*/)
 {
-   StoreOperation("text", new TObjString(text), attrText);
-
-   Float_t *buf = Reserve(2);
-   buf[0] = x;
-   buf[1] = y;
+   auto buf = StoreOperation(std::string("text:") + text, attrText, 2);
+   if (buf) {
+      buf[0] = x;
+      buf[1] = y;
+   }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Special version working with wchar_t and required by TMathText.
 
 void TWebPadPainter::DrawText(Double_t x, Double_t y, const wchar_t * /*text*/, ETextMode /*mode*/)
 {
-   StoreOperation("text", new TObjString("wchar_t"), attrText);
-
-   Float_t *buf = Reserve(2);
-   buf[0] = x;
-   buf[1] = y;
+   auto buf = StoreOperation(std::string("text:") + "wchar_t", attrText, 2);
+   if (buf) {
+      buf[0] = x;
+      buf[1] = y;
+   }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Paint text in normalized coordinates.
 
 void TWebPadPainter::DrawTextNDC(Double_t u, Double_t v, const char *text, ETextMode /*mode*/)
 {
-   StoreOperation("textndc", new TObjString(text), attrText);
+   ::Error("DrawTextNDC", "Not supported correctly");
 
-   Float_t *buf = Reserve(2);
-   buf[0] = u;
-   buf[1] = v;
+   auto buf = StoreOperation(std::string("text:") + text, attrText, 2);
+
+   if (buf) {
+      buf[0] = u;
+      buf[1] = v;
+   }
 }
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Save the image displayed in the canvas pointed by "pad" into a binary file.
-
-void TWebPadPainter::SaveImage(TVirtualPad * /*pad*/, const char * /*fileName*/, Int_t /*type*/) const
-{
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Paint text in normalized coordinates.
 
 void TWebPadPainter::DrawTextNDC(Double_t  u , Double_t v, const wchar_t * /*text*/, ETextMode /*mode*/)
 {
-   StoreOperation("textndc", new TObjString("wchar_t"), attrText);
+   ::Error("DrawTextNDC", "Not supported correctly");
 
-   Float_t *buf = Reserve(2);
-   buf[0] = u;
-   buf[1] = v;
-}
+   auto buf = StoreOperation(std::string("text:") + "wchar_t", attrText, 2);
 
-
-////////////////////////////////////////////////////////////////////////////////////
-/// Reimplement X function
-
-void TWebPadPainter::DrawFillArea(Int_t np, TPoint *xy)
-{
-   if (np < 3) {
-      ::Error("TWebPadPainter::DrawFillArea", "invalid number of points %d", np);
-      return;
+   if (buf) {
+      buf[0] = u;
+      buf[1] = v;
    }
-
-   StoreOperation("fillarea", new TObjString(TString::Itoa(np, 10)), attrFill);
-
-   Float_t *buf = Reserve(np*2);
-   for (Int_t n=0;n<np;++n) {
-      buf[n*2] = gPad->PixeltoX(xy[n].fX);
-      buf[n*2+1] = gPad->PixeltoY(xy[n].fY);
-   }
-
 }
-
