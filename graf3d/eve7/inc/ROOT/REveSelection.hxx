@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
+// @(#)root/eve7:$Id$
 // Author: Matevz Tadel 2007
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -19,6 +19,11 @@
 namespace ROOT {
 namespace Experimental {
 
+////////////////////////////////////////////////////////////////////////////////
+/// REveSelection
+/// Container for selected and highlighted elements.
+////////////////////////////////////////////////////////////////////////////////
+
 class REveSelection : public REveElement,
                       public REveAunt
 {
@@ -34,10 +39,10 @@ public:
 
    struct Record
    {
-      REveElement    *f_primary; // it's also implied through the map -- XXXX do i need it ????
+      REveElement    *f_primary{nullptr}; ///<! it's also implied through the map -- XXXX do i need it ????
       Set_t           f_implied;
       std::set<int>   f_sec_idcs;
-      bool            f_is_sec;   // is secondary-selected -- XXXX do i need it ????
+      bool            f_is_sec{false};   ///<! is secondary-selected -- XXXX do i need it ????
 
       Record(REveElement *el) :
          f_primary (el),
@@ -57,19 +62,19 @@ public:
       bool is_secondary() const { return f_is_sec; }
    };
 
-   typedef std::map<REveElement*, Record> SelMap_t;
-   typedef SelMap_t::iterator             SelMap_i;
+   typedef std::map<REveElement*, Record>  SelMap_t;
+   typedef SelMap_t::iterator              SelMap_i;
 
 private:
    REveSelection(const REveSelection &);            // Not implemented
    REveSelection &operator=(const REveSelection &); // Not implemented
 
 protected:
-   Int_t            fPickToSelect;
-   Bool_t           fActive;
-   Bool_t           fIsMaster;
+   Int_t            fPickToSelect{0};  ///<!
+   Bool_t           fActive{kFALSE};   ///<!
+   Bool_t           fIsMaster{kFALSE}; ///<!
 
-   SelMap_t         fMap;
+   SelMap_t         fMap;              ///<!
 
    Record* find_record(REveElement *el)
    {
@@ -77,13 +82,13 @@ protected:
       return i != fMap.end() ? & i->second : nullptr;
    }
 
-   void DoElementSelect  (SelMap_i entry);
-   void DoElementUnselect(SelMap_i entry);
+   void DoElementSelect  (SelMap_i &entry);
+   void DoElementUnselect(SelMap_i &entry);
 
-   void RecheckImpliedSet(SelMap_i smi);
+   void RecheckImpliedSet(SelMap_i &entry);
 
 public:
-   REveSelection(const std::string& n = "REveSelection", const std::string& t = "", Color_t col = kViolet);
+   REveSelection(const std::string &n = "REveSelection", const std::string &t = "", Color_t col = kViolet);
    virtual ~REveSelection();
 
    void   SetHighlightMode();
@@ -96,12 +101,12 @@ public:
 
 
    // Abstract methods of REveAunt
-   bool HasNiece(REveElement *el) const; // override;
-   bool HasNieces() const; // override;
-   bool AcceptNiece(REveElement *el); // override;
-   void AddNieceInternal(REveElement *el); // override;
-   void RemoveNieceInternal(REveElement *el); // override;
-   void RemoveNieces(); // override;
+   bool HasNiece(REveElement *el) const override;
+   bool HasNieces() const override;
+   bool AcceptNiece(REveElement *el) override;
+   void AddNieceInternal(REveElement *el) override;
+   void RemoveNieceInternal(REveElement *el) override;
+   void RemoveNieces() override;
 
    void RemoveImpliedSelected(REveElement *el);
 
@@ -133,11 +138,8 @@ public:
 
    // ----------------------------------------------------------------
 
-   Int_t WriteCoreJson(nlohmann::json &cj, Int_t rnr_offset); // override;
+   Int_t WriteCoreJson(nlohmann::json &cj, Int_t rnr_offset) override;
 
-   // ----------------------------------------------------------------
-
-   ClassDef(REveSelection, 0); // Container for selected and highlighted elements.
 };
 
 } // namespace Experimental

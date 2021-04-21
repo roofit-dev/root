@@ -2,7 +2,7 @@
 // Authors: Matevz Tadel & Alja Mrak-Tadel: 2006, 2007, 2018
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -16,9 +16,10 @@
 #include "TMethod.h"
 #include "TMethodArg.h"
 #include "TColor.h"
-
+#include "TClass.h"
 
 #include "json.hpp"
+#include <sstream>
 
 
 using namespace ROOT::Experimental;
@@ -34,10 +35,10 @@ Color_t  REveDataCollection::fgDefaultColor  = kBlue;
 REveDataCollection::REveDataCollection(const std::string& n, const std::string& t) :
    REveElement(n, t)
 {
-   fChildClass = REveDataItem::Class();
+   fChildClass = TClass::GetClass<REveDataItem>();
 
    SetupDefaultColorAndTransparency(fgDefaultColor, true, true);
-   
+
    _handler_func = 0;
    _handler_func_ids = 0;
 }
@@ -56,18 +57,18 @@ void REveDataCollection::SetFilterExpr(const TString& filter)
 {
    static const REveException eh("REveDataCollection::SetFilterExpr ");
 
-   if ( ! fItemClass) throw eh + "item class has to be set before the filter expression.";
+   if (!fItemClass) throw eh + "item class has to be set before the filter expression.";
 
    fFilterExpr = filter;
 
-   TString s;
-   s.Form("*((std::function<bool(%s*)>*)%p) = [](%s* p){%s &i=*p; return (%s); }",
-          fItemClass->GetName(), &fFilterFoo, fItemClass->GetName(), fItemClass->GetName(),
-          fFilterExpr.Data());
+   std::stringstream s;
+   s << "*((std::function<bool(" << fItemClass->GetName() << "*)>*)" << std::hex << std::showbase << (size_t)&fFilterFoo
+     << ") = [](" << fItemClass->GetName() << "* p){" << fItemClass->GetName() << " &i=*p; return ("
+     << fFilterExpr.Data() << "); }";
 
    // printf("%s\n", s.Data());
    try {
-      gROOT->ProcessLine(s.Data());
+      gROOT->ProcessLine(s.str().c_str());
       // AMT I don't know why ApplyFilter call is separated
       ApplyFilter();
    }
@@ -90,8 +91,6 @@ void REveDataCollection::ApplyFilter()
 
       ii.fItemPtr->SetFiltered( ! res );
 
-      // AMT : not sure if ApplyFilter is the right place to set visibility
-      ii.fItemPtr->SetRnrSelf( res );
       ids.push_back(idx++);
    }
    StampObjProps();
@@ -108,11 +107,9 @@ Int_t REveDataCollection::WriteCoreJson(nlohmann::json &j, Int_t rnr_offset)
 
    TIter x( fItemClass->GetListOfAllPublicMethods());
    while (TObject *obj = x()) {
-      // printf("func %s \n", obj->GetName());
+      TMethod *method = dynamic_cast<TMethod *>(obj);
+
       nlohmann::json m;
-
-
-      TMethod* method = dynamic_cast<TMethod*>(obj);
       m["name"] = method->GetPrototype();
       j["publicFunction"].push_back(m);
    }
@@ -227,7 +224,7 @@ void REveDataItem::SetFiltered(bool f)
 REveDataTable::REveDataTable(const std::string& n, const std::string& t) :
    REveElement(n, t)
 {
-   fChildClass = REveDataColumn::Class();
+   fChildClass = TClass::GetClass<REveDataColumn>();
 }
 
 void REveDataTable::PrintTable()
@@ -258,16 +255,12 @@ Int_t REveDataTable::WriteCoreJson(nlohmann::json &j, Int_t rnr_offset)
 
    nlohmann::json jarr = nlohmann::json::array();
 
-   for (Int_t i = 0; i< Nit; ++i)
-   {
-      void         *data = fCollection->GetDataPtr(i);
+   for (Int_t i = 0; i < Nit; ++i) {
+      void *data = fCollection->GetDataPtr(i);
       nlohmann::json row;
-      for (auto & chld : fChildren)
-      {
-         auto clmn = dynamic_cast<REveDataColumn*>(chld);
+      for (auto &chld : fChildren) {
+         auto clmn = dynamic_cast<REveDataColumn *>(chld);
          row[chld->GetCName()] = clmn->EvalExpr(data);
-         // printf(" %10s |", clmn->EvalExpr(data).c_str());
-
       }
       jarr.push_back(row);
    }
@@ -315,14 +308,14 @@ void REveDataColumn::SetExpressionAndType(const std::string& expr, FieldType_e t
       case FT_String: rtyp = "std::string"; fooptr = &fStringFoo; break;
    }
 
-   TString s;
-   s.Form("*((std::function<%s(%s*)>*)%p) = [](%s* p){%s &i=*p; return (%s); }",
-          rtyp, icls->GetName(), fooptr, icls->GetName(), icls->GetName(),
-          fExpression.Data());
+   std::stringstream s;
+   s << "*((std::function<" << rtyp << "(" << icls->GetName() << "*)>*)" << std::hex << std::showbase << (size_t)fooptr
+     << ") = [](" << icls->GetName() << "* p){" << icls->GetName() << " &i=*p; return (" << fExpression.Data()
+     << "); }";
 
    // printf("%s\n", s.Data());
    try {
-      gROOT->ProcessLine(s.Data());
+      gROOT->ProcessLine(s.str().c_str());
    }
    catch (const std::exception &exc)
    {

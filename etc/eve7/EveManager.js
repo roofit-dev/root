@@ -111,6 +111,7 @@
       if (!cmd || !this.handle) return;
       var obj = { "mir": cmd.func, "fElementId": cmd.elementid, "class": cmd.elementclass };
       this.handle.Send(JSON.stringify(obj));
+      if ((cmd.name == "QuitRoot") && window) window.close();
    }
 
    EveManager.prototype.SendMIR = function(mir)
@@ -386,6 +387,7 @@
          if (n < nModified )
          {
             var obj = this.map[em.fElementId];
+            if(!obj) {console.log("ERRROR can't find element in map ", em); continue;}
             var tag = "changeBit";
             if (em.changeBit & this.EChangeBits.kCBVisibility)
             {
@@ -395,6 +397,7 @@
                }
                if (obj.fRnrChildren != em.fRnrChildren) {
                   obj.fRnrChildren = em.fRnrChildren;
+                  console.log("xxxdxx visibility children");
                   tag = "visibilityChildrenChanged";
                }
             }

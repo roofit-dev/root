@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
+// @(#)root/eve7:$Id$
 // Authors: Matevz Tadel & Alja Mrak-Tadel: 2006, 2007, 2018
 
 /*************************************************************************
- * Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -15,11 +15,11 @@
 
 #include <ROOT/REveElement.hxx>
 
-#include "TClass.h"
-
 #include <functional>
 #include <vector>
 #include <iostream>
+
+class TClass;
 
 namespace ROOT {
 namespace Experimental {
@@ -47,6 +47,7 @@ public:
       void *fDataPtr{nullptr};
       REveDataItem *fItemPtr{nullptr};
 
+      ItemInfo_t() = default;
       ItemInfo_t(void *dp, REveDataItem *di) : fDataPtr(dp), fItemPtr(di) {}
    };
 
@@ -86,8 +87,6 @@ public:
    {
       _handler_func_ids= handler_func;
    }
-
-   ClassDef(REveDataCollection, 0);
 };
 
 //==============================================================================
@@ -107,9 +106,7 @@ public:
    virtual void SetItemColorRGB(UChar_t r, UChar_t g, UChar_t b);
    virtual void SetItemRnrSelf(bool);
 
-   Int_t WriteCoreJson(nlohmann::json &cj, Int_t rnr_offset); // override;
-
-   ClassDef(REveDataItem, 0);
+   Int_t WriteCoreJson(nlohmann::json &cj, Int_t rnr_offset) override;
 };
 
 //==============================================================================
@@ -130,8 +127,6 @@ public:
    virtual Int_t WriteCoreJson(nlohmann::json &cj, Int_t rnr_offset);
 
    void AddNewColumn(const std::string& expr, const std::string& title, int prec = 2);
-
-   ClassDef(REveDataTable, 0);
 };
 
 //==============================================================================
@@ -162,8 +157,6 @@ public:
    void SetPrecision(Int_t prec);
 
    std::string EvalExpr(void *iptr);
-
-   ClassDef(REveDataColumn, 0);
 };
 
 

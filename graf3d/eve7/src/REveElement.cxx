@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
+// @(#)root/eve7:$Id$
 // Authors: Matevz Tadel & Alja Mrak-Tadel: 2006, 2007, 2018
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -50,25 +50,7 @@ fChildClass member.
 
 REveElement::REveElement(const std::string& name, const std::string& title) :
    fName                (name),
-   fTitle               (title),
-   fAunts               (),
-   fChildren            (),
-   fVizTag              (),
-   fNumChildren         (0),
-   fDenyDestroy         (0),
-   fDestroyOnZeroRefCnt (kTRUE),
-   fRnrSelf             (kTRUE),
-   fRnrChildren         (kTRUE),
-   fCanEditMainColor    (kFALSE),
-   fCanEditMainTransparency(kFALSE),
-   fCanEditMainTrans    (kFALSE),
-   fMainTransparency    (0),
-   fMainColorPtr        (0),
-   fMainTrans           (),
-   fPickable            (kFALSE),
-   fCSCBits             (0),
-   fChangeBits          (0),
-   fDestructing         (kNone)
+   fTitle               (title)
 {
 }
 
@@ -88,14 +70,8 @@ REveElement::REveElement(const std::string& name, const std::string& title) :
 REveElement::REveElement(const REveElement& e) :
    fName                (e.fName),
    fTitle               (e.fTitle),
-   fAunts               (),
-   fChildren            (),
    fChildClass          (e.fChildClass),
-   fCompound            (nullptr),
-   fVizModel            (nullptr),
    fVizTag              (e.fVizTag),
-   fNumChildren         (0),
-   fDenyDestroy         (0),
    fDestroyOnZeroRefCnt (e.fDestroyOnZeroRefCnt),
    fRnrSelf             (e.fRnrSelf),
    fRnrChildren         (e.fRnrChildren),
@@ -103,12 +79,8 @@ REveElement::REveElement(const REveElement& e) :
    fCanEditMainTransparency(e.fCanEditMainTransparency),
    fCanEditMainTrans    (e.fCanEditMainTrans),
    fMainTransparency    (e.fMainTransparency),
-   fMainColorPtr        (nullptr),
-   fMainTrans           (),
    fPickable            (e.fPickable),
-   fCSCBits             (e.fCSCBits),
-   fChangeBits          (0),
-   fDestructing         (kNone)
+   fCSCBits             (e.fCSCBits)
 {
    SetVizModel(e.fVizModel);
    // FIXME: from Sergey: one have to use other way to referencing main color
@@ -134,11 +106,9 @@ REveElement::~REveElement()
       fDestructing = kStandard;
       RemoveElementsInternal();
 
-      if (fMother)
-      {
-         fMother->RemoveElementLocal(this);         
+      if (fMother) {
+        fMother->RemoveElementLocal(this);
         fMother->fChildren.remove(this);
-        --(fMother->fNumChildren);
       }
 
       for (auto &au : fAunts)
@@ -169,7 +139,7 @@ void REveElement::assign_element_id_recurisvely()
 
 void REveElement::assign_scene_recursively(REveScene* s)
 {
-   assert(fScene == 0);
+   assert(fScene == nullptr);
 
    fScene = s;
 
@@ -228,10 +198,8 @@ REveElement* REveElement::CloneElementRecurse(Int_t level) const
 
 void REveElement::CloneChildrenRecurse(REveElement* dest, Int_t level) const
 {
-   for (List_ci i=fChildren.begin(); i!=fChildren.end(); ++i)
-   {
-      dest->AddElement((*i)->CloneElementRecurse(level));
-   }
+   for (auto &c: fChildren)
+      dest->AddElement(c->CloneElementRecurse(level));
 }
 
 
@@ -368,7 +336,7 @@ void REveElement::PropagateVizParamsToProjecteds()
 
 void REveElement::PropagateVizParamsToChildren(REveElement* el)
 {
-   if (el == 0) el = this;
+   if (!el) el = this;
 
    for (auto &c : fChildren)
    {
@@ -516,7 +484,7 @@ void REveElement::VizDB_Insert(const std::string& tag, Bool_t replace, Bool_t up
 
    TClass* cls     = IsA();
    REveElement* el = reinterpret_cast<REveElement*>(cls->New());
-   if (el == 0) {
+   if (!el) {
       Error("VizDB_Insert", "Creation of replica failed.");
       return;
    }
@@ -533,7 +501,7 @@ void REveElement::VizDB_Insert(const std::string& tag, Bool_t replace, Bool_t up
 /// - master of mother, if kSCBTakeMotherAsMaster bit is set;
 /// If non of the above is true, *this* is returned.
 
-REveElement* REveElement::GetMaster()
+REveElement *REveElement::GetMaster()
 {
    REveProjected* proj = dynamic_cast<REveProjected*>(this);
    if (proj)
@@ -557,11 +525,11 @@ REveElement* REveElement::GetMaster()
 /// Adding aunt is subordinate to adding a niece.
 /// This is an internal function.
 
-void REveElement::AddAunt(REveAunt* au)
+void REveElement::AddAunt(REveAunt *au)
 {
-   assert(au != 0);
+   assert(au != nullptr);
 
-   fAunts.push_back(au);
+   fAunts.emplace_back(au);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -569,9 +537,9 @@ void REveElement::AddAunt(REveAunt* au)
 /// Removing aunt is subordinate to removing a niece.
 /// This is an internal function.
 
-void REveElement::RemoveAunt(REveAunt* au)
+void REveElement::RemoveAunt(REveAunt *au)
 {
-   assert(au != 0);
+   assert(au != nullptr);
 
    fAunts.remove(au);
 }
@@ -607,6 +575,14 @@ void REveElement::CheckReferenceCount(const std::string& from)
 void REveElement::CollectScenes(List_t& scenes)
 {
    if (fScene) scenes.push_back(fScene);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return class for this element
+
+TClass *REveElement::IsA() const
+{
+   return TClass::GetClass(typeid(*this), kTRUE, kTRUE);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -899,11 +875,11 @@ Bool_t REveElement::AcceptElement(REveElement* el)
 ////////////////////////////////////////////////////////////////////////////////
 /// Add el to the list of children.
 
-void REveElement::AddElement(REveElement* el)
+void REveElement::AddElement(REveElement *el)
 {
    static const REveException eh("REveElement::AddElement ");
 
-   if (el == 0)              throw eh + "called with nullptr argument.";
+   if (!el)                  throw eh + "called with nullptr argument.";
    if ( ! AcceptElement(el)) throw eh + Form("parent '%s' rejects '%s'.", GetCName(), el->GetCName());
    if (el->fElementId)       throw eh + "element already has an id.";
    // if (el->fScene)           throw eh + "element already has a Scene.";
@@ -919,7 +895,7 @@ void REveElement::AddElement(REveElement* el)
 
    el->fMother = this;
 
-   fChildren.push_back(el); ++fNumChildren;
+   fChildren.emplace_back(el);
 
    // XXXX This should be element added. Also, should be different for
    // "full (re)construction". Scenes should manage that and have
@@ -936,7 +912,7 @@ void REveElement::RemoveElement(REveElement* el)
 {
    static const REveException eh("REveElement::RemoveElement ");
 
-   if (el == 0)             throw eh + "called with nullptr argument.";
+   if (!el)                 throw eh + "called with nullptr argument.";
    if (el->fMother != this) throw eh + "this element is not mother of el.";
 
    RemoveElementLocal(el);
@@ -946,12 +922,12 @@ void REveElement::RemoveElement(REveElement* el)
       fScene->SceneElementRemoved(fElementId);
    }
 
-   el->fMother = 0;
-   el->fScene  = 0;
+   el->fMother = nullptr;
+   el->fScene  = nullptr;
 
    el->CheckReferenceCount();
 
-   fChildren.remove(el); --fNumChildren;
+   fChildren.remove(el);
 
    // XXXX This should be ElementRemoved(). Also, think about recursion, deletion etc.
    // Also, this seems to be done above, in the call to fScene.
@@ -990,13 +966,13 @@ void REveElement::RemoveElementsInternal()
          fScene->SceneElementRemoved(fElementId);
       }
 
-      c->fMother = 0;
-      c->fScene  = 0;
+      c->fMother = nullptr;
+      c->fScene  = nullptr;
 
       c->CheckReferenceCount();
    }
 
-   fChildren.clear(); fNumChildren = 0;
+   fChildren.clear();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1038,13 +1014,13 @@ void REveElement::ProjectChild(REveElement* el, Bool_t same_depth)
    REveProjectable* pable = dynamic_cast<REveProjectable*>(this);
    if (pable && HasChild(el))
    {
-      for (REveProjectable::ProjList_i i = pable->BeginProjecteds(); i != pable->EndProjecteds(); ++i)
+      for (auto &pp: pable->RefProjecteds())
       {
-         REveProjectionManager *pmgr = (*i)->GetManager();
+         auto pmgr = pp->GetManager();
          Float_t cd = pmgr->GetCurrentDepth();
-         if (same_depth) pmgr->SetCurrentDepth((*i)->GetDepth());
+         if (same_depth) pmgr->SetCurrentDepth(pp->GetDepth());
 
-         pmgr->SubImportElements(el, (*i)->GetProjectedAsElement());
+         pmgr->SubImportElements(el, pp->GetProjectedAsElement());
 
          if (same_depth) pmgr->SetCurrentDepth(cd);
       }
@@ -1068,13 +1044,13 @@ void REveElement::ProjectAllChildren(Bool_t same_depth)
    REveProjectable* pable = dynamic_cast<REveProjectable*>(this);
    if (pable)
    {
-      for (REveProjectable::ProjList_i i = pable->BeginProjecteds(); i != pable->EndProjecteds(); ++i)
+      for (auto &pp: pable->RefProjecteds())
       {
-         REveProjectionManager *pmgr = (*i)->GetManager();
+         REveProjectionManager *pmgr = pp->GetManager();
          Float_t cd = pmgr->GetCurrentDepth();
-         if (same_depth) pmgr->SetCurrentDepth((*i)->GetDepth());
+         if (same_depth) pmgr->SetCurrentDepth(pp->GetDepth());
 
-         pmgr->SubImportChildren(this, (*i)->GetProjectedAsElement());
+         pmgr->SubImportChildren(this, pp->GetProjectedAsElement());
 
          if (same_depth) pmgr->SetCurrentDepth(cd);
       }
@@ -1093,38 +1069,38 @@ Bool_t REveElement::HasChild(REveElement* el)
 /// Find the first child with given name.  If cls is specified (non
 /// 0), it is also checked.
 ///
-/// Returns 0 if not found.
+/// Returns nullptr if not found.
 
-REveElement* REveElement::FindChild(const TString&  name, const TClass* cls)
+REveElement *REveElement::FindChild(const TString&  name, const TClass* cls)
 {
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
+   for (auto &c: fChildren)
    {
-      if (name.CompareTo((*i)->GetCName()) == 0)
+      if (name.CompareTo(c->GetCName()) == 0)
       {
-         if (!cls || (cls && (*i)->IsA()->InheritsFrom(cls)))
-            return *i;
+         if (!cls || c->IsA()->InheritsFrom(cls))
+            return c;
       }
    }
-   return 0;
+   return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Find the first child whose name matches regexp. If cls is
 /// specified (non 0), it is also checked.
 ///
-/// Returns 0 if not found.
+/// Returns nullptr if not found.
 
-REveElement* REveElement::FindChild(TPRegexp& regexp, const TClass* cls)
+REveElement* REveElement::FindChild(TPRegexp &regexp, const TClass *cls)
 {
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
+   for (auto &c: fChildren)
    {
-      if (regexp.MatchB((*i)->GetName()))
+      if (regexp.MatchB(c->GetName()))
       {
-         if (!cls || (cls && (*i)->IsA()->InheritsFrom(cls)))
-            return *i;
+         if (!cls || c->IsA()->InheritsFrom(cls))
+            return c;
       }
    }
-   return 0;
+   return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1137,13 +1113,13 @@ Int_t REveElement::FindChildren(List_t& matches,
                                 const TString& name, const TClass* cls)
 {
    Int_t count = 0;
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
+   for (auto &c: fChildren)
    {
-      if (name.CompareTo((*i)->GetCName()) == 0)
+      if (name.CompareTo(c->GetCName()) == 0)
       {
-         if (!cls || (cls && (*i)->IsA()->InheritsFrom(cls)))
+         if (!cls || c->IsA()->InheritsFrom(cls))
          {
-            matches.push_back(*i);
+            matches.push_back(c);
             ++count;
          }
       }
@@ -1157,17 +1133,17 @@ Int_t REveElement::FindChildren(List_t& matches,
 ///
 /// Returns number of elements added to the list.
 
-Int_t REveElement::FindChildren(List_t& matches,
-                                TPRegexp& regexp, const TClass* cls)
+Int_t REveElement::FindChildren(List_t &matches,
+                                TPRegexp &regexp, const TClass *cls)
 {
    Int_t count = 0;
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
+   for (auto &c : fChildren)
    {
-      if (regexp.MatchB((*i)->GetCName()))
+      if (regexp.MatchB(c->GetCName()))
       {
-         if (!cls || (cls && (*i)->IsA()->InheritsFrom(cls)))
+         if (!cls || c->IsA()->InheritsFrom(cls))
          {
-            matches.push_back(*i);
+            matches.push_back(c);
             ++count;
          }
       }
@@ -1180,7 +1156,7 @@ Int_t REveElement::FindChildren(List_t& matches,
 
 REveElement* REveElement::FirstChild() const
 {
-   return HasChildren() ? fChildren.front() : 0;
+   return HasChildren() ? fChildren.front() : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1188,7 +1164,7 @@ REveElement* REveElement::FirstChild() const
 
 REveElement* REveElement::LastChild () const
 {
-   return HasChildren() ? fChildren.back() : 0;
+   return HasChildren() ? fChildren.back() : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1197,10 +1173,8 @@ REveElement* REveElement::LastChild () const
 
 void REveElement::EnableListElements(Bool_t rnr_self,  Bool_t rnr_children)
 {
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
-   {
-      (*i)->SetRnrSelfChildren(rnr_self, rnr_children);
-   }
+   for (auto &c: fChildren)
+      c->SetRnrSelfChildren(rnr_self, rnr_children);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1212,10 +1186,8 @@ void REveElement::EnableListElements(Bool_t rnr_self,  Bool_t rnr_children)
 
 void REveElement::DisableListElements(Bool_t rnr_self,  Bool_t rnr_children)
 {
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
-   {
-      (*i)->SetRnrSelfChildren(rnr_self, rnr_children);
-   }
+   for (auto &c: fChildren)
+      c->SetRnrSelfChildren(rnr_self, rnr_children);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1223,24 +1195,17 @@ void REveElement::DisableListElements(Bool_t rnr_self,  Bool_t rnr_children)
 
 void REveElement::AnnihilateRecursively()
 {
-   static const REveException eh("REveElement::AnnihilateRecursively ");
-
    // projected  were already destroyed in REveElement::Anihilate(), now only clear its list
    REveProjectable* pable = dynamic_cast<REveProjectable*>(this);
    if (pable && pable->HasProjecteds())
-   {
       pable->ClearProjectedList();
-   }
 
    // same as REveElement::RemoveElementsInternal(), except parents are ignored
    RemoveElementsLocal();
    for (auto &c : fChildren)
-   {
       c->AnnihilateRecursively();
-   }
 
    fChildren.clear();
-   fNumChildren = 0;
 
    fDestructing = kAnnihilate;
    PreDeleteElement();
@@ -1277,7 +1242,7 @@ void REveElement::Annihilate()
 
    AnnihilateRecursively();
 
-   // XXXX ????? Anihalate flag ???? Is it different than regular remove ????
+   // XXXX ????? Annihilate flag ???? Is it different than regular remove ????
    // REX::gEve->Redraw3D();
 }
 
@@ -1286,13 +1251,11 @@ void REveElement::Annihilate()
 
 void REveElement::AnnihilateElements()
 {
-   while ( ! fChildren.empty())
+   while (!fChildren.empty())
    {
-      REveElement* c = fChildren.front();
+      auto c = fChildren.front();
       c->Annihilate();
    }
-
-   fNumChildren = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1306,8 +1269,8 @@ void REveElement::Destroy()
    static const REveException eh("REveElement::Destroy ");
 
    if (fDenyDestroy > 0)
-      throw eh + TString::Format("element '%s' (%s*) 0x%lx is protected against destruction.",
-                                 GetCName(), IsA()->GetName(), (ULong_t)this);
+      throw eh + TString::Format("element '%s' (%s*) %p is protected against destruction.",
+                                 GetCName(), IsA()->GetName(), this);
 
    PreDeleteElement();
    delete this;
@@ -1319,15 +1282,13 @@ void REveElement::Destroy()
 
 void REveElement::DestroyOrWarn()
 {
-   static const REveException eh("REveElement::DestroyOrWarn ");
-
    try
    {
       Destroy();
    }
-   catch (REveException& exc)
+   catch (REveException &exc)
    {
-      Warning(eh, "%s", exc.Data());
+      ::Warning("REveElement::DestroyOrWarn", "Error while destroy element %p : %s", this, exc.what());
    }
 }
 
@@ -1336,25 +1297,23 @@ void REveElement::DestroyOrWarn()
 
 void REveElement::DestroyElements()
 {
-   static const REveException eh("REveElement::DestroyElements ");
-
    while (HasChildren())
    {
-      REveElement* c = fChildren.front();
+      auto c = fChildren.front();
       if (c->fDenyDestroy <= 0)
       {
          try {
             c->Destroy();
          }
-         catch (REveException& exc) {
-            Warning(eh, "element destruction failed: '%s'.", exc.Data());
+         catch (REveException &exc) {
+            ::Warning("REveElement::DestroyElements", "element destruction failed: '%s'.", exc.what());
             RemoveElement(c);
          }
       }
       else
       {
          if (gDebug > 0)
-            Info(eh, "element '%s' is protected agains destruction, removing locally.", c->GetCName());
+           ::Info("REveElement::DestroyElements", "element '%s' is protected against destruction, removing locally.", c->GetCName());
          RemoveElement(c);
       }
    }
@@ -1435,10 +1394,8 @@ void REveElement::ElementChanged(Bool_t update_scenes, Bool_t redraw)
 void REveElement::SetPickableRecursively(Bool_t p)
 {
    fPickable = p;
-   for (List_i i=fChildren.begin(); i!=fChildren.end(); ++i)
-   {
-      (*i)->SetPickableRecursively(p);
-   }
+   for (auto &c: fChildren)
+      c->SetPickableRecursively(p);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1448,7 +1405,7 @@ void REveElement::SetPickableRecursively(Bool_t p)
 
 REveElement* REveElement::ForwardSelection()
 {
-   return 0;
+   return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1461,13 +1418,11 @@ REveElement* REveElement::ForwardSelection()
 /// Note that this also takes care of projections of REveCompound
 /// class, which is also a projectable.
 
-void REveElement::FillImpliedSelectedSet(Set_t& impSelSet)
+void REveElement::FillImpliedSelectedSet(Set_t &impSelSet)
 {
    REveProjectable* p = dynamic_cast<REveProjectable*>(this);
    if (p)
-   {
       p->AddProjectedsToSet(impSelSet);
-   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1559,32 +1514,26 @@ Int_t REveElement::WriteCoreJson(nlohmann::json &j, Int_t rnr_offset)
    j["fMainTransparency"] = GetMainTransparency();
    j["fPickable"]         = fPickable;
 
-   if (rnr_offset >= 0)
-   {
+   Int_t ret = 0;
+
+   if (rnr_offset >= 0) {
       BuildRenderData();
 
-      if (fRenderData.get())
-      {
+      if (fRenderData) {
          nlohmann::json rd = {};
 
          rd["rnr_offset"] = rnr_offset;
-         rd["rnr_func"]   = fRenderData->GetRnrFunc();
-         rd["vert_size"]  = fRenderData->SizeV();
-         rd["norm_size"]  = fRenderData->SizeN();
+         rd["rnr_func"] = fRenderData->GetRnrFunc();
+         rd["vert_size"] = fRenderData->SizeV();
+         rd["norm_size"] = fRenderData->SizeN();
          rd["index_size"] = fRenderData->SizeI();
          rd["trans_size"] = fRenderData->SizeT();
 
          j["render_data"] = rd;
 
-         return fRenderData->GetBinarySize();
-      }
-      else
-      {
-         return 0;
+         ret = fRenderData->GetBinarySize();
       }
    }
-   else
-   {
-      return 0;
-   }
+
+   return ret;
 }
