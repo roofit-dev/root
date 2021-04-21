@@ -541,6 +541,14 @@ public: // Public Interface
    void LibraryUnloaded(const void* dyLibHandle, const char* canonicalName);
 
 private: // Private Utility Functions and Classes
+   class SuspendAutoloadingRAII {
+      TCling *fTCling = nullptr;
+      bool fOldValue;
+
+   public:
+      SuspendAutoloadingRAII(TCling *tcling) : fTCling(tcling) { fOldValue = fTCling->SetClassAutoloading(false); }
+      ~SuspendAutoloadingRAII() { fTCling->SetClassAutoloading(fOldValue); }
+   };
 
    class TUniqueString {
    public:
@@ -567,7 +575,7 @@ private: // Private Utility Functions and Classes
    void RegisterLoadedSharedLibrary(const char* name);
    void AddFriendToClass(clang::FunctionDecl*, clang::CXXRecordDecl*) const;
 
-   bool LoadPCM(const std::string& pcmFileNameFullPath) const;
+   bool LoadPCM(const std::string &pcmFileNameFullPath);
    void InitRootmapFile(const char *name);
    int  ReadRootmapFile(const char *rootmapfile, TUniqueString* uniqueString = nullptr);
    Bool_t HandleNewTransaction(const cling::Transaction &T);

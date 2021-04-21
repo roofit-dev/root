@@ -1468,8 +1468,11 @@ static bool R__InitStreamerInfoFactory()
 ////////////////////////////////////////////////////////////////////////////////
 /// Tries to load a PCM; returns true on success.
 
-bool TCling::LoadPCM(const std::string& pcmFileNameFullPath) const {
+bool TCling::LoadPCM(const std::string &pcmFileNameFullPath)
+{
 
+   SuspendAutoloadingRAII autoloadOff(this);
+   SuspendAutoParsing autoparseOff(this);
    assert(!pcmFileNameFullPath.empty());
    assert(llvm::sys::path::is_absolute(pcmFileNameFullPath));
    if (!llvm::sys::fs::exists(pcmFileNameFullPath)) {
@@ -1732,7 +1735,7 @@ void TCling::RegisterModule(const char* modulename,
 
    // Make sure we do not set off autoloading or autoparsing during the
    // module registration!
-   Int_t oldAutoloadValue = SetClassAutoloading(false);
+   SuspendAutoloadingRAII autoLoadOff(this);
 
    for (const char** inclPath = includePaths; *inclPath; ++inclPath) {
       TCling::AddIncludePath(*inclPath);
@@ -1972,10 +1975,6 @@ void TCling::RegisterModule(const char* modulename,
       }
    }
 
-   bool oldValue = false;
-   if (fClingCallbacks)
-     oldValue = SetClassAutoloading(false);
-
    clang::Sema &TheSema = fInterpreter->getSema();
 
    bool ModuleWasSuccessfullyLoaded = false;
@@ -2063,9 +2062,6 @@ void TCling::RegisterModule(const char* modulename,
       }
    }
 
-   if (fClingCallbacks)
-     SetClassAutoloading(oldValue);
-
    if (!ModuleWasSuccessfullyLoaded && !hasHeaderParsingOnDemand) {
       // __ROOTCLING__ might be pulled in through PCH
       fInterpreter->declare("#ifdef __ROOTCLING__\n"
@@ -2079,8 +2075,6 @@ void TCling::RegisterModule(const char* modulename,
       fRegisterModuleDyLibs.pop_back();
       dlclose(dyLibHandle);
    }
-
-   SetClassAutoloading(oldAutoloadValue);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2753,7 +2747,7 @@ bool TCling::Declare(const char* code)
 {
    R__LOCKGUARD_CLING(gInterpreterMutex);
 
-   int oldload = SetClassAutoloading(0);
+   SuspendAutoloadingRAII autoLoadOff(this);
    SuspendAutoParsing autoParseRaii(this);
 
    bool oldDynLookup = fInterpreter->isDynamicLookupEnabled();
@@ -2765,7 +2759,6 @@ bool TCling::Declare(const char* code)
 
    fInterpreter->enableRawInput(oldRawInput);
    fInterpreter->enableDynamicLookup(oldDynLookup);
-   SetClassAutoloading(oldload);
    return ret;
 }
 
@@ -5665,14 +5658,12 @@ Int_t TCling::AutoLoad(const char *cls, Bool_t knowDictNotLoaded /* = kFALSE */)
       return 0;
    }
    // Prevent the recursion when the library dictionary are loaded.
-   Int_t oldvalue = SetClassAutoloading(false);
+   SuspendAutoloadingRAII autoLoadOff(this);
    // Try using externally provided callback first.
    if (fAutoLoadCallBack) {
       int success = (*(AutoLoadCallBack_t)fAutoLoadCallBack)(cls);
-      if (success) {
-         SetClassAutoloading(oldvalue);
+      if (success)
          return success;
-      }
    }
    // lookup class to find list of dependent libraries
    TString deplibs = GetClassSharedLibs(cls);
@@ -5710,7 +5701,6 @@ Int_t TCling::AutoLoad(const char *cls, Bool_t knowDictNotLoaded /* = kFALSE */)
       delete tokens;
    }
 
-   SetClassAutoloading(oldvalue);
    return status;
 }
 
@@ -5935,7 +5925,7 @@ Int_t TCling::AutoParse(const char *cls)
    }
 
    // Prevent the recursion when the library dictionary are loaded.
-   Int_t oldAutoloadValue = SetClassAutoloading(false);
+   SuspendAutoloadingRAII autoLoadOff(this);
 
    // No recursive header parsing on demand; we require headers to be standalone.
    SuspendAutoParsing autoParseRAII(this);
@@ -5958,8 +5948,6 @@ Int_t TCling::AutoParse(const char *cls)
          }
       }
    }
-
-   SetClassAutoloading(oldAutoloadValue);
 
    return nHheadersParsed > 0 ? 1 : 0;
 }
@@ -6333,7 +6321,7 @@ void TCling::UpdateClassInfoWithDecl(const void* vTD)
    // Supposedly we are being called while something is being
    // loaded ... let's now tell the autoloader to do the work
    // yet another time.
-   int storedAutoloading = SetClassAutoloading(false);
+   SuspendAutoloadingRAII autoLoadOff(this);
    // FIXME: There can be more than one TClass for a single decl.
    // for example vector<double> and vector<Double32_t>
    TClass* cl = (TClass*)gROOT->GetListOfClasses()->FindObject(name.c_str());
@@ -6367,7 +6355,6 @@ void TCling::UpdateClassInfoWithDecl(const void* vTD)
          TClass::AddClassToDeclIdMap(((TClingClassInfo*)(cl->fClassInfo))->GetDeclId(), cl);
       }
    }
-   SetClassAutoloading(storedAutoloading);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
