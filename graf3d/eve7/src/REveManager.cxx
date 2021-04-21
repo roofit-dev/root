@@ -240,11 +240,17 @@ void REveManager::RegisterRedraw3D()
 void REveManager::DoRedraw3D()
 {
    static const REveException eh("REveManager::DoRedraw3D ");
+   nlohmann::json jobj = {};
+   
+   jobj["content"] = "BeginChanges";
+   fWebWindow->Send(0, jobj.dump());
 
    // Process changes in scenes.
    fWorld ->ProcessChanges();
    fScenes->ProcessSceneChanges();
 
+   jobj["content"] = "EndChanges";
+   fWebWindow->Send(0, jobj.dump());
 
    fResetCameras = kFALSE;
    fDropLogicals = kFALSE;
