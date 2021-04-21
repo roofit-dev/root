@@ -18,6 +18,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <vector>
 
 class TVirtualStreamerInfo;
 class TStreamerInfo;
@@ -39,9 +40,10 @@ public:
 
      kMapAsObject   = 5,             ///< store std::map, std::unodered_map as JSON object
 
-     // algorithms for array compression
+     // algorithms for array compression - exclusive
      kZeroSuppression = 10,          ///< if array has much zeros in begin and/or end, they will be removed
      kSameSuppression = 20,          ///< zero suppression plus compress many similar values together
+     kBase64          = 30,          ///< all binary arrays will be compressed with base64 coding, supported by JSROOT
 
      kSkipTypeInfo  = 100            // do not store typenames in JSON
    };
@@ -54,6 +56,9 @@ public:
    void SetTypeversionTag(const char *tag = nullptr);
    void SetSkipClassInfo(const TClass *cl);
    Bool_t IsSkipClassInfo(const TClass *cl) const;
+
+   TString StoreObject(const void *obj, const TClass *cl);
+   void *RestoreObject(const char *str, TClass **cl);
 
    static TString ConvertToJSON(const TObject *obj, Int_t compact = 0, const char *member_name = nullptr);
    static TString
@@ -249,7 +254,7 @@ protected:
 
    TJSONStackObj *PushStack(Int_t inclevel = 0, void *readnode = nullptr);
    TJSONStackObj *PopStack();
-   TJSONStackObj *Stack() { return fStack.back(); }
+   TJSONStackObj *Stack() { return fStack.back().get(); }
 
    void WorkWithClass(TStreamerInfo *info, const TClass *cl = nullptr);
    void WorkWithElement(TStreamerElement *elem, Int_t);
@@ -313,7 +318,7 @@ protected:
    TString *fOutput{nullptr};          ///<!  current output buffer for json code
    TString fValue;                     ///<!  buffer for current value
    unsigned fJsonrCnt{0};              ///<!  counter for all objects, used for referencing
-   std::deque<TJSONStackObj *> fStack; ///<!  hierarchy of currently streamed element
+   std::deque<std::unique_ptr<TJSONStackObj>> fStack; ///<!  hierarchy of currently streamed element
    Int_t fCompact{0};                  ///<!  0 - no any compression, 1 - no spaces in the begin, 2 - no new lines, 3 - no spaces at all
    Bool_t fMapAsObject{kFALSE};        ///<! when true, std::map will be converted into JSON object
    TString fSemicolon;                 ///<!  depending from compression level, " : " or ":"
@@ -322,7 +327,7 @@ protected:
    TString fNumericLocale;             ///<!  stored value of setlocale(LC_NUMERIC), which should be recovered at the end
    TString fTypeNameTag;               ///<! JSON member used for storing class name, when empty - no class name will be stored
    TString fTypeVersionTag;            ///<! JSON member used to store class version, default empty
-   TObjArray *fSkipClasses{nullptr};   ///<! list of classes, which class info is not stored
+   std::vector<const TClass *> fSkipClasses; ///<! list of classes, which class info is not stored
 
    ClassDef(TBufferJSON, 1) // a specialized TBuffer to only write objects into JSON format
 };
