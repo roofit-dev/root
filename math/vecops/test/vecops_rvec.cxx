@@ -5,8 +5,10 @@
 #include <TInterpreter.h>
 #include <TTree.h>
 #include <TSystem.h>
+#include <TLorentzVector.h>
 #include <vector>
 #include <sstream>
+#include <cmath>
 
 using namespace ROOT::VecOps;
 
@@ -903,3 +905,148 @@ TEST(VecOps, Concatenate)
    const RVec<float> ref { 0.00000f, 1.00000f, 2.00000f, 7.00000f, 8.00000f, 9.00000f };
    CheckEqual(res, ref);
 }
+
+TEST(VecOps, DeltaPhi)
+{
+   // Two scalars (radians)
+   // NOTE: These tests include the checks of the poundary effects
+   const float c1 = M_PI;
+   EXPECT_EQ(DeltaPhi(0.f, 2.f), 2.f);
+   EXPECT_EQ(DeltaPhi(1.f, 0.f), -1.f);
+   EXPECT_EQ(DeltaPhi(-0.5f, 0.5f), 1.f);
+   EXPECT_EQ(DeltaPhi(0.f, 2.f * c1 - 1.f), -1.f);
+   EXPECT_EQ(DeltaPhi(0.f, 4.f * c1 - 1.f), -1.f);
+   EXPECT_EQ(DeltaPhi(0.f, -2.f * c1 + 1.f), 1.f);
+   EXPECT_EQ(DeltaPhi(0.f, -4.f * c1 + 1.f), 1.f);
+
+   // Two scalars (degrees)
+   const float c2 = 180.f;
+   EXPECT_EQ(DeltaPhi(0.f, 2.f, c2), 2.f);
+   EXPECT_EQ(DeltaPhi(1.f, 0.f, c2), -1.f);
+   EXPECT_EQ(DeltaPhi(-0.5f, 0.5f, c2), 1.f);
+   EXPECT_EQ(DeltaPhi(0.f, 2.f * c2 - 1.f, c2), -1.f);
+   EXPECT_EQ(DeltaPhi(0.f, 4.f * c2 - 1.f, c2), -1.f);
+   EXPECT_EQ(DeltaPhi(0.f, -2.f * c2 + 1.f, c2), 1.f);
+   EXPECT_EQ(DeltaPhi(0.f, -4.f * c2 + 1.f, c2), 1.f);
+
+   // Two vectors
+   RVec<float> v1 = {0.f, 1.f, -0.5f, 0.f, 0.f, 0.f, 0.f};
+   RVec<float> v2 = {2.f, 0.f, 0.5f, 2.f * c1 - 1.f, 4.f * c1 - 1.f, -2.f * c1 + 1.f, -4.f * c1 + 1.f};
+   auto dphi1 = DeltaPhi(v1, v2);
+   RVec<float> r1 = {2.f, -1.f, 1.f, -1.f, -1.f, 1.f, 1.f};
+   CheckEqual(dphi1, r1);
+
+   auto dphi2 = DeltaPhi(v2, v1);
+   auto r2 = r1 * -1.f;
+   CheckEqual(dphi2, r2);
+
+   // Check against TLorentzVector
+   for (std::size_t i = 0; i < v1.size(); i++) {
+      TLorentzVector p1, p2;
+      p1.SetPtEtaPhiM(1.f, 1.f, v1[i], 1.f);
+      p2.SetPtEtaPhiM(1.f, 1.f, v2[i], 1.f);
+      EXPECT_NEAR(float(p2.DeltaPhi(p1)), dphi1[i], 1e-6);
+   }
+
+   // Vector and scalar
+   RVec<float> v3 = {0.f, 1.f, c1, c1 + 1.f, 2.f * c1, 2.f * c1 + 1.f, -1.f, -c1, -c1 + 1.f, -2.f * c1, -2.f * c1 + 1.f};
+   float v4 = 1.f;
+   auto dphi3 = DeltaPhi(v3, v4);
+   RVec<float> r3 = {1.f, 0.f, 1.f - c1, c1, 1.f, 0.f, 2.f, -c1 + 1.f, c1, 1.f, 0.f};
+   CheckEqual(dphi3, r3);
+
+   auto dphi4 = DeltaPhi(v4, v3);
+   auto r4 = -1.f * r3;
+   CheckEqual(dphi4, r4);
+}
+
+TEST(VecOps, InvariantMass)
+{
+   // Dummy particle collections
+   RVec<float> mass1 = {50,  50,  50,   50,   100};
+   RVec<float> pt1 =   {0,   5,   5,    10,   10};
+   RVec<float> eta1 =  {0.0, 0.0, -1.0, 0.5,  2.5};
+   RVec<float> phi1 =  {0.0, 0.0, 0.0,  -0.5, -2.4};
+
+   RVec<float> mass2 = {40,  40,  40,  40,  30};
+   RVec<float> pt2 =   {0,   5,   5,   10,  2};
+   RVec<float> eta2 =  {0.0, 0.0, 0.5, 0.4, 1.2};
+   RVec<float> phi2 =  {0.0, 0.0, 0.0, 0.5, 2.4};
+
+   // Compute invariant mass of two particle system using both collections
+   const auto invMass = InvariantMass(pt1, eta1, phi1, mass1, pt2, eta2, phi2, mass2);
+
+   for(size_t i=0; i<mass1.size(); i++) {
+      TLorentzVector p1, p2;
+      p1.SetPtEtaPhiM(pt1[i], eta1[i], phi1[i], mass1[i]);
+      p2.SetPtEtaPhiM(pt2[i], eta2[i], phi2[i], mass2[i]);
+      // NOTE: The accuracy of the optimized trigonometric functions is relatively
+      // low and the test start to fail with an accuracy of 1e-5.
+      EXPECT_NEAR((p1 + p2).M(), invMass[i], 1e-4);
+   }
+
+   // Compute invariant mass of multiple-particle system using a single collection
+   const auto invMass2 = InvariantMass(pt1, eta1, phi1, mass1);
+
+   TLorentzVector p3;
+   p3.SetPtEtaPhiM(pt1[0], eta1[0], phi1[0], mass1[0]);
+   for(size_t i=1; i<mass1.size(); i++) {
+      TLorentzVector p4;
+      p4.SetPtEtaPhiM(pt1[i], eta1[i], phi1[i], mass1[i]);
+      p3 += p4;
+   }
+
+   EXPECT_NEAR(p3.M(), invMass2, 1e-4);
+
+   const auto invMass3 = InvariantMass(pt2, eta2, phi2, mass2);
+
+   TLorentzVector p5;
+   p5.SetPtEtaPhiM(pt2[0], eta2[0], phi2[0], mass2[0]);
+   for(size_t i=1; i<mass2.size(); i++) {
+      TLorentzVector p6;
+      p6.SetPtEtaPhiM(pt2[i], eta2[i], phi2[i], mass2[i]);
+      p5 += p6;
+   }
+
+   EXPECT_NEAR(p5.M(), invMass3, 1e-4);
+}
+
+TEST(VecOps, DeltaR)
+{
+   RVec<float> eta1 =  {0.1, -1.0, -1.0, 0.5,  -2.5};
+   RVec<float> eta2 =  {0.0, 0.0, 0.5, 2.4, 1.2};
+   RVec<float> phi1 =  {1.0, 5.0, -1.0,  -0.5, -2.4};
+   RVec<float> phi2 =  {0.0, 3.0, 6.0, 1.5, 1.4};
+
+   auto dr = DeltaR(eta1, eta2, phi1, phi2);
+   auto dr2 = DeltaR(eta2, eta1, phi2, phi1);
+
+   for (std::size_t i = 0; i < eta1.size(); i++) {
+      // Check against TLorentzVector
+      TLorentzVector p1, p2;
+      p1.SetPtEtaPhiM(1.f, eta1[i], phi1[i], 1.f);
+      p2.SetPtEtaPhiM(1.f, eta2[i], phi2[i], 1.f);
+      auto dr3 = float(p2.DeltaR(p1));
+      EXPECT_NEAR(dr3, dr[i], 1e-6);
+      EXPECT_NEAR(dr3, dr2[i], 1e-6);
+
+      // Check scalar implementation
+      auto dr4 = DeltaR(eta1[i], eta2[i], phi1[i], phi2[i]);
+      EXPECT_NEAR(dr3, dr4, 1e-6);
+   }
+}
+
+TEST(VecOps, Map)
+{
+   RVec<float> a({1.f, 2.f, 3.f});
+   RVec<float> b({4.f, 5.f, 6.f});
+   RVec<float> c({7.f, 8.f, 9.f});
+
+   auto mod = [](float x, int y, double z) { return sqrt(x * x + y * y + z * z); };
+
+   auto res = Map(a, c, c, mod);
+
+   ROOT::VecOps::RVec<double> ref{9.9498743710661994, 11.489125293076057, 13.076696830622021};
+   CheckEqual(res, ref);
+}
+
