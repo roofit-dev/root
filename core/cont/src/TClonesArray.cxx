@@ -759,7 +759,8 @@ void TClonesArray::Streamer(TBuffer &b)
       }
       TClass *cl = TClass::GetClass(classv);
       if (!cl) {
-         printf("TClonesArray::Streamer expecting class %s\n", classv.Data());
+         Error("Streamer", "expecting class %s but it was not found by TClass::GetClass\n",
+               classv.Data());
          b.CheckByteCount(R__s, R__c,TClonesArray::IsA());
          return;
       }
@@ -768,12 +769,15 @@ void TClonesArray::Streamer(TBuffer &b)
       if (nobjects < 0)
          nobjects = -nobjects;  // still there for backward compatibility
       b >> fLowerBound;
-      if (fClass == 0 && fKeep == 0) {
+      if (fClass == 0) {
          fClass = cl;
-         fKeep  = new TObjArray(fSize);
-         Expand(nobjects);
-      }
-      if (cl != fClass) {
+         if (fKeep == 0) {
+            fKeep  = new TObjArray(fSize);
+            Expand(nobjects);
+         }
+      } else if (cl != fClass && classv == fClass->GetName()) {
+         // If fClass' name is different from classv, the user has intentionally changed
+         // the target class, so we must not override it.
          fClass = cl;
          //this case may happen when switching from an emulated class to the real class
          //may not be an error. fClass may point to a deleted object
