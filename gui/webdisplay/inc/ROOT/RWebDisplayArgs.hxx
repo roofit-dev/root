@@ -1,4 +1,4 @@
-/// \file ROOT/RWebBrowserArgs.hxx
+/// \file ROOT/RWebDisplayArgs.hxx
 /// \ingroup WebGui ROOT7
 /// \author Sergey Linev <s.linev@gsi.de>
 /// \date 2018-10-24
@@ -13,8 +13,8 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#ifndef ROOT7_RWebBrowserArgs
-#define ROOT7_RWebBrowserArgs
+#ifndef ROOT7_RWebDisplayArgs
+#define ROOT7_RWebDisplayArgs
 
 #include <string>
 
@@ -23,25 +23,22 @@ class THttpServer;
 namespace ROOT {
 namespace Experimental {
 
-/// Argument used in RWebWindow::Show() method
-class RWebBrowserArgs {
-public:
+class RWebDisplayArgs {
 
+public:
    enum EBrowserKind {
-      kDefault,   // default settings provided with --web argument when started ROOT
-      kChrome,    // Google Chrome browser
-      kFirefox,   // Mozilla Firefox browser
-      kNative,    // either Chrome or Firefox - both support major functionality
-      kCEF,       // Chromium Embedded Framework - local display with CEF libs
-      kQt5,       // QWebEngine libraries - Chrome code packed in qt5
-      kLocal,     // either CEF or Qt5 - both runs on local display without real http server
-      kStandard,  // standard system web browser, not recognized by ROOT, without batch mode
-      kCustom     // custom web browser, execution string should be provided
+      kChrome,   ///< Google Chrome browser
+      kFirefox,  ///< Mozilla Firefox browser
+      kNative,   ///< either Chrome or Firefox - both support major functionality
+      kCEF,      ///< Chromium Embedded Framework - local display with CEF libs
+      kQt5,      ///< QWebEngine libraries - Chrome code packed in qt5
+      kLocal,    ///< either CEF or Qt5 - both runs on local display without real http server
+      kStandard, ///< standard system web browser, not recognized by ROOT, without batch mode
+      kCustom    ///< custom web browser, execution string should be provided
    };
 
 protected:
-
-   EBrowserKind fKind{kDefault};  ///<! name of web browser used for display
+   EBrowserKind fKind{kNative};   ///<! id of web browser used for display
    std::string fUrl;              ///<! URL to display
    bool fHeadless{false};         ///<! is browser runs in headless mode
    THttpServer *fServer{nullptr}; ///<! http server which handle all requests
@@ -51,13 +48,17 @@ protected:
    std::string fExec;             ///<! string to run browser, used with kCustom type
    void *fDriverData{nullptr};    ///<! special data delivered to driver, can be used for QWebEngine
 
-   RWebBrowserArgs();
+public:
+   RWebDisplayArgs();
 
-   RWebBrowserArgs(const std::string &browser);
+   RWebDisplayArgs(const std::string &browser);
+
+   RWebDisplayArgs(const char *browser);
 
    void SetBrowserKind(const std::string &kind);
    void SetBrowserKind(EBrowserKind kind) { fKind = kind; }
    EBrowserKind GetBrowserKind() const { return fKind; }
+   std::string GetBrowserName() const;
 
    /// returns true if local display like CEF or Qt5 QWebEngine should be used
    bool IsLocalDisplay() const
@@ -105,7 +106,5 @@ protected:
 
 }
 }
-
-
 
 #endif
