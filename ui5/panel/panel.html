@@ -41,7 +41,8 @@
             var p = viewName.indexOf(".");
             if ((p > 1) && (p < viewName.length - 1)) {
                console.log('Register module path', viewName.substr(0,p));
-               sap.registerModulePath(viewName.substr(0,p), "/currentdir/");
+               var _paths = {}; _paths[viewName.substr(0,p)] = "/currentdir/"; 
+               sap.ui.loader.config({ paths: _paths });
             }
          }
          
@@ -60,7 +61,7 @@
       JSROOT.ConnectWebWindow({
          prereq_logdiv: "PanelDiv",
          // openui5src: "jsroot",
-         openui5src: "https://openui5.hana.ondemand.com/",
+         // openui5src: "https://openui5.hana.ondemand.com/",
          // openui5libs: "sap.ui.core, sap.ui.layout, sap.m",
          first_recv: "SHOWPANEL:",
          prereq2: "openui5",

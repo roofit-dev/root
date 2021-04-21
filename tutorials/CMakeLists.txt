@@ -426,22 +426,13 @@ if(ROOT_python_FOUND)
   set(roofit-rf104_classfactory-depends tutorial-roofit-rf104_classfactory) #Race condition
 
   #---Tutorials expected to fail in PyROOT experimental
-  set(pyexp_fail tutorial-dataframe-df001_introduction-py
-                 tutorial-dataframe-df002_dataModel-py
+  set(pyexp_fail tutorial-dataframe-df002_dataModel-py
                  tutorial-dataframe-df003_profiles-py
-                 tutorial-dataframe-df004_cutFlowReport-py
-                 tutorial-dataframe-df006_ranges-py
-                 tutorial-dataframe-df007_snapshot-py
-                 tutorial-dataframe-df008_createDataSetFromScratch-py
                  tutorial-dataframe-df010_trivialDataSource-py
                  tutorial-dataframe-df011_ROOTDataSource-py
-                 tutorial-dataframe-df012_DefinesAndFiltersAsStrings-py
                  tutorial-dataframe-df014_CSVDataSource-py
                  tutorial-dataframe-df016_vecOps-py
                  tutorial-dataframe-df017_vecOpsHEP-py
-                 tutorial-dataframe-df019_Cache-py
-                 tutorial-dataframe-df021_createTGraph-py
-                 tutorial-dataframe-df024_Display-py
                  tutorial-dataframe-df026_AsNumpyArrays-py
                  tutorial-hist-fillrandom-py
                  tutorial-math-Legendre-py
@@ -463,13 +454,11 @@ if(ROOT_python_FOUND)
                  tutorial-pyroot-tornado-py
                  tutorial-pyroot-tree-py
                  tutorial-roofit-rf106_plotdecoration-py
-                 tutorial-roofit-rf707_kernelestimation-py
                  tutorial-vecops-vo004_SortAndSelect-py
                  tutorial-vecops-vo005_Combinations-py)
 
   if(${PYTHON_VERSION_MAJOR} GREATER_EQUAL 3)
     # These tests only fail in Py3 with PyROOT experimental
-    list(APPEND pyexp_fail tutorial-pyroot-first-py)
     list(APPEND pyexp_fail tutorial-pyroot-surfaces-py)
     list(APPEND pyexp_fail tutorial-pyroot-zdemo-py)
   endif()

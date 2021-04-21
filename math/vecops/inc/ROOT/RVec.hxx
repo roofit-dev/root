@@ -715,6 +715,74 @@ double Mean(const RVec<T> &v)
    return double(Sum(v)) / v.size();
 }
 
+/// Get the greatest element of an RVec
+///
+/// Example code, at the ROOT prompt:
+/// ~~~~{.cpp}
+/// using namespace ROOT::VecOps;
+/// RVec<float> v {1.f, 2.f, 4.f};
+/// auto v_max = Max(v)
+/// v_max
+/// (float) 4.f
+/// ~~~~
+template <typename T>
+T Max(const RVec<T> &v)
+{
+   return *std::max_element(v.begin(), v.end());
+}
+
+/// Get the smallest element of an RVec
+///
+/// Example code, at the ROOT prompt:
+/// ~~~~{.cpp}
+/// using namespace ROOT::VecOps;
+/// RVec<float> v {1.f, 2.f, 4.f};
+/// auto v_min = Min(v)
+/// v_min
+/// (float) 1.f
+/// ~~~~
+template <typename T>
+T Min(const RVec<T> &v)
+{
+   return *std::min_element(v.begin(), v.end());
+}
+
+/// Get the index of the greatest element of an RVec
+/// In case of multiple occurrences of the maximum values,
+/// the index corresponding to the first occurrence is returned.
+///
+/// Example code, at the ROOT prompt:
+/// ~~~~{.cpp}
+/// using namespace ROOT::VecOps;
+/// RVec<float> v {1.f, 2.f, 4.f};
+/// auto v_argmax = ArgMax(v);
+/// v_argmax
+/// // (int) 2
+/// ~~~~
+template <typename T>
+std::size_t ArgMax(const RVec<T> &v)
+{
+   return std::distance(v.begin(), std::max_element(v.begin(), v.end()));
+}
+
+/// Get the index of the smallest element of an RVec
+/// In case of multiple occurrences of the minimum values,
+/// the index corresponding to the first occurrence is returned.
+///
+/// Example code, at the ROOT prompt:
+/// ~~~~{.cpp}
+/// using namespace ROOT::VecOps;
+/// RVec<float> v {1.f, 2.f, 4.f};
+/// auto v_argmin = ArgMin(v);
+/// v_argmin
+/// // (int) 0
+/// ~~~~
+template <typename T>
+std::size_t ArgMin(const RVec<T> &v)
+{
+   return std::distance(v.begin(), std::min_element(v.begin(), v.end()));
+}
+
 /// Get the variance of the elements of an RVec
 ///
 /// The return type is a double precision floating point number.

@@ -27,6 +27,9 @@ ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_branch ttree_branch.py
 # TH1 and subclasses pythonizations
 ROOT_ADD_PYUNITTEST(pyroot_pyz_th1_operators th1_operators.py)
 
+# TGraph, TGraph2D and error subclasses pythonizations
+ROOT_ADD_PYUNITTEST(pyroot_pyz_tgraph_getters tgraph_getters.py)
+
 # TCollection and subclasses pythonizations
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tcollection_len tcollection_len.py)
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tcollection_listmethods tcollection_listmethods.py)
@@ -60,6 +63,9 @@ ROOT_ADD_PYUNITTEST(pyroot_pyz_tstring_len tstring_len.py)
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tstring_str_repr tstring_str_repr.py)
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tstring_comparisonops tstring_comparisonops.py)
 
+# TString converter
+ROOT_ADD_PYUNITTEST(pyroot_conv_tstring tstring_converter.py)
+
 # TObjString pythonisations
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tobjstring_len tobjstring_len.py)
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tobjstring_str_repr tobjstring_str_repr.py)
@@ -81,3 +87,6 @@ if(roofit)
   # RooDataHist pythonisations
   ROOT_ADD_PYUNITTEST(pyroot_pyz_roodatahist_ploton roodatahist_ploton.py)
 endif()
+
+# std::string_view backport in CPyCppyy
+ROOT_ADD_PYUNITTEST(pyroot_string_view_backport string_view_backport.py)

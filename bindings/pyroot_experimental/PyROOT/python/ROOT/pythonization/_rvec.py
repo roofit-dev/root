@@ -33,7 +33,12 @@ def get_array_interface(self):
             dtype_size = GetSizeOfType(dtype)
             endianess = GetEndianess()
             size = self.size()
-            pointer = GetVectorDataPointer(self, cppname)
+            # Numpy breaks for data pointer of 0 even though the array is empty.
+            # We set the pointer to 1 but the value itself is arbitrary and never accessed.
+            if self.empty():
+                pointer = 1
+            else:
+                pointer = GetVectorDataPointer(self, cppname)
             return {
                 "shape": (size, ),
                 "typestr": "{}{}{}".format(endianess, dtype_numpy, dtype_size),
