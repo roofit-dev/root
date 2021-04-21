@@ -9,10 +9,6 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#if __cplusplus >= 201103L
-#define ROOT_CPLUSPLUS11 1
-#endif
-
 #include "TROOT.h"
 #include "TClass.h"
 #include "TMethod.h"
@@ -846,8 +842,6 @@ void TFormula::InputFormulaIntoCling()
 
 void TFormula::FillDefaults()
 {
-   //#ifdef ROOT_CPLUSPLUS11
-
    const TString defvars[] = { "x","y","z","t"};
    const pair<TString, Double_t> defconsts[] = {{"pi", TMath::Pi()},
                                                 {"sqrt2", TMath::Sqrt2()},
@@ -1266,9 +1260,9 @@ void TFormula::HandleParametrizedFunctions(TString &formula)
 void TFormula::HandleParamRanges(TString &formula)
 {
    TRegexp rangePattern("\\[[0-9]+\\.\\.[0-9]+\\]");
-   Ssiz_t *len = new Ssiz_t();
+   Ssiz_t len;
    int matchIdx = 0;
-   while ((matchIdx = rangePattern.Index(formula, len, matchIdx)) != -1) {
+   while ((matchIdx = rangePattern.Index(formula, &len, matchIdx)) != -1) {
       int startIdx = matchIdx + 1;
       int endIdx = formula.Index("..", startIdx) + 2; // +2 for ".."
       int startCnt = TString(formula(startIdx, formula.Length())).Atoi();
@@ -1374,7 +1368,7 @@ void TFormula::HandleFunctionArguments(TString &formula)
          // The other possibility we need to consider is that this is a
          // parametrized function (else case below)
 
-         bool nameRecognized = (f != NULL);
+         bool nameRecognized = (f != nullptr);
 
          // Get ndim, npar, and replacementFormula of function
          int ndim = 0;
