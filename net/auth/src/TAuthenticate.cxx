@@ -94,11 +94,10 @@ struct R__rsa_NUMBER: rsa_NUMBER {};
 // Statics initialization
 TList          *TAuthenticate::fgAuthInfo = 0;
 TString         TAuthenticate::fgAuthMeth[] = { "UsrPwd", "Unsupported", "Krb5",
-                                                "Globus", "Unsupported", "UidGid" };
+                                                "Unsupported", "Unsupported", "Unsupported" };
 Bool_t          TAuthenticate::fgAuthReUse;
 TString         TAuthenticate::fgDefaultUser;
 TDatime         TAuthenticate::fgExpDate;
-GlobusAuth_t    TAuthenticate::fgGlobusAuthHook;
 Krb5Auth_t      TAuthenticate::fgKrb5AuthHook;
 TString         TAuthenticate::fgKrb5Principal;
 TDatime         TAuthenticate::fgLastAuthrc;    // Time of last reading of fgRootAuthrc
@@ -494,45 +493,8 @@ negotia:
          (void) strlcat(noSupport, noSupport[0] == '\0' ? "Krb5" : "/Krb5", sizeof(noSupport) - 1);
       }
 
-   } else if (fSecurity == kGlobus) {
-      if (fVersion > 1) {
-
-         // Globus Authentication
-         if (!fgGlobusAuthHook) {
-            char *p;
-            TString lib = "libGlobusAuth";
-            if ((p = gSystem->DynamicPathName(lib, kTRUE))) {
-               delete [] p;
-               gSystem->Load(lib);
-            }
-         }
-         if (fgGlobusAuthHook) {
-            st = (*fgGlobusAuthHook) (this, fUser, fDetails);
-         } else {
-            Error("Authenticate",
-                  "no support for Globus authentication available");
-         }
-      } else {
-         if (gDebug > 0)
-            Info("Authenticate", "remote daemon does not support Globus authentication");
-         (void) strlcat(noSupport, noSupport[0] == '\0' ? "Globus" : "/Globus", sizeof(noSupport) - 1);
-      }
-
-
-   } else if (fSecurity == kRfio) {
-
-      if (fVersion > 1) {
-
-         // UidGid Authentication
-         st = RfioAuth(fUser);
-
-      } else {
-         if (gDebug > 0)
-            Info("Authenticate", "remote daemon does not support UidGid authentication");
-         (void) strlcat(noSupport, noSupport[0] == '\0' ? "UidGid" : "/UidGid", sizeof(noSupport) - 1);
-      }
    }
-   //
+   
    // Stop timer
    if (alarm) alarm->Stop();
 
@@ -759,8 +721,7 @@ void TAuthenticate::SetEnvironment()
 
    // Defaults
    fgDefaultUser = fgUser;
-   if (fSecurity == kKrb5 ||
-       (fSecurity == kGlobus && gROOT->IsProofServ()))
+   if (fSecurity == kKrb5)
       fgAuthReUse = kFALSE;
    else
       fgAuthReUse = kTRUE;
@@ -772,7 +733,6 @@ void TAuthenticate::SetEnvironment()
       char pt[5] = { 0 }, ru[5] = { 0 };
       Int_t hh = 0, mm = 0;
       char us[kMAXPATHLEN] = {0}, cp[kMAXPATHLEN] = {0}, pp[kMAXPATHLEN] = {0};
-      char cd[kMAXPATHLEN] = {0}, cf[kMAXPATHLEN] = {0}, kf[kMAXPATHLEN] = {0}, ad[kMAXPATHLEN] = {0};
       const char *ptr;
 
       TString usrPromptDef = TString(GetAuthMethod(fSecurity)) + ".LoginPrompt";
@@ -810,21 +770,7 @@ void TAuthenticate::SetEnvironment()
       }
 
       // Now action depends on method ...
-      if (fSecurity == kGlobus) {
-         if ((ptr = strstr(fDetails, "cd:")) != 0)
-            sscanf(ptr, "%8191s %8191s", cd, usdef);
-         if ((ptr = strstr(fDetails, "cf:")) != 0)
-            sscanf(ptr, "%8191s %8191s", cf, usdef);
-         if ((ptr = strstr(fDetails, "kf:")) != 0)
-            sscanf(ptr, "%8191s %8191s", kf, usdef);
-         if ((ptr = strstr(fDetails, "ad:")) != 0)
-            sscanf(ptr, "%8191s %8191s", ad, usdef);
-         if (gDebug > 2) {
-            Info("SetEnvironment",
-                 "details:%s, pt:%s, ru:%s, cd:%s, cf:%s, kf:%s, ad:%s",
-                 fDetails.Data(), pt, ru, cd, cf, kf, ad);
-         }
-      } else if (fSecurity == kClear) {
+      if (fSecurity == kClear) {
          if ((ptr = strstr(fDetails, "us:")) != 0)
             sscanf(ptr + 3, "%8191s %8191s", us, usdef);
          if ((ptr = strstr(fDetails, "cp:")) != 0)
@@ -858,7 +804,7 @@ void TAuthenticate::SetEnvironment()
          if (!strncasecmp(ru, "yes",3) || !strncmp(ru, "1",1))
             fgAuthReUse = kTRUE;
       } else {
-         if (fSecurity != kGlobus || !(gROOT->IsProofServ())) {
+         if (!gROOT->IsProofServ()) {
             fgAuthReUse = kTRUE;
             if (!strncasecmp(ru, "no",2) || !strncmp(ru, "0",1))
                fgAuthReUse = kFALSE;
@@ -877,37 +823,28 @@ void TAuthenticate::SetEnvironment()
       }
       // Build UserDefaults
       usdef[0] = '\0';
-      if (fSecurity == kGlobus) {
-         for (const char *str : { cd, cf, kf, ad }) {
-            if (*str != '\0') {
-               (void) strlcat(usdef, " ", sizeof(usdef) - 1);
-               (void) strlcat(usdef, str, sizeof(usdef) - 1);
-            }
+      if (fSecurity == kKrb5) {
+         // Collect info about principal, if any
+         if (strlen(pp) > 0) {
+            fgKrb5Principal = TString(pp);
+         } else {
+            // Allow specification via 'us:' key
+            if (strlen(us) > 0 && strstr(us,"@"))
+               fgKrb5Principal = TString(us);
+         }
+         // command line user specification (fUser) gets highest priority
+         if (fUser.Length()) {
+            snprintf(usdef, kMAXPATHLEN, "%s", fUser.Data());
+         } else {
+            if (strlen(us) > 0 && !strstr(us,"@"))
+               snprintf(usdef, kMAXPATHLEN, "%s", us);
          }
       } else {
-         if (fSecurity == kKrb5) {
-            // Collect info about principal, if any
-            if (strlen(pp) > 0) {
-               fgKrb5Principal = TString(pp);
-            } else {
-               // Allow specification via 'us:' key
-               if (strlen(us) > 0 && strstr(us,"@"))
-                  fgKrb5Principal = TString(us);
-            }
-            // command line user specification (fUser) gets highest priority
-            if (fUser.Length()) {
-               snprintf(usdef, kMAXPATHLEN, "%s", fUser.Data());
-            } else {
-               if (strlen(us) > 0 && !strstr(us,"@"))
-                  snprintf(usdef, kMAXPATHLEN, "%s", us);
-            }
-         } else {
-            // give highest priority to command-line specification
-            if (fUser == "") {
-               if (strlen(us) > 0) snprintf(usdef, kMAXPATHLEN, "%s", us);
-            } else
-               snprintf(usdef, kMAXPATHLEN, "%s", fUser.Data());
-         }
+         // give highest priority to command-line specification
+         if (fUser == "") {
+            if (strlen(us) > 0) snprintf(usdef, kMAXPATHLEN, "%s", us);
+         } else
+            snprintf(usdef, kMAXPATHLEN, "%s", fUser.Data());
       }
       if (strlen(usdef) > 0) {
          fgDefaultUser = usdef;
@@ -1316,11 +1253,11 @@ char *TAuthenticate::PromptPasswd(const char *prompt)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Static method returning the globus authorization hook.
+/// Static method returning the globus authorization hook (no longer supported)
 
 GlobusAuth_t TAuthenticate::GetGlobusAuthHook()
 {
-   return fgGlobusAuthHook;
+   return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1535,9 +1472,9 @@ void TAuthenticate::SetKrb5AuthHook(Krb5Auth_t func)
 /// Set Globus authorization function. Automatically called when
 /// libGlobusAuth is loaded.
 
-void TAuthenticate::SetGlobusAuthHook(GlobusAuth_t func)
+void TAuthenticate::SetGlobusAuthHook(GlobusAuth_t)
 {
-   fgGlobusAuthHook = func;
+   ::Error("GlobusAuth", "Globus is no longer supported by ROOT");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1620,96 +1557,11 @@ Bool_t TAuthenticate::CheckHost(const char *host, const char *href)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// UidGid client authentication code.
-/// Returns 0 in case authentication failed
-///         1 in case of success
-///        <0 in case of system error
+/// RFIO authentication (no longer supported)
 
-Int_t TAuthenticate::RfioAuth(TString &username)
+Int_t TAuthenticate::RfioAuth(TString &)
 {
-   if (gDebug > 2)
-      Info("RfioAuth", "enter ... username %s", username.Data());
-
-   // Get user info ... ...
-   UserGroup_t *pw = gSystem->GetUserInfo(gSystem->GetEffectiveUid());
-   if (pw) {
-
-      // These are the details to be saved in case of success ...
-      username = pw->fUser;
-      fDetails = TString("pt:0 ru:0 us:") + username;
-
-      // Check that we are not root and that the requested user is ourselves
-      if (pw->fUid != 0) {
-
-         UserGroup_t *grp = gSystem->GetGroupInfo(gSystem->GetEffectiveGid());
-
-         // Get effective user & group ID associated with the current process...
-         Int_t uid = pw->fUid;
-         Int_t gid = grp ? grp->fGid : pw->fGid;
-
-         delete grp;
-
-         // Send request ....
-         TString sstr = TString::Format("%d %d", uid, gid);
-         if (gDebug > 3)
-            Info("RfioAuth", "sending ... %s", sstr.Data());
-         Int_t ns = 0;
-         if ((ns = fSocket->Send(sstr.Data(), kROOTD_RFIO)) < 0)
-            return 0;
-         if (gDebug > 3)
-            Info("RfioAuth", "sent ... %d bytes (expected > %d)", ns,
-                 sstr.Length());
-
-         // Get answer
-         Int_t stat, kind;
-         if (fSocket->Recv(stat, kind) < 0)
-            return 0;
-         if (gDebug > 3)
-            Info("RfioAuth", "after kROOTD_RFIO: kind= %d, stat= %d", kind,
-                 stat);
-
-         // Query result ...
-         if (kind == kROOTD_AUTH && stat >= 1) {
-            // Create inactive SecContext object for use in TSocket
-            fSecContext =
-               fHostAuth->CreateSecContext((const char *)pw->fUser,
-                                           fRemote, kRfio, -stat, fDetails, 0);
-            delete pw;
-            return 1;
-         } else {
-            TString server = "sockd";
-            if (fProtocol.Contains("root"))
-               server = "rootd";
-            if (fProtocol.Contains("proof"))
-               server = "proofd";
-
-            // Authentication failed
-            if (stat == kErrConnectionRefused) {
-               if (gDebug > 0)
-                  Error("RfioAuth",
-                        "%s@%s does not accept connections from %s%s",
-                        server.Data(),fRemote.Data(),
-                        fUser.Data(),gSystem->HostName());
-               delete pw;
-               return -2;
-            } else if (stat == kErrNotAllowed) {
-               if (gDebug > 0)
-                  Error("RfioAuth",
-                        "%s@%s does not accept %s authentication from %s@%s",
-                        server.Data(),fRemote.Data(),
-                        TAuthenticate::fgAuthMeth[5].Data(),
-                        fUser.Data(),gSystem->HostName());
-            } else {
-               AuthError("RfioAuth", stat);
-            }
-            delete pw;
-            return 0;
-         }
-      } else {
-         Warning("RfioAuth", "UidGid login as \"root\" not allowed");
-         return -1;
-      }
-   }
+   ::Error("RfioAuth", "RfioAuth is no longer supported by ROOT");
    return -1;
 }
 
@@ -2409,21 +2261,8 @@ char *TAuthenticate::GetDefaultDetails(int sec, int opt, const char *usr)
       snprintf(temp, kMAXPATHLEN, "pt:%s ru:%s us:%s",
                gEnv->GetValue("Krb5.LoginPrompt", copt[opt]),
                gEnv->GetValue("Krb5.ReUse", "0"), usr);
-
-      // Globus
-   } else if (sec == TAuthenticate::kGlobus) {
-      snprintf(temp, kMAXPATHLEN,"pt:%s ru:%s %s",
-               gEnv->GetValue("Globus.LoginPrompt", copt[opt]),
-               gEnv->GetValue("Globus.ReUse", "1"),
-               gEnv->GetValue("Globus.Login", ""));
-
-      // Uid/Gid
-   } else if (sec == TAuthenticate::kRfio) {
-      if (!usr[0] || !strncmp(usr,"*",1))
-         usr = gEnv->GetValue("UidGid.Login", "");
-      snprintf(temp, kMAXPATHLEN, "pt:%s us:%s",
-               gEnv->GetValue("UidGid.LoginPrompt", copt[opt]), usr);
    }
+
    if (gDebug > 2)
       ::Info("TAuthenticate::GetDefaultDetails", "returning ... %s", temp);
 
@@ -3802,47 +3641,6 @@ Bool_t TAuthenticate::CheckProofAuth(Int_t cSec, TString &out)
       out.Form("pt:0 ru:0 us:%s",user.Data());
       rc = kTRUE;
 #endif
-   }
-
-   // Globus
-   if (cSec == (Int_t) TAuthenticate::kGlobus) {
-#ifdef R__GLBS
-      TApplication *lApp = gROOT->GetApplication();
-      if (lApp != 0 && lApp->Argc() > 9) {
-         if (gROOT->IsProofServ()) {
-            // Delegated Credentials
-            Int_t ShmId = -1;
-            if (gSystem->Getenv("ROOTSHMIDCRED"))
-               ShmId = strtol(gSystem->Getenv("ROOTSHMIDCRED"),
-                              (char **)0, 10);
-            if (ShmId != -1) {
-               struct shmid_ds shm_ds;
-               if (shmctl(ShmId, IPC_STAT, &shm_ds) == 0)
-                  rc = kTRUE;
-            }
-            if (rc) {
-               // Build details .. CA dir
-               TString Adir(gSystem->Getenv("X509_CERT_DIR"));
-               // Usr Cert
-               TString Ucer(gSystem->Getenv("X509_USER_CERT"));
-               // Usr Key
-               TString Ukey(gSystem->Getenv("X509_USER_KEY"));
-               // Usr Dir
-               TString Cdir = Ucer;
-               Cdir.Resize(Cdir.Last('/')+1);
-               // Create output
-               out.Form("pt=0 ru:0 cd:%s cf:%s kf:%s ad:%s",
-                        Cdir.Data(),Ucer.Data(),Ukey.Data(),Adir.Data());
-            }
-         }
-      }
-#endif
-   }
-
-   // Rfio
-   if (cSec == (Int_t) TAuthenticate::kRfio) {
-      out.Form("pt:0 ru:0 us:%s",user.Data());
-      rc = kTRUE;
    }
 
    if (gDebug > 3) {

@@ -518,21 +518,6 @@ if(gviz)
   endif()
 endif()
 
-#---Check for Bonjour installation-------------------------------------------------------
-if(bonjour)
-  message(STATUS "Looking for Bonjour")
-  find_package(Bonjour)
-  if(NOT BONJOUR_FOUND)
-    if(fail-on-missing)
-      message(FATAL_ERROR "Bonjour/Avahi libraries not found and Bonjour component required")
-    else()
-      message(STATUS "Bonjour not found. Switching off bonjour option")
-      set(bonjour OFF CACHE BOOL "Disabled because Bonjour not found (${bonjour_description})" FORCE)
-    endif()
-  endif()
-endif()
-
-
 #---Check for krb5 Support-----------------------------------------------------------
 if(krb5)
   message(STATUS "Looking for Kerberos 5")
@@ -594,35 +579,6 @@ endif()
 if(builtin_openssl)
   list(APPEND ROOT_BUILTINS OpenSSL)
   add_subdirectory(builtins/openssl)
-endif()
-
-#---Check for Castor-------------------------------------------------------------------
-if(castor)
-  message(STATUS "Looking for Castor")
-  find_package(Castor)
-  if(NOT CASTOR_FOUND)
-    if(fail-on-missing)
-      message(FATAL_ERROR "Castor libraries not found and they are required (castor option enabled)")
-    else()
-      message(STATUS "Castor not found. Switching off castor option")
-      set(castor OFF CACHE BOOL "Disabled because Castor not found (${castor_description})" FORCE)
-    endif()
-  endif()
-endif()
-
-#---Check for RFIO-------------------------------------------------------------------
-if(rfio)
-  message(STATUS "Looking for RFIO")
-  find_package(Castor)
-  find_package(DPM)
-  if(NOT CASTOR_FOUND AND NOT DPM_FOUND)
-    if(fail-on-missing)
-      message(FATAL_ERROR "Castor or DPM libraries not found and one of them is required (rfio option enabled)")
-    else()
-      message(STATUS "Castor or DPM not found. Switching off rfio option")
-      set(rfio OFF CACHE BOOL "Disabled because Castor or DPM not found (${rfio_description})" FORCE)
-    endif()
-  endif()
 endif()
 
 #---Check for MySQL-------------------------------------------------------------------
@@ -1006,20 +962,6 @@ if(ldap)
   endif()
 endif()
 
-#---Check for globus--------------------------------------------------------------------
-if(globus)
-  find_package(Globus)
-  if(NOT GLOBUS_FOUND)
-    if(fail-on-missing)
-      message(FATAL_ERROR "globus libraries not found and is required ('globus' option enabled)")
-    else()
-      message(STATUS "globus libraries not found. Set environment var GLOBUS_LOCATION or varibale GLOBUS_DIR to point to your globus installation")
-      message(STATUS "For the time being switching OFF 'globus' option")
-      set(globus OFF CACHE BOOL "Disabled because globus not found (${globus_description})" FORCE)
-    endif()
-  endif()
-endif()
-
 #---Check for ftgl if needed----------------------------------------------------------
 if(opengl AND NOT builtin_ftgl)
   find_package(FTGL)
@@ -1051,21 +993,6 @@ if(r)
        message(STATUS "R installation not found. Set variable R_DIR to point to your R installation")
        message(STATUS "For the time being switching OFF 'r' option")
        set(r OFF CACHE BOOL "Disabled because R not found (${r_description})" FORCE)
-    endif()
-  endif()
-endif()
-
-
-#---Check for hdfs--------------------------------------------------------------------
-if(hdfs)
-  find_package(hdfs)
-  if(NOT HDFS_FOUND)
-    if(fail-on-missing)
-      message(FATAL_ERROR "hdfs library not found and is required (hdfs option enabled)")
-    else()
-      message(STATUS "hdfs library not found. Set variable HDFS_DIR to point to your hdfs installation")
-      message(STATUS "For the time being switching OFF 'hdfs' option")
-      set(hdfs OFF CACHE BOOL "Disabled because hdfs not found (${hdfs_description})" FORCE)
     endif()
   endif()
 endif()
@@ -1215,21 +1142,6 @@ if(builtin_tbb)
   endif()
   set(TBB_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/include)
   set(TBB_TARGET TBB)
-endif()
-
-#---Check for OCC--------------------------------------------------------------------
-if(geocad)
-  find_package(OCC COMPONENTS TKPrim TKBRep TKOffset TKGeomBase TKShHealing TKTopAlgo
-                              TKSTEP TKG2d TKBool TKBO TKXCAF TKXDESTEP TKLCAF TKernel TKXSBase TKG3d TKMath)
-  if(NOT OCC_FOUND)
-    if(fail-on-missing)
-      message(FATAL_ERROR "OpenCascade libraries not found and is required (geocad option enabled)")
-    else()
-      message(STATUS "OpenCascade libraries not found. Set variable CASROOT to point to your OpenCascade installation")
-      message(STATUS "For the time being switching OFF 'geocad' option")
-      set(geocad OFF CACHE BOOL "Disabled because OpenCascade not found (${geocad_description})" FORCE)
-    endif()
-  endif()
 endif()
 
 #---Check for Vc---------------------------------------------------------------------
@@ -1579,22 +1491,8 @@ endif()
 ExternalProject_Add(
    OPENUI5
    URL ${CMAKE_SOURCE_DIR}/net/http/openui5/openui5.tar.gz
-   URL_HASH SHA256=32e50e3e8808295c67ecb7561ea9cd9beb76dd934263170fbbd05ff59b6d501d
+   URL_HASH SHA256=cbe503155fb5fc563c9dce02f4b5bf2163963b3bf118dd20756aa05d0a8693a3
    CONFIGURE_COMMAND ""
    BUILD_COMMAND ""
    INSTALL_COMMAND ""
    SOURCE_DIR ${CMAKE_BINARY_DIR}/etc/http/openui5dist)
-
-#---Report removed options---------------------------------------------------
-foreach(opt afs chirp glite ios sapdb srp ruby)
-  if(${opt})
-    message(FATAL_ERROR ">>> Option '${opt}' has been removed in ROOT v6.16.")
-  endif()
-endforeach()
-
-#---Report deprecated options---------------------------------------------------
-foreach(opt afdsmgrd bonjour castor geocad globus gviz hdfs krb5 ldap memstat odbc qt qtgsi rfio table)
-  if(${opt})
-    message(DEPRECATION ">>> Option '${opt}' is deprecated and will be removed in ROOT v6.18. Please inform rootdev@cern.ch should you still need it.")
-  endif()
-endforeach()
