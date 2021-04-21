@@ -48,13 +48,21 @@ if(Git_FOUND AND EXISTS ${CMAKE_SOURCE_DIR}/.git)
 else()
   set(GIT_DESCRIBE_ERRCODE "NoGit")
 endif()
-if(GIT_DESCRIBE_ERRCODE)
+
+function(SET_VERSION_FROM_FILE)
   file(READ ${CMAKE_SOURCE_DIR}/build/version_number versionstr)
   string(STRIP ${versionstr} versionstr)
   string(REGEX REPLACE "([0-9]+)[.][0-9]+[/][0-9]+" "\\1" ROOT_MAJOR_VERSION ${versionstr})
   string(REGEX REPLACE "[0-9]+[.]([0-9]+)[/][0-9]+" "\\1" ROOT_MINOR_VERSION ${versionstr})
   string(REGEX REPLACE "[0-9]+[.][0-9]+[/]([0-9]+)" "\\1" ROOT_PATCH_VERSION ${versionstr})
-  set(ROOT_VERSION "${ROOT_MAJOR_VERSION}.${ROOT_MINOR_VERSION}.${ROOT_PATCH_VERSION}")
+  set(ROOT_VERSION "${ROOT_MAJOR_VERSION}.${ROOT_MINOR_VERSION}.${ROOT_PATCH_VERSION}" PARENT_SCOPE)
+  set(ROOT_MAJOR_VERSION "${ROOT_MAJOR_VERSION}" PARENT_SCOPE)
+  set(ROOT_MINOR_VERSION "${ROOT_MINOR_VERSION}" PARENT_SCOPE)
+  set(ROOT_PATCH_VERSION "${ROOT_PATCH_VERSION}" PARENT_SCOPE)
+endfunction()
+
+if(GIT_DESCRIBE_ERRCODE)
+  SET_VERSION_FROM_FILE()
 else()
   execute_process(COMMAND ${GIT_EXECUTABLE} --git-dir=${CMAKE_SOURCE_DIR}/.git describe --always
                   OUTPUT_VARIABLE GIT_DESCRIBE_ALWAYS
@@ -63,14 +71,14 @@ else()
   string(TIMESTAMP GIT_TIMESTAMP "%b %d %Y, %H:%M:%S" UTC)
 
   string(REGEX REPLACE "^v([0-9])-([0-9]+)-" "\\1.\\2." ROOT_VERSION "${GIT_DESCRIBE_ALWAYS}")
-  if("${GIT_DESCRIBE_ALL}" MATCHES "^tags/")
+  if("${GIT_DESCRIBE_ALL}" MATCHES "^tags/v[0-9]+-[0-9]+-[0-9]+.*")
     # GIT_DESCRIBE_ALWAYS: v6-16-00-rc1
     # GIT_DESCRIBE_ALL: tags/v6-16-00-rc1
     # tag might end on "-rc1" or similar; parse version number in front.
     string(REGEX REPLACE "v([0-9]+)-.*" "\\1" ROOT_MAJOR_VERSION ${GIT_DESCRIBE_ALWAYS})
     string(REGEX REPLACE "v[0-9]+-([0-9]+).*" "\\1" ROOT_MINOR_VERSION ${GIT_DESCRIBE_ALWAYS})
     string(REGEX REPLACE "v[0-9]+-[0-9]+-([0-9]+).*" "\\1" ROOT_PATCH_VERSION ${GIT_DESCRIBE_ALWAYS})
-  elseif("${GIT_DESCRIBE_ALL}" MATCHES "-patches$")
+  elseif("${GIT_DESCRIBE_ALL}" MATCHES "/v[0-9]+-[0-9]+.*-patches$")
     # GIT_DESCRIBE_ALWAYS: v6-16-00-rc1-47-g9ba56ef4a3
     # GIT_DESCRIBE_ALL: heads/v6-16-00-patches
     string(REGEX REPLACE "^.*/v([0-9]+)-.*" "\\1" ROOT_MAJOR_VERSION ${GIT_DESCRIBE_ALL})
@@ -79,11 +87,7 @@ else()
   else()
     # GIT_DESCRIBE_ALWAYS: v6-13-04-2163-g7e8d27ea66
     # GIT_DESCRIBE_ALL: heads/master or remotes/origin/master
-    file(READ ${CMAKE_SOURCE_DIR}/build/version_number versionstr)
-    string(STRIP ${versionstr} versionstr)
-    string(REGEX REPLACE "([0-9]+)[.][0-9]+[/][0-9]+" "\\1" ROOT_MAJOR_VERSION ${versionstr})
-    string(REGEX REPLACE "[0-9]+[.]([0-9]+)[/][0-9]+" "\\1" ROOT_MINOR_VERSION ${versionstr})
-    string(REGEX REPLACE "[0-9]+[.][0-9]+[/]([0-9]+)" "\\1" ROOT_PATCH_VERSION ${versionstr})
+    SET_VERSION_FROM_FILE()
   endif()
 endif()
 
