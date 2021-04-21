@@ -1587,7 +1587,7 @@ void tgaxis5()
          char buf[256];
          if (offset[i] < t[i]) {
             sprintf(buf, "#splitline{%s, %s}{offset: %ld, option %s}",
-                    stime(t+i).Data(), stime(t+i, true).Data(), offset[i], opt);
+                    stime(t+i).Data(), stime(t+i, true).Data(), (long) offset[i], opt);
          } else {
             int h = t[i] / 3600;
             int m = (t[i] - 3600 * h) / 60 ;
