@@ -1057,7 +1057,7 @@ TString TBufferJSON::JsonWriteMember(const void *ptr, TDataMember *member, TClas
               (member->IsSTLContainer() == ROOT::kSTLforwardlist)) {
 
       if (memberClass)
-         ((TClass *)memberClass)->Streamer((void *)ptr, *this);
+         memberClass->Streamer((void *)ptr, *this);
       else
          fValue = "[]";
 
@@ -1077,7 +1077,7 @@ TString TBufferJSON::JsonWriteMember(const void *ptr, TDataMember *member, TClas
          fValue = "[]";
    } else if (memberClass && !strcmp(memberClass->GetName(), "string")) {
       // here value contains quotes, stack can be ignored
-      ((TClass *)memberClass)->Streamer((void *)ptr, *this);
+      memberClass->Streamer((void *)ptr, *this);
    }
    PopStack();
 
@@ -1254,12 +1254,12 @@ Int_t TBufferJSON::JsonSpecialClass(const TClass *cl) const
 
    Bool_t isarray = strncmp("TArray", cl->GetName(), 6) == 0;
    if (isarray)
-      isarray = ((TClass *)cl)->GetBaseClassOffset(TArray::Class()) == 0;
+      isarray = (const_cast<TClass *>(cl))->GetBaseClassOffset(TArray::Class()) == 0;
    if (isarray)
       return json_TArray;
 
    // negative value used to indicate that collection stored as object
-   if (((TClass *)cl)->GetBaseClassOffset(TCollection::Class()) == 0)
+   if ((const_cast<TClass *>(cl))->GetBaseClassOffset(TCollection::Class()) == 0)
       return json_TCollection;
 
    // special case for TString - it is saved as string in JSON
@@ -1373,7 +1373,7 @@ void TBufferJSON::JsonWriteObject(const void *obj, const TClass *cl, Bool_t chec
    if (special_kind == json_TCollection)
       JsonWriteCollection((TCollection *)obj, cl);
    else
-      ((TClass *)cl)->Streamer((void *)obj, *this);
+      (const_cast<TClass *>(cl))->Streamer((void *)obj, *this);
 
    if (gDebug > 3)
       Info("JsonWriteObject", "Done object %p write for class: %s", obj, cl->GetName());
@@ -1770,7 +1770,7 @@ void *TBufferJSON::JsonReadObject(void *obj, const TClass *objClass, TClass **re
          *((TString *)obj) = json->get<std::string>().c_str();
 
       if (readClass)
-         *readClass = (TClass *)objClass;
+         *readClass = const_cast<TClass *>(objClass);
 
       return obj;
    }
@@ -1798,7 +1798,7 @@ void *TBufferJSON::JsonReadObject(void *obj, const TClass *objClass, TClass **re
 
    if ((special_kind == json_TArray) || ((special_kind > 0) && (special_kind < ROOT::kSTLend))) {
 
-      jsonClass = (TClass *)objClass;
+      jsonClass = const_cast<TClass *>(objClass);
 
       if (!obj)
          obj = jsonClass->New();
@@ -1816,27 +1816,29 @@ void *TBufferJSON::JsonReadObject(void *obj, const TClass *objClass, TClass **re
    } else if (isBase) {
       // base class has special handling - no additional level and no extra refid
 
-      jsonClass = (TClass *)objClass;
+      jsonClass = const_cast<TClass *>(objClass);
 
       if (gDebug > 1)
          Info("JsonReadObject", "Reading baseclass %s ptr %p", objClass->GetName(), obj);
    } else {
 
-      std::string clname;
-
-      if (fTypeNameTag.Length() > 0)
-         clname = json->at(fTypeNameTag.Data()).get<std::string>();
-
-      jsonClass = clname.empty() ? nullptr : TClass::GetClass(clname.c_str());
+      if ((fTypeNameTag.Length() > 0) && (json->count(fTypeNameTag.Data()) > 0)) {
+         std::string clname = json->at(fTypeNameTag.Data()).get<std::string>();
+         jsonClass = TClass::GetClass(clname.c_str());
+         if (!jsonClass)
+            Error("JsonReadObject", "Cannot find class %s", clname.c_str());
+      } else {
+         // try to use class which is assigned by streamers - better than nothing
+         jsonClass = const_cast<TClass *>(objClass);
+      }
 
       if (!jsonClass) {
-         Error("JsonReadObject", "Cannot find class %s", clname.c_str());
          if (process_stl)
             PopStack();
          return obj;
       }
 
-      if (fTypeVersionTag.Length() > 0)
+      if ((fTypeVersionTag.Length() > 0) && (json->count(fTypeVersionTag.Data()) > 0))
          jsonClassVersion = json->at(fTypeVersionTag.Data()).get<int>();
 
       if (objClass && (jsonClass != objClass)) {
@@ -1848,7 +1850,7 @@ void *TBufferJSON::JsonReadObject(void *obj, const TClass *objClass, TClass **re
          obj = jsonClass->New();
 
       if (gDebug > 1)
-         Info("JsonReadObject", "Reading object of class %s refid %u ptr %p", clname.c_str(), fJsonrCnt, obj);
+         Info("JsonReadObject", "Reading object of class %s refid %u ptr %p", jsonClass->GetName(), fJsonrCnt, obj);
 
       if (!special_kind)
          special_kind = JsonSpecialClass(jsonClass);
@@ -2928,10 +2930,10 @@ void TBufferJSON::ReadFastArray(void **start, const TClass *cl, Int_t n, Bool_t 
          void *old = start[j];
          start[j] = JsonReadObject(nullptr, cl);
          if (old && old != start[j] && TStreamerInfo::CanDelete())
-            ((TClass *)cl)->Destructor(old, kFALSE); // call delete and destruct
+            (const_cast<TClass *>(cl))->Destructor(old, kFALSE); // call delete and destruct
       } else {
          if (!start[j])
-            start[j] = ((TClass *)cl)->New();
+            start[j] = (const_cast<TClass *>(cl))->New();
          JsonReadObject(start[j], cl);
       }
    }
@@ -3378,7 +3380,7 @@ Int_t TBufferJSON::WriteFastArray(void **start, const TClass *cl, Int_t n, Bool_
          res |= WriteObjectAny(start[j], cl);
       } else {
          if (!start[j])
-            start[j] = ((TClass *)cl)->New();
+            start[j] = (const_cast<TClass *>(cl))->New();
          // ((TClass*)cl)->Streamer(start[j],*this);
          JsonWriteObject(start[j], cl, kFALSE);
       }
