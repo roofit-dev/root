@@ -4264,24 +4264,14 @@ RooMultiGenFunction* RooAbsReal::iGenFunction(const RooArgSet& observables, cons
 ///
 /// The following named arguments are supported
 ///
-<<<<<<< HEAD
-/// Options to control construction of -log(L)
-/// ------------------------------------------
-/// Range(const char* name)         -- Fit only data inside range with given name
-/// Range(Double_t lo, Double_t hi) -- Fit only data inside given range. A range named "fit" is created on the fly on all observables.
-///                                    Multiple comma separated range names can be specified.
-/// NumCPU(int num)                 -- Parallelize NLL calculation on num CPUs
-/// CPUAffinity(Bool_t)             -- Set CPU affinity to fix multi core processes to their own CPU cores
-/// Optimize(Bool_t flag)           -- Activate constant term optimization (on by default)
-=======
 /// <table>
 /// <tr><th> <th> Options to control construction of -log(L)
 /// <tr><td> `Range(const char* name)`         <td> Fit only data inside range with given name
 /// <tr><td> `Range(Double_t lo, Double_t hi)` <td> Fit only data inside given range. A range named "fit" is created on the fly on all observables.
 ///                                               Multiple comma separated range names can be specified.
+/// <tr><td> `CPUAffinity(Bool_t)`             <td> Set CPU affinity to fix multi core processes to their own CPU cores
 /// <tr><td> `NumCPU(int num)`                 <td> Parallelize NLL calculation on num CPUs
 /// <tr><td> `Optimize(Bool_t flag)`           <td> Activate constant term optimization (on by default)
->>>>>>> 809f4829f5081e7b05f1354b262007ffe291e012
 ///
 /// <tr><th> <th> Options to control flow of fit procedure
 /// <tr><td> `InitialHesse(Bool_t flag)`      <td> Flag controls if HESSE before MIGRAD as well, off by default
