@@ -47,6 +47,25 @@ v.emplace_back(0.);
 now the vector *v* owns its memory as a regular vector.
 **/
 
+template <typename T, bool IsCopyConstructible = std::is_copy_constructible<T>::value>
+class RConstructHelper {
+public:
+   template <class... Args>
+   static void Construct(std::allocator<T> &alloc, T *p, Args &&... args)
+   {
+      alloc.construct(p, args...);
+   }
+};
+
+template <typename T>
+class RConstructHelper<T, false> {
+public:
+   template <class... Args>
+   static void Construct(std::allocator<T> &, T *, Args &&...)
+   {
+   }
+};
+
 template <typename T>
 class RAdoptAllocator {
 public:
@@ -70,19 +89,25 @@ public:
 private:
    enum class EAllocType : char { kOwning, kAdopting, kAdoptingNoAllocYet };
    using StdAllocTraits_t = std::allocator_traits<StdAlloc_t>;
-   pointer fInitialAddress = nullptr;
-   EAllocType fAllocType = EAllocType::kOwning;
+   pointer fInitialAddress{nullptr};
+   EAllocType fAllocType{EAllocType::kOwning};
    StdAlloc_t fStdAllocator;
+   std::size_t fBufferSize{0};
 
 public:
    /// This is the constructor which allows the allocator to adopt a certain memory region.
-   RAdoptAllocator(pointer p) : fInitialAddress(p), fAllocType(EAllocType::kAdoptingNoAllocYet){};
    RAdoptAllocator() = default;
+   RAdoptAllocator(pointer p, std::size_t bufSize = 0)
+      : fInitialAddress(p), fAllocType(p ? EAllocType::kAdoptingNoAllocYet : EAllocType::kOwning), fBufferSize(bufSize)
+   {
+   }
    RAdoptAllocator(const RAdoptAllocator &) = default;
    RAdoptAllocator(RAdoptAllocator &&) = default;
    RAdoptAllocator &operator=(const RAdoptAllocator &) = default;
    RAdoptAllocator &operator=(RAdoptAllocator &&) = default;
    RAdoptAllocator(const RAdoptAllocator<bool> &);
+
+   std::size_t GetBufferSize() const { return fBufferSize; }
 
    /// Construct an object at a certain memory address
    /// \tparam U The type of the memory address at which the object needs to be constructed
@@ -94,9 +119,10 @@ public:
    void construct(U *p, Args &&... args)
    {
       // We refuse to do anything since we assume the memory is already initialised
-      if (EAllocType::kAdopting == fAllocType)
+      if (fBufferSize == 0 && EAllocType::kAdopting == fAllocType)
          return;
-      fStdAllocator.construct(p, args...);
+      RConstructHelper<U>::Construct(fStdAllocator, p, args...);
+      // fStdAllocator.construct(p, args...);
    }
 
    /// \brief Allocate some memory
@@ -106,11 +132,13 @@ public:
    {
       if (n > std::size_t(-1) / sizeof(T))
          throw std::bad_alloc();
-      if (EAllocType::kAdoptingNoAllocYet == fAllocType) {
+      if ((EAllocType::kAdoptingNoAllocYet == fAllocType) &&
+          (fBufferSize == 0 || (fBufferSize > 0 && n <= fBufferSize))) {
          fAllocType = EAllocType::kAdopting;
          return fInitialAddress;
       }
       fAllocType = EAllocType::kOwning;
+
       return StdAllocTraits_t::allocate(fStdAllocator, n);
    }
 
@@ -180,6 +208,8 @@ public:
 
    bool *allocate(std::size_t n) { return fStdAllocator.allocate(n); }
 
+   std::size_t GetBufferSize() const { return 0; }
+
    template <typename U, class... Args>
    void construct(U *p, Args &&... args)
    {
@@ -199,11 +229,48 @@ public:
    bool operator!=(const RAdoptAllocator &) { return false; }
 };
 
-template <typename T>
-RAdoptAllocator<T>::RAdoptAllocator(const RAdoptAllocator<bool> &o) : fStdAllocator(o.fStdAllocator) {}
+// Helpers to initialise an allocator according to its value type
+// if bool we initialise a stl allocator, if not an adopt allocator
+template <typename ValueType>
+RAdoptAllocator<ValueType> MakeAdoptAllocator(ValueType *buf, std::size_t n)
+{
+   return RAdoptAllocator<ValueType>(buf, n);
+}
 
-} // End NS VecOps
-} // End NS Detail
-} // End NS ROOT
+inline std::allocator<bool> MakeAdoptAllocator(bool *, std::size_t)
+{
+   return std::allocator<bool>();
+}
+
+template <typename ValueType>
+RAdoptAllocator<ValueType> MakeAdoptAllocator(ValueType *p)
+{
+   return RAdoptAllocator<ValueType>(p);
+}
+
+inline std::allocator<bool> MakeAdoptAllocator(bool *)
+{
+   return std::allocator<bool>();
+}
+
+template <typename T>
+RAdoptAllocator<T>::RAdoptAllocator(const RAdoptAllocator<bool> &o) : fStdAllocator(o.fStdAllocator)
+{
+}
+
+template <typename Alloc_t>
+std::size_t GetBufferSize(const Alloc_t &alloc)
+{
+   return alloc.GetBufferSize();
+}
+
+inline std::size_t GetBufferSize(const std::allocator<bool> &)
+{
+   return 0;
+}
+
+} // namespace VecOps
+} // namespace Detail
+} // namespace ROOT
 
 #endif
