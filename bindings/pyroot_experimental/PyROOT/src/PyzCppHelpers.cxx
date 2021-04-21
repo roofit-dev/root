@@ -21,13 +21,10 @@ pythonizations.
 #include "CPPInstance.h"
 #include "TClass.h"
 
-PyObject *CallPyObjMethod(PyObject *obj, const char *meth, PyObject *arg1)
+PyObject *CallPyObjMethod(PyObject *obj, const char *meth)
 {
-   // Helper; call method with signature: obj->meth(arg1).
-   Py_INCREF(obj);
-   PyObject *result = PyObject_CallMethod(obj, const_cast<char *>(meth), const_cast<char *>("O"), arg1);
-   Py_DECREF(obj);
-   return result;
+   // Helper; call method with signature: obj->meth()
+   return PyObject_CallMethod(obj, const_cast<char*>(meth), const_cast<char*>(""));
 }
 
 TClass *GetTClass(const CPyCppyy::CPPInstance *pyobj)
