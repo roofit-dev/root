@@ -121,8 +121,6 @@ else()
   set(aclocaldir ${prefix}/${CMAKE_INSTALL_ACLOCALDIR})
 endif()
 
-set(LibSuffix ${SOEXT})
-
 set(buildx11 ${value${x11}})
 set(x11libdir -L${X11_LIBRARY_DIR})
 set(xpmlibdir -L${X11_LIBRARY_DIR})
@@ -493,31 +491,7 @@ if(veccore)
 else()
   set(hasveccore undef)
 endif()
-if(cxx11)
-  set(cxxversion c++11)
-  set(usec++11 define)
-else()
-  set(usec++11 undef)
-endif()
-if(cxx14)
-  set(cxxversion c++14)
-  # If we are using gcc 4.X and we want c++14, we need to use the --std=c++1y flag
-  # else, we continue with c++14.
-  if(CMAKE_COMPILER_IS_GNUCXX AND NOT APPLE)
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "5.0")
-      set(cxxversion c++1y)
-    endif()
-  endif()
-  set(usec++14 define)
-else()
-  set(usec++14 undef)
-endif()
-if(cxx17)
-  set(cxxversion c++17)
-  set(usec++17 define)
-else()
-  set(usec++17 undef)
-endif()
+
 if(compression_default STREQUAL "lz4")
   set(uselz4 define)
   set(usezlib undef)
@@ -574,6 +548,14 @@ else()
   set(hastmvagpu undef)
 endif()
 
+# clear cache to allow reconfiguring
+# with a different CMAKE_CXX_STANDARD
+unset(found_stdapply CACHE)
+unset(found_stdindexsequence CACHE)
+unset(found_stdinvoke CACHE)
+unset(found_stdstringview CACHE)
+unset(found_stdexpstringview CACHE)
+unset(found_stod_stringview CACHE)
 
 set(hasstdexpstringview undef)
 CHECK_CXX_SOURCE_COMPILES("#include <string_view>
@@ -768,14 +750,15 @@ endif()
 
 
 #---compiledata.h--------------------------------------------------------------------------------------------
+
 if(WIN32)
   # We cannot use the compiledata.sh script for windows
   configure_file(${CMAKE_SOURCE_DIR}/cmake/scripts/compiledata.win32.in ${CMAKE_BINARY_DIR}/include/compiledata.h NEWLINE_STYLE UNIX)
 else()
-  execute_process(COMMAND ${CMAKE_SOURCE_DIR}/build/unix/compiledata.sh ${CMAKE_BINARY_DIR}/include/compiledata.h "${CXX}"
+  execute_process(COMMAND ${CMAKE_SOURCE_DIR}/build/unix/compiledata.sh
+    ${CMAKE_BINARY_DIR}/include/compiledata.h "${CMAKE_CXX_COMPILER}"
         "${CMAKE_CXX_FLAGS_RELEASE}" "${CMAKE_CXX_FLAGS_DEBUG}" "${CMAKE_CXX_FLAGS}"
-        "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS}" "${CMAKE_EXE_FLAGS}"
-        "${LibSuffix}" "${SYSLIBS}"
+        "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS}" "${CMAKE_EXE_FLAGS}" "so" "${SYSLIBS}"
         "${libdir}" "-lCore" "-lRint" "${incdir}" "" "" "${ROOT_ARCHITECTURE}" "" "${explicitlink}" )
 endif()
 
