@@ -120,7 +120,7 @@ TBranch::TBranch()
 , fEntryBuffer(0)
 , fTransientBuffer(0)
 , fBrowsables(0)
-, fBulk(new ROOT::Experimental::Internal::TBulkBranchRead(*this))
+, fBulk(*this)
 , fSkipZip(kFALSE)
 , fReadLeaves(&TBranch::ReadLeavesImpl)
 , fFillLeaves(&TBranch::FillLeavesImpl)
@@ -231,7 +231,7 @@ TBranch::TBranch(TTree *tree, const char *name, void *address, const char *leafl
 , fEntryBuffer(0)
 , fTransientBuffer(0)
 , fBrowsables(0)
-, fBulk(new ROOT::Experimental::Internal::TBulkBranchRead(*this))
+, fBulk(*this)
 , fSkipZip(kFALSE)
 , fReadLeaves(&TBranch::ReadLeavesImpl)
 , fFillLeaves(&TBranch::FillLeavesImpl)
@@ -285,7 +285,7 @@ TBranch::TBranch(TBranch *parent, const char *name, void *address, const char *l
 , fEntryBuffer(0)
 , fTransientBuffer(0)
 , fBrowsables(0)
-, fBulk(new ROOT::Experimental::Internal::TBulkBranchRead(*this))
+, fBulk(*this)
 , fSkipZip(kFALSE)
 , fReadLeaves(&TBranch::ReadLeavesImpl)
 , fFillLeaves(&TBranch::FillLeavesImpl)
@@ -1200,7 +1200,7 @@ Int_t TBranch::FlushOneBasket(UInt_t ibasket)
 /// If a new buffer must be created and the user_buffer argument is non-null,
 /// then the memory in the user_bufer will be shared with the returned TBasket.
 
-TBasket* TBranch::GetBasketImpl(Int_t basketnumber, TBuffer* user_buffer)
+TBasket* TBranch::GetBasketImpl(Int_t basketnumber, TBuffer *user_buffer)
 {
    // This counter in the sequential case collects errors coming also from
    // different files (suppose to have a program reading f1.root, f2.root ...)
@@ -1317,14 +1317,14 @@ const char* TBranch::GetIconName() const
 ////////////////////////////////////////////////////////////////////////////////
 /// A helper function to locate the correct basket - and its first entry.
 /// Extracted to a common private function because it is needed by both GetEntry
-/// and GetEntriesFast.  It should not be called directly.
+/// and GetBulkEntries.  It should not be called directly.
 ///
 /// If a new basket must be constructed and the user_buffer is provided, then
 /// the user_buffer will back the memory of the newly-constructed basket.
 ///
 /// Assumes that this branch is enabled.
-Int_t TBranch::GetBasketAndFirst(TBasket*&basket, Long64_t &first,
-                                 TBuffer* user_buffer)
+Int_t TBranch::GetBasketAndFirst(TBasket *&basket, Long64_t &first,
+                                 TBuffer *user_buffer)
 {
    Long64_t updatedNext = fNextBasketEntry;
    Long64_t entry = fReadEntry;
@@ -1380,6 +1380,9 @@ Int_t TBranch::GetBasketAndFirst(TBasket*&basket, Long64_t &first,
          fNextBasketEntry = updatedNext;
       }
       if (user_buffer) {
+         // Disassociate basket from memory buffer for bulk IO
+         // When the user provides a memory buffer (i.e., for bulk IO), we should
+         // make sure to drop all references to that buffer in the TTree afterward.
          fCurrentBasket = nullptr;
          fBaskets[fReadBasket] = nullptr;
       } else {
@@ -1420,10 +1423,10 @@ Bool_t TBranch::SupportsBulkRead() const {
 /// - This only returns events 
 /// 
 
-Int_t TBranch::GetEntriesFast(Long64_t entry, TBuffer &user_buf)
+Int_t TBranch::GetBulkEntries(Long64_t entry, TBuffer &user_buf)
 {
    // TODO: eventually support multiple leaves.
-   if (R__unlikely(fNleaves != 1)) {return -1;}
+   if (R__unlikely(fNleaves != 1)) return -1;
    TLeaf *leaf = static_cast<TLeaf*>(fLeaves.UncheckedAt(0));
    if (R__unlikely(leaf->GetDeserializeType() == TLeaf::DeserializeType::kDestructive)) {return -1;}
 
@@ -1431,11 +1434,11 @@ Int_t TBranch::GetEntriesFast(Long64_t entry, TBuffer &user_buf)
    fReadEntry = entry;
 
    Bool_t enabled = !TestBit(kDoNotProcess);
-   if (R__unlikely(!enabled)) {return -1;}
+   if (R__unlikely(!enabled)) return -1;
    TBasket *basket = nullptr;
    Long64_t first;
    Int_t result = GetBasketAndFirst(basket, first, &user_buf);
-   if (R__unlikely(result <= 0)) {return -1;}
+   if (R__unlikely(result <= 0)) return -1;
    // Only support reading from full clusters.
    if (R__unlikely(entry != first)) {
        //printf("Failed to read from full cluster; first entry is %ld; requested entry is %ld.\n", first, entry);
@@ -1446,16 +1449,25 @@ Int_t TBranch::GetEntriesFast(Long64_t entry, TBuffer &user_buf)
    TBuffer* buf = basket->GetBufferRef();
 
    // Test for very old ROOT files.
-   if (R__unlikely(!buf)) {Error("GetEntriesFast", "Failed to get a new buffer.\n"); return -1;}
+   if (R__unlikely(!buf)) {
+      Error("GetBulkEntries", "Failed to get a new buffer.\n");
+      return -1;
+   }
    // Test for displacements, which aren't supported in fast mode.
-   if (R__unlikely(basket->GetDisplacement())) {Error("GetEntriesFast", "Basket has displacement.\n"); return -1;}
+   if (R__unlikely(basket->GetDisplacement())) {
+      Error("GetBulkEntries", "Basket has displacement.\n");
+      return -1;
+   }
 
    Int_t bufbegin = basket->GetKeylen();
    buf->SetBufferOffset(bufbegin);
 
    Int_t N = ((fNextBasketEntry < 0) ? fEntryNumber : fNextBasketEntry) - first;
    //printf("Requesting %d events; fNextBasketEntry=%lld; first=%lld.\n", N, fNextBasketEntry, first);
-   if (R__unlikely(!leaf->ReadBasketFast(*buf, N))) {Error("GetEntriesFast", "Leaf failed to read.\n"); return -1;}
+   if (R__unlikely(!leaf->ReadBasketFast(*buf, N))) {
+      Error("GetBulkEntries", "Leaf failed to read.\n");
+      return -1;
+   }
    user_buf.SetBufferOffset(bufbegin);
 
    fCurrentBasket = nullptr;
@@ -1468,11 +1480,10 @@ Int_t TBranch::GetEntriesFast(Long64_t entry, TBuffer &user_buf)
 
 // TODO: Template this and the call above; only difference is the TLeaf function (ReadBasketFast vs
 // ReadBasketSerialized
-Int_t
-TBranch::GetEntriesSerialized(Long64_t entry, TBuffer &user_buf, TBuffer *count_buf)
+Int_t TBranch::GetEntriesSerialized(Long64_t entry, TBuffer &user_buf, TBuffer *count_buf)
 {
    // TODO: eventually support multiple leaves.
-   if (R__unlikely(fNleaves != 1)) {return -1;}
+   if (R__unlikely(fNleaves != 1)) { return -1; }
    TLeaf *leaf = static_cast<TLeaf*>(fLeaves.UncheckedAt(0));
    if (R__unlikely(leaf->GetDeserializeType() == TLeaf::DeserializeType::kDestructive)) {
       Error("GetEntriesSerialized", "Encountered a branch with destructive deserialization; failing.\n");
@@ -1483,11 +1494,11 @@ TBranch::GetEntriesSerialized(Long64_t entry, TBuffer &user_buf, TBuffer *count_
    fReadEntry = entry;
 
    Bool_t enabled = !TestBit(kDoNotProcess);
-   if (R__unlikely(!enabled)) {return -1;}
+   if (R__unlikely(!enabled)) { return -1; }
    TBasket *basket = nullptr;
    Long64_t first;
    Int_t result = GetBasketAndFirst(basket, first, &user_buf);
-   if (R__unlikely(result <= 0)) {return -1;}
+   if (R__unlikely(result <= 0)) { return -1; }
    // Only support reading from full clusters.
    if (R__unlikely(entry != first)) {
        Error("GetEntriesSerialized", "Failed to read from full cluster; first entry is %lld; requested entry is %lld.\n", first, entry);
@@ -1498,9 +1509,15 @@ TBranch::GetEntriesSerialized(Long64_t entry, TBuffer &user_buf, TBuffer *count_
    TBuffer* buf = basket->GetBufferRef();
 
    // Test for very old ROOT files.
-   if (R__unlikely(!buf)) {Error("GetEntriesSerialized", "Failed to get a new buffer.\n"); return -1;}
+   if (R__unlikely(!buf)) {
+      Error("GetEntriesSerialized", "Failed to get a new buffer.\n");
+      return -1;
+   }
    // Test for displacements, which aren't supported in fast mode.
-   if (R__unlikely(basket->GetDisplacement())) {Error("GetEntriesSerialized", "Basket has displacement.\n"); return -1;}
+   if (R__unlikely(basket->GetDisplacement())) {
+      Error("GetEntriesSerialized", "Basket has displacement.\n");
+      return -1;
+   }
 
    Int_t bufbegin = basket->GetKeylen();
    buf->SetBufferOffset(bufbegin);
@@ -1564,13 +1581,13 @@ Int_t TBranch::GetEntry(Long64_t entry, Int_t getall)
    // Remember which entry we are reading.
    fReadEntry = entry;
 
-   if (R__unlikely(TestBit(kDoNotProcess) && !getall)) {return 0;}
+   if (R__unlikely(TestBit(kDoNotProcess) && !getall)) { return 0; }
 
    TBasket *basket; // will be initialized in the if/then clauses.
    Long64_t first;
 
    Int_t result = GetBasketAndFirst(basket, first, nullptr);
-   if (R__unlikely(result <= 0)) {return result;}
+   if (R__unlikely(result <= 0)) { return result; }
 
    basket->PrepareBasket(entry);
    TBuffer* buf = basket->GetBufferRef();

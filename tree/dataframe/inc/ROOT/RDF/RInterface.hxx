@@ -525,12 +525,8 @@ public:
                << RDFInternal::PrettyPrintAddr(&columnList) << "),"
                << "*reinterpret_cast<ROOT::RDF::RSnapshotOptions*>(" << RDFInternal::PrettyPrintAddr(&options) << "));";
       // jit snapCall, return result
-      auto calcRes = RDFInternal::InterpreterCalc(snapCall.str());
-      if (0 != calcRes.second) {
-         std::string msg =
-            "Cannot jit Snapshot call. Interpreter error code is " + std::to_string(calcRes.second) + ".";
-         throw std::runtime_error(msg);
-      }
+      fLoopManager->JitDeclarations(); // some type aliases might be needed by the code jitted in the next line
+      RDFInternal::InterpreterCalc(snapCall.str(), "Snapshot");
       return resPtr;
    }
 
@@ -644,11 +640,8 @@ public:
       cacheCall << ">(*reinterpret_cast<std::vector<std::string>*>(" // vector<string> should be ColumnNames_t
                 << RDFInternal::PrettyPrintAddr(&columnList) << "));";
       // jit cacheCall, return result
-      auto calcRes = RDFInternal::InterpreterCalc(cacheCall.str());
-      if (0 != calcRes.second) {
-         std::string msg = "Cannot jit Cache call. Interpreter error code is " + std::to_string(calcRes.second) + ".";
-         throw std::runtime_error(msg);
-      }
+      fLoopManager->JitDeclarations(); // some type aliases might be needed by the code jitted in the next line
+      RDFInternal::InterpreterCalc(cacheCall.str(), "Cache");
       return resRDF;
    }
 
@@ -1574,8 +1567,9 @@ public:
          const auto colID = std::to_string(fCustomColumns.GetColumns().at(std::string(column))->GetID());
          const auto call = "ROOT::Internal::RDF::TypeID2TypeName(typeid(__rdf" + std::to_string(fLoopManager->GetID()) +
                            "::" + std::string(column) + colID + "_type))";
-         const auto calcRes = RDFInternal::InterpreterCalc(call.c_str());
-         return *reinterpret_cast<std::string *>(calcRes.first); // copy result to stack
+         fLoopManager->JitDeclarations(); // some type aliases might be needed by the code jitted in the next line
+         const auto calcRes = RDFInternal::InterpreterCalc(call);
+         return *reinterpret_cast<std::string *>(calcRes); // copy result to stack
       }
    }
 
@@ -1873,7 +1867,7 @@ private:
       // Declare return type to the interpreter, for future use by jitted actions
       auto retTypeDeclaration = "namespace __rdf" + std::to_string(fLoopManager->GetID()) + " { using " + entryColName +
                                 std::to_string(entryColumn->GetID()) + "_type = ULong64_t; }";
-      RDFInternal::InterpreterDeclare(retTypeDeclaration);
+      fLoopManager->ToJitDeclare(retTypeDeclaration);
 
       // Slot number column
       const auto slotColName = "rdfslot_";
@@ -1893,7 +1887,7 @@ private:
       // Declare return type to the interpreter, for future use by jitted actions
       retTypeDeclaration = "namespace __rdf" + std::to_string(fLoopManager->GetID()) + " { using " + slotColName +
                            std::to_string(slotColumn->GetID()) + "_type = unsigned int; }";
-      RDFInternal::InterpreterDeclare(retTypeDeclaration);
+      fLoopManager->ToJitDeclare(retTypeDeclaration);
 
       fLoopManager->AddColumnAlias("tdfentry_", entryColName);
       fCustomColumns.AddName("tdfentry_");
@@ -1967,7 +1961,7 @@ private:
          validColumnNames, upcastNodeOnHeap, typeid(std::shared_ptr<ActionResultType>), typeid(ActionTag), rOnHeap,
          tree, nSlots, fCustomColumns, fDataSource, jittedActionOnHeap, fLoopManager->GetID());
       fLoopManager->Book(jittedActionOnHeap->get());
-      fLoopManager->ToJit(toJit);
+      fLoopManager->ToJitExec(toJit);
       return MakeResultPtr(r, *fLoopManager, *jittedActionOnHeap);
    }
 
@@ -2009,7 +2003,7 @@ private:
       const auto retTypeDeclaration = "namespace __rdf" + std::to_string(fLoopManager->GetID()) +
                                       " { " + +" using " + std::string(name) + std::to_string(newColumn->GetID()) +
                                       "_type = " + retTypeName + "; }";
-      RDFInternal::InterpreterDeclare(retTypeDeclaration);
+      fLoopManager->ToJitDeclare(retTypeDeclaration);
 
       fLoopManager->RegisterCustomColumn(newColumn.get());
       newCols.AddName(name);
