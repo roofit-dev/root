@@ -386,15 +386,12 @@ void ROOT::Experimental::REveGeomDescription::CollectVisibles(int maxnumfaces, s
       if (!shape_descr.fRenderData) {
          TGeoCompositeShape *comp = dynamic_cast<TGeoCompositeShape *>(shape);
 
-         std::unique_ptr<REveGeoPolyShape> poly;
+         auto poly = std::make_unique<REveGeoPolyShape>();
 
          if (comp) {
-            poly = std::make_unique<REveGeoPolyShape>(comp, 20);
+            poly->BuildFromComposite(comp, GetNSegments());
          } else {
-            poly = std::make_unique<REveGeoPolyShape>();
-            REveGeoManagerHolder gmgr(gGeoManager, 20);
-            std::unique_ptr<TBuffer3D> b3d(shape->MakeBuffer3D());
-            poly->SetFromBuff3D(*b3d.get());
+            poly->BuildFromShape(shape, GetNSegments());
          }
 
          shape_descr.fRenderData = std::make_unique<REveRenderData>();
@@ -487,8 +484,8 @@ void ROOT::Experimental::REveGeomDescription::CollectVisibles(int maxnumfaces, s
    int off{0};
 
    for (auto rd : render_data) {
-      auto size = rd->Write( & binary[ off ] );
-      off += size;
+      auto sz = rd->Write( &binary[off], binary.size() - off );
+      off += sz;
    }
    assert(render_offset == off);
 }
