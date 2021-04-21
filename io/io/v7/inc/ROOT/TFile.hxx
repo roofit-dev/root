@@ -16,7 +16,7 @@
 #ifndef ROOT7_TFile
 #define ROOT7_TFile
 
-#include "ROOT/TDirectory.hxx"
+#include "ROOT/RDirectory.hxx"
 
 #include "TClass.h"
 
@@ -41,7 +41,7 @@ class TFileSharedPtrCtor;
  dictionary), and it stores the object's data under a key name.
 
  */
-class TFile: public TDirectory {
+class TFile: public RDirectory {
 private:
    std::unique_ptr<Internal::TFileStorageInterface> fStorage; ///< Storage backend.
 
@@ -124,19 +124,19 @@ public:
 
    /// Read the object for a key. `T` must be the object's type.
    /// This will re-read the object for each call, returning a new copy; whether
-   /// the `TDirectory` is managing an object attached to this key or not.
+   /// the `RDirectory` is managing an object attached to this key or not.
    /// \returns a `unique_ptr` to the object.
-   /// \throws TDirectoryUnknownKey if no object is stored under this name.
-   /// \throws TDirectoryTypeMismatch if the object stored under this name is of
+   /// \throws RDirectoryUnknownKey if no object is stored under this name.
+   /// \throws RDirectoryTypeMismatch if the object stored under this name is of
    ///   a type different from `T`.
    template <class T>
    std::unique_ptr<T> Read(std::string_view name)
    {
-      // FIXME: need separate collections for a TDirectory's key/value and registered objects. Here, we want to emit a
-      // read and must look through the key/values without attaching an object to the TDirectory.
-      // FIXME: do not register read object in TDirectory
+      // FIXME: need separate collections for a RDirectory's key/value and registered objects. Here, we want to emit a
+      // read and must look through the key/values without attaching an object to the RDirectory.
+      // FIXME: do not register read object in RDirectory
       // FIXME: implement actual read
-      // FIXME: for now, copy out of whatever the TDirectory manages.
+      // FIXME: for now, copy out of whatever the RDirectory manages.
       return std::make_unique<T>(*Get<T>(name));
    }
 
