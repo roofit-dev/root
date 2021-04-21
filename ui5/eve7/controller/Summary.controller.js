@@ -5,8 +5,15 @@ sap.ui.define([
    "sap/m/ColorPalettePopover",
    "sap/m/StandardTreeItem",
    "sap/m/Input",
-   "sap/m/CheckBox"
-], function(Controller, JSONModel, Button, ColorPalettePopover, StandardTreeItem, mInput, mCheckBox) {
+   "sap/m/CheckBox",
+   "sap/m/Panel",
+   "sap/m/Text",
+   "sap/ui/layout/SplitterLayoutData",
+   "sap/ui/layout/VerticalLayout",
+   "sap/ui/layout/HorizontalLayout"
+], function(Controller, JSONModel, Button, ColorPalettePopover, StandardTreeItem, 
+            mInput, mCheckBox, mPanel, mText, 
+            SplitterLayoutData, VerticalLayout, HorizontalLayout) {
 
    "use strict";
    
@@ -208,13 +215,13 @@ sap.ui.define([
          oTree.setIncludeItemInSelection(true);
 
          if (false) {
-            var oModel = new sap.ui.model.json.JSONModel();
+            var oModel = new JSONModel();
             oModel.setData([]);
             oModel.setSizeLimit(10000);
             this.getView().setModel(oModel, "treeModel");
 
          } else {
-            var oModel = new sap.ui.model.json.JSONModel();
+            var oModel = new JSONModel();
             oModel.setData([]);
             oModel.setSizeLimit(10000);
             this.getView().setModel(oModel, "treeModel");
@@ -428,7 +435,7 @@ sap.ui.define([
          sap.ui.getCore().setModel(this.model, "treeModel");
 
 
-         this.oProductModel = new sap.ui.model.json.JSONModel();
+         this.oProductModel = new JSONModel();
          this.oProductModel.setData([this._event]);
          sap.ui.getCore().setModel(this.oProductModel, "event");
       },
@@ -607,11 +614,11 @@ sap.ui.define([
       toggleEditor: function() {
          var pp = this.byId("sumSplitter");
          if (!this.ged) {
-            var panel = new sap.m.Panel("productDetailsPanel", { height: "100%" ,width : "97%"});
+            var panel = new mPanel("productDetailsPanel", { height: "100%" ,width : "97%"});
             panel.setHeaderText("ElementGED");
             panel.addStyleClass("sapUiSizeCompact");
 
-            panel.setLayoutData(new sap.ui.layout.SplitterLayoutData("sld", {size : "30%"}));
+            panel.setLayoutData(new SplitterLayoutData("sld", {size : "30%"}));
             pp.addContentArea(panel);
 
             var vert = new sap.ui.layout.VerticalLayout("GED",  {});
@@ -744,14 +751,13 @@ sap.ui.define([
 
          if (widget) widget.data("myData", customData);
 
-         var label = new sap.m.Text(sId + "label", { text: { path: "ged>name" } });
+         var label = new mText(sId + "label", { text: { path: "ged>name" } });
          label.setWidth(this.maxLabelLength +"ex");
          label.addStyleClass("sapUiTinyMargin");
-         var HL = new sap.ui.layout.HorizontalLayout({
+         
+         return new HorizontalLayout({
             content : [label, widget]
          });
-
-         return HL;
       },
 
       handleColorSelect: function(event) {
