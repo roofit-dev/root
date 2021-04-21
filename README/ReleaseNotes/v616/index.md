@@ -53,6 +53,10 @@ Given that this effectively meant that Ruby was dysfunctional and given that nob
 The packages `afs`, `chirp`, `glite`, `sapdb`, `srp` and `ios` have been removed from ROOT.
 They were deprecated before, or never ported from configure, make to CMake.
 
+### Remove GLUtesselator forward declaration from TVirtualX.h
+
+It was never used in TVirtualX interfaces. If GLUtesselator forward declaration is required, use TGLUtil.h include instead. 
+
 
 ## Core Libraries
 
@@ -84,6 +88,12 @@ Instead, use `Root.CompressionAlgorithm` which sets the compression algorithm ac
 ### TRef
 
 * Improve thread scalability of `TRef`. Creating and looking up a lot of `TRef` from the same `processID` now has practically perfect weak scaling.
+
+### Parallelism
+* Upgrade the built-in TBB version to 2019_U1.
+
+### Type System
+* Upgrade the `TClass::GetMissingDictionaries` method to support `std::unique_ptr`, `std::array` and `std::tuple` without getting trapped in the internal STL implementation details.
 
 ## I/O Libraries
 
@@ -133,7 +143,8 @@ See `TFile::GetStreamerInfoListImpl` implementation for an example on how to imp
   - Add [Graph](https://root.cern/doc/master/classROOT_1_1RDF_1_1RInterface.html#a804b466ebdbddef5c7e3400cc6b89301) action and [tutorial](https://github.com/root-project/root/blob/master/tutorials/dataframe/df021_createTGraph.C).
   - Improve [GetColumnNames](https://root.cern/doc/master/classROOT_1_1RDF_1_1RInterface.html#a951fe60b74d3a9fda37df59fd1dac186) to have no redundancy in the returned names.
   - Add [Kahan Summation tutorial](https://github.com/root-project/root/blob/master/tutorials/dataframe/df022_useKahan.C) to subscribe a Kahan summation action to the RDataFrame.
-  - Add [Aggregate tutorial](https://github.com/root-project/root/blob/master/tutorials/dataframe/df023_aggregate.C).
+  - Add [Aggregate tutorial](https://github.com/root-project/root/blob/master/tutorials/dataframe/df019_Cache.C) [Python version](https://github.com/root-project/root/blob/master/tutorials/dataframe/df019_Cache.py).
+  - Add [Cache tutorial](https://github.com/root-project/root/commit/cd3e2fdc4baa99111f57240bf8012dcc5f1b5dc6).
   - Fix ambiguous call on Cache() with one or two columns as parameters.
   - Add [GetFilterNames](https://root.cern/doc/master/classROOT_1_1RDF_1_1RInterface.html#a25026681111897058299161a70ad9bb2).
   - Improve RDF node ownership model. The net effect is that users do not have to worry about keeping the first node of a computation graph in scope anymore.
@@ -146,9 +157,14 @@ See `TFile::GetStreamerInfoListImpl` implementation for an example on how to imp
   - Allow every RDataFrame variable be cast to a common type `ROOT::RDF::RNode`.
   - Speed up just-in-time compilation (and therefore runtime) of Snapshots with a large number of branches.
   - Create names for histograms and graphs based on the input columns if no model is provided.
+  - RCutFlowReport can print cumulative efficiency of cuts.
+  - Reading and writing of columns holding `vector<bool>` instances and `bool` C arrays.
+  - Support `rdfentry_` and `rdfslot_` implicit columns.
+  - Remove `RDataFrame` from the 32-bit builds.
 
 ### TTreeProcessorMT
   - Parallelise search of cluster boundaries for input datasets with no friends or TEntryLists. The net effect is a faster initialization time in this common case.
+  - Handle gracefully the presence of chains the files associated to which are corrupted.
 
 ### TTree
   - TTrees can be forced to only create new baskets at event cluster boundaries.
@@ -161,8 +177,29 @@ See `TFile::GetStreamerInfoListImpl` implementation for an example on how to imp
 
 ## Math Libraries
 
+### VecOps
+  - Add `All` helper: return true if all of the elements equate to true, return false otherwise.
+  - Add `Any` helper: return true if any of the elements equates to true, return false otherwise.
+  - Add `ArgSort` helper: return an RVec of indices that sort the vector.
+  - Add `Combinations` helper which can:
+    - return the indices which represent all combinations of the elements of two vectors.
+    - return the indices which represent all unique n-tuple combinations of the elements of a given vector.
+  - Add `Intersect` helper: return the intersection of elements of two RVecs.
+  - Add `Nonzero` helper: return the indices of the elements which are not zero
+  - Add `Reverse` helepr: return copy of reversed RVec.
+  - Add `Sort` helper: return copy of vector with elements sorted in ascending order (also according to a user defined predicate)
+  - Add `Take` helper which can:
+    - return elements of a RVec at given indices.
+    - return first elements or last elements of an RVec.
+  - Add `Where` helper which can:
+    - return the elements of v1 if the condition c is true and v2 if the condition c is false.
+    - return the elements of v1 if the condition c is true and sets the value v2 if the condition c is false.
+    - return the elements of v2 if the condition c is false and sets the value v1 if the condition c is true.
+    - return a vector with the value v2 if the condition c is false and sets the value v1 if the condition c is true.
 
 ## RooFit Libraries
+  - Add value printer for RooAbsArg and daughters.
+  - Add a Python version for the majority of the Tutorials.
 
 
 ## 2D Graphics Libraries
@@ -226,11 +263,15 @@ See `TFile::GetStreamerInfoListImpl` implementation for an example on how to imp
 
 ## Language Bindings
 
+### Experimental PyROOT
+  - Pythonize TFile, TDirectory and TDirectoryFile. Most notably, implement attr syntax
+    for these classes.
 
 ## JavaScript ROOT
 
 
 ## Tutorials
+  - Refurbish text in the `RDataFrame` tutorials category.
 
 
 ## Class Reference Guide
