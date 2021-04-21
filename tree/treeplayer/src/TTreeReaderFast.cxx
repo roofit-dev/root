@@ -23,7 +23,7 @@ TTreeReaderFast::TTreeReaderFast(TTree* tree):
    fTree(tree)
 {
    if (!fTree) {
-      Error("TTreeReaderFast", "TTree is NULL!");
+      ::Error("TTreeReaderFast::TTreeReaderFast", "TTree is NULL!");
    } else {
       Initialize();
    }
@@ -74,6 +74,9 @@ void TTreeReaderFast::Initialize()
    }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Set an entry to be read.
+
 TTreeReader::EEntryStatus
 TTreeReaderFast::SetEntry(Long64_t entry)
 {
@@ -111,7 +114,6 @@ TTreeReaderFast::SetEntry(Long64_t entry)
 
    return fEntryStatus;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Add a value reader for this tree.

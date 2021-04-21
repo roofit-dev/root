@@ -424,17 +424,27 @@ void RLoopManager::CleanUpTask(unsigned int slot)
       ptr->ClearTask(slot);
 }
 
-/// Jit all actions that required runtime column type inference, and clean the `fToJit` member variable.
-void RLoopManager::BuildJittedNodes()
+/// Declare to the interpreter type aliases and other entities required by RDF jitted nodes.
+/// This method clears the `fToJitDeclare` member variable.
+void RLoopManager::JitDeclarations()
 {
-   auto error = TInterpreter::EErrorCode::kNoError;
-   gInterpreter->Calc(fToJit.c_str(), &error);
-   if (TInterpreter::EErrorCode::kNoError != error) {
-      std::string exceptionText =
-         "An error occurred while jitting. The lines above might indicate the cause of the crash\n";
-      throw std::runtime_error(exceptionText.c_str());
-   }
-   fToJit.clear();
+   if (fToJitDeclare.empty())
+      return;
+
+   RDFInternal::InterpreterDeclare(fToJitDeclare);
+   fToJitDeclare.clear();
+}
+
+/// Add RDF nodes that require just-in-time compilation to the computation graph.
+/// This method also invokes JitDeclarations() if needed, and clears the `fToJitExec` member variable.
+void RLoopManager::Jit()
+{
+   if (fToJitExec.empty())
+      return;
+
+   JitDeclarations();
+   RDFInternal::InterpreterCalc(fToJitExec, "RLoopManager::Run");
+   fToJitExec.clear();
 }
 
 /// Trigger counting of number of children nodes for each node of the functional graph.
@@ -462,8 +472,7 @@ unsigned int RLoopManager::GetNextID()
 /// Also perform a few setup and clean-up operations (jit actions if necessary, clear booked actions after the loop...).
 void RLoopManager::Run()
 {
-   if (!fToJit.empty())
-      BuildJittedNodes();
+   Jit();
 
    InitNodes();
 
