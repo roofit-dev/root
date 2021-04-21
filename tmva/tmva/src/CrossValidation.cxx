@@ -278,7 +278,8 @@ TMVA::CrossValidation::CrossValidation(TString jobName, TMVA::DataLoader *datalo
                                        TString options)
    : TMVA::Envelope(jobName, dataloader, nullptr, options),
      fAnalysisType(Types::kMaxAnalysisType),
-     fAnalysisTypeStr("auto"),
+     fAnalysisTypeStr("Auto"),
+     fSplitTypeStr("Random"),
      fCorrelations(kFALSE),
      fCvFactoryOptions(""),
      fDrawProgressBar(kFALSE),
@@ -347,6 +348,12 @@ void TMVA::CrossValidation::InitOptions()
    AddPreDefVal(TString("Auto"));
 
    // Options specific to CE
+   DeclareOptionRef(fSplitTypeStr, "SplitType",
+                    "Set the split type (Deterministic, Random, RandomStratified) (default: Random)");
+   AddPreDefVal(TString("Deterministic"));
+   AddPreDefVal(TString("Random"));
+   AddPreDefVal(TString("RandomStratified"));
+
    DeclareOptionRef(fSplitExprString, "SplitExpr", "The expression used to assign events to folds");
    DeclareOptionRef(fNumFolds, "NumFolds", "Number of folds to generate");
    DeclareOptionRef(fNumWorkerProcs, "NumWorkerProcs",
@@ -371,6 +378,10 @@ void TMVA::CrossValidation::InitOptions()
 void TMVA::CrossValidation::ParseOptions()
 {
    this->Envelope::ParseOptions();
+
+   if (fSplitTypeStr != "Deterministic" and fSplitExprString != "") {
+      Log() << kFATAL << "SplitExpr can only be used with Deterministic Splitting" << Endl;
+   }
 
    // Factory options
    fAnalysisTypeStr.ToLower();
@@ -448,7 +459,14 @@ void TMVA::CrossValidation::ParseOptions()
       fFactory = std::make_unique<TMVA::Factory>(fJobName, fOutputFile, fOutputFactoryOptions);
    }
 
-   fSplit = std::make_unique<CvSplitKFolds>(fNumFolds, fSplitExprString);
+   if(fSplitTypeStr == "Random"){
+      fSplit = std::unique_ptr<CvSplitKFolds>(new CvSplitKFolds(fNumFolds, fSplitExprString, kFALSE));
+   } else if(fSplitTypeStr == "RandomStratified"){
+      fSplit = std::unique_ptr<CvSplitKFolds>(new CvSplitKFolds(fNumFolds, fSplitExprString, kTRUE));
+   } else {
+      fSplit = std::unique_ptr<CvSplitKFolds>(new CvSplitKFolds(fNumFolds, fSplitExprString));
+   }
+
 }
 
 //_______________________________________________________________________
