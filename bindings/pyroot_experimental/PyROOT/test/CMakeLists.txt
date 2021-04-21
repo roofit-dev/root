@@ -24,6 +24,9 @@ ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_setbranchaddress ttree_setbranchaddress.py
 ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_branch ttree_branch.py
                     COPY_TO_BUILDDIR TreeHelper.h)
 
+# TH1 and subclasses pythonizations
+ROOT_ADD_PYUNITTEST(pyroot_pyz_th1_operators th1_operators.py)
+
 # TCollection and subclasses pythonizations
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tcollection_len tcollection_len.py)
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tcollection_listmethods tcollection_listmethods.py)
@@ -42,6 +45,15 @@ ROOT_ADD_PYUNITTEST(pyroot_pyz_tclonesarray_itemaccess tclonesarray_itemaccess.p
 
 # TArray and subclasses pythonizations
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tarray_len tarray_len.py)
+ROOT_ADD_PYUNITTEST(pyroot_pyz_tarray_getitem tarray_getitem.py)
+
+# TVectorT pythonisations
+ROOT_ADD_PYUNITTEST(pyroot_pyz_tvectort_len tvectort_len.py)
+ROOT_ADD_PYUNITTEST(pyroot_pyz_tvectort_getitem tvectort_getitem.py)
+
+# TVector3 pythonisations
+ROOT_ADD_PYUNITTEST(pyroot_pyz_tvector3_len tvector3_len.py)
+ROOT_ADD_PYUNITTEST(pyroot_pyz_tvector3_getitem tvector3_getitem.py)
 
 # TString pythonisations
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tstring_len tstring_len.py)

@@ -1,3 +1,15 @@
+// @(#)root/eve7:$Id$
+// Authors: Matevz Tadel & Alja Mrak-Tadel: 2018
+
+/*************************************************************************
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
+ * All rights reserved.                                                  *
+ *                                                                       *
+ * For the licensing terms see $ROOTSYS/LICENSE.                         *
+ * For the list of contributors see $ROOTSYS/README/CREDITS.             *
+ *************************************************************************/
+
+
 #ifndef ROOT7_REveTypes
 #define ROOT7_REveTypes
 
@@ -20,19 +32,20 @@ typedef unsigned int ElementId_t;
 bool operator==(const TString &t, const std::string &s);
 bool operator==(const std::string &s, const TString &t);
 
-class REveException : public std::exception, public TString
-{
+////////////////////////////////////////////////////////////////////////////////
+/// REveException
+/// Exception-type thrown by Eve classes.
+////////////////////////////////////////////////////////////////////////////////
+
+class REveException : public std::exception {
+   std::string fWhat;
 public:
-   REveException() {}
-   REveException(const TString &s) : TString(s) {}
-   REveException(const char *s) : TString(s) {}
-   REveException(const std::string &s);
-
+   REveException() = default;
+   explicit REveException(const std::string &s) : fWhat(s) {}
    virtual ~REveException() noexcept {}
+   void append(const std::string &s) { fWhat.append(s); }
 
-   virtual const char *what() const noexcept { return Data(); }
-
-   ClassDef(REveException, 1); // Exception-type thrown by Eve classes.
+   const char *what() const noexcept override { return fWhat.c_str(); }
 };
 
 REveException operator+(const REveException &s1, const std::string &s2);
