@@ -211,4 +211,73 @@ TEST_F(RDFAndFriends, FriendChainMT)
    ROOT::DisableImplicitMT();
 }
 
+// ROOT-9559
+void FillIndexedFriend(const char *mainfile, const char *auxfile)
+{
+   // Start by creating main Tree
+   TFile f(mainfile, "RECREATE");
+   TTree mainTree("mainTree", "mainTree");
+   int idx;
+   mainTree.Branch("idx", &idx);
+   float x;
+   mainTree.Branch("x", &x);
+
+   idx = 1;
+   x = 0.5;
+   mainTree.Fill();
+   idx = 1;
+   x = 2;
+   mainTree.Fill();
+   idx = 1;
+   x = 5;
+   mainTree.Fill();
+   idx = 2;
+   x = 1;
+   mainTree.Fill();
+   idx = 2;
+   x = 8;
+   mainTree.Fill();
+   mainTree.Write();
+   f.Close();
+
+   // And aux tree
+   TFile f2(auxfile, "RECREATE");
+   TTree auxTree("auxTree", "auxTree");
+   auxTree.Branch("idx", &idx);
+   float y;
+   auxTree.Branch("y", &y);
+   idx = 1;
+   y = 5;
+   auxTree.Fill();
+   idx = 2;
+   y = 7;
+   auxTree.Fill();
+   auxTree.Write();
+   f2.Close();
+}
+
+TEST(RDFAndFriendsNoFixture, IndexedFriend)
+{
+   auto mainFile = "IndexedFriend_main.root";
+   auto auxFile = "IndexedFriend_aux.root";
+   FillIndexedFriend(mainFile, auxFile);
+
+   TChain mainChain("mainTree", "mainTree");
+   mainChain.Add(mainFile);
+   TChain auxChain("auxTree", "auxTree");
+   auxChain.Add(auxFile);
+
+   auxChain.BuildIndex("idx");
+   mainChain.AddFriend(&auxChain);
+
+   auto op = [&](){
+      auto df = ROOT::RDataFrame(mainChain);
+      *df.Min<int>("x");
+   };
+   EXPECT_ANY_THROW(op());
+
+   gSystem->Unlink(mainFile);
+   gSystem->Unlink(auxFile);
+}
+
 #endif // R__USE_IMT
