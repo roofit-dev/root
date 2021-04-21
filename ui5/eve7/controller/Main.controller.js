@@ -1,16 +1,17 @@
 sap.ui.define(['sap/ui/core/mvc/Controller',
                'sap/ui/layout/Splitter',
-               'sap/ui/layout/SplitterLayoutData'
-],function(Controller, Splitter, SplitterLayoutData) {
+               'sap/ui/layout/SplitterLayoutData',
+               'rootui5/eve7/lib/EveManager'
+], function(Controller, Splitter, SplitterLayoutData, EveManager) {
 
    "use strict";
 
-   return Controller.extend("eve.Main", {
+   return Controller.extend("rootui5.eve7.controller.Main", {
       onInit: function () {
 
          console.log('MAIN CONTROLLER INIT');
 
-         this.mgr = new JSROOT.EVE.EveManager();
+         this.mgr = new EveManager();
 
          this.mgr.UseConnection(this.getView().getViewData().conn_handle);
 
@@ -42,44 +43,46 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
              toolbar.insertContent(btn, 0);
           }
       },
-
-      updateViewers: function() {
+      
+      updateViewers: function(loading_done) {
          var viewers = this.mgr.FindViewers();
 
          // first check number of views to create
-         var total_count = 0;
+         var need_geom = false, staged = [];
          for (var n=0;n<viewers.length;++n) {
-            if (viewers[n].$view_created || viewers[n].$view_staged) continue;
-            viewers[n].$view_staged = true; // mark view which will be created in this loop
-            if (viewers[n].fRnrSelf) total_count++;
+            var elem = viewers[n];
+            if (!elem.$view_created && elem.fRnrSelf) {
+               staged.push(elem);
+               if (viewers[n].fName != "Table") need_geom = true;
+            }
          }
 
-         if (total_count == 0) return;
+         if (staged.length == 0) return;
+         
+         // if geometry loading was requested - do it now
+         // TODO: this should be done via sap.define[] API
+         if (need_geom && !loading_done)
+            return JSROOT.AssertPrerequisites("geom", this.updateViewers.bind(this, true));
 
-         console.log("FOUND viewers", viewers.length, "not yet exists", total_count);
+         console.log("FOUND viewers", viewers.length, "not yet exists", staged.length);
 
          var main = this, vv = null, count = 0, sv = this.getView().byId("MainAreaSplitter");
 
-         for (var n=0;n<viewers.length;++n) {
-            var elem = viewers[n];
-            console.log("ELEMENT", elem.fName);
+         for (var n=0;n<staged.length;++n) {
+            var elem = staged[n];
             var viewid = "EveViewer" + elem.fElementId;
-            if (elem.$view_created || !viewers[n].fRnrSelf) continue;
 
             // create missing view
             elem.$view_created = true;
-            delete elem.$view_staged;
-
             console.log("Creating view", viewid);
-
             count++;
 
             var oLd = undefined;
-            if ((count == 1) && (total_count>1))
-               oLd = new SplitterLayoutData({resizable: true, size: "50%"});
+            if ((count == 1) && (staged.length > 1))
+               oLd = new SplitterLayoutData({ resizable: true, size: "50%" });
 
-            var vtype = "eve.GL";
-            if (elem.fName === "Table") vtype = "eve.EveTable"; // AMT temporary solution
+            var vtype = "rootui5.eve7.view.GL";
+            if (elem.fName === "Table") vtype = "rootui5.eve7.view.EveTable"; // AMT temporary solution
 
             var view = new JSROOT.sap.ui.xmlview({
                id: viewid,
