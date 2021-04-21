@@ -40,6 +40,34 @@ The following people have contributed to this new version:
 
 ## Deprecation and Removal
 
+## Preprocessor deprecation macros
+### Deprecated Classes
+  * `R__SUGGEST_ALTERNATIVE("Suggestion text")` macro allows to suggest alternatives to classes. It must be used after the class definition and before the final semicolon:
+```
+class DoNotUseClass {
+} R__SUGGEST_ALTERNATIVE("Use ... instead.");
+```
+It is activated by the preprocessor defines `R__SUGGEST_NEW_INTERFACE`. The former is useful when deprecation warnings should be activated/deactivated at global level, for example for an entire project. This could be done by defining `R__SUGGEST_NEW_INTERFACE` in the build system. 
+If the warning needs to be confined within single translation units, irrespective of the definition of `R__SUGGEST_NEW_INTERFACE`, the `R__ALWAYS_SUGGEST_ALTERNATIVE` macro can be used:
+```
+#ifndef DONOTUSECLASS_H
+#define DONOTUSECLASS_H
+
+class DoNotUseClass {
+} R__ALWAYS_SUGGEST_ALTERNATIVE("Use ... instead.");
+
+#endif
+```
+### Deprecated Functions
+The same macro as for classes can be used for functions:
+```
+TIterator* createIterator() const
+R__SUGGEST_ALTERNATIVE("begin(), end() and range-based for loops.") {
+ return makeLegacyIterator();
+}
+```
+
+
 ### I/O Libraries
 
 * The deprecrated `I/O` plugins for  `HDFS`, `Castor` and `RFIO` have been removed.
@@ -64,6 +92,9 @@ The methods could be replaced by equivalent methods with other signature:
    * Long_t THttpCallArg::GetPostDataLength() const;
    * std::string THttpCallArg::FillHttpHeader(const char *header = nullptr);
    * void THttpCallArg::SetContent(std::string &&cont);
+
+### Core Libraries
+  * The TStringLong class is deprecated.
 
 
 ## Core Libraries
@@ -239,7 +270,7 @@ The old RooFit collections could be modified while iterating. The STL-like itera
 - **But not** inserting/deleting before/at the current iterator position. With a debug build (with assertions), the legacy iterators will check that the collection is not mutated. In a release build, elements might be skipped or be iterated twice.
 
 #### Moving away from the slower iterators
-The legacy iterators have been flagged with a special deprecation macro that can be used help the user use the recommended ROOT interface. Defining `R__SUGGEST_ALTERNATIVE`, (either in a single translation unit or in the build system), creating a legacy iterator will trigger a compiler warning such as:
+The legacy iterators have been flagged with a special deprecation macro that can be used help the user use the recommended ROOT interface. Defining one of the [deprecation macros](#preprocessor-deprecation-macros) (either in a single translation unit or in the build system), and creating a legacy iterator will trigger a compiler warning such as:
 ```
 <path>/RooChebychev.cxx:66:34: warning: 'createIterator' is deprecated: There is a superior alternative: begin(), end() and range-based for loops. [-Wdeprecated-declarations]
   TIterator* coefIter = coefList.createIterator() ;
@@ -328,18 +359,28 @@ In addition we have :
 
 ## JavaScript ROOT
 
-### New functionality
+### New functionality from 5.7.0 release
 
    - Add support of TProfile2Poly class
    - Add support of TGeoOverlap class
+   - Add support of TGeoHalfSpace for composites
    - Implement update of TF2 drawings, see tutorials/graphics/anim.C
    - Improve windows handling in flex(ible) layout
+   - Provide special widget for object inspector
    - Use requestAnimationFrame when do monitoring, improves performance
    - Better position for text in TH2Poly drawings
-   - Upgrade three.js 86 -> 102, use SoftwareRenderer instead of CanvasRenderer
    - Support eve7 geometry viewer - render data generated in ROOT itself
    - Provide initial WebVR support, thanks to Diego Marcos
    - Use gStyle attributes to draw histogram title
+   - Enable projections drawing also with TH2 lego plots
+   - Many adjustment with new TWebCanvas - interactivity, attributes/position updates, context menus
+   - Upgrade three.js 86 -> 102, use SoftwareRenderer instead of CanvasRenderer
+   - Upgrade d3.js 4.4.4 -> 5.7.0
+   - Fix - support clipping for tracks and points in geo painter
+   - Fix - drawing of TGeoNode with finder
+   - Fix - key press events processed only in active pad (ROOT-9128)
+   - Fix - use X0/Y0 in xtru shape, thanks to @altavir
+
 
 ### New files location
 

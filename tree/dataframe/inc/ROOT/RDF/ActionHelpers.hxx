@@ -224,6 +224,15 @@ public:
       thisWBuf.insert(thisWBuf.end(), vs.size(), w);
    }
 
+   // ROOT-10092: Filling with a scalar as first column and a collection as second is not supported
+   template <typename T, typename W,
+             typename std::enable_if<IsContainer<W>::value && !IsContainer<T>::value, int>::type = 0>
+   void Exec(unsigned int, const T &, const W &)
+   {
+      throw std::runtime_error(
+        "Cannot fill object if the type of the first column is a scalar and the one of the second a container.");
+   }
+
    Hist_t &PartialUpdate(unsigned int);
 
    void Initialize() { /* noop */}
@@ -294,6 +303,15 @@ public:
       for (auto &x0 : x0s) {
          thisSlotH->Fill(x0); // TODO: Can be optimised in case T == vector<double>
       }
+   }
+
+   // ROOT-10092: Filling with a scalar as first column and a collection as second is not supported
+   template <typename X0, typename X1,
+             typename std::enable_if<IsContainer<X1>::value && !IsContainer<X0>::value, int>::type = 0>
+   void Exec(unsigned int , const X0 &, const X1 &)
+   {
+      throw std::runtime_error(
+        "Cannot fill object if the type of the first column is a scalar and the one of the second a container.");
    }
 
    template <typename X0, typename X1,

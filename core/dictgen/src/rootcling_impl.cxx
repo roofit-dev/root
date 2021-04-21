@@ -2955,6 +2955,9 @@ void CreateDictHeader(std::ostream &dictStream, const std::string &main_dictname
    dictStream  << "// Do NOT change. Changes will be lost next time file is generated\n\n"
                << "#define R__DICTIONARY_FILENAME " << main_dictname << std::endl
 
+               // We do not want deprecation warnings to fire in dictionaries
+               << "#define R__NO_DEPRECATION" << std::endl
+
                // Now that CINT is not longer there to write the header file,
                // write one and include in there a few things for backward
                // compatibility.
@@ -2986,7 +2989,7 @@ void CreateDictHeader(std::ostream &dictStream, const std::string &main_dictname
                << "/*******************************************************************/\n\n"
                << "#include \"TDataMember.h\"\n\n"; // To set their transiency
 #ifndef R__SOLARIS
-   dictStream  << "// Since CINT ignores the std namespace, we need to do so in this file.\n"
+   dictStream  << "// The generated code does not explicitly qualifies STL entities\n"
                << "namespace std {} using namespace std;\n\n";
 #endif
 }
