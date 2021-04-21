@@ -1,7 +1,6 @@
 
 #include <stdio.h>
 
-#include "Bytes.h"
 #include "TBranch.h"
 #include "TBufferFile.h"
 #include "TFile.h"
@@ -17,25 +16,29 @@
 #include "gtest/gtest.h"
 
 
-class BulkApiTest : public ::testing::Test {
+class BulkApiMultipleTest : public ::testing::Test {
 public:
     static constexpr Int_t fEventCount = 1e7;
-    const std::string fFileName = "BulkApiTest.root";
+    const std::string fFileName = "BulkApiMultipleTest.root";
 
 protected:
     virtual void SetUp()
     {
-        auto hfile = new TFile(fFileName.c_str(), "RECREATE", "TTree float micro benchmark ROOT file");
+        auto hfile = new TFile(fFileName.c_str(), "RECREATE", "TTree float and double micro benchmark ROOT file");
         hfile->SetCompressionLevel(0); // No compression at all.
 
         // Otherwise, we keep with the current ROOT defaults.
         auto tree = new TTree("T", "A ROOT tree of floats.");
         float f = 2;
+        double g = 3;
         TBranch *branch2 = tree->Branch("myFloat", &f, 320000, 1);
+        TBranch *branch3 = tree->Branch("myDouble", &g, 320000, 1);
         branch2->SetAutoDelete(kFALSE);
+        branch3->SetAutoDelete(kFALSE);
         for (Long64_t ev = 0; ev < fEventCount; ev++) {
           tree->Fill();
           f ++;
+          g ++;
         }
         hfile = tree->GetCurrentFile();
         hfile->Write();
@@ -48,25 +51,34 @@ protected:
 };
 
 
-TEST_F(BulkApiTest, stdRead)
+TEST_F(BulkApiMultipleTest, stdRead)
 {
     auto hfile = TFile::Open(fFileName.c_str());
     printf("Starting read of file %s.\n", fFileName.c_str());
     TStopwatch sw;
 
+    printf("Using inline bulk read APIs.\n");
+
     printf("Using standard read APIs.\n");
     // Read via standard APIs.
     TTreeReader myReader("T", hfile);
     TTreeReaderValue<float> myF(myReader, "myFloat");
+    TTreeReaderValue<double> myG(myReader, "myDouble");
     Long64_t idx = 0;
     float idx_f = 1;
+    double idx_g = 2;
     Int_t events = fEventCount;
     sw.Start();
     while (myReader.Next()) {
         if (R__unlikely(idx == events)) {break;}
         idx_f++;
+        idx_g++;
         if (R__unlikely((idx < 16000000) && (*myF != idx_f))) {
             printf("Incorrect value on myFloat branch: %f, expected %f (event %lld)\n", *myF, idx_f, idx);
+            ASSERT_TRUE(false);
+        }
+        if (R__unlikely((idx < 15000000) && (*myG != idx_g))) {
+            printf("Incorrect value on myDouble branch: %f, expected %f (event %lld)\n", *myG, idx_g, idx);
             ASSERT_TRUE(false);
         }
         idx++;
@@ -76,48 +88,8 @@ TEST_F(BulkApiTest, stdRead)
     printf("TTreeReader: Total elapsed time (seconds) for standard APIs: %.2f\n", sw.RealTime());
 }
 
-TEST_F(BulkApiTest, simpleRead)
-{
-    auto hfile = TFile::Open(fFileName.c_str());
-    printf("Starting read of file %s.\n", fFileName.c_str());
-    TStopwatch sw;
 
-    printf("Using inline bulk read APIs.\n");
-    TBufferFile branchbuf(TBuffer::kWrite, 32*1024);
-    TTree *tree = dynamic_cast<TTree*>(hfile->Get("T"));
-    ASSERT_TRUE(tree);
-
-    TBranch *branchF = tree->GetBranch("myFloat");
-    ASSERT_TRUE(branchF);
-
-    Int_t events = fEventCount;
-    float idx_f = 1;
-    Long64_t evt_idx = 0;
-    while (events) {
-        auto count = branchF->GetBulkRead().GetEntriesSerialized(evt_idx, branchbuf);
-        ASSERT_GE(count, 0);
-        events = events > count ? (events - count) : 0;
-
-        float *entry = reinterpret_cast<float*>(branchbuf.GetCurrent());
-        for (Int_t idx=0; idx<count; idx++) {
-            idx_f++;
-            Int_t tmp = *reinterpret_cast<Int_t*>(&entry[idx]);
-            char *tmp_ptr = reinterpret_cast<char *>(&tmp);
-            frombuf(tmp_ptr, entry + idx);
-
-            if (R__unlikely((evt_idx < 16000000) && (entry[idx] != idx_f))) {
-                printf("Incorrect value on myFloat branch: %f (event %lld)\n", entry[idx], evt_idx + idx);
-                ASSERT_TRUE(false);
-            }
-        }
-        evt_idx += count;
-    }
-    sw.Stop();
-    printf("GetEntriesSerialized: Successful read of all events.\n");
-    printf("GetEntriesSerialized: Total elapsed time (seconds) for bulk APIs: %.2f\n", sw.RealTime());
-}
-
-TEST_F(BulkApiTest, fastRead)
+TEST_F(BulkApiMultipleTest, fastRead)
 {
     auto hfile = TFile::Open(fFileName.c_str());
     printf("Starting read of file %s.\n", fFileName.c_str());
@@ -126,9 +98,14 @@ TEST_F(BulkApiTest, fastRead)
     printf("Using TTreeReaderFast.\n");
     ROOT::Experimental::TTreeReaderFast myReader("T", hfile);
     ROOT::Experimental::TTreeReaderValueFast<float> myF(myReader, "myFloat");
+    ROOT::Experimental::TTreeReaderValueFast<double> myG(myReader, "myDouble");
     myReader.SetEntry(0);
     if (ROOT::Internal::TTreeReaderValueBase::kSetupMatch != myF.GetSetupStatus()) {
         printf("TTreeReaderValueFast<float> failed to initialize.  Status code: %d\n", myF.GetSetupStatus());
+        ASSERT_TRUE(false);
+    }
+    if (ROOT::Internal::TTreeReaderValueBase::kSetupMatch != myG.GetSetupStatus()) {
+        printf("TTreeReaderValueFast<double> failed to initialize.  Status code: %d\n", myG.GetSetupStatus());
         ASSERT_TRUE(false);
     }
     if (myReader.GetEntryStatus() != TTreeReader::kEntryValid) {
@@ -138,12 +115,18 @@ TEST_F(BulkApiTest, fastRead)
     Int_t events = fEventCount;
     Long64_t idx = 0;
     float idx_f = 1;
+    double idx_g = 2;
     for (auto reader_idx : myReader) {
         ASSERT_LT(reader_idx, events);
         ASSERT_EQ(reader_idx, idx);
         idx_f++;
+        idx_g++;
         if (R__unlikely((idx < 16000000) && (*myF != idx_f))) {
             printf("Incorrect value on myFloat branch: %f, expected %f (event %lld)\n", *myF, idx_f, idx);
+            ASSERT_TRUE(false);
+        }
+        if (R__unlikely((idx < 15000000) && (*myG != idx_g))) {
+            printf("Incorrect value on myDouble branch: %f, expected %f (event %lld)\n", *myG, idx_g, idx);
             ASSERT_TRUE(false);
         }
         idx++;
