@@ -18,6 +18,10 @@
 #include "TSystem.h"
 #include "TStyle.h"
 #include "TCanvas.h"
+#include "TFrame.h"
+#include "TPaveText.h"
+#include "TPaveStats.h"
+#include "TText.h"
 #include "TROOT.h"
 #include "TClass.h"
 #include "TColor.h"
@@ -121,7 +125,7 @@ Bool_t TWebCanvas::IsJSSupportedClass(TObject *obj)
 /// Also if object is in list of primitives, one could ask for entry link for such object,
 /// This can allow to change draw option
 
-TObject *TWebCanvas::FindPrimitive(const char *sid, TPad *pad, TObjLink **padlnk)
+TObject *TWebCanvas::FindPrimitive(const char *sid, TPad *pad, TObjLink **padlnk, TPad **objpad)
 {
 
    if (!pad)
@@ -131,7 +135,7 @@ TObject *TWebCanvas::FindPrimitive(const char *sid, TPad *pad, TObjLink **padlnk
    const char *separ = strchr(sid, '#');
    UInt_t id = 0;
 
-   if (separ == 0) {
+   if (separ == nullptr) {
       id = (UInt_t)TString(sid).Atoll();
    } else {
       kind = separ + 1;
@@ -150,6 +154,8 @@ TObject *TWebCanvas::FindPrimitive(const char *sid, TPad *pad, TObjLink **padlnk
       }
       TH1 *h1 = obj->InheritsFrom(TH1::Class()) ? (TH1 *)obj : nullptr;
       if (TString::Hash(&obj, sizeof(obj)) == id) {
+         if (objpad)
+            *objpad = pad;
          if (h1 && (*kind == 'x'))
             return h1->GetXaxis();
          if (h1 && (*kind == 'y'))
@@ -164,10 +170,15 @@ TObject *TWebCanvas::FindPrimitive(const char *sid, TPad *pad, TObjLink **padlnk
          TIter fiter(h1->GetListOfFunctions());
          TObject *fobj = nullptr;
          while ((fobj = fiter()) != nullptr)
-            if (TString::Hash(&fobj, sizeof(fobj)) == id)
+            if (TString::Hash(&fobj, sizeof(fobj)) == id) {
+               if (objpad)
+                  *objpad = pad;
                return fobj;
+            }
       } else if (obj->InheritsFrom(TPad::Class())) {
-         obj = FindPrimitive(sid, (TPad *)obj);
+         obj = FindPrimitive(sid, (TPad *)obj, padlnk, objpad);
+         if (objpad && !*objpad)
+            *objpad = pad;
          if (obj)
             return obj;
       }
@@ -288,8 +299,53 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
    TWebPS masterps;
    bool usemaster = primitives->GetSize() > fPrimitivesMerge;
 
+
    TIter iter(primitives);
    TObject *obj = nullptr;
+   TFrame *frame = nullptr;
+   TPaveText *title = nullptr;
+   bool need_frame = false;
+   TString need_title;
+
+   while ((obj = iter()) != nullptr) {
+      if (obj->InheritsFrom(TFrame::Class())) {
+         frame = static_cast<TFrame *>(obj);
+      } else if (obj->InheritsFrom(TH1::Class())) {
+         need_frame = true;
+         if (!obj->TestBit(TH1::kNoTitle) && (strlen(obj->GetTitle())>0)) need_title = obj->GetTitle();
+      } else if (obj->InheritsFrom(TGraph::Class())) {
+         need_frame = true;
+         if (strlen(obj->GetTitle())>0) need_title = obj->GetTitle();
+      } else if (obj->InheritsFrom(TPaveText::Class())) {
+         if (strcmp(obj->GetName(),"title") == 0)
+            title = static_cast<TPaveText *>(obj);
+      }
+   }
+
+   if (need_frame && !frame) {
+      frame = pad->GetFrame();
+      primitives->AddFirst(frame);
+   }
+
+   if (need_title.Length() > 0) {
+      if (title) {
+         TText *t0 = (TText*)title->GetLine(0);
+         if (t0) t0->SetTitle(need_title.Data());
+      } else {
+         title = new TPaveText(0, 0, 0, 0, "blNDC");
+         title->SetFillColor(gStyle->GetTitleFillColor());
+         title->SetFillStyle(gStyle->GetTitleStyle());
+         title->SetName("title");
+         title->SetBorderSize(gStyle->GetTitleBorderSize());
+         title->SetTextColor(gStyle->GetTitleTextColor());
+         title->SetTextFont(gStyle->GetTitleFont(""));
+         if (gStyle->GetTitleFont("")%10 > 2)
+            title->SetTextSize(gStyle->GetTitleFontSize());
+         title->AddText(need_title.Data());
+         title->SetBit(kCanDelete);
+         primitives->Add(title);
+      }
+   }
 
    auto flush_master = [&]() {
       if (!usemaster || masterps.IsEmptyPainting()) return;
@@ -298,9 +354,9 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
       masterps.CreatePainting(); // create for next operations
    };
 
-   auto add_object = [&]() {
-      paddata.NewPrimitive(obj, iter.GetOption()).SetSnapshot(TWebSnapshot::kObject, obj);
-   };
+   iter.Reset();
+
+   bool first_obj = true;
 
    while ((obj = iter()) != nullptr) {
       if (obj->InheritsFrom(TPad::Class())) {
@@ -308,19 +364,74 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
          CreatePadSnapshot(paddata.NewSubPad(), (TPad *)obj, version, nullptr);
       } else if (obj->InheritsFrom(TH1::Class())) {
          flush_master();
-         add_object();
 
          TH1 *hist = (TH1 *)obj;
          TIter fiter(hist->GetListOfFunctions());
          TObject *fobj = nullptr;
+         TPaveStats *stats = nullptr;
+         TObject *palette = nullptr;
+         TString hopt = iter.GetOption();
+
+         while ((fobj = fiter()) != nullptr) {
+           if (fobj->InheritsFrom(TPaveStats::Class()))
+               stats = dynamic_cast<TPaveStats *> (fobj);
+           else if (fobj->InheritsFrom("TPaletteAxis"))
+              palette = fobj;
+         }
+
+         if (!stats && first_obj) {
+            stats  = new TPaveStats(
+                           gStyle->GetStatX() - gStyle->GetStatW(),
+                           gStyle->GetStatY() - gStyle->GetStatH(),
+                           gStyle->GetStatX(),
+                           gStyle->GetStatY(), "brNDC");
+
+             stats->SetParent(hist);
+             stats->SetOptFit(gStyle->GetOptFit());
+             stats->SetOptStat(gStyle->GetOptStat());
+             stats->SetFillColor(gStyle->GetStatColor());
+             stats->SetFillStyle(gStyle->GetStatStyle());
+             stats->SetBorderSize(gStyle->GetStatBorderSize());
+             stats->SetTextFont(gStyle->GetStatFont());
+             if (gStyle->GetStatFont()%10 > 2)
+                stats->SetTextSize(gStyle->GetStatFontSize());
+             stats->SetFitFormat(gStyle->GetFitFormat());
+             stats->SetStatFormat(gStyle->GetStatFormat());
+             stats->SetName("stats");
+
+             stats->SetTextColor(gStyle->GetStatTextColor());
+             stats->SetTextAlign(12);
+             stats->SetBit(kCanDelete);
+             stats->SetBit(kMustCleanup);
+
+             hist->GetListOfFunctions()->Add(stats);
+         }
+
+         if (title && first_obj) hopt.Append(";;use_pad_title");
+
+         if (stats) hopt.Append(";;use_pad_stats");
+
+         if (!palette && (hist->GetDimension()>1) && (hopt.Index("colz", 0, TString::kIgnoreCase) != kNPOS)) {
+            std::stringstream exec;
+            exec << "new TPaletteAxis(0,0,0,0, (TH1*)" << std::hex << std::showbase << (size_t)hist << ");";
+            palette = (TObject *) gROOT->ProcessLine(exec.str().c_str());
+            if (palette) hist->GetListOfFunctions()->AddFirst(palette);
+         }
+
+         if (palette) hopt.Append(";;use_pad_palette");
+
+         paddata.NewPrimitive(obj, hopt.Data()).SetSnapshot(TWebSnapshot::kObject, obj);
+
+         fiter.Reset();
          while ((fobj = fiter()) != nullptr)
-            if (!fobj->InheritsFrom("TPaveStats") && !fobj->InheritsFrom("TPaletteAxis"))
-               CreateObjectSnapshot(paddata, pad, fobj, fiter.GetOption());
+            CreateObjectSnapshot(paddata, pad, fobj, fiter.GetOption());
 
          fPrimitivesLists.Add(hist->GetListOfFunctions());
+         first_obj = false;
       } else if (obj->InheritsFrom(TGraph::Class())) {
          flush_master();
-         add_object();
+
+         paddata.NewPrimitive(obj, iter.GetOption()).SetSnapshot(TWebSnapshot::kObject, obj);
 
          TGraph *gr = (TGraph *)obj;
 
@@ -331,9 +442,10 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
                CreateObjectSnapshot(paddata, pad, fobj, fiter.GetOption());
 
          fPrimitivesLists.Add(gr->GetListOfFunctions());
+         first_obj = false;
       } else if (IsJSSupportedClass(obj)) {
          flush_master();
-         add_object();
+         paddata.NewPrimitive(obj, iter.GetOption()).SetSnapshot(TWebSnapshot::kObject, obj);
       } else {
          CreateObjectSnapshot(paddata, pad, obj, iter.GetOption(), usemaster ? &masterps : nullptr);
       }
@@ -613,35 +725,29 @@ Bool_t TWebCanvas::DecodeAllRanges(const char *arg)
       pad->SetTopMargin(r.mtop);
       pad->SetBottomMargin(r.mbottom);
 
-      for (unsigned k = 0; k < r.primitives.size(); ++k) {
-         TObjLink *lnk = nullptr;
-         TObject *obj = FindPrimitive(r.primitives[k].snapid.c_str(), pad, &lnk);
-         if (obj && lnk) {
+      if (r.ranges) {
+
+         Double_t ux1_, ux2_, uy1_, uy2_, px1_, px2_, py1_, py2_;
+
+         pad->GetRange(px1_, py1_, px2_, py2_);
+         pad->GetRangeAxis(ux1_, uy1_, ux2_, uy2_);
+
+         bool same_range = (r.ux1 == ux1_) && (r.ux2 == ux2_) && (r.uy1 == uy1_) && (r.uy2 == uy2_) &&
+                           (r.px1 == px1_) && (r.px2 == px2_) && (r.py1 == py1_) && (r.py2 == py2_);
+
+         if (!same_range) {
+            pad->Range(r.px1, r.py1, r.px2, r.py2);
+            pad->RangeAxis(r.ux1, r.uy1, r.ux2, r.uy2);
+
             if (gDebug > 1)
-               Info("DecodeAllRanges", "Set draw option \"%s\" for object %s %s", r.primitives[k].opt.c_str(),
-                    obj->ClassName(), obj->GetName());
-            lnk->SetOption(r.primitives[k].opt.c_str());
+               Info("DecodeAllRanges", "Change ranges for pad %s", pad->GetName());
          }
       }
 
-      if (!r.ranges) continue;
+      for (auto &item : r.primitives)
+         ProcessObjectData(item, pad);
 
-      Double_t ux1_, ux2_, uy1_, uy2_, px1_, px2_, py1_, py2_;
-
-      pad->GetRange(px1_, py1_, px2_, py2_);
-      pad->GetRangeAxis(ux1_, uy1_, ux2_, uy2_);
-
-      if ((r.ux1 == ux1_) && (r.ux2 == ux2_) && (r.uy1 == uy1_) && (r.uy2 == uy2_) && (r.px1 == px1_) &&
-          (r.px2 == px2_) && (r.py1 == py1_) && (r.py2 == py2_))
-         continue; // no changes
-
-      pad->Range(r.px1, r.py1, r.px2, r.py2);
-      pad->RangeAxis(r.ux1, r.uy1, r.ux2, r.uy2);
-
-      if (gDebug > 1)
-         Info("DecodeAllRanges", "Change ranges for pad %s", pad->GetName());
-
-      // without special objects no need for explicit update of the canvas
+      // without special objects no need for explicit update of the pad
       if (fHasSpecials)
          pad->Modified(kTRUE);
    }
@@ -652,6 +758,105 @@ Bool_t TWebCanvas::DecodeAllRanges(const char *arg)
 
    return kTRUE;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////
+/// Process data for single primitive
+/// Returns object pad if object was modified
+
+TPad *TWebCanvas::ProcessObjectData(TWebObjectOptions &item, TPad *pad)
+{
+   TObjLink *lnk = nullptr;
+   TPad *objpad = nullptr;
+   TObject *obj = FindPrimitive(item.snapid.c_str(), pad, &lnk, &objpad);
+
+   if (item.fcust.compare("exec") == 0) {
+      auto pos = item.opt.find("(");
+      if (obj && (pos != std::string::npos) && obj->IsA()->GetMethodAllAny(item.opt.substr(0,pos).c_str())) {
+         std::stringstream exec;
+         exec << "((" << obj->ClassName() << " *) " << std::hex << std::showbase
+                      << (size_t)obj << ")->" << item.opt << ";";
+         Info("ProcessObjectData", "Obj %s Execute %s", obj->GetName(), exec.str().c_str());
+         gROOT->ProcessLine(exec.str().c_str());
+      } else {
+         Error("ProcessObjectData", "Fail to execute %s for object %p %s", item.opt.c_str(), obj, obj ? obj->ClassName() : "---");
+         objpad = nullptr;
+      }
+      return objpad;
+   }
+
+   bool modified = false;
+
+   if (obj && lnk) {
+      if (gDebug > 1)
+         Info("DecodeAllRanges", "Set draw option \"%s\" for object %s %s", item.opt.c_str(),
+               obj->ClassName(), obj->GetName());
+      lnk->SetOption(item.opt.c_str());
+      modified = true;
+   }
+
+   if (item.fcust.compare("frame") == 0) {
+      if (obj && obj->InheritsFrom(TFrame::Class())) {
+         TFrame *frame = static_cast<TFrame *>(obj);
+         if (item.fopt.size() >= 4) {
+            frame->SetX1(item.fopt[0]);
+            frame->SetY1(item.fopt[1]);
+            frame->SetX2(item.fopt[2]);
+            frame->SetY2(item.fopt[3]);
+            modified = true;
+         }
+      }
+   } else if (item.fcust.compare("pave") == 0) {
+      if (obj && obj->InheritsFrom(TPave::Class())) {
+         TPave *pave = static_cast<TPave *>(obj);
+         if ((item.fopt.size() >= 4) && objpad) {
+            auto *save = gPad;
+            gPad = objpad;
+
+            // first time need to overcome init problem
+            pave->ConvertNDCtoPad();
+
+            pave->SetX1NDC(item.fopt[0]);
+            pave->SetY1NDC(item.fopt[1]);
+            pave->SetX2NDC(item.fopt[2]);
+            pave->SetY2NDC(item.fopt[3]);
+
+            // printf("Setting %s %s %f %f %f %f\n", pave->GetName(), pave->ClassName(), item.fopt[0], item.fopt[1], item.fopt[2], item.fopt[3]);
+            modified = true;
+
+            pave->ConvertNDCtoPad();
+            gPad = save;
+         }
+      }
+   }
+
+   return modified ? objpad : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+/// Process data for single object from list of primitives
+
+Bool_t TWebCanvas::DecodeObjectData(const char *arg)
+{
+   if (!arg || !*arg)
+      return kFALSE;
+
+   TWebObjectOptions *opt = nullptr;
+
+   TBufferJSON::FromJSON(opt, arg);
+
+   if (opt) {
+      TPad *modpad = ProcessObjectData(*opt, nullptr);
+
+      // indicate that pad was modified
+      if (modpad)
+         modpad->Modified();
+
+      delete opt;
+   }
+
+   return opt != nullptr;
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Handle data from web browser
@@ -714,10 +919,11 @@ void TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
       } else {
          conn->fDrawVersion = TString(cdata, separ - cdata).Atoll();
          cdata = separ + 1;
-         if ((gDebug > 1) && is_first)
-            Info("ProcessData", "RANGES %s", cdata);
-         if (is_first)
+         if (is_first) {
+            if (gDebug > 1)
+               Info("ProcessData", "RANGES %s", cdata);
             DecodeAllRanges(cdata); // only first connection can set ranges
+         }
       }
       CheckDataToSend();
 
@@ -725,6 +931,11 @@ void TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
 
       if (is_first) // only first connection can set ranges
          DecodeAllRanges(cdata + 8);
+
+   } else if (strncmp(cdata, "PRIMIT6:", 8) == 0) {
+
+      if (is_first) // only first connection can set ranges
+         DecodeObjectData(cdata + 8);
 
    } else if (strncmp(cdata, "STATUSBITS:", 11) == 0) {
 
@@ -752,7 +963,7 @@ void TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
             std::stringstream exec;
             exec << "((" << obj->ClassName() << " *) " << std::hex << std::showbase << (size_t)obj
                  << ")->" << buf.Data() << ";";
-            Info("ProcessWS", "Obj %s Execute %s", obj->GetName(), exec.str().c_str());
+            Info("ProcessData", "Obj %s Execute %s", obj->GetName(), exec.str().c_str());
             gROOT->ProcessLine(exec.str().c_str());
 
             // PerformUpdate(); // check that canvas was changed
@@ -825,7 +1036,7 @@ void TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
          }
          ofs.close();
 
-         Info("ProcessWS", "File %s has been created", filename.Data());
+         Info("ProcessData", "File %s has been created", filename.Data());
       }
       CheckDataToSend();
 
@@ -847,7 +1058,7 @@ void TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
 
          TPad *pad = dynamic_cast<TPad*> (FindPrimitive(click->padid.c_str()));
          if (pad && (pad != gPad)) {
-            Info("ProcessWS", "Activate pad %s", pad->GetName());
+            Info("ProcessData", "Activate pad %s", pad->GetName());
             gPad = pad;
             Canvas()->SetClickSelectedPad(pad);
             if (fActivePadChangedSignal) fActivePadChangedSignal(pad);
@@ -870,7 +1081,7 @@ void TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
       }
 
    } else {
-      Error("ProcessWS", "GET unknown request %d %30s", (int)arg.length(), cdata);
+      Error("ProcessData", "GET unknown request %d %30s", (int)arg.length(), cdata);
    }
 }
 
