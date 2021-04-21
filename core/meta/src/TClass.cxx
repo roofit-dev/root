@@ -2955,9 +2955,10 @@ TClass *TClass::GetClass(const char *name, Bool_t load, Bool_t silent)
    Bool_t checkTable = kFALSE;
 
    if (!cl) {
-      int oldAutoloadVal = gCling->SetClassAutoloading(false);
-      TClassEdit::GetNormalizedName(normalizedName, name);
-      gCling->SetClassAutoloading(oldAutoloadVal);
+      {
+         TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
+         TClassEdit::GetNormalizedName(normalizedName, name);
+      }
       // Try the normalized name.
       if (normalizedName != name) {
          cl = (TClass*)gROOT->GetListOfClasses()->FindObject(normalizedName.c_str());
@@ -3167,9 +3168,8 @@ TClass *TClass::GetClass(const std::type_info& typeinfo, Bool_t load, Bool_t /* 
    }
    if (autoload_old && gInterpreter->AutoLoad(typeinfo,kTRUE)) {
       // Disable autoload to avoid potential infinite recursion
-      gCling->SetClassAutoloading(0);
+      TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
       cl = GetClass(typeinfo, load);
-      gCling->SetClassAutoloading(1);
       if (cl) {
          return cl;
       }
@@ -4013,8 +4013,7 @@ void TClass::ReplaceWith(TClass *newcl) const
    // Since we are in the process of replacing a TClass by a TClass
    // coming from a dictionary, there is no point in loading any
    // libraries during this search.
-   Bool_t autoload = gInterpreter->SetClassAutoloading(kFALSE);
-
+   TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
    while ((acl = (TClass*)nextClass())) {
       if (acl == newcl) continue;
 
@@ -4035,8 +4034,6 @@ void TClass::ReplaceWith(TClass *newcl) const
       delete acl;
    }
    gInterpreter->UnRegisterTClassUpdate(this);
-
-   gInterpreter->SetClassAutoloading(autoload);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -6059,12 +6056,9 @@ void TClass::SetUnloaded()
    // Disable the autoloader while calling SetClassInfo, to prevent
    // the library from being reloaded!
    {
-      int autoload_old = gCling->SetClassAutoloading(0);
+      TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
       TInterpreter::SuspendAutoParsing autoParseRaii(gCling);
-
       gInterpreter->SetClassInfo(this,kTRUE);
-
-      gCling->SetClassAutoloading(autoload_old);
    }
    fDeclFileName = 0;
    fDeclFileLine = 0;

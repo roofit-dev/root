@@ -408,7 +408,7 @@
                    use_worker: false, update_browser: true, show_controls: false,
                    highlight: false, highlight_scene: false, select_in_view: false,
                    project: '', is_main: false, tracks: false, ortho_camera: false,
-                   clipx: false, clipy: false, clipz: false, ssao: false,
+                   clipx: false, clipy: false, clipz: false, ssao: false, outline: false,
                    script_name: "", transparency: 0, autoRotate: false, background: '#FFFFFF',
                    depthMethod: "ray" };
 
@@ -488,6 +488,7 @@
 
       if (d.check("DFLT_COLORS") || d.check("DFLT")) this.SetRootDefaultColors();
       if (d.check("SSAO")) res.ssao = true;
+      if (d.check("OUTLINE")) res.outline = true;
 
       if (d.check("NOWORKER")) res.use_worker = -1;
       if (d.check("WORKER")) res.use_worker = 1;
@@ -851,8 +852,6 @@
    TGeoPainter.prototype.createSSAO = function() {
       if (!this._webgl || this._ssaoPass) return;
 
-      // var renderPass = new THREE.RenderPass( this._scene, this._camera );
-
       // this._depthRenderTarget = new THREE.WebGLRenderTarget( this._scene_width, this._scene_height, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter } );
       // Setup SSAO pass
       this._ssaoPass = new THREE.SSAOPass( this._scene, this._camera, this._scene_width, this._scene_height );
@@ -860,8 +859,6 @@
       this._ssaoPass.renderToScreen = true;
 
       // Add pass to effect composer
-      this._effectComposer = new THREE.EffectComposer( this._renderer );
-      //this._effectComposer.addPass( renderPass );
       this._effectComposer.addPass( this._ssaoPass );
    }
 
@@ -1217,6 +1214,8 @@
       this.SetTooltipAllowed(JSROOT.gStyle.Tooltip > 0);
 
       this._controls = JSROOT.Painter.CreateOrbitControl(this, this._camera, this._scene, this._renderer, this._lookat);
+
+      this._controls.mouse_tmout = 100; // set larger timeout for geometry processing
 
       if (this.options.project || this.options.ortho_camera) this._controls.enableRotate = false;
 
@@ -1922,8 +1921,20 @@
       this._enableSSAO = this.options.ssao;
       this._enableClipping = !this._enableSSAO;
 
-      if (this._enableSSAO)
-         this.createSSAO();
+      if (this._webgl && (this.options.ssao || this.options.outline)) {
+         this._effectComposer = new THREE.EffectComposer( this._renderer );
+         this._effectComposer.addPass( new THREE.RenderPass( this._scene, this._camera ) );
+
+         if (this.options.outline && (typeof this.createOutline == "function")) {
+
+            this.createOutline(w, h);
+
+         } else if (this.options.ssao && (typeof this.createSSAO == "function")) {
+
+            this.createSSAO(w, h);
+
+         }
+      }
 
       if (this._fit_main_area && (this._usesvg || this._usesvgimg)) {
          // create top-most SVG for geomtery drawings
@@ -3058,8 +3069,8 @@
 
          this.TestCameraPosition(tmout === -1);
 
-         // do rendering, most consuming time
-         if (this._webgl && this._enableSSAO && this._ssaoPass) {
+         // its needed for outlinePass - do rendering, most consuming time
+         if (this._webgl && this._effectComposer && (this._effectComposer.passes.length > 0)) {
             this._effectComposer.render();
          } else {
        //     this._renderer.logarithmicDepthBuffer = true;
@@ -3609,7 +3620,8 @@
             this._camera.aspect = this._scene_width / this._scene_height;
          this._camera.updateProjectionMatrix();
          this._renderer.setSize( this._scene_width, this._scene_height, !this._fit_main_area );
-         if (this._ssaoPass) this._ssaoPass.setSize( this._scene_width, this._scene_height );
+         if (this._effectComposer)
+            this._effectComposer.setSize( this._scene_width, this._scene_height );
 
          if (!this.drawing_stage) this.Render3D();
       }
