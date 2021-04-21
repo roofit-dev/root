@@ -1,7 +1,7 @@
-# Author: Enric Tejedor CERN  11/2018
+# Author: Enric Tejedor CERN  02/2019
 
 ################################################################################
-# Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.                      #
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.                      #
 # All rights reserved.                                                         #
 #                                                                              #
 # For the licensing terms see $ROOTSYS/LICENSE.                                #
@@ -9,14 +9,15 @@
 ################################################################################
 
 from ROOT import pythonization
+import cppyy
+from libROOTPython import AddTClassDynamicCastPyz
 
 
-@pythonization()
-def pythonize_rooabscollection(klass, name):
-    # Parameters:
-    # klass: class to be pythonized
-    # name: string containing the name of the class
+@pythonization(lazy = False)
+def pythonize_tclass():
+    klass = cppyy.gbl.TClass
 
-    if name == 'RooAbsCollection':
-        # Support `len(c)` as `c.getSize()`
-        klass.__len__ = klass.getSize
+    # DynamicCast
+    AddTClassDynamicCastPyz(klass)
+
+    return True

@@ -37,8 +37,6 @@ set(TestSource
     fit/testBinnedFitExecPolicy.cxx
     fit/testLogLExecPolicy.cxx )
 
-set(testMathRandom_LABELS longtest)
-
 if(ROOT_mathmore_FOUND)
   list(APPEND TestSource stressGoFTest.cxx)
   list(APPEND Libraries MathMore)
@@ -81,6 +79,9 @@ ROOT_ADD_GTEST(GradientUnit testGradient.cxx
 ROOT_ADD_GTEST(GradientFittingUnit testGradientFitting.cxx
   LIBRARIES Core MathCore Hist RIO Tree GenVector)
 
+ROOT_ADD_GTEST(VectorizedTMathUnit testVectorizedTMath.cxx
+      LIBRARIES Core MathCore)
+
 ROOT_ADD_GTEST(testRootFinder testRootFinder.cxx  LIBRARIES ${Libraries} )
 
 
@@ -88,3 +89,4 @@ ROOT_ADD_GTEST(testRootFinder testRootFinder.cxx  LIBRARIES ${Libraries} )
 if(ROOT_clad_FOUND)
   ROOT_ADD_GTEST(CladDerivatorTests CladDerivatorTests.cxx LIBRARIES MathCore)
 endif()
+
