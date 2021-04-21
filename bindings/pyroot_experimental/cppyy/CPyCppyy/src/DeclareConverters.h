@@ -7,6 +7,10 @@
 // Standard
 #include <complex>
 #include <string>
+#include "ROOT/RStringView.hxx"
+
+// ROOT
+#include "TString.h"
 
 
 namespace CPyCppyy {
@@ -263,14 +267,13 @@ protected:                                                                   \
     strtype fBuffer;                                                         \
 }
 
+CPPYY_DECLARE_STRING_CONVERTER(TString, TString);
 CPPYY_DECLARE_STRING_CONVERTER(STLString, std::string);
-#if __cplusplus > 201402L
 CPPYY_DECLARE_STRING_CONVERTER(STLStringViewBase, std::string_view);
 class STLStringViewConverter : public STLStringViewBaseConverter {
 public:
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
 };
-#endif
 CPPYY_DECLARE_STRING_CONVERTER(STLWString, std::wstring);
 
 class STLStringMoveConverter : public STLStringConverter {

@@ -19,6 +19,7 @@ The following people have contributed to this new version:
  Gerri Ganis, CERN/SFT,\
  Andrei Gheata, CERN/SFT,\
  Stephan Hageboeck, CERN/SFT,\
+ Jan Knedlik, GSI,\
  Sergey Linev, GSI,\
  Pere Mato, CERN/SFT,\
  Lorenzo Moneta, CERN/SFT,\
@@ -59,6 +60,10 @@ The methods could be replaced by equivalent methods with other signature:
 
 ## I/O Libraries
 
+### TNetXNGFile
+Added necessary changes to allow [XRootD local redirection](https://github.com/xrootd/xrootd/blob/8c9d0a9cc7f00cbb2db35be275c35126f3e091c0/docs/ReleaseNotes.txt#L14)
+  - Uses standard VectorReadLimits and does not query a XRootD data server (which is unknown in local redirection), when it is redirected to a local file
+  - Adds a new constructor with a const char *lurl to TNetXNGFile and passes it to TFile, if set. This allows redirection to files that have a different name in the local file system and is important to allow derivation (for example to TAlien and TJAlienFile) while still keeping functionality via TArchiveFile when the file name in the local file system does not match `*.zip`
 
 ## TTree Libraries
 
@@ -216,4 +221,30 @@ The legacy iterators have been flagged with a special deprecation macro that can
 
 ## Build, Configuration and Testing Infrastructure
 
+### Header location and `ROOT_GENERATE_DICTIONARY` / `ROOT_STANDARD_LIBRARY_PACKAGE`
 
+A change in the argument handling of `ROOT_GENERATE_DICTIONARY` and `ROOT_STANDARD_LIBRARY_PACKAGE` might need your attention:
+these macros now respect whether a header file was passed with its fulla relative path (the common case), or with a full path.
+The latter allows to find headers at runtime - at the cost of a loss of relocatability: you cannot move the library containing
+that dictionary to a different directory, because the header location is stored in the dictionary. This case is used by roottest
+but should likely not be used by anything but test suites.
+
+Instead pass relative paths, together with a `-I` option to find the headers, plus setting `ROOT_INCLUDE_PATH` for finding the
+headers back at runtime. The ROOT stress suite is now updated to follow this behavior; see for instance the injection of
+`$ROOTSYS/test` in `test/stressMathCore.cxx`, allowing ROOT to find the header at runtime, whether interpreted
+(`R__ADD_INCLUDE_PATH`) or compiled (`TROOT::AddExtraInterpreterArgs({"-I..."})` before interpreter construction).
+
+If you called `ROOT_GENERATE_DICTIONARY(Dict ${CMAKE_CURRENT_SOURCE_DIR}/subdir/Header1.h LINKDEF LinkDef.h)` then update that
+call to `ROOT_GENERATE_DICTIONARY(Dict Header1.h OPTIONS -I subdir LINKDEF LinkDef.h)` *if* the header is usually included as
+`#include "Header1.h"`, or to `ROOT_GENERATE_DICTIONARY(Dict subdir/Header1.h LINKDEF LinkDef.h)` *if* the header is usually
+included as `#include "subdir/Header1.h"`. I.e. the general rule is: pass to `ROOT_GENERATE_DICTIONARY` (or
+`ROOT_STANDARD_LIBRARY_PACKAGE`) the spelling as `#include`ed.
+
+As an important side-effect, `ROOT_GENERATE_DICTIONARY` and thus `ROOT_STANDARD_LIBRARY_PACKAGE` now *require* the header to
+be found at configuration time. We have seen too many cases where the header location was mis-stated, and as a consequence,
+CMake did not generate the proper dependencies. If the header should not be taken into account for dependencies and / or if
+the header will not be found (e.g. the standard library's `vector`) please pass the header through the `NODEPHEADERS` option
+to `ROOT_GENERATE_DICTIONARY` or `ROOT_STANDARD_LIBRARY_PACKAGE`.
+
+We believe that this simplification / regularization of behavior, and the additional checks are worth the possible changes
+on the user side.

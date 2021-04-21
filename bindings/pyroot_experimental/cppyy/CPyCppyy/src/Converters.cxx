@@ -20,9 +20,7 @@
 #include <string.h>
 #include <utility>
 #include <sstream>
-#if __cplusplus > 201402L
-#include <string_view>
-#endif
+#include "ROOT/RStringView.hxx"
 
 // FIXME: Should refer to CPyCppyy::Parameter in the code.
 #ifdef R__CXXMODULES
@@ -1028,8 +1026,8 @@ bool CPyCppyy::name##Converter::ToMemory(PyObject* value, void* address)     \
     return InstancePtrConverter::ToMemory(value, address);                   \
 }
 
+CPPYY_IMPL_STRING_AS_PRIMITIVE_CONVERTER(TString, TString, Data, Length)
 CPPYY_IMPL_STRING_AS_PRIMITIVE_CONVERTER(STLString, std::string, c_str, size)
-#if __cplusplus > 201402L
 CPPYY_IMPL_STRING_AS_PRIMITIVE_CONVERTER(STLStringViewBase, std::string_view, data, size)
 bool CPyCppyy::STLStringViewConverter::SetArg(
     PyObject* pyobject, Parameter& para, CallContext* ctxt)
@@ -1055,7 +1053,6 @@ bool CPyCppyy::STLStringViewConverter::SetArg(
 
     return false;
 }
-#endif
 
 CPyCppyy::STLWStringConverter::STLWStringConverter(bool keepControl) :
     InstancePtrConverter(Cppyy::GetScope("std::wstring"), keepControl) {}
@@ -2072,6 +2069,9 @@ public:
         gf["const ULong64_t&"] =            gf["const unsigned long long&"];
 
     // factories for special cases
+        gf["TString"] =                     (cf_t)+[](long) { return new TStringConverter{}; };
+        gf["TString&"] =                    (cf_t)+[](long) { return new TStringConverter{}; };
+        gf["const TString&"] =              (cf_t)+[](long) { return new TStringConverter{}; };
         gf["const char*"] =                 (cf_t)+[](long) { return new CStringConverter{}; };
         gf["const char[]"] =                (cf_t)+[](long) { return new CStringConverter{}; };
         gf["char*"] =                       (cf_t)+[](long) { return new NonConstCStringConverter{}; };
@@ -2082,14 +2082,13 @@ public:
         gf["const string&"] =               (cf_t)+[](long) { return new STLStringConverter{}; };
         gf["string&&"] =                    (cf_t)+[](long) { return new STLStringMoveConverter{}; };
         gf["std::string&&"] =               (cf_t)+[](long) { return new STLStringMoveConverter{}; };
-#if __cplusplus > 201402L
         gf["std::string_view"] =            (cf_t)+[](long) { return new STLStringViewConverter{}; };
         gf["string_view"] =                 (cf_t)+[](long) { return new STLStringViewConverter{}; };
         gf[STRINGVIEW] =                    (cf_t)+[](long) { return new STLStringViewConverter{}; };
+        gf["experimental::" STRINGVIEW] =   (cf_t)+[](long) { return new STLStringViewConverter{}; };
         gf["std::string_view&"] =           (cf_t)+[](long) { return new STLStringViewConverter{}; };
         gf["const string_view&"] =          (cf_t)+[](long) { return new STLStringViewConverter{}; };
         gf["const " STRINGVIEW "&"] =       (cf_t)+[](long) { return new STLStringViewConverter{}; };
-#endif
         gf["std::wstring"] =                (cf_t)+[](long) { return new STLWStringConverter{}; };
         gf[WSTRING] =                       (cf_t)+[](long) { return new STLWStringConverter{}; };
         gf["std::" WSTRING] =               (cf_t)+[](long) { return new STLWStringConverter{}; };

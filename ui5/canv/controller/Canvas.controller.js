@@ -22,6 +22,10 @@ sap.ui.define([
    var CController = Controller.extend("rootui5.canv.controller.Canvas", {
       onInit : function() {
          this._Page = this.getView().byId("CanvasMainPage");
+         
+         var id = this.getView().getId();
+         console.log("Initialization CANVAS id = " + id);
+         
          this.bottomVisible = false;
 
          var model = new JSONModel({ GedIcon: "", StatusIcon: "", ToolbarIcon: "", TooltipIcon: "sap-icon://accept",
@@ -49,6 +53,8 @@ sap.ui.define([
             
             cp.ShowUI5ProjectionArea = this.showProjectionArea.bind(this);
             cp.DrawInUI5ProjectionArea = this.drawInProjectionArea.bind(this);
+            
+            cp.ShowUI5Panel = this.showPanelInLeftArea.bind(this);
          }
 
          // this.toggleGedEditor();
@@ -285,15 +291,15 @@ sap.ui.define([
          this.getView().getModel().setProperty("/GedIcon", new_state ? "sap-icon://accept" : "");
       },
 
-      cleanupIfGed : function() {
+      cleanupIfGed: function() {
          var ged = this.getLeftController("Ged"),
              p = this.getCanvasPainter();
          if (p) p.RegisterForPadEvents(null);
          if (ged) ged.cleanupGed();
-         if (p) p.ProcessChanges("sbits", p);
+         if (p && p.ProcessChanges) p.ProcessChanges("sbits", p);
       },
 
-      getLeftController : function(name) {
+      getLeftController: function(name) {
          if (this.getView().getModel().getProperty("/LeftArea") != name) return null;
          var split = this.getView().byId("MainAreaSplitter");
          return split ? split.getContentAreas()[0].getController() : null;
@@ -303,7 +309,7 @@ sap.ui.define([
          this.showGeEditor(!this.isGedEditor());
       },
 
-      showPanelInLeftArea : function(panel_name, panel_handle, call_back) {
+      showPanelInLeftArea: function(panel_name, panel_handle, call_back) {
 
          var split = this.getView().byId("MainAreaSplitter");
          var curr = this.getView().getModel().getProperty("/LeftArea");
@@ -325,18 +331,15 @@ sap.ui.define([
             size      : "250px"
          });
 
-         var panelid = "LeftPanelId";
-
-         var oModel = new JSONModel({
-            handle: panel_handle
-         });
-         sap.ui.getCore().setModel(oModel, panelid);
+         var panelid = "LeftPanelId", viewName = panel_name;
+         if (viewName.indexOf(".") < 0) viewName = "rootui5.canv.view." + panel_name; 
 
          XMLView.create({
             id: panelid,
-            viewName : "rootui5.canv.view." + panel_name,
+            viewName: viewName,
+            viewData: { handle: panel_handle, masterPanel: this },
             layoutData: oLd,
-            height: panel_name=="Panel" ? "100%" : undefined
+            height: (panel_name == "Panel") ? "100%" : undefined
          }).then(function(oView) {
             split.insertContentArea(oView, 0);
             JSROOT.CallBack(call_back, true);
@@ -344,7 +347,8 @@ sap.ui.define([
 
       },
 
-      showLeftArea : function(panel_name, call_back) {
+      // TODO: sync with showPanelInLeftArea, it is more or less same
+      showLeftArea: function(panel_name, call_back) {
          var split = this.getView().byId("MainAreaSplitter");
          var curr = this.getView().getModel().getProperty("/LeftArea");
          if (!split || (curr === panel_name)) return JSROOT.CallBack(call_back, null);
@@ -361,14 +365,18 @@ sap.ui.define([
          if (!panel_name) return JSROOT.CallBack(call_back, null);
 
          var oLd = new SplitterLayoutData({
-            resizable : true,
-            size      : "250px"
+            resizable: true,
+            size: "250px"
          });
          
          var canvp = this.getCanvasPainter();
+         
+         var viewName = "rootui5.canv.view." + panel_name;
+         if (panel_name == "FitPanel") viewName = "rootui5.fitpanel.view.FitPanel";
 
          XMLView.create({
-            viewName : "rootui5.canv.view." + panel_name,
+            viewName: viewName,
+            viewData: { masterPanel: this },
             layoutData: oLd,
             height: (panel_name == "Panel") ? "100%" : undefined
          }).then(function(oView) {
@@ -511,11 +519,11 @@ sap.ui.define([
          if (p) p.SetTooltipAllowed(new_state);
       },
 
-      setShowMenu : function(new_state) {
+      setShowMenu: function(new_state) {
          this._Page.setShowHeader(new_state);
       },
 
-      onViewMenuAction : function (oEvent) {
+      onViewMenuAction: function (oEvent) {
 
          var item = oEvent.getParameter("item");
 
