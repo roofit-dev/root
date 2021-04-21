@@ -1,3 +1,14 @@
+// @(#)root/eve7:$Id$
+// Authors: Matevz Tadel & Alja Mrak-Tadel: 2018
+
+/*************************************************************************
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
+ * All rights reserved.                                                  *
+ *                                                                       *
+ * For the licensing terms see $ROOTSYS/LICENSE.                         *
+ * For the list of contributors see $ROOTSYS/README/CREDITS.             *
+ *************************************************************************/
+
 #ifndef ROOT7_REveTableInfo
 #define ROOT7_REveTableInfo
 
@@ -7,19 +18,34 @@
 namespace ROOT {
 namespace Experimental {
 
+///////////////////////////////////////////////////////////////////////////////
+/// REveTableEntry
+///////////////////////////////////////////////////////////////////////////////
+
 class REveTableEntry {
 public:
    std::string    fName;
-   std::string    fExpression;
    int            fPrecision;
+   std::string    fExpression;
    REveDataColumn::FieldType_e fType;
 
    REveTableEntry() : fName("unknown"), fPrecision(2), fType(REveDataColumn::FT_Double) {}
-   void Print() const {
+
+   REveTableEntry(const std::string &name, int precision, const std::string &expression)
+      : fName(name), fPrecision(precision), fExpression(expression), fType(REveDataColumn::FT_Double)
+   {
+   }
+
+   void Print() const
+   {
       printf("TableEntry\n");
       printf("name: %s expression: %s\n", fName.c_str(), fExpression.c_str());
    }
 };
+
+///////////////////////////////////////////////////////////////////////////////
+/// REveTableHandle
+///////////////////////////////////////////////////////////////////////////////
 
 class REveTableHandle
 {
@@ -32,18 +58,13 @@ public:
    // REveTableHandle() {}
 
    REveTableHandle&
-   column(const char *name, int precision, const char *expression)
+   column(const std::string &name, int precision, const std::string &expression)
    {
-      REveTableEntry columnEntry;
-      columnEntry.fName = name;
-      columnEntry.fPrecision = precision;
-      columnEntry.fExpression = expression;
-
-      fSpecs[fCollectionName].push_back(columnEntry);
+      fSpecs[fCollectionName].emplace_back(name, precision, expression);
       return *this;
    }
 
-   REveTableHandle &column(const char *label, int precision)
+   REveTableHandle &column(const std::string &label, int precision)
    {
       return column(label, precision, label);
    }
@@ -59,13 +80,17 @@ protected:
    Specs_t&  fSpecs;
 };
 
-//==============================================================================
-//==============================================================================
+///////////////////////////////////////////////////////////////////////////////
+/// REveTableViewInfo
+///////////////////////////////////////////////////////////////////////////////
 
 class REveTableViewInfo : public REveElement
 {
 public:
-   REveTableViewInfo(const std::string& name="TableViewManager", const std::string& title=""){ fName=name; fTitle=title; }
+   REveTableViewInfo(const std::string &name = "TableViewManager", const std::string &title = "")
+      : REveElement(name, title)
+   {
+   }
 
    typedef std::function<void (ElementId_t)> Delegate_t;
 
@@ -74,23 +99,22 @@ public:
 
    void AddDelegate(Delegate_t d) { fDelegates.push_back(d); }
 
-   Int_t WriteCoreJson(nlohmann::json &j, Int_t rnr_offset); // override;
+   Int_t WriteCoreJson(nlohmann::json &j, Int_t rnr_offset) override;
 
    // read
-   REveTableHandle::Entries_t& RefTableEntries(std::string cname) { return fSpecs[cname]; }
+   REveTableHandle::Entries_t &RefTableEntries(std::string cname) { return fSpecs[cname]; }
 
    // filling
-   REveTableHandle table(std::string collectionName) {
+   REveTableHandle table(std::string collectionName)
+   {
       REveTableHandle handle(collectionName, fSpecs);
       return handle;
    }
 
 private:
-   int fDisplayedCollection;
+   int fDisplayedCollection{0};
    std::vector<Delegate_t> fDelegates;
    REveTableHandle::Specs_t  fSpecs;
-
-   ClassDef(REveTableViewInfo, 0); // Short description.
 };
 
 

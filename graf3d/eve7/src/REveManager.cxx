@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
+// @(#)root/eve7:$Id$
 // Authors: Matevz Tadel & Alja Mrak-Tadel: 2006, 2007
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -39,7 +39,8 @@
 #include "Riostream.h"
 
 #include "json.hpp"
-
+#include <sstream>
+#include <iostream>
 
 using namespace ROOT::Experimental;
 namespace REX = ROOT::Experimental;
@@ -78,8 +79,8 @@ REveManager::REveManager() : // (Bool_t map_window, Option_t* opt) :
 
    static const REveException eh("REveManager::REveManager ");
 
-   if (REX::gEve != 0)
-      throw eh + "There can be only one!";
+   if (REX::gEve)
+      throw eh + "There can be only one REve!";
 
    REX::gEve = this;
 
@@ -292,19 +293,19 @@ void REveManager::ElementChanged(REveElement* element, Bool_t update_scenes, Boo
 ////////////////////////////////////////////////////////////////////////////////
 /// Mark all scenes from the given list as changed.
 
-void REveManager::ScenesChanged(REveElement::List_t& scenes)
+void REveManager::ScenesChanged(REveElement::List_t &scenes)
 {
-   for (REveElement::List_i s=scenes.begin(); s!=scenes.end(); ++s)
-      ((REveScene*)*s)->Changed();
+   for (auto &s: scenes)
+      ((REveScene*)s)->Changed();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Add an element. If parent is not specified it is added into
 /// current event (which is created if does not exist).
 
-void REveManager::AddElement(REveElement* element, REveElement* parent)
+void REveManager::AddElement(REveElement *element, REveElement *parent)
 {
-   if (parent == 0) {
+   if (parent == nullptr) {
       // XXXX
    }
 
@@ -318,7 +319,7 @@ void REveManager::AddElement(REveElement* element, REveElement* parent)
 
 void REveManager::AddGlobalElement(REveElement* element, REveElement* parent)
 {
-   if (parent == 0)
+   if (!parent)
       parent = fGlobalScene;
 
    parent->AddElement(element);
@@ -374,8 +375,6 @@ next_free_id:
 
 void REveManager::PreDeleteElement(REveElement* el)
 {
-   static const REveException eh("REveManager::PreDeleteElement ");
-
    if (el->fImpliedSelected > 0)
    {
       for (auto slc : fSelectionList->fChildren)
@@ -385,7 +384,7 @@ void REveManager::PreDeleteElement(REveElement* el)
       }
 
       if (el->fImpliedSelected != 0)
-         Error(eh, "ImpliedSelected not zero (%d) after cleanup of selections.", el->fImpliedSelected);
+         Error("REveManager::PreDeleteElement", "ImpliedSelected not zero (%d) after cleanup of selections.", el->fImpliedSelected);
    }
 
    if (el->fElementId != 0)
@@ -411,7 +410,7 @@ void REveManager::PreDeleteElement(REveElement* el)
 
 void REveManager::ElementSelect(REveElement* element)
 {
-   if (element != 0)
+   if (element)
       EditElement(element);
 }
 
@@ -591,7 +590,7 @@ TGeoManager* REveManager::GetGeometry(const TString& filename)
 
    TString exp_filename = filename;
    gSystem->ExpandPathName(exp_filename);
-   printf("%s loading: '%s' -> '%s'.\n", eh.Data(),
+   printf("REveManager::GetGeometry loading: '%s' -> '%s'.\n",
           filename.Data(), exp_filename.Data());
 
    gGeoManager = (TGeoManager*) fGeometries->GetValue(filename);
@@ -603,7 +602,7 @@ TGeoManager* REveManager::GetGeometry(const TString& filename)
    {
       Bool_t locked = TGeoManager::IsLocked();
       if (locked) {
-         Warning(eh, "TGeoManager is locked ... unlocking it.");
+         Warning("REveManager::GetGeometry", "TGeoManager is locked ... unlocking it.");
          TGeoManager::UnlockGeometry();
       }
       if (TGeoManager::Import(filename) == 0) {
@@ -620,10 +619,10 @@ TGeoManager* REveManager::GetGeometry(const TString& filename)
          TFile f(exp_filename, "READ");
          TObjArray* collist = (TObjArray*) f.Get("ColorList");
          f.Close();
-         if (collist != 0) {
+         if (collist) {
             TIter next(gGeoManager->GetListOfVolumes());
             TGeoVolume* vol;
-            while ((vol = (TGeoVolume*) next()) != 0)
+            while ((vol = (TGeoVolume*) next()) != nullptr)
             {
                Int_t oldID = vol->GetLineColor();
                TColor* col = (TColor*)collist->At(oldID);
@@ -725,17 +724,16 @@ Exception handler for Eve exceptions.
 /// Handle exceptions deriving from REveException.
 
 TStdExceptionHandler::EStatus
-REveManager::RExceptionHandler::Handle(std::exception& exc)
+REveManager::RExceptionHandler::Handle(std::exception &exc)
 {
-   REveException* ex = dynamic_cast<REveException*>(&exc);
+   REveException *ex = dynamic_cast<REveException *>(&exc);
    if (ex) {
-      Info("Handle", "%s", ex->Data());
+      Info("Handle", "Exception %s", ex->what());
       // REX::gEve->SetStatusLine(ex->Data());
       gSystem->Beep();
       return kSEHandled;
-   } else {
-      return kSEProceed;
    }
+   return kSEProceed;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -750,7 +748,6 @@ void REveManager::HttpServerCallback(unsigned connid, const std::string &arg)
       fConnList.emplace_back(connid);
       printf("connection established %u\n", connid);
 
-
       // This prepares core and render data buffers.
       printf("\nEVEMNG ............. streaming the world scene.\n");
 
@@ -762,9 +759,9 @@ void REveManager::HttpServerCallback(unsigned connid, const std::string &arg)
       printf("   for now assume world-scene has no render data, binary-size=%d\n", fWorld->fTotalBinarySize);
       assert(fWorld->fTotalBinarySize == 0);
 
-      for (REveElement::List_i it = fScenes->BeginChildren(); it != fScenes->EndChildren(); ++it)
+      for (auto &c: fScenes->RefChildren())
       {
-         REveScene* scene = dynamic_cast<REveScene*>(*it);
+         REveScene* scene = dynamic_cast<REveScene *>(c);
 
          scene->AddSubscriber(std::make_unique<REveClient>(connid, fWebWindow));
          printf("\nEVEMNG ............. streaming scene %s [%s]\n",
@@ -790,7 +787,7 @@ void REveManager::HttpServerCallback(unsigned connid, const std::string &arg)
    }
 
    // find connection object
-   std::vector<Conn>::iterator conn = fConnList.end();
+   auto conn = fConnList.end();
    for (auto i = fConnList.begin(); i != fConnList.end(); ++i)
    {
       if (i->fId == connid)
@@ -808,9 +805,9 @@ void REveManager::HttpServerCallback(unsigned connid, const std::string &arg)
    if (arg == "CONN_CLOSED") {
       printf("connection closed\n");
       fConnList.erase(conn);
-      for (auto i = fScenes->BeginChildren(); i != fScenes->EndChildren(); ++i)
+      for (auto &c: fScenes->RefChildren())
       {
-         REveScene* scene = dynamic_cast<REveScene*>(*i);
+         REveScene* scene = dynamic_cast<REveScene *>(c);
          scene->RemoveSubscriber(connid);
       }
       fWorld->RemoveSubscriber(connid);
@@ -830,13 +827,10 @@ void REveManager::HttpServerCallback(unsigned connid, const std::string &arg)
       int id = cj["fElementId"];
 
       auto el =  FindElementById(id);
-      char cmd[1024];
-      int  np = snprintf(cmd, 1024, "((%s*)%p)->%s;", ctype.c_str(), el, mir.c_str());
-      if (np >= 1024)
-         throw eh + "MIR command buffer too small -- tell Matevz to implement auto resizing.";
-
-      printf("MIR cmd %s\n", cmd);
-      gROOT->ProcessLine(cmd);
+      std::stringstream cmd;
+      cmd << "((" << ctype << "*)" << std::hex << std::showbase << (size_t)el << ")->" << mir << ";";
+      std::cout << "MIR cmd " << cmd.str() << std::endl;
+      gROOT->ProcessLine(cmd.str().c_str());
 
       fScenes->AcceptChanges(false);
       fWorld->EndAcceptingChanges();
@@ -848,10 +842,8 @@ void REveManager::HttpServerCallback(unsigned connid, const std::string &arg)
       nlohmann::json resp;
       resp["function"] = "replaceElement";
       //el->SetCoreJson(resp);
-      for (auto i = fConnList.begin(); i != fConnList.end(); ++i)
-      {
-         fWebWindow->Send(i->fId, resp.dump());
-      }
+      for (auto &conn : fConnList)
+         fWebWindow->Send(conn.fId, resp.dump());
       */
    }
 }
@@ -904,14 +896,14 @@ void REveManager::DestroyElementsOf(REveElement::List_t& els)
    }
 }
 
-void REveManager::BroadcastElementsOf(REveElement::List_t& els)
+void REveManager::BroadcastElementsOf(REveElement::List_t &els)
 {
    // XXXXX - not called, what's with begin accepting changes?
 
-   for (auto & ep : els)
+   for (auto &ep : els)
    {
       REveScene* scene = dynamic_cast<REveScene*>(ep);
-      assert (scene != 0);
+      assert (scene != nullptr);
 
       printf("\nEVEMNG ............. streaming scene %s [%s]\n",
              scene->GetCTitle(), scene->GetCName());
@@ -919,12 +911,11 @@ void REveManager::BroadcastElementsOf(REveElement::List_t& els)
       // This prepares core and render data buffers.
       scene->StreamElements();
 
-      for (auto i = fConnList.begin(); i != fConnList.end(); ++i)
-      {
-         printf("   sending json, len = %d --> to conn_id = %d\n", (int) scene->fOutputJson.size(), i->fId);
-         fWebWindow->Send(i->fId, scene->fOutputJson);
-         printf("   sending binary, len = %d --> to conn_id = %d\n", scene->fTotalBinarySize, i->fId);
-         fWebWindow->SendBinary(i->fId, &scene->fOutputBinary[0], scene->fTotalBinarySize);
+      for (auto &conn : fConnList) {
+         printf("   sending json, len = %d --> to conn_id = %d\n", (int)scene->fOutputJson.size(), conn.fId);
+         fWebWindow->Send(conn.fId, scene->fOutputJson);
+         printf("   sending binary, len = %d --> to conn_id = %d\n", scene->fTotalBinarySize, conn.fId);
+         fWebWindow->SendBinary(conn.fId, &scene->fOutputBinary[0], scene->fTotalBinarySize);
       }
    }
 

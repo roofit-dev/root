@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
-// Authors: Matevz Tadel & Alja Mrak-Tadel: 2006, 2007
+// @(#)root/eve7:$Id$
+// Authors: Matevz Tadel & Alja Mrak-Tadel: 2006, 2007, 2018
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -12,6 +12,8 @@
 #include <ROOT/REveLine.hxx>
 #include <ROOT/REveProjectionManager.hxx>
 #include <ROOT/REveRenderData.hxx>
+
+#include "TClass.h"
 
 #include "json.hpp"
 
@@ -29,7 +31,7 @@ Bool_t REveLine::fgDefaultSmooth = kFALSE;
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor.
 
-REveLine::REveLine(const char* name, const char *title, Int_t n_points) :
+REveLine::REveLine(const std::string &name, const std::string &title, Int_t n_points) :
    REvePointSet(name, title, n_points),
    fRnrLine   (kTRUE),
    fRnrPoints (kFALSE),
@@ -56,16 +58,14 @@ REveLine::REveLine(const REveLine &l) :
 
 void REveLine::SetMarkerColor(Color_t col)
 {
-   std::list<REveProjected*>::iterator pi = fProjectedList.begin();
-   while (pi != fProjectedList.end())
+   for (auto &pi: fProjectedList)
    {
-      REveLine* l = dynamic_cast<REveLine*>(*pi);
+      REveLine* l = dynamic_cast<REveLine*>(pi);
       if (l && fMarkerColor == l->GetMarkerColor())
       {
          l->SetMarkerColor(col);
          l->StampObjProps();
       }
-      ++pi;
    }
    TAttMarker::SetMarkerColor(col);
 }
@@ -76,16 +76,14 @@ void REveLine::SetMarkerColor(Color_t col)
 
 void REveLine::SetLineStyle(Style_t lstyle)
 {
-   std::list<REveProjected*>::iterator pi = fProjectedList.begin();
-   while (pi != fProjectedList.end())
+   for (auto &pi: fProjectedList)
    {
-      REveLine* pt = dynamic_cast<REveLine*>(*pi);
+      REveLine* pt = dynamic_cast<REveLine*>(pi);
       if (pt)
       {
          pt->SetLineStyle(lstyle);
          pt->StampObjProps();
       }
-      ++pi;
    }
    TAttLine::SetLineStyle(lstyle);
 }
@@ -96,16 +94,14 @@ void REveLine::SetLineStyle(Style_t lstyle)
 
 void REveLine::SetLineWidth(Width_t lwidth)
 {
-   std::list<REveProjected*>::iterator pi = fProjectedList.begin();
-   while (pi != fProjectedList.end())
+   for (auto &pi: fProjectedList)
    {
-      REveLine* pt = dynamic_cast<REveLine*>(*pi);
+      REveLine* pt = dynamic_cast<REveLine*>(pi);
       if (pt)
       {
          pt->SetLineWidth(lwidth);
          pt->StampObjProps();
       }
-      ++pi;
    }
    StampObjProps();
    TAttLine::SetLineWidth(lwidth);
@@ -117,16 +113,14 @@ void REveLine::SetLineWidth(Width_t lwidth)
 void REveLine::SetRnrLine(Bool_t r)
 {
    fRnrLine = r;
-   std::list<REveProjected*>::iterator pi = fProjectedList.begin();
-   while (pi != fProjectedList.end())
+   for (auto &pi: fProjectedList)
    {
-      REveLine* l = dynamic_cast<REveLine*>(*pi);
+      REveLine* l = dynamic_cast<REveLine*>(pi);
       if (l)
       {
          l->SetRnrLine(r);
          l->ElementChanged();
       }
-      ++pi;
    }
 }
 
@@ -136,16 +130,14 @@ void REveLine::SetRnrLine(Bool_t r)
 void REveLine::SetRnrPoints(Bool_t r)
 {
    fRnrPoints = r;
-   std::list<REveProjected*>::iterator pi = fProjectedList.begin();
-   while (pi != fProjectedList.end())
+   for (auto &pi: fProjectedList)
    {
-      REveLine* l = dynamic_cast<REveLine*>(*pi);
+      REveLine *l = dynamic_cast<REveLine*>(pi);
       if (l)
       {
          l->SetRnrPoints(r);
          l->ElementChanged();
       }
-      ++pi;
    }
 }
 
@@ -155,16 +147,14 @@ void REveLine::SetRnrPoints(Bool_t r)
 void REveLine::SetSmooth(Bool_t r)
 {
    fSmooth = r;
-   std::list<REveProjected*>::iterator pi = fProjectedList.begin();
-   while (pi != fProjectedList.end())
+   for (auto &pi: fProjectedList)
    {
-      REveLine* l = dynamic_cast<REveLine*>(*pi);
+      REveLine* l = dynamic_cast<REveLine*>(pi);
       if (l)
       {
          l->SetSmooth(r);
          l->ElementChanged();
       }
-      ++pi;
    }
 }
 
@@ -206,8 +196,8 @@ void REveLine::ReduceSegmentLengths(Float_t max)
 
    s = q.size();
    Reset(s);
-   for (std::vector<REveVector>::iterator i = q.begin(); i != q.end(); ++i)
-      SetNextPoint(i->fX, i->fY, i->fZ);
+   for (auto &i: q)
+      SetNextPoint(i.fX, i.fY, i.fZ);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -283,7 +273,7 @@ void REveLine::WriteVizParams(std::ostream& out, const TString& var)
 
 TClass* REveLine::ProjectedClass(const REveProjection*) const
 {
-   return REveLineProjected::Class();
+   return TClass::GetClass<REveLineProjected>();
 }
 
 //------------------------------------------------------------------------------
