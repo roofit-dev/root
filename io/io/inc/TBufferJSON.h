@@ -231,7 +231,9 @@ protected:
    void JsonDisablePostprocessing();
    Int_t JsonSpecialClass(const TClass *cl) const;
 
-   void JsonStartElement(const TStreamerElement *elem, const TClass *base_class = nullptr, Bool_t first_element = kFALSE);
+   TJSONStackObj *JsonStartObjectWrite(const TClass *obj_class, TStreamerInfo *info = nullptr);
+
+   void JsonStartElement(const TStreamerElement *elem, const TClass *base_class);
 
    void PerformPostProcessing(TJSONStackObj *stack, const TClass *obj_cl = nullptr);
 
