@@ -76,6 +76,29 @@ The methods could be replaced by equivalent methods with other signature:
   - PyROOT: add `AsRNode` helper function to convert RDF nodes to the common RNode type
   - PyROOT: add `AsNumpy` method to export contents of a RDataFrame as a dictionary of numpy arrays
 
+### TLeafF16 and TLeafD32
+  - New leaf classes allowing to store Float and Double values using the truncation methods from TBuffer 
+    (See for example `TBuffer::WriteDouble32`)
+  - The new types can be specified using the type characters 'f' (Float16_t) and 'd' (Double32_t)
+  - It is also possible to specify a range and a number of bits to be stored using the syntax from `TStreamerElement::GetRange`.
+    Therefore the range and bits specifier has to be attached to the type character.
+  - All functionalities of the other datatypes have been reimplemented.
+  - The documentation of `TTree` and `TBuffer` has been updated accordingly.
+  - The following exmple shows how to use the new features:
+~~~ {.cpp}
+      {
+         Float16_t  floatVal;
+         Float16_t  floatArray[7];
+         Double32_t doubleVal;
+         Double32_t doubleArray[5];
+
+         TTree *tree = new TTree("tree", "An example tree using the new data types");
+         tree->Branch("floatVal",   &floatVal,    "floatVal/f");               // Float16_t value with default settings
+         tree->Branch("floatArray",  floatArray,  "floatArray[7]/f[0,100]");   // Float16_t array with range from 0 to 100
+         tree->Branch("doubleVal",  &doubleVal,   "doubleVal/d[0,1000,20]");   // Double32_t value with range from 0 to 1000 and 20 bits
+         tree->Branch("doubleArray", doubleArray, "doubleArray[5]/d[0,0,18]"); // Double32_t array without range and 18 bits
+      }
+~~~  
 
 ## Histogram Libraries
 
