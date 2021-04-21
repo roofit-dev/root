@@ -65,8 +65,9 @@ TEST(RNTuple, ReconstructModel)
    auto fieldKlass = model->MakeField<CustomStruct>("klass");
    {
       RPageSinkRoot sinkRoot("myTree", "test.root");
-      sinkRoot.Create(model.get());
+      sinkRoot.Create(*model.get());
       sinkRoot.CommitDataset();
+      model = nullptr;
    }
 
    RPageSourceRoot sourceRoot("myTree", "test.root");
@@ -97,7 +98,7 @@ TEST(RNTuple, StorageRoot)
    auto fieldJet = model->MakeField<std::vector<float>>("jets" /* TODO(jblomer), {1.0, 2.0}*/);
    auto nnlo = model->MakeField<std::vector<std::vector<float>>>("nnlo");
 
-   sinkRoot.Create(model.get());
+   sinkRoot.Create(*model.get());
    sinkRoot.CommitDataset();
    file->Close();
 
