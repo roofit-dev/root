@@ -1,265 +1,260 @@
 sap.ui.define([
    'rootui5/panel/Controller',
-   'sap/ui/model/json/JSONModel',
-   'sap/ui/unified/ColorPickerPopover',
-   'sap/m/Button',
-   'sap/m/Table',
-   'sap/m/Dialog',
-   'sap/m/List',
-   'sap/m/InputListItem',
-   'sap/m/Input',
-   'sap/m/Label'
-], function (GuiPanelController, JSONModel, ColorPickerPopover, Button, Table,
-             Dialog, List, InputListItem, Input, Label) {
+   'sap/ui/model/json/JSONModel'
+], function (GuiPanelController, JSONModel) {
 
    "use strict";
-   var count = 0;
+
+   var colorConf = "rgb(0,0,0)";
+
    return GuiPanelController.extend("rootui5.fitpanel.controller.FitPanel", {
 
          //function called from GuiPanelController
       onPanelInit : function() {
 
+         // WORKAROUND, need to be FIXED IN THE FUTURE
          JSROOT.loadScript('rootui5sys/fitpanel/style/style.css');
+
+         // for linev.github.io
+         // JSROOT.loadScript('../rootui5/fitpanel/style/style.css');
 
          var id = this.getView().getId();
          this.inputId = "";
          var opText = this.getView().byId("OperationText");
          var data = {
-               //fDataSet:[ { fId:"1", fSet: "----" } ],
-               fSelectDataId: "2",
-               // fMinRange: -4,
-               // fMaxRange: 4,
-               fStep: 0.01,
-               fRange: [-4,4],
-               fUpdateRange: [-4,4]
+               fDataSet:[ { fId:"1", fSet: "----" } ],
+               fSelectedData: "1",
+               fMinRangeX: -1,
+               fShowRangeX: false,
+               fMaxRangeX: 1,
+               fStepX: 0.1,
+               fRangeX: [-1,1],
+               fShowRangeY: false,
+               fMinRangeY: -1,
+               fMaxRangeY: 1,
+               fStepY: 0.1,
+               fRangeY: [-1,1]
+
          };
          this.getView().setModel(new JSONModel(data));
-         this._data = data; 
       },
 
-      // Assign the new JSONModel to data      
-      OnWebsocketMsg: function(handle, msg){
+      // returns actual model object of class RFitPanel6Model
+      data: function() {
+        return this.getView().getModel().getData();
+      },
+
+      // cause refresh of complete fit panel
+      refresh: function() {
+         this.doing_refresh = true;
+         this.getView().getModel().refresh();
+         this.doing_refresh = false;
+      },
+
+      sendModel: function(prefix) {
+         if (!prefix || (typeof prefix!="string")) {
+            // this is protection against infinite loop
+            // may happen if by refresh of model any callbacks are activated and trying update server side
+            // this should be prevented
+            if (this.doing_refresh) return;
+            prefix = "UPDATE:";
+         }
+
+         if (this.websocket)
+            this.websocket.Send(prefix + this.getView().getModel().getJSON());
+      },
+
+      // Assign the new JSONModel to data
+      OnWebsocketMsg: function(handle, msg) {
 
          if(msg.startsWith("MODEL:")){
-            var json = msg.substr(6);
-            var data = JSROOT.parse(json);
+            var data = JSROOT.parse(msg.substr(6));
 
             if(data) {
+               data.fMethodMin = data.fMethodMinAll[parseInt(data.fLibrary)];
+
                this.getView().setModel(new JSONModel(data));
-               this._data = data;
-
-               this.copyModel = JSROOT.extend({},data);
             }
-         }
-         else {
-         }
+         } else if (msg.startsWith("PARS:")) {
 
+            this.data().fFuncPars = JSROOT.parse(msg.substr(5));
+
+            this.refresh();
+         }
       },
 
       //Fitting Button
       doFit: function() {
          //Keep the #times the button is clicked
-         count++;
          //Data is a new model. With getValue() we select the value of the parameter specified from id
-         var data = this.getView().getModel().getData();
-         //var func = this.getView().byId("TypeXY").getValue();
-         var func = this.getView().byId("selectedOpText").getText();
-         //We pass the value from func to C++ fRealFunc
-         data.fRealFunc = func;
+
+         var libMin = this.getView().byId("MethodMin").getValue();
+         var errorDefinition = parseFloat(this.getView().byId("errorDef").getValue());
+         var maxTolerance = parseFloat(this.getView().byId("maxTolerance").getValue());
+         var maxInterations = Number(this.getView().byId("maxInterations").getValue());
+
+         var data = this.data();
+
+         data.fMinLibrary = libMin;
+         data.fErrorDef = errorDefinition;
+         data.fMaxTol = maxTolerance;
+         data.fMaxInter = maxInterations;
 
          //Refresh the model
-         this.getView().getModel().refresh();
+         this.refresh();
          //Each time we click the button, we keep the current state of the model
-         this.copyModel[count] = JSROOT.extend({},data);
 
-         if (this.websocket)
-            this.websocket.Send('DOFIT:'+this.getView().getModel().getJSON());
+         // TODO: skip "fMethodMin" from output object
+         // Requires changes in JSROOT.toJSON(), can be done after REVE-selection commit
 
+         this.sendModel("DOFIT:");
       },
 
       onPanelExit: function(){
-
       },
 
-      resetPanel: function(oEvent){
-
-         if(!this.copyModel) return;
-
-         JSROOT.extend(this._data, this.copyModel);
-         this.getView().getModel().updateBindings();
-         this.byId("selectedOpText").setText("gaus");
-         this.byId("OperationText").setValue("");
-         return;
-      },
-
-      backPanel: function() {
-         //Each time we click the button, we go one step back
-         count--;
-         if(count < 0) return;
-         if(!this.copyModel[count]) return;
-
-         JSROOT.extend(this._data, this.copyModel[count]);
-         this.getView().getModel().updateBindings();
-         return;
-      },
-
-      backPanel: function() {
-         //Each time we click the button, we go one step back
-         count--;
-         if(count < 0) return;
-         if(!this.copyModel[count]) return;
-
-         JSROOT.extend(this._data, this.copyModel[count]);
-         this.getView().getModel().updateBindings();
-         return;
+      // when selected data is changing - cause update of complete model
+      onSelectedDataChange: function() {
+         this.sendModel();
       },
 
       //Change the input text field. When a function is seleced, it appears on the text input field and
       //on the text area.
-      onTypeXYChange: function(){
-         var data = this.getView().getModel().getData();
-         var linear = this.getView().getModel().getData().fSelectXYId;
-         data.fFuncChange = linear;
-         this.getView().getModel().refresh();
+      onSelectedFuncChange: function() {
+
+         var func = this.data().fSelectedFunc;
+
+         if (this.websocket && func)
+            this.websocket.Send("GETPARS:" + func);
 
          //updates the text area and text in selected tab, depending on the choice in TypeXY ComboBox
-         var func = this.getView().byId("TypeXY").getValue();
          this.byId("OperationText").setValueLiveUpdate();
          this.byId("OperationText").setValue(func);
          this.byId("selectedOpText").setText(func);
       },
 
-      operationTextChange: function(oEvent) {
-         var newValue = oEvent.getParameter("value");
-         this.byId("selectedOpText").setText(newValue);
-      },
-
-
       //change the combo box in Minimization Tab --- Method depending on Radio Buttons values
       selectRB: function(){
 
-         var data = this.getView().getModel().getData();
-         var lib = this.getView().getModel().getData().fLibrary;
+         var data = this.data();
 
          // same code as initialization
-         data.fMethodMin = data.fMethodMinAll[parseInt(lib)];
-
+         data.fMethodMin = data.fMethodMinAll[parseInt(data.fLibrary)];
 
          // refresh all UI elements
-         this.getView().getModel().refresh();
-         console.log("Method = ", data.fMethodMinAll[parseInt(lib)]);
-
-      },
-      //Change the combobox in Type Function
-      //When the Type (TypeFunc) is changed (Predef etc) then the combobox with the funtions (TypeXY), 
-      //is also changed 
-      selectTypeFunc: function(){
-
-         var data = this.getView().getModel().getData();
-
-         var typeXY = this.getView().getModel().getData().fSelectTypeId;
-         var dataSet = this.getView().getModel().getData().fSelectDataId;
-         console.log("typeXY = " + dataSet);
-
-         data.fTypeXY = data.fTypeXYAll[parseInt(typeXY)];
-
-         this.getView().getModel().refresh();
-         console.log("Type = ", data.fTypeXYAll[parseInt(typeXY)]);
+         this.refresh();
       },
 
-      //Change the selected checkbox of Draw Options 
+      //Change the selected checkbox of Draw Options
       //if Do not Store is selected then No Drawing is also selected
       storeChange: function(){
-         var data = this.getView().getModel().getData();
+         var data = this.data();
          var fDraw = this.getView().byId("noStore").getSelected();
          console.log("fDraw = ", fDraw);
          data.fNoStore = fDraw;
-         this.getView().getModel().refresh();
+         this.refresh();
          console.log("fNoDrawing ", data.fNoStore);
       },
 
-      closeParametersDialog: function(is_ok) {
-         this.parsDialog.close();
-         this.parsDialog.destroy();
-         delete this.parsDialog;
+      drawContour: function() {
+
+      	var contourPoints = this.byId("contourPoints").getValue();
+         var contourPar1 = parseInt(this.byId("ContourPar1").getSelectedKey());
+         var contourPar2 = parseInt(this.byId("ContourPar2").getSelectedKey());
+         var confLevel = this.byId("ConfLevel").getValue();
+         var colorContourNum = (String((this.colorContour.replace( /^\D+/g, '')).replace(/[()]/g, ''))).split(',');
+
+         var data = this.data();
+         data.fContourPoints = contourPoints;
+      	data.fContourPar1 = contourPar1;
+      	data.fContourPar2 = contourPar2;
+         data.fColorContour = colorContourNum;
+
+         console.log("COLOR ", colorContourNum, typeof colorContourNum, " origin ", this.colorContour);
+       //   var colConfN = colorConf.replace( /^\D+/g, '');
+       //   var colorConfNum = colConfN.replace(/[()]/g, '');
+      	// data.fConfLevel = colorConfNum;
+
+	  	  this.refresh();
+        //Each time we click the button, we keep the current state of the model
+        if (this.websocket)
+            this.websocket.Send('SETCONTOUR:'+this.getView().getModel().getJSON());
+      },
+
+      drawScan: function() {
+      	var data = this.data();
+      	data.fScanPoints = this.byId("scanPoints").getValue();
+      	data.fScanPar = parseInt(this.byId("ScanPar").getSelectedKey());
+      	data.fScanMin = this.byId("scanMin").getValue();
+      	data.fScanMax = this.byId("scanMax").getValue();
+
+      	this.refresh();
+         //Each time we click the button, we keep the current state of the model
+         if (this.websocket)
+            this.websocket.Send('SETSCAN:'+this.getView().getModel().getJSON());
 
       },
 
-      setParametersDialog: function(){
+      pressApplyPars: function() {
+         var json = JSROOT.toJSON(this.data().fFuncPars);
 
-         var items = [];
-
-         for (var n=0;n<5;++n) {
-            var item = new InputListItem({
-               label: "Name" + n,
-               content: new Input({ placeholder: "Name"+n, value: n })
-            });
-            items.push(item);
-         }
-
-         this.parsDialog = new Dialog({
-            title: "Prarameters",
-            content: new List({
-               items: items
-            }),
-            beginButton: new Button({
-               text: 'Cancel',
-               press: this.closeParametersDialog.bind(this)
-            }),
-            endButton: new Button({
-               text: 'Ok',
-               press: this.closeParametersDialog.bind(this, true)
-            })
-         });
-
-         // this.getView().getModel().setProperty("/Method", method);
-         //to get access to the global model
-         // this.getView().addDependent(this.methodDialog);
-
-         this.parsDialog.addStyleClass("sapUiSizeCompact");
-
-         this.parsDialog.open();
+         if (this.websocket)
+            this.websocket.Send("SETPARS:" + json);
       },
 
-      startExtraParametersDialog: function() {
-         // placeholder for triggering new window with parameters editor only
-      },
-
-      //Cancel Button on Set Parameters Dialog Box
-      onCancel: function(oEvent){
-         oEvent.getSource().close();
-      },
-
-      colorPicker: function (oEvent) {
+      colorPickerContour: function (oEvent) {
          this.inputId = oEvent.getSource().getId();
-         if (!this.oColorPickerPopover) {
-            this.oColorPickerPopover = new sap.ui.unified.ColorPickerPopover({
+         if (!this.oColorPickerPopoverContour) {
+            this.oColorPickerPopoverContour = new sap.ui.unified.ColorPickerPopover({
                colorString: "blue",
                mode: sap.ui.unified.ColorPickerMode.HSL,
-               change: this.handleChange.bind(this)
+               change: this.handleChangeContour.bind(this)
             });
          }
-         this.oColorPickerPopover.openBy(oEvent.getSource());
+         this.oColorPickerPopoverContour.openBy(oEvent.getSource());
       },
 
-      handleChange: function (oEvent) {
+      handleChangeContour: function (oEvent) {
          var oView = this.getView();
-         //oView.byId(this.inputId).setValue(oEvent.getParameter("colorString"));
          this.inputId = "";
-         var color = oEvent.getParameter("colorString");
+         var color1 = oEvent.getParameter("colorString");
+         var oButtonContour = this.getView().byId("colorContour");
+         var oButtonInnerContour = oButtonContour.$().find('.sapMBtnInner');
+         oButtonInnerContour.css('background',color1);
+         oButtonInnerContour.css('color','#FFFFFF');
+         oButtonInnerContour.css('text-shadow','1px 1px 2px #333333');
+
+         this.colorContour = color1;
+         return this.colorContour;
+	  },
+
+	  colorPickerConf: function (oEvent) {
+         this.inputId = oEvent.getSource().getId();
+         if (!this.oColorPickerPopoverConf) {
+            this.oColorPickerPopoverConf = new sap.ui.unified.ColorPickerPopover({
+               colorString: "blue",
+               mode: sap.ui.unified.ColorPickerMode.HSL,
+               change: this.handleChangeConf.bind(this)
+            });
+         }
+         this.oColorPickerPopoverConf.openBy(oEvent.getSource());
       },
 
-      updateRange: function() {
-         var data = this.getView().getModel().getData();
-         var range = this.getView().byId("Slider").getRange();
-         console.log("Slider " + range);
+      handleChangeConf: function (oEvent) {
+         var oView = this.getView();
+         this.inputId = "";
+         var color2 = oEvent.getParameter("colorString");
+         var oButtonContour = this.getView().byId("colorConf");
+         var oButtonInnerContour = oButtonContour.$().find('.sapMBtnInner');
+         oButtonInnerContour.css('background',color2);
+         oButtonInnerContour.css('color','#FFFFFF');
+         oButtonInnerContour.css('text-shadow','1px 1px 2px #333333');
 
-         //We pass the values from range array in JS to C++ fRange array
-         data.fUpdateRange[0] = range[0];
-         data.fUpdateRange[1] = range[1];
-      },
+         colorConf = color2;
+         return colorConf;
+	  }
 
    });
 
-   return 
+   return
 });
