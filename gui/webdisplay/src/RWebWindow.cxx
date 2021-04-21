@@ -21,6 +21,7 @@
 #include "RWebWindowWSHandler.hxx"
 #include "THttpCallArg.h"
 #include "TUrl.h"
+#include "TROOT.h"
 
 #include <cstring>
 #include <cstdlib>
