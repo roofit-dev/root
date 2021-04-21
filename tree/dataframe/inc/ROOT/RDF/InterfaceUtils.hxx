@@ -40,8 +40,17 @@
 class TObjArray;
 class TTree;
 namespace ROOT {
-
+namespace Detail {
 namespace RDF {
+class RNodeBase;
+}
+}
+namespace RDF {
+template <typename T>
+class RResultPtr;
+template<typename T, typename V>
+class RInterface;
+using RNode = RInterface<::ROOT::Detail::RDF::RNodeBase, void>;
 class RDataSource;
 } // namespace RDF
 
@@ -56,6 +65,35 @@ using namespace ROOT::Detail::RDF;
 using namespace ROOT::RDF;
 namespace TTraits = ROOT::TypeTraits;
 namespace RDFInternal = ROOT::Internal::RDF;
+
+// Declare code in the interpreter via the TInterpreter::Declare method
+// and return the return code.
+bool InterpreterDeclare(const std::string &code);
+
+// Jit code in the interpreter with TInterpreter::Calc and return
+// a pair containing the return value of Calc and the error code.
+// The error code is:
+//   - 0 if Calc resulted in TInterpreter::kNoError
+//   - 1 otherwise
+std::pair<Long64_t, int> InterpreterCalc(const std::string &code);
+
+bool IsImplicitMTEnabled();
+
+using HeadNode_t = ::ROOT::RDF::RResultPtr<RInterface<RLoopManager, void>>;
+HeadNode_t CreateSnaphotRDF(const ColumnNames_t &validCols,
+                            std::string_view treeName,
+                            std::string_view fileName,
+                            bool isLazy,
+                            RLoopManager &loopManager,
+                            std::unique_ptr<RDFInternal::RActionBase> actionPtr);
+
+std::string DemangleTypeIdName(const std::type_info &typeInfo);
+
+ColumnNames_t ConvertRegexToColumns(RDFInternal::RBookedCustomColumns & customColumns,
+                                    TTree *tree,
+                                    ROOT::RDF::RDataSource *dataSource,
+                                    std::string_view columnNameRegexp,
+                                    std::string_view callerName);
 
 /// An helper object that sets and resets gErrorIgnoreLevel via RAII.
 class RIgnoreErrorLevelRAII {
