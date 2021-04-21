@@ -19,7 +19,7 @@
 #include "ROOT/RHistDrawable.hxx"
 #include "ROOT/RCanvas.hxx"
 #include "ROOT/RFitPanel.hxx"
-#include "ROOT/TDirectory.hxx"
+#include "ROOT/RDirectory.hxx"
 
 using namespace ROOT::Experimental;
 
@@ -44,9 +44,9 @@ void fitpanel() {
 
    auto panel = std::make_shared<RFitPanel>("FitPanel Title");
 
-   ROOT::Experimental::TDirectory::Heap().Add("fitpanel", panel);
-   ROOT::Experimental::TDirectory::Heap().Add("firsthisto", pHist);
-   ROOT::Experimental::TDirectory::Heap().Add("firstaxis", xaxis);
+   RDirectory::Heap().Add("fitpanel", panel);
+   RDirectory::Heap().Add("firsthisto", pHist);
+   RDirectory::Heap().Add("firstaxis", xaxis);
 
    // TODO: how combine there methods together
    // here std::shread_ptr<> on both sides

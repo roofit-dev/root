@@ -23,7 +23,7 @@ R__LOAD_LIBRARY(libROOTHistDraw);
 #include "ROOT/RHistDrawable.hxx"
 #include "ROOT/RCanvas.hxx"
 #include "ROOT/RColor.hxx"
-#include "ROOT/TDirectory.hxx"
+#include "ROOT/RDirectory.hxx"
 
 void draw()
 {
@@ -42,7 +42,7 @@ void draw()
    pHist->Fill({0.75, -0.02});
 
    // Register the histogram with ROOT: now it lives even after draw() ends.
-   ROOT::Experimental::TDirectory::Heap().Add("hist", pHist);
+   RDirectory::Heap().Add("hist", pHist);
 
    // Create a canvas to be displayed.
    auto canvas = RCanvas::Create("Canvas Title");
