@@ -1,5 +1,5 @@
 /// \file rootqt5.cpp
-/// \ingroup WebUI
+/// \ingroup WebGui
 /// \author Sergey Linev <S.Linev@gsi.de>
 /// \date 2017-06-29
 /// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
@@ -19,7 +19,11 @@
 #include <QThread>
 #include <QWebEngineSettings>
 #include <QWebEngineProfile>
+#include <QtGlobal>
+
+#if QT_VERSION >= 0x051200
 #include <QWebEngineUrlScheme>
+#endif
 
 #include "TROOT.h"
 #include "TApplication.h"
@@ -86,14 +90,17 @@ protected:
                return nullptr;
             }
 
+            #if QT_VERSION >= 0x051200
             QWebEngineUrlScheme scheme("rootscheme");
             scheme.setSyntax(QWebEngineUrlScheme::Syntax::HostAndPort);
             scheme.setDefaultPort(2345);
             scheme.setFlags(QWebEngineUrlScheme::SecureScheme);
             QWebEngineUrlScheme::registerScheme(scheme);
+            #endif
 
             qargv[0] = gApplication->Argv(0);
             qargv[1] = nullptr;
+            
             qapp = new QApplication(qargc, qargv);
          }
 
@@ -128,8 +135,10 @@ protected:
 
          if (args.IsHeadless()) {
             RootWebPage *page = new RootWebPage();
+            #if QT_VERSION >= 0x050700
             page->settings()->resetAttribute(QWebEngineSettings::WebGLEnabled);
             page->settings()->resetAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled);
+            #endif
             page->settings()->resetAttribute(QWebEngineSettings::PluginsEnabled);
             page->load(QUrl(fullurl));
          } else {
