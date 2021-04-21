@@ -2835,7 +2835,7 @@ Bool_t TCling::HasPCMForLibrary(const char *libname) const
 
    clang::ModuleMap &moduleMap = fInterpreter->getCI()->getPreprocessor().getHeaderSearchInfo().getModuleMap();
    clang::Module *M = moduleMap.findModule(ModuleName);
-   return M && !M->IsMissingRequirement;
+   return M && !M->IsMissingRequirement && M->getASTFile();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3525,7 +3525,7 @@ static ETupleOrdering IsTupleAscending()
    }
 }
 
-std::string AtlernateTuple(const char *classname)
+std::string AlternateTuple(const char *classname)
 {
    TClassEdit::TSplitType tupleContent(classname);
    std::string alternateName = "TEmulatedTuple";
@@ -3569,7 +3569,7 @@ std::string AtlernateTuple(const char *classname)
          break;
       }
       case ETupleOrdering::kUnexpected: {
-         Fatal("TCling::SetClassInfo::AtlernateTuple",
+         Fatal("TCling::SetClassInfo::AlternateTuple",
                "Layout of std::tuple on this platform is unexpected.");
          break;
       }
@@ -3611,7 +3611,7 @@ void TCling::SetClassInfo(TClass* cl, Bool_t reload)
    // for the I/O to understand and handle.
    if (!(fCxxModulesEnabled && IsFromRootCling()) && strncmp(cl->GetName(),"tuple<",strlen("tuple<"))==0) {
 
-      name = AtlernateTuple(cl->GetName());
+      name = AlternateTuple(cl->GetName());
 
    }
 
@@ -5293,7 +5293,7 @@ Int_t TCling::LoadLibraryMap(const char* rootmapfile)
          }
       }
       delete paths;
-      if (!fMapfile->GetTable()->GetEntries()) {
+      if (fMapfile->GetTable() && !fMapfile->GetTable()->GetEntries()) {
          return -1;
       }
    }
