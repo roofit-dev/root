@@ -1,7 +1,7 @@
 // \file ROOT/RFitPanel6.hxx
 /// \ingroup WebGui ROOT7
 /// \author Sergey Linev <S.Linev@gsi.de>
-/// \author Iliana Bessou <Iliana.Bessou@cern.ch>
+/// \author Iliana Betsou <Iliana.Betsou@cern.ch>
 /// \date 2019-04-11
 /// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
 /// is welcome!
@@ -19,117 +19,73 @@
 
 #include <ROOT/RWebWindow.hxx>
 
-#include "TH1.h"
+#include <ROOT/RFitPanel6Model.hxx>
 
+#include <ROOT/RCanvas.hxx>
+
+#include "ROOT/RHist.hxx"
+
+#include <memory>
 #include <vector>
+
+class TPad;
+class TH1;
 
 namespace ROOT {
 namespace Experimental {
 
-struct RComboBoxItem {
-   std::string fId;
-   std::string fSet;
-   RComboBoxItem() = default;
-   RComboBoxItem(const std::string &id, const std::string &set) : fId(id), fSet(set) {}
-};
-
-//Structure for the main fit panel model
-struct RFitPanelModel6 {
-   std::vector<RComboBoxItem> fDataSet;
-   std::string fSelectDataId;
-   std::vector<RComboBoxItem> fTypeFunc;
-   std::string fSelectXYId;
-   std::vector<RComboBoxItem> fMethod;
-   std::string fSelectMethodId;
-   std::vector<RComboBoxItem> fContourPar1;
-   std::string fContourPar1Id;
-   std::vector<RComboBoxItem> fContourPar2;
-   std::string fContourPar2Id;
-   std::vector<RComboBoxItem> fScanPar;
-   std::string fScanParId;
-   std::string fRealFunc;
-   std::string fOption;
-   std::string fFuncChange;
-
-   // all combo items for all methods
-
-   //Minimization Tab
-   std::vector<std::vector<RComboBoxItem>> fMethodMinAll;
-   //Fit Function --- Type
-   std::vector<std::vector<RComboBoxItem>> fTypeXYAll;
-
-   std::vector<RComboBoxItem> fMethodMin;
-   std::vector<RComboBoxItem> fTypeXY;
-
-   std::string fSelectTypeId;
-   std::string fSelectMethodMinId;
-
-   float fUpdateMinRange{0};
-   float fUpdateMaxRange{1};
-   float fMinRange{0};
-   float fMaxRange{1};
-   float fStep{0.1};
-   float fRange[2];
-   float fUpdateRange[2];
-   //float fOperation{0};
-   float fFitOptions{0};
-   bool fLinear{false};
-   bool fRobust{false};
-   int fLibrary{0};
-   int fPrint{0};
-
-   //convert fSelectTypeID from string to int
-   int fTypeId = atoi(fSelectTypeId.c_str());
-   int fFuncChangeInt = atoi(fFuncChange.c_str());
-
-   //Checkboxes Options
-   bool fIntegral{false};
-   bool fMinusErrors {false};
-   bool fWeights{false};
-   bool fBins{false};
-   bool fUseRange {false};
-   //bool fImproveFit {false};
-   bool fAddList {false};
-   bool fUseGradient {false};
-   bool fSame {false};
-   bool fNoDrawing {};
-   bool fNoStore {false};
-};
-
 class RFitPanel6 {
 
-   std::string fTitle;  ///<! title
-   unsigned fConnId{0}; ///<! connection id
-   TH1 *fHist{nullptr};
+   std::unique_ptr<RFitPanel6Model> fModel;
+
+   TH1 *fHist{nullptr};              ///<! explicit histogram used for fitting
+   std::string fCanvName{"c1"};      ///<! v6 canvas name used to display fit, will be created if not exists
+
+   std::shared_ptr<RCanvas> fCanvas; ///!< v7 canvas used to display results
+   std::shared_ptr<RH1D> fFitHist;   ///!< v7 histogram for fitting
 
    std::shared_ptr<RWebWindow> fWindow; ///!< configured display
+   unsigned fConnId{0};              ///<! client connection id
 
    /// process data from UI
    void ProcessData(unsigned connid, const std::string &arg);
 
+   int UpdateModel(const std::string &json);
+
    void DoFit(const std::string &model);
+
+   void DrawContour(const std::string &model);
+
+   void DrawScan(const std::string &model);
+
+   RFitPanel6Model &model();
+
+   TPad *GetDrawPad(TH1 *hist);
+
+   void SendModel();
 
 public:
    /// normal constructor
-   RFitPanel6(const std::string &title = "Fit panel") : fTitle(title) {}
-
-   /// destructor
-   virtual ~RFitPanel6() {}
+   RFitPanel6(const std::string &title = "Fit panel");
 
    // method required when any panel want to be inserted into the RCanvas
    std::shared_ptr<RWebWindow> GetWindow();
 
-   void AssignHistogram(TH1 *hist)
-   {
-      fHist = hist;
-   }
+   void AssignHistogram(TH1 *hist);
+
+   void AssignHistogram(const std::string &hname);
+
+   void AssignCanvas(const std::string &cname) { fCanvName = cname; }
+
+   void AssignCanvas(std::shared_ptr<RCanvas> &canv);
+
+   void AssignHistogram(std::shared_ptr<RH1D> &hist);
 
    /// show FitPanel in specified place
    void Show(const std::string &where = "");
 
    /// hide FitPanel
    void Hide();
-
 };
 
 } // namespace Experimental
