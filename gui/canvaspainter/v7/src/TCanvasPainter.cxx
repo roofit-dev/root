@@ -21,7 +21,6 @@
 #include <ROOT/RMenuItem.hxx>
 
 #include <ROOT/RWebWindow.hxx>
-#include <ROOT/RWebWindowsManager.hxx>
 
 #include <memory>
 #include <string>
@@ -444,39 +443,20 @@ void ROOT::Experimental::TCanvasPainter::DoWhenReady(const std::string &name, co
 
 void ROOT::Experimental::TCanvasPainter::ProcessData(unsigned connid, const std::string &arg)
 {
-   if (arg == "CONN_READY") {
-      // special argument from RWebWindow itself
-      // indication that new connection appeared
-
-      fWebConn.emplace_back(connid);
-
-      CheckDataToSend();
-      return;
-   }
-
-   auto check_header = [arg](const std::string &header) {
-      return arg.compare(0, header.length(), header) == 0;
-   };
-
    auto conn =
       std::find_if(fWebConn.begin(), fWebConn.end(), [connid](WebConn &item) { return item.fConnId == connid; });
 
    if (conn == fWebConn.end())
       return; // no connection found
 
+   auto check_header = [arg](const std::string &header) {
+      return arg.compare(0, header.length(), header) == 0;
+   };
+
    // R__DEBUG_HERE("CanvasPainter") << "from client " << connid << " got data len:" << arg.length() << " val:" <<
    // arg.substr(0,30);
 
-   if (arg == "CONN_CLOSED") {
-      // special argument from RWebWindow itself
-      // connection is closed
-
-      fWebConn.erase(conn);
-
-      // if there are no other connections - cancel all submitted commands
-      CancelCommands(connid);
-
-   } else if (check_header("READY")) {
+   if (check_header("READY")) {
 
    } else if (check_header("SNAPDONE:")) {
       std::string cdata = arg;
@@ -487,8 +467,8 @@ void ROOT::Experimental::TCanvasPainter::ProcessData(unsigned connid, const std:
       cdata.erase(0, 8);
       conn->fGetMenu = cdata;
    } else if (arg == "QUIT") {
-      // use window manager to correctly terminate http server
-      RWebWindowsManager::Instance()->Terminate();
+      // use window manager to correctly terminate http server and ROOT session
+      fWindow->TerminateROOT();
       return;
    } else if (arg == "RELOAD") {
       conn->fSend = 0; // reset send version, causes new data sending
@@ -542,10 +522,27 @@ void ROOT::Experimental::TCanvasPainter::CreateWindow()
 {
    if (fWindow) return;
 
-   fWindow = RWebWindowsManager::Instance()->CreateWindow();
+   fWindow = RWebWindow::Create();
    fWindow->SetConnLimit(0); // allow any number of connections
    fWindow->SetDefaultPage("file:rootui5sys/canv/canvas.html");
-   fWindow->SetDataCallBack([this](unsigned connid, const std::string &arg) { ProcessData(connid, arg); });
+   fWindow->SetCallBacks(
+      // connect
+      [this](unsigned connid) {
+         fWebConn.emplace_back(connid);
+         CheckDataToSend();
+      },
+      // data
+      [this](unsigned connid, const std::string &arg) { ProcessData(connid, arg); },
+      // disconnect
+      [this](unsigned connid) {
+         auto conn =
+            std::find_if(fWebConn.begin(), fWebConn.end(), [connid](WebConn &item) { return item.fConnId == connid; });
+
+         if (conn != fWebConn.end()) {
+            fWebConn.erase(conn);
+            CancelCommands(connid);
+         }
+      });
    // fWindow->SetGeometry(500,300);
 }
 

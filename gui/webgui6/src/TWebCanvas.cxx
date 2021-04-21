@@ -37,13 +37,14 @@
 #include "TAtt3D.h"
 #include "TView.h"
 
-#include <ROOT/RWebWindowsManager.hxx>
 #include <ROOT/RMakeUnique.hxx>
 
 #include <stdio.h>
 #include <string.h>
 #include <sstream>
 #include <iostream>
+
+using namespace std::string_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor
@@ -531,16 +532,34 @@ void TWebCanvas::Close()
 void TWebCanvas::ShowWebWindow(const ROOT::Experimental::RWebDisplayArgs &args)
 {
    if (!fWindow) {
-      fWindow = ROOT::Experimental::RWebWindowsManager::Instance()->CreateWindow();
+      fWindow = ROOT::Experimental::RWebWindow::Create();
 
       fWindow->SetConnLimit(0); // configure connections limit
 
       fWindow->SetDefaultPage("file:rootui5sys/canv/canvas6.html");
 
-      fWindow->SetDataCallBack([this](unsigned connid, const std::string &arg) {
-         ProcessData(connid, arg);
-         CheckDataToSend(connid);
-      });
+      fWindow->SetCallBacks(
+         // connection
+         [this](unsigned connid) {
+            fWebConn.emplace_back(connid);
+            CheckDataToSend(connid);
+         },
+         // data
+         [this](unsigned connid, const std::string &arg) {
+            ProcessData(connid, arg);
+            CheckDataToSend(connid);
+         },
+         // disconnect
+         [this](unsigned connid) {
+            unsigned indx = 0;
+            for (auto &c : fWebConn) {
+               if (c.fConnId == connid) {
+                  fWebConn.erase(fWebConn.begin() + indx);
+                  break;
+               }
+               indx++;
+            }
+         });
    }
 
    auto w = Canvas()->GetWw(), h = Canvas()->GetWh();
@@ -564,10 +583,7 @@ void TWebCanvas::Show()
 
 void TWebCanvas::ShowCmd(const std::string &arg, Bool_t show)
 {
-   std::string cmd = "SHOW:";
-   cmd.append(arg);
-   cmd.append(show ? ":1" : ":0");
-   if (AddToSendQueue(0, cmd))
+   if (AddToSendQueue(0, "SHOW:"s + arg + (show ? ":1"s : ":0"s)))
       CheckDataToSend();
 }
 
@@ -580,7 +596,7 @@ void TWebCanvas::ActivateInEditor(TPad *pad, TObject *obj)
 
    UInt_t hash = TString::Hash(&obj, sizeof(obj));
 
-   if (AddToSendQueue(0, Form("EDIT:%u", (unsigned) hash)))
+   if (AddToSendQueue(0, "EDIT:"s + std::to_string(hash)))
       CheckDataToSend();
 }
 
@@ -637,11 +653,6 @@ Bool_t TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
    if (arg.empty())
       return kTRUE;
 
-   if (arg == "CONN_READY") {
-      fWebConn.emplace_back(connid);
-      return kTRUE;
-   }
-
    // try to identify connection for given WS request
    unsigned indx = 0;
    for (auto &c : fWebConn) {
@@ -653,17 +664,13 @@ Bool_t TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
 
    const char *cdata = arg.c_str();
 
-   if (arg == "CONN_CLOSED") {
-
-      fWebConn.erase(fWebConn.begin() + indx);
-
-   } else if (arg == "KEEPALIVE") {
+   if (arg == "KEEPALIVE") {
       // do nothing
 
    } else if (arg == "QUIT") {
 
       // use window manager to correctly terminate http server
-      ROOT::Experimental::RWebWindowsManager::Instance()->Terminate();
+      fWindow->TerminateROOT();
 
    } else if (arg.compare(0, 7, "READY6:") == 0) {
 
