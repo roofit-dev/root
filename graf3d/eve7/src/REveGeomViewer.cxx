@@ -122,6 +122,29 @@ std::vector<int> ROOT::Experimental::REveGeomViewer::GetStackFromJson(const std:
    return res;
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+/// Send geometry description and principal drawing nodes
+
+void ROOT::Experimental::REveGeomViewer::SendGeometry(unsigned connid)
+{
+   std::string sbuf = "DESCR:";
+   sbuf.append(TBufferJSON::ToJSON(&fDesc,103).Data());
+   printf("Send description %d\n", (int) sbuf.length());
+   fWebWindow->Send(connid, sbuf);
+
+   if (!fDesc.HasDrawData())
+      fDesc.CollectVisibles();
+
+   auto &json = fDesc.GetDrawJson();
+   auto &binary = fDesc.GetDrawBinary();
+
+   printf("Produce JSON %d binary %d\n", (int) json.length(), (int) binary.size());
+
+   fWebWindow->Send(connid, json);
+
+   fWebWindow->SendBinary(connid, &binary[0], binary.size());
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 /// receive data from client
@@ -135,22 +158,8 @@ void ROOT::Experimental::REveGeomViewer::WebWindowCallback(unsigned connid, cons
       if (arg == "RELOAD")
          fDesc.Build(fGeoManager);
 
-      std::string sbuf = "DESCR:";
-      sbuf.append(TBufferJSON::ToJSON(&fDesc,103).Data());
-      printf("Send description %d\n", (int) sbuf.length());
-      fWebWindow->Send(connid, sbuf);
+      SendGeometry(connid);
 
-      if (!fDesc.HasDrawData())
-         fDesc.CollectVisibles();
-
-      auto &json = fDesc.GetDrawJson();
-      auto &binary = fDesc.GetDrawBinary();
-
-      printf("Produce JSON %d binary %d\n", (int) json.length(), (int) binary.size());
-
-      fWebWindow->Send(connid, json);
-
-      fWebWindow->SendBinary(connid, &binary[0], binary.size());
    } else if (arg == "QUIT_ROOT") {
 
       RWebWindowsManager::Instance()->Terminate();
@@ -198,18 +207,20 @@ void ROOT::Experimental::REveGeomViewer::WebWindowCallback(unsigned connid, cons
 
       if (fDesc.ChangeNodeVisibility(nodeid, selected)) {
 
-         // send modified entry only for specified node, when disabled client will automatically remove node from drawing
-         std::string json0 = "MODIF:";
-         json0.append(TBufferJSON::ToJSON(&fDesc.GetGeomNode(nodeid),103).Data());
+         // send only modified entries, includes all nodes with same volume
+         std::string json0 = fDesc.ProduceModifyReply(nodeid);
+
+         // when visibility disabled, client will automatically remove node from drawing
          fWebWindow->Send(connid, json0);
 
-         if (selected && fDesc.IsPrincipalNode(nodeid)) {
-            // we need to send changes in drawing nodes
+         if (selected && fDesc.IsPrincipalEndNode(nodeid)) {
+            // we need to send changes in drawing elements
+            // there can be many elements, which reference same volume
 
             std::string json{"APPND:"};
             std::vector<char> binary;
 
-            fDesc.ProduceDrawingFor(nodeid, json, binary);
+            fDesc.ProduceDrawingFor(nodeid, json, binary, true);
 
             if (binary.size() > 0) {
                printf("Send appending JSON %d binary %d\n", (int) json.length(), (int) binary.size());
@@ -217,6 +228,12 @@ void ROOT::Experimental::REveGeomViewer::WebWindowCallback(unsigned connid, cons
                fWebWindow->Send(connid, json);
                fWebWindow->SendBinary(connid, &binary[0], binary.size());
             }
+         } else if (selected) {
+
+            // just resend full geometry
+            // TODO: one can improve here and send only nodes which are not exists on client
+            // TODO: for that one should remember all information send to client
+            SendGeometry(connid);
          }
       }
    }
