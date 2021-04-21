@@ -5,12 +5,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                'sap/m/CheckBox',
                'sap/ui/layout/Splitter',
                'sap/ui/layout/SplitterLayoutData',
-               "sap/ui/core/ResizeHandler"
-],function(Controller, CoreControl, JSONModel, mText, mCheckBox, MCSplitter, SplitterLayoutData, ResizeHandler) {
+               "sap/ui/core/ResizeHandler",
+               'rootui5/eve7/lib/EveElements'
+],function(Controller, CoreControl, JSONModel, mText, mCheckBox, MCSplitter, SplitterLayoutData, ResizeHandler, EveElements) {
 
    "use strict";
    
-   CoreControl.extend("eve.ColorBox", { // call the new Control type "my.ColorBox" and let it inherit from sap.ui.core.Control
+   CoreControl.extend("rootui5.eve7.controller.ColorBox", { // call the new Control type "my.ColorBox" and let it inherit from sap.ui.core.Control
 
       // the control API:
       metadata : {
@@ -98,7 +99,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       }
    });
 
-   return Controller.extend("eve.GeomViewer", {
+   return Controller.extend("rootui5.eve7.controller.GeomViewer", {
       onInit: function () {
          
          this.websocket = this.getView().getViewData().conn_handle;
@@ -113,7 +114,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          
          // PART 2: instantiate Control and place it onto the page
 
-         this.creator = new JSROOT.EVE.EveElements();
+         this.creator = new EveElements();
          
          this.creator.useIndexAsIs = (JSROOT.GetUrlOption('useindx') !== null);
          
