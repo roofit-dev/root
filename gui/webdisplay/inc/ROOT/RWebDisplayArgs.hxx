@@ -6,7 +6,7 @@
 /// is welcome!
 
 /*************************************************************************
- * Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -41,6 +41,7 @@ protected:
    EBrowserKind fKind{kNative};   ///<! id of web browser used for display
    std::string fUrl;              ///<! URL to display
    bool fHeadless{false};         ///<! is browser runs in headless mode
+   bool fStandalone{true};        ///<! indicates if browser should run isolated from other browser instances
    THttpServer *fServer{nullptr}; ///<! http server which handle all requests
    int fWidth{0};                 ///<! custom window width, when not specified - used RWebWindow geometry
    int fHeight{0};                ///<! custom window height, when not specified - used RWebWindow geometry
@@ -79,6 +80,12 @@ public:
    /// returns window url
    std::string GetUrl() const { return fUrl; }
 
+   /// Set standalone mode for running browser, default on
+   /// When disabled, normal browser window (or just tab) will be started
+   void SetStandalone(bool on = true) { fStandalone = on; }
+   /// Return true if browser should runs in standalone mode
+   bool IsStandalone() const { return fStandalone; }
+
    /// set window url options
    void SetUrlOpt(const std::string &opt) { fUrlOpt = opt; }
    /// returns window url options
@@ -106,14 +113,9 @@ public:
    int GetHeight() const { return fHeight; }
 
    /// set custom executable to start web browser
-   void SetCustomExec(const std::string &exec)
-   {
-      SetBrowserKind(kCustom);
-      fExec = exec;
-   }
-
+   void SetCustomExec(const std::string &exec);
    /// returns custom executable to start web browser
-   std::string GetCustomExec() const { return GetBrowserKind() == kCustom ? fExec : ""; }
+   std::string GetCustomExec() const;
 
    /// set http server instance, used for window display
    void SetHttpServer(THttpServer *serv) { fServer = serv; }

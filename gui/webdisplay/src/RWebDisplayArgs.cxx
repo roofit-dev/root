@@ -6,7 +6,7 @@
 /// is welcome!
 
 /*************************************************************************
- * Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -103,7 +103,9 @@ std::string ROOT::Experimental::RWebDisplayArgs::GetBrowserName() const
       case kQt5: return "qt5";
       case kLocal: return "local";
       case kStandard: return "default";
-      case kCustom: return "custom";
+      case kCustom:
+          auto pos = fExec.find(" ");
+          return (pos == std::string::npos) ? fExec : fExec.substr(0,pos);
    }
 
    return "";
@@ -122,7 +124,6 @@ void ROOT::Experimental::RWebDisplayArgs::AppendUrlOpt(const std::string &opt)
 
    fUrlOpt.append(opt);
 }
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 /// Returns full url, which is combined from URL and extra URL options
@@ -143,4 +144,23 @@ std::string ROOT::Experimental::RWebDisplayArgs::GetFullUrl() const
    url.insert(rpos+1, urlopt);
 
    return url;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+/// Configure custom web browser
+/// Either just name of browser which can be used like "opera"
+/// or full execution string which must includes $url like "/usr/bin/opera $url"
+
+void ROOT::Experimental::RWebDisplayArgs::SetCustomExec(const std::string &exec)
+{
+   SetBrowserKind(kCustom);
+   fExec = exec;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+/// returns custom executable to start web browser
+
+std::string ROOT::Experimental::RWebDisplayArgs::GetCustomExec() const
+{
+   return GetBrowserKind() == kCustom ? fExec : "";
 }
