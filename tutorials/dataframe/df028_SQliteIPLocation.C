@@ -20,27 +20,26 @@
 ///
 /// \author Alexandra-Maria Dobrescu 08/2018
 
-void df026_SQliteIPLocation() {
+void df028_SQliteIPLocation() {
 
-   auto rdf = ROOT::RDF::MakeSqliteDataFrame( "https://root.cern.ch/download/root_download_stats.sqlite", "SELECT * FROM accesslog;" );
+   auto rdf = ROOT::RDF::MakeSqliteDataFrame( "http://root.cern/files/root_download_stats.sqlite", "SELECT * FROM accesslog;" );
 
-   auto F = TFile::Open("http://root.cern.ch/files/WM.root");
-   TH2Poly *WM;
-   WM = (TH2Poly*) F->Get("WMUSA");
+   auto f = TFile::Open("http://root.cern.ch/files/WM.root");
+   auto WM = f->Get<TH2Poly>("WMUSA");
 
    auto fillIPLocation = [&WM] ( const std::string &sLongitude, const std::string &sLatitude ) {
       if (!( sLongitude == "" ) && !( sLatitude == "" )) {
-         float latitude = std::stof(sLatitude);
-         float longitude = std::stof(sLongitude);
+         auto latitude = std::stof(sLatitude);
+         auto longitude = std::stof(sLongitude);
          WM->Fill(longitude, latitude);
       }
    };
 
    rdf.Foreach( fillIPLocation, { "IPLongitude", "IPLatitude" } );
 
-   TCanvas *locationHistogram = new TCanvas();
+   auto locationHistogram = new TCanvas();
 
-   locationHistogram->SetLogz(1);
+   locationHistogram->SetLogz();
    locationHistogram->ToggleEventStatus();
    WM->DrawClone("colz");
 }
