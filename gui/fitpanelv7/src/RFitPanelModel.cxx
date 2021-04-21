@@ -19,9 +19,8 @@
 #include "TH1.h"
 #include "TDirectory.h"
 #include "TPluginManager.h"
-
+#include "TFitResult.h"
 #include "TF1.h"
-#include "TF2.h"
 
 
 enum EFitPanel {
@@ -29,19 +28,28 @@ enum EFitPanel {
    kFP_MIGRAD, kFP_SIMPLX, kFP_SCAN, kFP_COMBINATION,
    kFP_FUMILI, kFP_FUMILI2, kFP_GSLFR, kFP_GSLPR,
    kFP_BFGS, kFP_BFGS2, kFP_GSLLM, kFP_GSLSA,
-   kFP_GALIB, kFP_TMVAGA
+   kFP_GALIB, kFP_TMVAGA,
+
+   kFP_MCHIS, kFP_MBINL, kFP_MUBIN // Fit methods
+
 };
 
 using namespace std::string_literals;
 
 
+/////////////////////////////////////////////////////////
+/// Clear list of patameters
+
 void ROOT::Experimental::RFitPanelModel::RFuncParsList::Clear()
 {
-   id.clear();
-   pars.clear();
-   name.clear();
    haspars = false;
+   id.clear();
+   name.clear();
+   pars.clear();
 }
+
+/////////////////////////////////////////////////////////
+/// Extract TF1 parameters, used in editor on client sides
 
 void ROOT::Experimental::RFitPanelModel::RFuncParsList::GetParameters(TF1 *func)
 {
@@ -64,6 +72,9 @@ void ROOT::Experimental::RFitPanelModel::RFuncParsList::GetParameters(TF1 *func)
          par.fixed = true;
    }
 }
+
+/////////////////////////////////////////////////////////
+/// Set parameters to TF1
 
 void ROOT::Experimental::RFitPanelModel::RFuncParsList::SetParameters(TF1 *func)
 {
@@ -91,6 +102,9 @@ void ROOT::Experimental::RFitPanelModel::RFuncParsList::SetParameters(TF1 *func)
       }
    }
 }
+
+/////////////////////////////////////////////////////////
+/// Update range values
 
 void ROOT::Experimental::RFitPanelModel::UpdateRange(TH1 *hist)
 {
@@ -120,6 +134,9 @@ void ROOT::Experimental::RFitPanelModel::UpdateRange(TH1 *hist)
    fRangeY[1] = fMaxRangeY;
 }
 
+/////////////////////////////////////////////////////////
+/// Check if function id is exists
+
 bool ROOT::Experimental::RFitPanelModel::HasFunction(const std::string &id)
 {
    if (id.empty())
@@ -131,6 +148,9 @@ bool ROOT::Experimental::RFitPanelModel::HasFunction(const std::string &id)
 
    return false;
 }
+
+/////////////////////////////////////////////////////////
+/// Select function
 
 void ROOT::Experimental::RFitPanelModel::SelectedFunc(const std::string &id, TF1 *func)
 {
@@ -145,6 +165,9 @@ void ROOT::Experimental::RFitPanelModel::SelectedFunc(const std::string &id, TF1
       fFuncPars.GetParameters(func);
    }
 }
+
+/////////////////////////////////////////////////////////
+/// Initialize model - set some meaningful default values
 
 void ROOT::Experimental::RFitPanelModel::Initialize()
 {
@@ -162,10 +185,8 @@ void ROOT::Experimental::RFitPanelModel::Initialize()
    // corresponds when Type == User Func (fSelectedTypeID == 1)
 
    // ComboBox for General Tab --- Method
-   fFitMethods = { {"P", "Chi-square"},
-                   {"L", "Log Likelihood"},
-                   {"WL", "Binned LogLikelihood"} };
-   fFitMethod = "P";
+   fFitMethods.clear();
+   fFitMethod = 0;
 
    fLinearFit = false;
    fRobust = false;
@@ -209,36 +230,93 @@ void ROOT::Experimental::RFitPanelModel::Initialize()
 
    fSelectMethodMin = kFP_MIGRAD;
 
-   // fOperation = 0;
    fPrint = 0;
 
    fAdvancedTab = "Contour";
+
+   fContourPoints = 40;
+   fScanPoints = 40;
+   fConfidenceLevel = 0.683;
+   fContourColor = "#c0b6ac"; // #11
+   fScanColor = "#0000ff"; // kBlue
+   fConfidenceColor = "#c0b6ac"; // #11
 }
 
-/// Update advanced parameters associated with fit function for histogram
 
-void ROOT::Experimental::RFitPanelModel::UpdateAdvanced(TF1 *func)
+////////////////////////////////////////////////////////////
+/// Update setting dependent from object type
+
+void ROOT::Experimental::RFitPanelModel::SetObjectKind(EFitObjectType kind)
 {
-   fContour1.clear();
-   fContour2.clear();
-   fScan.clear();
-   fContourPar1Id = "0";
-   fContourPar2Id = "0";
-   fScanId = "0";
+   fDataType = kind;
 
-   fHasAdvanced = (func!=nullptr);
+   fFitMethods.clear();
+   fFitMethod = 0;
+   fRobust = false;
 
-   if (func) {
-      for (int n = 0; n < func->GetNpar(); ++n) {
-         fContour1.emplace_back(std::to_string(n), func->GetParName(n));
-         fContour2.emplace_back(std::to_string(n), func->GetParName(n));
-         fScan.emplace_back(std::to_string(n), func->GetParName(n));
-      }
-      fFuncPars.GetParameters(func); // take func parameters
-      fFuncPars.name = "hist::"s + func->GetName(); // clearly mark this as function from histogram
-   } else {
-      // fFuncPars.Clear();
+   switch (kind) {
+      case kObjectHisto:
+         fFitMethods = {{kFP_MCHIS, "Chi-square"}, {kFP_MBINL, "Binned Likelihood"}};
+         fFitMethod = kFP_MCHIS;
+         break;
+
+      case kObjectGraph:
+         fFitMethods = {{kFP_MCHIS, "Chi-square"}};
+         fFitMethod = kFP_MCHIS;
+         fRobust = true;
+         break;
+
+      case kObjectMultiGraph:
+         fFitMethods = {{kFP_MCHIS, "Chi-square"}};
+         fFitMethod = kFP_MCHIS;
+         fRobust = true;
+         break;
+
+      case kObjectGraph2D:
+         fFitMethods = {{kFP_MCHIS, "Chi-square"}};
+         fFitMethod = kFP_MCHIS;
+         break;
+
+      case kObjectHStack:
+         fFitMethods = {{kFP_MCHIS, "Chi-square"}};
+         fFitMethod = kFP_MCHIS;
+         break;
+
+      //case kObjectTree:
+      //   fFitMethods = {{ kFP_MUBIN, "Unbinned Likelihood" }};
+      //   fFitMethod = kFP_MUBIN;
+      //   break;
+
+      default:
+         break;
    }
+
+}
+
+
+////////////////////////////////////////////////////////////
+/// Update advanced parameters associated with fit function
+
+void ROOT::Experimental::RFitPanelModel::UpdateAdvanced(TFitResult *res)
+{
+   fAdvancedPars.clear();
+
+   fHasAdvanced = (res!=nullptr);
+
+   auto checkid = [&](std::string &id, const std::string &dflt) {
+      if (!res) { id.clear(); return; }
+      for (auto &item : fAdvancedPars)
+         if (item.key == id) return;
+      id = dflt;
+   };
+
+   if (res)
+      for (unsigned n = 0; n < res->NPar(); ++n)
+         fAdvancedPars.emplace_back(std::to_string(n), res->ParName(n));
+
+   checkid(fContourPar1Id, "0");
+   checkid(fContourPar2Id, "1");
+   checkid(fScanId, "0");
 }
 
 
@@ -255,6 +333,9 @@ ROOT::Fit::DataRange ROOT::Experimental::RFitPanelModel::GetRanges()
    return drange;
 }
 
+/////////////////////////////////////////////////////////
+/// Provide initialized Foption_t instance
+
 Foption_t ROOT::Experimental::RFitPanelModel::GetFitOptions()
 {
    Foption_t fitOpts;
@@ -262,7 +343,7 @@ Foption_t ROOT::Experimental::RFitPanelModel::GetFitOptions()
    fitOpts.Integral = fIntegral;
    fitOpts.More     = fImproveFitResults;
    fitOpts.Errors   = fBestErrors;
-   fitOpts.Like     = false; // (fMethodList->GetSelected() != kFP_MCHIS);
+   fitOpts.Like     = fFitMethod != kFP_MCHIS;
 
    if (fEmptyBins1)
       fitOpts.W1 = 2;
@@ -289,8 +370,7 @@ Foption_t ROOT::Experimental::RFitPanelModel::GetFitOptions()
    fitOpts.Quiet    = fPrint == 2;
    fitOpts.Verbose  = fPrint == 1;
 
-   // TODO: only TGraph
-   if ( /* !(fType != kObjectGraph) &&  */ fRobust ) {
+   if (fRobust) {
       fitOpts.Robust = 1;
       fitOpts.hRobust = fRobustLevel;
    }
@@ -298,54 +378,53 @@ Foption_t ROOT::Experimental::RFitPanelModel::GetFitOptions()
    return fitOpts;
 }
 
+/////////////////////////////////////////////////////////
+/// Provide initialized ROOT::Math::MinimizerOptions instance
+
 ROOT::Math::MinimizerOptions ROOT::Experimental::RFitPanelModel::GetMinimizerOptions()
 {
    ROOT::Math::MinimizerOptions minOpts;
 
-   if (fLibrary == 0)
-      minOpts.SetMinimizerType ( "Minuit");
-   else if (fLibrary == 1)
-      minOpts.SetMinimizerType ( "Minuit2" );
-   else if (fLibrary == 2)
-      minOpts.SetMinimizerType ("Fumili" );
-   else if (fLibrary == 3)
-      minOpts.SetMinimizerType ("GSLMultiMin" );
-   else if (fLibrary == 4)
-      minOpts.SetMinimizerType ("Geneti2c" ); // should be handled separately
+   switch (fLibrary) {
+      case 0: minOpts.SetMinimizerType("Minuit"); break;
+      case 1: minOpts.SetMinimizerType("Minuit2"); break;
+      case 2: minOpts.SetMinimizerType("Fumili"); break;
+      case 3: minOpts.SetMinimizerType("GSLMultiMin"); break;
+      case 4: minOpts.SetMinimizerType("Geneti2c"); break;
+   }
 
    switch(fSelectMethodMin) {
       case kFP_MIGRAD:  minOpts.SetMinimizerAlgorithm( "Migrad" ); break;
-      case kFP_FUMILI:  minOpts.SetMinimizerAlgorithm( "Fumili" ); break;
-      case kFP_FUMILI2: minOpts.SetMinimizerAlgorithm( "Fumili2" ); break;
-      case kFP_SIMPLX:  minOpts.SetMinimizerAlgorithm( "Simplex" ); break;
-      case kFP_SCAN:    minOpts.SetMinimizerAlgorithm( "Scan" ); break;
-      case kFP_COMBINATION: minOpts.SetMinimizerAlgorithm( "Minimize" ); break;
-      case kFP_GSLFR:  minOpts.SetMinimizerAlgorithm( "conjugatefr" ); break;
-      case kFP_GSLPR:  minOpts.SetMinimizerAlgorithm( "conjugatepr" ); break;
-      case kFP_BFGS:   minOpts.SetMinimizerAlgorithm( "bfgs" ); break;
-      case kFP_BFGS2:  minOpts.SetMinimizerAlgorithm( "bfgs2" ); break;
+      case kFP_FUMILI: minOpts.SetMinimizerAlgorithm("Fumili"); break;
+      case kFP_FUMILI2: minOpts.SetMinimizerAlgorithm("Fumili2"); break;
+      case kFP_SIMPLX: minOpts.SetMinimizerAlgorithm("Simplex"); break;
+      case kFP_SCAN: minOpts.SetMinimizerAlgorithm("Scan"); break;
+      case kFP_COMBINATION: minOpts.SetMinimizerAlgorithm("Minimize"); break;
+      case kFP_GSLFR: minOpts.SetMinimizerAlgorithm("conjugatefr"); break;
+      case kFP_GSLPR: minOpts.SetMinimizerAlgorithm("conjugatepr"); break;
+      case kFP_BFGS: minOpts.SetMinimizerAlgorithm("bfgs"); break;
+      case kFP_BFGS2: minOpts.SetMinimizerAlgorithm("bfgs2"); break;
+
       case kFP_GSLLM:
-         minOpts.SetMinimizerType ("GSLMultiFit" );
-         minOpts.SetMinimizerAlgorithm( "" );
+         minOpts.SetMinimizerType("GSLMultiFit");
+         minOpts.SetMinimizerAlgorithm("");
          break;
       case kFP_GSLSA:
-         minOpts.SetMinimizerType ("GSLSimAn" );
-         minOpts.SetMinimizerAlgorithm( "" );
+         minOpts.SetMinimizerType("GSLSimAn");
+         minOpts.SetMinimizerAlgorithm("");
          break;
       case kFP_TMVAGA:
-         minOpts.SetMinimizerType ("Geneti2c" );
-         minOpts.SetMinimizerAlgorithm( "" );
+         minOpts.SetMinimizerType("Geneti2c");
+         minOpts.SetMinimizerAlgorithm("");
          break;
       case kFP_GALIB:
-         minOpts.SetMinimizerType ("GAlibMin" );
-         minOpts.SetMinimizerAlgorithm( "" );
+         minOpts.SetMinimizerType("GAlibMin");
+         minOpts.SetMinimizerAlgorithm("");
          break;
-      default:
-         minOpts.SetMinimizerAlgorithm( "" );
-         break;
+      default: minOpts.SetMinimizerAlgorithm(""); break;
    }
 
-   minOpts.SetErrorDef (fErrorDef);
+   minOpts.SetErrorDef(fErrorDef);
    minOpts.SetTolerance(fMaxTolerance);
    minOpts.SetMaxIterations(fMaxIterations);
    minOpts.SetMaxFunctionCalls(fMaxIterations);
@@ -353,14 +432,11 @@ ROOT::Math::MinimizerOptions ROOT::Experimental::RFitPanelModel::GetMinimizerOpt
    return minOpts;
 }
 
+/////////////////////////////////////////////////////////
+/// Retrun draw option - dummy now
+
 TString ROOT::Experimental::RFitPanelModel::GetDrawOption()
 {
    TString res;
    return res;
 }
-
-
-
-
-
-

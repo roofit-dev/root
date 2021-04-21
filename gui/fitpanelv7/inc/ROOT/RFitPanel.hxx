@@ -25,11 +25,11 @@
 
 #include "ROOT/RHist.hxx"
 
+#include "TFitResultPtr.h"
+
 #include <memory>
 #include <vector>
-#include <unordered_map>
-
-#include "TF1.h"
+#include <list>
 
 class TPad;
 class TH1;
@@ -44,6 +44,7 @@ class RFitPanel {
 
    std::vector<TObject*> fObjects;    ///<! objects provided directly to panel for fitting
    std::string fCanvName;             ///<! v6 canvas name used to display fit, will be created if not exists
+   std::string fPadName;              ///<! v6 pad name in the canvas, where object is (was) drawn
 
    std::shared_ptr<RCanvas> fCanvas; ///<! v7 canvas used to display results
    std::shared_ptr<RH1D> fFitHist;   ///<! v7 histogram for fitting
@@ -53,42 +54,52 @@ class RFitPanel {
 
    std::vector<std::unique_ptr<TF1>> fSystemFuncs; ///<! local copy of all internal system funcs
 
-   std::unordered_multimap<std::string, std::unique_ptr<TF1>> fPrevFuncs; ///<! all previous functions used for fitting
+   struct FitRes {
+      std::string objid;         // object used for fitting
+      std::unique_ptr<TF1> func; // function
+      TFitResultPtr res;          // result
+      FitRes() = default;
+      FitRes(const std::string &_objid, std::unique_ptr<TF1> &_func, TFitResultPtr &_res);
+      ~FitRes();
+   };
+
+   std::list<FitRes> fPrevRes; ///<! all previous functions used for fitting
 
    TF1 *copyTF1(TF1 *f);
 
    void GetFunctionsFromSystem();
 
-   /// process data from UI
    void ProcessData(unsigned connid, const std::string &arg);
-
-   int UpdateModel(const std::string &json);
-
-   bool DoFit();
-   bool DoDraw();
-
-   void DrawContour(const std::string &model);
-
-   void DrawScan(const std::string &model);
 
    RFitPanelModel &model();
 
+   int UpdateModel(const std::string &json);
+
    void SelectObject(const std::string &objid);
-   TObject *GetSelectedObject(const std::string &objid, int &kind);
+   TObject *GetSelectedObject(const std::string &objid);
+   RFitPanelModel::EFitObjectType GetFitObjectType(TObject *obj);
    void UpdateDataSet();
 
    void UpdateFunctionsList();
    TF1 *FindFunction(const std::string &funcid);
+   TFitResult *FindFitResult(const std::string &funcid);
    std::unique_ptr<TF1> GetFitFunction(const std::string &funcid);
    void SelectFunction(const std::string &funcid);
+
+   TObject *MakeConfidenceLevels(TFitResult *res);
+
+   Color_t GetColor(const std::string &colorid);
 
    TPad *GetDrawPad(TObject *obj, bool force = false);
 
    void SendModel();
 
+   bool DoFit();
+   bool DoDraw();
+
 public:
-   /// normal constructor
    RFitPanel(const std::string &title = "Fit panel");
+   ~RFitPanel();
 
    // method required when any panel want to be inserted into the RCanvas
    std::shared_ptr<RWebWindow> GetWindow();
