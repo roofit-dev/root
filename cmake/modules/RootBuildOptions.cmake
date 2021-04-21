@@ -126,6 +126,7 @@ ROOT_BUILD_OPTION(macos_native OFF "Disable looking for libraries, includes and 
 ROOT_BUILD_OPTION(mathmore ON "Build libMathMore extended math library (requires GSL)")
 ROOT_BUILD_OPTION(memory_termination OFF "Free internal ROOT memory before process termination (experimental, used for leak checking)")
 ROOT_BUILD_OPTION(memstat OFF "Build memory statistics utility (helps to detect memory leaks)")
+ROOT_BUILD_OPTION(mlp ON "Enable support for TMultilayerPerceptron classes' federation")
 ROOT_BUILD_OPTION(minuit2 OFF "Build Minuit2 minimization library")
 ROOT_BUILD_OPTION(monalisa OFF "Enable support for monitoring with Monalisa (requires libapmoncpp)")
 ROOT_BUILD_OPTION(mysql ON "Enable support for MySQL databases")
@@ -296,12 +297,6 @@ elseif(APPLE)
   set(x11_defvalue OFF)
 endif()
 
-#---Vc supports only x86_64 architecture-------------------------------------------------------
-if (NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
-  message(STATUS "Vc does not support ${CMAKE_SYSTEM_PROCESSOR}. Support for Vc disabled.")
-  set(vc_defvalue OFF)
-endif()
-
 #---Options depending of CMake Generator-------------------------------------------------------
 if( CMAKE_GENERATOR STREQUAL Ninja)
    set(fortran_defvalue OFF)
@@ -309,7 +304,7 @@ endif()
 
 #---Apply minimal or gminimal------------------------------------------------------------------
 foreach(opt ${root_build_options})
-  if(NOT opt MATCHES "thread|cling|builtin_llvm|builtin_clang|builtin_ftgl|shared|explicitlink")
+  if(NOT opt MATCHES "thread|cling|builtin_llvm|builtin_clang|shared|explicitlink")
     if(minimal)
       set(${opt}_defvalue OFF)
     elseif(gminimal AND NOT opt MATCHES "x11|cocoa")

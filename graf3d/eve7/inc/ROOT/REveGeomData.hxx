@@ -81,17 +81,17 @@ public:
 class REveShapeRenderInfo {
 public:
    // render data, equivalent of REveElement::WriteCoreJson
-   int rnr_offset{-1};     ///< rnr_offset;
-   std::string rnr_func;  ///< fRenderData->GetRnrFunc();
-   int vert_size{0};      ///< fRenderData->SizeV();
-   int norm_size{0};      ///< fRenderData->SizeN();
-   int index_size{0};     ///< fRenderData->SizeI();
+   int rnr_offset{-1};   ///< rnr_offset;
+   std::string rnr_func; ///< fRenderData->GetRnrFunc();
+   int vert_size{0};     ///< fRenderData->SizeV();
+   int norm_size{0};     ///< fRenderData->SizeN();
+   int index_size{0};    ///< fRenderData->SizeI();
+   TGeoShape *shape{nullptr}; ///< original shape - can be much less than binary data
    // int trans_size{0};     ///< fRenderData->SizeT(); not used in GeomViewer
 };
 
 /** REveGeomVisible contains description of visible node
- * It is path to the node plus reference to shape rendering data
- */
+ * It is path to the node plus reference to shape rendering data */
 
 class REveGeomVisible {
 public:
@@ -106,15 +106,16 @@ public:
 };
 
 /** Object with full description for drawing geometry
- * It include list of visibles and list of nodes required to build them */
+ * It includes list of visible items and list of nodes required to build them */
 
 class REveGeomDrawing {
 public:
    int numnodes{0};                         ///< total number of nodes in description
-   std::vector<REveGeomNode*> nodes;        ///< all used nodes to display visibles and not known for client
-   std::vector<REveGeomVisible> visibles;   ///< all visibles items with
    std::string drawopt;                     ///< draw options for TGeoPainter
+   int nsegm{0};                            ///< number of segments for cylindrical shapes
    int binlen{0};                           ///< extra binary data for that drawing
+   std::vector<REveGeomNode*> nodes;        ///< all used nodes to display visible items and not known for client
+   std::vector<REveGeomVisible> visibles;   ///< all visible items
 };
 
 
@@ -126,6 +127,18 @@ public:
    std::vector<int> stack; ///< stack parameter, used with HIGHL
 };
 
+class REveGeomNodeInfo {
+public:
+   std::string fullpath;  ///< full path to node
+   std::string node_type;  ///< node class name
+   std::string node_name;  ///< node name
+   std::string shape_type; ///< shape type (if any)
+   std::string shape_name; ///< shape class name (if any)
+
+   REveShapeRenderInfo *ri{nullptr}; ///< rendering information (if applicable)
+
+   std::vector<unsigned char> rndr_binary; ///<  binary render data (if available)
+};
 
 using REveGeomScanFunc_t = std::function<bool(REveGeomNode &, std::vector<int> &, bool)>;
 
@@ -159,13 +172,14 @@ class REveGeomDescription {
    int fRndrOffest{0};              ///<! current render offset
 
    std::string fDrawJson;           ///<! JSON with main nodes drawn by client
-   std::vector<char> fDrawBinary;   ///<! binary data for main draw nodes
+   std::vector<unsigned char> fDrawBinary;   ///<! binary data for main draw nodes
    int fDrawIdCut{0};               ///<! sortid used for selection of most-significant nodes
    int fFacesLimit{0};              ///<! maximal number of faces to be selected for drawing
    int fNodesLimit{0};              ///<! maximal number of nodes to be selected for drawing
    bool fPreferredOffline{false};   ///<! indicates that full description should be provided to client
+   bool fBuildShapes{true};         ///<! if TGeoShape build already on server (default) or send as is to client
 
-   int fJsonComp{103};              ///<! default JSON compression - all class info can be removed
+   int fJsonComp{0};                ///<! default JSON compression
 
    void PackMatrix(std::vector<float> &arr, TGeoMatrix *matr);
 
@@ -181,7 +195,7 @@ class REveGeomDescription {
 
    ShapeDescr &MakeShapeDescr(TGeoShape *shape, bool acc_rndr = false);
 
-   void BuildRndrBinary(std::vector<char> &buf);
+   void BuildRndrBinary(std::vector<unsigned char> &buf);
 
    void CopyMaterialProperties(TGeoVolume *vol, REveGeomNode &node);
 
@@ -225,10 +239,10 @@ public:
 
    bool HasDrawData() const { return (fDrawJson.length() > 0) && (fDrawBinary.size() > 0) && (fDrawIdCut > 0); }
    const std::string &GetDrawJson() const { return fDrawJson; }
-   const std::vector<char> &GetDrawBinary() const { return fDrawBinary; }
+   const std::vector<unsigned char> &GetDrawBinary() const { return fDrawBinary; }
    void ClearRawData();
 
-   int SearchVisibles(const std::string &find, std::string &hjson, std::string &json, std::vector<char> &binary);
+   int SearchVisibles(const std::string &find, std::string &hjson, std::string &json, std::vector<unsigned char> &binary);
 
    int FindNodeId(const std::vector<int> &stack);
 
@@ -242,7 +256,7 @@ public:
 
    std::string MakePathByStack(const std::vector<int> &stack);
 
-   bool ProduceDrawingFor(int nodeid, std::string &json, std::vector<char> &binary, bool check_volume = false);
+   bool ProduceDrawingFor(int nodeid, std::string &json, std::vector<unsigned char> &binary, bool check_volume = false);
 
    bool ChangeNodeVisibility(int nodeid, bool selected);
 
@@ -250,14 +264,27 @@ public:
 
    void SelectNode(TGeoNode *);
 
+   /** Set number of segments for cylindrical shapes, if 0 - default value will be used */
    void SetNSegments(int n = 0) { fNSegments = n; }
+   /** Return of segments for cylindrical shapes, if 0 - default value will be used */
    int GetNSegments() const { return fNSegments; }
 
-   void SetJsonComp(int comp = 103) { fJsonComp = comp; }
+   /** Set JSON compression level for data transfer */
+   void SetJsonComp(int comp = 0) { fJsonComp = comp; }
+   /** Returns JSON compression level for data transfer */
    int GetJsonComp() const  { return fJsonComp; }
 
+   /** Set draw options as string for JSROOT TGeoPainter */
    void SetDrawOptions(const std::string &opt = "") { fDrawOptions = opt; }
+   /** Returns draw options, used for JSROOT TGeoPainter */
+   std::string GetDrawOptions() const { return fDrawOptions; }
 
+   /** Instruct to build binary 3D model already on the server (true) or send TGeoShape as is to client, which can build model itself */
+   void SetBuildShapes(bool on = true) { fBuildShapes = on; }
+   /** Retuns true if binary 3D model build already by C++ server (default) */
+   bool IsBuildShapes() const { return fBuildShapes; }
+
+   std::unique_ptr<REveGeomNodeInfo> MakeNodeInfo(const std::string &path);
 };
 
 
