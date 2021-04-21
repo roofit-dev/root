@@ -59,7 +59,7 @@ They were deprecated before, or never ported from configure, make to CMake.
 
 ### Remove GLUtesselator forward declaration from TVirtualX.h
 
-It was never used in TVirtualX interfaces. If GLUtesselator forward declaration is required, use TGLUtil.h include instead. 
+It was never used in TVirtualX interfaces. If GLUtesselator forward declaration is required, use TGLUtil.h include instead.
 
 ## C++ Modules Technology Preview
 
@@ -94,11 +94,11 @@ From heads/master@v6-13-04-1273-gea3f4333a2
 The previous setting called `ROOT.ZipMode` is now unused and ignored.
 Instead, use `Root.CompressionAlgorithm` which sets the compression algorithm according to the values of [ECompression](https://root.cern/doc/master/Compression_8h.html#a0a7df9754a3b7be2b437f357254a771c):
 
-* 0: use the default value of `R__ZipMode` (currently selecting LZ4)
-* 1: use zlib (the default until 6.12)
-* 2: use lzma
+* 0: use the default value of `R__ZipMode` (currently selecting ZLIB)
+* 1: use ZLIB (the default until 6.12 and from 6.16)
+* 2: use LZMA
 * 3: legacy, please don't use
-* 4: LZ4 (the current default)
+* 4: LZ4
 
 ### TRef
 
@@ -148,6 +148,22 @@ return {infolist, 0, hash};
 
 See `TFile::GetStreamerInfoListImpl` implementation for an example on how to implement the caching.
 
+* ZLIB (with compression level 1) is now the default compression algorithm for new ROOT files (LZ4 was default compression algorithm in 6.14). Because of reported "corner cases" for LZ4, we are working on the fix to be landed in a next release and return back LZ4 as a default compression algorithm.
+
+* Introducing a possibility for ROOT to use generic compression algorithm/level/settings, by introducing new generic class RCompressionSetting together with new structs ELevel (compression level), EDefaults (default compression settings) and EAlgorithm (compression algorithm). These changes are the first step in generalization of setup of ROOT compression algorithm. It also provides correctness of resolution of compression level and compression algorithm from defined ROOT compression settings:
+
+```
+Attaching file hsimple.root as _file0...
+(TFile *) 0x55f79b0e6360
+root [1] _file0->GetCompressionAlgorithm()
+(int) 1
+root [2] _file0->GetCompressionLevel()
+(int) 1
+root [3] _file0->GetCompressionSettings()
+(int) 101
+root [4]
+```
+
 ## TTree Libraries
 ### RDataFrame
   - Optimise the creation of the set of branch names of an input dataset, doing the work once and caching it in the RInterface.
@@ -176,7 +192,7 @@ See `TFile::GetStreamerInfoListImpl` implementation for an example on how to imp
   - Remove `RDataFrame` from the 32-bit builds.
   - Speed up interpreted usage of RDataFrame (i.e. in macros or from ROOT prompt) by removing certain cling runtime safety checks.
   - Streamline and better document usage of multi-thread RDataFrame: edge cases in which processing of an event could start
-    before processing of another event finished have been removed, making it easier for user to write safe parallel RDF operations. 
+    before processing of another event finished have been removed, making it easier for user to write safe parallel RDF operations.
     See the [relevant documentation](https://root.cern.ch/doc/master/classROOT_1_1RDataFrame.html#parallel-execution) for more information.
 
 ### TTreeProcessorMT
@@ -318,6 +334,16 @@ available in cvmfs.
 ## 3D Graphics Libraries
 
 
+## Web Graphics Libraries
+
+  - Introduce web-based output for TCanvas. When ROOT compiled with cxx14 support `cmake -Dcxx14=ON ..` and
+    started with web option like `root --web hsimple.C`, TCanvas will be displayed in web browser.
+  - Most of histograms and graphs classes are supported. See 
+    [JavaScript ROOT website](https://root.cern/js/latest/examples.htm) for list of suported classes
+  - Also some classes with customize painters may be working - like TTree::Draw() into TParallelCoord object. These kind of
+    objects handled on server side, web browser used just for display of produced primitives like polylines or text          
+
+
 ## Geometry Libraries
 
 
@@ -338,20 +364,49 @@ available in cvmfs.
 
 ## Language Bindings
 
+### PyROOT
+  - Fixed support for templated functions when in need of:
+    - typedef resolution (`Foo<Float_t>` -> `Foo<float>`)
+    - namespace addition (`Foo<vector<float>>` -> `Foo<std::vector<float>>`)
+    - full name completion (`Foo<std::vector<float>>` -> `Foo<std::vector<float, std::allocator<float>>>`)
+
 ### Experimental PyROOT
-  - Pythonize TFile, TDirectory and TDirectoryFile. Most notably, implement attr syntax
-    for these classes.
+  - Added pythonisations for `TTree` and its subclasses (e.g. `TChain`, `TNtuple`)
+    - Pythonic iterator (`for event in tree:`)
+    - Access tree branches as attributes (`mytree.mybranch`)
+    - `TTree::Branch` pythonisation
+    - `TTree::SetBranchAddress` pythonisation
+  - Added pythonisations for `TDirectory` and its subclasses (e.g `TFile`, `TDirectoryFile`)
+    - Access directories/objects in `TDirectory`/`TDirectoryFile`/`TFile` as attributes
+    (`mydir1.mydir2.myhist`, `myfile.myhist`, `myfile.mydir.myhist`)
+    - `TDirectory::Get` pythonisation
+    - `TDirectory::WriteObject` pythonisation
+    - `TFile::Open` pythonisation
+  - Added pretty printing generic pythonisation for all classes
+  - Added interoperability with NumPy arrays for STL vectors and `RVec`s (zero-copy wrapping of
+  vectors and `RVec`s into NumPy arrays)
+
+### Jupyter Notebook Integration
+  - Make sure the ROOT C++ Jupyter kernel runs with the same Python version (major and minor) that ROOT
+  was built with.
+  - Make the Jupyter server started with `root --notebook` listen on all interfaces. This can be useful
+  if the user wants to connect to the server remotely. It also fixes an issue observed when starting
+  the Jupyter server inside a Docker container.
 
 ## JavaScript ROOT
-
+  - Support of TWebCanvas functionality. Code for ROOT 6.16 will
+    be maintained in v6-16-00-patches branch of JSROOT repository. 
+  - Singificant speed up (factor 10) when drawing canvas with many subpads
+  - Many small improvements and bug fixes, see JSROOT release notes for v5.4.2 - v5.6.2 
 
 ## Tutorials
   - Refurbish text in the `RDataFrame` tutorials category.
 
+## Command line tools
+  - Fixed `rooteventselector` when both applying a cut (based on branch values) and selecting only
+  a subset of the branches. Previously, the size of the output file was bigger than expected.
 
 ## Class Reference Guide
 
 
 ## Build, Configuration and Testing Infrastructure
-
-
