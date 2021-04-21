@@ -5365,6 +5365,7 @@ Long64_t TTree::GetEntriesFriend() const
 /// and a new instance of Event is created and filled.
 ///
 /// ## OPTION 3
+///
 /// ~~~ {.cpp}
 /// Same as option 1, but you delete yourself the event.
 ///
@@ -7120,7 +7121,8 @@ void TTree::PrintCacheStats(Option_t* option) const
 /// in the same script. If this is required, proceed as indicated in NOTE1,
 /// by getting a pointer to the corresponding TSelector,eg
 ///
-/// ### workaround 1
+/// ### Workaround 1
+///
 /// ~~~ {.cpp}
 ///     void stubs1() {
 ///        TSelector *selector = TSelector::GetSelector("h1test.C");
@@ -7134,7 +7136,8 @@ void TTree::PrintCacheStats(Option_t* option) const
 /// ~~~
 /// or use ACLIC to compile the selector
 ///
-/// ### workaround 2
+/// ### Workaround 2
+///
 /// ~~~ {.cpp}
 ///     void stubs2() {
 ///        TFile *f1 = new TFile("stubs_nood_le1.root");
