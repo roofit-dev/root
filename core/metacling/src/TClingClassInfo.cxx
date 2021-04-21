@@ -634,6 +634,27 @@ ptrdiff_t TClingClassInfo::GetBaseOffset(TClingClassInfo* base, void* address, b
    return binfo.Offset(address, isDerivedObject);
 }
 
+std::vector<std::string> TClingClassInfo::GetUsingNamespaces()
+{
+   // Find and return all 'using' declarations of namespaces.
+   std::vector<std::string> res;
+
+   R__LOCKGUARD(gInterpreterMutex);
+
+   cling::Interpreter::PushTransactionRAII RAII(fInterp);
+   const auto DC = dyn_cast<DeclContext>(fDecl);
+   if (!DC)
+      return res;
+
+   for (auto UD : DC->using_directives()) {
+      NamespaceDecl *NS = UD->getNominatedNamespace();
+      if (NS)
+         res.push_back(NS->getName().str());
+   }
+
+   return res;
+}
+
 bool TClingClassInfo::HasDefaultConstructor() const
 {
    // Return true if there a constructor taking no arguments (including
