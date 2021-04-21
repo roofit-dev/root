@@ -21,7 +21,18 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux" AND NOT CMAKE_CROSSCOMPILING AND NOT EXISTS
   endif()
 endif()
 
-#---Check for Cocoa/Quartz graphics backend (MacOS X only)
+#---If -Dshared=Off, prefer static libraries-----------------------------------------
+if(NOT shared)
+  if(WINDOWS)
+    message(FATAL_ERROR "Option \"shared=Off\" not supported on Windows!")
+  else()
+    message("Preferring static libraries.")
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a;${CMAKE_FIND_LIBRARY_SUFFIXES}")
+  endif()
+endif()
+
+
+#---Check for Cocoa/Quartz graphics backend (MacOS X only)---------------------------
 if(cocoa)
   if(APPLE)
     set(x11 OFF CACHE BOOL "Disabled because cocoa requested (${x11_description})" FORCE)
@@ -1507,13 +1518,13 @@ endif()
 if(tmva AND cuda AND tmva-gpu)
   message(STATUS "Looking for CUDA for optional parts of TMVA")
 
-  if(cxx11)
+  if(CMAKE_CXX_STANDARD EQUAL 11)
     find_package(CUDA 7.5)
-  elseif(cxx14)
+  elseif(CMAKE_CXX_STANDARD EQUAL 14)
     message(STATUS "Detected request for c++14, requiring minimum version CUDA 9.0 (default 7.5)")
     find_package(CUDA 9.0)
-  elseif(cxx17)
-    message(FATAL_ERROR "Using CUDA with c++17 currently not supported")
+  else()
+    message(FATAL_ERROR "CUDA not supported with C++${CMAKE_CXX_STANDARD}")
   endif()
 
   if(NOT CUDA_FOUND)
