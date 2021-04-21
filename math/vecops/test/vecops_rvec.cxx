@@ -763,6 +763,14 @@ TEST(VecOps, CombinationsTwoVectors)
    RVec<int> ref{-4, -5, -8, -10, -12, -15};
    CheckEqual(v3, ref);
 
+   // Test overload with size as input
+   auto idx3 = Combinations(v1.size(), v2.size());
+   auto c3 = Take(v1, idx3[0]);
+   auto c4 = Take(v2, idx3[1]);
+   auto v4 = c3 * c4;
+
+   CheckEqual(v4, ref);
+
    // Corner-case: One collection is empty
    RVec<int> empty_int{};
    auto idx2 = Combinations(v1, empty_int);
@@ -879,4 +887,19 @@ TEST(VecOps, Where)
    auto v6 = Where(v0 == 2 || v0 == 4, -1.0f, 1.0f);
    RVec<float> ref4{1, -1, 1, -1};
    CheckEqual(v6, ref4);
+}
+
+TEST(VecOps, AtWithFallback)
+{
+   ROOT::VecOps::RVec<float> v({1.f, 2.f, 3.f});
+   EXPECT_FLOAT_EQ(v.at(7, 99.f), 99.f);
+}
+
+TEST(VecOps, Concatenate)
+{
+   RVec<float> rvf {0.f, 1.f, 2.f};
+   RVec<int> rvi {7, 8, 9};
+   const auto res = Concatenate(rvf, rvi);
+   const RVec<float> ref { 0.00000f, 1.00000f, 2.00000f, 7.00000f, 8.00000f, 9.00000f };
+   CheckEqual(res, ref);
 }
