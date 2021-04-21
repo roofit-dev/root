@@ -30,11 +30,12 @@ namespace Detail {
 /**
 \class ROOT::Experimental::Detail::RPage
 \ingroup NTuple
-\brief A page is a fixed size slice of a column that is mapped into memory
+\brief A page is a slice of a column that is mapped into memory
 
-The page provides a fixed-size opaque memory buffer for uncompressed data. It does not know how to interpret
+The page provides an opaque memory buffer for uncompressed, unpacked data. It does not interpret
 the contents but it does now about the size (and thus the number) of the elements inside as well as the element
-number range within the backing column. The memory buffer is not managed by the page but normally by the page pool.
+number range within the backing column/cluster. The memory buffer is not managed by the page. It is normally registered
+with the page pool and allocated/freed by the page storage.
 */
 // clang-format on
 class RPage {
@@ -85,6 +86,7 @@ public:
    std::size_t GetCapacity() const { return fCapacity; }
    /// The space taken by column elements in the buffer
    std::size_t GetSize() const { return fSize; }
+   std::size_t GetElementSize() const { return fElementSize; }
    NTupleSize_t GetNElements() const { return fSize / fElementSize; }
    NTupleSize_t GetRangeFirst() const { return fRangeFirst; }
    NTupleSize_t GetRangeLast() const { return fRangeFirst + fNElements - 1; }
@@ -116,6 +118,7 @@ public:
 
    bool IsNull() const { return fBuffer == nullptr; }
    bool operator ==(const RPage &other) const { return fBuffer == other.fBuffer; }
+   bool operator !=(const RPage &other) const { return !(*this == other); }
 };
 
 } // namespace Detail

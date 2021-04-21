@@ -17,6 +17,7 @@
 #define ROOT7_RPagePool
 
 #include <ROOT/RPage.hxx>
+#include <ROOT/RPageAllocator.hxx>
 #include <ROOT/RNTupleUtil.hxx>
 
 #include <cstddef>
@@ -27,17 +28,16 @@ namespace Experimental {
 
 namespace Detail {
 
-class RColumn;
-
 // clang-format off
 /**
 \class ROOT::Experimental::Detail::RPagePool
 \ingroup NTuple
 \brief A thread-safe cache of column pages.
 
-The page pool encapsulated memory management for data written into a tree or read from a tree. Adding and removing
-pages is thread-safe. All pages have the same size, which means different pages do not necessarily contain the same
-number of elements. Multiple page caches can coexist.
+The page pool provides memory tracking for data written into an ntuple or read from an ntuple. Adding and removing
+pages is thread-safe. The page pool does not allocate the memory -- allocation and deallocation is performed by the
+page storage, which might do it in a way optimized to the backing store (e.g., mmap()).
+Multiple page caches can coexist.
 
 TODO(jblomer): it should be possible to register pages and to find them by column and index; this would
 facilitate pre-filling a cache, e.g. by read-ahead.
@@ -45,9 +45,6 @@ facilitate pre-filling a cache, e.g. by read-ahead.
 // clang-format on
 class RPagePool {
 private:
-   void* fMemory;
-   std::size_t fPageSize;
-   std::size_t fNPages;
    /// TODO(jblomer): should be an efficient index structure that allows
    ///   - random insert
    ///   - random delete
@@ -55,22 +52,24 @@ private:
    ///   - searching by tree index
    std::vector<RPage> fPages;
    std::vector<std::uint32_t> fReferences;
+   std::vector<RPageDeleter> fDeleters;
 
 public:
-   RPagePool(std::size_t pageSize, std::size_t nPages);
+   RPagePool() = default;
    RPagePool(const RPagePool&) = delete;
    RPagePool& operator =(const RPagePool&) = delete;
-   ~RPagePool();
+   ~RPagePool() = default;
 
-   /// Get a new, empty page from the cache. Return a "null Page" if there is no more free space.
-   RPage ReservePage(RColumn* column);
-   /// Registers a page that has previously been acquired by ReservePage() and was meanwhile filled with content.
-   void CommitPage(const RPage& page);
-   /// Tries to find the page corresponding to column and index in the cache. On cache miss, load the page
-   /// from the PageSource attached to the column and put it in the cache.
-   RPage GetPage(RColumn* column, NTupleSize_t index);
-   /// Give back a page to the pool. There must not be any pointers anymore into this page.
-   void ReleasePage(const RPage &page);
+   /// Adds a new page to the pool together with the function to free its space. Upon registration,
+   /// the page pool takes ownership of the page's memory. The new page has its reference counter set to 1.
+   void RegisterPage(const RPage &page, const RPageDeleter &deleter);
+   /// Tries to find the page corresponding to column and index in the cache. If the page is found, its reference
+   /// counter is increased
+   RPage GetPage(ColumnId_t columnId, NTupleSize_t index);
+   /// Give back a page to the pool and decrease the reference counter. There must not be any pointers anymore into
+   /// this page. If the reference counter drops to zero, the page pool might decide to call the deleter given in
+   /// during registration.
+   void ReturnPage(const RPage &page);
 };
 
 } // namespace Detail
