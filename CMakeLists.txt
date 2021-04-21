@@ -38,11 +38,16 @@ set(HEADER_OUTPUT_PATH ${CMAKE_BINARY_DIR}/include)
 set(ROOT_INCLUDE_DIR ${HEADER_OUTPUT_PATH})
 
 #---Set the ROOT version--------------------------------------------------------------------
-execute_process(COMMAND ${GIT_EXECUTABLE} --git-dir=${CMAKE_SOURCE_DIR}/.git describe --all
-                OUTPUT_VARIABLE GIT_DESCRIBE_ALL
-                RESULT_VARIABLE GIT_DESCRIBE_ERRCODE
-                ERROR_QUIET
-                OUTPUT_STRIP_TRAILING_WHITESPACE)
+find_package(Git)
+if(Git_FOUND AND EXISTS ${CMAKE_SOURCE_DIR}/.git)
+  execute_process(COMMAND ${GIT_EXECUTABLE} --git-dir=${CMAKE_SOURCE_DIR}/.git describe --all
+                  OUTPUT_VARIABLE GIT_DESCRIBE_ALL
+                  RESULT_VARIABLE GIT_DESCRIBE_ERRCODE
+                  ERROR_QUIET
+                  OUTPUT_STRIP_TRAILING_WHITESPACE)
+else()
+  set(GIT_DESCRIBE_ERRCODE "NoGit")
+endif()
 if(GIT_DESCRIBE_ERRCODE)
   file(READ ${CMAKE_SOURCE_DIR}/build/version_number versionstr)
   string(STRIP ${versionstr} versionstr)
@@ -58,13 +63,20 @@ else()
   string(TIMESTAMP GIT_TIMESTAMP "%b %d %Y, %H:%M:%S" UTC)
 
   string(REGEX REPLACE "^v([0-9])-([0-9]+)-" "\\1.\\2." ROOT_VERSION "${GIT_DESCRIBE_ALWAYS}")
-  if("${GIT_DESCRIBE_ALL}" MATCHES "-patches")
+  if("${GIT_DESCRIBE_ALL}" MATCHES "^tags/")
+    # GIT_DESCRIBE_ALWAYS: v6-16-00-rc1
+    # GIT_DESCRIBE_ALL: tags/v6-16-00-rc1
+    # tag might end on "-rc1" or similar; parse version number in front.
+    string(REGEX REPLACE "v([0-9]+)-.*" "\\1" ROOT_MAJOR_VERSION ${GIT_DESCRIBE_ALWAYS})
+    string(REGEX REPLACE "v[0-9]+-([0-9]+).*" "\\1" ROOT_MINOR_VERSION ${GIT_DESCRIBE_ALWAYS})
+    string(REGEX REPLACE "v[0-9]+-[0-9]+-([0-9]+).*" "\\1" ROOT_PATCH_VERSION ${GIT_DESCRIBE_ALWAYS})
+  elseif("${GIT_DESCRIBE_ALL}" MATCHES "-patches$")
     # GIT_DESCRIBE_ALWAYS: v6-16-00-rc1-47-g9ba56ef4a3
     # GIT_DESCRIBE_ALL: heads/v6-16-00-patches
     string(REGEX REPLACE "^.*/v([0-9]+)-.*" "\\1" ROOT_MAJOR_VERSION ${GIT_DESCRIBE_ALL})
     string(REGEX REPLACE "^.*/v[0-9]+-([0-9]+).*" "\\1" ROOT_MINOR_VERSION ${GIT_DESCRIBE_ALL})
     set(ROOT_PATCH_VERSION "99") # aka head of ...-patches
-  elseif("${GIT_DESCRIBE_ALL}" MATCHES "/master$")
+  else()
     # GIT_DESCRIBE_ALWAYS: v6-13-04-2163-g7e8d27ea66
     # GIT_DESCRIBE_ALL: heads/master or remotes/origin/master
     file(READ ${CMAKE_SOURCE_DIR}/build/version_number versionstr)
@@ -72,13 +84,6 @@ else()
     string(REGEX REPLACE "([0-9]+)[.][0-9]+[/][0-9]+" "\\1" ROOT_MAJOR_VERSION ${versionstr})
     string(REGEX REPLACE "[0-9]+[.]([0-9]+)[/][0-9]+" "\\1" ROOT_MINOR_VERSION ${versionstr})
     string(REGEX REPLACE "[0-9]+[.][0-9]+[/]([0-9]+)" "\\1" ROOT_PATCH_VERSION ${versionstr})
-  else()
-    # GIT_DESCRIBE_ALWAYS: v6-16-00-rc1
-    # GIT_DESCRIBE_ALL: tags/v6-16-00-rc1
-    # tag might end on "-rc1" or similar; parse version number in front.
-    string(REGEX REPLACE "v([0-9]+)-.*" "\\1" ROOT_MAJOR_VERSION ${GIT_DESCRIBE_ALL})
-    string(REGEX REPLACE "v[0-9]+-([0-9]+).*" "\\1" ROOT_MINOR_VERSION ${GIT_DESCRIBE_ALL})
-    string(REGEX REPLACE "v[0-9]+-[0-9]+-([0-9]+).*" "\\1" ROOT_PATCH_VERSION ${GIT_DESCRIBE_ALL})
   endif()
 endif()
 
@@ -271,9 +276,11 @@ if (NOT WIN32 AND NOT libcxx)
   if (__libcpp_full_paths_list)
     list(GET __libcpp_full_paths_list 0 __libcpp_full_path)
 
-    configure_file(${CMAKE_SOURCE_DIR}/build/unix/modulemap.overlay.yaml.in ${CMAKE_BINARY_DIR}/include/modulemap.overlay.yaml @ONLY)
+    configure_file(${CMAKE_SOURCE_DIR}/build/unix/modulemap.overlay.yaml.in.build ${CMAKE_BINARY_DIR}/include/modulemap.overlay.yaml @ONLY)
     configure_file(${CMAKE_SOURCE_DIR}/build/unix/modulemap-installed.overlay.yaml.in ${CMAKE_BINARY_DIR}/build/modulemap.overlay.yaml @ONLY)
-    install(FILES "${CMAKE_BINARY_DIR}/build/modulemap.overlay.yaml" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
+
+    configure_file(${CMAKE_SOURCE_DIR}/build/unix/modulemap.overlay.yaml.in.install ${CMAKE_BINARY_DIR}/include/modulemap.overlay.yaml.install @ONLY)
+    install(FILES "${CMAKE_BINARY_DIR}/include/modulemap.overlay.yaml.install" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers RENAME "modulemap.overlay.yaml")
 
     configure_file(${CMAKE_SOURCE_DIR}/build/unix/stl.modulemap ${CMAKE_BINARY_DIR}/include/stl.modulemap)
     install(FILES "${CMAKE_BINARY_DIR}/include/stl.modulemap" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
@@ -405,6 +412,13 @@ else()
   install(FILES ${CMAKE_BINARY_DIR}/etc/allDict.cxx.pch DESTINATION ${CMAKE_INSTALL_SYSCONFDIR})
   install(DIRECTORY ${CMAKE_BINARY_DIR}/etc/dictpch DESTINATION ${CMAKE_INSTALL_SYSCONFDIR})
 endif()
+
+# FIXME: Add a post-build script where you compare the lib/*.pcm list to the reference, so as not to install random pcms.
+install(
+   DIRECTORY ${CMAKE_BINARY_DIR}/lib/
+   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+   FILES_MATCHING PATTERN "*.pcm"
+)
 
 #---hsimple.root---------(use the executable for clearer dependencies and proper return code)---
 add_custom_target(hsimple ALL DEPENDS tutorials/hsimple.root)
