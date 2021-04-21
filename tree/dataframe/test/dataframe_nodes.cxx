@@ -51,14 +51,11 @@ TEST(RDataFrameNodes, RLoopManagerJit)
 {
    ROOT::Detail::RDF::RLoopManager lm(nullptr, {});
    lm.ToJitExec("souble d = 3.14");
-   int ret(1);
-   try {
+   auto op = [&](){
       testing::internal::CaptureStderr();
       lm.Run();
-   } catch (const std::runtime_error &) {
-      ret = 0;
-   }
-   EXPECT_EQ(0, ret) << "Bogus C++ code was jitted and nothing was detected!";
+   };
+   EXPECT_ANY_THROW(op()) << "Bogus C++ code was jitted and nothing was detected!";
 }
 
 TEST(RDataFrameNodes, DoubleEvtLoop)
@@ -94,8 +91,8 @@ TEST(RDataFrameNodes, InheritanceOfCustomColumns)
    ROOT::RDataFrame df(1);
    const auto nBinsExpected = 42;
    // Read the TH1F as a TH1
-   df.Define("b", []() { return TH1F("b", "b", nBinsExpected, 0, 1); })
-      .Foreach([&nBinsExpected](TH1 &h) { EXPECT_EQ(h.GetNbinsX(), nBinsExpected);}, {"b"});
+   df.Define("b", [&]() { return TH1F("b", "b", nBinsExpected, 0, 1); })
+      .Foreach([&](TH1 &h) { EXPECT_EQ(h.GetNbinsX(), nBinsExpected);}, {"b"});
 
    const auto ofileName = "InheritanceOfCustomColumns.root";
 
