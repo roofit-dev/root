@@ -23,9 +23,15 @@
 #include "TString.h"
 #include "TBackCompFitter.h"
 #include "TGraph.h"
+#include "TGraph2D.h"
+#include "TMultiGraph.h"
+#include "THStack.h"
 #include "TROOT.h"
 #include "TH1.h"
+#include "TH2.h"
 #include "TF1.h"
+#include "TF2.h"
+#include "TF3.h"
 #include "TList.h"
 #include "TCanvas.h"
 #include "TPad.h"
@@ -33,12 +39,28 @@
 #include "TBufferJSON.h"
 #include "TMath.h"
 #include "Math/Minimizer.h"
+#include "HFitInterface.h"
 #include "TColor.h"
+
 #include <sstream>
 #include <iostream>
 #include <iomanip>
 
 using namespace std::string_literals;
+
+enum EFitObjectType {
+   kObjectNone,
+   kObjectHisto,
+   kObjectGraph,
+   kObjectGraph2D,
+   kObjectHStack,
+//   kObjectTree,
+   kObjectMultiGraph,
+   kObjectNotSupported
+};
+
+
+
 
 /** \class ROOT::Experimental::RFitPanel
 \ingroup webdisplay
@@ -49,6 +71,8 @@ web-based FitPanel prototype.
 ROOT::Experimental::RFitPanel::RFitPanel(const std::string &title)
 {
    model().fTitle = title;
+
+   GetFunctionsFromSystem();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -70,12 +94,186 @@ std::shared_ptr<ROOT::Experimental::RWebWindow> ROOT::Experimental::RFitPanel::G
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Update list of avaliable data
+
+void ROOT::Experimental::RFitPanel::UpdateDataSet()
+{
+   auto &m = model();
+
+   m.fDataSet.clear();
+
+   for (auto &obj : fObjects)
+      m.fDataSet.emplace_back("Panel", "panel::"s + obj->GetName(), Form("%s::%s", obj->ClassName(), obj->GetName()));
+
+   if (gDirectory) {
+      TIter iter(gDirectory->GetList());
+      TObject *obj = nullptr;
+      while ((obj = iter()) != nullptr) {
+         if (obj->InheritsFrom(TH1::Class()) ||
+             obj->InheritsFrom(TGraph::Class()) ||
+             obj->InheritsFrom(TGraph2D::Class()) ||
+             obj->InheritsFrom(THStack::Class()) ||
+             obj->InheritsFrom(TMultiGraph::Class())) {
+            m.fDataSet.emplace_back("gDirectory", "gdir::"s + obj->GetName(), Form("%s::%s", obj->ClassName(), obj->GetName()));
+         }
+      }
+   }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Select object for fitting
+
+void ROOT::Experimental::RFitPanel::SelectObject(const std::string &objid)
+{
+   UpdateDataSet();
+
+   auto &m = model();
+
+   std::string id = objid;
+   if (id.compare("$$$") == 0) {
+      if (m.fDataSet.size() > 0)
+         id = m.fDataSet[0].id;
+      else
+         id.clear();
+   }
+
+   int kind{0};
+   TObject *obj = GetSelectedObject(id, kind);
+
+   TH1 *hist = nullptr;
+   switch (kind) {
+      case kObjectHisto:
+         hist = (TH1*)obj;
+         break;
+
+      case kObjectGraph:
+         hist = ((TGraph*)obj)->GetHistogram();
+         break;
+
+      case kObjectMultiGraph:
+         hist = ((TMultiGraph*)obj)->GetHistogram();
+         break;
+
+      case kObjectGraph2D:
+         hist = ((TGraph2D*)obj)->GetHistogram("empty");
+         break;
+
+      case kObjectHStack:
+         hist = (TH1 *)((THStack *)obj)->GetHists()->First();
+         break;
+
+      default:
+         break;
+   }
+
+   if (!obj)
+      m.fSelectedData = "";
+   else
+      m.fSelectedData = id;
+
+   m.fInitialized = true;
+
+   // update list of data
+
+   m.UpdateRange(hist);
+
+   UpdateFunctionsList();
+
+   if (!m.HasFunction(m.fSelectedFunc)) {
+      if (m.fFuncList.size() > 0)
+         m.fSelectedFunc = m.fFuncList[0].id;
+      else
+         m.fSelectedFunc.clear();
+   }
+
+   m.UpdateAdvanced(nullptr);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Assign histogram to use with fit panel - without ownership
+
+TObject *ROOT::Experimental::RFitPanel::GetSelectedObject(const std::string &objid, int &kind)
+{
+   TObject *res = nullptr;
+
+   if (objid.compare(0,6,"gdir::") == 0) {
+      std::string name = objid.substr(6);
+      if (gDirectory)
+         res = gDirectory->GetList()->FindObject(name.c_str());
+   } else if (objid.compare(0,7,"panel::") == 0) {
+      std::string name = objid.substr(7);
+      for (auto &item : fObjects)
+         if (name.compare(item->GetName()) == 0) {
+            res = item;
+            break;
+         }
+   }
+
+   if (res) {
+      if (res->InheritsFrom(TH1::Class()))
+         kind = kObjectHisto;
+      else if (res->InheritsFrom(TGraph::Class()))
+         kind = kObjectGraph;
+      else if (res->InheritsFrom(TGraph2D::Class()))
+         kind = kObjectGraph2D;
+      else if (res->InheritsFrom(THStack::Class()))
+         kind = kObjectGraph2D;
+      else if (res->InheritsFrom(TMultiGraph::Class()))
+         kind = kObjectGraph2D;
+      else
+         kind = kObjectNotSupported;
+   } else {
+      kind = kObjectNone;
+   }
+
+   return res;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Update list of available functions
+
+void ROOT::Experimental::RFitPanel::UpdateFunctionsList()
+{
+   auto &m = model();
+
+   m.fFuncList.clear();
+
+   if (m.fDim == 1) {
+      m.fFuncList = { {"gaus"}, {"gausn"}, {"expo"}, {"landau"}, {"landaun"},
+                    {"pol0"},{"pol1"},{"pol2"},{"pol3"},{"pol4"},{"pol5"},{"pol6"},{"pol7"},{"pol8"},{"pol9"},
+                    {"cheb0"}, {"cheb1"}, {"cheb2"}, {"cheb3"}, {"cheb4"}, {"cheb5"}, {"cheb6"}, {"cheb7"}, {"cheb8"}, {"cheb9"} };
+   } else if (m.fDim == 2) {
+      m.fFuncList = { {"xygaus"}, {"bigaus"}, {"xyexpo"}, {"xylandau"}, {"xylandaun"} };
+   }
+
+   for (auto &func : fSystemFuncs) {
+      m.fFuncList.emplace_back("System", "system::"s + func->GetName(), func->GetName());
+   }
+
+   for (auto &pair : fPrevFuncs) {
+      if (pair.first == m.fSelectedData)
+         m.fFuncList.emplace_back("Previous", "previous::"s + pair.second->GetName(), pair.second->GetName());
+   }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Select function
+
+void ROOT::Experimental::RFitPanel::SelectFunction(const std::string &funcid)
+{
+   model().SelectedFunc(funcid, FindFunction(funcid));
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Assign histogram to use with fit panel - without ownership
 
 void ROOT::Experimental::RFitPanel::AssignHistogram(TH1 *hist)
 {
-   fHist = hist;
-   model().SelectHistogram("", fHist);
+   fObjects.emplace_back(hist);
+   SelectObject("panel::"s + hist->GetName());
    SendModel();
 }
 
@@ -83,8 +281,7 @@ void ROOT::Experimental::RFitPanel::AssignHistogram(TH1 *hist)
 
 void ROOT::Experimental::RFitPanel::AssignHistogram(const std::string &hname)
 {
-   fHist = nullptr;
-   model().SelectHistogram(hname, nullptr);
+   SelectObject("gdir::" + hname);
    SendModel();
 }
 
@@ -125,10 +322,17 @@ void ROOT::Experimental::RFitPanel::Hide()
       fWindow->CloseConnections();
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Return reference on model object
+/// Model created if was not exists before
+
+
 ROOT::Experimental::RFitPanelModel &ROOT::Experimental::RFitPanel::model()
 {
-   if (!fModel)
+   if (!fModel) {
       fModel = std::make_unique<RFitPanelModel>();
+      fModel->Initialize();
+   }
 
    return *fModel.get();
 }
@@ -154,15 +358,18 @@ void ROOT::Experimental::RFitPanel::ProcessData(unsigned connid, const std::stri
    if (arg == "CONN_READY") {
       fConnId = connid;
       fWindow->Send(fConnId, "INITDONE");
-
-      if (!model().IsSelectedHistogram())
-         model().SelectHistogram("", fHist);
+      if (!model().fInitialized)
+         SelectObject("$$$");
 
       SendModel();
 
    } else if (arg == "CONN_CLOSED") {
 
       fConnId = 0;
+
+   } else if (arg == "RELOAD") {
+
+      SendModel();
 
    } else if (arg.compare(0, 7, "UPDATE:") == 0) {
 
@@ -171,7 +378,15 @@ void ROOT::Experimental::RFitPanel::ProcessData(unsigned connid, const std::stri
 
    } else if (arg.compare(0, 6, "DOFIT:") == 0) {
 
-      DoFit(arg.substr(6));
+      if (UpdateModel(arg.substr(6)) >= 0)
+         if (DoFit())
+            SendModel();
+
+   } else if (arg.compare(0, 7, "DODRAW:") == 0) {
+
+      if (UpdateModel(arg.substr(7)) >= 0)
+         if (DoDraw())
+            SendModel();
 
    } else if (arg.compare(0, 11, "SETCONTOUR:") == 0) {
 
@@ -185,17 +400,17 @@ void ROOT::Experimental::RFitPanel::ProcessData(unsigned connid, const std::stri
 
       auto &m = model();
 
-      m.SelectFunc(arg.substr(8), m.GetSelectedHistogram(fHist));
+      m.SelectedFunc(arg.substr(8), FindFunction(arg.substr(8)));
 
       TString json = TBufferJSON::ToJSON(&m.fFuncPars);
       fWindow->Send(fConnId, "PARS:"s + json.Data());
 
    } else if (arg.compare(0, 8, "SETPARS:") == 0) {
 
-      auto info = TBufferJSON::FromJSON<RFitFuncParsList>(arg.substr(8));
+      auto info = TBufferJSON::FromJSON<RFitPanelModel::RFuncParsList>(arg.substr(8));
 
       if (info) {
-         TF1 *func = model().FindFunction(info->name, fHist);
+         TF1 *func = FindFunction(info->id);
 
          // copy all parameters back to the function
          if (func)
@@ -205,8 +420,68 @@ void ROOT::Experimental::RFitPanel::ProcessData(unsigned connid, const std::stri
    }
 }
 
+/////////////////////////////////////////////////////////////////////////////////////
+/// Search for existing functions, ownership still belongs to FitPanel or global lists
+
+TF1 *ROOT::Experimental::RFitPanel::FindFunction(const std::string &id)
+{
+   if (id.compare(0,8,"system::") == 0) {
+      std::string name = id.substr(8);
+
+      for (auto &item : fSystemFuncs)
+         if (name.compare(item->GetName()) == 0)
+            return item.get();
+   }
+
+   if (id.compare(0,10,"previous::") == 0) {
+      std::string name = id.substr(10);
+
+      for (auto &pair : fPrevFuncs)
+         if (name.compare(pair.second->GetName()) == 0)
+            return pair.second.get();
+   }
+
+   return nullptr;
+}
+
+//////////////////////////////////////////////////////////
+/// Creates new instance to make fitting
+
+std::unique_ptr<TF1> ROOT::Experimental::RFitPanel::GetFitFunction(const std::string &funcname)
+{
+   std::unique_ptr<TF1> res;
+
+   TF1 *func = FindFunction(funcname);
+
+   if (func) {
+      // Now we make a copy.
+      res.reset((TF1*) func->IsA()->New());
+      func->Copy(*res);
+   } else if (funcname.compare(0,6,"dflt::") == 0) {
+
+      std::string formula = funcname.substr(6);
+
+      ROOT::Fit::DataRange drange = model().GetRanges();
+
+      double xmin, xmax, ymin, ymax, zmin, zmax;
+      drange.GetRange(xmin, xmax, ymin, ymax, zmin, zmax);
+
+      if ( model().fDim == 1 || model().fDim == 0 ) {
+         res.reset(new TF1(formula.c_str(), formula.c_str(), xmin, xmax));
+      } else if ( model().fDim == 2 ) {
+         res.reset(new TF2(formula.c_str(), formula.c_str(), xmin, xmax, ymin, ymax));
+      } else if ( model().fDim == 3 ) {
+         res.reset(new TF3(formula.c_str(), formula.c_str(), xmin, xmax, ymin, ymax, zmin, zmax));
+      }
+   }
+
+   return res;
+}
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Dummy function, called when "Fit" button pressed in UI
+
 void ROOT::Experimental::RFitPanel::DrawContour(const std::string &model)
 {
    // FIXME: do not use static!!!
@@ -271,31 +546,62 @@ void ROOT::Experimental::RFitPanel::DrawScan(const std::string &model)
    // printf("SCAN Points %d, Par %d, Min %d, Max %d\n", obj->fScanPoints, obj->fScanPar, obj->fScanMin, obj->fScanMax);
 }
 
-/// Returns pad where histogram should be drawn
-/// Ensure that histogram is on the first place
+///////////////////////////////////////////////////////////////////
+/// Returns pad where histogram is drawn
+/// If canvas not exists, create new one
 
-TPad *ROOT::Experimental::RFitPanel::GetDrawPad(TH1 *hist)
+TPad *ROOT::Experimental::RFitPanel::GetDrawPad(TObject *obj, bool force)
 {
-   if (fCanvName.empty()) {
-      gPad = nullptr;
+   if (!obj || (!force && (model().fNoDrawing || model().fNoStoreDraw)))
       return nullptr;
+
+   std::function<TPad*(TPad*)> check = [&](TPad *pad) {
+      TPad *res = nullptr;
+      if (pad) {
+         TIter next(pad->GetListOfPrimitives());
+         TObject *prim = nullptr;
+         while (!res && (prim = next())) {
+            res = (prim == obj) ? pad : check(dynamic_cast<TPad *>(prim));
+         }
+      }
+
+      return res;
+   };
+
+   if (!fCanvName.empty()) {
+      auto drawcanv = dynamic_cast<TCanvas *> (gROOT->GetListOfCanvases()->FindObject(fCanvName.c_str()));
+      auto drawpad = check(drawcanv);
+      if (drawpad) {
+         drawpad->cd();
+         return drawpad;
+      }
+      if (drawcanv) {
+         drawcanv->Clear();
+         drawcanv->cd();
+         obj->Draw();
+         return drawcanv;
+      }
+      fCanvName.clear();
    }
 
-   TCanvas *canv = (TCanvas *) gROOT->GetListOfCanvases()->FindObject(fCanvName.c_str());
-
-   if (!canv) {
-      canv = gROOT->MakeDefCanvas();
-      canv->SetName(fCanvName.c_str());
-      canv->SetTitle("Fit panel drawings");
+   TObject *c = nullptr;
+   TIter nextc(gROOT->GetListOfCanvases());
+   while ((c = nextc())) {
+      auto drawpad = check(dynamic_cast<TCanvas* >(c));
+      if (drawpad) {
+         drawpad->cd();
+         fCanvName = c->GetName();
+         return drawpad;
+      }
    }
+
+   auto canv = gROOT->MakeDefCanvas();
+   canv->SetName("fpc");
+   canv->SetTitle("Fit panel drawings");
+   fCanvName = canv->GetName();
 
    canv->cd();
-
-   // TODO: provide proper draw options
-   if (hist && !canv->FindObject(hist)) {
-      canv->Clear();
-      hist->Draw();
-   }
+   obj->Draw();
 
    return canv;
 }
@@ -315,80 +621,232 @@ int ROOT::Experimental::RFitPanel::UpdateModel(const std::string &json)
       return -1;
    }
 
+   m->fInitialized = true;
+
    int res = 0; // nothing changed
 
-   auto selected = m->GetSelectedHistogram(fHist);
-
-   TF1 *hfunc = nullptr;
-
    if (model().fSelectedData != m->fSelectedData) {
-      res = 1;
-      m->UpdateRange(selected);
-      hfunc = m->UpdateFuncList(selected, true); // try to get existing function
-      m->UpdateAdvanced(hfunc);
-      if (!hfunc) m->fSelectedFunc = ""; // reset func selection
+      res |= 1;
    }
 
-   if ((model().fSelectedFunc != m->fSelectedFunc) && !hfunc) {
-      res = 1;
-      m->SelectFunc(m->fSelectedFunc, selected);
+   if (model().fSelectedFunc != m->fSelectedFunc) {
+      res |= 2;
    }
 
    std::swap(fModel, m); // finally replace model
+
+   if (res & 1)
+      SelectObject(model().fSelectedData);
+
+   if (res != 0)
+      SelectFunction(model().fSelectedFunc);
 
    return res;
 }
 
 
-void ROOT::Experimental::RFitPanel::DoFit(const std::string &json)
+////////////////////////////////////////////////////////////////////////////////
+///Copies f into a new TF1 to be stored in the fitpanel with it's
+///own ownership. This is taken from Fit::StoreAndDrawFitFunction in
+///HFitImpl.cxx
+
+TF1* ROOT::Experimental::RFitPanel::copyTF1(TF1* f)
 {
-   if (UpdateModel(json) < 0) return;
+   double xmin = 0, xmax = 0, ymin = 0, ymax = 0, zmin = 0, zmax = 0;
 
-   auto &m = model();
-
-   ROOT::Math::MinimizerOptions minOption;
-
-   // Fitting Options
-   if (gDebug > 0)
-      ::Info("RFitPanel::DoFit", "range %f %f select %s function %s", m.fRangeX[0], m.fRangeX[1],
-             m.fSelectedData.c_str(), m.fSelectedFunc.c_str());
-
-   if (m.fSelectedFunc.empty())
-      m.fSelectedFunc = "gaus";
-
-   if (!m.fMinLibrary.empty())
-      minOption.SetMinimizerAlgorithm(m.fMinLibrary.c_str());
-
-   if (m.fErrorDef == 0)
-      minOption.SetErrorDef(1.00);
-   else
-      minOption.SetErrorDef(m.fErrorDef);
-
-   if (m.fMaxTol == 0)
-      minOption.SetTolerance(0.01);
-   else
-      minOption.SetTolerance(m.fMaxTol);
-
-   minOption.SetMaxIterations(m.fMaxInter);
-
-   std::string opt = m.GetFitOption();
-
-   TH1 *h1 = m.GetSelectedHistogram(fHist);
-
-   TF1 *f1 = m.FindFunction(m.fSelectedFunc, h1);
-
-   auto pad = GetDrawPad(h1);
-
-   // Assign the options to Fitting function
-   if (h1 && f1) {
-      h1->Fit(f1, opt.c_str(), "*", m.fRangeX[0], m.fRangeX[1]);
-
-      if (pad) pad->Update();
-
-      auto *fres = m.UpdateFuncList(h1, true);
-
-      m.UpdateAdvanced(fres);
+   // no need to use kNotGlobal bit. TF1::Copy does not add in the list by default
+   if ( dynamic_cast<TF3*>(f)) {
+      TF3* fnew = (TF3*)f->IsA()->New();
+      f->Copy(*fnew);
+      f->GetRange(xmin,ymin,zmin,xmax,ymax,zmax);
+      fnew->SetRange(xmin,ymin,zmin,xmax,ymax,zmax);
+      fnew->SetParent( nullptr );
+      fnew->AddToGlobalList(false);
+      return fnew;
+   } else if ( dynamic_cast<TF2*>(f) != 0 ) {
+      TF2* fnew = (TF2*)f->IsA()->New();
+      f->Copy(*fnew);
+      f->GetRange(xmin,ymin,xmax,ymax);
+      fnew->SetRange(xmin,ymin,xmax,ymax);
+      fnew->Save(xmin,xmax,ymin,ymax,0,0);
+      fnew->SetParent( nullptr );
+      fnew->AddToGlobalList(false);
+      return fnew;
    }
 
-   SendModel(); // provide client with latest changes
+   TF1* fnew = (TF1*)f->IsA()->New();
+   f->Copy(*fnew);
+   f->GetRange(xmin,xmax);
+   fnew->SetRange(xmin,xmax);
+   // This next line is added, as fnew-Save fails with gausND! As
+   // the number of dimensions is unknown...
+   if ( '\0' != fnew->GetExpFormula()[0] )
+      fnew->Save(xmin,xmax,0,0,0,0);
+   fnew->SetParent( nullptr );
+   fnew->AddToGlobalList(false);
+   return fnew;
+}
+
+void ROOT::Experimental::RFitPanel::GetFunctionsFromSystem()
+{
+   // Looks for all the functions registered in the current ROOT
+   // session.
+
+   fSystemFuncs.clear();
+
+   // Be carefull not to store functions that will be in the
+   // predefined section
+   std::vector<std::string> fnames = { "gaus" ,   "gausn", "expo", "landau",
+                                       "landaun", "pol0",  "pol1", "pol2",
+                                       "pol3",    "pol4",  "pol5", "pol6",
+                                       "pol7",    "pol8",  "pol9", "user" };
+
+   // No go through all the objects registered in gROOT
+   TIter functionsIter(gROOT->GetListOfFunctions());
+   TObject* obj;
+   while( (obj = functionsIter()) != nullptr ) {
+      // And if they are TF1s
+      if ( TF1* func = dynamic_cast<TF1*>(obj) ) {
+         bool addFunction = true;
+         // And they are not already registered in fSystemFunc
+         for ( auto &name : fnames) {
+            if ( name.compare(func->GetName()) == 0 ) {
+               addFunction = false;
+               break;
+            }
+         }
+         // Add them.
+         if ( addFunction )
+            fSystemFuncs.emplace_back( copyTF1(func) );
+      }
+   }
+}
+
+///////////////////////////////////////////////
+/// Perform fitting using current model settings
+/// Returns true if any action was done
+
+bool ROOT::Experimental::RFitPanel::DoFit()
+{
+   auto &m = model();
+
+   int kind{0};
+   TObject *obj = GetSelectedObject(m.fSelectedData, kind);
+   if (!obj) return false;
+
+   auto f1 = GetFitFunction(m.fSelectedFunc);
+   if (!f1) return false;
+
+   auto drange = m.GetRanges();
+   auto minOption = m.GetMinimizerOptions();
+   auto fitOpts = m.GetFitOptions();
+   auto drawOpts = m.GetDrawOption();
+
+   TVirtualPad *save = gPad;
+
+   auto pad = GetDrawPad(obj);
+
+   switch (kind) {
+      case kObjectHisto: {
+
+         TH1 *hist = dynamic_cast<TH1*>(obj);
+         if (hist)
+            ROOT::Fit::FitObject(hist, f1.get(), fitOpts, minOption, drawOpts, drange);
+
+         break;
+      }
+      case kObjectGraph: {
+
+         TGraph *gr = dynamic_cast<TGraph*>(obj);
+         if (gr)
+            ROOT::Fit::FitObject(gr, f1.get(), fitOpts, minOption, drawOpts, drange);
+         break;
+      }
+      case kObjectMultiGraph: {
+
+         TMultiGraph *mg = dynamic_cast<TMultiGraph*>(obj);
+         if (mg)
+            ROOT::Fit::FitObject(mg, f1.get(), fitOpts, minOption, drawOpts, drange);
+
+         break;
+      }
+      case kObjectGraph2D: {
+
+         TGraph2D *g2d = dynamic_cast<TGraph2D*>(obj);
+         if (g2d)
+            ROOT::Fit::FitObject(g2d, f1.get(), fitOpts, minOption, drawOpts, drange);
+
+         break;
+      }
+      case kObjectHStack: {
+         // N/A
+         break;
+      }
+
+      default: {
+         // N/A
+         break;
+      }
+   }
+
+   if (m.fSame && f1) {
+      TF1 *copy = copyTF1(f1.get());
+      copy->SetBit(kCanDelete);
+      copy->Draw("same");
+   }
+
+   if (pad) {
+      pad->Modified();
+      pad->Update();
+   }
+
+   m.UpdateAdvanced(f1.get());
+
+   std::string funcname = f1->GetName();
+   if ((funcname.compare(0,4,"prev") == 0) && (funcname.find("-") > 4))
+      funcname.erase(0, funcname.find("-") + 1);
+   funcname = "prev"s + std::to_string(fPrevFuncs.size() + 1) + "-"s + funcname;
+   f1->SetName(funcname.c_str());
+   fPrevFuncs.emplace(m.fSelectedData, std::move(f1));
+
+   UpdateFunctionsList();
+
+   SelectFunction("previous::"s + funcname);
+
+   if (save && (gPad != save))
+      gPad = save;
+
+   return true; // provide client with latest changes
+}
+
+///////////////////////////////////////////////
+/// Perform drawing using current model settings
+/// Returns true if any action was done
+
+bool ROOT::Experimental::RFitPanel::DoDraw()
+{
+   auto &m = model();
+
+   int kind{0};
+   TObject *obj = GetSelectedObject(m.fSelectedData, kind);
+   if (!obj) return false;
+
+   auto pad = GetDrawPad(obj, true);
+   if (!pad)
+      return false;
+
+   // find already existing functions, not try to create something new
+   TF1 *func = FindFunction(m.fSelectedFunc);
+   if (func) {
+      // when "Pars" tab is selected, automatically update function parameters
+      if ((m.fSelectedTab.compare("Pars") == 0) && (m.fSelectedFunc == m.fFuncPars.id))
+         m.fFuncPars.SetParameters(func);
+
+      func->Draw("same");
+   }
+
+   pad->Modified();
+   pad->Update();
+
+   return true;
 }

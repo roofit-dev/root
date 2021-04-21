@@ -18,24 +18,36 @@
 
 #include "TH1.h"
 #include "TDirectory.h"
+#include "TPluginManager.h"
 
 #include "TF1.h"
 #include "TF2.h"
 
+
+enum EFitPanel {
+   kFP_NONE = 0,
+   kFP_MIGRAD, kFP_SIMPLX, kFP_SCAN, kFP_COMBINATION,
+   kFP_FUMILI, kFP_FUMILI2, kFP_GSLFR, kFP_GSLPR,
+   kFP_BFGS, kFP_BFGS2, kFP_GSLLM, kFP_GSLSA,
+   kFP_GALIB, kFP_TMVAGA
+};
+
 using namespace std::string_literals;
 
 
-void ROOT::Experimental::RFitFuncParsList::Clear()
+void ROOT::Experimental::RFitPanelModel::RFuncParsList::Clear()
 {
+   id.clear();
    pars.clear();
    name.clear();
    haspars = false;
 }
 
-void ROOT::Experimental::RFitFuncParsList::GetParameters(TF1 *func)
+void ROOT::Experimental::RFitPanelModel::RFuncParsList::GetParameters(TF1 *func)
 {
    pars.clear();
    haspars = true;
+   name = func->GetName();
 
    for (int n = 0; n < func->GetNpar(); ++n) {
       pars.emplace_back(n, func->GetParName(n));
@@ -53,7 +65,7 @@ void ROOT::Experimental::RFitFuncParsList::GetParameters(TF1 *func)
    }
 }
 
-void ROOT::Experimental::RFitFuncParsList::SetParameters(TF1 *func)
+void ROOT::Experimental::RFitPanelModel::RFuncParsList::SetParameters(TF1 *func)
 {
    if (func->GetNpar() != (int) pars.size()) {
       ::Error("RFitFuncParsList::SetParameters", "Mismatch in parameters numbers");
@@ -80,83 +92,22 @@ void ROOT::Experimental::RFitFuncParsList::SetParameters(TF1 *func)
    }
 }
 
-///////////////////////////////
-
-TH1* ROOT::Experimental::RFitPanelModel::GetSelectedHistogram(TH1 *hist)
-{
-   if (fSelectedData == "__hist__") return hist;
-   if ((fSelectedData.compare(0,6,"gdir::") != 0) || !gDirectory) return nullptr;
-
-   std::string hname = fSelectedData.substr(6);
-
-   return dynamic_cast<TH1*> (gDirectory->GetList()->FindObject(hname.c_str()));
-}
-
-
-// Configure usage of histogram
-
-bool ROOT::Experimental::RFitPanelModel::SelectHistogram(const std::string &hname, TH1 *hist)
-{
-
-   std::string histid;
-
-   fDataSet.clear();
-   TH1 *selected = nullptr;
-
-   if (gDirectory) {
-      TIter iter(gDirectory->GetList());
-      TObject *item = nullptr;
-
-       while ((item = iter()) != nullptr)
-         if (item->InheritsFrom(TH1::Class())) {
-            std::string dataid = "gdir::"s + item->GetName();
-
-            if (hist && (hist == item)) {
-               histid = dataid;
-               selected = hist;
-            } else if (!hname.empty() && hname.compare(item->GetName())) {
-               histid = dataid;
-               selected = dynamic_cast<TH1 *> (item);
-            }
-            fDataSet.emplace_back(dataid, Form("%s::%s", item->ClassName(), item->GetName()));
-         }
-   }
-
-   if (hist && histid.empty()) {
-      selected = hist;
-      histid = "__hist__";
-      fDataSet.emplace_back(histid, Form("%s::%s", hist->ClassName(), hist->GetName()));
-   }
-
-   fSelectedData = histid;
-
-   UpdateRange(selected);
-
-   auto *hfunc = UpdateFuncList(selected);
-
-   UpdateAdvanced(hfunc);
-
-   return selected != nullptr;
-}
-
 void ROOT::Experimental::RFitPanelModel::UpdateRange(TH1 *hist)
 {
-   fShowRangeX = false;
-   fShowRangeY = false;
+   fDim = hist ? hist->GetDimension() : 0;
+
    fMinRangeX = 0.;
    fMaxRangeX = 100.;
    fMinRangeY = 0.;
    fMaxRangeY = 100.;
 
-   if (hist) {
-      fShowRangeX = true;
+   if (hist && (fDim > 0)) {
       fMinRangeX = hist->GetXaxis()->GetXmin();
       fMaxRangeX = hist->GetXaxis()->GetXmax();
-      if (hist->GetDimension() > 1) {
-         fShowRangeY = true;
-         fMinRangeY = hist->GetYaxis()->GetXmin();
-         fMaxRangeY = hist->GetYaxis()->GetXmax();
-      }
+   }
+   if (hist && (fDim > 1)) {
+      fMinRangeY = hist->GetYaxis()->GetXmin();
+      fMaxRangeY = hist->GetYaxis()->GetXmax();
    }
 
    // defined values
@@ -169,62 +120,31 @@ void ROOT::Experimental::RFitPanelModel::UpdateRange(TH1 *hist)
    fRangeY[1] = fMaxRangeY;
 }
 
-bool ROOT::Experimental::RFitPanelModel::SelectFunc(const std::string &name, TH1 *hist)
+bool ROOT::Experimental::RFitPanelModel::HasFunction(const std::string &id)
 {
-   fSelectedFunc = name;
+   if (id.empty())
+      return false;
+
+   for (auto &item : fFuncList)
+      if (item.id == id)
+         return true;
+
+   return false;
+}
+
+void ROOT::Experimental::RFitPanelModel::SelectedFunc(const std::string &id, TF1 *func)
+{
+   if (HasFunction(id))
+      fSelectedFunc = id;
+   else
+      fSelectedFunc.clear();
 
    fFuncPars.Clear();
-
-   TF1 *func = FindFunction(name, hist);
-
    if (func) {
-      fFuncPars.name = name;
+      fFuncPars.id = id;
       fFuncPars.GetParameters(func);
-   } else {
-      fFuncPars.name = "<not exists>";
    }
-
-   return func != nullptr;
 }
-
-
-TF1 *ROOT::Experimental::RFitPanelModel::UpdateFuncList(TH1 *hist, bool select_hist_func)
-{
-   int ndim = hist ? hist->GetDimension() : 1;
-
-   fFuncList.clear();
-
-   TIter iter(gROOT->GetListOfFunctions());
-   TObject *func = nullptr;
-   while ((func = iter()) != nullptr) {
-      TF1 *f1 = dynamic_cast<TF1 *>(func);
-      if (!f1) continue;
-      TF2 *f2 = dynamic_cast<TF2 *>(f1);
-
-      if (((ndim==2) && f2) || ((ndim==1) && !f2))
-         fFuncList.emplace_back(f1->GetName(), f1->IsLinear());
-   }
-
-   TF1 *hfunc = nullptr;
-   if (hist) {
-      TObject *obj = nullptr;
-      TIter hiter(hist->GetListOfFunctions());
-      while ((obj = hiter()) != nullptr) {
-         hfunc = dynamic_cast<TF1*> (obj);
-         if (hfunc) break;
-      }
-   }
-
-   if (hfunc) {
-      fFuncList.emplace_back("hist::"s + hfunc->GetName(), hfunc->IsLinear());
-      if (select_hist_func) fSelectedFunc = "hist::"s + hfunc->GetName();
-   }
-
-   fFuncList.emplace_back("user");
-
-   return hfunc;
-}
-
 
 void ROOT::Experimental::RFitPanelModel::Initialize()
 {
@@ -235,76 +155,65 @@ void ROOT::Experimental::RFitPanelModel::Initialize()
 
    // Sub ComboBox for Type Function
    fSelectedFunc = "";
-   UpdateFuncList();
+   fDim = 1;
+
+   fSelectedTab = "General";
 
    // corresponds when Type == User Func (fSelectedTypeID == 1)
 
    // ComboBox for General Tab --- Method
-   fMethod.emplace_back("1", "Linear Chi-square");
-   fMethod.emplace_back("2", "Non-Linear Chi-square");
-   fMethod.emplace_back("3", "Linear Chi-square with Robust");
-   fMethod.emplace_back("4", "Binned Likelihood");
-   fSelectMethodId = "1";
+   fFitMethods = { {"P", "Chi-square"},
+                   {"L", "Log Likelihood"},
+                   {"WL", "Binned LogLikelihood"} };
+   fFitMethod = "P";
 
-   // Sub ComboBox for Minimization Tab --- Method
-   fSelectMethodMinId = "1";
+   fLinearFit = false;
+   fRobust = false;
+   fRobustLevel = 0.95;
 
+   fIntegral = false;
+   fAllWeights1 = false;
+   fAddToList = false;
+   fEmptyBins1 = false;
+   fUseGradient = false;
+
+   fSame = false;
+   fNoDrawing = false;
+   fNoStoreDraw = false;
+
+   // Minimization method
    fLibrary = 0;
-
    // corresponds to library == 0
-   fMethodMinAll.emplace_back();
-   fMethodMinAll.back() = {{ "1", "MIGRAD" }, {"2", "SIMPLEX"}, {"3", "SCAN"}, {"4", "Combination"}};
+   fMethodMinAll = {
+         {0, kFP_MIGRAD, "MIGRAD"}, {0, kFP_SIMPLX, "SIMPLEX"}, {0, kFP_SCAN, "SCAN"}, {0, kFP_COMBINATION, "Combination"},
+         {1, kFP_MIGRAD, "MIGRAD"}, {1, kFP_SIMPLX, "SIMPLEX"}, {1, kFP_FUMILI2, "FUMILI"}, {1, kFP_SCAN, "SCAN"}, {1, kFP_COMBINATION, "Combination"},
+         {2, kFP_FUMILI, "FUMILI"},
 
-   // corresponds to library == 1
-   fMethodMinAll.emplace_back();
-   fMethodMinAll.back() = {{ "1", "MIGRAD" }, {"2", "SIMPLEX"}, {"3", "SCAN"}, {"4", "Combination"}};
+         {3, kFP_GSLFR, "Fletcher-Reeves conjugate gradient"},
+         {3, kFP_GSLPR, "Polak-Ribiere conjugate gradient"},
+         {3, kFP_BFGS,  "BFGS conjugate gradient"},
+         {3, kFP_BFGS2, "BFGS conjugate gradient (Version 2)"},
+         {3, kFP_GSLLM, "Levenberg-Marquardt"},
+         {3, kFP_GSLSA, "Simulated Annealing"}
+   };
 
-   // corresponds to library == 2
-   fMethodMinAll.emplace_back();
-   fMethodMinAll.back() = {{ "1", "FUMILI" }};
+   fHasGenetics = false;
+   if ( gPluginMgr->FindHandler("ROOT::Math::Minimizer","GAlibMin") ) {
+      fMethodMinAll.emplace_back(4, kFP_GALIB, "GA Lib Genetic Algorithm");
+      fHasGenetics = true;
+   }
+   if (gPluginMgr->FindHandler("ROOT::Math::Minimizer","Genetic")) {
+      fMethodMinAll.emplace_back(4, kFP_TMVAGA, "TMVA Genetic Algorithm");
+      fHasGenetics = true;
+   }
 
-   // corresponds to library == 3
-   fMethodMinAll.emplace_back();
-
-   // corresponds to library == 4
-   fMethodMinAll.emplace_back();
-   fMethodMinAll.back() = {{ "1", "TMVA Genetic Algorithm" }};
+   fSelectMethodMin = kFP_MIGRAD;
 
    // fOperation = 0;
-   fFitOptions = 3;
-   fRobust = false;
    fPrint = 0;
 
-   // Checkboxes Values
-   fIntegral = false;
-   fWeights = false;
-   fBins = false;
-   // fUseRange = false;
-   fAddList = false;
-   fUseGradient = false;
-   fSame = false;
-   fNoStore = false;
-   fMinusErrors = false;
-   // fImproveFit = false;
-
-   if (fNoStore) {
-      fNoDrawing = true;
-   } else {
-      fNoDrawing = false;
-   }
+   fAdvancedTab = "Contour";
 }
-
-TF1 *ROOT::Experimental::RFitPanelModel::FindFunction(const std::string &funcname, TH1 *hist)
-{
-   if (funcname.compare(0,6,"hist::")==0) {
-      TH1 *h1 = GetSelectedHistogram(hist);
-      if (!h1) return nullptr;
-      return dynamic_cast<TF1 *> (h1->GetListOfFunctions()->FindObject(funcname.substr(6).c_str()));
-   }
-
-   return dynamic_cast<TF1 *>(gROOT->GetListOfFunctions()->FindObject(funcname.c_str()));
-}
-
 
 /// Update advanced parameters associated with fit function for histogram
 
@@ -333,30 +242,125 @@ void ROOT::Experimental::RFitPanelModel::UpdateAdvanced(TF1 *func)
 }
 
 
-std::string ROOT::Experimental::RFitPanelModel::GetFitOption()
+ROOT::Fit::DataRange ROOT::Experimental::RFitPanelModel::GetRanges()
 {
-   std::string opt;
+   ROOT::Fit::DataRange drange;
 
-   if (fIntegral) {
-      opt = "I";
-   } else if (fMinusErrors) {
-      opt = "E";
-   } else if (fWeights) {
-      opt = "W";
-   } else if (fUseRange) {
-      opt = "R";
-   } else if (fNoDrawing) {
-      opt = "O";
-   } else if (fWeights && fBins) {
-      opt = "WW";
-   } else if (fAddList) {
-      opt = "+";
-   } else if (fSelectMethodId == "1") {
-      opt = "P";
-   } else if (fSelectMethodId == "2") {
-      opt = "L";
+   if (fDim > 0)
+      drange.AddRange(0, fRangeX[0], fRangeX[1]);
+
+   if ( fDim > 1 )
+      drange.AddRange(1, fRangeY[0], fRangeY[1]);
+
+   return drange;
+}
+
+Foption_t ROOT::Experimental::RFitPanelModel::GetFitOptions()
+{
+   Foption_t fitOpts;
+   fitOpts.Range    = fUseRange;
+   fitOpts.Integral = fIntegral;
+   fitOpts.More     = fImproveFitResults;
+   fitOpts.Errors   = fBestErrors;
+   fitOpts.Like     = false; // (fMethodList->GetSelected() != kFP_MCHIS);
+
+   if (fEmptyBins1)
+      fitOpts.W1 = 2;
+   else if (fAllWeights1)
+      fitOpts.W1 = 1;
+
+   // TODO: fEnteredFunc->GetText();
+   TString tmpStr = ""; // fEnteredFunc->GetText();
+   if ( !fLinearFit && (tmpStr.Contains("pol") || tmpStr.Contains("++")) )
+      fitOpts.Minuit = 1;
+
+   // TODO: fChangedParams
+   bool fChangedParams = false;
+   if (fChangedParams) {
+      fitOpts.Bound = 1;
+      fChangedParams = false;  // reset
    }
 
-   return opt;
+   //fitOpts.Nochisq  = (fNoChi2->GetState() == kButtonDown);
+   fitOpts.Nostore  = fNoStoreDraw;
+   fitOpts.Nograph  = fNoDrawing;
+   fitOpts.Plus     = false; // TODO: (fAdd2FuncList->GetState() == kButtonDown);
+   fitOpts.Gradient = fUseGradient;
+   fitOpts.Quiet    = fPrint == 2;
+   fitOpts.Verbose  = fPrint == 1;
+
+   // TODO: only TGraph
+   if ( /* !(fType != kObjectGraph) &&  */ fRobust ) {
+      fitOpts.Robust = 1;
+      fitOpts.hRobust = fRobustLevel;
+   }
+
+   return fitOpts;
 }
+
+ROOT::Math::MinimizerOptions ROOT::Experimental::RFitPanelModel::GetMinimizerOptions()
+{
+   ROOT::Math::MinimizerOptions minOpts;
+
+   if (fLibrary == 0)
+      minOpts.SetMinimizerType ( "Minuit");
+   else if (fLibrary == 1)
+      minOpts.SetMinimizerType ( "Minuit2" );
+   else if (fLibrary == 2)
+      minOpts.SetMinimizerType ("Fumili" );
+   else if (fLibrary == 3)
+      minOpts.SetMinimizerType ("GSLMultiMin" );
+   else if (fLibrary == 4)
+      minOpts.SetMinimizerType ("Geneti2c" ); // should be handled separately
+
+   switch(fSelectMethodMin) {
+      case kFP_MIGRAD:  minOpts.SetMinimizerAlgorithm( "Migrad" ); break;
+      case kFP_FUMILI:  minOpts.SetMinimizerAlgorithm( "Fumili" ); break;
+      case kFP_FUMILI2: minOpts.SetMinimizerAlgorithm( "Fumili2" ); break;
+      case kFP_SIMPLX:  minOpts.SetMinimizerAlgorithm( "Simplex" ); break;
+      case kFP_SCAN:    minOpts.SetMinimizerAlgorithm( "Scan" ); break;
+      case kFP_COMBINATION: minOpts.SetMinimizerAlgorithm( "Minimize" ); break;
+      case kFP_GSLFR:  minOpts.SetMinimizerAlgorithm( "conjugatefr" ); break;
+      case kFP_GSLPR:  minOpts.SetMinimizerAlgorithm( "conjugatepr" ); break;
+      case kFP_BFGS:   minOpts.SetMinimizerAlgorithm( "bfgs" ); break;
+      case kFP_BFGS2:  minOpts.SetMinimizerAlgorithm( "bfgs2" ); break;
+      case kFP_GSLLM:
+         minOpts.SetMinimizerType ("GSLMultiFit" );
+         minOpts.SetMinimizerAlgorithm( "" );
+         break;
+      case kFP_GSLSA:
+         minOpts.SetMinimizerType ("GSLSimAn" );
+         minOpts.SetMinimizerAlgorithm( "" );
+         break;
+      case kFP_TMVAGA:
+         minOpts.SetMinimizerType ("Geneti2c" );
+         minOpts.SetMinimizerAlgorithm( "" );
+         break;
+      case kFP_GALIB:
+         minOpts.SetMinimizerType ("GAlibMin" );
+         minOpts.SetMinimizerAlgorithm( "" );
+         break;
+      default:
+         minOpts.SetMinimizerAlgorithm( "" );
+         break;
+   }
+
+   minOpts.SetErrorDef (fErrorDef);
+   minOpts.SetTolerance(fMaxTolerance);
+   minOpts.SetMaxIterations(fMaxIterations);
+   minOpts.SetMaxFunctionCalls(fMaxIterations);
+
+   return minOpts;
+}
+
+TString ROOT::Experimental::RFitPanelModel::GetDrawOption()
+{
+   TString res;
+   return res;
+}
+
+
+
+
+
 
