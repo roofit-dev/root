@@ -84,7 +84,7 @@ extern "C" {
                                 const char* canonicalName);
 }
 
-class TCling : public TInterpreter {
+class TCling final : public TInterpreter {
 private: // Static Data Members
 
    static void* fgSetOfSpecials; // set of TObjects used in CINT variables
@@ -110,7 +110,6 @@ private: // Data Members
    std::unordered_set<const clang::NamespaceDecl*> fNSFromRootmaps;   // Collection of namespaces fwd declared in the rootmaps
    TObjArray*      fRootmapFiles;     // Loaded rootmap files.
    Bool_t          fLockProcessLine;  // True if ProcessLine should lock gInterpreterMutex.
-   Bool_t          fAllowLibLoad;     // True if library load is allowed (i.e. not in rootcling)
    Bool_t          fCxxModulesEnabled;// True if C++ modules was enabled
 
    cling::Interpreter*   fInterpreter;   // The interpreter.
@@ -160,6 +159,8 @@ private: // Data Members
    UInt_t AutoParseImplRecurse(const char *cls, bool topLevel);
    constexpr static const char* kNullArgv[] = {nullptr};
 
+   bool fIsShuttingDown = false;
+
 protected:
    Bool_t SetSuspendAutoParsing(Bool_t value);
 
@@ -202,6 +203,7 @@ public: // Public Interface
    TObjArray*  GetRootMapFiles() const { return fRootmapFiles; }
    unsigned long long GetInterpreterStateMarker() const { return fTransactionCount;}
    virtual void Initialize();
+   virtual void ShutDown();
    void    InspectMembers(TMemberInspector&, const void* obj, const TClass* cl, Bool_t isTransient);
    Bool_t  IsLoaded(const char* filename) const;
    Bool_t  IsLibraryLoaded(const char* libname) const;
@@ -580,7 +582,7 @@ private: // Private Utility Functions and Classes
    int  ReadRootmapFile(const char *rootmapfile, TUniqueString* uniqueString = nullptr);
    Bool_t HandleNewTransaction(const cling::Transaction &T);
    void UnloadClassMembers(TClass* cl, const clang::DeclContext* DC);
-
+   bool IsClassAutoloadingEnabled() const;
 };
 
 #endif
