@@ -25,17 +25,11 @@
 #include "ROOT/RStringView.hxx"
 #include "ROOT/TypeTraits.hxx"
 #include "RtypesCore.h" // for ULong64_t
-#include "TChain.h"
-#include "TClassEdit.h"
-#include "TDirectory.h"
 #include "TH1.h" // For Histo actions
 #include "TH2.h" // For Histo actions
 #include "TH3.h" // For Histo actions
-#include "TInterpreter.h"
 #include "TProfile.h"
 #include "TProfile2D.h"
-#include "TRegexp.h"
-#include "TROOT.h" // IsImplicitMTEnabled
 
 #include <algorithm>
 #include <cstddef>
@@ -440,6 +434,7 @@ public:
    /// written out and it appears before the array in the columnList.
    ///
    /// ### Example invocations:
+   ///
    /// ~~~{.cpp}
    /// // without specifying template parameters (column types automatically deduced)
    /// df.Snapshot("outputTree", "outputFile.root", {"x", "y"});
@@ -521,10 +516,9 @@ public:
                << RDFInternal::PrettyPrintAddr(&columnList) << "),"
                << "*reinterpret_cast<ROOT::RDF::RSnapshotOptions*>(" << RDFInternal::PrettyPrintAddr(&options) << "));";
       // jit snapCall, return result
-      TInterpreter::EErrorCode errorCode;
-      gInterpreter->Calc(snapCall.str().c_str(), &errorCode);
-      if (TInterpreter::EErrorCode::kNoError != errorCode) {
-         std::string msg = "Cannot jit Snapshot call. Interpreter error code is " + std::to_string(errorCode) + ".";
+      auto calcRes = RDFInternal::InterpreterCalc(snapCall.str());
+      if (0 != calcRes.second) {
+         std::string msg = "Cannot jit Snapshot call. Interpreter error code is " + std::to_string(calcRes.second) + ".";
          throw std::runtime_error(msg);
       }
       return resPtr;
@@ -535,7 +529,7 @@ public:
    /// \brief Save selected columns to disk, in a new TTree `treename` in file `filename`.
    /// \param[in] treename The name of the output TTree.
    /// \param[in] filename The name of the output TFile.
-   /// \param[in] columnNameRegexp The regular expression to match the column names to be selected. The presence of a '^' and a '$' at the end of the string is implicitly assumed if they are not specified. See the documentation of TRegexp for more details. An empty string signals the selection of all columns.
+   /// \param[in] columnNameRegexp The regular expression to match the column names to be selected. The presence of a '^' and a '$' at the end of the string is implicitly assumed if they are not specified. The dialect supported is PCRE via the TPRegexp class. An empty string signals the selection of all columns.
    /// \param[in] options RSnapshotOptions struct with extra options to pass to TFile and TTree
    /// \return a `RDataFrame` that wraps the snapshotted dataset.
    ///
@@ -547,7 +541,11 @@ public:
                                                  std::string_view columnNameRegexp = "",
                                                  const RSnapshotOptions &options = RSnapshotOptions())
    {
-      auto selectedColumns = ConvertRegexToColumns(columnNameRegexp, "Snapshot");
+      auto selectedColumns = RDFInternal::ConvertRegexToColumns(fCustomColumns,
+                                                                fLoopManager->GetTree(),
+                                                                fDataSource,
+                                                                columnNameRegexp,
+                                                                "Snapshot");
       return Snapshot(treename, filename, selectedColumns, options);
    }
    // clang-format on
@@ -636,10 +634,9 @@ public:
       cacheCall << ">(*reinterpret_cast<std::vector<std::string>*>(" // vector<string> should be ColumnNames_t
                 << RDFInternal::PrettyPrintAddr(&columnList) << "));";
       // jit cacheCall, return result
-      TInterpreter::EErrorCode errorCode;
-      gInterpreter->Calc(cacheCall.str().c_str(), &errorCode);
-      if (TInterpreter::EErrorCode::kNoError != errorCode) {
-         std::string msg = "Cannot jit Cache call. Interpreter error code is " + std::to_string(errorCode) + ".";
+      auto calcRes = RDFInternal::InterpreterCalc(cacheCall.str());
+      if (0 != calcRes.second) {
+         std::string msg = "Cannot jit Cache call. Interpreter error code is " + std::to_string(calcRes.second) + ".";
          throw std::runtime_error(msg);
       }
       return resRDF;
@@ -647,14 +644,19 @@ public:
 
    ////////////////////////////////////////////////////////////////////////////
    /// \brief Save selected columns in memory
-   /// \param[in] a regular expression to select the columns
+   /// \param[in] columnNameRegexp The regular expression to match the column names to be selected. The presence of a '^' and a '$' at the end of the string is implicitly assumed if they are not specified. The dialect supported is PCRE via the TPRegexp class. An empty string signals the selection of all columns.
    /// \return a `RDataFrame` that wraps the cached dataset.
    ///
-   /// The existing columns are matched against the regeular expression. If the string provided
+   /// The existing columns are matched against the regular expression. If the string provided
    /// is empty, all columns are selected. See the previous overloads for more information.
    RInterface<RLoopManager> Cache(std::string_view columnNameRegexp = "")
    {
-      auto selectedColumns = ConvertRegexToColumns(columnNameRegexp, "Cache");
+
+      auto selectedColumns = RDFInternal::ConvertRegexToColumns(fCustomColumns,
+                                                                fLoopManager->GetTree(),
+                                                                fDataSource,
+                                                                columnNameRegexp,
+                                                                "Cache");
       return Cache(selectedColumns);
    }
 
@@ -1557,8 +1559,8 @@ public:
          const auto colID = std::to_string(fCustomColumns.GetColumns()[std::string(column)]->GetID());
          const auto call = "ROOT::Internal::RDF::TypeID2TypeName(typeid(__tdf" + std::to_string(fLoopManager->GetID()) +
                            "::" + std::string(column) + colID + "_type))";
-         const auto callRes = gInterpreter->Calc(call.c_str());
-         return *reinterpret_cast<std::string *>(callRes); // copy result to stack
+         const auto calcRes = RDFInternal::InterpreterCalc(call.c_str());
+         return *reinterpret_cast<std::string *>(calcRes.first); // copy result to stack
       }
    }
 
@@ -1797,7 +1799,11 @@ public:
    /// See the previous overloads for further details.
    RResultPtr<RDisplay> Display(std::string_view columnNameRegexp = "", const int &nRows = 5)
    {
-      auto selectedColumns = ConvertRegexToColumns(columnNameRegexp, "Display");
+      auto selectedColumns = RDFInternal::ConvertRegexToColumns(fCustomColumns,
+                                                                fLoopManager->GetTree(),
+                                                                fDataSource,
+                                                                columnNameRegexp,
+                                                                "Display");
       return Display(selectedColumns, nRows);
    }
 
@@ -1835,7 +1841,7 @@ private:
       // Declare return type to the interpreter, for future use by jitted actions
       auto retTypeDeclaration = "namespace __tdf" + std::to_string(fLoopManager->GetID()) + " { using " + entryColName +
                                 std::to_string(entryColumn->GetID()) + "_type = ULong64_t; }";
-      gInterpreter->Declare(retTypeDeclaration.c_str());
+      RDFInternal::InterpreterDeclare(retTypeDeclaration);
 
       // Slot number column
       const auto slotColName = "rdfslot_";
@@ -1855,70 +1861,12 @@ private:
       // Declare return type to the interpreter, for future use by jitted actions
       retTypeDeclaration = "namespace __tdf" + std::to_string(fLoopManager->GetID()) + " { using " + slotColName +
                            std::to_string(slotColumn->GetID()) + "_type = unsigned int; }";
-      gInterpreter->Declare(retTypeDeclaration.c_str());
+      RDFInternal::InterpreterDeclare(retTypeDeclaration);
 
       fLoopManager->AddColumnAlias("tdfentry_", entryColName);
       fCustomColumns.AddName("tdfentry_");
       fLoopManager->AddColumnAlias("tdfslot_", slotColName);
       fCustomColumns.AddName("tdfslot_");
-   }
-
-   ColumnNames_t ConvertRegexToColumns(std::string_view columnNameRegexp, std::string_view callerName)
-   {
-      const auto theRegexSize = columnNameRegexp.size();
-      std::string theRegex(columnNameRegexp);
-
-      const auto isEmptyRegex = 0 == theRegexSize;
-      // This is to avoid cases where branches called b1, b2, b3 are all matched by expression "b"
-      if (theRegexSize > 0 && theRegex[0] != '^')
-         theRegex = "^" + theRegex;
-      if (theRegexSize > 0 && theRegex[theRegexSize - 1] != '$')
-         theRegex = theRegex + "$";
-
-      ColumnNames_t selectedColumns;
-      selectedColumns.reserve(32);
-
-      // Since we support gcc48 and it does not provide in its stl std::regex,
-      // we need to use TRegexp
-      TRegexp regexp(theRegex);
-      int dummy;
-      for (auto &&branchName : fCustomColumns.GetNames()) {
-         if ((isEmptyRegex || -1 != regexp.Index(branchName.c_str(), &dummy)) &&
-             !RDFInternal::IsInternalColumn(branchName)) {
-            selectedColumns.emplace_back(branchName);
-         }
-      }
-
-      auto tree = fLoopManager->GetTree();
-      if (tree) {
-         auto branchNames = RDFInternal::GetTopLevelBranchNames(*tree);
-         for (auto &branchName : branchNames) {
-            if (isEmptyRegex || -1 != regexp.Index(branchName, &dummy)) {
-               selectedColumns.emplace_back(branchName);
-            }
-         }
-      }
-
-      if (fDataSource) {
-         auto &dsColNames = fDataSource->GetColumnNames();
-         for (auto &dsColName : dsColNames) {
-            if ((isEmptyRegex || -1 != regexp.Index(dsColName.c_str(), &dummy)) &&
-                !RDFInternal::IsInternalColumn(dsColName)) {
-               selectedColumns.emplace_back(dsColName);
-            }
-         }
-      }
-
-      if (selectedColumns.empty()) {
-         std::string text(callerName);
-         if (columnNameRegexp.empty()) {
-            text = ": there is no column available to match.";
-         } else {
-            text = ": regex \"" + columnNameRegexp + "\" did not match any column.";
-         }
-         throw std::runtime_error(text);
-      }
-      return selectedColumns;
    }
 
    std::vector<std::string> GetColumnTypeNamesList(const ColumnNames_t &columnList)
@@ -1933,7 +1881,7 @@ private:
 
    void CheckIMTDisabled(std::string_view callerName)
    {
-      if (ROOT::IsImplicitMTEnabled()) {
+      if (RDFInternal::IsImplicitMTEnabled()) {
          std::string error(callerName);
          error += " was called with ImplicitMT enabled, but multi-thread is not supported.";
          throw std::runtime_error(error);
@@ -2025,15 +1973,14 @@ private:
          // and therefore an incomplete type, the interpreter will prompt an error and also display
          // the comment we nicely built which reminds the user about the absence of information about
          // this type in the interpreter.
-         int errCode(0);
-         retTypeName = TClassEdit::DemangleTypeIdName(typeid(RetType), errCode);
+         retTypeName = RDFInternal::DemangleTypeIdName(typeid(RetType));
          retTypeNameFwdDecl =
             "class " + retTypeName + ";/* Did you forget to declare type " + retTypeName + " in the interpreter?*/";
       }
       const auto retTypeDeclaration = "namespace __tdf" + std::to_string(fLoopManager->GetID()) + " { " +
                                       retTypeNameFwdDecl + " using " + std::string(name) +
                                       std::to_string(newColumn->GetID()) + "_type = " + retTypeName + "; }";
-      gInterpreter->Declare(retTypeDeclaration.c_str());
+      RDFInternal::InterpreterDeclare(retTypeDeclaration);
 
       fLoopManager->RegisterCustomColumn(newColumn.get());
       newCols.AddName(name);
@@ -2090,7 +2037,7 @@ private:
 
       // add action node to functional graph and run event loop
       std::unique_ptr<RDFInternal::RActionBase> actionPtr;
-      if (!ROOT::IsImplicitMTEnabled()) {
+      if (!RDFInternal::IsImplicitMTEnabled()) {
          // single-thread snapshot
          using Helper_t = RDFInternal::SnapshotHelper<ColumnTypes...>;
          using Action_t = RDFInternal::RAction<Helper_t, Proxied>;
@@ -2107,26 +2054,7 @@ private:
 
       fLoopManager->Book(actionPtr.get());
 
-      // create new RDF
-      ::TDirectory::TContext ctxt;
-      // Now we mimic a constructor for the RDataFrame. We cannot invoke it here
-      // since this would introduce a cyclic headers dependency.
-
-      // Keep these two statements separated to work-around an ABI incompatibility
-      // between clang (and thus cling) and gcc in the way std::forward is handled.
-      // See https://sft.its.cern.ch/jira/browse/ROOT-9236 for more detail.
-      auto rlm_ptr = std::make_shared<RLoopManager>(nullptr, validCols);
-      auto snapshotRDF = std::make_shared<RInterface<RLoopManager>>(rlm_ptr);
-      auto chain = std::make_shared<TChain>(fullTreename.c_str());
-      chain->Add(std::string(filename).c_str());
-      snapshotRDF->fProxiedPtr->SetTree(chain);
-      auto snapshotRDFResPtr = MakeResultPtr(snapshotRDF, *fLoopManager, std::move(actionPtr));
-
-      if (!options.fLazy) {
-         *snapshotRDFResPtr;
-      }
-
-      return snapshotRDFResPtr;
+      return RDFInternal::CreateSnaphotRDF(validCols, fullTreename, filename, options.fLazy, *fLoopManager, std::move(actionPtr));
    }
 
    ////////////////////////////////////////////////////////////////////////////
