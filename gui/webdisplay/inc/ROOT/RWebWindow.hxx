@@ -163,6 +163,7 @@ private:
    bool ProcessBatchHolder(std::shared_ptr<THttpCallArg> &arg);
 
 public:
+
    RWebWindow();
 
    ~RWebWindow();
