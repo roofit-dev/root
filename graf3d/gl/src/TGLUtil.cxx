@@ -147,26 +147,10 @@ minimum required.
 ClassImp(TGLVector3);
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Construct a default (0.0, 0.0, 0.0) vector
-
-TGLVector3::TGLVector3() :
-   TGLVertex3()
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
 /// Construct a vector with components (x,y,z)
 
 TGLVector3::TGLVector3(Double_t x, Double_t y, Double_t z) :
    TGLVertex3(x, y, z)
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Construct a vector from components of 'other'
-
-TGLVector3::TGLVector3(const TGLVector3 & other) :
-   TGLVertex3(other.fVals[0], other.fVals[1], other.fVals[2])
 {
 }
 
@@ -178,12 +162,6 @@ TGLVector3::TGLVector3(const Double_t *src) :
 {
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// Destroy vector object
-
-TGLVector3::~TGLVector3()
-{
-}
 
 /** \class TGLLine3
 \ingroup opengl
@@ -1215,10 +1193,15 @@ TGLColor::TGLColor(Color_t color_index, Char_t transparency)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Destructor.
+/// copy constructor
 
-TGLColor::~TGLColor()
+TGLColor::TGLColor(const TGLColor& c)
 {
+   fRGBA[0] = c.fRGBA[0];
+   fRGBA[1] = c.fRGBA[1];
+   fRGBA[2] = c.fRGBA[2];
+   fRGBA[3] = c.fRGBA[3];
+   fIndex   = c.fIndex;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
