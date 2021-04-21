@@ -3,6 +3,8 @@ from libROOTPython import AddBranchAttrSyntax, SetBranchAddressPyz
 
 from ROOT import pythonization
 
+from cppyy.gbl import TClass
+
 # TTree iterator
 def _TTree__iter__(self):
     i = 0
@@ -31,7 +33,19 @@ def pythonize_ttree(klass, name):
     # klass: class to be pythonized
     # name: string containing the name of the class
 
-    if name == 'TTree':
+    to_pythonize = [ 'TTree', 'TChain' ]
+    if name in to_pythonize:
+        # Pythonizations that are common to TTree and its subclasses.
+        # To avoid duplicating the same logic in the pythonizors of
+        # the subclasses, inject the pythonizations for all the target
+        # classes here.
+        # TChain needs to be explicitly pythonized because it redefines
+        # SetBranchAddress in C++. As a consequence, TChain does not
+        # inherit TTree's pythonization for SetBranchAddress, which
+        # needs to be injected to TChain too. This is not the case for
+        # other classes like TNtuple, which will inherit all the
+        # pythonizations added here for TTree.
+
         # Pythonic iterator
         klass.__iter__ = _TTree__iter__
 
@@ -39,7 +53,6 @@ def pythonize_ttree(klass, name):
         AddBranchAttrSyntax(klass)
 
         # SetBranchAddress
-        klass._OriginalSetBranchAddress = klass.SetBranchAddress
         klass.SetBranchAddress = _SetBranchAddress
 
     return True
