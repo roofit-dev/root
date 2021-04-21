@@ -26,7 +26,6 @@
 #include <ROOT/TypeTraits.hxx>
 
 #include <algorithm>
-#define _USE_MATH_DEFINES // for M_PI on windows in cmath
 #include <cmath>
 #include <numeric> // for inner_product
 #include <sstream>
@@ -37,6 +36,16 @@
 
 #ifdef R__HAS_VDT
 #include <vdt/vdtMath.h>
+#endif
+
+// TODO: Figure out best way to get pi on windows
+// TODO: ROOT::Internal::VecOps::pi is set to float because of narrowing errors on windows.
+#if defined(_MSC_VER)
+#include <math.h>
+#endif
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846264338328
 #endif
 
 namespace ROOT {
@@ -84,6 +93,8 @@ auto MapFromTuple(Tuple_t &&t, std::index_sequence<Is...>)
 
 namespace Internal {
 namespace VecOps {
+
+constexpr float pi = M_PI;
 
 // We use this helper to workaround a limitation of compilers such as
 // gcc 4.8 amd clang on osx 10.14 for which std::vector<bool>::emplace_back
@@ -1513,7 +1524,7 @@ RVec<Common_t> Concatenate(const RVec<T0> &v0, const RVec<T1> &v1)
 /// The computation is done per default in radians \f$c = \pi\f$ but can be switched
 /// to degrees \f$c = 180\f$.
 template <typename T>
-T DeltaPhi(T v1, T v2, const T c = M_PI)
+T DeltaPhi(T v1, T v2, const T c = ROOT::Internal::VecOps::pi)
 {
    static_assert(std::is_floating_point<T>::value,
                  "DeltaPhi must be called with floating point values.");
@@ -1534,7 +1545,7 @@ T DeltaPhi(T v1, T v2, const T c = M_PI)
 /// The computation is done per default in radians \f$c = \pi\f$ but can be switched
 /// to degrees \f$c = 180\f$.
 template <typename T>
-RVec<T> DeltaPhi(const RVec<T>& v1, const RVec<T>& v2, const T c = M_PI)
+RVec<T> DeltaPhi(const RVec<T>& v1, const RVec<T>& v2, const T c = ROOT::Internal::VecOps::pi)
 {
    using size_type = typename RVec<T>::size_type;
    const size_type size = v1.size();
@@ -1552,7 +1563,7 @@ RVec<T> DeltaPhi(const RVec<T>& v1, const RVec<T>& v2, const T c = M_PI)
 /// The computation is done per default in radians \f$c = \pi\f$ but can be switched
 /// to degrees \f$c = 180\f$.
 template <typename T>
-RVec<T> DeltaPhi(const RVec<T>& v1, T v2, const T c = M_PI)
+RVec<T> DeltaPhi(const RVec<T>& v1, T v2, const T c = ROOT::Internal::VecOps::pi)
 {
    using size_type = typename RVec<T>::size_type;
    const size_type size = v1.size();
@@ -1570,7 +1581,7 @@ RVec<T> DeltaPhi(const RVec<T>& v1, T v2, const T c = M_PI)
 /// The computation is done per default in radians \f$c = \pi\f$ but can be switched
 /// to degrees \f$c = 180\f$.
 template <typename T>
-RVec<T> DeltaPhi(T v1, const RVec<T>& v2, const T c = M_PI)
+RVec<T> DeltaPhi(T v1, const RVec<T>& v2, const T c = ROOT::Internal::VecOps::pi)
 {
    using size_type = typename RVec<T>::size_type;
    const size_type size = v2.size();
@@ -1603,7 +1614,8 @@ RVec<T> DeltaR2(const RVec<T>& eta1, const RVec<T>& eta2, const RVec<T>& phi1, c
 /// be set to radian or degrees using the optional argument c, see the documentation
 /// of the DeltaPhi helper.
 template <typename T>
-RVec<T> DeltaR(const RVec<T>& eta1, const RVec<T>& eta2, const RVec<T>& phi1, const RVec<T>& phi2, const T c = M_PI)
+RVec<T> DeltaR(const RVec<T>& eta1, const RVec<T>& eta2, const RVec<T>& phi1, const RVec<T>& phi2,
+               const T c = ROOT::Internal::VecOps::pi)
 {
    return sqrt(DeltaR2(eta1, eta2, phi1, phi2, c));
 }
@@ -1616,7 +1628,7 @@ RVec<T> DeltaR(const RVec<T>& eta1, const RVec<T>& eta2, const RVec<T>& phi1, co
 /// be set to radian or degrees using the optional argument c, see the documentation
 /// of the DeltaPhi helper.
 template <typename T>
-T DeltaR(T eta1, T eta2, T phi1, T phi2, const T c = M_PI)
+T DeltaR(T eta1, T eta2, T phi1, T phi2, const T c = ROOT::Internal::VecOps::pi)
 {
    const auto dphi = DeltaPhi(phi1, phi2, c);
    return std::sqrt((eta1 - eta2) * (eta1 - eta2) + dphi * dphi);
@@ -1881,7 +1893,5 @@ TVEC_EXTERN_VDT_UNARY_FUNCTION(double, fast_atan)
 using ROOT::VecOps::RVec;
 
 } // namespace ROOT
-
-#undef _USE_MATH_DEFINES // for M_PI on windows in cmath
 
 #endif // ROOT_TVEC
