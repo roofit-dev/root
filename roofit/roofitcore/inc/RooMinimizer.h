@@ -22,6 +22,9 @@
 #include "TObject.h"
 #include "TStopwatch.h"
 #include <fstream>
+#include <vector>
+#include <string>
+#include <utility>
 #include "TMatrixDSymfwd.h"
 
 #include "RooArgList.h" // cannot just use forward decl due to default argument in lastMinuitFit
