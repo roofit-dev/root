@@ -257,6 +257,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         MultiProcess/messages.h
     RooHelpers.h
     RooSpan.h
+    BatchData.h
   SOURCES
     src/BidirMMapPipe.cxx
     src/BidirMMapPipe.h
@@ -492,6 +493,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/MultiProcess/TaskManager.cxx
         src/MultiProcess/messages.cxx
     src/RooHelpers.cxx
+    src/BatchData.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
   DEPENDENCIES
