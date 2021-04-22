@@ -506,7 +506,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     Foam
   LIBRARIES
     ${RT_LIBRARY}
-  LINKDEF inc/LinkDef.h
+  LINKDEF
+    inc/LinkDef.h
 )
 
 if(testing)
