@@ -39,6 +39,7 @@ namespace ROOT {
 
 double inner_product(const LAVector&, const LAVector&);
 
+
 void VariableMetricBuilder::AddResult( std::vector<MinimumState>& result, const MinimumState & state) const {
    // // if (!store) store = StorageLevel();
    // // store |= (result.size() == 0);
@@ -67,6 +68,10 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn& fcn, const GradientC
    edmval *= 0.002;
 
    int printLevel = PrintLevel();
+   // set global printlevel to the local one so all calls to MN_INFO_MSG can be controlled in the same way
+   // at exit of this function the BuilderPrintLevelConf object is destructed and automatically the
+   // previous level will be restored
+   BuilderPrintLevelConf plconf(printLevel);
 
 
 #ifdef DEBUG
@@ -262,7 +267,7 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn& fcn, const GradientC
    MnAlgebraicVector prevStep(initialState.Gradient().Vec().size());
 
    MinimumState s0 = result.back();
-   assert(s0.IsValid() ); 
+   assert(s0.IsValid() );
 
    do {
 
@@ -311,11 +316,11 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn& fcn, const GradientC
 #endif
          if(gdel > 0.) {
             AddResult(result, s0);
-               
+
             return FunctionMinimum(seed, result, fcn.Up());
          }
       }
-      
+
       MnParabolaPoint pp = lsearch(fcn, s0.Parameters(), step, gdel, prec);
 
       // <= needed for case 0 <= 0
@@ -325,7 +330,7 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn& fcn, const GradientC
 #endif
          // no improvement exit   (is it really needed LM ? in vers. 1.22 tried alternative )
          // add new state when only fcn changes
-         if (result.size() <= 1 ) 
+         if (result.size() <= 1 )
             AddResult(result, MinimumState(s0.Parameters(), s0.Error(), s0.Gradient(), s0.Edm(), fcn.NumOfCalls()));
          else
             // no need to re-store the state
@@ -403,7 +408,7 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn& fcn, const GradientC
 
    // save last result in case of no complete final states
    if ( ! result.back().IsValid() )
-      result.back() = s0; 
+      result.back() = s0;
 
 
    if(fcn.NumOfCalls() >= maxfcn) {
