@@ -105,7 +105,6 @@ class Container {
 #include "Compression.h"
 
 #include "TArrayI.h"
-#include "TObjArray.h"
 #include "TError.h"
 #include "TBase64.h"
 #include "TROOT.h"
@@ -1437,7 +1436,7 @@ void TBufferJSON::JsonWriteObject(const void *obj, const TClass *cl, Bool_t chec
          bool first = true;
 
          fValue = "{";
-         if (fTypeNameTag.Length() > 0) {
+         if ((fTypeNameTag.Length() > 0) && !IsSkipClassInfo(cl)) {
             fValue.Append("\"");
             fValue.Append(fTypeNameTag);
             fValue.Append("\"");

@@ -4325,25 +4325,15 @@ int RootClingMain(int argc,
 
    interp.getOptions().ErrorOut = true;
    interp.enableRawInput(true);
-   if (isGenreflex) {
-      if (interp.declare("namespace std {} using namespace std;") != cling::Interpreter::kSuccess) {
-         // There was an error.
-         ROOT::TMetaUtils::Error(0, "Error loading the default header files.\n");
-         return 1;
-      }
-   } else {
-      // rootcling
-      if (interp.declare("namespace std {} using namespace std;") != cling::Interpreter::kSuccess
-            // CINT uses to define a few header implicitly, we need to do it explicitly.
-            || interp.declare("#include <assert.h>\n"
-                              "#include <stdlib.h>\n"
-                              "#include <stddef.h>\n"
-                              "#include <string.h>\n"
-                             ) != cling::Interpreter::kSuccess
-            || interp.declare("#include \"Rtypes.h\"\n"
-                              "#include \"TClingRuntime.h\"\n"
-                              "#include \"TObject.h\""
-                             ) != cling::Interpreter::kSuccess
+   if (interp.declare("namespace std {} using namespace std;") != cling::Interpreter::kSuccess) {
+      ROOT::TMetaUtils::Error(0, "Error loading the default header files.\n");
+      return 1;
+   }
+   if (!isGenreflex) { // rootcling
+      // ROOTCINT uses to define a few header implicitly, we need to do it explicitly.
+      if (interp.declare("#include <assert.h>\n") != cling::Interpreter::kSuccess
+          || interp.declare("#include \"Rtypes.h\"\n"
+                            "#include \"TObject.h\"") != cling::Interpreter::kSuccess
          ) {
          // There was an error.
          ROOT::TMetaUtils::Error(0, "Error loading the default header files.\n");
@@ -4353,6 +4343,8 @@ int RootClingMain(int argc,
 
    // For the list of 'opaque' typedef to also include string, we have to include it now.
    interp.declare("#include <string>");
+   // For initializing TNormalizedCtxt.
+   interp.declare("#include <RtypesCore.h>");
 
    // We are now ready (enough is loaded) to init the list of opaque typedefs.
    ROOT::TMetaUtils::TNormalizedCtxt normCtxt(interp.getLookupHelper());
@@ -4803,9 +4795,9 @@ int RootClingMain(int argc,
       // is significant.  The list is sorted by with the highest
       // priority first.
       if (!gOptInterpreterOnly) {
-         constructorTypes.push_back(ROOT::TMetaUtils::RConstructorType("TRootIOCtor", interp));
-         constructorTypes.push_back(ROOT::TMetaUtils::RConstructorType("__void__", interp)); // ROOT-7723
-         constructorTypes.push_back(ROOT::TMetaUtils::RConstructorType("", interp));
+         constructorTypes.emplace_back("TRootIOCtor", interp);
+         constructorTypes.emplace_back("__void__", interp); // ROOT-7723
+         constructorTypes.emplace_back("", interp);
       }
    }
 

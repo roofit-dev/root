@@ -34,11 +34,9 @@ partitions in parallel executing processes and a posteriori
 combined in the main thread.
 **/
 
+#include "RooAbsTestStatistic.h"
 
 #include "RooFit.h"
-#include "Riostream.h"
-
-#include "RooAbsTestStatistic.h"
 #include "RooAbsPdf.h"
 #include "RooSimultaneous.h"
 #include "RooAbsData.h"
@@ -48,11 +46,13 @@ combined in the main thread.
 #include "RooRealMPFE.h"
 #include "RooErrorHandler.h"
 #include "RooMsgService.h"
-#include "TTimeStamp.h"
 #include "RooProdPdf.h"
 #include "RooRealSumPdf.h"
 #include "RooConstVar.h"
 #include "RooRealIntegral.h"
+#include "RooAbsCategoryLValue.h"
+
+#include "TTimeStamp.h"
 
 #include <string>
 #include <fstream>
@@ -789,7 +789,7 @@ void RooAbsTestStatistic::initSimMode(RooSimultaneous* simpdf, RooAbsData* data,
 ////////////////////////////////////////////////////////////////////////////////
 /// Change dataset that is used to given one. If cloneData is kTRUE, a clone of
 /// in the input dataset is made.  If the test statistic was constructed with
-/// a range specification on the data, the cloneData argument is ignore and
+/// a range specification on the data, the cloneData argument is ignored and
 /// the data is always cloned.
 Bool_t RooAbsTestStatistic::setData(RooAbsData& indata, Bool_t cloneData) 
 { 

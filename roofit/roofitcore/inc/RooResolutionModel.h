@@ -17,7 +17,7 @@
 #define ROO_RESOLUTION_MODEL
 
 #include "RooAbsPdf.h"
-#include "RooRealProxy.h"
+#include "RooProxy.h"
 #include "RooRealVar.h"
 #include "RooFormulaVar.h"
 
@@ -39,7 +39,10 @@ public:
 
   Double_t getValV(const RooArgSet* nset=0) const ;
   virtual RooResolutionModel* convolution(RooFormulaVar* basis, RooAbsArg* owner) const ;
-  RooRealVar& convVar() const ;
+  /// Return the convolution variable of the resolution model.
+  const RooAbsRealLValue& convVar() const {return *x;}
+  /// Return the convolution variable of the resolution model.
+  RooAbsRealLValue& convVar() {return *x;}
   const RooRealVar& basisConvVar() const ;
 
   inline Bool_t isBasisSupported(const char* name) const { return basisCode(name)?kTRUE:kFALSE ; }
@@ -61,7 +64,7 @@ protected:
 
   friend class RooConvGenContext ;
   friend class RooAddModel ;
-  RooLVarProxy x ;                   // Dependent/convolution variable
+  RooProxy<RooAbsRealLValue> x;                   // Dependent/convolution variable
 
   virtual Bool_t redirectServersHook(const RooAbsCollection& newServerList, Bool_t mustReplaceAll, Bool_t nameChange, Bool_t isRecursive) ;
 //  Bool_t traceEvalHook(Double_t value) const ;
