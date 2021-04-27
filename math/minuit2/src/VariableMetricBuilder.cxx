@@ -69,14 +69,20 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
    // at exit of this function the BuilderPrintLevelConf object is destructed and automatically the
    // previous level will be restored
 
-   if (seed.Parameters().Vec().size() == 0) {
-      return FunctionMinimum(seed, fcn.Up());
-   }
-
    //   double edm = Estimator().Estimate(seed.Gradient(), seed.Error());
    double edm = seed.State().Edm();
 
    FunctionMinimum min(seed, fcn.Up());
+
+   if (seed.Parameters().Vec().size() == 0) {
+      print.Warn("No free parameters.");
+      return min;
+   }
+
+   if (!seed.IsValid()) {
+     print.Error("Minimum seed invalid.");
+     return min;
+   }
 
    if (edm < 0.) {
       print.Error("Initial matrix not pos.def.");
@@ -100,10 +106,12 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
    int maxfcn_eff = maxfcn;
    int ipass = 0;
    bool iterate = false;
+   bool hessianComputed = false;
 
    do {
 
       iterate = false;
+      hessianComputed = false;
 
       print.Debug(ipass > 0 ? "Continue" : "Start", "iterating...");
 
@@ -125,7 +133,7 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
 
       // resulting edm of minimization
       edm = result.back().Edm();
-      // need to re-coorect for Dcovar ?
+      // need to correct again for Dcovar: edm *= (1. + 3. * e.Dcovar()) ???
 
       if ((strategy.Strategy() == 2) || (strategy.Strategy() == 1 && min.Error().Dcovar() > 0.05)) {
 
@@ -133,9 +141,16 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
 
          MinimumState st = MnHesse(strategy)(fcn, min.State(), min.Seed().Trafo(), maxfcn);
 
+         hessianComputed = true;
+
          print.Info("After Hessian");
 
          AddResult(result, st);
+
+         if (!st.IsValid()) {
+           print.Warn("Invalid Hessian - exit the minimization");
+           break;
+         }
 
          // check new edm
          edm = st.Edm();
@@ -179,7 +194,7 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
       if (min.IsAboveMaxEdm()) {
          print.Info("Edm has been re-computed after Hesse; Edm", edm, "is now within tolerance");
       }
-      min.Add(result.back());
+      if (hessianComputed) min.Add(result.back());
    }
 
    print.Debug("Minimum found", min);
@@ -218,7 +233,6 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
    MnAlgebraicVector prevStep(initialState.Gradient().Vec().size());
 
    MinimumState s0 = result.back();
-   assert(s0.IsValid());
 
    do {
 
@@ -307,8 +321,9 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
       }
       MinimumError e = ErrorUpdator().Update(s0, p, g);
 
+      // avoid print Hessian that will invert the matrix
       print.Debug("Updated new point:", "\n  Parameter:", p.Vec(), "\n  Gradient:", g.Vec(),
-                  "\n  InvHessian:", e.Matrix(), "\n  Hessian:", e.Hessian(), "\n  Edm:", edm);
+                  "\n  InvHessian:", e.Matrix(), "\n  Edm:", edm);
 
       // update the state
       s0 = MinimumState(p, e, g, edm, fcn.NumOfCalls());
@@ -326,6 +341,9 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
    } while (edm > edmval && fcn.NumOfCalls() < maxfcn); // end of iteration loop
 
    // save last result in case of no complete final states
+   // when the result is filled above (reduced storage) the resulting state will not be valid
+   // since they will not have parameter values and error
+   // the line above will fill as last element a valid state
    if (!result.back().IsValid())
       result.back() = s0;
 
