@@ -510,7 +510,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     Foam
   LIBRARIES
     ${RT_LIBRARY}
-  LINKDEF inc/LinkDef.h
+  LINKDEF
+    inc/LinkDef.h
 )
 
 target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
