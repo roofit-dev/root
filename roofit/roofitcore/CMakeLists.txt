@@ -266,6 +266,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooHelpers.h
     RooSpan.h
     BatchData.h
+    BatchHelpers.h
     RooVDTHeaders.h
     RooWrapperPdf.h
   SOURCES
@@ -499,6 +500,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/MultiProcess/util.cxx
     src/RooHelpers.cxx
     src/BatchData.cxx
+    src/BatchHelpers.cxx
     src/RooWrapperPdf.cxx
     DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
