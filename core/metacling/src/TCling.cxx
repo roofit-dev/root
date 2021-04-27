@@ -139,6 +139,7 @@ clang/LLVM technology.
 #include <tuple>
 #include <typeinfo>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <functional>
@@ -159,6 +160,13 @@ clang/LLVM technology.
 
 #ifdef R__UNIX
 #include <dlfcn.h>
+#endif
+
+#ifdef R__LINUX
+# ifndef _GNU_SOURCE
+#  define _GNU_SOURCE
+# endif
+# include <link.h> // dl_iterate_phdr()
 #endif
 
 #if defined(__CYGWIN__)
@@ -1585,7 +1593,7 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
    }
 
    // Enable ClinG's DefinitionShadower for ROOT.
-   fInterpreter->allowRedefinition();
+   fInterpreter->getRuntimeOptions().AllowRedefinition = 1;
 
    // Attach cling callbacks last; they might need TROOT::fInterpreter
    // and should thus not be triggered during the equivalent of
@@ -2630,8 +2638,9 @@ void TCling::AddIncludePath(const char *path)
    // gCling->AddIncludePath() does not! Work around that inconsistency:
    if (path[0] == '-' && path[1] == 'I')
       path += 2;
-
-   fInterpreter->AddIncludePath(path);
+   TString sPath(path);
+   gSystem->ExpandPathName(sPath);
+   fInterpreter->AddIncludePath(sPath.Data());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3215,6 +3224,69 @@ Bool_t TCling::IsLoaded(const char* filename) const
    return kFALSE;
 }
 
+
+#if defined(R__MACOSX)
+
+////////////////////////////////////////////////////////////////////////////////
+/// Check if lib is in the dynamic linker cache, returns true if it is, and if so,
+/// modifies the library file name parameter `lib` from `/usr/lib/libFOO.dylib`
+/// to `-lFOO` such that it can be passed to the linker.
+/// This is a unique feature of macOS 11.
+
+static bool R__UpdateLibFileForLinking(TString &lib)
+{
+   const char *mapfile = nullptr;
+#if __x86_64__
+   mapfile = "/System/Library/dyld/dyld_shared_cache_x86_64.map";
+#elif __arm64__
+   mapfile = "/System/Library/dyld/dyld_shared_cache_arm64e.map";
+#else
+   #error unsupported architecture
+#endif
+   if (std::ifstream cacheMap{mapfile}) {
+      std::string line;
+      while (getline(cacheMap, line)) {
+         if (line.find(lib) != std::string::npos) {
+            lib.ReplaceAll("/usr/lib/lib","-l");
+            lib.ReplaceAll(".dylib","");
+            return true;
+         }
+      }
+      return false;
+   }
+   return false;
+}
+#endif // R__MACOSX
+
+#ifdef R__LINUX
+
+////////////////////////////////////////////////////////////////////////////////
+/// Callback for dl_iterate_phdr(), see `man dl_iterate_phdr`.
+/// Collects opened libraries.
+
+static int callback_for_dl_iterate_phdr(struct dl_phdr_info *info, size_t size, void *data)
+{
+   // This function is called through UpdateListOfLoadedSharedLibraries() which is locked.
+   static std::unordered_set<decltype(info->dlpi_addr)> sKnownLoadedLibBaseAddrs;
+
+   auto newLibs = static_cast<std::vector<std::string>*>(data);
+   if (!sKnownLoadedLibBaseAddrs.count(info->dlpi_addr)) {
+      // Skip \0, "", and kernel pseudo-libs linux-vdso.so.1 or linux-gate.so.1
+      if (info->dlpi_name && info->dlpi_name[0]
+          && strncmp(info->dlpi_name, "linux-vdso.so", 13)
+          && strncmp(info->dlpi_name, "linux-vdso32.so", 15)
+          && strncmp(info->dlpi_name, "linux-vdso64.so", 15)
+          && strncmp(info->dlpi_name, "linux-gate.so", 13))
+         newLibs->emplace_back(info->dlpi_name);
+      sKnownLoadedLibBaseAddrs.insert(info->dlpi_addr);
+   }
+   // No matter what the doc says, return != 0 means "stop the iteration".
+   return 0;
+}
+
+#endif // R__LINUX
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCling::UpdateListOfLoadedSharedLibraries()
@@ -3260,34 +3332,13 @@ void TCling::UpdateListOfLoadedSharedLibraries()
    }
    fPrevLoadedDynLibInfo = (void*)(size_t)imageIndex;
 #elif defined(R__LINUX)
-   struct PointerNo4 {
-      void* fSkip[3];
-      void* fPtr;
-   };
-   struct LinkMap {
-      void* fAddr;
-      const char* fName;
-      void* fLd;
-      LinkMap* fNext;
-      LinkMap* fPrev;
-   };
-   if (!fPrevLoadedDynLibInfo || fPrevLoadedDynLibInfo == (void*)(size_t)-1) {
-      PointerNo4* procLinkMap = (PointerNo4*)dlopen(0,  RTLD_LAZY | RTLD_GLOBAL);
-      // 4th pointer of 4th pointer is the linkmap.
-      // See http://syprog.blogspot.fr/2011/12/listing-loaded-shared-objects-in-linux.html
-      LinkMap* linkMap = (LinkMap*) ((PointerNo4*)procLinkMap->fPtr)->fPtr;
-      RegisterLoadedSharedLibrary(linkMap->fName);
-      fPrevLoadedDynLibInfo = linkMap;
-      // reduce use count of link map structure:
-      dlclose(procLinkMap);
-   }
+   // fPrevLoadedDynLibInfo is unused on Linux.
+   (void) fPrevLoadedDynLibInfo;
 
-   LinkMap* iDyLib = (LinkMap*)fPrevLoadedDynLibInfo;
-   while (iDyLib->fNext) {
-      iDyLib = iDyLib->fNext;
-      RegisterLoadedSharedLibrary(iDyLib->fName);
-   }
-   fPrevLoadedDynLibInfo = iDyLib;
+   std::vector<std::string> newLibs;
+   dl_iterate_phdr(callback_for_dl_iterate_phdr, &newLibs);
+   for (auto &&lib: newLibs)
+      RegisterLoadedSharedLibrary(lib.c_str());
 #else
    Error("TCling::UpdateListOfLoadedSharedLibraries",
          "Platform not supported!");
@@ -3334,11 +3385,16 @@ void TCling::RegisterLoadedSharedLibrary(const char* filename)
        || strstr(filename, "/usr/lib/libOpenScriptingUtil")
        || strstr(filename, "/usr/lib/libextension")
        || strstr(filename, "/usr/lib/libAudioToolboxUtility")
+       || strstr(filename, "/usr/lib/liboah")
+       || strstr(filename, "/usr/lib/libRosetta")
        // "cannot link directly with dylib/framework, your binary is not an allowed client of
-       // /Applications/Xcode-beta.app/Contents/Developer/Platforms/MacOSX.platform/Developer/
+       // /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/
        // SDKs/MacOSX.sdk/usr/lib/libAudioToolboxUtility.tbd for architecture x86_64
        || (lenFilename > 4 && !strcmp(filename + lenFilename - 4, ".tbd")))
       return;
+   TString sFileName(filename);
+   R__UpdateLibFileForLinking(sFileName);
+   filename = sFileName.Data();
 #elif defined(__CYGWIN__)
    // Check that this is not a system library
    static const int bufsize = 260;
@@ -3465,7 +3521,17 @@ Long_t TCling::Calc(const char* line, EErrorCode* error)
       *error = TInterpreter::kNoError;
    }
    cling::Value valRef;
-   cling::Interpreter::CompilationResult cr = fInterpreter->evaluate(line, valRef);
+   cling::Interpreter::CompilationResult cr = cling::Interpreter::kFailure;
+   try {
+      cr = fInterpreter->evaluate(line, valRef);
+   }
+   catch (cling::InterpreterException& ex)
+   {
+      Error("Calc", "%s.\n%s", ex.what(), "Evaluation of your expression was aborted.");
+      ex.diagnose();
+      cr = cling::Interpreter::kFailure;
+   }
+
    if (cr != cling::Interpreter::kSuccess) {
       // Failure in compilation.
       if (error) {
@@ -3911,7 +3977,7 @@ void TCling::SetClassInfo(TClass* cl, Bool_t reload)
    }
 
    bool instantiateTemplate = !cl->TestBit(TClass::kUnloading);
-   // FIXME: Rather than adding an option to the TClingClassInfo, we should consider combining code 
+   // FIXME: Rather than adding an option to the TClingClassInfo, we should consider combining code
    // that is currently in the caller (like SetUnloaded) that disable AutoLoading and AutoParsing and
    // code is in the callee (disabling template instantiation) and end up with a more explicit class:
    //      TClingClassInfoReadOnly.
@@ -4031,7 +4097,31 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
 
    const char *classname = name;
 
-   int storeAutoload = SetClassAutoLoading(autoload);
+   // RAII to suspend and restore auto-loading and auto-parsing based on some external conditions.
+   class MaybeSuspendAutoLoadParse {
+      int fStoreAutoLoad = 0;
+      int fStoreAutoParse = 0;
+      bool fSuspendedAutoParse = false;
+   public:
+      MaybeSuspendAutoLoadParse(int autoload) {
+         fStoreAutoLoad = ((TCling*)gCling)->SetClassAutoLoading(autoload);
+      }
+
+      void SuspendAutoParsing() {
+         fSuspendedAutoParse = true;
+         fStoreAutoParse = ((TCling*)gCling)->SetSuspendAutoParsing(true);
+      }
+
+      ~MaybeSuspendAutoLoadParse() {
+         if (fSuspendedAutoParse)
+            ((TCling*)gCling)->SetSuspendAutoParsing(fStoreAutoParse);
+         ((TCling*)gCling)->SetClassAutoLoading(fStoreAutoLoad);
+      }
+   };
+
+   MaybeSuspendAutoLoadParse autoLoadParseRAII( autoload );
+   if (TClassEdit::IsStdPair(classname) || TClassEdit::IsStdPairBase(classname))
+      autoLoadParseRAII.SuspendAutoParsing();
 
    // First we want to check whether the decl exist, but _without_
    // generating any template instantiation. However, the lookup
@@ -4077,14 +4167,12 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
             // findscope.
             if (ROOT::TMetaUtils::IsSTLCont(*tmpltDecl)) {
                // For STL Collection we return kUnknown.
-               SetClassAutoLoading(storeAutoload);
                return kUnknown;
             }
          }
       }
       TClingClassInfo tci(GetInterpreterImpl(), *type);
       if (!tci.IsValid()) {
-         SetClassAutoLoading(storeAutoload);
          return kUnknown;
       }
       auto propertiesMask = isClassOrNamespaceOnly ? kIsClass | kIsStruct | kIsNamespace :
@@ -4111,19 +4199,16 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
          // , hasClassDefInline);
 
          // We are now sure that the entry is not in fact an autoload entry.
-         SetClassAutoLoading(storeAutoload);
          if (hasClassDefInline)
             return kWithClassDefInline;
          else
             return kKnown;
       } else {
          // We are now sure that the entry is not in fact an autoload entry.
-         SetClassAutoLoading(storeAutoload);
          return kUnknown;
       }
    }
 
-   SetClassAutoLoading(storeAutoload);
    if (decl)
       return kKnown;
    else
@@ -4135,7 +4220,6 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
    TClingTypedefInfo t(fInterpreter, name);
    if (t.IsValid() && !(t.Property() & kIsFundamental)) {
       delete[] classname;
-      SetClassAutoLoading(storeAutoload);
       return kTRUE;
    }
    */
@@ -4146,7 +4230,6 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
 //      decl = lh.findScope(buf);
 //   }
 
-//   SetClassAutoLoading(storeAutoload);
 //   return (decl);
 }
 
@@ -4364,6 +4447,7 @@ TClass *TCling::GenerateTClass(const char *classname, Bool_t emulation, Bool_t s
    if (TClassEdit::IsSTLCont(classname)) {
       version = TClass::GetClass("TVirtualStreamerInfo")->GetClassVersion();
    }
+   R__LOCKGUARD(gInterpreterMutex);
    TClass *cl = new TClass(classname, version, silent);
    if (emulation) {
       cl->SetBit(TClass::kIsEmulation);
@@ -5996,7 +6080,7 @@ Int_t TCling::DeepAutoLoadImpl(const char *cls)
       // Note that it is actually alright if another thread is populating this
       // set since we can then exclude both the infinite recursion (the main goal)
       // and duplicate work.
-      static std::set<std::string> gClassOnStack;  
+      static std::set<std::string> gClassOnStack;
       auto insertResult = gClassOnStack.insert(std::string(cls));
       if (insertResult.second) {
          // Now look through the TProtoClass to load the required library/dictionary
@@ -6019,7 +6103,7 @@ Int_t TCling::DeepAutoLoadImpl(const char *cls)
             if (classinfo && gInterpreter->ClassInfo_IsValid(classinfo)
                 && !(gInterpreter->ClassInfo_Property(classinfo) & kIsEnum))
             {
-               DataMemberInfo_t *memberinfo = gInterpreter->DataMemberInfo_Factory(classinfo);
+               DataMemberInfo_t *memberinfo = gInterpreter->DataMemberInfo_Factory(classinfo, TDictionary::EMemberSelection::kNoUsingDecls);
                while (gInterpreter->DataMemberInfo_Next(memberinfo)) {
                   auto membertypename = TClassEdit::GetLong64_Name(gInterpreter->TypeName(gInterpreter->DataMemberInfo_TypeTrueName(memberinfo)));
                   if (!(gInterpreter->DataMemberInfo_TypeProperty(memberinfo) & ::kIsFundamental)
@@ -6846,6 +6930,7 @@ void TCling::TransactionRollback(const cling::Transaction &T) {
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCling::LibraryLoaded(const void* dyLibHandle, const char* canonicalName) {
+// R__LOCKGUARD_CLING(gInterpreterMutex);
 // UpdateListOfLoadedSharedLibraries();
 }
 
@@ -6861,6 +6946,7 @@ void TCling::LibraryUnloaded(const void* dyLibHandle, const char* canonicalName)
 
 const char* TCling::GetSharedLibs()
 {
+   R__LOCKGUARD_CLING(gInterpreterMutex);
    UpdateListOfLoadedSharedLibraries();
    return fSharedLibs;
 }
@@ -8431,11 +8517,11 @@ void TCling::DataMemberInfo_Delete(DataMemberInfo_t* dminfo) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DataMemberInfo_t* TCling::DataMemberInfo_Factory(ClassInfo_t* clinfo /*= 0*/) const
+DataMemberInfo_t* TCling::DataMemberInfo_Factory(ClassInfo_t* clinfo, TDictionary::EMemberSelection selection) const
 {
    R__LOCKGUARD(gInterpreterMutex);
    TClingClassInfo* TClingclass_info = (TClingClassInfo*) clinfo;
-   return (DataMemberInfo_t*) new TClingDataMemberInfo(GetInterpreterImpl(), TClingclass_info);
+   return (DataMemberInfo_t*) new TClingDataMemberInfo(GetInterpreterImpl(), TClingclass_info, selection);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -9345,29 +9431,29 @@ const char* TCling::TypedefInfo_Title(TypedefInfo_t* tinfo) const
 
 void TCling::SnapshotMutexState(ROOT::TVirtualRWMutex* mtx)
 {
-   if (!fInitialMutex.back()) {
-      if (fInitialMutex.back().fRecurseCount) {
+   if (!fInitialMutex) {
+      if (fInitialMutex.fRecurseCount) {
          Error("SnapshotMutexState", "fRecurseCount != 0 even though initial mutex state is unset!");
       }
-      fInitialMutex.back().fState = mtx->GetStateBefore();
+      fInitialMutex.fState = mtx->GetStateBefore();
    }
    // We will "forget" this lock once we backed out of all interpreter frames.
    // Here we are entering one, so ++.
-   ++fInitialMutex.back().fRecurseCount;
+   ++fInitialMutex.fRecurseCount;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCling::ForgetMutexState()
 {
-   if (!fInitialMutex.back())
+   if (!fInitialMutex)
       return;
-   if (fInitialMutex.back().fRecurseCount == 0) {
+   if (fInitialMutex.fRecurseCount == 0) {
       Error("ForgetMutexState", "mutex state's recurse count already 0!");
    }
-   else if (--fInitialMutex.back().fRecurseCount == 0) {
+   else if (--fInitialMutex.fRecurseCount == 0) {
       // We have returned from all interpreter frames. Reset the initial lock state.
-      fInitialMutex.back().fState.reset();
+      fInitialMutex.fState.reset();
    }
 }
 
@@ -9376,15 +9462,28 @@ void TCling::ForgetMutexState()
 
 void TCling::ApplyToInterpreterMutex(void *delta)
 {
-   R__ASSERT(!fInitialMutex.empty() && "Inconsistent state of fInitialMutex!");
    if (gInterpreterMutex) {
       if (delta) {
-         auto typedDelta = static_cast<TVirtualRWMutex::StateDelta *>(delta);
-         std::unique_ptr<TVirtualRWMutex::StateDelta> uniqueP{typedDelta};
-         gCoreMutex->Apply(std::move(uniqueP));
+         auto typedDelta = static_cast<MutexStateAndRecurseCountDelta *>(delta);
+         std::unique_ptr<MutexStateAndRecurseCountDelta> uniqueP{typedDelta};
+         gCoreMutex->Apply(std::move(typedDelta->fDelta));
+         // Now that we have the lock, update the global
+         R__ASSERT(fInitialMutex.fRecurseCount == 0 && "Inconsistent state of fInitialMutex!  Another thread within Interpreter critical section.");
+         std::swap(fInitialMutex, typedDelta->fInitialState);
+      } else {
+         // This case happens when EnableThreadSafety is first called from
+         // the interpreter function we just handled.
+         // Since thread safety was not enabled at the time we rewound, there was
+         // no lock taken and even-though we should be locking the rest of this
+         // interpreter handling/modifying code (since there might be threads in
+         // flight), we can't because there would not be any lock guard to release the
+         // locks
+         if (fInitialMutex || fInitialMutex.fRecurseCount !=0)
+            Error("ApplyToInterpreterMutex",
+                 "After returning from user code that turned on thread safety support, we notice that fInitialMutex is already used ... "
+                 "so the rest of this function/stack execution might have race condition (with the other thread that thinks it has exclusive access to the interpreter state.");
       }
    }
-   fInitialMutex.pop_back();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -9393,13 +9492,13 @@ void TCling::ApplyToInterpreterMutex(void *delta)
 
 void *TCling::RewindInterpreterMutex()
 {
-   if (fInitialMutex.back()) {
-      std::unique_ptr<TVirtualRWMutex::StateDelta> uniqueP = gCoreMutex->Rewind(*fInitialMutex.back().fState);
+   if (fInitialMutex) {
       // Need to start a new recurse count.
-      fInitialMutex.emplace_back();
+      std::unique_ptr<MutexStateAndRecurseCountDelta> uniqueP(new MutexStateAndRecurseCountDelta());
+      std::swap(uniqueP->fInitialState, fInitialMutex);
+      uniqueP->fDelta = gCoreMutex->Rewind(*uniqueP->fInitialState.fState);
       return uniqueP.release();
    }
-   // Need to start a new recurse count.
-   fInitialMutex.emplace_back();
+   R__ASSERT(fInitialMutex.fRecurseCount == 0);
    return nullptr;
 }

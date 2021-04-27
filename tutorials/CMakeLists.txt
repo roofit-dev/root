@@ -84,7 +84,6 @@ if (NOT dataframe)
     list(APPEND dataframe_veto tmva/tmva*.C)
 elseif(MSVC AND NOT win_broken_tests)
     list(APPEND dataframe_veto dataframe/*.py)
-    list(APPEND dataframe_veto tmva/tmva003_RReader.C)
 endif()
 
 if(NOT sqlite)
@@ -110,7 +109,11 @@ if(NOT ROOT_roofit_FOUND)
                    roofit/*.py)
 else()
   if(MSVC AND NOT win_broken_tests)
-    set(roofit_veto roofit/rf401_importttreethx.C)
+    set(roofit_veto roofit/rf104_classfactory.C
+                    roofit/rf104_classfactory.py
+                    roofit/rf401_importttreethx.C
+                    roofit/rf512_wsfactory_oper.C
+    )
   endif()
 endif()
 
@@ -261,11 +264,12 @@ if(root7)
                  v7/fitpanel.cxx
                  v7/fitpanel6.cxx
       )
-  if(MSVC AND NOT win_broken_tests)
-    list(APPEND root7_veto v7/box.cxx v7/draw*.cxx )
+  if(NOT davix)
+    list(APPEND root7_veto v7/ntuple/ntpl003_lhcbOpenData.C)
+    list(APPEND root7_veto v7/ntuple/ntpl004_dimuon.C)
   endif()
   if(NOT dataframe)
-    set(root7_veto v7/ntuple/ntpl004_dimuon.C)
+    list(APPEND root7_veto v7/ntuple/ntpl004_dimuon.C)
   endif()
 else()
   file(GLOB v7_veto_files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/ v7/*.cxx v7/*/*.cxx v7/*.C v7/*/*.C)

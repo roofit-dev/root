@@ -2,9 +2,7 @@
 
 // TODO: add dependency from JSROOT components
 
-sap.ui.define([
-    'rootui5/eve7/lib/EveManager'
-], function(EveManager) {
+sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
    "use strict";
 
@@ -318,6 +316,10 @@ sap.ui.define([
       if (this.mgr.MatchSelection(this.mgr.global_highlight_id, obj3d.eve_el, indx))
          return true;
 
+      // when send queue below threshold, ignre highlight
+      if (this.mgr.CheckSendThreshold())
+         return true;
+
       let is_multi  = false;
       let is_secsel = indx !== undefined;
 
@@ -337,6 +339,10 @@ sap.ui.define([
       // QQQQ This will have to change for multi client support.
       // Highlight will always be multi and we will have to track
       // which highlight is due to our connection.
+
+      // when send queue below threshold, ignre highlight
+      if (this.mgr.CheckSendThreshold())
+         return true;
 
       let is_multi  = false;
       let is_secsel = false;
@@ -364,7 +370,7 @@ sap.ui.define([
          let prl = pthis.mgr.GetElement(rec.primary);
          if (prl && prl.fSceneId == pthis.id)
          {
-            pthis.SelectElement(selection_obj, rec.primary, rec.sec_idcs);
+            pthis.SelectElement(selection_obj, rec.primary, rec.sec_idcs, rec.extra );
          }
          else // XXXXX why else ... should we not process all of them?!!!!
          {
@@ -374,20 +380,19 @@ sap.ui.define([
                if (eli && eli.fSceneId == pthis.id)
                {
                   // console.log("CHECK select IMPLIED", pthis);
-                  pthis.SelectElement(selection_obj, impId, rec.sec_idcs);
+                  pthis.SelectElement(selection_obj, impId, rec.sec_idcs, rec.extra);
                }
             }
          }
       });
    }
 
-   EveScene.prototype.SelectElement = function(selection_obj, element_id, sec_idcs)
+   EveScene.prototype.SelectElement = function(selection_obj, element_id, sec_idcs, extra)
    {
       let obj3d = this.getObj3D( element_id );
-      if ( ! obj3d) return;
+      if (!obj3d) return;
 
       let opass = this.glctrl.viewer.outline_pass;
-
       opass.id2obj_map[element_id] = opass.id2obj_map[element_id] || [];
 
       if (opass.id2obj_map[element_id][selection_obj.fElementId] !== undefined)
@@ -397,34 +402,31 @@ sap.ui.define([
 
       let stype  = selection_obj.fName.endsWith("Selection") ? "select" : "highlight";
       let estype = THREE.OutlinePass.selection_enum[stype];
-
-      // console.log("EveScene.SelectElement ", selection_obj.fName, element_id, selection_obj.fElementId, this.glctrl.viewer.outline_pass.id2obj_map);
+      let oe = this.mgr.GetElement(element_id);
+      // console.log("EveScene.SelectElement ", selection_obj.fName, oe.fName, selection_obj.fElementId, this.glctrl.viewer.outline_pass.id2obj_map);
 
       let res = {
          "sel_type" : estype,
-         "sec_sel"  : false,
+         "sec_sel"  : (oe.fSecondarySelect && sec_idcs.length > 0) ? true: false,
          "geom"     : []
       };
 
-      if (sec_idcs === undefined || sec_idcs.length == 0)
+      // exit if you try to highlight an object that has already been selected
+      if (estype == THREE.OutlinePass.selection_enum["highlight"] &&
+          opass.id2obj_map[element_id][this.mgr.global_selection_id] !== undefined)
       {
-         // exit if you try to highlight an object that has already been selected
-         if (estype == THREE.OutlinePass.selection_enum["highlight"] &&
-            opass.id2obj_map[element_id][this.mgr.global_selection_id] !== undefined)
-         {
-            return;
-         }
+         if (!res.sec_sel)
+         return;
+      }
 
-         opass.id2obj_map[element_id] = [];
-         res.geom.push(obj3d);
-      }
-      else
-      {
-         let ctrl = obj3d.get_ctrl();
-         ctrl.DrawForSelection(sec_idcs, res);
-         res.sec_sel = true;
-      }
+      if (!res.sec_sel) opass.id2obj_map[element_id] = [];
+      let ctrl = obj3d.get_ctrl();
+      ctrl.DrawForSelection(sec_idcs, res, extra);
       opass.id2obj_map[element_id][selection_obj.fElementId] = res;
+
+      if (stype == "highlight" && selection_obj.sel_list) {
+         this.glctrl.viewer.remoteToolTip(selection_obj.sel_list[0].tooltip);
+      }
    }
 
    EveScene.prototype.UnselectElement = function(selection_obj, element_id)

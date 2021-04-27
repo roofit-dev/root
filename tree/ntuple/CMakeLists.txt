@@ -63,8 +63,13 @@ SOURCES
 LINKDEF
   LinkDef.h
 DEPENDENCIES
+  Imt
   RIO
   ROOTVecOps
 )
+
+if(MSVC)
+  target_compile_definitions(ROOTNTuple PRIVATE _USE_MATH_DEFINES)
+endif()
 
 ROOT_ADD_TEST_SUBDIRECTORY(v7/test)

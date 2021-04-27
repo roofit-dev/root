@@ -39,6 +39,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTDataFrame
     ROOT/RDFHelpers.hxx
     ROOT/RLazyDS.hxx
     ROOT/RResultPtr.hxx
+    ROOT/RResultHandle.hxx
     ROOT/RRootDS.hxx
     ROOT/RSnapshotOptions.hxx
     ROOT/RTrivialDS.hxx
@@ -89,6 +90,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTDataFrame
     src/RDFHistoModels.cxx
     src/RDFInterfaceUtils.cxx
     src/RDFUtils.cxx
+    src/RDFHelpers.cxx
     src/RFilterBase.cxx
     src/RJittedAction.cxx
     src/RJittedDefine.cxx
@@ -125,5 +127,9 @@ endif()
 if(root7)
   target_sources(ROOTDataFrame PRIVATE src/RNTupleDS.cxx)
 endif(root7)
+
+if(MSVC)
+  target_compile_definitions(ROOTDataFrame PRIVATE _USE_MATH_DEFINES)
+endif()
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)
