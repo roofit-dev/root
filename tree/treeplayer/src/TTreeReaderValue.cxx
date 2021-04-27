@@ -16,17 +16,18 @@
 #include "TBranchElement.h"
 #include "TBranchRef.h"
 #include "TBranchSTL.h"
+#include "TBranchObject.h"
 #include "TBranchProxyDirector.h"
 #include "TClassEdit.h"
 #include "TFriendElement.h"
 #include "TFriendProxy.h"
 #include "TLeaf.h"
 #include "TTreeProxyGenerator.h"
-#include "TTreeReaderValue.h"
 #include "TRegexp.h"
 #include "TStreamerInfo.h"
 #include "TStreamerElement.h"
 #include "TNtuple.h"
+#include "TROOT.h"
 #include <vector>
 
 // clang-format off
@@ -407,8 +408,8 @@ TBranch *ROOT::Internal::TTreeReaderValueBase::SearchBranchWithCompositeName(TLe
          return nullptr;
       }
       else {
-         TDictionary *tempDict = TDictionary::GetDictionary(myLeaf->GetTypeName());
-         if (tempDict && tempDict->IsA() == TDataType::Class() && TDictionary::GetDictionary(((TDataType*)tempDict)->GetTypeName()) == fDict){
+         TDataType *tempDict = gROOT->GetType(myLeaf->GetTypeName());
+         if (tempDict && fDict->IsA() == TDataType::Class() && tempDict->GetType() == ((TDataType*)fDict)->GetType()) {
             //fLeafOffset = myLeaf->GetOffset() / 4;
             branchActualType = fDict;
             fLeaf = myLeaf;
@@ -452,6 +453,8 @@ void ROOT::Internal::TTreeReaderValueBase::CreateProxy() {
    }
 
    auto branchFromFullName = fTreeReader->GetTree()->GetBranch(fBranchName);
+   if (branchFromFullName == nullptr) // use the slower but more thorough FindBranch as fallback
+      branchFromFullName = fTreeReader->GetTree()->FindBranch(fBranchName);
 
    if (!fDict) {
       const char* brDataType = "{UNDETERMINED}";
@@ -742,6 +745,12 @@ const char* ROOT::Internal::TTreeReaderValueBase::GetBranchDataType(TBranch* bra
       if ((!dataTypeName || !dataTypeName[0])
           && branch->IsA() == TBranch::Class()) {
          TLeaf *myLeaf = branch->GetLeaf(branch->GetName());
+         if (!myLeaf) {
+            myLeaf = branch->FindLeaf(branch->GetName());
+         }
+         if (!myLeaf && branch->GetListOfLeaves()->GetEntries() == 1) {
+            myLeaf = static_cast<TLeaf *>(branch->GetListOfLeaves()->UncheckedAt(0));
+         }
          if (myLeaf){
             TDictionary *myDataType = TDictionary::GetDictionary(myLeaf->GetTypeName());
             if (myDataType && myDataType->IsA() == TDataType::Class()){

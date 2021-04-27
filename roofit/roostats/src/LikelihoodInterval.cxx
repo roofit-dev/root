@@ -68,7 +68,6 @@
 /*
 // for debugging
 #include "RooNLLVar.h"
-#include "RooProfileLL.h"
 #include "RooDataSet.h"
 #include "RooAbsData.h"
 */
@@ -253,8 +252,10 @@ bool LikelihoodInterval::CreateMinimizer() {
       }
    }
 
+   const auto& config = GetGlobalRooStatsConfig();
+
    // now do binding of NLL with a functor for Minimizer
-   if (RooStats::IsNLLOffset() ) {
+   if (config.useLikelihoodOffset) {
       ccoutI(InputArguments) << "LikelihoodInterval: using nll offset - set all RooAbsReal to hide the offset  " << std::endl;
       RooAbsReal::setHideOffset(kFALSE); // need to keep this false
    }

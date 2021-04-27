@@ -1,12 +1,4 @@
-#include "gtest/gtest.h"
-
-#include <ROOT/RPageAllocator.hxx>
-#include <ROOT/RPagePool.hxx>
-
-using RPage = ROOT::Experimental::Detail::RPage;
-using RPageAllocatorHeap = ROOT::Experimental::Detail::RPageAllocatorHeap;
-using RPageDeleter = ROOT::Experimental::Detail::RPageDeleter;
-using RPagePool = ROOT::Experimental::Detail::RPagePool;
+#include "ntuple_test.hxx"
 
 TEST(Pages, Allocation)
 {
@@ -28,7 +20,7 @@ TEST(Pages, Pool)
    EXPECT_TRUE(page.IsNull());
    pool.ReturnPage(page); // should not crash
 
-   RPage::RClusterInfo clusterInfo;
+   RPage::RClusterInfo clusterInfo(2, 40);
    page = RPage(1, &page, 10, 1);
    EXPECT_NE(nullptr, page.TryGrow(10));
    page.SetWindow(50, clusterInfo);
@@ -44,9 +36,18 @@ TEST(Pages, Pool)
    EXPECT_TRUE(page.IsNull());
    page = pool.GetPage(1, 55);
    EXPECT_FALSE(page.IsNull());
-   EXPECT_EQ(50U, page.GetRangeFirst());
-   EXPECT_EQ(59U, page.GetRangeLast());
+   EXPECT_EQ(50U, page.GetGlobalRangeFirst());
+   EXPECT_EQ(59U, page.GetGlobalRangeLast());
+   EXPECT_EQ(10U, page.GetClusterRangeFirst());
+   EXPECT_EQ(19U, page.GetClusterRangeLast());
 
+   page = pool.GetPage(1, ROOT::Experimental::RClusterIndex(0, 15));
+   EXPECT_TRUE(page.IsNull());
+   page = pool.GetPage(1, ROOT::Experimental::RClusterIndex(2, 15));
+   EXPECT_FALSE(page.IsNull());
+
+   pool.ReturnPage(page);
+   EXPECT_EQ(0U, nCallDeleter);
    pool.ReturnPage(page);
    EXPECT_EQ(0U, nCallDeleter);
    pool.ReturnPage(page);

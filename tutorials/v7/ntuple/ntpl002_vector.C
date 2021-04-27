@@ -13,6 +13,11 @@
 // Functionality, interface, and data format is still subject to changes.
 // Do not use for real data!
 
+// Until C++ runtime modules are universally used, we explicitly load the ntuple library.  Otherwise
+// triggering autoloading from the use of templated types would require an exhaustive enumeration
+// of "all" template instances in the LinkDef file.
+R__LOAD_LIBRARY(ROOTNTuple)
+
 #include <ROOT/RNTuple.hxx>
 #include <ROOT/RNTupleModel.hxx>
 
@@ -120,8 +125,11 @@ void Read()
    auto ntuple = RNTupleReader::Open(std::move(model), "F", kNTupleFileName);
 
    // Quick overview of the ntuple's key meta-data
-   std::cout << ntuple->GetInfo();
-   // In a future version of RNTuple, there will be support for ntuple->Show() and ntuple->Scan()
+   ntuple->PrintInfo();
+
+   std::cout << "Entry number 42 in JSON format:" << std::endl;
+   ntuple->Show(41);
+   // In a future version of RNTuple, there will be support for ntuple->Scan()
 
    TCanvas *c2 = new TCanvas("c2", "Dynamic Filling Example", 200, 10, 700, 500);
    TH1F h("h", "This is the px distribution", 100, -4, 4);

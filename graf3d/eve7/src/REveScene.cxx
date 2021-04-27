@@ -17,10 +17,9 @@
 #include <ROOT/REveClient.hxx>
 #include <ROOT/RWebWindow.hxx>
 
-#include "json.hpp"
-
 #include <cassert>
 
+#include <nlohmann/json.hpp>
 
 using namespace ROOT::Experimental;
 namespace REX = ROOT::Experimental;
@@ -56,15 +55,6 @@ REveScene::~REveScene()
    REX::gEve->GetScenes()->RemoveElement(this);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// Virtual from REveElement; here we simply append this scene to
-/// the list.
-
-void REveScene::CollectSceneParents(List_t& scenes)
-{
-   scenes.push_back(this);
-}
-
 //------------------------------------------------------------------------------
 
 void REveScene::AddSubscriber(std::unique_ptr<REveClient> &&sub)
@@ -89,6 +79,20 @@ void REveScene::RemoveSubscriber(unsigned id)
    fSubscribers.erase(std::remove_if(fSubscribers.begin(), fSubscribers.end(), pred), fSubscribers.end());
 }
 
+// Add Button in client gui with this command
+void REveScene::AddCommand(const std::string &name, const std::string &icon, const REveElement *element, const std::string &action)
+{
+   static const REveException eh("REveScene::AddCommand ");
+   if (element->GetElementId() && element->IsA())
+   {
+      fCommands.emplace_back(name, icon, element, action);
+   }
+   else
+   {
+      throw eh + "Element id and dictionary has to be defined";
+   }
+}
+
 void REveScene::BeginAcceptingChanges()
 {
    if (fAcceptingChanges) return;
@@ -100,21 +104,11 @@ void REveScene::SceneElementChanged(REveElement* element)
 {
    assert(fAcceptingChanges);
 
-   fChangedElements.insert(element);
+   fChangedElements.push_back(element);
 }
-
-void REveScene::SceneElementAdded(REveElement* element)
-{
-   assert(fAcceptingChanges);
-   // printf("REveScene::SceneElementAdded(\n");
-   fAddedElements.push_back(element);
-}
-
 
 void REveScene::SceneElementRemoved(ElementId_t id)
 {
-   assert(fAcceptingChanges);
-
    fRemovedElements.push_back(id);
 }
 
@@ -262,24 +256,16 @@ void REveScene::StreamRepresentationChanges()
 
       nlohmann::json jobj = {};
       jobj["fElementId"] = el->GetElementId();
-      jobj["changeBit"] = bits;
-      if (bits & kCBVisibility)
-      {
-         jobj["fRnrSelf"]     = el->GetRnrSelf();
-         jobj["fRnrChildren"] = el->GetRnrChildren();
-      }
+      jobj["changeBit"]  = bits;
 
-      if (bits & kCBColorSelection)
+      if (bits & kCBElementAdded || bits & kCBObjProps)
       {
-         el->WriteCoreJson(jobj, -1);
-      }
+         if (gDebug > 0 && bits & kCBElementAdded)
+         {
+            Info("REveScene::StreamRepresentationChanges", "new element change %s %d\n",
+                 el->GetCName(), bits);
+         }
 
-      if (bits & kCBTransBBox)
-      {
-      }
-
-      if (bits & kCBObjProps)
-      {
          Int_t rd_size = el->WriteCoreJson(jobj, fTotalBinarySize);
          if (rd_size) {
             assert (rd_size % 4 == 0);
@@ -287,29 +273,30 @@ void REveScene::StreamRepresentationChanges()
             fElsWithBinaryData.push_back(el);
          }
       }
+      else
+      {
+        if (bits & kCBVisibility)
+        {
+          jobj["fRnrSelf"]     = el->GetRnrSelf();
+          jobj["fRnrChildren"] = el->GetRnrChildren();
+        }
+
+        if (bits & kCBColorSelection)
+        {
+          el->WriteCoreJson(jobj, -1);
+        }
+
+        if (bits & kCBTransBBox)
+        {
+        }
+      }
 
       jarr.push_back(jobj);
 
       el->ClearStamps();
    }
 
-   for (auto &el : fAddedElements) {
-
-      if (gDebug > 0)
-         Info("REveScene::StreamRepresentationChanges", "new element change %s", el->GetCName());
-
-      nlohmann::json jobj = {};
-      Int_t rd_size = el->WriteCoreJson(jobj, fTotalBinarySize);
-      jarr.push_back(jobj);
-      if (rd_size) {
-         assert (rd_size % 4 == 0);
-         fTotalBinarySize += rd_size;
-         fElsWithBinaryData.push_back(el);
-      }
-   }
-
    fChangedElements.clear();
-   fAddedElements.clear();
    fRemovedElements.clear();
 
    // render data for total change
@@ -329,7 +316,7 @@ void REveScene::StreamRepresentationChanges()
    fOutputJson = msg.dump();
 
    if (gDebug > 0)
-      Info("REveScene::StreamRepresentationChanges", "class: %s  changes %s ...", GetCName(), fOutputJson.substr(0,30).c_str() );
+      Info("REveScene::StreamRepresentationChanges", "class: %s  changes %s ...", GetCName(),  msg.dump(1).c_str() );
 }
 
 void REveScene::SendChangesToSubscribers()
@@ -349,10 +336,10 @@ void REveScene::SendChangesToSubscribers()
 Bool_t REveScene::IsChanged() const
 {
    if (gDebug > 0)
-     ::Info("REveScene::IsChanged","%s (changed=%d, added=%d, removed=%d)", GetCName(),
-          (int) fChangedElements.size(), (int) fAddedElements.size(), (int) fRemovedElements.size());
+     ::Info("REveScene::IsChanged","%s (changed_or_added=%d, removed=%d)", GetCName(),
+          (int) fChangedElements.size(), (int) fRemovedElements.size());
 
-   return ! (fChangedElements.empty() && fAddedElements.empty() && fRemovedElements.empty());
+   return ! (fChangedElements.empty() && fRemovedElements.empty());
 }
 
 

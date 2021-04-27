@@ -12,13 +12,14 @@
 //
 //  Defining Executor classes to be used in TMVA
 // wrapping the functionality of the ROOT TThreadExecutor and
-// ROOT TSequential Executor 
-//  
+// ROOT TSequential Executor
+//
 /////////////////////////////////////////////////////////////////////////
 #ifndef ROOT_TMVA_Executor
 #define ROOT_TMVA_Executor
 
 #include <memory>
+#include <vector>
 
 #include <ROOT/TSequentialExecutor.hxx>
 #ifdef R__USE_IMT
@@ -117,10 +118,16 @@ public:
       else fSeqExecImpl->Foreach(func, args); 
    }
    template<class Function, class INTEGER>
+#ifdef R__USE_IMT 
    void Foreach(Function func, ROOT::TSeq<INTEGER> args, unsigned nChunks = 0){
       if (fMTExecImpl) fMTExecImpl->Foreach(func,args, nChunks);
-      else fSeqExecImpl->Foreach(func, args); 
+      else fSeqExecImpl->Foreach(func, args);
    }
+#else
+    void Foreach(Function func, ROOT::TSeq<INTEGER> args, unsigned /*nChunks*/ = 0){
+      fSeqExecImpl->Foreach(func, args);
+    }
+#endif
 
    /// Wrap TExecutor::Map functions
    template<class F, class Cond = noReferenceCond<F>>
