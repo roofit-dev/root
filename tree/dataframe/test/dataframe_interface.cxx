@@ -61,6 +61,7 @@ TEST(RDataFrameInterface, CreateAliases)
    EXPECT_ANY_THROW(aliased_tdf.Alias("c4", "c")) << "No exception thrown when trying to alias a non-existing column.";
    EXPECT_ANY_THROW(aliased_tdf.Alias("c0", "c2")) << "No exception thrown when specifying an alias name which is the name of a column.";
    EXPECT_ANY_THROW(aliased_tdf.Alias("c2", "c1")) << "No exception thrown when re-using an alias for a different column.";
+   EXPECT_ANY_THROW(aliased_tdf.Alias("a-b", "c1")) << "No exception thrown when the alias is not a valid C++ variable name.";
 }
 
 TEST(RDataFrameInterface, CheckAliasesPerChain)
@@ -280,12 +281,12 @@ TEST(RDataFrameInterface, InvalidDefine)
    try {
       df.Define("1", [] { return true; });
    } catch (const std::runtime_error &e) {
-      EXPECT_STREQ("Cannot define column \"1\": not a valid C++ variable name.", e.what());
+      EXPECT_STREQ("RDataFrame::Define: cannot define column \"1\". Not a valid C++ variable name.", e.what());
    }
    try {
       df.Define("a-b", "true");
    } catch (const std::runtime_error &e) {
-      EXPECT_STREQ("Cannot define column \"a-b\": not a valid C++ variable name.", e.what());
+      EXPECT_STREQ("RDataFrame::Define: cannot define column \"a-b\". Not a valid C++ variable name.", e.what());
    }
 }
 
@@ -546,4 +547,85 @@ TEST(RDataFrameInterface, GetColumnTypeOfAlias)
       auto df = ROOT::RDataFrame(t).Alias("y", "x");
       EXPECT_EQ(df.GetColumnType("y"), "Int_t");
    }
+}
+
+TEST(RDataFrameInterface, JittedExprWithMultipleReturns)
+{
+   const auto counts = ROOT::RDataFrame(1)
+                          .Define("x", [] { return 42; })
+                          .Filter("if (x == 42) { return true; } else { return false; }")
+                          .Count()
+                          .GetValue();
+   EXPECT_EQ(counts, 1ull);
+}
+
+TEST(RDataFrameInterface, JittedExprWithManyVars)
+{
+   std::string expr = "x + x + x + x";
+   for (int i = 0; i < 10; ++i) {
+      expr = expr + '+' + expr;
+   }
+   expr = expr + ">0";
+   const auto counts = ROOT::RDataFrame(1)
+                          .Define("x", [] { return 1; })
+                          .Filter(expr)
+                          .Count()
+                          .GetValue();
+   EXPECT_EQ(counts, 1ull);
+}
+
+TEST(RDataFrameInterface, Describe)
+{
+   // empty dataframe
+   RDataFrame df1(1);
+   const auto ref1 = "Property                Value\n"
+                     "--------                -----\n"
+                     "Columns in total            0\n"
+                     "Columns from defines        0\n"
+                     "Event loops run             0\n"
+                     "Processing slots            1\n"
+                     "\n"
+                     "Column  Type    Origin\n"
+                     "------  ----    ------\n";
+   EXPECT_EQ(df1.Describe(), ref1);
+
+   // create in-memory tree
+   TTree tree("tree", "tree");
+   int myInt = 1u;
+   float myFloat = 1.f;
+   tree.Branch("myInt", &myInt, "myInt/I");
+   tree.Branch("myFloat", &myFloat, "myFloat/F");
+   tree.Fill();
+
+   // dataframe with various data types
+   RDataFrame df2(tree);
+   auto df3 = df2.Define("myVec", "ROOT::RVec<float>({1, 2, 3})")
+                 .Define("myLongColumnName", "1u");
+   df3.Sum("myInt").GetValue(); // trigger the event loop once
+   const auto ref2 = "Property                Value\n"
+                     "--------                -----\n"
+                     "Columns in total            4\n"
+                     "Columns from defines        2\n"
+                     "Event loops run             1\n"
+                     "Processing slots            1\n"
+                     "\n"
+                     "Column                  Type                            Origin\n"
+                     "------                  ----                            ------\n"
+                     "myVec                   ROOT::VecOps::RVec<float>       Define\n"
+                     "myLongColumnName        unsigned int                    Define\n"
+                     "myInt                   Int_t                           Dataset\n"
+                     "myFloat                 Float_t                         Dataset";
+   EXPECT_EQ(df3.Describe(), ref2);
+}
+
+// https://sft.its.cern.ch/jira/browse/ROOT-9558
+TEST(RDFSimpleTests, LeafWithDifferentNameThanBranch)
+{
+   TTree t("t", "t");
+   int x = 42;
+   t.Branch("x", &x, "y/I");
+   t.Fill();
+
+   auto m = ROOT::RDataFrame(t).Max<int>("x");
+   EXPECT_EQ(*m, 42);
 }
