@@ -18,7 +18,7 @@ const char *shortHelp =
 #include "rootclingCommandLineOptionsHelp.h"
 
 #include "RConfigure.h"
-#include <ROOT/RConfig.h>
+#include <ROOT/RConfig.hxx>
 
 #include <iostream>
 #include <iomanip>
@@ -2153,6 +2153,12 @@ static bool ModuleContainsHeaders(TModuleGenerator &modGen, clang::Module *modul
 static bool CheckModuleValid(TModuleGenerator &modGen, const std::string &resourceDir, cling::Interpreter &interpreter,
                            StringRef LinkdefPath, const std::string &moduleName)
 {
+#ifdef __APPLE__
+
+   if (moduleName == "Krb5Auth" || moduleName == "GCocoa" || moduleName == "GQuartz")
+      return true;
+#endif
+
    clang::CompilerInstance *CI = interpreter.getCI();
    clang::HeaderSearch &headerSearch = CI->getPreprocessor().getHeaderSearchInfo();
    headerSearch.loadTopLevelSystemModules();
