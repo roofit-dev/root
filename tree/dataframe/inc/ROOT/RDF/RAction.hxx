@@ -70,13 +70,11 @@ public:
 template <std::size_t... S, typename... ColTypes>
 void InitRDFValues(unsigned int slot, std::vector<RTypeErasedColumnValue> &values, TTreeReader *r,
                    const ColumnNames_t &bn, const RBookedCustomColumns &customCols, std::index_sequence<S...>,
-                   ROOT::TypeTraits::TypeList<ColTypes...>)
+                   ROOT::TypeTraits::TypeList<ColTypes...>, const std::array<bool, sizeof...(S)> &isTmpColumn)
 {
-   std::array<bool, sizeof...(S)> isTmpColumn;
-   for (auto i = 0u; i < isTmpColumn.size(); ++i)
-      isTmpColumn[i] = customCols.HasName(bn.at(i));
-
    using expander = int[];
+   (void)slot; // avoid bogus 'unused parameter' warning
+   (void)r; // avoid bogus 'unused parameter' warning
    (void)expander{(values.emplace_back(std::make_unique<RColumnValue<ColTypes>>()), 0)..., 0};
    (void)expander{(isTmpColumn[S]
                       ? values[S].Cast<ColTypes>()->SetTmpColumn(slot, customCols.GetColumns().at(bn.at(S)).get())
@@ -108,13 +106,23 @@ class RActionCRTP<RAction<Helper, PrevDataFrame, ColumnTypes_t>> : public RActio
    const std::shared_ptr<PrevDataFrame> fPrevDataPtr;
    PrevDataFrame &fPrevData;
 
+protected:
+   /// The nth flag signals whether the nth input column is a custom column or not.
+   std::array<bool, ColumnTypes_t::list_size> fIsCustomColumn;
+
 public:
    using TypeInd_t = std::make_index_sequence<ColumnTypes_t::list_size>;
 
-   RActionCRTP(Helper &&h, const ColumnNames_t &bl, std::shared_ptr<PrevDataFrame> pd,
-               const RBookedCustomColumns &customColumns)
-      : RActionBase(pd->GetLoopManagerUnchecked(), bl, customColumns), fHelper(std::forward<Helper>(h)),
-        fPrevDataPtr(std::move(pd)), fPrevData(*fPrevDataPtr) { }
+   RActionCRTP(Helper &&h, const ColumnNames_t &columns, std::shared_ptr<PrevDataFrame> pd,
+               RBookedCustomColumns &&customColumns)
+      : RActionBase(pd->GetLoopManagerUnchecked(), columns, std::move(customColumns)), fHelper(std::forward<Helper>(h)),
+        fPrevDataPtr(std::move(pd)), fPrevData(*fPrevDataPtr), fIsCustomColumn()
+   {
+      const auto nColumns = columns.size();
+      const auto &customCols = GetCustomColumns();
+      for (auto i = 0u; i < nColumns; ++i)
+         fIsCustomColumn[i] = customCols.HasName(columns[i]);
+   }
 
    RActionCRTP(const RActionCRTP &) = delete;
    RActionCRTP &operator=(const RActionCRTP &) = delete;
@@ -213,13 +221,13 @@ public:
    using ActionCRTP_t = RActionCRTP<RAction<Helper, PrevDataFrame, ColumnTypes_t>>;
 
    RAction(Helper &&h, const ColumnNames_t &bl, std::shared_ptr<PrevDataFrame> pd,
-           const RBookedCustomColumns &customColumns)
-      : ActionCRTP_t(std::forward<Helper>(h), bl, std::move(pd), customColumns), fValues(GetNSlots()) { }
+           RBookedCustomColumns &&customColumns)
+      : ActionCRTP_t(std::forward<Helper>(h), bl, std::move(pd), std::move(customColumns)), fValues(GetNSlots()) { }
 
    void InitColumnValues(TTreeReader *r, unsigned int slot)
    {
       InitRDFValues(slot, fValues[slot], r, RActionBase::GetColumnNames(), RActionBase::GetCustomColumns(),
-                    typename ActionCRTP_t::TypeInd_t{});
+                    typename ActionCRTP_t::TypeInd_t{}, ActionCRTP_t::fIsCustomColumn);
    }
 
    template <std::size_t... S>
@@ -261,8 +269,8 @@ class RAction<SnapshotHelper<ColTypes...>, PrevDataFrame, ROOT::TypeTraits::Type
 
 public:
    RAction(SnapshotHelper<ColTypes...> &&h, const ColumnNames_t &bl, std::shared_ptr<PrevDataFrame> pd,
-           const RBookedCustomColumns &customColumns)
-      : ActionCRTP_t(std::forward<SnapshotHelper<ColTypes...>>(h), bl, std::move(pd), customColumns),
+           RBookedCustomColumns &&customColumns)
+      : ActionCRTP_t(std::forward<SnapshotHelper<ColTypes...>>(h), bl, std::move(pd), std::move(customColumns)),
         fValues(GetNSlots())
    {
    }
@@ -270,7 +278,7 @@ public:
    void InitColumnValues(TTreeReader *r, unsigned int slot)
    {
       InitRDFValues(slot, fValues[slot], r, RActionBase::GetColumnNames(), RActionBase::GetCustomColumns(),
-                    typename ActionCRTP_t::TypeInd_t{}, ColumnTypes_t{});
+                    typename ActionCRTP_t::TypeInd_t{}, ColumnTypes_t{}, ActionCRTP_t::fIsCustomColumn);
    }
 
    template <std::size_t... S>
@@ -301,8 +309,8 @@ class RAction<SnapshotHelperMT<ColTypes...>, PrevDataFrame, ROOT::TypeTraits::Ty
 
 public:
    RAction(SnapshotHelperMT<ColTypes...> &&h, const ColumnNames_t &bl, std::shared_ptr<PrevDataFrame> pd,
-           const RBookedCustomColumns &customColumns)
-      : ActionCRTP_t(std::forward<SnapshotHelperMT<ColTypes...>>(h), bl, std::move(pd), customColumns),
+           RBookedCustomColumns &&customColumns)
+      : ActionCRTP_t(std::forward<SnapshotHelperMT<ColTypes...>>(h), bl, std::move(pd), std::move(customColumns)),
         fValues(GetNSlots())
    {
    }
@@ -310,7 +318,7 @@ public:
    void InitColumnValues(TTreeReader *r, unsigned int slot)
    {
       InitRDFValues(slot, fValues[slot], r, RActionBase::GetColumnNames(), RActionBase::GetCustomColumns(),
-                    typename ActionCRTP_t::TypeInd_t{}, ColumnTypes_t{});
+                    typename ActionCRTP_t::TypeInd_t{}, ColumnTypes_t{}, ActionCRTP_t::fIsCustomColumn);
    }
 
    template <std::size_t... S>

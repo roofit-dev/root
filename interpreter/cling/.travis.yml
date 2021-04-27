@@ -45,12 +45,13 @@ matrix:
     # run across all platforms. By interleaving OS X, the hope is to get in the
     # queue faster while not blocking Linux builds from occuring.
     - os: linux
+      dist: trusty
       env: COMPILER=g++-4.8 CCOMPILER=gcc-4.8 NIGHTLY_CRON_SYNC=1
       compiler: gcc-4.8
 
     - os: osx
       env: COMPILER=clang++ CCOMPILER=clang
-      osx_image: xcode8.3
+      osx_image: xcode11
       compiler: clang
 
     - os: linux
@@ -71,10 +72,10 @@ matrix:
 
     - os: osx
       env: COMPILER=g++-7 CCOMPILER=gcc-7
-      osx_image: xcode8.3
-      before_install:
-        - brew cask uninstall oclint
-        - brew install gcc@7
+      addons:
+        homebrew:
+          packages: gcc@7
+          update: true
       compiler: gcc-7
 
     - os: linux
@@ -99,12 +100,10 @@ matrix:
       compiler: clang
 
     - os: linux
-      env: CXXLIB=libstdc++ COMPILER=clang++-5.0 CCOMPILER=clang-5.0
+      env: CXXLIB=libstdc++ COMPILER=clang++ CCOMPILER=clang
       addons:
         apt:
-          sources: llvm-toolchain-trusty-5.0
-          packages: clang-5.0
-      compiler: clang-5.0
+      compiler: clang
 
 #  allow_failures:
 #    # clang-3.5 crashes compiling clang-3.9 with libc++-3.9

@@ -1482,7 +1482,7 @@ bool TH1::CheckBinLimits(const TAxis* a1, const TAxis * a2)
          for ( int i = 0; i < fN; ++i ) {
             // for i==fN (nbin+1) a->GetBinWidth() returns last bin width
             // we do not need to exclude that case
-            double binWidth = a1->GetBinWidth(i); 
+            double binWidth = a1->GetBinWidth(i);
             if ( ! TMath::AreEqualAbs( h1Array->GetAt(i), h2Array->GetAt(i), binWidth*1E-10 ) ) {
                throw DifferentBinLimits();
                return false;
@@ -1532,7 +1532,7 @@ bool TH1::CheckBinLabels(const TAxis* a1, const TAxis * a2)
 bool TH1::CheckAxisLimits(const TAxis *a1, const TAxis *a2 )
 {
    double firstBin = a1->GetBinWidth(1);
-   double lastBin = a1->GetBinWidth( a1->GetNbins() ); 
+   double lastBin = a1->GetBinWidth( a1->GetNbins() );
    if ( ! TMath::AreEqualAbs(a1->GetXmin(), a2->GetXmin(), firstBin* 1.E-10) ||
         ! TMath::AreEqualAbs(a1->GetXmax(), a2->GetXmax(), lastBin*1.E-10) ) {
       throw DifferentAxisLimits();
@@ -3636,38 +3636,127 @@ Int_t TH1::FindFixBin(Double_t x, Double_t y, Double_t z) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Find first bin with content > threshold for axis (1=x, 2=y, 3=z)
 /// if no bins with content > threshold is found the function returns -1.
+/// The search will occur between the specified first and last bin. Specifying
+/// the value of the last bin to search to less than zero will search until the
+/// last defined bin.
 
-Int_t TH1::FindFirstBinAbove(Double_t threshold, Int_t axis) const
+Int_t TH1::FindFirstBinAbove(Double_t threshold, Int_t axis, Int_t firstBin, Int_t lastBin) const
 {
    if (fBuffer) ((TH1*)this)->BufferEmpty();
 
-   if (axis != 1) {
+   if (axis < 1 || (axis > 1 && GetDimension() == 1 ) ||
+       ( axis > 2 && GetDimension() == 2 ) || ( axis > 3 && GetDimension() > 3 ) ) {
       Warning("FindFirstBinAbove","Invalid axis number : %d, axis x assumed\n",axis);
       axis = 1;
    }
-   Int_t nbins = fXaxis.GetNbins();
-   for (Int_t bin=1;bin<=nbins;bin++) {
-      if (RetrieveBinContent(bin) > threshold) return bin;
+   if (firstBin < 1) {
+      firstBin = 1;
    }
+   Int_t nbinsx = fXaxis.GetNbins();
+   Int_t nbinsy = (GetDimension() > 1 ) ? fYaxis.GetNbins() : 1;
+   Int_t nbinsz = (GetDimension() > 2 ) ? fZaxis.GetNbins() : 1;
+
+   if (axis == 1) {
+      if (lastBin < 0 || lastBin > fXaxis.GetNbins()) {
+         lastBin = fXaxis.GetNbins();
+      }
+      for (Int_t binx = firstBin; binx <= lastBin; binx++) {
+         for (Int_t biny = 1; biny <= nbinsy; biny++) {
+            for (Int_t binz = 1; binz <= nbinsz; binz++) {
+               if (RetrieveBinContent(GetBin(binx,biny,binz)) > threshold) return binx;
+            }
+         }
+      }
+   }
+   else if (axis == 2) {
+      if (lastBin < 0 || lastBin > fYaxis.GetNbins()) {
+         lastBin = fYaxis.GetNbins();
+      }
+      for (Int_t biny = firstBin; biny <= lastBin; biny++) {
+         for (Int_t binx = 1; binx <= nbinsx; binx++) {
+            for (Int_t binz = 1; binz <= nbinsz; binz++) {
+               if (RetrieveBinContent(GetBin(binx,biny,binz)) > threshold) return biny;
+           }
+         }
+      }
+   }
+   else if (axis == 3) {
+      if (lastBin < 0 || lastBin > fZaxis.GetNbins()) {
+         lastBin = fZaxis.GetNbins();
+      }
+      for (Int_t binz = firstBin; binz <= lastBin; binz++) {
+         for (Int_t binx = 1; binx <= nbinsx; binx++) {
+            for (Int_t biny = 1; biny <= nbinsy; biny++) {
+               if (RetrieveBinContent(GetBin(binx,biny,binz)) > threshold) return binz;
+            }
+         }
+      }
+   }
+
    return -1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Find last bin with content > threshold for axis (1=x, 2=y, 3=z)
 /// if no bins with content > threshold is found the function returns -1.
+/// The search will occur between the specified first and last bin. Specifying
+/// the value of the last bin to search to less than zero will search until the
+/// last defined bin.
 
-Int_t TH1::FindLastBinAbove(Double_t threshold, Int_t axis) const
+Int_t TH1::FindLastBinAbove(Double_t threshold, Int_t axis, Int_t firstBin, Int_t lastBin) const
 {
    if (fBuffer) ((TH1*)this)->BufferEmpty();
 
-   if (axis != 1) {
-      Warning("FindLastBinAbove","Invalid axis number : %d, axis x assumed\n",axis);
+
+   if (axis < 1 || ( axis > 1 && GetDimension() == 1 ) ||
+       ( axis > 2 && GetDimension() == 2 ) || ( axis > 3 && GetDimension() > 3) ) {
+      Warning("FindFirstBinAbove","Invalid axis number : %d, axis x assumed\n",axis);
       axis = 1;
    }
-   Int_t nbins = fXaxis.GetNbins();
-   for (Int_t bin=nbins;bin>=1;bin--) {
-      if (RetrieveBinContent(bin) > threshold) return bin;
+   if (firstBin < 1) {
+      firstBin = 1;
    }
+   Int_t nbinsx = fXaxis.GetNbins();
+   Int_t nbinsy = (GetDimension() > 1 ) ? fYaxis.GetNbins() : 1;
+   Int_t nbinsz = (GetDimension() > 2 ) ? fZaxis.GetNbins() : 1;
+
+   if (axis == 1) {
+      if (lastBin < 0 || lastBin > fXaxis.GetNbins()) {
+         lastBin = fXaxis.GetNbins();
+      }
+      for (Int_t binx = lastBin; binx >= firstBin; binx--) {
+         for (Int_t biny = 1; biny <= nbinsy; biny++) {
+            for (Int_t binz = 1; binz <= nbinsz; binz++) {
+               if (RetrieveBinContent(GetBin(binx, biny, binz)) > threshold) return binx;
+            }
+         }
+      }
+   }
+   else if (axis == 2) {
+      if (lastBin < 0 || lastBin > fYaxis.GetNbins()) {
+         lastBin = fYaxis.GetNbins();
+      }
+      for (Int_t biny = lastBin; biny >= firstBin; biny--) {
+         for (Int_t binx = 1; binx <= nbinsx; binx++) {
+            for (Int_t binz = 1; binz <= nbinsz; binz++) {
+               if (RetrieveBinContent(GetBin(binx, biny, binz)) > threshold) return biny;
+            }
+         }
+      }
+   }
+   else if (axis == 3) {
+      if (lastBin < 0 || lastBin > fZaxis.GetNbins()) {
+         lastBin = fZaxis.GetNbins();
+      }
+      for (Int_t binz = lastBin; binz >= firstBin; binz--) {
+         for (Int_t binx = 1; binx <= nbinsx; binx++) {
+            for (Int_t biny = 1; biny <= nbinsy; biny++) {
+               if (RetrieveBinContent(GetBin(binx, biny, binz)) > threshold) return binz;
+            }
+         }
+      }
+   }
+
    return -1;
 }
 
@@ -3705,27 +3794,23 @@ TFitResultPtr TH1::Fit(const char *fname ,Option_t *option ,Option_t *goption, D
 {
    char *linear;
    linear= (char*)strstr(fname, "++");
-   TF1 *f1=0;
-   TF2 *f2=0;
-   TF3 *f3=0;
    Int_t ndim=GetDimension();
    if (linear){
       if (ndim<2){
-         f1=new TF1(fname, fname, xxmin, xxmax);
-         return Fit(f1,option,goption,xxmin,xxmax);
+         TF1 f1(fname, fname, xxmin, xxmax);
+         return Fit(&f1,option,goption,xxmin,xxmax);
       }
       else if (ndim<3){
-         f2=new TF2(fname, fname);
-         return Fit(f2,option,goption,xxmin,xxmax);
+         TF2 f2(fname, fname);
+         return Fit(&f2,option,goption,xxmin,xxmax);
       }
       else{
-         f3=new TF3(fname, fname);
-         return Fit(f3,option,goption,xxmin,xxmax);
+         TF3 f3(fname, fname);
+         return Fit(&f3,option,goption,xxmin,xxmax);
       }
    }
-
    else{
-      f1 = (TF1*)gROOT->GetFunction(fname);
+      TF1 * f1 = (TF1*)gROOT->GetFunction(fname);
       if (!f1) { Printf("Unknown function: %s",fname); return -1; }
       return Fit(f1,option,goption,xxmin,xxmax);
    }
@@ -4909,7 +4994,7 @@ Bool_t TH1::IsEmpty() const
    // case fTSumw == 0 amd entries are also zero
    // this should not really happening, but if one sets content by hand
    // it can happen. a call to ResetStats() should be done in such cases
-   double sumw = 0; 
+   double sumw = 0;
    for (int i = 0; i< GetNcells(); ++i) sumw += RetrieveBinContent(i);
    return (sumw != 0) ? kFALSE : kTRUE;
 }
@@ -5919,7 +6004,7 @@ TH1 *TH1::Rebin(Int_t ngroup, const char*newname, const Double_t *xbins)
                                        hnew->GetXaxis()->GetBinLowEdge(bin),
                                        TMath::Max(1.E-8 * fXaxis.GetBinWidth(oldbin), 1.E-16 )) )
       {
-         Warning("Rebin","Bin edge %d of rebinned histogram does not much any bin edges of the old histogram. Result can be inconsistent",bin);
+         Warning("Rebin","Bin edge %d of rebinned histogram does not match any bin edges of the old histogram. Result can be inconsistent",bin);
       }
       for (i=0;i<ngroup;i++) {
          if( (oldbin+i > nbins) ||
@@ -7253,7 +7338,7 @@ void TH1::GetStats(Double_t *stats) const
          stats[0] += w;
          stats[1] += err*err;
          // statistics in x makes sense only for not labels histograms
-         if (!labelHist)  { 
+         if (!labelHist)  {
             stats[2] += w*x;
             stats[3] += w*x*x;
          }
@@ -8526,16 +8611,17 @@ void TH1::GetLowEdge(Double_t *edge) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Set the bin Error
 /// Note that this resets the bin eror option to be of Normal Type and for the
-/// non-empty bin the bin error is set by default to the square root of their content,
-/// but in case the user sets explicitly a new bin content (using SetBinContent) he needs to provide also
-/// the error, otherwise a default error = 0 is used.
+/// non-empty bin the bin error is set by default to the square root of their content.
+/// Note that in case the user sets after calling SetBinError explicitly a new bin content (e.g. using SetBinContent)
+/// he needs then to provide also the corresponding bin error (using SetBinError) since the bin error
+/// will not recalcualated after setting the content and a default error = 0 will be used for those bins.
 ///
 /// See convention for numbering bins in TH1::GetBin
 
 void TH1::SetBinError(Int_t bin, Double_t error)
 {
+   if (bin < 0 || bin>= fNcells) return;
    if (!fSumw2.fN) Sumw2();
-   if (bin < 0 || bin>= fSumw2.fN) return;
    fSumw2.fArray[bin] = error * error;
    // reset the bin error option
    SetBinErrorOption(kNormal);

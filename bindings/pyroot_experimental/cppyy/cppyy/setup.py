@@ -16,13 +16,16 @@ try:
             requirements = ['cppyy-cling<6.12', 'cppyy-backend<0.3']
             add_pkg += ['cppyy_compat']
         elif version[1] <= 10:
-            requirements = ['cppyy-cling', 'cppyy-backend<0.4']
+            requirements = ['cppyy-cling<=6.15', 'cppyy-backend<0.4']
     elif version[0] == 6:
         if version[1] <= 0:
-            requirements = ['cppyy-cling', 'cppyy-backend<1.1']
+            requirements = ['cppyy-cling<=6.15', 'cppyy-backend<1.1']
+    elif version[0] == 7:
+        if version[1] <= 1:
+            requirements = ['cppyy-cling<=6.18.0.0', 'cppyy-backend<=1.10']
 except ImportError:
     # CPython
-    requirements = ['cppyy-cling', 'cppyy-backend', 'CPyCppyy>=1.5.1']
+    requirements = ['cppyy-cling>=6.18.0.0', 'cppyy-backend>=1.10.0', 'CPyCppyy>=1.9.0']
 
 setup_requirements = ['wheel']
 if 'build' in sys.argv or 'install' in sys.argv:
@@ -67,20 +70,26 @@ class my_install(_install):
         # base install
         _install.run(self)
 
-        if 'linux' in sys.platform:
-            # force build of the .pch underneath the cppyy package, so that
-            # it will be removed on upgrade/uninstall
-            install_path = os.path.join(os.getcwd(), self.install_libbase, 'cppyy')
+        # force build of the .pch underneath the cppyy package if not available yet
+        install_path = os.path.join(os.getcwd(), self.install_libbase, 'cppyy')
 
-            try:
-                import cppyy_backend.loader as l
+        try:
+            import cppyy_backend as cpb
+            if not os.path.exists(os.path.join(cpb.__file__, 'etc', 'allDict.cxx.pch')):
                 log.info("installing pre-compiled header in %s", install_path)
-                l.set_cling_compile_options(True)
-                l.ensure_precompiled_header(install_path)
-            except (ImportError, AttributeError):
-                # ImportError may occur with wrong pip requirements resolution (unlikely)
-                # AttributeError will occur with (older) PyPy as it relies on older backends
-                pass
+                cpb.loader.set_cling_compile_options(True)
+                cpb.loader.ensure_precompiled_header(install_path, 'allDict.cxx.pch')
+        except (ImportError, AttributeError):
+            # ImportError may occur with wrong pip requirements resolution (unlikely)
+            # AttributeError will occur with (older) PyPy as it relies on older backends
+            pass
+
+    def get_outputs(self):
+        outputs = _install.get_outputs(self)
+        # pre-emptively add allDict.cxx.pch, which may or may not be created; need full
+        # path to make sure the final relative path is correct
+        outputs.append(os.path.join(os.getcwd(), self.install_libbase, 'cppyy', 'allDict.cxx.pch'))
+        return outputs
 
 
 cmdclass = {

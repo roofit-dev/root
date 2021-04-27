@@ -34,24 +34,12 @@ TEST(RDataFrameInterface, CreateFromInitList)
 
 TEST(RDataFrameInterface, CreateFromNullTDirectory)
 {
-   int ret = 1;
-   try {
-      RDataFrame tdf("t", nullptr);
-   } catch (const std::runtime_error &) {
-      ret = 0;
-   }
-   EXPECT_EQ(0, ret);
+   EXPECT_ANY_THROW(RDataFrame("t", nullptr));
 }
 
 TEST(RDataFrameInterface, CreateFromNonExistingTree)
 {
-   int ret = 1;
-   try {
-      RDataFrame tdf("theTreeWhichDoesNotExist", gDirectory);
-   } catch (const std::runtime_error &) {
-      ret = 0;
-   }
-   EXPECT_EQ(0, ret);
+   EXPECT_ANY_THROW(RDataFrame("theTreeWhichDoesNotExist", gDirectory));
 }
 
 TEST(RDataFrameInterface, CreateFromTree)
@@ -70,29 +58,9 @@ TEST(RDataFrameInterface, CreateAliases)
    auto c = aliased_tdf.Count();
    EXPECT_EQ(1U, *c);
 
-   int ret(1);
-   try {
-      aliased_tdf.Alias("c4", "c");
-   } catch (const std::runtime_error &) {
-      ret = 0;
-   }
-   EXPECT_EQ(0, ret) << "No exception thrown when trying to alias a non-existing column.";
-
-   ret = 1;
-   try {
-      aliased_tdf.Alias("c0", "c2");
-   } catch (const std::runtime_error &) {
-      ret = 0;
-   }
-   EXPECT_EQ(0, ret) << "No exception thrown when specifying an alias name which is the name of a column.";
-
-   ret = 1;
-   try {
-      aliased_tdf.Alias("c2", "c1");
-   } catch (const std::runtime_error &) {
-      ret = 0;
-   }
-   EXPECT_EQ(0, ret) << "No exception thrown when re-using an alias for a different column.";
+   EXPECT_ANY_THROW(aliased_tdf.Alias("c4", "c")) << "No exception thrown when trying to alias a non-existing column.";
+   EXPECT_ANY_THROW(aliased_tdf.Alias("c0", "c2")) << "No exception thrown when specifying an alias name which is the name of a column.";
+   EXPECT_ANY_THROW(aliased_tdf.Alias("c2", "c1")) << "No exception thrown when re-using an alias for a different column.";
 }
 
 TEST(RDataFrameInterface, CheckAliasesPerChain)
@@ -107,13 +75,7 @@ TEST(RDataFrameInterface, CheckAliasesPerChain)
    // must work
    auto f0aa = f0a.Alias("c2", "c1");
    // must fail
-   auto ret = 1;
-   try {
-      auto f1a = f1.Alias("c2", "c1");
-   } catch (const std::runtime_error &) {
-      ret = 0;
-   }
-   EXPECT_EQ(0, ret) << "No exception thrown when trying to alias a non-existing column.";
+   EXPECT_ANY_THROW(f1.Alias("c2", "c1")) << "No exception thrown when trying to alias a non-existing column.";
 }
 
 TEST(RDataFrameInterface, GetColumnNamesFromScratch)
@@ -336,7 +298,7 @@ TEST(RDataFrameInterface, GetColumnType)
 {
    const auto fname = "tdf_getcolumntype.root";
    TFile f(fname, "recreate");
-   TTree t("t", "t");   
+   TTree t("t", "t");
    S s{1,2};
    int x = 42;
    t.Branch("s", &s, "a/I:b/I");
@@ -372,4 +334,35 @@ TEST(RDFHelpers, CastToNode)
    auto df = ROOT::RDF::MakeTrivialDataFrame(10);
    auto df2 = ROOT::RDF::RNode(df.Filter([] { return true; }));
    EXPECT_EQ(*df2.Count(), 10ull);
+}
+
+// ROOT-9931
+TEST(RDataFrameInterface, GraphAndHistoNoColumns)
+{
+   EXPECT_ANY_THROW(ROOT::RDataFrame(1).Graph()) << "No exception thrown when booking a graph with no columns available.";
+   EXPECT_ANY_THROW(ROOT::RDataFrame(1).Histo1D()) << "No exception thrown when booking an histo with no columns available.";
+}
+
+// ROOT-9933
+TEST(RDataFrameInterface, GetNSlots)
+{
+   ROOT::RDataFrame df0(1);
+   EXPECT_EQ(1U, df0.GetNSlots());
+#ifdef R__USE_IMT
+   ROOT::EnableImplicitMT(3);
+   ROOT::RDataFrame df3(1);
+   EXPECT_EQ(3U, df3.GetNSlots());
+   ROOT::DisableImplicitMT();
+   ROOT::RDataFrame df1(1);
+   EXPECT_EQ(1U, df1.GetNSlots());
+#endif
+}
+
+// ROOT-10043
+TEST(RDataFrameInterface, DefineAliasedColumn)
+{
+   ROOT::RDataFrame rdf(1);
+   auto r0 = rdf.Define("myVar", [](){return 1;});
+   auto r1 = r0.Alias("newVar", "myVar");
+   EXPECT_ANY_THROW(r0.Define("newVar", [](int i){return i;}, {"myVar"})) << "No exception thrown when defining a column with a name which is already an alias.";
 }
