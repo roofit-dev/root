@@ -18,7 +18,7 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include "RConfigure.h"
-#include <ROOT/RConfig.h>
+#include <ROOT/RConfig.hxx>
 #include "TUnixSystem.h"
 #include "TROOT.h"
 #include "TError.h"
@@ -682,6 +682,13 @@ void TUnixSystem::SetDisplay()
 #endif
          }
       }
+#ifndef R__HAS_COCOA
+      if (!gROOT->IsBatch() && !getenv("DISPLAY")) {
+         Error("SetDisplay", "Can't figure out DISPLAY, set it manually\n"
+            "In case you run a remote ssh session, restart your ssh session with:\n"
+            "=========>  ssh -Y");
+      }
+#endif
    }
 }
 
@@ -2130,11 +2137,7 @@ void TUnixSystem::Exit(int code, Bool_t mode)
 {
    // Insures that the files and sockets are closed before any library is unloaded
    // and before emptying CINT.
-   if (gROOT) {
-      gROOT->EndOfProcessCleanups();
-   } else if (gInterpreter) {
-      gInterpreter->ResetGlobals();
-   }
+   TROOT::ShutDown();
 
    if (mode)
       ::exit(code);

@@ -23,14 +23,17 @@ A RooCurve is a one-dimensional graphical representation of a real-valued functi
 A curve is approximated by straight line segments with endpoints chosen to give
 a "good" approximation to the true curve. The goodness of the approximation is
 controlled by a precision and a resolution parameter. To view the points where
-a function y(x) is actually evaluated to approximate a smooth curve, use:
-**/
-//  RooPlot *p= y.plotOn(x.frame());
-//  p->getAttMarker("curve_y")->SetMarkerStyle(20);
-//  p->setDrawOptions("curve_y","PL");
-//  p->Draw();
-//
+a function y(x) is actually evaluated to approximate a smooth curve, use the fact
+that a RooCurve is a TGraph:
+```
+RooPlot *p = y.plotOn(x.frame());
+p->getAttMarker("curve_y")->SetMarkerStyle(20);
+p->setDrawOptions("curve_y","PL");
+p->Draw();
+```
 
+To retrieve a RooCurve from a RooPlot, use RooPlot::getCurve().
+**/
 
 #include "RooFit.h"
 
@@ -547,13 +550,8 @@ Double_t RooCurve::chiSquare(const RooHist& hist, Int_t nFitParam) const
   // Find starting and ending bin of histogram based on range of RooCurve
   Double_t xstart,xstop ;
 
-#if ROOT_VERSION_CODE >= ROOT_VERSION(4,0,1)
   GetPoint(0,xstart,y) ;
   GetPoint(GetN()-1,xstop,y) ;
-#else
-  const_cast<RooCurve*>(this)->GetPoint(0,xstart,y) ;
-  const_cast<RooCurve*>(this)->GetPoint(GetN()-1,xstop,y) ;
-#endif
 
   Int_t nbin(0) ;
 
