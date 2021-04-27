@@ -8,23 +8,25 @@
 # CMakeLists.txt file for building ROOT core/base package
 ############################################################################
 
-include_directories(res ../foundation/res)
+if(MSVC AND MSVC_VERSION GREATER_EQUAL 1925)
+  # FIXME: since Visual Studio v16.5.0 the /O2 optimization flag makes most of the roofit/roostats tests failing
+  # Try to re-enable /O2 after the upgrade of llvm & clang, or when upgrading Visual Studio
+  string(REPLACE "-O2" "-O1 -Oi" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+  string(REPLACE "-O2" "-O1 -Oi" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+endif()
 
 set(BASE_HEADERS
-  ROOT/StringConv.hxx
-  ROOT/TExecutor.hxx
+  ROOT/TErrorDefaultHandler.hxx
   ROOT/TSequentialExecutor.hxx
+  ROOT/StringConv.hxx
   Buttons.h
   Bytes.h
   Byteswap.h
-  Gtypes.h
-  GuiTypes.h
   KeySymbols.h
   MessageTypes.h
   Riostream.h
   Rtypes.h
   TApplication.h
-  TApplicationImp.h
   TAtt3D.h
   TAttAxis.h
   TAttBBox2D.h
@@ -36,29 +38,20 @@ set(BASE_HEADERS
   TAttText.h
   TBase64.h
   TBenchmark.h
-  TBrowser.h
-  TBrowserImp.h
   TBuffer3D.h
   TBuffer3DTypes.h
   TBuffer.h
-  TCanvasImp.h
-  TColorGradient.h
   TColor.h
-  TContextMenu.h
-  TContextMenuImp.h
-  TControlBarImp.h
+  TColorGradient.h
   TDatime.h
   TDirectory.h
   TEnv.h
-  TError.h
   TException.h
   TExec.h
   TFileCollection.h
   TFileInfo.h
   TFolder.h
-  TGuiFactory.h
   TInetAddress.h
-  TInspectorImp.h
   TMacro.h
   TMathBase.h
   TMD5.h
@@ -67,7 +60,6 @@ set(BASE_HEADERS
   TNamed.h
   TNotifyLink.h
   TObject.h
-  TObjectSpy.h
   TObjString.h
   TParameter.h
   TPluginManager.h
@@ -122,12 +114,10 @@ set(BASE_HEADERS
 )
 
 set(BASE_SOURCES
-  src/InitGui.cxx
   src/Match.cxx
   src/String.cxx
   src/Stringio.cxx
   src/TApplication.cxx
-  src/TApplicationImp.cxx
   src/TAtt3D.cxx
   src/TAttAxis.cxx
   src/TAttBBox2D.cxx
@@ -139,28 +129,20 @@ set(BASE_SOURCES
   src/TAttText.cxx
   src/TBase64.cxx
   src/TBenchmark.cxx
-  src/TBrowser.cxx
-  src/TBrowserImp.cxx
   src/TBuffer3D.cxx
   src/TBuffer.cxx
-  src/TCanvasImp.cxx
   src/TColor.cxx
   src/TColorGradient.cxx
-  src/TContextMenu.cxx
-  src/TContextMenuImp.cxx
-  src/TControlBarImp.cxx
   src/TDatime.cxx
   src/TDirectory.cxx
   src/TEnv.cxx
-  src/TError.cxx
+  src/TErrorDefaultHandler.cxx
   src/TException.cxx
   src/TExec.cxx
   src/TFileCollection.cxx
   src/TFileInfo.cxx
   src/TFolder.cxx
-  src/TGuiFactory.cxx
   src/TInetAddress.cxx
-  src/TInspectorImp.cxx
   src/TListOfTypes.cxx
   src/TListOfTypes.h
   src/TMacro.cxx
@@ -170,7 +152,6 @@ set(BASE_SOURCES
   src/TMessageHandler.cxx
   src/TNamed.cxx
   src/TObject.cxx
-  src/TObjectSpy.cxx
   src/TObjString.cxx
   src/TParameter.cxx
   src/TPluginManager.cxx
@@ -213,23 +194,16 @@ set(BASE_SOURCES
   src/TVirtualX.cxx
 )
 
-if(CMAKE_CXX_STANDARD GREATER 11)
-  list(APPEND BASE_HEADERS ROOT/RLogger.hxx)
-  list(APPEND BASE_SOURCES v7/src/RLogger.cxx)
-  # TLogger.hxx may be used without root7 flag, but is placed in v7/inc/,
-  # so we need to tell ROOT_INSTALL_HEADERS() where to find it
-  set(BASE_HEADER_DIRS inc/ v7/inc/)
-endif()
-
 if(root7)
+  set(BASE_V7_INC ${CMAKE_SOURCE_DIR}/core/base/v7/inc)
+  set(BASE_HEADER_DIRS inc/ v7/inc/)
   list(APPEND BASE_HEADERS
-      ROOT/RDrawable.hxx
       ROOT/RDirectoryEntry.hxx
-      ROOT/RIndexIter.hxx
-  )
+      ROOT/RIndexIter.hxx)
+  set(BASE_V7_INC ${CMAKE_SOURCE_DIR}/core/base/v7/inc)
+  set(BASE_HEADER_DIRS inc/ v7/inc/)
   list(APPEND BASE_SOURCES
-      v7/src/RDrawable.cxx
-  )
+      RDirectory.cxx)
 endif()
 
 
@@ -237,12 +211,30 @@ endif()
 set(Core_dict_headers ${BASE_HEADERS} PARENT_SCOPE)
 
 ROOT_OBJECT_LIBRARY(Base ${BASE_SOURCES})
-target_include_directories(Base PRIVATE ${PCRE_INCLUDE_DIR})
+
+target_include_directories(Base PRIVATE
+   ${BASE_V7_INC}
+   ${PCRE_INCLUDE_DIR}
+   res
+   ${CMAKE_SOURCE_DIR}/core/foundation/res
+   ${CMAKE_SOURCE_DIR}/core/clib/inc
+   ${CMAKE_SOURCE_DIR}/core/meta/inc
+   ${CMAKE_SOURCE_DIR}/core/cont/inc
+   ${CMAKE_SOURCE_DIR}/core/thread/inc
+   ${CMAKE_SOURCE_DIR}/core/gui/inc
+   ${CMAKE_SOURCE_DIR}/core/foundation/inc
+   ${CMAKE_BINARY_DIR}/ginclude
+)
+
+if(MSVC)
+   target_include_directories(Base PRIVATE ${CMAKE_SOURCE_DIR}/core/winnt/inc)
+endif()
+
 
 #---CreateTApplicationCommandLineOptions------------------------------------------------------------------
 generateHeader(Base
   ${CMAKE_CURRENT_SOURCE_DIR}/src/root-argparse.py
-  ${CMAKE_BINARY_DIR}/include/TApplicationCommandLineOptionsHelp.h
+  ${CMAKE_BINARY_DIR}/ginclude/TApplicationCommandLineOptionsHelp.h
 )
 
 ROOT_INSTALL_HEADERS(${BASE_HEADER_DIRS})

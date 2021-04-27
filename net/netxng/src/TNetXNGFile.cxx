@@ -18,6 +18,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "TArchiveFile.h"
 #include "TNetXNGFile.h"
 #include "TEnv.h"
 #include "TSystem.h"
@@ -275,6 +276,10 @@ void TNetXNGFile::Init(Bool_t create)
 
 Long64_t TNetXNGFile::GetSize() const
 {
+   if (fArchive && fArchive->GetMember()) {
+     return fArchive->GetMember()->GetDecompressedSize();
+   }
+
    using namespace XrdCl;
 
    // Check the file isn't a zombie or closed
@@ -734,6 +739,7 @@ Bool_t TNetXNGFile::GetVectorReadLimits()
    if (!fQueryReadVParams)
       return kTRUE;
 
+#if XrdVNUMBER >= 40000
    std::string lasturl;
    fFile->GetProperty("LastURL",lasturl);
    URL lrl(lasturl);
@@ -746,7 +752,6 @@ Bool_t TNetXNGFile::GetVectorReadLimits()
        return kTRUE;
    }
 
-#if XrdVNUMBER >= 40000
    std::string dataServerStr;
    if( !fFile->GetProperty( "DataServer", dataServerStr ) )
       return kFALSE;

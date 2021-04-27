@@ -23,20 +23,15 @@ implicitly assumed to be 1, and the list of coefficients supplied by callers
 starts with the coefficient that goes with \f$ T_1(x)=x \f$ (i.e. the linear term).
 **/
 
-#include <cmath>
-#include <iostream>
-
-#include "RooFit.h"
-
-#include "Riostream.h"
-
 #include "RooChebychev.h"
+#include "RooFit.h"
 #include "RooAbsReal.h"
 #include "RooRealVar.h"
 #include "RooArgList.h"
 #include "RooNameReg.h"
+#include "RooBatchCompute.h"
 
-#include "TError.h"
+#include <cmath>
 
 ClassImp(RooChebychev);
 
@@ -95,7 +90,8 @@ public:
    /// move on to next order, return reference to new value
    inline ChebychevIterator &operator++() noexcept
    {
-      T newval = fast_fma(_twox, _curr, -_last);
+      //T newval = fast_fma(_twox, _curr, -_last);
+      T newval = _twox*_curr -_last;
       _last = _curr;
       _curr = newval;
       return *this;
@@ -126,19 +122,15 @@ RooChebychev::RooChebychev(const char* name, const char* title,
   _coefList("coefficients","List of coefficients",this),
   _refRangeName(0)
 {
-  TIterator* coefIter = coefList.createIterator() ;
-  RooAbsArg* coef ;
-  while((coef = (RooAbsArg*)coefIter->Next())) {
+  for (const auto coef : coefList) {
     if (!dynamic_cast<RooAbsReal*>(coef)) {
-   std::cerr << "RooChebychev::ctor(" << GetName() <<
+      coutE(InputArguments) << "RooChebychev::ctor(" << GetName() <<
        ") ERROR: coefficient " << coef->GetName() <<
        " is not of type RooAbsReal" << std::endl ;
-      R__ASSERT(0) ;
+      throw std::invalid_argument("Wrong input arguments for RooChebychev");
     }
     _coefList.add(*coef) ;
   }
-
-  delete coefIter ;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -183,13 +175,34 @@ Double_t RooChebychev::evaluate() const
      ++chit;
      for (size_type i = 0; iend != i; ++i, ++chit) {
         auto c = static_cast<const RooAbsReal &>(_coefList[i]).getVal();
-        sum = fast_fma(*chit, c, sum);
+        //sum = fast_fma(*chit, c, sum);
+        sum += *chit*c;
      }
   }
   return sum;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Compute multiple values of Chebychev.  
+RooSpan<double> RooChebychev::evaluateSpan(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const {
+
+  RooSpan<const double> xData = _x->getValues(evalData, normSet);  
+  size_t batchSize = xData.size();
+  RooSpan<double> output = evalData.makeBatch(this, batchSize);
+  const Double_t xmin = _x.min(_refRangeName?_refRangeName->GetName() : nullptr);
+  const Double_t xmax = _x.max(_refRangeName?_refRangeName->GetName() : nullptr);
+
+  const size_t nCoef = _coefList.size();
+  std::vector<double> coef(nCoef);
+  for (size_t i=0; i<nCoef; i++) {
+    coef[i] = static_cast<const RooAbsReal &>(_coefList[i]).getVal();
+  }
+  RooBatchCompute::dispatch->computeChebychev(batchSize, output.data(), xData.data(), xmin, xmax, coef);
+  return output;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 
 Int_t RooChebychev::getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* /* rangeName */) const
 {
@@ -201,7 +214,7 @@ Int_t RooChebychev::getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVar
 
 Double_t RooChebychev::analyticalIntegral(Int_t code, const char* rangeName) const
 {
-  R__ASSERT(1 == code);
+  assert(1 == code); (void)code;
 
   const Double_t xmax = _x.max(_refRangeName?_refRangeName->GetName():0);
   const Double_t xmin = _x.min(_refRangeName?_refRangeName->GetName():0);

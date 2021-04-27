@@ -1,5 +1,5 @@
 /// \file
-/// \ingroup tutorial_dataframe
+/// \ingroup tutorial_tmva
 /// \notebook -nodraw
 /// This tutorial illustrates the basic features of the RTensor class,
 /// RTensor is a std::vector-like container with additional shape information.
@@ -14,7 +14,6 @@
 /// \author Stefan Wunsch
 
 using namespace TMVA::Experimental;
-using namespace ROOT::VecOps;
 
 void tmva001_RTensor()
 {
@@ -23,10 +22,10 @@ void tmva001_RTensor()
    cout << x << endl;
 
    // Assign some data
-   x({0, 0}) = 1;
-   x({0, 1}) = 2;
-   x({1, 0}) = 3;
-   x({1, 1}) = 4;
+   x(0, 0) = 1;
+   x(0, 1) = 2;
+   x(1, 0) = 3;
+   x(1, 1) = 4;
 
    // Apply transformations
    auto x2 = x.Reshape({1, 4}).Squeeze();

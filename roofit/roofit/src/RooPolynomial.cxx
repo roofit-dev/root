@@ -29,16 +29,14 @@ The sum can be truncated at the low end. See the main constructor
 RooPolynomial::RooPolynomial(const char*, const char*, RooAbsReal&, const RooArgList&, Int_t)
 **/
 
-#include <cmath>
-#include <cassert>
-
 #include "RooPolynomial.h"
 #include "RooAbsReal.h"
 #include "RooArgList.h"
 #include "RooMsgService.h"
+#include "RooBatchCompute.h"
 
 #include "TError.h"
-
+#include <vector>
 using namespace std;
 
 ClassImp(RooPolynomial);
@@ -144,6 +142,25 @@ Double_t RooPolynomial::evaluate() const
   Double_t retVal = _wksp[sz - 1];
   for (unsigned i = sz - 1; i--; ) retVal = _wksp[i] + x * retVal;
   return retVal * std::pow(x, lowestOrder) + (lowestOrder ? 1.0 : 0.0);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Compute multiple values of Polynomial.  
+RooSpan<double> RooPolynomial::evaluateSpan(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const {
+  RooSpan<const double> xData = _x->getValues(evalData, normSet);
+  int batchSize = xData.size();  
+  RooSpan<double> output = evalData.makeBatch(this, batchSize);
+
+  const int nCoef = _coefList.getSize();
+  const RooArgSet* listNormSet = _coefList.nset();
+  std::vector<RooBatchCompute::BracketAdapterWithMask> coefList;
+  for (int i=0; i<nCoef; i++) {
+    auto valBatch = static_cast<RooAbsReal&>(_coefList[i]).getValues(evalData, listNormSet);
+    coefList.emplace_back(valBatch);
+  }
+
+  RooBatchCompute::dispatch->computePolynomial(batchSize, output.data(), xData.data(), _lowestOrder, coefList);
+  return output;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

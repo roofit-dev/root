@@ -8,14 +8,17 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-/**
-  \defgroup vecops VecOps
-*/
-
 #ifndef ROOT_RVEC
 #define ROOT_RVEC
 
 #ifdef _WIN32
+   #ifndef M_PI
+      #ifndef _USE_MATH_DEFINES
+         #define _USE_MATH_DEFINES
+      #endif
+      #include <math.h>
+      #undef _USE_MATH_DEFINES
+   #endif
    #define _VECOPS_USE_EXTERN_TEMPLATES false
 #else
    #define _VECOPS_USE_EXTERN_TEMPLATES true
@@ -24,23 +27,18 @@
 #include <ROOT/RAdoptAllocator.hxx>
 #include <ROOT/RIntegerSequence.hxx>
 #include <ROOT/RStringView.hxx>
+#include <TError.h> // R__ASSERT
 #include <ROOT/TypeTraits.hxx>
 
 #include <algorithm>
+#include <cmath>
 #include <numeric> // for inner_product
 #include <sstream>
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
 #include <utility>
-
-#define _USE_MATH_DEFINES // enable definition of M_PI
-#ifdef _WIN32
-// cmath does not expose M_PI on windows
-#include <math.h>
-#else
-#include <cmath>
-#endif
+#include <tuple>
 
 #ifdef R__HAS_VDT
 #include <vdt/vdtMath.h>
@@ -48,6 +46,7 @@
 
 
 namespace ROOT {
+
 namespace VecOps {
 template<typename T>
 class RVec;
@@ -121,10 +120,18 @@ void EmplaceBack(std::vector<bool> &v, Args &&... args)
 } // End of Internal NS
 
 namespace VecOps {
+
+// Note that we open here with @{ the Doxygen group vecops and it is
+// closed again at the end of the C++ namespace VecOps
+/**
+  * \defgroup vecops VecOps
+  * A "std::vector"-like collection of values implementing handy operation to analyse them
+  * @{
+*/
+
 // clang-format off
 /**
 \class ROOT::VecOps::RVec
-\ingroup vecops
 \brief A "std::vector"-like collection of values implementing handy operation to analyse them
 \tparam T The type of the contained objects
 
@@ -344,9 +351,6 @@ public:
       std::copy(begin(), end(), ret.begin());
       return ret;
    }
-
-   const Impl_t &AsVector() const { return fData; }
-   Impl_t &AsVector() { return fData; }
 
    // accessors
    reference at(size_type pos) { return fData.at(pos); }
@@ -996,8 +1000,9 @@ void swap(RVec<T> &lhs, RVec<T> &rhs)
 /// using namespace ROOT::VecOps;
 /// RVec<double> v {2., 3., 1.};
 /// auto sortIndices = Argsort(v);
-/// sortIndices
 /// // (ROOT::VecOps::RVec<unsigned long> &) { 2, 0, 1 }
+/// auto values = Take(v, sortIndices)
+/// // (ROOT::VecOps::RVec<double> &) { 1., 2., 3. }
 /// ~~~
 template <typename T>
 RVec<typename RVec<T>::size_type> Argsort(const RVec<T> &v)
@@ -1006,6 +1011,28 @@ RVec<typename RVec<T>::size_type> Argsort(const RVec<T> &v)
    RVec<size_type> i(v.size());
    std::iota(i.begin(), i.end(), 0);
    std::sort(i.begin(), i.end(), [&v](size_type i1, size_type i2) { return v[i1] < v[i2]; });
+   return i;
+}
+
+/// Return an RVec of indices that sort the input RVec based on a comparison function.
+///
+/// Example code, at the ROOT prompt:
+/// ~~~{.cpp}
+/// using namespace ROOT::VecOps;
+/// RVec<double> v {2., 3., 1.};
+/// auto sortIndices = Argsort(v, [](double x, double y) {return x > y;})
+/// // (ROOT::VecOps::RVec<unsigned long> &) { 1, 0, 2 }
+/// auto values = Take(v, sortIndices)
+/// // (ROOT::VecOps::RVec<double> &) { 3., 2., 1. }
+/// ~~~
+template <typename T, typename Compare>
+RVec<typename RVec<T>::size_type> Argsort(const RVec<T> &v, Compare &&c)
+{
+   using size_type = typename RVec<T>::size_type;
+   RVec<size_type> i(v.size());
+   std::iota(i.begin(), i.end(), 0);
+   std::sort(i.begin(), i.end(),
+             [&v, &c](size_type i1, size_type i2) { return c(v[i1], v[i2]); });
    return i;
 }
 
@@ -1421,11 +1448,8 @@ RVec<Common_t> Concatenate(const RVec<T0> &v0, const RVec<T1> &v1)
 {
    RVec<Common_t> res;
    res.reserve(v0.size() + v1.size());
-   auto &resAsVect = res.AsVector();
-   auto &v0AsVect = v0.AsVector();
-   auto &v1AsVect = v1.AsVector();
-   resAsVect.insert(resAsVect.begin(), v0AsVect.begin(), v0AsVect.end());
-   resAsVect.insert(resAsVect.end(), v1AsVect.begin(), v1AsVect.end());
+   std::copy(v0.begin(), v0.end(), std::back_inserter(res));
+   std::copy(v1.begin(), v1.end(), std::back_inserter(res));
    return res;
 }
 
@@ -1555,25 +1579,36 @@ RVec<T> InvariantMasses(
         const RVec<T>& pt1, const RVec<T>& eta1, const RVec<T>& phi1, const RVec<T>& mass1,
         const RVec<T>& pt2, const RVec<T>& eta2, const RVec<T>& phi2, const RVec<T>& mass2)
 {
-   // Conversion from (pt, eta, phi, mass) to (x, y, z, e) coordinate system
-   const auto x1 = pt1 * cos(phi1);
-   const auto y1 = pt1 * sin(phi1);
-   const auto z1 = pt1 * sinh(eta1);
-   const auto e1 = sqrt(x1 * x1 + y1 * y1 + z1 * z1 + mass1 * mass1);
+   std::size_t size = pt1.size();
 
-   const auto x2 = pt2 * cos(phi2);
-   const auto y2 = pt2 * sin(phi2);
-   const auto z2 = pt2 * sinh(eta2);
-   const auto e2 = sqrt(x2 * x2 + y2 * y2 + z2 * z2 + mass2 * mass2);
+   R__ASSERT(eta1.size() == size && phi1.size() == size && mass1.size() == size);
+   R__ASSERT(pt2.size() == size && phi2.size() == size && mass2.size() == size);
 
-   // Addition of particle four-vectors
-   const auto e = e1 + e2;
-   const auto x = x1 + x2;
-   const auto y = y1 + y2;
-   const auto z = z1 + z2;
+   RVec<T> inv_masses(size);
+
+   for (std::size_t i = 0u; i < size; ++i) {
+      // Conversion from (pt, eta, phi, mass) to (x, y, z, e) coordinate system
+      const auto x1 = pt1[i] * std::cos(phi1[i]);
+      const auto y1 = pt1[i] * std::sin(phi1[i]);
+      const auto z1 = pt1[i] * std::sinh(eta1[i]);
+      const auto e1 = std::sqrt(x1 * x1 + y1 * y1 + z1 * z1 + mass1[i] * mass1[i]);
+
+      const auto x2 = pt2[i] * std::cos(phi2[i]);
+      const auto y2 = pt2[i] * std::sin(phi2[i]);
+      const auto z2 = pt2[i] * std::sinh(eta2[i]);
+      const auto e2 = std::sqrt(x2 * x2 + y2 * y2 + z2 * z2 + mass2[i] * mass2[i]);
+
+      // Addition of particle four-vector elements
+      const auto e = e1 + e2;
+      const auto x = x1 + x2;
+      const auto y = y1 + y2;
+      const auto z = z1 + z2;
+
+      inv_masses[i] = std::sqrt(e * e - x * x - y * y - z * z);
+   }
 
    // Return invariant mass with (+, -, -, -) metric
-   return sqrt(e * e - x * x - y * y - z * z);
+   return inv_masses;
 }
 
 /// Return the invariant mass of multiple particles given the collections of the
@@ -1584,20 +1619,29 @@ RVec<T> InvariantMasses(
 template <typename T>
 T InvariantMass(const RVec<T>& pt, const RVec<T>& eta, const RVec<T>& phi, const RVec<T>& mass)
 {
-   // Conversion from (mass, pt, eta, phi) to (e, x, y, z) coordinate system
-   const auto x = pt * cos(phi);
-   const auto y = pt * sin(phi);
-   const auto z = pt * sinh(eta);
-   const auto e = sqrt(x * x + y * y + z * z + mass * mass);
+   const std::size_t size = pt.size();
 
-   // Addition of particle four-vectors
-   const auto xs = Sum(x);
-   const auto ys = Sum(y);
-   const auto zs = Sum(z);
-   const auto es = Sum(e);
+   R__ASSERT(eta.size() == size && phi.size() == size && mass.size() == size);
+
+   T x_sum = 0.;
+   T y_sum = 0.;
+   T z_sum = 0.;
+   T e_sum = 0.;
+
+   for (std::size_t i = 0u; i < size; ++ i) {
+      // Convert to (e, x, y, z) coordinate system and update sums
+      const auto x = pt[i] * std::cos(phi[i]);
+      x_sum += x;
+      const auto y = pt[i] * std::sin(phi[i]);
+      y_sum += y;
+      const auto z = pt[i] * std::sinh(eta[i]);
+      z_sum += z;
+      const auto e = std::sqrt(x * x + y * y + z * z + mass[i] * mass[i]);
+      e_sum += e;
+   }
 
    // Return invariant mass with (+, -, -, -) metric
-   return std::sqrt(es * es - xs * xs - ys * ys - zs * zs);
+   return std::sqrt(e_sum * e_sum - x_sum * x_sum - y_sum * y_sum - z_sum * z_sum);
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -1610,12 +1654,12 @@ T InvariantMass(const RVec<T>& pt, const RVec<T>& eta, const RVec<T>& phi, const
 /// Example code, at the ROOT prompt:
 /// ~~~{.cpp}
 /// using namespace ROOT::VecOps;
-/// RVec<float> etas {.3f, 2.2f, 1.32f};
-/// RVec<float> phis {.1f, 3.02f, 2.2f};
-/// RVec<float> pts {15.5f, 34.32f, 12.95f};
-/// RVec<float> masses {105.65f, 105.65f, 105.65f};
-/// Construct<ROOT::Math::PtEtaPhiMVector> fourVects(etas, phis, pts, masses);
-/// cout << fourVects << endl;
+/// RVec<float> pts = {15.5, 34.32, 12.95};
+/// RVec<float> etas = {0.3, 2.2, 1.32};
+/// RVec<float> phis = {0.1, 3.02, 2.2};
+/// RVec<float> masses = {105.65, 105.65, 105.65};
+/// auto fourVecs = Construct<ROOT::Math::PtEtaPhiMVector>(pts, etas, phis, masses);
+/// cout << fourVecs << endl;
 /// // { (15.5,0.3,0.1,105.65), (34.32,2.2,3.02,105.65), (12.95,1.32,2.2,105.65) }
 /// ~~~
 template <typename T, typename... Args_t>
@@ -1832,6 +1876,8 @@ RVEC_EXTERN_VDT_UNARY_FUNCTION(double, fast_atan)
 #endif // R__HAS_VDT
 
 #endif // _VECOPS_USE_EXTERN_TEMPLATES
+
+/** @} */ // end of Doxygen group vecops
 
 } // End of VecOps NS
 

@@ -245,7 +245,8 @@ neurons, hidden layers and inputs/outputs that does not apply to TMultiLayerPerc
 #include "TMultiGraph.h"
 #include "TDirectory.h"
 #include "TSystem.h"
-#include "Riostream.h"
+#include <iostream>
+#include <fstream>
 #include "TMath.h"
 #include "TTreeFormula.h"
 #include "TTreeFormulaManager.h"
@@ -253,7 +254,7 @@ neurons, hidden layers and inputs/outputs that does not apply to TMultiLayerPerc
 #include "TLine.h"
 #include "TText.h"
 #include "TObjString.h"
-#include <stdlib.h>
+#include <cstdlib>
 
 ClassImp(TMultiLayerPerceptron);
 
@@ -1346,7 +1347,7 @@ void TMultiLayerPerceptron::ExpandStructure()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Instanciates the network from the description
+/// Instantiates the network from the description
 
 void TMultiLayerPerceptron::BuildNetwork()
 {
@@ -1375,7 +1376,7 @@ void TMultiLayerPerceptron::BuildNetwork()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Instanciates the neurons in input
+/// Instantiates the neurons in input
 /// Inputs are normalised and the type is set to kOff
 /// (simple forward of the formula value)
 

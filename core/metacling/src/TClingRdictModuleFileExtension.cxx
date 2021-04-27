@@ -27,11 +27,14 @@
 #include "clang/Serialization/Module.h"
 
 #include "llvm/ADT/Hashing.h"
-#include "llvm/Bitcode/BitstreamWriter.h"
+#include "llvm/Bitstream/BitstreamWriter.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <fstream>
+#include <sstream>
 
 /// Rdict module extension block name.
 const std::string ROOT_CLING_RDICT_BLOCK_NAME = "root.cling.rdict";
@@ -73,20 +76,24 @@ void TClingRdictModuleFileExtension::Writer::writeExtensionContents(clang::Sema 
    // Write a dict files into the extension block.
    std::error_code EC;
    for (llvm::sys::fs::directory_iterator DirIt(CachePath, EC), DirEnd; DirIt != DirEnd && !EC; DirIt.increment(EC)) {
-      StringRef FileName(DirIt->path());
-      if (!llvm::sys::fs::is_directory(FileName) && llvm::sys::path::filename(FileName).startswith(RdictsStart) &&
-          FileName.endswith(RdictsEnd)) {
+      StringRef FilePath(DirIt->path());
+      if (llvm::sys::fs::is_directory(FilePath))
+         continue;
+      StringRef FileName = llvm::sys::path::filename(FilePath);
+      if (FileName.startswith(RdictsStart) && FileName.endswith(RdictsEnd)) {
 
          uint64_t Record[] = {FIRST_EXTENSION_RECORD_ID};
-         Stream.EmitRecordWithBlob(Abbrev, Record, llvm::sys::path::filename(FileName));
+         Stream.EmitRecordWithBlob(Abbrev, Record, FileName);
 
          uint64_t Record1[] = {FIRST_EXTENSION_RECORD_ID + 1};
-         Twine rdictFileName = Twine(FileName);
-         auto MBOrErr = MemoryBuffer::getFile(rdictFileName);
-         MemoryBuffer &MB = *MBOrErr.get();
-         Stream.EmitRecordWithBlob(Abbrev1, Record1, MB.getBuffer());
+         std::ifstream fp(FilePath, std::ios::binary);
+         std::ostringstream os;
+         os << fp.rdbuf();
+         Stream.EmitRecordWithBlob(Abbrev1, Record1, StringRef(os.str()));
+         fp.close();
 
-         llvm::sys::fs::remove(rdictFileName);
+         EC = llvm::sys::fs::remove(FilePath);
+         assert(!EC && "Unable to close _rdict file");
       }
    }
 }
@@ -102,7 +109,7 @@ TClingRdictModuleFileExtension::Reader::Reader(clang::ModuleFileExtension *Ext, 
    llvm::SmallVector<uint64_t, 4> Record;
    llvm::StringRef CurrentRdictName;
    while (true) {
-      llvm::BitstreamEntry Entry = Stream.advanceSkippingSubblocks();
+      llvm::BitstreamEntry Entry = llvm::cantFail(Stream.advanceSkippingSubblocks());
       switch (Entry.Kind) {
       case llvm::BitstreamEntry::SubBlock:
       case llvm::BitstreamEntry::EndBlock:
@@ -113,7 +120,7 @@ TClingRdictModuleFileExtension::Reader::Reader(clang::ModuleFileExtension *Ext, 
 
       Record.clear();
       llvm::StringRef Blob;
-      unsigned RecCode = Stream.readRecord(Entry.ID, Record, &Blob);
+      unsigned RecCode = llvm::cantFail(Stream.readRecord(Entry.ID, Record, &Blob));
       using namespace clang::serialization;
       switch (RecCode) {
       case FIRST_EXTENSION_RECORD_ID: {
@@ -122,7 +129,10 @@ TClingRdictModuleFileExtension::Reader::Reader(clang::ModuleFileExtension *Ext, 
       }
       case FIRST_EXTENSION_RECORD_ID + 1: {
          // FIXME: Remove the string copy in fPendingRdicts.
-         llvm::SmallString<255> FullRdictName = llvm::sys::path::parent_path(Mod.FileName);
+         std::string ResolvedFileName
+            = ROOT::TMetaUtils::GetRealPath(Mod.FileName);
+         llvm::StringRef ModDir = llvm::sys::path::parent_path(ResolvedFileName);
+         llvm::SmallString<255> FullRdictName = ModDir;
          llvm::sys::path::append(FullRdictName, CurrentRdictName);
          TCling__RegisterRdictForLoadPCM(FullRdictName.str(), &Blob);
          break;

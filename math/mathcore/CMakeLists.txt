@@ -68,14 +68,12 @@ set(HEADERS
   Math/MultiDimParamFunctionAdapter.h
   Math/OneDimFunctionAdapter.h
   Math/ParamFunctor.h
-  Math/PdfFunc.h
   Math/PdfFuncMathCore.h
-  Math/ProbFunc.h
   Math/ProbFuncMathCore.h
-  Math/QuantFunc.h
   Math/QuantFuncMathCore.h
   Math/Random.h
   Math/RandomFunctions.h
+  Math/RanluxppEngine.h
   Math/RichardsonDerivator.h
   Math/RootFinder.h
   Math/SpecFuncMathCore.h
@@ -107,6 +105,10 @@ if(runtime_cxxmodules)
   # 'abs' shadow declaration (from stl math.h) is broken.
   # FIXME: Revise after a llvm upgrade or reproduce it outside rootcling.
   list(REMOVE_ITEM HEADERS "Math/Math.h")
+
+  if(veccore)
+    set(dictoptions "-mByproduct" "Vc")
+  endif(veccore)
 endif()
 
 ROOT_ADD_C_FLAG(_flags -Wno-strict-overflow)  # Avoid what it seems a compiler false positive warning
@@ -163,6 +165,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(MathCore
     src/ProbFuncMathCore.cxx
     src/QuantFuncMathCore.cxx
     src/RandomFunctions.cxx
+    src/RanluxppEngineImpl.cxx
     src/RichardsonDerivator.cxx
     src/RootFinder.cxx
     src/SparseData.cxx
@@ -188,12 +191,23 @@ ROOT_STANDARD_LIBRARY_PACKAGE(MathCore
     ${MATHCORE_LIBRARIES}
   DICTIONARY_OPTIONS
     -writeEmptyRootPCM
+    ${dictoptions}
   DEPENDENCIES
     Core
     ${MATHCORE_DEPENDENCIES}
   BUILTINS
     ${MATHCORE_BUILTINS}
 )
+
+target_include_directories(MathCore PRIVATE ${Vc_INCLUDE_DIR})
+target_include_directories(MathCore PRIVATE ${VecCore_INCLUDE_DIRS})
+
+list(APPEND math_incl ${Vc_INCLUDE_DIR})
+list(APPEND math_incl ${VecCore_INCLUDE_DIRS})
+
+foreach(incl ${math_incl})
+   target_include_directories(MathCore PUBLIC $<BUILD_INTERFACE:${incl}>)
+endforeach()
 
 target_compile_definitions(MathCore INTERFACE ${VecCore_DEFINITIONS})
 target_link_libraries(MathCore PRIVATE ${CMAKE_THREAD_LIBS_INIT})
