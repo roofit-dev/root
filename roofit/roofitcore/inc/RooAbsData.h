@@ -116,7 +116,7 @@ public:
   virtual void reset() ;
 
 
-  Bool_t getRange(const RooRealVar& var, double& lowest, double& highest, double marginFrac=0, bool symMode=kFALSE) const ;
+  Bool_t getRange(const RooAbsRealLValue& var, Double_t& lowest, Double_t& highest, Double_t marginFrac=0, Bool_t symMode=kFALSE) const ;
 
   // Plot the distribution of a real valued arg
   virtual Roo1DTable* table(const RooArgSet& catSet, const char* cuts="", const char* opts="") const ;
@@ -265,7 +265,7 @@ protected:
 
   virtual RooAbsData* cacheClone(const RooAbsArg* newCacheOwner, const RooArgSet* newCacheVars, const char* newName=0) = 0 ; // DERIVED
   virtual RooAbsData* reduceEng(const RooArgSet& varSubset, const RooFormulaVar* cutVar, const char* cutRange=0, 
-	                        Int_t nStart=0, Int_t nStop=2000000000, Bool_t copyCache=kTRUE) = 0 ; // DERIVED
+	                        std::size_t nStart = 0, std::size_t = std::numeric_limits<std::size_t>::max(), Bool_t copyCache=kTRUE) = 0 ; // DERIVED
 
   RooRealVar* dataRealVar(const char* methodname, const RooRealVar& extVar) const ;
 
