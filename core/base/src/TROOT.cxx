@@ -66,7 +66,7 @@ of a main program creating an interactive version is shown below:
 ~~~
 */
 
-#include <ROOT/RConfig.h>
+#include <ROOT/RConfig.hxx>
 #include "RConfigure.h"
 #include "RConfigOptions.h"
 #include "RVersion.h"
@@ -539,6 +539,9 @@ namespace Internal {
    /// In addition, gDirectory, gFile and gPad become a thread-local variable.
    /// In all threads, gDirectory defaults to gROOT, a singleton which supports thread-safe insertion and deletion of contents.
    /// gFile and gPad default to nullptr, as it is for single-thread programs.
+   ///
+   /// The ROOT graphics subsystem is not made thread-safe by this method. In particular drawing or printing different
+   /// canvases from different threads (and analogous operations such as invoking `Draw` on a `TObject`) is not thread-safe.
    ///
    /// Note that there is no `DisableThreadSafety()`. ROOT's thread-safety features cannot be disabled once activated.
    // clang-format on
@@ -1763,18 +1766,19 @@ TCollection *TROOT::GetListOfFunctionTemplates()
 TCollection *TROOT::GetListOfGlobals(Bool_t load)
 {
    if (!fGlobals) {
-      // We add to the list the "funcky-fake" globals.
       fGlobals = new TListOfDataMembers(0);
-      fGlobals->Add(new TGlobalMappedFunction("gROOT", "TROOT*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&ROOT::GetROOT)));
-      fGlobals->Add(new TGlobalMappedFunction("gPad", "TVirtualPad*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TVirtualPad::Pad)));
-      fGlobals->Add(new TGlobalMappedFunction("gInterpreter", "TInterpreter*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TInterpreter::Instance)));
-      fGlobals->Add(new TGlobalMappedFunction("gVirtualX", "TVirtualX*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TVirtualX::Instance)));
-      fGlobals->Add(new TGlobalMappedFunction("gDirectory", "TDirectory*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TDirectory::CurrentDirectory)));
+      // We add to the list the "funcky-fake" globals.
+
+      // provide special functor for gROOT, while ROOT::GetROOT() does not return reference
+      TGlobalMappedFunction::MakeFunctor("gROOT", "TROOT*", ROOT::GetROOT, [] {
+         ROOT::GetROOT();
+         return (void *)&ROOT::Internal::gROOTLocal;
+      });
+
+      TGlobalMappedFunction::MakeFunctor("gPad", "TVirtualPad*", TVirtualPad::Pad);
+      TGlobalMappedFunction::MakeFunctor("gVirtualX", "TVirtualX*", TVirtualX::Instance);
+      TGlobalMappedFunction::MakeFunctor("gDirectory", "TDirectory*", TDirectory::CurrentDirectory);
+
       // Don't let TGlobalMappedFunction delete our globals, now that we take them.
       fGlobals->AddAll(&TGlobalMappedFunction::GetEarlyRegisteredGlobals());
       TGlobalMappedFunction::GetEarlyRegisteredGlobals().SetOwner(kFALSE);
