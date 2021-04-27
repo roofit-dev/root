@@ -1127,12 +1127,6 @@ static void LoadModules(const std::vector<std::string> &modules, cling::Interpre
       LoadModule(modName, interp);
 }
 
-static bool FileExists(const char *file)
-{
-   struct stat buf;
-   return (stat(file, &buf) == 0);
-}
-
 static bool IsFromRootCling() {
   // rootcling also uses TCling for generating the dictionary ROOT files.
   const static bool foundSymbol = dlsym(RTLD_DEFAULT, "usedToIdentifyRootClingByDlSym");
@@ -1225,6 +1219,10 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
       }
    }
 
+   if (fCxxModulesEnabled) {
+      clingArgsStorage.push_back("-modulemap_overlay=" + std::string(TROOT::GetIncludeDir().Data()));
+   }
+
    // FIXME: This only will enable frontend timing reports.
    EnvOpt = llvm::sys::Process::GetEnv("ROOT_CLING_TIMING");
    if (EnvOpt.hasValue())
@@ -1246,14 +1244,6 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
       // module build remarks from clang to make it easier to spot when we do
       // this by accident.
       interpArgs.push_back("-Rmodule-build");
-
-      TString vfsPath = TROOT::GetIncludeDir() + "/modulemap.overlay.yaml";
-      // On modules aware build systems (such as OSX) we do not need an overlay file and thus the build system does not
-      // generate it.
-      if (FileExists(vfsPath.Data())) {
-         vfsArg = "-ivfsoverlay" + vfsPath;
-         interpArgs.push_back(vfsArg.Data());
-      }
    }
 
 #ifdef R__FAST_MATH
@@ -2002,7 +1992,10 @@ void TCling::RegisterModule(const char* modulename,
 
    bool ModuleWasSuccessfullyLoaded = false;
    if (hasCxxModule) {
-      std::string ModuleName = llvm::StringRef(modulename).substr(3).str();
+      std::string ModuleName = modulename;
+      if (llvm::StringRef(modulename).startswith("lib"))
+         ModuleName = llvm::StringRef(modulename).substr(3).str();
+
       // FIXME: We should only complain for modules which we know to exist. For example, we should not complain about
       // modules such as GenVector32 because it needs to fall back to GenVector.
       ModuleWasSuccessfullyLoaded = LoadModule(ModuleName, *fInterpreter, /*Complain=*/ false);
