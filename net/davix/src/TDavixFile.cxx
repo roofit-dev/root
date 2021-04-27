@@ -36,15 +36,14 @@
 #include "TSocket.h"
 #include "Bytes.h"
 #include "TError.h"
-#include "TSystem.h"
 #include "TEnv.h"
 #include "TBase64.h"
 #include "TVirtualPerfStats.h"
 #include "TDavixFileInternal.h"
-#include "TSocket.h"
+#include "snprintf.h"
 
-#include <errno.h>
-#include <stdlib.h>
+#include <cerrno>
+#include <cstdlib>
 #include <unistd.h>
 #include <fcntl.h>
 #include <davix.hpp>
@@ -273,8 +272,9 @@ Davix_fd *TDavixFileInternal::Open()
        if(replicas.empty()) {
            // I was unable to retrieve a list of replicas: propagate the original
            // error.
-           Error("DavixOpen", "can not open file with davix: %s (%d)",
-                davixErr->getErrMsg().c_str(), davixErr->getStatus());
+           Error("DavixOpen", "can not open file \"%s\" with davix: %s (%d)",
+                 fUrl.GetUrl(),
+                 davixErr->getErrMsg().c_str(), davixErr->getStatus());
         }
         DavixError::clearError(&davixErr);
    } else {

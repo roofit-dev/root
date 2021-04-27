@@ -1,6 +1,4 @@
-// LorentzVector doxygen page
-
-/** \page LorentzVectorPage LorentzVector Classes
+\page LorentzVectorPage LorentzVector Classes
 
 To avoid exposing templated parameter to the users, typedefs are defined for all types of vectors based an double's and float's. To use them, one must include the header file _Math/Vector4D.h_. The following typedef's, defined in the header file _Math/Vector4Dfwd.h_, are available for the different instantiations of the template class ROOT::Math::LorentzVector:
 
@@ -9,6 +7,7 @@ To avoid exposing templated parameter to the users, typedefs are defined for all
 *   ROOT::Math::PtEtaPhiEVector vector based on pt (rho),eta,phi and E (t) coordinates in double precision
 *   ROOT::Math::PtEtaPhiMVector vector based on pt (rho),eta,phi and M (t) coordinates in double precision
 *   ROOT::Math::PxPyPzMVector vector based on px,py,pz and M (mass) coordinates in double precision
+*   ROOT::Math::PxPyPzEVector vector based on px,py,pz and E (energy) coordinates in double precision
 
 The metric used for all the LorentzVector's is (-,-,-,+)
 
@@ -109,5 +108,3 @@ v.Beta();                                // return beta and gamma value
 v.Gamma()                                // (vector must be time-like otherwise result is meaningless)
 XYZVector b = v.BoostToCM()              // return boost vector which will bring the Vector in its mas frame (P=0)
 </pre>
-
-*/

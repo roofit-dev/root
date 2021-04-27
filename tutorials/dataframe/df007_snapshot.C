@@ -1,7 +1,10 @@
 /// \file
 /// \ingroup tutorial_dataframe
 /// \notebook -draw
+/// \brief Write ROOT data with RDataFrame.
+///
 /// This tutorial shows how to write out datasets in ROOT formatusing the RDataFrame
+/// \macro_image
 /// \macro_code
 ///
 /// \date April 2017
@@ -60,8 +63,7 @@ int df007_snapshot()
 
    // Open the new file and list the columns of the tree
    TFile f1(outFileName);
-   TTree *t;
-   f1.GetObject(treeName, t);
+   auto t = f1.Get<TTree>(treeName);
    std::cout << "These are the columns b1, b1_square and b2_vector:" << std::endl;
    for (auto branch : *t->GetListOfBranches()) {
       std::cout << "Branch: " << branch->GetName() << std::endl;
@@ -75,8 +77,8 @@ int df007_snapshot()
 
    // Open the new file and list the columns of the tree
    TFile f2(outFileNameAllColumns);
-   f2.GetObject(treeName, t);
-   std::cout << "These are all the columns available to this tdf:" << std::endl;
+   t = f2.Get<TTree>(treeName);
+   std::cout << "These are all the columns available to this dataframe:" << std::endl;
    for (auto branch : *t->GetListOfBranches()) {
       std::cout << "Branch: " << branch->GetName() << std::endl;
    }
@@ -86,8 +88,8 @@ int df007_snapshot()
    // analysis chain from it. The default columns are the one selected.
    // Notice also how we can decide to be more explicit with the types of the
    // columns.
-   auto snapshot_tdf = d2.Snapshot<int>(treeName, outFileName, {"b1_square"});
-   auto h = snapshot_tdf->Histo1D();
+   auto snapshot_df = d2.Snapshot<int>(treeName, outFileName, {"b1_square"});
+   auto h = snapshot_df->Histo1D();
    auto c = new TCanvas();
    h->DrawClone();
 

@@ -176,7 +176,8 @@ or :
 
 #include "RConfigure.h"
 
-#include "Riostream.h"
+#include <iostream>
+#include <fstream>
 #include "TTreeViewer.h"
 #include "HelpText.h"
 #include "HelpTextTV.h"
@@ -190,6 +191,7 @@ or :
 #include "TContextMenu.h"
 #include "TInterpreter.h"
 #include "TLeaf.h"
+#include "TBranch.h"
 #include "TRootHelpDialog.h"
 #include "TSystem.h"
 #include "TApplication.h"
@@ -198,10 +200,8 @@ or :
 #include "TKey.h"
 #include "TFile.h"
 #include "TGMenu.h"
-#include "TGFrame.h"
-#include "TCanvas.h"
+#include "TVirtualPad.h"
 #include "TH1.h"
-#include "TTree.h"
 #include "TFriendElement.h"
 #include "TObjArray.h"
 #include "TObjString.h"
@@ -222,8 +222,9 @@ or :
 #include "TG3DLine.h"
 #include "TGFileDialog.h"
 #include "TGProgressBar.h"
-#include "TClonesArray.h"
 #include "TSpider.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 #ifdef WIN32
 #include "TWin32SplashThread.h"
@@ -1438,7 +1439,7 @@ void TTreeViewer::ExecuteDraw()
       varexp += fBarHist->GetText();
    }
    // find canvas/pad where to draw
-   TPad *pad = (TPad*)gROOT->GetSelectedPad();
+   auto pad = gROOT->GetSelectedPad();
    if (pad) pad->cd();
    // find graphics option
    const char* gopt = fBarOption->GetText();
@@ -1605,7 +1606,7 @@ void TTreeViewer::ExecuteSpider()
    // find ListOut
    if (strlen(fBarListOut->GetText())) varexp = TString::Format(">>%s", fBarListOut->GetText());
    // find canvas/pad where to draw
-   TPad *pad = (TPad*)gROOT->GetSelectedPad();
+   auto pad = gROOT->GetSelectedPad();
    if (pad) pad->cd();
    // find graphics option
    const char* gopt = fBarOption->GetText();
@@ -1992,7 +1993,7 @@ Bool_t TTreeViewer::ProcessMessage(Long_t msg, Long_t parm1, Long_t parm2)
                         static TString dir(".");
                         TGFileInfo info;
                         info.fFileTypes = gOpenTypes;
-                        info.fIniDir    = StrDup(dir);
+                        info.SetIniDir(dir);
                         new TGFileDialog(fClient->GetRoot(), this, kFDOpen, &info);
                         if (!info.fFilename) return kTRUE;
                         dir = info.fIniDir;
@@ -2020,7 +2021,7 @@ Bool_t TTreeViewer::ProcessMessage(Long_t msg, Long_t parm1, Long_t parm2)
                         static TString dir(".");
                         TGFileInfo info;
                         info.fFileTypes = gMacroTypes;
-                        info.fIniDir    = StrDup(dir);
+                        info.SetIniDir(dir);
                         new TGFileDialog(fClient->GetRoot(), this, kFDOpen, &info);
                         if (!info.fFilename) return kTRUE;
                         dir = info.fIniDir;

@@ -1,13 +1,17 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook
-/// Multidimensional models: normalization and integration of p.d.fs, construction of cumulative distribution functions
-/// from p.d.f.s in two dimensions
+///
+///
+/// \brief Multidimensional models: normalization and integration of p.d.fs, construction of
+/// cumulative distribution functions from p.d.f.s in two dimensions
 ///
 /// \macro_image
 /// \macro_output
 /// \macro_code
-/// \author 07/2008 - Wouter Verkerke
+///
+/// \date 07/2008
+/// \author Wouter Verkerke
 
 #include "RooRealVar.h"
 #include "RooGaussian.h"

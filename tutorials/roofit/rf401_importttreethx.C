@@ -1,13 +1,17 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook -nodraw
-/// Data and categories: advanced options for importing data from ROOT TTree and THx histograms
+///
+///
+/// \brief Data and categories: advanced options for importing data from ROOT TTree and THx histograms
 ///
 /// Basic import options are demonstrated in rf102_dataimport.C
 ///
 /// \macro_output
 /// \macro_code
-/// \author 07/2008 - Wouter Verkerke
+///
+/// \date 07/2008
+/// \author Wouter Verkerke
 
 #include "RooRealVar.h"
 #include "RooDataSet.h"
@@ -42,10 +46,7 @@ void rf401_importttreethx()
    RooRealVar x("x", "x", -10, 10);
 
    // Create category observable c that serves as index for the ROOT histograms
-   RooCategory c("c", "c");
-   c.defineType("SampleA");
-   c.defineType("SampleB");
-   c.defineType("SampleC");
+   RooCategory c("c", "c", {{"SampleA",0}, {"SampleB",1}, {"SampleC",2}});
 
    // Create a binned dataset that imports contents of all TH1 mapped by index category c
    RooDataHist *dh = new RooDataHist("dh", "dh", x, Index(c), Import("SampleA", *hh_1), Import("SampleB", *hh_2),
@@ -53,7 +54,7 @@ void rf401_importttreethx()
    dh->Print();
 
    // Alternative constructor form for importing multiple histograms
-   map<string, TH1 *> hmap;
+   std::map<std::string, TH1 *> hmap;
    hmap["SampleA"] = hh_1;
    hmap["SampleB"] = hh_2;
    hmap["SampleC"] = hh_3;

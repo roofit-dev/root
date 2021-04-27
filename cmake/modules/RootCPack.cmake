@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 #---------------------------------------------------------------------------------------------------
 #  RootCPack.cmake
 #   - basic setup for packaging ROOT using CTest
@@ -23,12 +29,12 @@ string(REGEX REPLACE "^([0-9]+).*$" "\\1" CXX_MAJOR ${CMAKE_CXX_COMPILER_VERSION
 string(REGEX REPLACE "^([0-9]+)\\.([0-9]+).*$" "\\2" CXX_MINOR ${CMAKE_CXX_COMPILER_VERSION})
 
 #---Resource Files-----------------------------------------------------------------------------------
-configure_file(README/README README.txt COPYONLY)
+configure_file(README.md README.md COPYONLY)
 configure_file(LICENSE LICENSE.txt COPYONLY)
 configure_file(LGPL2_1.txt LGPL2_1.txt COPYONLY)
-set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_BINARY_DIR}/README.txt")
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_BINARY_DIR}/README.md")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_BINARY_DIR}/LICENSE.txt")
-set(CPACK_RESOURCE_FILE_README "${CMAKE_BINARY_DIR}/README.txt")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_BINARY_DIR}/README.md")
 
 #---Source package settings--------------------------------------------------------------------------
 set(CPACK_SOURCE_IGNORE_FILES
@@ -56,6 +62,8 @@ if(MSVC)
     math(EXPR VS_VERSION "${VC_MAJOR} - 5")
   elseif(MSVC_VERSION LESS 1919)
     math(EXPR VS_VERSION "${VC_MAJOR} - 4")
+  elseif(MSVC_VERSION LESS 1925)
+    math(EXPR VS_VERSION "${VC_MAJOR} - 3")
   endif()
   set(COMPILER_NAME_VERSION ".vc${VS_VERSION}")
 else()
@@ -111,12 +119,20 @@ if(WIN32)
   set(CPACK_GENERATOR "ZIP;NSIS")
   set(CPACK_SOURCE_GENERATOR "TGZ;ZIP")
 elseif(APPLE)
-  set(CPACK_GENERATOR "TGZ;PackageMaker")
+  set(CPACK_GENERATOR "TGZ;productbuild")
   set(CPACK_SOURCE_GENERATOR "TGZ;TBZ2")
 else()
   set(CPACK_GENERATOR "TGZ")
   set(CPACK_SOURCE_GENERATOR "TGZ;TBZ2")
 endif()
+
+#----------------------------------------------------------------------------------------------------
+# Execute pre packaging script
+#
+# We want to defer markdown to html conversion; CPACK_INSTALL_SCRIPTS allows this
+# but only takes a .cmake file as argument
+#
+set(CPACK_INSTALL_SCRIPTS ${CMAKE_SOURCE_DIR}/cmake/modules/CPackREADME.cmake)
 
 #----------------------------------------------------------------------------------------------------
 # Finally, generate the CPack per-generator options file and include the
@@ -152,5 +168,3 @@ cpack_add_component(tests
     DISPLAY_NAME "ROOT Tests and Tutorials"
     DESCRIPTION "These are needed to do any test and tutorial"
      INSTALL_TYPES full developer)
-
-

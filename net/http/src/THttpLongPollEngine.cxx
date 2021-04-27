@@ -11,8 +11,8 @@
 
 #include "THttpLongPollEngine.h"
 
+#include "TError.h"
 #include "THttpCallArg.h"
-#include "TSystem.h"
 
 #include <cstring>
 #include <cstdlib>

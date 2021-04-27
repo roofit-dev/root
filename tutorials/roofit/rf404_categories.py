@@ -2,12 +2,12 @@
 ## \ingroup tutorial_roofit
 ## \notebook -nodraw
 ##
-## Data and categories: working with ROOT.RooCategory objects to describe discrete variables
+## \brief Data and categories: working with ROOT.RooCategory objects to describe discrete variables
 ##
 ## \macro_code
 ##
 ## \date February 2018
-## \author Clemens Lange, Wouter Verkerke (C++ version)
+## \authors Clemens Lange, Wouter Verkerke (C++ version)
 
 from __future__ import print_function
 import ROOT

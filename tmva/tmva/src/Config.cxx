@@ -38,8 +38,6 @@ Singleton class for global configuration settings used by TMVA.
 
 #include "Rtypes.h"
 #include "TString.h"
-#include "TSystem.h"
-#include "TROOT.h"
 
 ClassImp(TMVA::Config);
 
@@ -66,6 +64,7 @@ TMVA::Config::Config() :
    fVariablePlotting.fTimesRMS = 8.0;
    fVariablePlotting.fNbins1D  = 40;
    fVariablePlotting.fNbins2D  = 300;
+   fVariablePlotting.fMaxNumOfAllowedVariables = 200;
    fVariablePlotting.fMaxNumOfAllowedVariablesForScatterPlots = 20;
 
    fVariablePlotting.fNbinsMVAoutput   = 40;
@@ -73,13 +72,11 @@ TMVA::Config::Config() :
    fVariablePlotting.fUsePaperStyle = 0;
 
    // IO names
+   fIONames.fWeightFileDirPrefix = "";
    fIONames.fWeightFileDir           = "weights";
    fIONames.fWeightFileExtension     = "weights";
    fIONames.fOptionsReferenceFileDir = "optionInfo";
 
-   // get number of CPU allocated (i.e. pool size)
-   // need to have created an instance of TThreadExecutor before
-   fNCpu = ROOT::GetImplicitMTPoolSize();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -121,4 +118,3 @@ TMVA::Config& TMVA::Config::Instance()
    return fgConfigPtr ? *fgConfigPtr :*(fgConfigPtr = new Config());
 #endif
 }
-

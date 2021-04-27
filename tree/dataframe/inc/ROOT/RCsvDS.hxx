@@ -18,6 +18,7 @@
 #include <list>
 #include <map>
 #include <vector>
+#include <fstream>
 
 #include <TRegexp.h>
 
@@ -52,7 +53,7 @@ private:
    // work given that the pointer to the boolean in that case cannot be taken
    std::vector<std::deque<bool>> fBoolEvtValues; // one per column per slot
 
-   static TRegexp intRegex, doubleRegex1, doubleRegex2, trueRegex, falseRegex;
+   static TRegexp intRegex, doubleRegex1, doubleRegex2, doubleRegex3, trueRegex, falseRegex;
 
    void FillHeaders(const std::string &);
    void FillRecord(const std::string &, Record_t &);
