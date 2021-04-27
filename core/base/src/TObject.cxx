@@ -45,7 +45,6 @@ class hierarchies (watch out for overlaps).
 #include "TVirtualPad.h"
 #include "TInterpreter.h"
 #include "TMemberInspector.h"
-#include "TObjString.h"
 #include "TRefTable.h"
 #include "TProcessID.h"
 
@@ -751,6 +750,14 @@ void TObject::UseCurrentStyle()
 ///  Using the kWriteDelete option a previous key with the same name is
 ///  deleted only after the new object has been written. This option
 ///  is safer than kOverwrite but it is slower.
+///  NOTE: Neither kOverwrite nor kWriteDelete reduces the size of a TFile--
+///  the space is simply freed up to be overwritten; in the case of a TTree,
+///  it is more complicated. If one opens a TTree, appends some entries,
+///  then writes it out, the behaviour is effectively the same. If, however,
+///  one creates a new TTree and writes it out in this way,
+///  only the metadata is replaced, effectively making the old data invisible
+///  without deleting it. TTree::Delete() can be used to mark all disk space
+///  occupied by a TTree as free before overwriting its metadata this way.
 ///  The kSingleKey option is only used by TCollection::Write() to write
 ///  a container with a single key instead of each object in the container
 ///  with its own key.

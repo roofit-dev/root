@@ -8,9 +8,7 @@
 # CMakeLists.txt file for building JsMVA bindings/pyroot_experimental/PyROOT package
 ####################################################################################
 
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${py_localruntimedir})
-set(CMAKE_INSTALL_LIBDIR ${CMAKE_INSTALL_PYROOTDIR})
 set(JsMVADirName python/JsMVA)
 
-file(COPY ${JsMVADirName} DESTINATION ${py_localruntimedir})
-install(DIRECTORY ${JsMVADirName} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+file(COPY ${JsMVADirName} DESTINATION ${localruntimedir})
+install(DIRECTORY ${JsMVADirName} DESTINATION ${runtimedir})

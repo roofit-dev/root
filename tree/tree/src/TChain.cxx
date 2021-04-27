@@ -2096,14 +2096,15 @@ void TChain::ParseTreeFilename(const char *name, TString &filename, TString &tre
                                Bool_t) const
 {
    Ssiz_t pIdx = kNPOS;
-   filename = name;
+   filename.Clear();
    treename.Clear();
    query.Clear();
    suffix.Clear();
 
    // General case
    TUrl url(name, kTRUE);
-
+   filename = (strcmp(url.GetProtocol(), "file")) ? url.GetUrl() : url.GetFileAndOptions();
+   
    TString fn = url.GetFile();
    // Extract query, if any
    if (url.GetOptions() && (strlen(url.GetOptions()) > 0))
@@ -2121,9 +2122,10 @@ void TChain::ParseTreeFilename(const char *name, TString &filename, TString &tre
    }
    // Suffix
    suffix = url.GetFileAndOptions();
+   // Get options from suffix by removing the file name
    suffix.Replace(suffix.Index(fn), fn.Length(), "");
-   // Remove it from the file name
-   filename.Remove(filename.Index(fn) + fn.Length());
+   // Remove the options suffix from the original file name
+   filename.Replace(filename.Index(suffix), suffix.Length(), "");
 
    // Special case: [...]file.root/treename
    static const char *dotr = ".root";
