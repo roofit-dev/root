@@ -17,7 +17,12 @@
 /** \class RooExponential
     \ingroup Roofit
 
-Exponential p.d.f
+Exponential PDF. It computes
+\f[
+  \mathrm{RooExponential}(x, c) = \mathcal{N} \cdot \exp(c\cdot x),
+\f]
+where \f$ \mathcal{N} \f$ is a normalisation constant that depends on the
+range and values of the arguments.
 **/
 
 #include "RooFit.h"
@@ -28,6 +33,11 @@ Exponential p.d.f
 
 #include "RooExponential.h"
 #include "RooRealVar.h"
+#include "BatchHelpers.h"
+
+#ifdef USE_VDT
+#include "vdt/exp.h"
+#endif
 
 using namespace std;
 
@@ -61,7 +71,8 @@ Double_t RooExponential::evaluate() const{
 
 Int_t RooExponential::getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* /*rangeName*/) const
 {
-  if (matchArgs(allVars,analVars,x)) return 1 ;
+  if (matchArgs(allVars,analVars,x)) return 1;
+  if (matchArgs(allVars,analVars,c)) return 2;
   return 0 ;
 }
 
@@ -69,21 +80,65 @@ Int_t RooExponential::getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analV
 
 Double_t RooExponential::analyticalIntegral(Int_t code, const char* rangeName) const
 {
-  switch(code) {
-  case 1:
-    {
-      Double_t ret(0) ;
-      if(c == 0.0) {
-   ret = (x.max(rangeName) - x.min(rangeName));
-      } else {
-   ret =  ( exp( c*x.max(rangeName) ) - exp( c*x.min(rangeName) ) )/c;
-      }
+  assert(code == 1 || code ==2);
 
-      //cout << "Int_exp_dx(c=" << c << ", xmin=" << x.min(rangeName) << ", xmax=" << x.max(rangeName) << ")=" << ret << endl ;
-      return ret ;
-    }
+  auto& constant  = code == 1 ? c : x;
+  auto& integrand = code == 1 ? x : c;
+
+  if (constant == 0.0) {
+    return integrand.max(rangeName) - integrand.min(rangeName);
   }
 
-  assert(0) ;
-  return 0 ;
+  return (exp(constant*integrand.max(rangeName)) - exp(constant*integrand.min(rangeName)))
+      / constant;
+}
+
+
+namespace {
+
+template<class Tx, class Tc>
+void compute(RooSpan<double> output, Tx x, Tc c) {
+  const int n = output.size();
+
+  #pragma omp simd
+  for (int i = 0; i < n; ++i) { //CHECK_VECTORISE
+#ifdef USE_VDT
+    output[i] = vdt::fast_exp(x[i]*c[i]);
+#else
+    output[i] = exp(x[i]*c[i]);
+#endif
+  }
+}
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Evaluate the exponential without normalising it on the given batch.
+/// \param[in] batchIndex Index of the batch to be computed.
+/// \param[in] batchSize Size of each batch. The last batch may be smaller.
+/// \return A span with the computed values.
+
+RooSpan<double> RooExponential::evaluateBatch(std::size_t begin, std::size_t batchSize) const {
+  auto output = _batchData.makeWritableBatchUnInit(begin, batchSize);
+
+  //Now explicitly write down all possible template instantiations of compute() above:
+  auto xData = x.getValBatch(begin, batchSize);
+  auto cData = c.getValBatch(begin, batchSize);
+
+  const bool batchX = !xData.empty();
+  const bool batchC = !cData.empty();
+
+  if (batchX && !batchC) {
+    compute(output, xData, BatchHelpers::BracketAdapter<RooRealProxy>(c));
+  } else if (!batchX && batchC) {
+    compute(output, BatchHelpers::BracketAdapter<RooRealProxy>(x), cData);
+  } else if (!batchX && !batchC) {
+    compute(output,
+        BatchHelpers::BracketAdapter<RooRealProxy>(x),
+        BatchHelpers::BracketAdapter<RooRealProxy>(c));
+  } else {
+    compute(output, xData, cData);
+  }
+
+  return output;
 }

@@ -15,6 +15,7 @@
  *****************************************************************************/
 
 #include "RooHelpers.h"
+#include "RooAbsRealLValue.h"
 
 namespace RooHelpers {
 
@@ -33,6 +34,48 @@ std::vector<std::string> tokenise(const std::string &str, const std::string &del
   } while (beg != std::string::npos);
 
   return tokens;
+}
+
+
+
+HijackMessageStream::HijackMessageStream(RooFit::MsgLevel level, RooFit::MsgTopic topics, const char* objectName) :
+  std::ostringstream()
+{
+  auto& msg = RooMsgService::instance();
+  _oldKillBelow = msg.globalKillBelow();
+  msg.setGlobalKillBelow(level);
+  for (int i = 0; i < msg.numStreams(); ++i) {
+    _oldConf.push_back(msg.getStream(i));
+    msg.getStream(i).removeTopic(topics);
+    msg.setStreamStatus(i, true);
+  }
+
+  _thisStream = msg.addStream(level,
+      RooFit::Topic(topics),
+      RooFit::OutputStream(*this),
+      objectName ? RooFit::ObjectName(objectName) : RooCmdArg());
+}
+
+HijackMessageStream::~HijackMessageStream() {
+  auto& msg = RooMsgService::instance();
+  msg.setGlobalKillBelow(_oldKillBelow);
+  for (unsigned int i = 0; i < _oldConf.size(); ++i) {
+    msg.getStream(i) = _oldConf[i];
+  }
+  msg.deleteStream(_thisStream);
+}
+
+
+void checkRangeOfParameters(const RooAbsReal* callingClass, std::initializer_list<const RooAbsReal*> pars,
+    double min, double max) {
+  for (auto parameter : pars) {
+    auto par = dynamic_cast<const RooAbsRealLValue*>(parameter);
+    if (par && (par->getMin() <= min || par->getMax() >= max) ) {
+      oocoutE(callingClass, Eval) << "The parameter '" << par->GetName() << "' with range [" << par->getMin("") << ", "
+          << par->getMax() << "] of the " << callingClass->IsA()->GetName() << " '" << callingClass->GetName()
+          << "' exceeds the safe range of [" << min << ", " << max << "]. Advise to limit its range." << std::endl;
+    }
+  }
 }
 
 }

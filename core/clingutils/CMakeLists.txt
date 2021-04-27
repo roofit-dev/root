@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT core/clingutils package
 ############################################################################
@@ -23,7 +29,7 @@ target_include_directories(ClingUtils PRIVATE ${CLING_INCLUDE_DIRS})
 # Register the llvm include directories after clangs. This instructs the compiler to resolve
 # headers from our builtin clang. That's an issue when we are building with bultin_llvm=Off
 # and we have installed clang headers, too.
-target_include_directories(ClingUtils PRIVATE SYSTEM ${CLANG_INCLUDE_DIRS} ${LLVM_INCLUDE_DIRS})
+target_include_directories(ClingUtils SYSTEM PRIVATE ${CLANG_INCLUDE_DIRS} ${LLVM_INCLUDE_DIRS})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CLING_CXXFLAGS}")
 
 # This is to avoid warnings coming from GCC 7 in llvm/src/include/llvm/ADT/DenseMap.h:1010
@@ -56,7 +62,7 @@ foreach(dict ${stldicts})
   ROOT_STANDARD_LIBRARY_PACKAGE(${dict}Dict
                                 NO_SOURCES NO_INSTALL_HEADERS NO_MODULE
                                 STAGE1
-                                HEADERS ${header}
+                                NODEPHEADERS ${header}
                                 LINKDEF src/${dict}Linkdef.h
                                 DEPENDENCIES Core)
 endforeach()
@@ -69,6 +75,9 @@ else ()
   set(CLANG_RESOURCE_DIR_STEM ${LLVM_LIBRARY_DIR}/clang)
   # A user can define a clang version to use, otherwise find it (but will error if more than one version is present)
   if (NOT DEFINED CLANG_RESOURCE_DIR_VERSION)
+    if (NOT EXISTS ${CLANG_RESOURCE_DIR_STEM})
+      message(FATAL_ERROR "${CLANG_RESOURCE_DIR_STEM} does not exist. Please install clang.")
+    endif()
     # There is no reasonable way to get the version of clang under which is its resource directory.
     # For example, lib/clang/5.0.0/include. Deduce it.
     file(GLOB CHILDREN RELATIVE ${CLANG_RESOURCE_DIR_STEM} ${CLANG_RESOURCE_DIR_STEM}/*)
@@ -125,8 +134,9 @@ endforeach()
 # of that file in build-time versus run-time (different length etc).
 # Capture their build-time version here, and inject it into runtime.
 foreach(file wchar.h bits/stat.h bits/time.h)
-  if(EXISTS /usr/include/${file})
-    list(APPEND copy_commands COMMAND ${CMAKE_COMMAND} -E copy /usr/include/${file} ${CMAKE_BINARY_DIR}/etc/cling/lib/clang/${CLANG_RESOURCE_DIR_VERSION}/include/${file})
+  if(EXISTS ${DEFAULT_SYSROOT}/usr/include/${file})
+    list(APPEND copy_commands COMMAND ${CMAKE_COMMAND} -E copy ${DEFAULT_SYSROOT}/usr/include/${file}
+      ${CMAKE_BINARY_DIR}/etc/cling/lib/clang/${CLANG_RESOURCE_DIR_VERSION}/include/${file})
   endif()
 endforeach()
 
@@ -159,4 +169,6 @@ else()
         COMMENT "Copying LLVM resource and header files")
 endif()
 add_custom_target(LLVMRES DEPENDS ${stamp_file} CLING)
+
+ROOT_ADD_TEST_SUBDIRECTORY(test)
 
