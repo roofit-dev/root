@@ -197,9 +197,14 @@ public:
   RooAbsReal* createScanCdf(const RooArgSet& iset, const RooArgSet& nset, Int_t numScanBins, Int_t intOrder) ;
 
   // Function evaluation support
-  virtual Bool_t traceEvalHook(Double_t value) const ;  
+  [[deprecated]] virtual Bool_t traceEvalHook(Double_t value) const ;
   virtual Double_t getValV(const RooArgSet* set=0) const ;
   virtual Double_t getLogVal(const RooArgSet* set=0) const ;
+
+  virtual RooSpan<const double> getValBatch(std::size_t begin, std::size_t batchSize,
+      const RooArgSet* normSet = nullptr) const;
+  RooSpan<double> getLogValBatch(std::size_t begin, std::size_t batchSize,
+      const RooArgSet* normSet = nullptr) const;
 
   Double_t getNorm(const RooArgSet& nset) const { 
     // Get p.d.f normalization term needed for observables 'nset'
@@ -209,7 +214,10 @@ public:
 
   virtual void resetErrorCounters(Int_t resetValue=10) ;
   void setTraceCounter(Int_t value, Bool_t allNodes=kFALSE) ;
-  Bool_t traceEvalPdf(Double_t value) const ;
+private:
+  Bool_t traceEvalPdf(Double_t value) const;
+
+public:
 
   Double_t analyticalIntegralWN(Int_t code, const RooArgSet* normSet, const char* rangeName=0) const ;
 
@@ -274,7 +282,7 @@ public:
   virtual RooAbsGenContext* autoGenContext(const RooArgSet &vars, const RooDataSet* prototype=0, const RooArgSet* auxProto=0, 
 					   Bool_t verbose=kFALSE, Bool_t autoBinned=kTRUE, const char* binnedTag="") const ;
 
-protected:
+private:
 
   RooDataSet *generate(RooAbsGenContext& context, const RooArgSet& whatVars, const RooDataSet* prototype,
 		       Double_t nEvents, Bool_t verbose, Bool_t randProtoOrder, Bool_t resampleProto, Bool_t skipInit=kFALSE, 
@@ -285,7 +293,9 @@ protected:
                            const char *label= "", Int_t sigDigits = 2, Option_t *options = "NELU", Double_t xmin=0.65,
 			   Double_t xmax= 0.99,Double_t ymax=0.95, const RooCmdArg* formatCmd=0) ;
 
+  void fixOutputsAndLogErrors(RooSpan<double>& outputs, std::size_t begin) const;
 
+protected:
   virtual RooPlot *plotOn(RooPlot *frame, PlotOpt o) const;  
 
   friend class RooEffGenContext ;

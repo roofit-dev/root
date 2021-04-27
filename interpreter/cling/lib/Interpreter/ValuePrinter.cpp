@@ -297,7 +297,9 @@ namespace cling {
     if (IsValid) {
       // If we're gonnd do this, better make sure the end is valid too
       // FIXME: getpagesize() & GetSystemInfo().dwPageSize might be better
+#if !defined(PAGE_SIZE)
       enum { PAGE_SIZE = 1024 };
+#endif
       while (!(IsValid = utils::isAddressValid(End)) && N > 1024) {
         N -= PAGE_SIZE;
         End = Start + N;
@@ -721,17 +723,16 @@ static std::string printEnumValue(const Value &V) {
   return enumString.str();
 }
 
-static std::string printFunctionValue(const Value &V, const void *ptr, clang::QualType Ty) {
+static std::string printFunctionValue(const Value &V, const void *ptr,
+                                      clang::QualType Ty) {
   cling::largestream o;
   o << "Function @" << ptr;
 
-  // If a function is the first thing printed in a session,
-  // getLastTransaction() will point to the transaction that loaded the
-  // ValuePrinter, and won't have a wrapper FD.
-  // Even if it did have one it wouldn't be the one that was requested to print.
-
   Interpreter &Interp = *const_cast<Interpreter *>(V.getInterpreter());
-  const Transaction *T = Interp.getLastTransaction();
+  const Transaction *T = Interp.getLastWrapperTransaction();
+  if (!T)
+    return o.str();
+
   if (clang::FunctionDecl *WrapperFD = T->getWrapperFD()) {
     clang::ASTContext &C = V.getASTContext();
     const clang::FunctionDecl *FD = nullptr;
