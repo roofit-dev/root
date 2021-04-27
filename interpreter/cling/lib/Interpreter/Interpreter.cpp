@@ -153,7 +153,7 @@ namespace cling {
   }
 
   clang::SourceLocation Interpreter::getNextAvailableLoc() const {
-    return m_IncrParser->getLastMemoryBufferEndLoc().getLocWithOffset(1);
+    return m_IncrParser->getNextAvailableUniqueSourceLoc();
   }
 
   bool Interpreter::isInSyntaxOnlyMode() const {
@@ -264,10 +264,6 @@ namespace cling {
       if (!m_Executor)
         return;
     }
-
-    // Tell the diagnostic client that we are entering file parsing mode.
-    DiagnosticConsumer& DClient = getCI()->getDiagnosticClient();
-    DClient.BeginSourceFile(getCI()->getLangOpts(), &PP);
 
     bool usingCxxModules = getSema().getLangOpts().Modules;
     if (usingCxxModules) {
@@ -873,10 +869,30 @@ namespace cling {
     if (getSema().isModuleVisible(M))
       return true;
 
+    // We cannot use #pragma clang module import because the on-demand modules
+    // may load a module in the middle of a function body for example. In this
+    // case this triggers an error:
+    // fatal error: import of module '...' appears within function '...'
+    //
+    // if (declare("#pragma clang module import \"" + M->Name + "\"") ==
+    // kSuccess)
+    //   return true;
+
     // FIXME: What about importing submodules such as std.blah. This disables
     // this functionality.
-    if (declare("#pragma clang module import \"" + M->Name + "\"") == kSuccess)
-      return true;
+    Preprocessor& PP = getCI()->getPreprocessor();
+    IdentifierInfo* II = PP.getIdentifierInfo(M->Name);
+    SourceLocation ValidLoc = getNextAvailableLoc();
+    Interpreter::PushTransactionRAII RAII(this);
+    bool success =
+       !getSema().ActOnModuleImport(ValidLoc, ValidLoc,
+                                    std::make_pair(II, ValidLoc)).isInvalid();
+
+    if (success) {
+      // Also make the module visible in the preprocessor to export its macros.
+      PP.makeModuleVisible(M, ValidLoc);
+      return success;
+    }
 
     if (complain) {
       if (M->IsSystem)

@@ -49,6 +49,39 @@ __all__ = [
 from ._version import __version__
 
 import os, sys, sysconfig, warnings
+import importlib
+
+# import libcppyy with Python version number
+major, minor = sys.version_info[0:2]
+py_version_str = '{}_{}'.format(major, minor)
+libcppyy_mod_name = 'libcppyy' + py_version_str
+importlib.import_module(libcppyy_mod_name)
+
+# ensure 'import libcppyy' will find the versioned module
+sys.modules['libcppyy'] = sys.modules[libcppyy_mod_name]
+
+# tell cppyy that libcppyy_backend is versioned
+if 'CPPYY_BACKEND_LIBRARY' in os.environ:
+    cbl_var = os.environ['CPPYY_BACKEND_LIBRARY']
+    start = 0
+    last_sep = cbl_var.rfind(os.path.sep)
+    if last_sep >= 0:
+        start = last_sep + 1
+    first_dot = cbl_var.find('.', start)
+    if first_dot >= 0:
+        # lib_name = [/path/to/]libcppyy_backend[py_version_str]
+        # suffix = so | ...
+        lib_name = cbl_var[:first_dot]
+        suff = cbl_var[first_dot+1:]
+        if lib_name.find(py_version_str, start) < 0:
+            lib_name += py_version_str
+        os.environ['CPPYY_BACKEND_LIBRARY'] = '.'.join([
+            lib_name, suff])
+    else:
+        if cbl_var.find(py_version_str, start) < 0:
+            os.environ['CPPYY_BACKEND_LIBRARY'] += py_version_str
+else:
+    os.environ['CPPYY_BACKEND_LIBRARY'] = 'libcppyy_backend' + py_version_str
 
 if not 'CLING_STANDARD_PCH' in os.environ:
     local_pch = os.path.join(os.path.dirname(__file__), 'allDict.cxx.pch')

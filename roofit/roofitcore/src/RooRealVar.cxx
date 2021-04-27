@@ -31,7 +31,6 @@ optionally a series of alternate named ranges.
 #include "RooTrace.h"
 
 #include <math.h>
-#include "TObjString.h"
 #include "TTree.h"
 #include "RooRealVar.h"
 #include "RooStreamParser.h"
@@ -46,7 +45,7 @@ optionally a series of alternate named ranges.
 using namespace std;
 
 ClassImp(RooRealVar);
-;
+
 
 Bool_t RooRealVar::_printScientific(kFALSE) ;
 Int_t  RooRealVar::_printSigDigits(5) ;
@@ -222,25 +221,6 @@ RooRealVar::~RooRealVar()
 Double_t RooRealVar::getValV(const RooArgSet*) const
 {
   return _value ;
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Return batch of data between begin and end.
-/// This requires that this instance is attached to a data store.
-/// \param begin First event to return.
-/// \param batchSize   Size of the batch.
-/// \return Span with event data. May be empty if not attached to a data storage.
-RooSpan<const double> RooRealVar::getValBatch(std::size_t begin, std::size_t batchSize,
-    const RooArgSet*) const {
-  const auto batchStatus = _batchData.status(begin, batchSize);
-  if (batchStatus == BatchHelpers::BatchData::kNoBatch) {
-    return {};
-  }
-
-  assert(batchStatus == BatchHelpers::BatchData::kReadyAndConstant);
-  return _batchData.getBatch(begin, batchSize);
 }
 
 

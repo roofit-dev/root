@@ -35,6 +35,13 @@ class PrettyPrinting(unittest.TestCase):
         self._print(x)
         self.assertIn("foo", x.__str__())
 
+    def test_STLString(self):
+         # std::string is not pythonized with the pretty printing, because:
+         # 1. gInterpreter->ToString("s") returns ""s""
+         # 2. cppyy already does the right thing
+         s = ROOT.std.string("x")
+         self.assertEqual(str(s), "x")
+
     def test_TH1F(self):
         x = ROOT.TH1F("name", "title", 10, 0, 1)
         self._print(x)
@@ -48,6 +55,14 @@ class PrettyPrinting(unittest.TestCase):
         s = x.__str__()
         r = x.__repr__()
         self.assertIn("MyClass object at", s)
+        self.assertEqual(s, r)
+
+    def test_null_object(self):
+        # ROOT-9935: test null proxied cpp object
+        x = ROOT.MakeNullPointer("TTree")
+        s = x.__str__()
+        r = x.__repr__()
+        self.assertIn("TTree object at", s)
         self.assertEqual(s, r)
 
 

@@ -177,7 +177,6 @@ called for each data event.
 #include "TClass.h"
 #include "Riostream.h"
 #include "TMath.h"
-#include "TObjString.h"
 #include "TPaveText.h"
 #include "TList.h"
 #include "TH1.h"
@@ -192,9 +191,9 @@ called for each data event.
 using namespace std;
 
 ClassImp(RooAbsPdf); 
-;
+
 ClassImp(RooAbsPdf::GenSpec);
-;
+
 
 Int_t RooAbsPdf::_verboseEval = 0;
 TString RooAbsPdf::_normRangeOverride ;
@@ -348,7 +347,7 @@ Double_t RooAbsPdf::getValV(const RooArgSet* nset) const
 RooSpan<const double> RooAbsPdf::getValBatch(std::size_t begin, std::size_t maxSize,
     const RooArgSet* normSet) const
 {
-  // Some PDFs do preprocessing here:
+  // Some PDFs do preprocessing here, e.g. of the norm
   getValV(normSet);
 
   if (_allBatchesDirty || _operMode == ADirty) {
@@ -370,15 +369,9 @@ RooSpan<const double> RooAbsPdf::getValBatch(std::size_t begin, std::size_t maxS
   }
 
 
-  // Process change in last data set used
-  Bool_t nsetChanged(kFALSE) ;
-  if (normSet != _normSet || _norm == nullptr) {
-    nsetChanged = syncNormalization(normSet) ;
-  }
-
   // TODO wait if batch is computing?
-  if (_batchData.status(begin, maxSize) <= BatchHelpers::BatchData::kDirty
-      || nsetChanged || _norm->isValueDirty()) {
+  if (_batchData.status(begin, normSet, BatchHelpers::BatchData::kgetVal) <= BatchHelpers::BatchData::kDirty
+      || _norm->isValueDirty()) {
 
     auto outputs = evaluateBatch(begin, maxSize);
     maxSize = outputs.size();
@@ -754,7 +747,8 @@ RooSpan<const double> RooAbsPdf::getLogValBatch(std::size_t begin, std::size_t m
     logBatchComputationErrors(pdfValues, begin);
   }
 
-  auto output = _batchData.makeWritableBatchUnInit(begin, pdfValues.size());
+  auto output = _batchData.makeWritableBatchUnInit(begin, pdfValues.size(),
+      normSet, BatchHelpers::BatchData::kgetLogVal);
 
   for (std::size_t i = 0; i < pdfValues.size(); ++i) { //CHECK_VECTORISE
     const double prob = pdfValues[i];
@@ -1029,6 +1023,10 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
       RooRealVar* rrv =  dynamic_cast<RooRealVar*>(arg) ;
       if (rrv) rrv->setRange("fit",rangeLo,rangeHi) ;
     }
+
+    // Clear possible range attributes from previous fits.
+    setStringAttribute("fitrange", nullptr);
+
     // Set range name to be fitted to "fit"
     rangeName = "fit" ;
   }
@@ -2726,6 +2724,7 @@ void removeRangeOverlap(std::vector<std::pair<double, double>>& ranges) {
 /// <tr><td> `ProjectionRange(const char* rn)`  <td>  Override default range of projection integrals to a different
 ///               range specified by given range name. This technique allows you to project a finite width slice in a real-valued observable
 /// <tr><td> `NormRange(const char* name)`      <td>  Calculate curve normalization w.r.t. specified range[s].
+///               See the tutorial rf212_rangesAndBlinding.C
 ///               \note A Range() by default sets a NormRange() on the same range, but this option allows
 ///               to override the default, or specify normalization ranges when the full curve is to be drawn.
 ///
@@ -2932,13 +2931,15 @@ RooPlot* RooAbsPdf::plotOn(RooPlot* frame, RooLinkedList& cmdList) const
       }
 
       if (hasCustomRange && adjustNorm) {
+        // If overlapping ranges were given, remove them now
         const std::size_t oldSize = rangeLim.size();
         removeRangeOverlap(rangeLim);
 
-        if (oldSize != rangeLim.size()) {
+        if (oldSize != rangeLim.size() && !pc.hasProcessed("NormRange")) {
           // User gave overlapping ranges. This leads to double-counting events and integrals, and must
-          // therefore be avoided.
-          coutE(Plotting) << "Requested ranges overlap. For correct plotting, new ranges "
+          // therefore be avoided. If a NormRange has been given, the overlap is alreay gone.
+          // It's safe to plot even with overlap now.
+          coutE(Plotting) << "Requested plot/integration ranges overlap. For correct plotting, new ranges "
               "will be defined." << std::endl;
           auto plotVar = dynamic_cast<RooRealVar*>(frame->getPlotVar());
           assert(plotVar);
