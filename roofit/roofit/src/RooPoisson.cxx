@@ -12,9 +12,8 @@
 Poisson pdf
 **/
 
-#include <iostream>
-
 #include "RooPoisson.h"
+
 #include "RooAbsReal.h"
 #include "RooAbsCategory.h"
 
@@ -23,7 +22,11 @@ Poisson pdf
 #include "TMath.h"
 #include "Math/ProbFuncMathCore.h"
 
-#include "TError.h"
+#include "BatchHelpers.h"
+#include "RooVDTHeaders.h"
+
+#include <limits>
+#include <cmath>
 
 using namespace std;
 
@@ -57,7 +60,7 @@ RooPoisson::RooPoisson(const char *name, const char *title,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Implementation in terms of the TMath Poisson function
+/// Implementation in terms of the TMath::Poisson() function.
 
 Double_t RooPoisson::evaluate() const
 {
@@ -67,52 +70,70 @@ Double_t RooPoisson::evaluate() const
   return TMath::Poisson(k,mean) ;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// calculate and return the negative log-likelihood of the Poisson
 
-Double_t RooPoisson::getLogVal(const RooArgSet* s) const
-{
-  return RooAbsPdf::getLogVal(s) ;
-//   Double_t prob = getVal(s) ;
-//   return prob ;
 
-  // Make inputs to naming conventions of RooAbsPdf::extendedTerm
-  Double_t expected=mean ;
-  Double_t observed=x ;
+namespace {
 
-  // Explicitly handle case Nobs=Nexp=0
-  if (fabs(expected)<1e-10 && fabs(observed)<1e-10) {
-    return 0 ;
+template<class Tx, class TMean>
+void compute(const size_t n, double* __restrict output, Tx x, TMean mean,
+    const bool protectNegative, const bool noRounding) {
+
+  for (size_t i = 0; i < n; ++i) { //CHECK_VECTORISE
+    const double x_i = noRounding ? x[i] : floor(x[i]);
+    // The std::lgamma yields different values than in the scalar implementation.
+    // Need to check which one is more accurate.
+//    output[i] = std::lgamma(x_i + 1.);
+    output[i] = TMath::LnGamma(x_i + 1.);
   }
 
-  // Explicitly handle case Nexp=0
-  if (fabs(observed)<1e-10) {
-    return -1*expected;
+
+  for (size_t i = 0; i < n; ++i) { //CHECK_VECTORISE
+    const double x_i = noRounding ? x[i] : floor(x[i]);
+    const double logMean = _rf_fast_log(mean[i]);
+    const double logPoisson = x_i * logMean - mean[i] - output[i];
+    output[i] = _rf_fast_exp(logPoisson);
+
+    // Cosmetics
+    if (x_i < 0.)
+      output[i] = 0.;
+    else if (x_i == 0.) {
+      output[i] = 1./_rf_fast_exp(mean[i]);
+    }
+    if (protectNegative && mean[i] < 0.)
+      output[i] = 1.E-3;
   }
-
-  // Michaels code for log(poisson) in RooAbsPdf::extendedTer with an approximated log(observed!) term
-  Double_t extra=0;
-  if(observed<1000000) {
-    extra = -observed*log(expected)+expected+TMath::LnGamma(observed+1.);
-  } else {
-    //if many observed events, use Gauss approximation
-    Double_t sigma_square=expected;
-    Double_t diff=observed-expected;
-    extra=-log(sigma_square)/2 + (diff*diff)/(2*sigma_square);
-  }
-
-//   if (fabs(extra)>100 || log(prob)>100) {
-//     cout << "RooPoisson::getLogVal(" << GetName() << ") mu=" << expected << " x = " << x << " -log(P) = " << extra << " log(evaluate()) = " << log(prob) << endl ;
-//   }
-
-//   if (fabs(extra+log(prob))>1) {
-//     cout << "RooPoisson::getLogVal(" << GetName() << ") WARNING mu=" << expected << " x = " << x << " -log(P) = " << extra << " log(evaluate()) = " << log(prob) << endl ;
-//   }
-
-  //return log(prob);
-  return -extra-analyticalIntegral(1,0) ; //log(prob);
+}
 
 }
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Compute Poisson values in batches.
+RooSpan<double> RooPoisson::evaluateBatch(std::size_t begin, std::size_t batchSize) const {
+  using namespace BatchHelpers;
+  auto xData = x.getValBatch(begin, batchSize);
+  auto meanData = mean.getValBatch(begin, batchSize);
+  const bool batchX = !xData.empty();
+  const bool batchMean = !meanData.empty();
+
+  if (!batchX && !batchMean) {
+    return {};
+  }
+  batchSize = findSize({ xData, meanData });
+  auto output = _batchData.makeWritableBatchUnInit(begin, batchSize);
+
+  if (batchX && !batchMean ) {
+    compute(batchSize, output.data(), xData, BracketAdapter<double>(mean), _protectNegative, _noRounding);
+  }
+  else if (!batchX && batchMean ) {
+    compute(batchSize, output.data(), BracketAdapter<double>(x), meanData, _protectNegative, _noRounding);
+  }
+  else if (batchX && batchMean ) {
+    compute(batchSize, output.data(), xData, meanData, _protectNegative, _noRounding);
+  }
+  return output;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -135,50 +156,37 @@ Double_t RooPoisson::analyticalIntegral(Int_t code, const char* rangeName) const
   if (code == 1) {
     // Implement integral over x as summation. Add special handling in case
     // range boundaries are not on integer values of x
-    Double_t xmin = x.min(rangeName) ;
-    Double_t xmax = x.max(rangeName) ;
+    const double xmin = std::max(0., x.min(rangeName));
+    const double xmax = x.max(rangeName);
 
-    // Protect against negative lower boundaries
-    if (xmin<0) xmin=0 ;
+    if (xmax < 0. || xmax < xmin) {
+      return 0.;
+    }
+    if (!x.hasMax() || RooNumber::isInfinite(xmax)) {
+      //Integrating the full Poisson distribution here 
+      return 1.;
+    }
 
-    Int_t ixmin = Int_t (xmin) ;
-    Int_t ixmax = Int_t (xmax)+1 ;
-
-    Double_t fracLoBin = 1-(xmin-ixmin) ;
-    Double_t fracHiBin = 1-(ixmax-xmax) ;
-
-    if (!x.hasMax()) {
-      if (xmin<1e-6) {
-        return 1 ;
-      } else {
-
-      // Return 1 minus integral from 0 to x.min()
-
-        if(ixmin == 0){ // first bin
-          return TMath::Poisson(0, mean)*(xmin-0);
-        }
-        Double_t sum(0) ;
-        sum += TMath::Poisson(0,mean)*fracLoBin ;
-        sum+= ROOT::Math::poisson_cdf(ixmin-2, mean) - ROOT::Math::poisson_cdf(0,mean) ;
-        sum += TMath::Poisson(ixmin-1,mean)*fracHiBin ;
-        return 1-sum ;
+    // The range as integers. ixmin is included, ixmax outside.
+    const unsigned int ixmin = xmin;
+    const unsigned int ixmax = std::min(xmax + 1.,
+                                        (double)std::numeric_limits<unsigned int>::max());
+    
+    // Sum from 0 to just before the bin outside of the range.
+    if (ixmin == 0) {
+      return ROOT::Math::poisson_cdf(ixmax - 1, mean);
+    }
+    else {
+      // If necessary, subtract from 0 to the beginning of the range
+      if (ixmin <= mean) {
+        return ROOT::Math::poisson_cdf(ixmax - 1, mean) - ROOT::Math::poisson_cdf(ixmin - 1, mean);
       }
-    }
+      else {
+        //Avoid catastrophic cancellation in the high tails:
+        return ROOT::Math::poisson_cdf_c(ixmin - 1, mean) - ROOT::Math::poisson_cdf_c(ixmax - 1, mean);
+      }
 
-    if(ixmin == ixmax-1){ // first bin
-      return TMath::Poisson(ixmin, mean)*(xmax-xmin);
     }
-
-    Double_t sum(0) ;
-    sum += TMath::Poisson(ixmin,mean)*fracLoBin ;
-    if (RooNumber::isInfinite(xmax)){
-      sum+= 1.-ROOT::Math::poisson_cdf(ixmin,mean) ;
-    }  else {
-      sum+= ROOT::Math::poisson_cdf(ixmax-2, mean) - ROOT::Math::poisson_cdf(ixmin,mean) ;
-      sum += TMath::Poisson(ixmax-1,mean)*fracHiBin ;
-    }
-
-    return sum ;
 
   } else if(code == 2) {
 

@@ -28,7 +28,6 @@
 #include "Minuit2/MinuitParameter.h"
 #include "Minuit2/MnUserFcn.h"
 #include "Minuit2/MnPrint.h"
-#include "Minuit2/FunctionMinimum.h"
 #include "Minuit2/VariableMetricMinimizer.h"
 #include "Minuit2/SimplexMinimizer.h"
 #include "Minuit2/CombinedMinimizer.h"
@@ -526,6 +525,7 @@ bool Minuit2Minimizer::Minimize() {
    // -2 is the highest low invalid value for gErrorIgnoreLevel
    if (prev_level > -2) RestoreGlobalPrintLevel(prev_level);
 
+   // copy minimum state (parameter values and errors)
    fState = fMinimum->UserState();
    bool ok =  ExamineMinimum(*fMinimum);
    //fMinimum = 0;
@@ -605,6 +605,17 @@ bool  Minuit2Minimizer::ExamineMinimum(const ROOT::Minuit2::FunctionMinimum & mi
    }
 
    if (debugLevel >= 1) PrintResults();
+
+   // set the minimum values in the fValues vector
+   const std::vector<MinuitParameter> & paramsObj = fState.MinuitParameters();
+   if (paramsObj.size() == 0) return 0;
+   assert(fDim == paramsObj.size());
+   // re-size vector if it has changed after a new minimization
+   if (fValues.size() != fDim) fValues.resize(fDim);
+   for (unsigned int i = 0; i < fDim; ++i) {
+      fValues[i] = paramsObj[i].Value();
+   }
+
    return validMinimum;
 }
 
@@ -638,22 +649,6 @@ void Minuit2Minimizer::PrintResults() {
       std::cout << "Nfcn  = " << fState.NFcn() << std::endl;
    }
 }
-
-const double * Minuit2Minimizer::X() const {
-   // return values at minimum
-   const std::vector<MinuitParameter> & paramsObj = fState.MinuitParameters();
-   if (paramsObj.size() == 0) return 0;
-   assert(fDim == paramsObj.size());
-   // be careful for multiple calls of this function. I will redo an allocation here
-   // only when size of vectors has changed (e.g. after a new minimization)
-   if (fValues.size() != fDim) fValues.resize(fDim);
-   for (unsigned int i = 0; i < fDim; ++i) {
-      fValues[i] = paramsObj[i].Value();
-   }
-
-   return  &fValues.front();
-}
-
 
 const double * Minuit2Minimizer::Errors() const {
    // return error at minimum (set to zero for fixed and constant params)
@@ -776,8 +771,7 @@ bool Minuit2Minimizer::GetMinosError(unsigned int i, double & errLow, double & e
    // runopt is a flag which specifies if only lower or upper error needs to be run
    // if runopt = 0 both, = 1 only lower, + 2 only upper errors
    errLow = 0; errUp = 0;
-   bool runLower = runopt != 2;
-   bool runUpper = runopt != 1;
+   
 
    assert( fMinuitFCN );
 
@@ -786,9 +780,6 @@ bool Minuit2Minimizer::GetMinosError(unsigned int i, double & errLow, double & e
       return false;
    }
 
-   int debugLevel = PrintLevel();
-   // internal minuit messages
-   MnPrint::SetLevel( debugLevel );
 
    // to run minos I need function minimum class
    // redo minimization from current state
@@ -810,7 +801,51 @@ bool Minuit2Minimizer::GetMinosError(unsigned int i, double & errLow, double & e
    if (ErrorDef() != fMinimum->Up() )
       fMinimum->SetErrorDef(ErrorDef() );
 
+   int mstatus = RunMinosError(i,errLow, errUp, runopt);
+
+   // run again the Minimization in case of a new minimum
+   // bit 8 is set
+   if ((mstatus & 8) != 0) {
+     
+      MN_INFO_MSG2("Minuit2Minimizer::GetMinosError",
+                   "Found a new minimum: run again the Minimization  starting from the new  point ");
+      if (PrintLevel() > 1) {
+         std::cout << "New minimum point found by MINOS: " << std::endl;
+         std::cout << "FVAL  = " << fState.Fval() << std::endl;
+         for (auto & par : fState.MinuitParameters() ) {
+            std::cout << par.Name() << "\t  = " << par.Value() << std::endl;
+         }
+      }
+      // release parameter that was fixed in the returned state from Minos
+      ReleaseVariable(i);
+      bool ok = Minimize();
+      if (!ok)  return false;
+      // run again Minos from new Minimum (also lower error needs to be re-computed)
+      MN_INFO_MSG2("Minuit2Minimizer::GetMinosError", "Run now again Minos from the new found Minimum");
+      mstatus = RunMinosError(i, errLow, errUp, runopt);
+
+      // do not reset new minimum bit to flag for other parameters
+      mstatus |= 8; 
+   }
+
+   fStatus += 10*mstatus;
+   fMinosStatus = mstatus; 
+
+   bool isValid =  ((mstatus & 1) == 0) && ((mstatus & 2) == 0);    
+   return isValid;
+}
+
+
+int Minuit2Minimizer::RunMinosError(unsigned int i, double & errLow, double & errUp, int runopt) {
    // switch off Minuit2 printing
+
+   bool runLower = runopt != 2;
+   bool runUpper = runopt != 1;
+
+   int debugLevel = PrintLevel();
+   // internal minuit messages
+   MnPrint::SetLevel( debugLevel );
+
    int prev_level = (PrintLevel() <= 0 ) ?   TurnOffPrintInfoLevel() : -2;
 
    // set the precision if needed
@@ -832,20 +867,30 @@ bool Minuit2Minimizer::GetMinosError(unsigned int i, double & errLow, double & e
    // cut off too small tolerance (they are not needed)
    tol = std::max(tol, 0.01);
 
-   if (PrintLevel() >=1) {
-      // print the real number of maxfcn used (defined in MnMinos)
-      int maxfcn_used = maxfcn;
-      if (maxfcn_used == 0) {
-         int nvar = fState.VariableParameters();
-         maxfcn_used = 2*(nvar+1)*(200 + 100*nvar + 5*nvar*nvar);
-      }
-      std::cout << "Minuit2Minimizer::GetMinosError for parameter " << i << "  " << par_name
-                << " using max-calls " << maxfcn_used << ", tolerance " << tol << std::endl;
+   
+   // get the real number of maxfcn used (defined in MnMinos) to be printed 
+   int maxfcn_used = maxfcn;
+   if (maxfcn_used == 0) {
+      int nvar = fState.VariableParameters();
+      maxfcn_used = 2*(nvar+1)*(200 + 100*nvar + 5*nvar*nvar);
    }
 
-
-   if (runLower) low = minos.Loval(i,maxfcn,tol);
-   if (runUpper) up  = minos.Upval(i,maxfcn,tol);
+   if (runLower) {
+      if (debugLevel >=1) {
+         std::cout << "******************************************************************************************************\n";
+         std::cout << "Minuit2Minimizer::GetMinosError - Run MINOS LOWER error for parameter #" << i << " : " << par_name
+                << " using max-calls " << maxfcn_used << ", tolerance " << tol << std::endl;
+      }
+      low = minos.Loval(i, maxfcn, tol);
+   }
+   if (runUpper) {
+      if (debugLevel >=1) {
+         std::cout << "******************************************************************************************************\n";
+         std::cout << "Minuit2Minimizer::GetMinosError - Run MINOS UPPER error for parameter #" << i << " : " << par_name
+                << " using max-calls " << maxfcn_used << ", tolerance " << tol << std::endl;
+      }
+      up  = minos.Upval(i,maxfcn,tol);
+   }
 
    ROOT::Minuit2::MinosError me(i, fMinimum->UserState().Value(i),low, up);
 
@@ -855,45 +900,67 @@ bool Minuit2Minimizer::GetMinosError(unsigned int i, double & errLow, double & e
    // print error message in Minos
    // Note that the only invalid condition can happen when the (npar-1) minimization fails
    // The error is also invalid when the maximum number of calls is reached or a new function minimum is found
-   // in case of the parameter at the limit the error is not ivalid. 
-   // When the error is invalid the returned error is the Hessian error. 
+   // in case of the parameter at the limit the error is not invalid.
+   // When the error is invalid the returned error is the Hessian error.
 
-   if (debugLevel >= 1) {
+   if (debugLevel > 0) {
       if (runLower) {
          if (!me.LowerValid() )
             std::cout << "Minos:  Invalid lower error for parameter " << par_name << std::endl;
          if(me.AtLowerLimit())
-            std::cout << "Minos:  Parameter : " << par_name << "  is at Lower limit."<<std::endl;
+            std::cout << "Minos:  Parameter : " << par_name << "  is at Lower limit; error is " << me.Lower()
+                      << std::endl;
          if(me.AtLowerMaxFcn())
-            std::cout << "Minos:  Maximum number of function calls exceeded when running for lower error" <<std::endl;
+            std::cout << "Minos:  Maximum number of function calls exceeded when running for lower error for parameter " << par_name << std::endl;
          if(me.LowerNewMin() )
-            std::cout << "Minos:  New Minimum found while running Minos for lower error" <<std::endl;
+            std::cout << "Minos:  New Minimum found while running Minos for lower error for parameter " << par_name << std::endl;
 
-         if (debugLevel > 1)  std::cout << "Minos: Lower error for parameter " << par_name << "  :  " << me.Lower() << std::endl;
-
+         if (debugLevel >= 1 && me.LowerValid())
+            std::cout << "Minos: Lower error for parameter " << par_name << "  :  " << me.Lower() << std::endl;
       }
       if (runUpper) {
          if (!me.UpperValid() )
             std::cout << "Minos:  Invalid upper error for parameter " << par_name << std::endl;
          if(me.AtUpperLimit())
-            std::cout << "Minos:  Parameter " << par_name << " is at Upper limit."<<std::endl;
+            std::cout << "Minos:  Parameter " << par_name << " is at Upper limit; error is "<< me.Upper() << std::endl;
          if(me.AtUpperMaxFcn())
-            std::cout << "Minos:  Maximum number of function calls exceeded when running for upper error" <<std::endl;
+            std::cout << "Minos:  Maximum number of function calls exceeded when running for upper error for parameter " << par_name << std::endl;
          if(me.UpperNewMin() )
-            std::cout << "Minos:  New Minimum found while running Minos for upper error" <<std::endl;
+            std::cout << "Minos:  New Minimum found while running Minos for upper error for parameter " << par_name << std::endl;
 
-         if (debugLevel > 1)  std::cout << "Minos: Upper error for parameter " << par_name << "  :  " << me.Upper() << std::endl;
+         if (debugLevel >= 1 && me.UpperValid())
+            std::cout << "Minos: Upper error for parameter " << par_name << "  :  " << me.Upper() << std::endl;
       }
-
    }
 
    bool lowerInvalid =  (runLower && !me.LowerValid() );
    bool upperInvalid =  (runUpper && !me.UpperValid() );
+   // print message in case of invalid error also in printLevel0
+   if (lowerInvalid) {
+      std::string msg_txt = std::string("Invalid lower error for parameter ") + std::string(fMinimum->UserState().Name(i));
+      MN_INFO_MSG2("Minuit2Minimizer::GetMinosErrors", msg_txt);
+   }
+   if (upperInvalid) {
+      std::string msg_txt = std::string("Invalid upper error for parameter ") + std::string(fMinimum->UserState().Name(i));
+      MN_INFO_MSG2("Minuit2Minimizer::GetMinosErrors", msg_txt);
+   }
+   // print also case it is lower/upper limit
+   if (me.AtLowerLimit()) {
+      std::string msg_txt = std::string("Lower error for parameter ") + std::string(fMinimum->UserState().Name(i)) +
+                            std::string(" is at the Lower limit !");
+      MN_INFO_MSG2("Minuit2Minimizer::GetMinosErrors", msg_txt);
+   }
+   if (me.AtUpperLimit()) {
+      std::string msg_txt = std::string("Upper error for parameter ") + std::string(fMinimum->UserState().Name(i)) +
+                            std::string(" is at the Upper limit !");
+      MN_INFO_MSG2("Minuit2Minimizer::GetMinosErrors", msg_txt);
+   }
+
    int mstatus = 0;
    if (lowerInvalid || upperInvalid ) {
       // set status accroding to bit
       // bit 1:  lower invalid Minos errors
-      // bit 2:  uper invalid Minos error
+      // bit 2:  upper invalid Minos error
       // bit 3:   invalid because max FCN
       // bit 4 : invalid because a new minimum has been found
       if (lowerInvalid) {
@@ -902,20 +969,34 @@ bool Minuit2Minimizer::GetMinosError(unsigned int i, double & errLow, double & e
          if (me.LowerNewMin() ) mstatus |= 8;
       }
       if(upperInvalid) {
-         mstatus |= 3;
+         mstatus |= 2;
          if (me.AtUpperMaxFcn() ) mstatus |= 4;
          if (me.UpperNewMin() ) mstatus |= 8;
       }
-      //std::cout << "Error running Minos for parameter " << i << std::endl;
-      fStatus += 10*mstatus;
+   }
+   // case upper/lower limit
+   if (me.AtUpperLimit() || me.AtLowerLimit())
+      mstatus |= 16; 
+
+   
+
+   if (runLower) errLow = me.Lower();
+   if (runUpper) errUp = me.Upper();
+
+   // in case of new minimum found update also the  minimum state
+   if (  ( runLower && me.LowerNewMin()) && (runUpper && me.UpperNewMin() ) ) {
+      // take state with lower function value
+      fState = (low.State().Fval() < up.State().Fval()) ? low.State() : up.State();
+   } else if ( runLower && me.LowerNewMin() ) {
+      fState = low.State();
+   } else if ( runUpper && me.UpperNewMin() ) {
+      fState = up.State();
    }
 
-   errLow = me.Lower();
-   errUp = me.Upper();
+   return mstatus;
 
-   bool isValid = (runLower && me.LowerValid() ) || (runUpper && me.UpperValid() );
-   return isValid;
 }
+
 
 bool Minuit2Minimizer::Scan(unsigned int ipar, unsigned int & nstep, double * x, double * y, double xmin, double xmax) {
    // scan a parameter (variable) around the minimum value
@@ -1001,7 +1082,7 @@ bool Minuit2Minimizer::Contour(unsigned int ipar, unsigned int jpar, unsigned in
    // switch off Minuit2 printing (for level of  0,1)
    int prev_level = (PrintLevel() <= 1 ) ?   TurnOffPrintInfoLevel() : -2;
 
-   // decrease print-level to have too many messages 
+   // decrease print-level to have too many messages
    MnPrint::SetLevel( PrintLevel() -1 );
 
    // set the precision if needed
@@ -1056,10 +1137,12 @@ bool Minuit2Minimizer::Hesse( ) {
 
    ROOT::Minuit2::MnHesse hesse( strategy );
 
+   if (PrintLevel() >= 1)
+      std::cout << "Minuit2Minimizer::Hesse using max-calls " << maxfcn << std::endl;
 
    // case when function minimum exists
-   if (fMinimum  ) {
-      
+   if (fMinimum) {
+
       // if (PrintLevel() >= 3) {
       //    std::cout << "Minuit2Minimizer::Hesse  - State before running Hesse " << std::endl;
       //    std::cout << fState << std::endl;
@@ -1067,7 +1150,7 @@ bool Minuit2Minimizer::Hesse( ) {
 
       // run hesse and function minimum will be updated with Hesse result
       hesse( *fMinuitFCN, *fMinimum, maxfcn );
-      // update user state 
+      // update user state
       fState = fMinimum->UserState();
    }
 
@@ -1101,7 +1184,7 @@ bool Minuit2Minimizer::Hesse( ) {
          else if (!(fMinimum->Error().IsPosDef()) ) hstatus = 3;
       }
       if (PrintLevel() > 0) {
-         std::string msg = "Hesse failed - matrix is " + covStatusType; 
+         std::string msg = "Hesse failed - matrix is " + covStatusType;
          MN_INFO_MSG2("Minuit2Minimizer::Hesse",msg);
          MN_INFO_VAL2("MInuit2Minimizer::Hesse",hstatus);
       }
@@ -1109,7 +1192,7 @@ bool Minuit2Minimizer::Hesse( ) {
       return false;
    }
    if (PrintLevel() > 0) {
-      std::string msg = "Hesse is valid - matrix is " + covStatusType; 
+      std::string msg = "Hesse is valid - matrix is " + covStatusType;
       MN_INFO_MSG2("Minuit2Minimizer::Hesse",msg);
    }
 
@@ -1154,4 +1237,3 @@ void Minuit2Minimizer::SetStorageLevel(int level) {
 } // end namespace Minuit2
 
 } // end namespace ROOT
-

@@ -1,15 +1,19 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook -js
-/// Speecial p.d.f.'s: unbinned maximum likelihood fit of an efficiency eff(x) function
 ///
-/// to a dataset D(x,cut), where cut is a category encoding a selection, of which the efficiency as function of x should
-/// be described by eff(x)
+///
+/// \brief Special p.d.f.'s: unbinned maximum likelihood fit of an efficiency eff(x) function
+///
+/// to a dataset D(x,cut), where cut is a category encoding a selection, of which the
+/// efficiency as function of x should be described by eff(x)
 ///
 /// \macro_image
 /// \macro_output
 /// \macro_code
-/// \author 07/2008 - Wouter Verkerke
+///
+/// \date 07/2008
+/// \author Wouter Verkerke
 
 #include "RooRealVar.h"
 #include "RooDataSet.h"
@@ -43,9 +47,7 @@ void rf701_efficiencyfit()
    // ------------------------------------------------------------------------------------------
 
    // Acceptance state cut (1 or 0)
-   RooCategory cut("cut", "cutr");
-   cut.defineType("accept", 1);
-   cut.defineType("reject", 0);
+   RooCategory cut("cut", "cutr", { {"accept", 1}, {"reject", 0} });
 
    // Construct efficiency p.d.f eff(cut|x)
    RooEfficiency effPdf("effPdf", "effPdf", effFunc, cut, "accept");

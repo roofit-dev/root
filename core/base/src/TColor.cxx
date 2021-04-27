@@ -9,19 +9,19 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include "Riostream.h"
 #include "TROOT.h"
 #include "TColor.h"
 #include "TObjArray.h"
 #include "TArrayI.h"
 #include "TArrayD.h"
-#include "TVirtualPad.h"
 #include "TVirtualX.h"
 #include "TError.h"
 #include "TMathBase.h"
 #include "TApplication.h"
+#include "snprintf.h"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 ClassImp(TColor);
 
@@ -968,7 +968,7 @@ itself remains fully opaque.
 
 The transparency is available on all platforms when the flag `OpenGL.CanvasPreferGL` is set to `1`
 in `$ROOTSYS/etc/system.rootrc`, or on Mac with the Cocoa backend. On the file output
-it is visible with PDF, PNG, Gif, JPEG, SVG ... but not PostScript.
+it is visible with PDF, PNG, Gif, JPEG, SVG, TeX ... but not PostScript.
 The following macro gives an example of transparency usage:
 
 Begin_Macro(source)
@@ -1067,6 +1067,12 @@ TColor::~TColor()
 TColor::TColor(const TColor &color) : TNamed(color)
 {
    ((TColor&)color).Copy(*this);
+}
+
+TColor &TColor::operator=(const TColor &color)
+{
+   ((TColor &)color).Copy(*this);
+   return *this;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1752,6 +1758,8 @@ void TColor::Allocate()
 /// hex color string of form: "#rrggbb", where rr, gg and bb are in
 /// hex between [0,FF], e.g. "#c0c0c0".
 ///
+/// The color retrieval is done using a threshold defined by SetColorThreshold.
+///
 /// If specified color does not exist it will be created with as
 /// name "#rrggbb" with rr, gg and bb in hex between [0,FF].
 
@@ -1769,6 +1777,8 @@ Int_t TColor::GetColor(const char *hexcolor)
 ////////////////////////////////////////////////////////////////////////////////
 /// Static method returning color number for color specified by
 /// r, g and b. The r,g,b should be in the range [0,1].
+///
+/// The color retrieval is done using a threshold defined by SetColorThreshold.
 ///
 /// If specified color does not exist it will be created
 /// with as name "#rrggbb" with rr, gg and bb in hex between
@@ -1788,6 +1798,9 @@ Int_t TColor::GetColor(Float_t r, Float_t g, Float_t b)
 /// Static method returning color number for color specified by
 /// system dependent pixel value. Pixel values can be obtained, e.g.,
 /// from the GUI color picker.
+///
+/// The color retrieval is done using a threshold defined by SetColorThreshold.
+
 
 Int_t TColor::GetColor(ULong_t pixel)
 {
@@ -1833,6 +1846,9 @@ void TColor::SetColorThreshold(Float_t t)
 /// If the specified color does not exist it will be created
 /// with as name "#rrggbb" with rr, gg and bb in hex between
 /// [0,FF].
+///
+/// The color retrieval is done using a threshold defined by SetColorThreshold.
+
 
 Int_t TColor::GetColor(Int_t r, Int_t g, Int_t b)
 {

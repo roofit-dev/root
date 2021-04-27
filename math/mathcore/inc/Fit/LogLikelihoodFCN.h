@@ -22,6 +22,7 @@
 #include "Fit/FitUtil.h"
 
 #include <memory>
+#include <vector>
 
 namespace ROOT {
 
@@ -105,6 +106,7 @@ public:
       fIsExtended = rhs.fIsExtended;
       fWeight = rhs.fWeight;
       fExecutionPolicy = rhs.fExecutionPolicy;
+      return *this;
    }
 
 

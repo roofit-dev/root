@@ -16,13 +16,12 @@
 #ifndef ROO_LIST_PROXY
 #define ROO_LIST_PROXY
 
-#include "TObject.h"
 #include "RooAbsProxy.h"
 #include "RooLinkedListIter.h"
 #include "RooAbsArg.h"
 #include "RooArgList.h"
 
-class RooListProxy : public RooArgList, public RooAbsProxy  {
+class RooListProxy final : public RooArgList, public RooAbsProxy  {
 public:
 
   // Constructors, assignment etc.

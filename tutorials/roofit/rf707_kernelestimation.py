@@ -2,12 +2,12 @@
 ## \ingroup tutorial_roofit
 ## \notebook
 ##
-## Special p.d.f.'s: using non-parametric (multi-dimensional) kernel estimation p.d.f.s
+## \brief Special p.d.f.'s: using non-parametric (multi-dimensional) kernel estimation p.d.f.s
 ##
 ## \macro_code
 ##
 ## \date February 2018
-## \author Clemens Lange, Wouter Verkerke (C++ version)
+## \authors Clemens Lange, Wouter Verkerke (C++ version)
 
 import ROOT
 

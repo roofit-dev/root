@@ -6,7 +6,7 @@
 /*
  * These macros can be used in the following way:
  *
- *    #if ROOT_VERSION_CODE >= ROOT_VERSION(2,23,4)
+ *    #if ROOT_VERSION_CODE >= ROOT_VERSION(6,32,4)
  *       #include <newheader.h>
  *    #else
  *       #include <oldheader.h>
@@ -14,10 +14,10 @@
  *
 */
 
-#define ROOT_RELEASE "6.17/01"
-#define ROOT_RELEASE_DATE "Nov 14 2018"
-#define ROOT_RELEASE_TIME "08:11:25"
+#define ROOT_RELEASE "6.23/01"
+#define ROOT_RELEASE_DATE "May 19 2020"
+#define ROOT_RELEASE_TIME "10:23:43"
 #define ROOT_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
-#define ROOT_VERSION_CODE ROOT_VERSION(6,17,1) /* 397569 */
+#define ROOT_VERSION_CODE ROOT_VERSION(6,23,1) /* 399105 */
 
 #endif

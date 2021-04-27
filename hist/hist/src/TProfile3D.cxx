@@ -14,8 +14,7 @@
 #include "THashList.h"
 #include "TMath.h"
 #include "THLimitsFinder.h"
-#include "Riostream.h"
-#include "TVirtualPad.h"
+#include <iostream>
 #include "TError.h"
 #include "TClass.h"
 
@@ -158,6 +157,12 @@ void TProfile3D::BuildOptions(Double_t tmin, Double_t tmax, Option_t *option)
 TProfile3D::TProfile3D(const TProfile3D &profile) : TH3D()
 {
    ((TProfile3D&)profile).Copy(*this);
+}
+
+TProfile3D &TProfile3D::operator=(const TProfile3D &profile)
+{
+   ((TProfile3D &)profile).Copy(*this);
+   return *this;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

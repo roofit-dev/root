@@ -1,7 +1,7 @@
 // Author:  Sergey Linev, GSI  10/04/2017
 
 /*************************************************************************
- * Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -17,14 +17,11 @@
 #include "TAttFill.h"
 #include "TAttText.h"
 #include "TAttMarker.h"
+#include <string>
 
 #include "TWebPainting.h"
 
-#include <memory>
-
-class TVirtualPad;
 class TWebCanvas;
-class TPoint;
 
 /*
 TWebPadPainter tries to support old Paint methods of the ROOT classes.
@@ -45,7 +42,7 @@ protected:
 
 public:
 
-   TWebPadPainter() = default;
+   TWebPadPainter() {} // NOLINT: not allowed to use = default because of TObject::kIsOnHeap detection, see ROOT-10300
 
    void SetPainting(TWebPainting *p) { fPainting = p; }
 
@@ -90,9 +87,9 @@ public:
    void     CopyDrawable(Int_t, Int_t, Int_t) override {}
    void     DestroyDrawable(Int_t) override {}
    void     SelectDrawable(Int_t) override {}
-   //jpg, png, bmp, gif output.
-   void     SaveImage(TVirtualPad *, const char *, Int_t) const override {}
 
+   //jpg, png, bmp, gif output.
+   void     SaveImage(TVirtualPad *, const char *, Int_t) const override;
 
    //TASImage support (noop for a non-gl pad).
    void     DrawPixels(const unsigned char *pixelData, UInt_t width, UInt_t height,
