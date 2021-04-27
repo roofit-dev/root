@@ -68,12 +68,6 @@ This process is also organized by the workspace through the
 
 using namespace std ;
 
-
-#if ROOT_VERSION_CODE <= ROOT_VERSION(5,19,02)
-#include "Api.h"
-#endif
-
-
 #include "TClass.h"
 #include "Riostream.h"
 #include <string.h>
@@ -95,9 +89,8 @@ Bool_t RooWorkspace::_autoClass = kFALSE ;
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Add 'dir' to search path for class declaration (header) files, when
-/// attempting to import class code with importClassClode()
-
+/// Add `dir` to search path for class declaration (header) files. This is needed
+/// to find class headers custom classes are imported into the workspace.
 void RooWorkspace::addClassDeclImportDir(const char* dir) 
 {
   _classDeclDirList.push_back(dir) ;
@@ -105,9 +98,8 @@ void RooWorkspace::addClassDeclImportDir(const char* dir)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Add 'dir' to search path for class implementation (.cxx) files, when
-/// attempting to import class code with importClassClode()
-
+/// Add `dir` to search path for class implementation (.cxx) files. This is needed
+/// to find class headers custom classes are imported into the workspace.
 void RooWorkspace::addClassImplImportDir(const char* dir) 
 {
   _classImplDirList.push_back(dir) ;
@@ -750,6 +742,7 @@ Bool_t RooWorkspace::import(const RooAbsArg& inArg,
 /// <tr><th> Accepted arguments
 /// <tr><td> `Rename(const char* suffix)` <td> Rename dataset upon insertion
 /// <tr><td> `RenameVariable(const char* inputName, const char* outputName)` <td> Change names of observables in dataset upon insertion
+/// <tr><td> `Silence` <td> Be quiet, except in case of errors
 
 Bool_t RooWorkspace::import(RooAbsData& inData, 
 			    const RooCmdArg& arg1, const RooCmdArg& arg2, const RooCmdArg& arg3, 
@@ -757,8 +750,6 @@ Bool_t RooWorkspace::import(RooAbsData& inData,
 			    const RooCmdArg& arg7, const RooCmdArg& arg8, const RooCmdArg& arg9) 
 
 {
-
-  coutI(ObjectHandling) << "RooWorkspace::import(" << GetName() << ") importing dataset " << inData.GetName() << endl ;
 
   RooLinkedList args ;
   args.Add((TObject*)&arg1) ;
@@ -778,6 +769,7 @@ Bool_t RooWorkspace::import(RooAbsData& inData,
   pc.defineString("varChangeIn","RenameVar",0,"",kTRUE) ;
   pc.defineString("varChangeOut","RenameVar",1,"",kTRUE) ;
   pc.defineInt("embedded","Embedded",0,0) ;
+  pc.defineInt("silence","Silence",0,0) ;
 
   // Process and check varargs 
   pc.process(args) ;
@@ -790,6 +782,10 @@ Bool_t RooWorkspace::import(RooAbsData& inData,
   const char* varChangeIn = pc.getString("varChangeIn") ;
   const char* varChangeOut = pc.getString("varChangeOut") ;
   Bool_t embedded = pc.getInt("embedded") ;
+  Int_t silence = pc.getInt("silence") ;
+
+  if (!silence)
+    coutI(ObjectHandling) << "RooWorkspace::import(" << GetName() << ") importing dataset " << inData.GetName() << endl ;
 
   // Transform emtpy string into null pointer
   if (dsetName && strlen(dsetName)==0) {
@@ -811,7 +807,8 @@ Bool_t RooWorkspace::import(RooAbsData& inData,
   // Rename dataset if required
   RooAbsData* clone ;
   if (dsetName) {
-    coutI(ObjectHandling) << "RooWorkSpace::import(" << GetName() << ") changing name of dataset from  " << inData.GetName() << " to " << dsetName << endl ;
+    if (!silence)
+      coutI(ObjectHandling) << "RooWorkSpace::import(" << GetName() << ") changing name of dataset from  " << inData.GetName() << " to " << dsetName << endl ;
     clone = (RooAbsData*) inData.Clone(dsetName) ;
   } else {
     clone = (RooAbsData*) inData.Clone(inData.GetName()) ;
@@ -824,7 +821,8 @@ Bool_t RooWorkspace::import(RooAbsData& inData,
     const std::vector<std::string> tokIn  = RooHelpers::tokenise(varChangeIn, ",");
     const std::vector<std::string> tokOut = RooHelpers::tokenise(varChangeOut, ",");
     for (unsigned int i=0; i < tokIn.size(); ++i) {
-      coutI(ObjectHandling) << "RooWorkSpace::import(" << GetName() << ") changing name of dataset observable " << tokIn[i] << " to " << tokOut[i] << endl ;
+      if (!silence)
+        coutI(ObjectHandling) << "RooWorkSpace::import(" << GetName() << ") changing name of dataset observable " << tokIn[i] << " to " << tokOut[i] << endl ;
       clone->changeObservableName(tokIn[i].c_str(), tokOut[i].c_str());
     }
   }
@@ -1171,11 +1169,9 @@ Bool_t RooWorkspace::importClassCode(const char* pat, Bool_t doReplace)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Save snapshot of values and attributes (including "Constant") of parameters 'params'
-/// If importValues is FALSE, the present values from the object in the workspace are
-/// saved. If importValues is TRUE, the values of the objects passed in the 'params'
-/// argument are saved
-
+/// Save snapshot of values and attributes (including "Constant") of given parameters.
+/// \param[in] name Name of the snapshot.
+/// \param[in] paramNames Comma-separated list of parameter names to be snapshot.
 Bool_t RooWorkspace::saveSnapshot(const char* name, const char* paramNames) 
 {
   return saveSnapshot(name,argSet(paramNames),kFALSE) ;
@@ -1186,7 +1182,7 @@ Bool_t RooWorkspace::saveSnapshot(const char* name, const char* paramNames)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Save snapshot of values and attributes (including "Constant") of parameters 'params'
+/// Save snapshot of values and attributes (including "Constant") of parameters 'params'.
 /// If importValues is FALSE, the present values from the object in the workspace are
 /// saved. If importValues is TRUE, the values of the objects passed in the 'params'
 /// argument are saved
@@ -1239,11 +1235,11 @@ Bool_t RooWorkspace::loadSnapshot(const char* name)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return the RooArgSet containgin a snapshot of variables contained in the workspace
+/// Return the RooArgSet containing a snapshot of variables contained in the workspace
 ///
-/// Note that the variables of the objects in the snapshots are _copies_ of the
+/// Note that the variables of the objects in the snapshots are **copies** of the
 /// variables in the workspace. To load the values of a snapshot in the workspace
-/// variables use loadSnapshot() instead
+/// variables, use loadSnapshot() instead.
 
 const RooArgSet* RooWorkspace::getSnapshot(const char* name) const
 {
@@ -1684,8 +1680,8 @@ Bool_t RooWorkspace::CodeRepo::autoImportClass(TClass* tc, Bool_t doReplace)
 	  ++diter ;
 	}
       }
-      ooccoutW(_wspace,ObjectHandling) << ". To fix this problem add the required directory to the search "
-				       << "path using RooWorkspace::addClassDeclDir(const char* dir)" << endl ;
+      ooccoutW(_wspace,ObjectHandling) << ". To fix this problem, add the required directory to the search "
+				       << "path using RooWorkspace::addClassDeclImportDir(const char* dir)" << endl ;
       
       return kFALSE ;
     }
@@ -1731,7 +1727,7 @@ Bool_t RooWorkspace::CodeRepo::autoImportClass(TClass* tc, Bool_t doReplace)
 	}
       }
       ooccoutW(_wspace,ObjectHandling) << ". To fix this problem add the required directory to the search "
-				       << "path using RooWorkspace::addClassImplDir(const char* dir)" << endl ;    
+				       << "path using RooWorkspace::addClassImplImportDir(const char* dir)" << endl ;    
       return kFALSE ;
     }
   }
@@ -2640,54 +2636,54 @@ void RooWorkspace::Streamer(TBuffer &R__b)
 
      // Make lists of external clients of WS objects, and remove those links temporarily
 
-     map<RooAbsArg*,list<RooAbsArg*> > extClients, extValueClients, extShapeClients ;
+     map<RooAbsArg*,vector<RooAbsArg *> > extClients, extValueClients, extShapeClients ;
 
      TIterator* iter = _allOwnedNodes.createIterator() ;
      RooAbsArg* tmparg ;
      while((tmparg=(RooAbsArg*)iter->Next())) {
 
        // Loop over client list of this arg
-       TIterator* clientIter = tmparg->_clientList.MakeIterator() ;
-       RooAbsArg* client ;
-       while((client=(RooAbsArg*)clientIter->Next())) {
-	 if (!_allOwnedNodes.containsInstance(*client)) {
-	   while(tmparg->_clientList.refCount(client)>0) {
-	     tmparg->_clientList.Remove(client) ;
-	     extClients[tmparg].push_back(client) ;
-	   }
-	 }
+       std::vector<RooAbsArg *> clientsTmp{tmparg->_clientList.begin(), tmparg->_clientList.end()};
+       for (auto client : clientsTmp) {
+         if (!_allOwnedNodes.containsInstance(*client)) {
+
+           const auto refCount = tmparg->_clientList.refCount(client);
+           auto& bufferVec = extClients[tmparg];
+
+           bufferVec.insert(bufferVec.end(), refCount, client);
+           tmparg->_clientList.Remove(client, true);
+         }
        }
-       delete clientIter ;
 
        // Loop over value client list of this arg
-       TIterator* vclientIter = tmparg->_clientListValue.MakeIterator() ;
-       RooAbsArg* vclient ;
-       while((vclient=(RooAbsArg*)vclientIter->Next())) {
-	 if (!_allOwnedNodes.containsInstance(*vclient)) {
-	   cxcoutD(ObjectHandling) << "RooWorkspace::Streamer(" << GetName() << ") element " << tmparg->GetName() 
-				   << " has external value client link to " << vclient << " (" << vclient->GetName() << ") with ref count " << tmparg->_clientListValue.refCount(vclient) << endl ;
-	   while(tmparg->_clientListValue.refCount(vclient)>0) {
-	     tmparg->_clientListValue.Remove(vclient) ;
-	     extValueClients[tmparg].push_back(vclient) ;
-	   }
-	 }
+       clientsTmp.assign(tmparg->_clientListValue.begin(), tmparg->_clientListValue.end());
+       for (auto vclient : clientsTmp) {
+         if (!_allOwnedNodes.containsInstance(*vclient)) {
+           cxcoutD(ObjectHandling) << "RooWorkspace::Streamer(" << GetName() << ") element " << tmparg->GetName()
+				       << " has external value client link to " << vclient << " (" << vclient->GetName() << ") with ref count " << tmparg->_clientListValue.refCount(vclient) << endl ;
+
+           const auto refCount = tmparg->_clientListValue.refCount(vclient);
+           auto& bufferVec = extValueClients[tmparg];
+
+           bufferVec.insert(bufferVec.end(), refCount, vclient);
+           tmparg->_clientListValue.Remove(vclient, true);
+         }
        }
-       delete vclientIter ;
 
        // Loop over shape client list of this arg
-       TIterator* sclientIter = tmparg->_clientListShape.MakeIterator() ;
-       RooAbsArg* sclient ;
-       while((sclient=(RooAbsArg*)sclientIter->Next())) {
-	 if (!_allOwnedNodes.containsInstance(*sclient)) {
-	   cxcoutD(ObjectHandling) << "RooWorkspace::Streamer(" << GetName() << ") element " << tmparg->GetName() 
-				 << " has external shape client link to " << sclient << " (" << sclient->GetName() << ") with ref count " << tmparg->_clientListShape.refCount(sclient) << endl ;
-	   while(tmparg->_clientListShape.refCount(sclient)>0) {
-	     tmparg->_clientListShape.Remove(sclient) ;
-	     extShapeClients[tmparg].push_back(sclient) ;
-	   }
-	 }
+       clientsTmp.assign(tmparg->_clientListShape.begin(), tmparg->_clientListShape.end());
+       for (auto sclient : clientsTmp) {
+         if (!_allOwnedNodes.containsInstance(*sclient)) {
+           cxcoutD(ObjectHandling) << "RooWorkspace::Streamer(" << GetName() << ") element " << tmparg->GetName()
+				         << " has external shape client link to " << sclient << " (" << sclient->GetName() << ") with ref count " << tmparg->_clientListShape.refCount(sclient) << endl ;
+
+           const auto refCount = tmparg->_clientListShape.refCount(sclient);
+           auto& bufferVec = extShapeClients[tmparg];
+
+           bufferVec.insert(bufferVec.end(), refCount, sclient);
+           tmparg->_clientListShape.Remove(sclient, true);
+         }
        }
-       delete sclientIter ;
 
      }
      delete iter ;
@@ -2697,21 +2693,21 @@ void RooWorkspace::Streamer(TBuffer &R__b)
      // Reinstate clients here
 
      
-     for (map<RooAbsArg*,list<RooAbsArg*> >::iterator iterx = extClients.begin() ; iterx!=extClients.end() ; ++iterx) {
-       for (list<RooAbsArg*>::iterator citer = iterx->second.begin() ; citer!=iterx->second.end() ; ++citer) {
-	 iterx->first->_clientList.Add(*citer) ;
+     for (auto iterx : extClients) {
+       for (auto client : iterx.second) {
+         iterx.first->_clientList.Add(client);
        }
      }
 
-     for (map<RooAbsArg*,list<RooAbsArg*> >::iterator iterx = extValueClients.begin() ; iterx!=extValueClients.end() ; ++iterx) {
-       for (list<RooAbsArg*>::iterator citer = iterx->second.begin() ; citer!=iterx->second.end() ; ++citer) {
-	 iterx->first->_clientListValue.Add(*citer) ;
+     for (auto iterx : extValueClients) {
+       for (auto client : iterx.second) {
+         iterx.first->_clientListValue.Add(client);
        }
      }
 
-     for (map<RooAbsArg*,list<RooAbsArg*> >::iterator iterx = extShapeClients.begin() ; iterx!=extShapeClients.end() ; ++iterx) {
-       for (list<RooAbsArg*>::iterator citer = iterx->second.begin() ; citer!=iterx->second.end() ; ++citer) {
-	 iterx->first->_clientListShape.Add(*citer) ;
+     for (auto iterx : extShapeClients) {
+       for (auto client : iterx.second) {
+         iterx.first->_clientListShape.Add(client);
        }
      }
 
@@ -2941,23 +2937,14 @@ Bool_t RooWorkspace::CodeRepo::compileClasses()
 
 void RooWorkspace::WSDir::InternalAppend(TObject* obj) 
 {
-#if ROOT_VERSION_CODE <= ROOT_VERSION(5,19,02)
-  TDirectory::Append(obj) ;
-#else
   TDirectory::Append(obj,kFALSE) ;
-#endif
-
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Overload TDirectory interface method to prohibit insertion of objects in read-only directory workspace representation
 
-#if ROOT_VERSION_CODE <= ROOT_VERSION(5,19,02)
-void RooWorkspace::WSDir::Add(TObject* obj) 
-#else
 void RooWorkspace::WSDir::Add(TObject* obj,Bool_t) 
-#endif
 {
   if (dynamic_cast<RooAbsArg*>(obj) || dynamic_cast<RooAbsData*>(obj)) {
     coutE(ObjectHandling) << "RooWorkspace::WSDir::Add(" << GetName() << ") ERROR: Directory is read-only representation of a RooWorkspace, use RooWorkspace::import() to add objects" << endl ;
@@ -2970,11 +2957,7 @@ void RooWorkspace::WSDir::Add(TObject* obj,Bool_t)
 ////////////////////////////////////////////////////////////////////////////////
 /// Overload TDirectory interface method to prohibit insertion of objects in read-only directory workspace representation
 
-#if ROOT_VERSION_CODE <= ROOT_VERSION(5,19,02)
-void RooWorkspace::WSDir::Append(TObject* obj) 
-#else
 void RooWorkspace::WSDir::Append(TObject* obj,Bool_t) 
-#endif
 {
   if (dynamic_cast<RooAbsArg*>(obj) || dynamic_cast<RooAbsData*>(obj)) {
     coutE(ObjectHandling) << "RooWorkspace::WSDir::Add(" << GetName() << ") ERROR: Directory is read-only representation of a RooWorkspace, use RooWorkspace::import() to add objects" << endl ;

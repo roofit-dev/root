@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT core/base package
 ############################################################################
@@ -208,8 +214,8 @@ set(BASE_SOURCES
 )
 
 if(CMAKE_CXX_STANDARD GREATER 11)
-  list(APPEND BASE_HEADERS ROOT/TLogger.hxx)
-  list(APPEND BASE_SOURCES v7/src/TLogger.cxx)
+  list(APPEND BASE_HEADERS ROOT/RLogger.hxx)
+  list(APPEND BASE_SOURCES v7/src/RLogger.cxx)
   # TLogger.hxx may be used without root7 flag, but is placed in v7/inc/,
   # so we need to tell ROOT_INSTALL_HEADERS() where to find it
   set(BASE_HEADER_DIRS inc/ v7/inc/)
@@ -218,63 +224,28 @@ endif()
 if(root7)
   list(APPEND BASE_HEADERS
       ROOT/RDrawable.hxx
-      ROOT/TDirectoryEntry.hxx
-      ROOT/TIndexIter.hxx
+      ROOT/RDirectoryEntry.hxx
+      ROOT/RIndexIter.hxx
   )
   list(APPEND BASE_SOURCES
       v7/src/RDrawable.cxx
   )
 endif()
 
-# libCore is linked against zlib (based on the location returned by find_package or builtin_zlib). The dictionary of
-# libCore, G__Core.cxx, should contain the include path to zlib.h in order to keep the symbol and header files in sync.
-# The includePath variable of the dictionary is empty, but we do not notice it because, by chance, G__MathMore adds
-# the same includePath for GSL. OTOH, if we have a small test case which works only with libCore.so we never give a
-# chance MathMore's dictionary to hide the problem and thus we pick up the system zlib.h.
-#
-# FIXME: Using include_directories is too intrusive as it does much more than what we want, that is, it will add this
-# include path not only in the dictionary but as part of the compilation lines. It is harmless but suboptimal: we need a
-# mechanism throough which we can express that we only need the path in the dictionary.
-#
-# NOTE: We cannot use set_property(TARGET G__Core ...) becase this has to happen before registering the target.
-include_directories(${ZLIB_INCLUDE_DIR})
 
-ROOT_GENERATE_DICTIONARY(G__Core
-  ${BASE_HEADERS}
-  ${Clib_dict_headers}
-  ${Cont_dict_headers}
-  ${Foundation_dict_headers}
-  ${Macosx_dict_headers}
-  ${Unix_dict_headers}
-  ${Winnt_dict_headers}
-  ${ClingUtils_dict_headers}
-  ${Meta_dict_headers}
-  ${TextInput_dict_headers}
-  STAGE1
-  MODULE
-    Core
-  OPTIONS
-    ${dict_opts}
-  LINKDEF
-    LinkDef.h
-)
+# only here complete list of headers can be propogated to parent cmake file
+set(Core_dict_headers ${BASE_HEADERS} PARENT_SCOPE)
 
-# This is needed becuase LinkDef.h includes other LinkDef starting from  ${CMAKE_SOURCE_DIR}
-set_property(TARGET G__Core PROPERTY INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR})
-
-ROOT_OBJECT_LIBRARY(Base G__Core.cxx ${BASE_SOURCES})
+ROOT_OBJECT_LIBRARY(Base ${BASE_SOURCES})
 target_include_directories(Base PRIVATE ${PCRE_INCLUDE_DIR})
 
 #---CreateTApplicationCommandLineOptions------------------------------------------------------------------
-generateHeaders(${CMAKE_CURRENT_SOURCE_DIR}/src/root-argparse.py ${CMAKE_BINARY_DIR}/include/TApplicationCommandLineOptionsHelp.h Base)
+generateHeader(Base
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/root-argparse.py
+  ${CMAKE_BINARY_DIR}/include/TApplicationCommandLineOptionsHelp.h
+)
 
 ROOT_INSTALL_HEADERS(${BASE_HEADER_DIRS})
-
-#---Extra options-----------------------------------------------------------------------
-if(GCC_MAJOR EQUAL 4 AND GCC_MINOR EQUAL 1)
-  set_source_files_properties(src/TString.cxx src/TContextMenu.cxx
-                              COMPILE_FLAGS -Wno-strict-aliasing )
-endif()
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/man)
 
