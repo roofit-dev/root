@@ -1,5 +1,11 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 # @author Patrick Bos, NL eScience Center, 2018
-# @author Danilo Piparo, CERN, 2018
+# @author Danilo Piparo CERN, 2018
 
 # Only Google Test tests are added here, the other tests are added elsewhere
 ROOT_ADD_GTEST(simple simple.cxx LIBRARIES RooFitCore)
