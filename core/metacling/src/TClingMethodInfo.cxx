@@ -37,6 +37,7 @@ compiler, not CINT.
 #include "cling/Utils/AST.h"
 
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclCXX.h"
@@ -61,7 +62,7 @@ compiler, not CINT.
 using namespace clang;
 
 TClingCXXRecMethIter::SpecFuncIter::SpecFuncIter(cling::Interpreter *interp, clang::DeclContext *DC,
-                                                 llvm::SmallVectorImpl<clang::Decl *> &&specFuncs)
+                                                 llvm::SmallVectorImpl<clang::CXXMethodDecl *> &&specFuncs)
 {
    auto *CXXRD = llvm::dyn_cast<CXXRecordDecl>(DC);
    if (!CXXRD)
@@ -70,12 +71,12 @@ TClingCXXRecMethIter::SpecFuncIter::SpecFuncIter(cling::Interpreter *interp, cla
    // Could trigger deserialization of decls.
    cling::Interpreter::PushTransactionRAII RAII(interp);
 
-   auto emplaceSpecFunIfNeeded = [&](clang::Decl *D) {
+   auto emplaceSpecFunIfNeeded = [&](clang::CXXMethodDecl *D) {
       if (!D)
          return; // Handle "structor not found" case.
 
       if (std::find(CXXRD->decls_begin(), CXXRD->decls_end(), D) == CXXRD->decls_end()) {
-         fDefDataSpecFuns.emplace_back(llvm::dyn_cast<clang::FunctionDecl>(D));
+         fDefDataSpecFuns.emplace_back(D);
       }
    };
 
@@ -106,11 +107,16 @@ bool TClingCXXRecMethIter::ShouldSkip(const clang::UsingShadowDecl *USD) const
 {
    if (auto *FD = llvm::dyn_cast<clang::FunctionDecl>(USD->getTargetDecl())) {
       if (const auto *CXXMD = llvm::dyn_cast<clang::CXXMethodDecl>(FD)) {
-         if (GetInterpreter()->getSema().getSpecialMember(CXXMD) != clang::Sema::CXXInvalid) {
+         auto SpecMemKind = GetInterpreter()->getSema().getSpecialMember(CXXMD);
+         if ((SpecMemKind == clang::Sema::CXXDefaultConstructor && CXXMD->getNumParams() == 0) ||
+             ((SpecMemKind == clang::Sema::CXXCopyConstructor || SpecMemKind == clang::Sema::CXXMoveConstructor) &&
+              CXXMD->getNumParams() == 1)) {
             // This is a special member pulled in through a using decl. Special
             // members of derived classes cannot be replaced; ignore this using decl,
             // and keep only the (still possibly compiler-generated) special member of the
             // derived class.
+            // NOTE that e.g. `Klass(int = 0)` has SpecMemKind == clang::Sema::CXXDefaultConstructor,
+            // yet this signature must be exposed, so check the argument count.
             return true;
          }
       }
@@ -251,7 +257,7 @@ TClingMethodInfo::TClingMethodInfo(cling::Interpreter *interp,
    clang::Decl *D = const_cast<clang::Decl *>(ci->GetDecl());
    auto *DC = llvm::dyn_cast<clang::DeclContext>(D);
 
-   llvm::SmallVector<clang::Decl*, 8> SpecFuncs;
+   llvm::SmallVector<clang::CXXMethodDecl*, 8> SpecFuncs;
 
    if (auto *CXXRD = llvm::dyn_cast<CXXRecordDecl>(DC)) {
       // Initialize the CXXRecordDecl's special functions; could change the
@@ -265,8 +271,11 @@ TClingMethodInfo::TClingMethodInfo(cling::Interpreter *interp,
 
       // Assemble special functions (or FunctionTemplate-s) that are synthesized from DefinitionData but
       // won't be enumerated as part of decls_begin()/decls_end().
-      auto Ctors = SemaRef.LookupConstructors(CXXRD);
-      SpecFuncs.append(Ctors.begin(), Ctors.end());
+      for (clang::NamedDecl *ctor : SemaRef.LookupConstructors(CXXRD)) {
+         // Filter out constructor templates, they are not functions we can iterate over:
+         if (auto *CXXCD = llvm::dyn_cast<clang::CXXConstructorDecl>(ctor))
+            SpecFuncs.emplace_back(CXXCD);
+      }
       SpecFuncs.emplace_back(SemaRef.LookupCopyingAssignment(CXXRD, /*Quals*/ 0, /*RValueThis*/ false, 0 /*ThisQuals*/));
       SpecFuncs.emplace_back(SemaRef.LookupMovingAssignment(CXXRD, /*Quals*/ 0, /*RValueThis*/ false, 0 /*ThisQuals*/));
       SpecFuncs.emplace_back(SemaRef.LookupDestructor(CXXRD));
@@ -274,8 +283,6 @@ TClingMethodInfo::TClingMethodInfo(cling::Interpreter *interp,
 
    fIter = TClingCXXRecMethIter(interp, DC, std::move(SpecFuncs));
    fIter.Init();
-
-   // Could trigger deserialization of decls.
 }
 
 TClingMethodInfo::TClingMethodInfo(cling::Interpreter *interp,
@@ -303,7 +310,7 @@ const clang::FunctionDecl *TClingMethodInfo::GetAsFunctionDecl() const
 
 const clang::UsingShadowDecl *TClingMethodInfo::GetAsUsingShadowDecl() const
 {
-   return cast_or_null<UsingShadowDecl>(GetDecl());
+   return dyn_cast<UsingShadowDecl>(GetDecl());
 }
 
 const clang::FunctionDecl *TClingMethodInfo::GetTargetFunctionDecl() const
@@ -428,7 +435,7 @@ int TClingMethodInfo::Next()
    } else {
       fIter.Next();
    }
-   return 1;
+   return fIter.IsValid();
 }
 
 long TClingMethodInfo::Property() const
@@ -438,13 +445,40 @@ long TClingMethodInfo::Property() const
    }
    long property = 0L;
    property |= kIsCompiled;
-   const clang::FunctionDecl *fd = GetTargetFunctionDecl();
-   if (fd->isConstexpr())
-      property |= kIsConstexpr;
+
    // NOTE: this uses `GetDecl()`, to capture the access of the UsingShadowDecl,
    // which is defined in the derived class and might differ from the access of fd
    // in the base class.
-   switch (GetDecl()->getAccess()) {
+   const Decl *declAccess = GetDecl();
+   if (llvm::isa<UsingShadowDecl>(declAccess))
+      property |= kIsUsing;
+
+   const clang::FunctionDecl *fd = GetTargetFunctionDecl();
+   clang::AccessSpecifier Access = clang::AS_public;
+   if (!declAccess->getDeclContext()->isNamespace())
+      Access = declAccess->getAccess();
+
+   if ((property & kIsUsing) && llvm::isa<CXXConstructorDecl>(fd)) {
+      Access = clang::AS_public;
+      clang::CXXRecordDecl *typeCXXRD = llvm::cast<RecordType>(Type()->GetQualType())->getAsCXXRecordDecl();
+      clang::CXXBasePaths basePaths;
+      if (typeCXXRD->isDerivedFrom(llvm::dyn_cast<CXXRecordDecl>(fd->getDeclContext()), basePaths)) {
+         // Access of the ctor is access of the base inheritance, and
+         // cannot be overruled by the access of the using decl.
+
+         for (auto el: basePaths) {
+            if (el.Access > Access)
+               Access = el.Access;
+         }
+      } else {
+         Error("Property()", "UsingDecl of ctor not shadowing a base ctor!");
+      }
+
+      // But a private ctor stays private:
+      if (fd->getAccess() > Access)
+         Access = fd->getAccess();
+   }
+   switch (Access) {
       case clang::AS_public:
          property |= kIsPublic;
          break;
@@ -455,13 +489,16 @@ long TClingMethodInfo::Property() const
          property |= kIsPrivate;
          break;
       case clang::AS_none:
-         if (fd->getDeclContext()->isNamespace())
+         if (declAccess->getDeclContext()->isNamespace())
             property |= kIsPublic;
          break;
       default:
          // IMPOSSIBLE
          break;
    }
+
+   if (fd->isConstexpr())
+      property |= kIsConstexpr;
    if (fd->getStorageClass() == clang::SC_Static) {
       property |= kIsStatic;
    }
@@ -515,6 +552,8 @@ long TClingMethodInfo::ExtraProperty() const
       property |= kIsDestructor;
    if (fd->isInlined())
       property |= kIsInlined;
+   if (fd->getTemplatedKind() != clang::FunctionDecl::TK_NonTemplate)
+      property |= kIsTemplateSpec;
    return property;
 }
 

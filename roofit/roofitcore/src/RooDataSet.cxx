@@ -89,6 +89,7 @@ For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 #include "RooSentinel.h"
 #include "RooTrace.h"
 #include "RooHelpers.h"
+#include "BatchHelpers.h"
 
 #include "TTree.h"
 #include "TH2.h"
@@ -915,11 +916,13 @@ void RooDataSet::initialize(const char* wgtVarName)
   if (wgtVarName) {
     RooAbsArg* wgt = _varsNoWgt.find(wgtVarName) ;
     if (!wgt) {
-      coutW(DataHandling) << "RooDataSet::RooDataSet(" << GetName() << ") WARNING: designated weight variable " 
+      coutE(DataHandling) << "RooDataSet::RooDataSet(" << GetName() << "): designated weight variable "
 			  << wgtVarName << " not found in set of variables, no weighting will be assigned" << endl ;
+      throw std::invalid_argument("RooDataSet::initialize() weight variable could not be initialised.");
     } else if (!dynamic_cast<RooRealVar*>(wgt)) {
-      coutW(DataHandling) << "RooDataSet::RooDataSet(" << GetName() << ") WARNING: designated weight variable " 
+      coutE(DataHandling) << "RooDataSet::RooDataSet(" << GetName() << "): designated weight variable "
 			  << wgtVarName << " is not of type RooRealVar, no weighting will be assigned" << endl ;
+      throw std::invalid_argument("RooDataSet::initialize() weight variable could not be initialised.");
     } else {
       _varsNoWgt.remove(*wgt) ;
       _wgtVar = (RooRealVar*) wgt ;
@@ -1007,10 +1010,25 @@ Double_t RooDataSet::weightSquared() const
 }
 
 
-
-// See base class.
+////////////////////////////////////////////////////////////////////////////////
+/// \see RooAbsData::getWeightBatch().
 RooSpan<const double> RooDataSet::getWeightBatch(std::size_t first, std::size_t len) const {
   return _dstore->getWeightBatch(first, len);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Write information to retrieve data columns into `evalData.spans`.
+/// All spans belonging to variables of this dataset are overwritten. Spans to other
+/// variables remain intact.
+/// \param[out] evalData Store references to all data batches in this struct's `spans`.
+/// The key to retrieve an item is the pointer of the variable that owns the data.
+/// \param first Index of first event that ends up in the batch.
+/// \param len   Number of events in each batch.
+void RooDataSet::getBatches(BatchHelpers::RunContext& evalData, std::size_t begin, std::size_t len) const {
+  for (auto&& batch : store()->getBatches(begin, len).spans) {
+    evalData.spans[batch.first] = std::move(batch.second);
+  }
 }
 
 
@@ -1113,7 +1131,7 @@ Double_t RooDataSet::sumEntries(const char* cutSpec, const char* cutRange) const
 
 Bool_t RooDataSet::isWeighted() const
 { 
-    return store()->isWeighted() ;
+    return store() ? store()->isWeighted() : false;
 }
 
 
@@ -1723,11 +1741,11 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
     ownIsBlind = kFALSE ;    
     if (blindState->IsA()!=RooCategory::Class()) {
       oocoutE((TObject*)0,DataHandling) << "RooDataSet::read: ERROR: variable list already contains" 
-			  << "a non-RooCategory blindState member" << endl ;
+          << "a non-RooCategory blindState member" << endl ;
       return 0 ;
     }
     oocoutW((TObject*)0,DataHandling) << "RooDataSet::read: WARNING: recycling existing "
-			<< "blindState category in variable list" << endl ;
+        << "blindState category in variable list" << endl ;
   }
   RooCategory* blindCat = (RooCategory*) blindState ;
 
@@ -1746,7 +1764,7 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
   if (ownIsBlind) { variables.remove(*blindState) ; delete blindState ; }
   if(!data) {
     oocoutE((TObject*)0,DataHandling) << "RooDataSet::read: unable to create a new dataset"
-			<< endl;
+        << endl;
     return nullptr;
   }
 
@@ -1761,16 +1779,16 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
     tmp = data->_vars.find(indexCatName) ;
     if (!tmp) {
       oocoutE(data.get(),DataHandling) << "RooDataSet::read: no index category named "
-			  << indexCatName << " in supplied variable list" << endl ;
+          << indexCatName << " in supplied variable list" << endl ;
       return nullptr;
     }
     if (tmp->IsA()!=RooCategory::Class()) {
       oocoutE(data.get(),DataHandling) << "RooDataSet::read: variable " << indexCatName
-			  << " is not a RooCategory" << endl ;
+          << " is not a RooCategory" << endl ;
       return nullptr;
     }
-    indexCat = (RooCategory*)tmp ;
-    
+    indexCat = static_cast<RooCategory*>(tmp);
+
     // Prevent RooArgSet from attempting to read in indexCat
     indexCat->setAttribute("Dynamic") ;
   }
@@ -1791,25 +1809,25 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
         // Use user category name if provided
         catname++ ;
 
-	if (indexCat->hasLabel(catname)) {
-	  // Use existing category index
-	  indexCat->setLabel(catname);
-	} else {
-	  // Register cat name
-	  indexCat->defineType(catname,fileSeqNum) ;
-	  indexCat->setIndex(fileSeqNum) ;
-	}
+        if (indexCat->hasLabel(catname)) {
+          // Use existing category index
+          indexCat->setLabel(catname);
+        } else {
+          // Register cat name
+          indexCat->defineType(catname,fileSeqNum) ;
+          indexCat->setIndex(fileSeqNum) ;
+        }
       } else {
-	// Assign autogenerated name
-	char newLabel[128] ;
-	snprintf(newLabel,128,"file%03d",fileSeqNum) ;
-	if (indexCat->defineType(newLabel,fileSeqNum)) {
-	  oocoutE(data.get(), DataHandling) << "RooDataSet::read: Error, cannot register automatic type name " << newLabel
-			      << " in index category " << indexCat->GetName() << endl ;
-	  return 0 ;
-	}	
-	// Assign new category number
-	indexCat->setIndex(fileSeqNum) ;
+        // Assign autogenerated name
+        char newLabel[128] ;
+        snprintf(newLabel,128,"file%03d",fileSeqNum) ;
+        if (indexCat->defineType(newLabel,fileSeqNum)) {
+          oocoutE(data.get(), DataHandling) << "RooDataSet::read: Error, cannot register automatic type name " << newLabel
+              << " in index category " << indexCat->GetName() << endl ;
+          return 0 ;
+        }
+        // Assign new category number
+        indexCat->setIndex(fileSeqNum) ;
       }
     }
 
@@ -1822,11 +1840,11 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
 
     if (!file.good()) {
       oocoutE(data.get(), DataHandling) << "RooDataSet::read: unable to open '"
-	   << filename << "'. Returning nullptr now." << endl;
+          << filename << "'. Returning nullptr now." << endl;
       return nullptr;
     }
-    
-//  Double_t value;
+
+    //  Double_t value;
     Int_t line(0) ;
     Bool_t haveBlindString(false) ;
 
@@ -1835,33 +1853,31 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
       if(debug) oocxcoutD(data.get(),DataHandling) << "reading line " << line << endl;
 
       // process comment lines
-      if (file.peek() == '#')
-	{
-	  if(debug) oocxcoutD(data.get(),DataHandling) << "skipping comment on line " << line << endl;
-	}
-      else {	
+      if (file.peek() == '#') {
+        if(debug) oocxcoutD(data.get(),DataHandling) << "skipping comment on line " << line << endl;
+      } else {
+        // Read single line
+        Bool_t readError = variables.readFromStream(file,kTRUE,verbose) ;
+        data->_vars = variables ;
 
-	// Skip empty lines 
-	// if(file.peek() == '\n') { file.get(); }
+        // Stop on read error
+        if(!file.good()) {
+          oocoutE(data.get(), DataHandling) << "RooDataSet::read(static): read error at line " << line << endl ;
+          break;
+        }
 
-	// Read single line
-	Bool_t readError = variables.readFromStream(file,kTRUE,verbose) ;
-	data->_vars = variables ;
-// 	Bool_t readError = data->_vars.readFromStream(file,kTRUE,verbose) ;
+        if (readError) {
+          outOfRange++ ;
+        } else {
+          blindCat->setIndex(haveBlindString) ;
+          data->fill(); // store this event
+        }
+      }
 
-	// Stop at end of file or on read error
-	if(file.eof()) break ;	
-	if(!file.good()) {
-	  oocoutE(data.get(), DataHandling) << "RooDataSet::read(static): read error at line " << line << endl ;
-	  break;
-	}	
-
-	if (readError) {
-	  outOfRange++ ;
-	  continue ;
-	}
-	blindCat->setIndex(haveBlindString) ;
-	data->fill(); // store this event
+      // Skip all white space (including empty lines).
+      while (isspace(file.peek())) {
+        char dummy;
+        file >> std::noskipws >> dummy >> std::skipws;
       }
     }
 
@@ -1880,7 +1896,7 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
     }
   }
   oocoutI(data.get(),DataHandling) << "RooDataSet::read: read " << data->numEntries()
-				    << " events (ignored " << outOfRange << " out of range events)" << endl;
+				        << " events (ignored " << outOfRange << " out of range events)" << endl;
 
   return data.release();
 }

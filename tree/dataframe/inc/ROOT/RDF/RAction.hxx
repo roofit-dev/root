@@ -32,7 +32,9 @@ namespace RDFDetail = ROOT::Detail::RDF;
 namespace RDFGraphDrawing = ROOT::Internal::RDF::GraphDrawing;
 
 namespace GraphDrawing {
-std::shared_ptr<GraphNode> CreateDefineNode(const std::string &colName, const RDFDetail::RDefineBase *columnPtr);
+std::shared_ptr<GraphNode> AddDefinesToGraph(std::shared_ptr<GraphNode> node,
+                                             const RDFInternal::RBookedDefines &defines,
+                                             const std::vector<std::string> &prevNodeDefines);
 } // namespace GraphDrawing
 
 // clang-format off
@@ -54,7 +56,7 @@ class RAction : public RActionBase {
    const std::shared_ptr<PrevDataFrame> fPrevDataPtr;
    PrevDataFrame &fPrevData;
    /// Column readers per slot and per input column
-   std::vector<std::array<std::unique_ptr<RDFInternal::RColumnReaderBase>, ColumnTypes_t::list_size>> fValues;
+   std::vector<std::array<std::unique_ptr<RColumnReaderBase>, ColumnTypes_t::list_size>> fValues;
 
    /// The nth flag signals whether the nth input column is a custom column or not.
    std::array<bool, ColumnTypes_t::list_size> fIsDefine;
@@ -92,7 +94,7 @@ public:
       for (auto &bookedBranch : GetDefines().GetColumns())
          bookedBranch.second->InitSlot(r, slot);
       RDFInternal::RColumnReadersInfo info{RActionBase::GetColumnNames(), RActionBase::GetDefines(), fIsDefine.data(),
-                                           fLoopManager->GetDSValuePtrs()};
+                                           fLoopManager->GetDSValuePtrs(), fLoopManager->GetDataSource()};
       fValues[slot] = RDFInternal::MakeColumnReaders(slot, r, ColumnTypes_t{}, info);
       fHelper.InitTask(r, slot);
    }
@@ -136,25 +138,14 @@ public:
       auto prevNode = fPrevData.GetGraph();
       auto prevColumns = prevNode->GetDefinedColumns();
 
-      // Action nodes do not need to ask an helper to create the graph nodes. They are never common nodes between
-      // multiple branches
+      // Action nodes do not need to go through CreateFilterNode: they are never common nodes between multiple branches
       auto thisNode = std::make_shared<RDFGraphDrawing::GraphNode>(fHelper.GetActionName());
-      auto evaluatedNode = thisNode;
-      for (auto &column : GetDefines().GetColumns()) {
-         /* Each column that this node has but the previous hadn't has been defined in between,
-          * so it has to be built and appended. */
-         if (RDFInternal::IsInternalColumn(column.first))
-            continue;
-         if (std::find(prevColumns.begin(), prevColumns.end(), column.first) == prevColumns.end()) {
-            auto defineNode = RDFGraphDrawing::CreateDefineNode(column.first, column.second.get());
-            evaluatedNode->SetPrevNode(defineNode);
-            evaluatedNode = defineNode;
-         }
-      }
+
+      auto upmostNode = AddDefinesToGraph(thisNode, GetDefines(), prevColumns);
 
       thisNode->AddDefinedColumns(GetDefines().GetNames());
       thisNode->SetAction(HasRun());
-      evaluatedNode->SetPrevNode(prevNode);
+      upmostNode->SetPrevNode(prevNode);
       return thisNode;
    }
 

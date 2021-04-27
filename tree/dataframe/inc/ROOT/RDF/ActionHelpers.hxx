@@ -210,9 +210,10 @@ public:
    void Exec(unsigned int slot, const T &vs)
    {
       auto &thisBuf = fBuffers[slot];
-      for (auto &v : vs) {
-         UpdateMinMax(slot, v);
-         thisBuf.emplace_back(v); // TODO: Can be optimised in case T == BufEl_t
+      // range-based for results in warnings on some compilers due to vector<bool>'s custom reference type
+      for (auto v = vs.begin(); v != vs.end(); ++v) {
+         UpdateMinMax(slot, *v);
+         thisBuf.emplace_back(*v); // TODO: Can be optimised in case T == BufEl_t
       }
    }
 
@@ -329,8 +330,8 @@ public:
    void Exec(unsigned int slot, const X0 &x0s)
    {
       auto thisSlotH = fObjects[slot];
-      for (auto &x0 : x0s) {
-         thisSlotH->Fill(x0); // TODO: Can be optimised in case T == vector<double>
+      for (auto x0 = x0s.begin(); x0 != x0s.end(); x0++) {
+         thisSlotH->Fill(*x0); // TODO: Can be optimised in case T == vector<double>
       }
    }
 
@@ -772,7 +773,7 @@ public:
    void Exec(unsigned int slot, const T &vs)
    {
       for (auto &&v : vs)
-         fMins[slot] = std::min(v, fMins[slot]);
+         fMins[slot] = std::min(static_cast<ResultType>(v), fMins[slot]);
    }
 
    void Initialize() { /* noop */}
@@ -822,7 +823,7 @@ public:
    void Exec(unsigned int slot, const T &vs)
    {
       for (auto &&v : vs)
-         fMaxs[slot] = std::max((ResultType)v, fMaxs[slot]);
+         fMaxs[slot] = std::max(static_cast<ResultType>(v), fMaxs[slot]);
    }
 
    void Initialize() { /* noop */}
@@ -1522,7 +1523,12 @@ public:
       }
 
       if (!fileWritten) {
-         Warning("Snapshot", "A lazy Snapshot action was booked but never triggered.");
+         if (std::none_of(fOutputFiles.begin(), fOutputFiles.end(), [] (const std::shared_ptr<ROOT::Experimental::TBufferMergerFile> ptr) { return bool(ptr); })) {
+            Warning("Snapshot",
+                    "No input entries (input TTree was empty or no entry passed the Filters). Output TTree is empty.");
+         } else {
+            Warning("Snapshot", "A lazy Snapshot action was booked but never triggered.");
+         }
       }
 
       // flush all buffers to disk by destroying the TBufferMerger

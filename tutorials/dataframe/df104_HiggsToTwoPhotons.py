@@ -1,7 +1,7 @@
 ## \file
 ## \ingroup tutorial_dataframe
 ## \notebook -draw
-## \brief The Higgs to two photons analysis from the ATLAS Open Data 2020 release, with RDataFrame.
+## The Higgs to two photons analysis from the ATLAS Open Data 2020 release, with RDataFrame.
 ##
 ## This tutorial is the Higgs to two photons analysis from the ATLAS Open Data release in 2020
 ## (http://opendata.atlas.cern/release/2020/documentation/). The data was taken with the ATLAS detector
@@ -79,6 +79,13 @@ for p in processes:
             "m_yy", "weight")
 
 # Run the event loop
+
+# RunGraphs allows to run the event loops of the separate RDataFrame graphs
+# concurrently. This results in an improved usage of the available resources
+# if each separate RDataFrame can not utilize all available resources, e.g.,
+# because not enough data is available.
+ROOT.RDF.RunGraphs([hists[s] for s in ["ggH", "VBF", "data"]])
+
 ggh = hists["ggH"].GetValue()
 vbf = hists["VBF"].GetValue()
 data = hists["data"].GetValue()
@@ -207,7 +214,8 @@ text.DrawLatex(0.18, 0.84, "ATLAS")
 text.SetTextFont(42)
 text.DrawLatex(0.18 + 0.13, 0.84, "Open Data")
 text.SetTextSize(0.04)
-text.DrawLatex(0.18, 0.78, "#sqrt{s} = 13 TeV, 10 fb^{-1}");
+text.DrawLatex(0.18, 0.78, "#sqrt{s} = 13 TeV, 10 fb^{-1}")
 
 # Save the plot
-c.SaveAs("HiggsToTwoPhotons.pdf");
+c.SaveAs("df104_HiggsToTwoPhotons.png")
+print("Saved figure to df104_HiggsToTwoPhotons.png")
