@@ -10,27 +10,31 @@
  *************************************************************************/
 
 /** \class TClass
-The ROOT global object gROOT contains a list of all defined
-classes. This list is build when a reference to a class dictionary
-is made. When this happens, the static "class"::Dictionary()
-function is called to create a TClass object describing the
-class. The Dictionary() function is defined in the ClassDef
-macro and stored (at program startup or library load time) together
-with the class name in the TClassTable singleton object.
-For a description of all dictionary classes see TDictionary.
+TClass instances represent classes, structs and namespaces in the ROOT type system.
 
-The name of the class as registered in the TClass object and in the
-list of class is the "normalized name" and is defined as:
+TClass instances are created starting from different sources of information:
+1. TStreamerInfo instances saved in a ROOT file which is opened. This is called in jargon an *emulated TClass*.
+2. From TProtoClass instances saved in a ROOT pcm file created by the dictionary generator and the dictionary itself.
+3. From a lookup in the AST built by cling.
 
-The name of the type as accessible from the global scope to which
-a 'using namespace std;' has been applied to and with:
-   - all typedefs disagreed except for Double32_t, Float16_t,
-     Long64_t, ULong64_t and std::string.
-   - default template parameters removed for STL collections and
-     added for any other class templates instances.
-   - Fully qualified both for the class name itself and all of its
-     component, except that, at least for moment, all 'std::' are
-     stripped.
+If a TClass instance is built through the mechanisms 1. and 2., it does not contain information about methods of the
+class/struct/namespace it represents. Conversely, if built through 3. or 1., it does not carry the information which is necessary
+to ROOT to perform I/O of instances of the class/struct it represents.
+The mechanisms 1., 2. and 3. are not mutually exclusive: it can happen that during the execution of the program, all
+the three are triggered, modifying the state of the TClass instance.
+
+In order to retrieve a TClass instance from the type system, a query can be executed as follows through the static
+TClass::GetClass method:
+
+~~~ {.cpp}
+auto myClassTClass_0 = TClass::GetClass("myClass");
+auto myClassTClass_1 = TClass::GetClass<myClass>();
+auto myClassTClass_2 = TClass::GetClass(myClassTypeInfo);
+~~~
+
+The name of classes is crucial for ROOT. A careful procedure of *name normalization* is carried out for
+each and every class. A *normalized name* is a valid C++ class name.
+In order to access the name of a class within the ROOT type system, the method TClass::GetName() can be used.
 */
 
 //*-*x7.5 macros/layout_class
@@ -123,6 +127,9 @@ using namespace std;
 TVirtualMutex* gInterpreterMutex = 0;
 
 namespace {
+
+   static constexpr const char kUndeterminedClassInfoName[] = "<NOT YET DETERMINED FROM fClassInfo>";
+
    class TMmallocDescTemp {
    private:
       void *fSave;
@@ -1525,7 +1532,7 @@ void TClass::Init(const char *name, Version_t cversion,
    if (fClassInfo) {
       SetTitle(gCling->ClassInfo_Title(fClassInfo));
       if ( fDeclFileName == 0 || fDeclFileName[0] == '\0' ) {
-         fDeclFileName = gInterpreter->ClassInfo_FileName( fClassInfo );
+	fDeclFileName = kUndeterminedClassInfoName;
          // Missing interface:
          // fDeclFileLine = gInterpreter->ClassInfo_FileLine( fClassInfo );
 
@@ -2266,7 +2273,7 @@ Bool_t TClass::CanSplit() const
 
       Int_t stl = -TClassEdit::IsSTLCont(GetName(), 0);
       if ((stl==ROOT::kSTLmap || stl==ROOT::kSTLmultimap)
-          && !valueClass->HasDataMemberInfo()==0)
+          && !valueClass->HasDataMemberInfo())
       {
          This->fCanSplit = 0;
          return kFALSE;
@@ -2277,7 +2284,7 @@ Bool_t TClass::CanSplit() const
 
    }
 
-   if (GetStreamer()!=0) {
+   if (GetStreamer() != nullptr || fStreamerFunc != nullptr) {
 
       // We have an external custom streamer provided by the user, we must not
       // split it.
@@ -2952,9 +2959,10 @@ TClass *TClass::GetClass(const char *name, Bool_t load, Bool_t silent)
    Bool_t checkTable = kFALSE;
 
    if (!cl) {
-      int oldAutoloadVal = gCling->SetClassAutoloading(false);
-      TClassEdit::GetNormalizedName(normalizedName, name);
-      gCling->SetClassAutoloading(oldAutoloadVal);
+      {
+         TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
+         TClassEdit::GetNormalizedName(normalizedName, name);
+      }
       // Try the normalized name.
       if (normalizedName != name) {
          cl = (TClass*)gROOT->GetListOfClasses()->FindObject(normalizedName.c_str());
@@ -3164,9 +3172,8 @@ TClass *TClass::GetClass(const std::type_info& typeinfo, Bool_t load, Bool_t /* 
    }
    if (autoload_old && gInterpreter->AutoLoad(typeinfo,kTRUE)) {
       // Disable autoload to avoid potential infinite recursion
-      gCling->SetClassAutoloading(0);
+      TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
       cl = GetClass(typeinfo, load);
-      gCling->SetClassAutoloading(1);
       if (cl) {
          return cl;
       }
@@ -3294,6 +3301,16 @@ TDataMember *TClass::GetDataMember(const char *datamember) const
    } else {
       return (TDataMember *)((TClass*)this)->GetListOfDataMembers(kFALSE)->FindObject(start_name);
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return name of the file containing the declaration of this class.
+
+const char *TClass::GetDeclFileName() const
+{
+   if (fDeclFileName == kUndeterminedClassInfoName)
+      return gInterpreter->ClassInfo_FileName( fClassInfo );
+   return fDeclFileName;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4000,8 +4017,7 @@ void TClass::ReplaceWith(TClass *newcl) const
    // Since we are in the process of replacing a TClass by a TClass
    // coming from a dictionary, there is no point in loading any
    // libraries during this search.
-   Bool_t autoload = gInterpreter->SetClassAutoloading(kFALSE);
-
+   TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
    while ((acl = (TClass*)nextClass())) {
       if (acl == newcl) continue;
 
@@ -4022,8 +4038,6 @@ void TClass::ReplaceWith(TClass *newcl) const
       delete acl;
    }
    gInterpreter->UnRegisterTClassUpdate(this);
-
-   gInterpreter->SetClassAutoloading(autoload);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -6046,12 +6060,9 @@ void TClass::SetUnloaded()
    // Disable the autoloader while calling SetClassInfo, to prevent
    // the library from being reloaded!
    {
-      int autoload_old = gCling->SetClassAutoloading(0);
+      TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
       TInterpreter::SuspendAutoParsing autoParseRaii(gCling);
-
       gInterpreter->SetClassInfo(this,kTRUE);
-
-      gCling->SetClassAutoloading(autoload_old);
    }
    fDeclFileName = 0;
    fDeclFileLine = 0;
