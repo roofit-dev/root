@@ -87,7 +87,8 @@ RooNLLVar::RooNLLVar(const char *name, const char* title, RooAbsPdf& pdf, RooAbs
                          static_cast<Bool_t>(RooCmdConfig::decodeIntOnTheFly("RooNLLVar::RooNLLVar","CPUAffinity",0,1,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9)),
 			 RooCmdConfig::decodeIntOnTheFly("RooNLLVar::RooNLLVar","Verbose",0,1,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9),
 			 RooCmdConfig::decodeIntOnTheFly("RooNLLVar::RooNLLVar","SplitRange",0,0,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9),
-			 RooCmdConfig::decodeIntOnTheFly("RooNLLVar::RooNLLVar","CloneData",0,1,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9))
+			 RooCmdConfig::decodeIntOnTheFly("RooNLLVar::RooNLLVar","CloneData",0,1,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9),
+			 RooCmdConfig::decodeDoubleOnTheFly("RooNLLVar::RooNLLVar", "IntegrateBins", 0, -1., {arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9}))
 {
   RooCmdConfig pc("RooNLLVar::RooNLLVar") ;
   pc.allowUndefined() ;
@@ -118,8 +119,10 @@ RooNLLVar::RooNLLVar(const char *name, const char* title, RooAbsPdf& pdf, RooAbs
 
 RooNLLVar::RooNLLVar(const char *name, const char *title, RooAbsPdf& pdf, RooAbsData& indata,
 		     Bool_t extended, const char* rangeName, const char* addCoefRangeName,
-		     Int_t nCPU, RooFit::MPSplit interleave, Bool_t CPUAffinity, Bool_t verbose, Bool_t splitRange, Bool_t cloneData, Bool_t binnedL) :
-  RooAbsOptTestStatistic(name,title,pdf,indata,RooArgSet(),rangeName,addCoefRangeName,nCPU,interleave,CPUAffinity,verbose,splitRange,cloneData),
+		     Int_t nCPU, RooFit::MPSplit interleave, Bool_t CPUAffinity, Bool_t verbose, Bool_t splitRange, Bool_t cloneData, Bool_t binnedL,
+		     double integrateBinsPrecision) :
+  RooAbsOptTestStatistic(name,title,pdf,indata,RooArgSet(),rangeName,addCoefRangeName,nCPU,interleave,CPUAffinity,verbose,splitRange,cloneData,
+      integrateBinsPrecision),
   _extended(extended),
   _weightSq(kFALSE),
   _first(kTRUE), _offsetSaveW2(0.), _offsetCarrySaveW2(0.)
@@ -163,8 +166,10 @@ RooNLLVar::RooNLLVar(const char *name, const char *title, RooAbsPdf& pdf, RooAbs
 
 RooNLLVar::RooNLLVar(const char *name, const char *title, RooAbsPdf& pdf, RooAbsData& indata,
 		     const RooArgSet& projDeps, Bool_t extended, const char* rangeName,const char* addCoefRangeName,
-		     Int_t nCPU,RooFit::MPSplit interleave, Bool_t CPUAffinity, Bool_t verbose, Bool_t splitRange, Bool_t cloneData, Bool_t binnedL) :
-  RooAbsOptTestStatistic(name,title,pdf,indata,projDeps,rangeName,addCoefRangeName,nCPU,interleave,CPUAffinity,verbose,splitRange,cloneData),
+		     Int_t nCPU,RooFit::MPSplit interleave, Bool_t CPUAffinity, Bool_t verbose, Bool_t splitRange, Bool_t cloneData, Bool_t binnedL,
+		     double integrateBinsPrecision) :
+  RooAbsOptTestStatistic(name,title,pdf,indata,projDeps,rangeName,addCoefRangeName,nCPU,interleave,CPUAffinity,verbose,splitRange,cloneData,
+      integrateBinsPrecision),
   _extended(extended),
   _weightSq(kFALSE),
   _first(kTRUE), _offsetSaveW2(0.), _offsetCarrySaveW2(0.)
@@ -222,7 +227,12 @@ RooAbsTestStatistic* RooNLLVar::create(const char *name, const char *title, RooA
             Int_t nCPU, RooFit::MPSplit interleave, Bool_t CPUAffinity, bool verbose, bool splitRange, bool binnedL) {
   auto testStat = new RooNLLVar(name, title,
       dynamic_cast<RooAbsPdf&>(pdf), adata,
+<<<<<<< HEAD
       projDeps, _extended, rangeName, addCoefRangeName, nCPU, interleave, CPUAffinity, verbose, splitRange, false, binnedL);
+=======
+      projDeps, _extended, rangeName, addCoefRangeName, nCPU, interleave, verbose, splitRange, false, binnedL,
+      _integrateBinsPrecision);
+>>>>>>> 53df5b2fe91baa00b91e5ede4fa99d76aa24cd22
   testStat->batchMode(_batchEvaluations);
   return testStat;
 }
