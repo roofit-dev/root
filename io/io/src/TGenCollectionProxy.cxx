@@ -16,17 +16,17 @@
 #include "TClass.h"
 #include "TError.h"
 #include "TROOT.h"
-#include "TInterpreter.h"
-#include "Riostream.h"
+#include "TInterpreter.h" // For gInterpreterMutex
 #include "TVirtualMutex.h"
 #include "TStreamerInfoActions.h"
 #include "THashTable.h"
 #include "THashList.h"
-#include <stdlib.h>
-
-#include "TInterpreter.h" // For gInterpreterMutex
+#include <cstdlib>
 
 #define MESSAGE(which,text)
+
+// See TEmulatedCollectionProxy.cxx
+extern TStreamerInfo *R__GenerateTClassForPair(const std::string &f, const std::string &s);
 
 /**
 \class TGenVectorProxy
@@ -326,21 +326,38 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent)
    fDelete = 0;
    fSize = std::string::npos;
    fKind = kNoType_t;
-   std::string intype = TClassEdit::ShortType(inside.c_str(),TClassEdit::kDropTrailStar );
-   if ( inside.substr(0,6) == "string" || inside.substr(0,11) == "std::string" ) {
+
+   // Let's treat the unique_ptr case
+   bool nameChanged = false;
+   std::string intype = TClassEdit::GetNameForIO(inside.c_str(), TClassEdit::EModType::kNone, &nameChanged);
+
+   bool isPointer = nameChanged; // unique_ptr is considered a pointer
+   // The incoming name is normalized (it comes from splitting the name of a TClass),
+   // so all we need to do is drop the last trailing star (if any) and record that information.
+   if (!nameChanged && intype[intype.length()-1] == '*') {
+      isPointer = true;
+      intype.pop_back();
+      if (intype[intype.length()-1] == '*') {
+         // The value is a pointer to a pointer
+         if (!silent)
+            Warning("TGenCollectionProxy::Value::Value", "I/O not supported for collection of pointer to pointer: %s", inside_type.c_str());
+         fSize = sizeof(void*);
+         fKind = kVoid_t;
+         return;
+      }
+   }
+
+   if ( intype.substr(0,6) == "string" || intype.substr(0,11) == "std::string" ) {
       fCase = kBIT_ISSTRING;
       fType = TClass::GetClass("string");
       fCtor = fType->GetNew();
       fDtor = fType->GetDestructor();
       fDelete = fType->GetDelete();
-      switch(inside[inside.length()-1]) {
-      case '*':
+      if (isPointer) {
          fCase |= kIsPointer;
          fSize = sizeof(void*);
-         break;
-      default:
+      } else {
          fSize = sizeof(std::string);
-         break;
       }
    }
    else {
@@ -353,7 +370,7 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent)
       fType = TClass::GetClass(intype.c_str(),kTRUE,silent);
 
       if (fType) {
-         if (intype != inside) {
+         if (isPointer) {
             fCase |= kIsPointer;
             fSize = sizeof(void*);
             if (fType == TString::Class()) {
@@ -381,7 +398,7 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent)
             // R__ASSERT((fKind>0 && fKind<0x17) || (fKind==-1&&(prop&kIsPointer)) );
 
             fCase |= kIsFundamental;
-            if (intype != inside) {
+            if (isPointer) {
                fCase |= kIsPointer;
                fSize = sizeof(void*);
             } else {
@@ -392,7 +409,7 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent)
             fCase = kIsEnum;
             fSize = sizeof(Int_t);
             fKind = kInt_t;
-            if (intype != inside) {
+            if (isPointer) {
                fCase |= kIsPointer;
                fSize = sizeof(void*);
             }
@@ -411,7 +428,7 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent)
             TypeInfo_t *ti = gCling->TypeInfo_Factory();
             gCling->TypeInfo_Init(ti,inside.c_str());
             if ( !gCling->TypeInfo_IsValid(ti) ) {
-               if (intype != inside) {
+               if (isPointer) {
                   fCase |= kIsPointer;
                   fSize = sizeof(void*);
                }
@@ -561,7 +578,7 @@ TGenCollectionProxy::TGenCollectionProxy(const TGenCollectionProxy& copy)
    fCreateEnv.call = copy.fCreateEnv.call;
    fValOffset      = copy.fValOffset;
    fValDiff        = copy.fValDiff;
-   fValue          = copy.fValue.load() ? new Value(*copy.fValue) : 0;
+   fValue          = copy.fValue.load(std::memory_order_relaxed) ? new Value(*copy.fValue) : 0;
    fVal            = copy.fVal   ? new Value(*copy.fVal)   : 0;
    fKey            = copy.fKey   ? new Value(*copy.fKey)   : 0;
    fOnFileClass    = copy.fOnFileClass;
@@ -718,7 +735,7 @@ TGenCollectionProxy::~TGenCollectionProxy()
 
 TVirtualCollectionProxy* TGenCollectionProxy::Generate() const
 {
-   if ( !fValue.load() ) Initialize(kFALSE);
+   if ( !fValue.load(std::memory_order_relaxed) ) Initialize(kFALSE);
 
    if( fPointers )
       return new TGenCollectionProxy(*this);
@@ -862,10 +879,19 @@ TGenCollectionProxy *TGenCollectionProxy::InitializeEx(Bool_t silent)
             case ROOT::kSTLunorderedmultimap:
                nam = "pair<"+inside[1]+","+inside[2];
                nam += (nam[nam.length()-1]=='>') ? " >" : ">";
-               newfValue = R__CreateValue(nam, silent);
 
                fVal   = R__CreateValue(inside[2], silent);
                fKey   = R__CreateValue(inside[1], silent);
+
+               {
+                  TInterpreter::SuspendAutoParsing autoParseRaii(gCling);
+                  if (0==TClass::GetClass(nam.c_str())) {
+                     // We need to emulate the pair
+                     R__GenerateTClassForPair(inside[1],inside[2]);
+                  }
+               }
+               newfValue = R__CreateValue(nam, silent);
+
                fPointers = (0 != (fKey->fCase&kIsPointer));
                if (fPointers || (0 != (fKey->fProperties&kNeedDelete))) {
                   fProperties |= kNeedDelete;
@@ -927,7 +953,7 @@ TClass *TGenCollectionProxy::GetCollectionClass() const
 
 Int_t TGenCollectionProxy::GetCollectionType() const
 {
-   if (!fValue.load()) {
+   if (!fValue.load(std::memory_order_relaxed)) {
       Initialize(kFALSE);
    }
    return fSTL_type;
@@ -937,7 +963,7 @@ Int_t TGenCollectionProxy::GetCollectionType() const
 /// Return the offset between two consecutive value_types (memory layout).
 
 ULong_t TGenCollectionProxy::GetIncrement() const {
-   if (!fValue.load()) {
+   if (!fValue.load(std::memory_order_relaxed)) {
       Initialize(kFALSE);
    }
    return fValDiff;
@@ -957,7 +983,7 @@ UInt_t TGenCollectionProxy::Sizeof() const
 Bool_t TGenCollectionProxy::HasPointers() const
 {
    // Initialize proxy in case it hasn't been initialized yet
-   if( !fValue.load() )
+   if( !fValue.load(std::memory_order_relaxed) )
       Initialize(kFALSE);
 
    // The content of a map and multimap is always a 'pair' and hence
@@ -972,23 +998,12 @@ Bool_t TGenCollectionProxy::HasPointers() const
 
 TClass *TGenCollectionProxy::GetValueClass() const
 {
-   if (!fValue.load()) Initialize(kFALSE);
-   return fValue.load() ? (*fValue).fType.GetClass() : 0;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Update the internal ValueClass when a TClass constructor need to
-/// replace an emulated TClass by the real TClass.
-
-void TGenCollectionProxy::UpdateValueClass(const TClass *oldValueType, TClass *newValueType)
-{
-   // Note that we do not need to update anything if we have not yet been
-   // initialized.  In addition (see ROOT-6040) doing an initialization here
-   // might hence a nested dlopen (due to autoloading).
-   if (fValue.load() && (*fValue).fType == oldValueType) {
-      // Set pointer to the TClass representing the content.
-      (*fValue).fType = newValueType;
+   auto value = fValue.load(std::memory_order_relaxed);
+   if (!value) {
+      Initialize(kFALSE);
+      value = fValue.load(std::memory_order_relaxed);
    }
+   return value ? (*value).fType.GetClass() : 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -996,8 +1011,12 @@ void TGenCollectionProxy::UpdateValueClass(const TClass *oldValueType, TClass *n
 
 EDataType TGenCollectionProxy::GetType() const
 {
-   if ( !fValue.load() ) Initialize(kFALSE);
-   return (*fValue).fKind;
+   auto value = fValue.load(std::memory_order_relaxed);
+   if (!value) {
+      Initialize(kFALSE);
+      value = fValue.load(std::memory_order_relaxed);
+   }
+   return value ? (*value).fKind : kNoType_t;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1237,7 +1256,7 @@ void TGenCollectionProxy::Commit(void* from)
 
 void TGenCollectionProxy::PushProxy(void *objstart)
 {
-   if ( !fValue.load() ) Initialize(kFALSE);
+   if ( !fValue.load(std::memory_order_relaxed) ) Initialize(kFALSE);
    if ( !fProxyList.empty() ) {
       EnvironBase_t* back = fProxyList.back();
       if ( back->fObject == objstart ) {
@@ -1546,14 +1565,14 @@ void TGenCollectionProxy__StagingDeleteTwoIterators(void *, void *)
 TVirtualCollectionProxy::CreateIterators_t TGenCollectionProxy::GetFunctionCreateIterators(Bool_t read)
 {
    if (read) {
-      if ( !fValue.load() ) InitializeEx(kFALSE);
+      if ( !fValue.load(std::memory_order_relaxed) ) InitializeEx(kFALSE);
       if ( (fProperties & kIsAssociative) && read)
          return TGenCollectionProxy__StagingCreateIterators;
    }
 
    if ( fFunctionCreateIterators ) return fFunctionCreateIterators;
 
-   if ( !fValue.load() ) InitializeEx(kFALSE);
+   if ( !fValue.load(std::memory_order_relaxed) ) InitializeEx(kFALSE);
 
 //   fprintf(stderr,"GetFunctinCreateIterator for %s will give: ",fClass.GetClassName());
 //   if (fSTL_type==ROOT::kSTLvector || (fProperties & kIsEmulated))
@@ -1580,14 +1599,14 @@ TVirtualCollectionProxy::CreateIterators_t TGenCollectionProxy::GetFunctionCreat
 TVirtualCollectionProxy::CopyIterator_t TGenCollectionProxy::GetFunctionCopyIterator(Bool_t read)
 {
    if (read) {
-      if ( !fValue.load() ) InitializeEx(kFALSE);
+      if ( !fValue.load(std::memory_order_relaxed) ) InitializeEx(kFALSE);
       if ( (fProperties & kIsAssociative) && read)
          return TGenCollectionProxy__StagingCopyIterator;
    }
 
    if ( fFunctionCopyIterator ) return fFunctionCopyIterator;
 
-   if ( !fValue.load() ) InitializeEx(kFALSE);
+   if ( !fValue.load(std::memory_order_relaxed) ) InitializeEx(kFALSE);
 
    if (fSTL_type==ROOT::kSTLvector || (fProperties & kIsEmulated))
       return fFunctionCopyIterator = TGenCollectionProxy__VectorCopyIterator;
@@ -1607,14 +1626,14 @@ TVirtualCollectionProxy::CopyIterator_t TGenCollectionProxy::GetFunctionCopyIter
 TVirtualCollectionProxy::Next_t TGenCollectionProxy::GetFunctionNext(Bool_t read)
 {
    if (read) {
-      if ( !fValue.load() ) InitializeEx(kFALSE);
+      if ( !fValue.load(std::memory_order_relaxed) ) InitializeEx(kFALSE);
       if ( (fProperties & kIsAssociative) && read)
          return TGenCollectionProxy__StagingNext;
    }
 
    if ( fFunctionNextIterator ) return fFunctionNextIterator;
 
-   if ( !fValue.load() ) InitializeEx(kFALSE);
+   if ( !fValue.load(std::memory_order_relaxed) ) InitializeEx(kFALSE);
 
    if (fSTL_type==ROOT::kSTLvector || (fProperties & kIsEmulated))
       return fFunctionNextIterator = TGenCollectionProxy__VectorNext;
@@ -1632,14 +1651,14 @@ TVirtualCollectionProxy::Next_t TGenCollectionProxy::GetFunctionNext(Bool_t read
 TVirtualCollectionProxy::DeleteIterator_t TGenCollectionProxy::GetFunctionDeleteIterator(Bool_t read)
 {
    if (read) {
-      if ( !fValue.load() ) InitializeEx(kFALSE);
+      if ( !fValue.load(std::memory_order_relaxed) ) InitializeEx(kFALSE);
       if ( (fProperties & kIsAssociative) && read)
          return TGenCollectionProxy__StagingDeleteSingleIterators;
    }
 
    if ( fFunctionDeleteIterator ) return fFunctionDeleteIterator;
 
-   if ( !fValue.load() ) InitializeEx(kFALSE);
+   if ( !fValue.load(std::memory_order_relaxed) ) InitializeEx(kFALSE);
 
    if (fSTL_type==ROOT::kSTLvector || (fProperties & kIsEmulated))
       return fFunctionDeleteIterator = TGenCollectionProxy__VectorDeleteSingleIterators;
@@ -1657,14 +1676,14 @@ TVirtualCollectionProxy::DeleteIterator_t TGenCollectionProxy::GetFunctionDelete
 TVirtualCollectionProxy::DeleteTwoIterators_t TGenCollectionProxy::GetFunctionDeleteTwoIterators(Bool_t read)
 {
    if (read) {
-      if ( !fValue.load() ) InitializeEx(kFALSE);
+      if ( !fValue.load(std::memory_order_relaxed) ) InitializeEx(kFALSE);
       if ( (fProperties & kIsAssociative) && read)
          return TGenCollectionProxy__StagingDeleteTwoIterators;
    }
 
    if ( fFunctionDeleteTwoIterators ) return fFunctionDeleteTwoIterators;
 
-   if ( !fValue.load() ) InitializeEx(kFALSE);
+   if ( !fValue.load(std::memory_order_relaxed) ) InitializeEx(kFALSE);
 
    if (fSTL_type==ROOT::kSTLvector || (fProperties & kIsEmulated))
       return fFunctionDeleteTwoIterators = TGenCollectionProxy__VectorDeleteTwoIterators;

@@ -12,11 +12,8 @@
 #ifndef ROOT_TPad
 #define ROOT_TPad
 
-
 #include "TVirtualPad.h"
 #include "TAttBBox2D.h"
-#include "TPoint.h"
-#include "GuiTypes.h"
 
 class TVirtualViewer3D;
 class TVirtualPadPainter;
@@ -24,7 +21,7 @@ class TBrowser;
 class TBox;
 class TLegend;
 class TArrow;
-
+class TPoint;
 
 class TPad : public TVirtualPad, public TAttBBox2D {
 
@@ -62,8 +59,8 @@ protected:
    Double_t      fYlowNDC;          ///<  Y bottom left corner of pad in NDC [0,1]
    Double_t      fXUpNDC;
    Double_t      fYUpNDC;
-   Double_t      fWNDC;             ///<  Width of pad along X in NDC
-   Double_t      fHNDC;             ///<  Height of pad along Y in NDC
+   Double_t      fWNDC;             ///<  Width of pad along X in Normalized Coordinates (NDC)
+   Double_t      fHNDC;             ///<  Height of pad along Y in Normalized Coordinates (NDC)
 
    Double_t      fAbsXlowNDC;       ///<  Absolute X top left corner of pad in NDC [0,1]
    Double_t      fAbsYlowNDC;       ///<  Absolute Y top left corner of pad in NDC [0,1]
@@ -208,7 +205,9 @@ public:
    virtual void      GetPadPar(Double_t &xlow, Double_t &ylow, Double_t &xup, Double_t &yup);
    Double_t          GetXlowNDC() const {return fXlowNDC;}
    Double_t          GetYlowNDC() const {return fYlowNDC;}
+   /// Get width of pad along X in Normalized Coordinates (NDC)
    Double_t          GetWNDC() const {return fWNDC;}
+   /// Get height of pad along Y in Normalized Coordinates (NDC)
    Double_t          GetHNDC() const {return fHNDC;}
    virtual UInt_t    GetWw() const;
    virtual UInt_t    GetWh() const;

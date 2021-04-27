@@ -1,6 +1,4 @@
-#include "TApplication.h"
 #include "TCanvas.h"
-#include "TClass.h"
 #include "TFile.h"
 #include "TFormula.h"
 #include "TGButton.h"
@@ -9,7 +7,6 @@
 #include "TGWindow.h"
 #include "TGaxis.h"
 #include "TH1.h"
-#include "TH2.h"
 #include "TIterator.h"
 #include "TKey.h"
 #include "TLatex.h"
@@ -18,9 +15,7 @@
 #include "TList.h"
 #include "TMVA/mvaeffs.h"
 #include "TMVA/tmvaglob.h"
-#include "TPad.h"
 #include "TROOT.h"
-#include "TStyle.h"
 
 #include <iomanip>
 #include <iostream>
@@ -95,10 +90,26 @@ void TMVA::StatDialogMVAEffs::SetNBackground()
 
 TString TMVA::StatDialogMVAEffs::GetFormula() 
 {
-   TString f = fFormula;
-   f.ReplaceAll("S","x");
-   f.ReplaceAll("B","y");
-   return f;
+   // replace all occurrence of S and B but only if neighbours are not alphanumerics
+   auto replace_vars = [](TString & f, char oldLetter, char newLetter ) {
+      auto pos = f.First(oldLetter);
+      while(pos != kNPOS) {
+         if ( ( pos > 0 && !TString(f[pos-1]).IsAlpha() ) ||
+              ( pos < f.Length()-1 &&  !TString(f[pos+1]).IsAlpha() ) )
+         {
+            f[pos] = newLetter;
+         }
+      int pos2 = pos+1;
+      pos = f.Index(oldLetter,pos2);
+      }
+   };
+
+   TString formula = fFormula;
+   replace_vars(formula,'S','x');
+   replace_vars(formula,'B','y');
+   // f.ReplaceAll("S","x");
+   // f.ReplaceAll("B","y");
+   return formula;
 }
 
 

@@ -1,13 +1,14 @@
+## \file
 ## \ingroup tutorial_roofit
 ## \notebook -nodraw
 ##
-## Numeric algorithm tuning: configuration and customization of how MC sampling algorithms
+## \brief Numeric algorithm tuning: configuration and customization of how MC sampling algorithms
 ## on specific p.d.f.s are executed
 ##
 ## \macro_code
 ##
 ## \date February 2018
-## \author Clemens Lange, Wouter Verkerke (C++ version)
+## \authors Clemens Lange, Wouter Verkerke (C++ version)
 
 import ROOT
 

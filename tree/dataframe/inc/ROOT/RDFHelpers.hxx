@@ -101,9 +101,6 @@ auto PassAsVec(F &&f) -> RDFInternal::PassAsVecHelper<std::make_index_sequence<N
 {
    return RDFInternal::PassAsVecHelper<std::make_index_sequence<N>, T, F>(std::forward<F>(f));
 }
-template <typename Proxied, typename DataSource>
-class RInterface;
-
 
 // clang-format off
 /// Create a graphviz representation of the dataframe computation graph, return it as a string.
@@ -138,7 +135,7 @@ void SaveGraph(NodeType node, const std::string &outputFile)
 
 // clang-format off
 /// Cast a RDataFrame node to the common type ROOT::RDF::RNode
-/// \param[in] Any node of a RDataFrame graph
+/// \param[in] node Any node of a RDataFrame graph
 // clang-format on
 template <typename NodeType>
 RNode AsRNode(NodeType node)

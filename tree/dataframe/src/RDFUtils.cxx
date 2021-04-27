@@ -10,6 +10,7 @@
 
 #include "RConfigure.h" // R__USE_IMT
 #include "ROOT/RDataSource.hxx"
+#include "ROOT/RDF/RDefineBase.hxx"
 #include "ROOT/RDF/RLoopManager.hxx"
 #include "RtypesCore.h"
 #include "TBranch.h"
@@ -17,13 +18,15 @@
 #include "TClass.h"
 #include "TClassEdit.h"
 #include "TClassRef.h"
+#include "TError.h" // Info
+#include "TInterpreter.h"
 #include "TLeaf.h"
-#include "TObjArray.h"
-#include "TROOT.h" // IsImplicitMTEnabled, GetImplicitMTPoolSize
+#include "TROOT.h" // IsImplicitMTEnabled, GetThreadPoolSize
 #include "TTree.h"
 
 #include <stdexcept>
 #include <string>
+#include <cstring>
 #include <typeinfo>
 
 using namespace ROOT::Detail::RDF;
@@ -155,6 +158,19 @@ std::string GetBranchOrLeafTypeName(TTree &t, const std::string &colName)
          const auto branchName = colName.substr(0, dotPos);
          const auto leafName = colName.substr(dotPos + 1);
          leaf = t.GetLeaf(branchName.c_str(), leafName.c_str());
+
+         // FIXME GetLeaf("a.b") and GetLeaf("a", "b") might fail while GetBranch("a.b") might work, even if a leaf
+         // called "a.b" exists. If that's the case, however, we don't want branch->GetCurrentClass()->GetName() as the
+         // type, because GetCurrentClass() returns the type of the top-level branch.
+         // So as a last resort, let's check if we manage to get to the leaf from the TBranch.
+         // To be revised once the TLeaf part of ROOT-10942 is fixed (see the ticket for more context).
+         auto branch = t.GetBranch(colName.c_str());
+         if (branch) {
+            auto leaves = branch->GetListOfLeaves();
+            if (leaves->GetEntries() == 1 && branch->GetListOfBranches()->GetEntries() == 0 &&
+                static_cast<TLeaf *>(leaves->At(0))->GetFullName() == colName)
+               return GetLeafTypeName(static_cast<TLeaf *>(leaves->At(0)), colName);
+         }
       }
    }
    if (leaf)
@@ -168,8 +184,18 @@ std::string GetBranchOrLeafTypeName(TTree &t, const std::string &colName)
          auto be = static_cast<TBranchElement *>(branch);
          if (auto currentClass = be->GetCurrentClass())
             return currentClass->GetName();
-         else
+         else {
+            // Here we have a special case for getting right the type of data members
+            // of classes sorted in TClonesArrays: ROOT-9674
+            auto mother = be->GetMother();
+            if (mother && mother->InheritsFrom(tbranchelement) && mother != be) {
+               auto beMom = static_cast<TBranchElement *>(mother);
+               auto beMomClass = beMom->GetClass();
+               if (beMomClass && 0 == std::strcmp("TClonesArray", beMomClass->GetName()))
+                  return be->GetTypeName();
+            }
             return be->GetClassName();
+         }
       }
    }
 
@@ -181,10 +207,10 @@ std::string GetBranchOrLeafTypeName(TTree &t, const std::string &colName)
 /// column created by Define. Throws if type name deduction fails.
 /// Note that for fixed- or variable-sized c-style arrays the returned type name will be RVec<T>.
 /// vector2rvec specifies whether typename 'std::vector<T>' should be converted to 'RVec<T>' or returned as is
-/// customColID is only used if isCustomColumn is true, and must correspond to the custom column's unique identifier
+/// customColID is only used if isDefine is true, and must correspond to the custom column's unique identifier
 /// returned by its `GetID()` method.
-std::string ColumnName2ColumnTypeName(const std::string &colName, unsigned int namespaceID, TTree *tree,
-                                      RDataSource *ds, bool isCustomColumn, bool vector2rvec, unsigned int customColID)
+std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, RDataSource *ds, RDefineBase *define,
+                                      bool vector2rvec)
 {
    std::string colType;
 
@@ -202,9 +228,8 @@ std::string ColumnName2ColumnTypeName(const std::string &colName, unsigned int n
       }
    }
 
-   if (colType.empty() && isCustomColumn) {
-      // this must be a temporary branch, we know there is an alias for its type
-      colType = "__tdf" + std::to_string(namespaceID) + "::" + colName + std::to_string(customColID) + "_type";
+   if (colType.empty() && define) {
+      colType = define->GetTypeName();
    }
 
    if (colType.empty())
@@ -248,7 +273,7 @@ unsigned int GetNSlots()
    unsigned int nSlots = 1;
 #ifdef R__USE_IMT
    if (ROOT::IsImplicitMTEnabled())
-      nSlots = ROOT::GetImplicitMTPoolSize();
+      nSlots = ROOT::GetThreadPoolSize();
 #endif // R__USE_IMT
    return nSlots;
 }
@@ -273,6 +298,40 @@ std::vector<std::string> ReplaceDotWithUnderscore(const std::vector<std::string>
    }
 
    return newColNames;
+}
+
+void InterpreterDeclare(const std::string &code)
+{
+   if (!gInterpreter->Declare(code.c_str())) {
+      const auto msg =
+         "\nRDataFrame: An error occurred during just-in-time compilation. The lines above might indicate the cause of "
+         "the crash\n All RDF objects that have not run an event loop yet should be considered in an invalid state.\n";
+      throw std::runtime_error(msg);
+   }
+}
+
+Long64_t InterpreterCalc(const std::string &code, const std::string &context)
+{
+   TInterpreter::EErrorCode errorCode(TInterpreter::kNoError);
+   auto res = gInterpreter->Calc(code.c_str(), &errorCode);
+   if (errorCode != TInterpreter::EErrorCode::kNoError) {
+      std::string msg = "\nAn error occurred during just-in-time compilation";
+      if (!context.empty())
+         msg += " in " + context;
+      msg += ". The lines above might indicate the cause of the crash\nAll RDF objects that have not run their event "
+             "loop yet should be considered in an invalid state.\n";
+      throw std::runtime_error(msg);
+   }
+   return res;
+}
+
+bool IsInternalColumn(std::string_view colName)
+{
+   const auto str = colName.data();
+   const auto goodPrefix = colName.size() > 3 &&               // has at least more characters than {r,t}df
+                           ('r' == str[0] || 't' == str[0]) && // starts with r or t
+                           0 == strncmp("df", str + 1, 2);     // 2nd and 3rd letters are df
+   return goodPrefix && '_' == colName.back();                 // also ends with '_'
 }
 
 } // end NS RDF

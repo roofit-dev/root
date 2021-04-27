@@ -8,10 +8,17 @@
 //                                                                            //
 //_____________________________________________________________________________
 
-#include "Riostream.h"
-#include "TSystem.h"
 #include "TFoamVect.h"
 
+#include <iostream>
+#include <iomanip>
+
+/** \class TFoamVect
+
+Auxiliary class TFoamVect of n-dimensional vector, with dynamic allocation
+used for the cartesian geometry of the TFoam cells
+
+*/
 
 ClassImp(TFoamVect);
 
@@ -72,11 +79,6 @@ TFoamVect::~TFoamVect()
    delete [] fCoords; //  free(fCoords)
    fCoords=0;
 }
-
-
-//////////////////////////////////////////////////////////////////////////////
-//                     Overloading operators                                //
-//////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 /// substitution operator
@@ -194,9 +196,6 @@ TFoamVect& TFoamVect::operator =(Double_t x)
    }
    return *this;
 }
-//////////////////////////////////////////////////////////////////////////////
-//                          OTHER METHODS                                   //
-//////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Printout of all vector components on "std::cout"
@@ -212,8 +211,3 @@ void TFoamVect::Print(Option_t *option) const
    std::cout << ")";
    std::cout.precision(pr);
 }
-
-
-///////////////////////////////////////////////////////////////////////////////
-//                End of Class TFoamVect                                        //
-///////////////////////////////////////////////////////////////////////////////

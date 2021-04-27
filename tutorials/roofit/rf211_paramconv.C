@@ -1,14 +1,18 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook
-/// Addition and convolution: working with a p.d.f. with a convolution operator in terms of a parameter
+///
+///
+/// \brief Addition and convolution: working with a p.d.f. with a convolution operator in terms of a parameter
 ///
 /// This tutorial requires FFT3 to be enabled.
 ///
 /// \macro_image
 /// \macro_output
 /// \macro_code
-/// \author 04/2009 - Wouter Verkerke
+///
+/// \date 04/2009
+/// \author Wouter Verkerke
 
 #include "RooRealVar.h"
 #include "RooDataHist.h"

@@ -9,8 +9,9 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include "Riostream.h"
+#include <iostream>
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TPave.h"
 #include "TStyle.h"
 #include "TVirtualPad.h"
@@ -119,8 +120,18 @@ TPave::TPave(const TPave &pave) : TBox(pave)
    fInit         = 0;
    fShadowColor  = 0;
 
-   ((TPave&)pave).TPave::Copy(*this);
+   pave.TPave::Copy(*this);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// Assignment operator
+
+TPave &TPave::operator=(const TPave &src)
+{
+   src.TPave::Copy(*this);
+   return *this;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Convert pave coordinates from NDC to Pad coordinates.

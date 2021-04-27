@@ -1,12 +1,16 @@
 /// \file
 /// \ingroup tutorial_roofit
-/// \notebook -js
-/// Addition and convolution: options for plotting components of composite p.d.f.s.
+/// \notebook -js -nodraw
+///
+///
+/// \brief Addition and convolution: options for plotting components of composite p.d.f.s.
 ///
 /// \macro_image
 /// \macro_output
 /// \macro_code
-/// \author 07/2008 - Wouter Verkerke
+///
+/// \date 07/2008
+/// \author Wouter Verkerke
 
 #include "RooRealVar.h"
 #include "RooDataSet.h"
@@ -109,4 +113,5 @@ void rf205_compplot()
    gPad->SetLeftMargin(0.15);
    xframe2->GetYaxis()->SetTitleOffset(1.4);
    xframe2->Draw();
+   c->Draw();
 }

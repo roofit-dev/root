@@ -2,12 +2,12 @@
 ## \ingroup tutorial_roofit
 ## \notebook
 ##
-## Multidimensional models: projecting p.d.f and data slices in discrete observables
+## \brief Multidimensional models: projecting p.d.f and data slices in discrete observables
 ##
 ## \macro_code
 ##
 ## \date February 2018
-## \author Clemens Lange, Wouter Verkerke (C++ version)
+## \authors Clemens Lange, Wouter Verkerke (C++ version)
 
 import ROOT
 

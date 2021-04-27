@@ -2,12 +2,12 @@
 ## \ingroup tutorial_roofit
 ## \notebook
 ##
-## Multidimensional models: marginizalization of multi-dimensional p.d.f.s through integration
+## \brief Multidimensional models: marginizalization of multi-dimensional p.d.f.s through integration
 ##
 ## \macro_code
 ##
 ## \date February 2018
-## \author Clemens Lange, Wouter Verkerke (C++ version)
+## \authors Clemens Lange, Wouter Verkerke (C++ version)
 
 import ROOT
 

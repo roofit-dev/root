@@ -16,8 +16,10 @@
 #ifndef ROO_TREE_DATA_STORE
 #define ROO_TREE_DATA_STORE
 
-#include "RooAbsDataStore.h" 
-#include "TString.h"
+#include "RooAbsDataStore.h"
+#include <vector>
+#include <list>
+#include <string>
 
 class RooAbsArg ;
 class RooArgList ;
@@ -66,6 +68,15 @@ public:
   virtual Double_t weight(Int_t index) const ;
   virtual Bool_t isWeighted() const { return (_wgtVar!=0||_extWgtArray!=0) ; }
 
+  virtual std::vector<RooSpan<const double>> getBatch(std::size_t first, std::size_t last) const {
+    //TODO
+    std::cerr << "This functionality is not yet implemented for tree data stores." << std::endl;
+    assert(false);
+
+    std::vector<double> vec(first, last);
+    return {RooSpan<const double>(vec)};
+  }
+
   // Change observable name
   virtual Bool_t changeObservableName(const char* from, const char* to) ;
   
@@ -109,11 +120,13 @@ public:
   virtual void resetCache() ;
 
   void loadValues(const TTree *t, const RooFormulaVar* select=0, const char* rangeName=0, Int_t nStart=0, Int_t nStop=2000000000)  ;
-  void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=0, const char* rangeName=0, Int_t nStart=0, Int_t nStop=2000000000)  ;
+  void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=0, const char* rangeName=0,
+      std::size_t nStart=0, std::size_t nStop = std::numeric_limits<std::size_t>::max());
 
   virtual void checkInit() const;
 
-  void setExternalWeightArray(Double_t* arrayWgt, Double_t* arrayWgtErrLo, Double_t* arrayWgtErrHi, Double_t* arraySumW2) { 
+  void setExternalWeightArray(const Double_t* arrayWgt, const Double_t* arrayWgtErrLo,
+      const Double_t* arrayWgtErrHi, const Double_t* arraySumW2) {
     _extWgtArray = arrayWgt ; 
     _extWgtErrLoArray = arrayWgtErrLo ;
     _extWgtErrHiArray = arrayWgtErrHi ;
@@ -122,7 +135,7 @@ public:
   
   const RooArgSet& row() { return _varsww ; }
 
- protected:
+ private:
 
   friend class RooVectorDataStore ;
 
@@ -136,6 +149,8 @@ public:
   void setBranchBufferSize(Int_t size) { _defTreeBufSize = size ; }
   Int_t getBranchBufferSize() const { return _defTreeBufSize ; }
 
+  std::string makeTreeName() const;
+
   static Int_t _defTreeBufSize ;  
 
   void createTree(const char* name, const char* title) ; 
@@ -147,10 +162,10 @@ public:
   RooArgSet _varsww ;
   RooRealVar* _wgtVar ;     // Pointer to weight variable (if set)
 
-  Double_t* _extWgtArray ;         //! External weight array
-  Double_t* _extWgtErrLoArray ;    //! External weight array - low error
-  Double_t* _extWgtErrHiArray ;    //! External weight array - high error
-  Double_t* _extSumW2Array ;       //! External sum of weights array
+  const Double_t* _extWgtArray{nullptr};         //! External weight array
+  const Double_t* _extWgtErrLoArray{nullptr};    //! External weight array - low error
+  const Double_t* _extWgtErrHiArray{nullptr};    //! External weight array - high error
+  const Double_t* _extSumW2Array{nullptr};       //! External sum of weights array
 
   mutable Double_t  _curWgt ;      // Weight of current event
   mutable Double_t  _curWgtErrLo ; // Weight of current event
@@ -159,7 +174,7 @@ public:
 
   RooArgSet _attachedBuffers ; //! Currently attached buffers (if different from _varsww)
 
-  ClassDef(RooTreeDataStore,2) // TTree-based Data Storage class
+  ClassDef(RooTreeDataStore, 2) // TTree-based Data Storage class
 };
 
 

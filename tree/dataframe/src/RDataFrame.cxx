@@ -50,6 +50,7 @@ You can directly see RDataFrame in action through its [code examples](https://ro
 - [Cheat sheet](#cheatsheet)
 - [Introduction](#introduction)
 - [Crash course](#crash-course)
+- [Efficient analysis in Python](#python)
 - [More features](#more-features)
 - [Transformations](#transformations) -- manipulating data
 - [Actions](#actions) -- getting results
@@ -60,10 +61,10 @@ You can directly see RDataFrame in action through its [code examples](https://ro
 These are the operations which can be performed with RDataFrame
 
 ### Transformations
-Transformations are a way to manipulated the data.
+Transformations are a way to manipulate the data.
 
 | **Transformation** | **Description** |
-|------------------|-----------------|
+|------------------|--------------------|
 | [Define](classROOT_1_1RDF_1_1RInterface.html#a7d48eb23b4378e99ebccb35e94ad025a) | Creates a new column in the dataset. |
 | [DefineSlot](classROOT_1_1RDF_1_1RInterface.html#acaacf727b8a41d27c6bb4513348ac892) | Same as `Define`, but the user-defined function must take an extra `unsigned int slot` as its first parameter. `slot` will take a different value, `0` to `nThreads - 1`, for each thread of execution. This is meant as a helper in writing thread-safe `Define` transformation when using `RDataFrame` after `ROOT::EnableImplicitMT()`. `DefineSlot` works just as well with single-thread execution: in that case `slot` will always be `0`.  |
 | [DefineSlotEntry](classROOT_1_1RDF_1_1RInterface.html#a4f17074d5771916e3df18f8458186de7) | Same as `DefineSlot`, but the entry number is passed in addition to the slot number. This is meant as a helper in case some dependency on the entry number needs to be honoured. |
@@ -119,6 +120,7 @@ produce several different results in one event loop. Instant actions trigger the
 | [GetFilterNames](classROOT_1_1RDF_1_1RInterface.html#a25026681111897058299161a70ad9bb2) | Get all the filters defined. If called on a root node, all filters will be returned. For any other node, only the filters upstream of that node. |
 | [Display](classROOT_1_1RDF_1_1RInterface.html#a652f9ab3e8d2da9335b347b540a9a941) | Provides an ASCII representation of the columns types and contents of the dataset printable by the user. |
 | [SaveGraph](namespaceROOT_1_1RDF.html#adc17882b283c3d3ba85b1a236197c533) | Store the computation graph of an RDataFrame in graphviz format for easy inspection. |
+| [GetNRuns](classROOT_1_1RDF_1_1RInterface.html#adfb0562a9f7732c3afb123aefa07e0df) | Get the number of event loops run by this RDataFrame instance. |
 
 
 ## <a name="introduction"></a>Introduction
@@ -154,8 +156,8 @@ TTreeReaderValue<A_t> a(reader, "A");
 TTreeReaderValue<B_t> b(reader, "B");
 TTreeReaderValue<C_t> c(reader, "C");
 while(reader.Next()) {
-   if(IsGoodEvent(a, b, c))
-      DoStuff(a, b, c);
+   if(IsGoodEvent(*a, *b, *c))
+      DoStuff(*a, *b, *c);
 }
 ~~~
    </td>
@@ -177,8 +179,7 @@ d.Filter(IsGoodEvent).Foreach(DoStuff);
 <tr>
    <td>
 ~~~{.cpp}
-TTree *t = nullptr;
-file->GetObject("myTree", t);
+auto t = file->Get<TTree>("myTree");
 t->Draw("x", "y > 2");
 ~~~
    </td>
@@ -204,8 +205,7 @@ operations should work with. Here are the most common methods to construct a RDa
 ~~~{.cpp}
 // single file -- all ctors are equivalent
 TFile *f = TFile::Open("file.root");
-TTree *t = nullptr;
-f.GetObject("treeName", t);
+auto t = f.Get<TTree>("treeName");
 
 RDataFrame d1("treeName", "file.root");
 RDataFrame d2("treeName", f); // same as TTreeReader
@@ -382,6 +382,78 @@ ROOT::EnableImplicitMT();
 ~~~
 Simple as that. More details are given [below](#parallel-execution).
 
+
+##  <a name="python"></a>Efficient analysis in Python
+
+You can use `RDataFrame` in Python due to the dynamic C++/Python translation of PyROOT. In general, the interface
+is the same as for C++, a simple example follows.
+
+~~~{.python}
+df = ROOT.RDataFrame("myTree", "myFile.root")
+sum = df.Filter("x > 10").Sum("y")
+print(sum.GetValue())
+~~~
+
+### Simple usage of efficient C++ code in Python
+
+To perform more complex operations in the `RDataFrame` graph, e.g., in `Filter` and `Define` nodes, which don't
+fit into a simple expression string, you can just-in-time compile such functions directly in the Python script
+via the C++ interpreter cling. This approach has the advantage that you get the efficiency of compiled C++ code
+combined with the convenient workflow of a Python script. See the following snippet for an example of how to
+use a jitted C++ function from Python.
+
+~~~{.python}
+ROOT.gInterpreter.Declare("""
+bool myFilter(float x) {
+    return x > 10;
+}
+""")
+
+df = ROOT.RDataFrame("myTree", "myFile.root")
+sum = df.Filter("myFilter(x)").Sum("y")
+print(sum.GetValue())
+~~~
+
+To increase the performance even further, you can also precompile a C++ library with full code optimizations
+and load the function into the `RDataFrame` computation as follows.
+
+~~~{.python}
+ROOT.gSystem.Load("path/to/myLibrary.so") # Library with the myFilter function
+ROOT.gInterpreter.Declare('#include "myLibrary.h"') # Header with the definition of the myFilter function
+df = ROOT.RDataFrame("myTree", "myFile.root")
+sum = df.Filter("myFilter(x)").Sum("y")
+print(sum.GetValue())
+~~~
+
+### Just-in-time compilation of Python callables with numba
+
+ROOT also offers the option to compile Python callables with fundamental types and arrays thereof using numba and then
+using the function in `RDataFrame` from C++. The workflow requires the Python packages `numba` and `cffi`
+to be installed. See the following snippet for a simple example or the full tutorial [here](pyroot004__NumbaDeclare_8py.html).
+
+~~~{.python}
+@ROOT.Numba.Declare(["float"], "bool")
+def myFilter(x):
+    return x > 10
+
+df = ROOT.RDataFrame("myTree", "myFile.root")
+sum = df.Filter("Numba::myFilter(x)").Sum("y")
+print(sum.GetValue())
+~~~
+
+### Conversion to numpy arrays
+
+Eventually, you probably would like to inspect the content of the `RDataFrame` or process the data further
+with functionality from Python libraries. For this purpose, we provide the `AsNumpy` function, which is able
+to provide you the columns of your `RDataFrame` as numpy arrays in Python. See a brief introduction below or
+a full tutorial [here](df026__AsNumpyArrays_8py.html).
+
+~~~{.python}
+df = ROOT.RDataFrame("myTree", "myFile.root")
+cols = df.Filter("x > 10").Sum("y").AsNumpy(["x", "y"])
+print(cols["x"], cols["y"])
+~~~
+
 ##  <a name="more-features"></a>More features
 Here is a list of the most important features that have been omitted in the "Crash course" for brevity.
 You don't need to read all these to start using `RDataFrame`, but they are useful to save typing time and runtime.
@@ -515,7 +587,7 @@ We can take advantage of `ForeachSlot` to evaluate a thread-safe root mean squar
 ~~~{.cpp}
 // Thread-safe evaluation of RMS of branch "b" using ForeachSlot
 ROOT::EnableImplicitMT();
-const unsigned int nSlots = ROOT::GetImplicitMTPoolSize();
+const unsigned int nSlots = ROOT::GetThreadPoolSize();
 std::vector<double> sumSqs(nSlots, 0.);
 std::vector<unsigned int> ns(nSlots, 0);
 
@@ -736,7 +808,7 @@ from the names of the variables specified by the user.
 It is possible to create custom columns also as a function of the processing slot and entry numbers. The methods that can
 be invoked are:
 - `DefineSlot(name, f, columnList)`. In this case the callable f has this signature `R(unsigned int, T1, T2, ...)`: the
-first parameter is the slot number which ranges from 0 to ROOT::GetImplicitMTPoolSize() - 1.
+first parameter is the slot number which ranges from 0 to ROOT::GetThreadPoolSize() - 1.
 - `DefineSlotEntry(name, f, columnList)`. In this case the callable f has this signature `R(unsigned int, ULong64_t,
 T1, T2, ...)`: the first parameter is the slot number while the second one the number of the entry being processed.
 
@@ -756,6 +828,14 @@ processing of these batches. There are no guarantees on the order the batches ar
 order entries of the dataset are processed. Note that this in turn means that, for multi-thread event loops, there is no
 guarantee on the order in which `Snapshot` will _write_ entries: they could be scrambled with respect to the input dataset.
 
+\warning RDataFrame will by default start as many threads as the hardware supports, using up **all** the resources on
+a machine. On a worker node of *e.g.* a batch cluster, this might not be desired if the machine is shared with other
+users. Therefore, **when running on shared computing resources**, use
+```
+ROOT::EnableImplicitMT(i)
+```
+replacing `i` with the number of CPUs/slots that were allocated for this job.
+
 ### Thread-safety of user-defined expressions
 RDataFrame operations such as `Histo1D` or `Snapshot` are guaranteed to work correctly in multi-thread event loops.
 User-defined expressions, such as strings or lambdas passed to `Filter`, `Define`, `Foreach`, `Reduce` or `Aggregate`
@@ -769,7 +849,7 @@ In order to facilitate writing of thread-safe operations, some RDataFrame featur
 offer thread-aware counterparts (`ForeachSlot`, `DefineSlot`, `OnPartialResultSlot`): their only difference is that they
 will pass an extra `slot` argument (an unsigned integer) to the user-defined expression. When calling user-defined code
 concurrently, `RDataFrame` guarantees that different threads will employ different values of the `slot` parameter,
-where `slot` will be a number between 0 and `ROOT::GetImplicitMTPoolSize() - 1`.
+where `slot` will be a number between 0 and `ROOT::GetThreadPoolSize() - 1`.
 In other words, within a slot, computation runs sequentially and events are processed sequentially.
 Note that the same slot might be associated to different threads over the course of a single event loop, but two threads
 will never receive the same slot at the same time.
@@ -781,13 +861,8 @@ This extra parameter might facilitate writing safe parallel code by having each 
 // clang-format on
 
 namespace ROOT {
-namespace Detail {
-namespace RDF {
-class RCustomColumnBase;
-}
-} // namespace Detail
 
-using ColumnNames_t = ROOT::Detail::RDF::ColumnNames_t;
+using ROOT::Detail::RDF::ColumnNames_t;
 using ColumnNamesPtr_t = std::shared_ptr<const ColumnNames_t>;
 
 namespace RDFInternal = ROOT::Internal::RDF;

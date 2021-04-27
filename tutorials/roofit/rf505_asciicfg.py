@@ -1,13 +1,13 @@
-## \file rf505_asciicfg.py 
+## \file rf505_asciicfg.py
 ## \ingroup tutorial_roofit
 ## \notebook -nodraw
 ##
-## Organization and simultaneous fits: reading and writing ASCII configuration files
+## \brief Organization and simultaneous fits: reading and writing ASCII configuration files
 ##
 ## \macro_code
 ##
 ## \date February 2018
-## \author Clemens Lange, Wouter Verkerke (C++ version)
+## \authors Clemens Lange, Wouter Verkerke (C++ version)
 
 from __future__ import print_function
 import ROOT

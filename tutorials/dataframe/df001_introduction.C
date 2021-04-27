@@ -1,6 +1,8 @@
 /// \file
 /// \ingroup tutorial_dataframe
 /// \notebook -nodraw
+/// \brief Basic RDataFrame usage.
+///
 /// This tutorial illustrates the basic features of the RDataFrame class,
 /// a utility which allows to interact with data stored in TTrees following
 /// a functional-chain like approach.
@@ -93,7 +95,7 @@ int df001_introduction()
    for (auto b1_entry : *b1List)
       std::cout << b1_entry << " ";
    std::cout << std::endl;
-   auto b1VecCl = TClass::GetClass(typeid(*b1Vec));
+   auto b1VecCl = ROOT::GetClass(b1Vec.GetPtr());
    std::cout << "The type of b1Vec is " << b1VecCl->GetName() << std::endl;
 
    // ### `Histo1D` action
@@ -159,12 +161,12 @@ int df001_introduction()
    // It is possible at any moment to read the entry number and the processing
    // slot number. The latter may change when implicit multithreading is active.
    // The special columns which provide the entry number and the slot index are
-   // called "tdfentry_" and "tdfslot_" respectively. Their types are an unsigned
+   // called "rdfentry_" and "rdfslot_" respectively. Their types are an unsigned
    // 64 bit integer and an unsigned integer.
    auto printEntrySlot = [](ULong64_t iEntry, unsigned int slot) {
       std::cout << "Entry: " << iEntry << " Slot: " << slot << std::endl;
    };
-   d.Foreach(printEntrySlot, {"tdfentry_", "tdfslot_"});
+   d.Foreach(printEntrySlot, {"rdfentry_", "rdfslot_"});
 
    return 0;
 }

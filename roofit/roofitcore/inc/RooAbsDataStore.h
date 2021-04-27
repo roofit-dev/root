@@ -17,11 +17,11 @@
 #define ROO_ABS_DATA_STORE
 
 #include "Rtypes.h"
-#include "RooArgSet.h" 
+#include "RooArgSet.h"
 #include "RooAbsData.h"
 #include "TNamed.h"
 #include <list>
-
+#include <vector>
 
 class RooAbsArg ;
 class RooArgList ;
@@ -51,8 +51,10 @@ public:
   virtual void weightError(Double_t& lo, Double_t& hi, RooAbsData::ErrorType etype=RooAbsData::Poisson) const = 0 ; 
 
   virtual Double_t weight(Int_t index) const = 0 ;
-
   virtual Bool_t isWeighted() const = 0 ;
+
+  virtual std::vector<RooSpan<const double>> getBatch(std::size_t first, std::size_t len) const = 0;
+  virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t len) const;
 
   // Change observable name
   virtual Bool_t changeObservableName(const char* from, const char* to) =0 ;
@@ -77,7 +79,7 @@ public:
   virtual void attachBuffers(const RooArgSet& extObs) = 0 ; 
   virtual void resetBuffers() = 0 ;
 
-  virtual void setExternalWeightArray(Double_t* /*arrayWgt*/, Double_t* /*arrayWgtErrLo*/, Double_t* /*arrayWgtErrHi*/, Double_t* /*arraySumW2*/) {} ;
+  virtual void setExternalWeightArray(const Double_t* /*arrayWgt*/, const Double_t* /*arrayWgtErrLo*/, const Double_t* /*arrayWgtErrHi*/, const Double_t* /*arraySumW2*/) {} ;
 
   // Printing interface (human readable)
   inline virtual void Print(Option_t *options= 0) const {
@@ -114,16 +116,15 @@ public:
   virtual const TTree* tree() const { return 0 ; }
   virtual void dump() {} 
 
-  virtual void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=0, const char* rangeName=0, Int_t nStart=0, Int_t nStop=2000000000) = 0 ;
+  virtual void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=0, const char* rangeName=0,
+      std::size_t nStart=0, std::size_t nStop = std::numeric_limits<std::size_t>::max()) = 0 ;
 
   virtual void forceCacheUpdate() {} ;
   
  protected:
 
-  RooArgSet _vars ;
-  RooArgSet _cachedVars ;
-  TIterator *_iterator;    //! Iterator over dimension variables
-  TIterator *_cacheIter ;  //! Iterator over cached variables
+  RooArgSet _vars;
+  RooArgSet _cachedVars;
 
   Bool_t _doDirtyProp ;    // Switch do (de)activate dirty state propagation when loading a data point
 

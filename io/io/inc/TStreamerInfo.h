@@ -13,12 +13,13 @@
 #define ROOT_TStreamerInfo
 
 #include <atomic>
+#include <vector>
 
 #include "TVirtualStreamerInfo.h"
 
-#include "ThreadLocalStorage.h"
-
 #include "TVirtualCollectionProxy.h"
+
+#include "TObjArray.h"
 
 /**
 \class TStreamerInfo
@@ -126,8 +127,8 @@ private:
    void              DestructorImpl(void* p, Bool_t dtorOnly);
 
 private:
-   TStreamerInfo(const TStreamerInfo&);            // TStreamerInfo are copiable.  Not Implemented.
-   TStreamerInfo& operator=(const TStreamerInfo&); // TStreamerInfo are copiable.  Not Implemented.
+   TStreamerInfo(const TStreamerInfo&) = delete;            // TStreamerInfo are not copiable.  Not Implemented.
+   TStreamerInfo& operator=(const TStreamerInfo&) = delete; // TStreamerInfo are not copiable.  Not Implemented.
    void AddReadAction(TStreamerInfoActions::TActionSequence *readSequence, Int_t index, TCompInfo *compinfo);
    void AddWriteAction(TStreamerInfoActions::TActionSequence *writeSequence, Int_t index, TCompInfo *compinfo);
    void AddReadTextAction(TStreamerInfoActions::TActionSequence *readSequence, Int_t index, TCompInfo *compinfo);

@@ -60,6 +60,31 @@ class MinimalPPLexer: public Lexer {
     return llvm::StringRef();
   }
 
+  ///\brief Skip an identifier of a function.
+  bool SkipIdentifier(Token& Tok) {
+    if (Tok.isNot(tok::raw_identifier)) {
+      // If we're not at an identifier, we might be still be in return value:
+      // A::B::C funcname() or int * funcname()
+      if (!SkipScopes(Tok))
+        return false;
+      if (!SkipPointerRefs(Tok))
+        return false;
+    }
+
+    // Function or class name should be in Tok now
+    if (Identifier(Tok).empty())
+      return false;
+
+    // Advance to argument list or method name
+    if (!LexClean(Tok))
+      return false;
+
+    if (!SkipScopes(Tok))
+      return false;
+
+    return true;
+  }
+
 public:
   ///\brief Construct a Lexer from LangOpts and source.
   MinimalPPLexer(const LangOptions &LangOpts, llvm::StringRef source):
@@ -204,6 +229,7 @@ public:
         Ctor = false;
       }
     } else {
+      bool SeenSignedness = false;
       if (First.equals("struct") || First.equals("class")) {
         do {
           // Identifier(Tok).empty() is redundant 1st time, but simplifies code
@@ -220,29 +246,24 @@ public:
 
       } else if (First.equals("static") || First.equals("constexpr") ||
                  First.equals("inline") || First.equals("const")) {
+        // First check if the current keyword is "unsigned".
+        llvm::StringRef Modifier = Identifier(Tok);
+        if (Modifier.equals("signed") || Modifier.equals("unsigned"))
+          SeenSignedness = true;
+
         // Advance past keyword for below
         if (!LexClean(Tok))
           return kNONE;
+      } else if (First.equals("signed") || First.equals("unsigned")) {
+        SeenSignedness = true;
       }
 
-      if (Tok.isNot(tok::raw_identifier)) {
-        // If we're not at an identifier, we might be still be in return value:
-        // A::B::C funcname() or int * funcname()
-        if (!SkipScopes(Tok))
-          return kNONE;
-        if (!SkipPointerRefs(Tok))
-          return kNONE;
-      }
-
-      // Function or class name should be in Tok now
-      if (Identifier(Tok).empty())
+      if (!SkipIdentifier(Tok))
         return kNONE;
 
-      // Advance to argument list or method name
-      if (!LexClean(Tok))
-        return kNONE;
-
-      if (!SkipScopes(Tok))
+      // If we have not yet reached the argument list and seen a signedness
+      // modifier keyword, try to skip this once.
+      if (SeenSignedness && Tok.isNot(tok::l_paren) && !SkipIdentifier(Tok))
         return kNONE;
     }
 
@@ -373,6 +394,25 @@ size_t cling::utils::getWrapPoint(std::string& source,
       // Reached EOF before seeing a non-preproc token.
       // Nothing to wrap.
       return std::string::npos;
+    }
+
+    // detect the attribute (__global__, __device__ and __host__) of CUDA
+    // kernels at the beginning of a function definition
+    // FIXME: should replaced by a generic solution
+    if (LangOpts.CUDA) {
+      do {
+        if (Tok.getKind() == tok::raw_identifier) {
+          StringRef keyword(Tok.getRawIdentifier());
+          if (keyword.equals("__global__") || keyword.equals("__device__") ||
+              keyword.equals("__host__"))
+            // if attribute was found, skip the token and use the function
+            // detection later
+            Lex.Lex(Tok);
+          else
+            break;
+        } else
+          break;
+      } while (true);
     }
 
     // Prior behavior was to return getFileOffset, which was only used as an
