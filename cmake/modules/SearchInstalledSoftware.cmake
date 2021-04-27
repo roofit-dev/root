@@ -457,7 +457,7 @@ if(mathmore OR builtin_gsl)
         message(FATAL_ERROR "GSL package not found and 'mathmore' component if required ('fail-on-missing' enabled). "
                             "Alternatively, you can enable the option 'builtin_gsl' to build the GSL libraries internally.")
       else()
-        message(STATUS "GSL not found. Set variable GSL_DIR to point to your GSL installation")
+        message(STATUS "GSL not found. Set variable GSL_ROOT_DIR to point to your GSL installation")
         message(STATUS "               Alternatively, you can also enable the option 'builtin_gsl' to build the GSL libraries internally'")
         message(STATUS "               For the time being switching OFF 'mathmore' option")
         set(mathmore OFF CACHE BOOL "Disable because builtin_gsl disabled and external GSL not found (${mathmore_description})" FORCE)
@@ -490,116 +490,6 @@ if(mathmore OR builtin_gsl)
     set(GSL_TARGET GSL)
     set(mathmore ON CACHE BOOL "Enabled because builtin_gls requested (${mathmore_description})" FORCE)
   endif()
-endif()
-
-#---Check for Python installation-------------------------------------------------------
-
-message(STATUS "Looking for python")
-
-if(pyroot_experimental)
-  unset(PYTHON_INCLUDE_DIR CACHE)
-  unset(PYTHON_LIBRARY CACHE)
-  unset(CMAKE_INSTALL_PYROOTDIR)
-endif()
-
-# Python is required by header and manpage generation
-
-if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.14)
-
-  # Determine whether we should prefer Python 2 or Python 3:
-  set(PYTHON_PREFER_VERSION "3")
-  # Check whether old `find_package(PythonInterp)` variable was passed.
-  # If so, it will be passed to find_package(Python) below. Otherwise,
-  # check what `python` points to: Python 2 or 3:
-  if(NOT PYTHON_EXECUTABLE)
-    find_program(PYTHON_BINARY_IN_PATH "python")
-    if(PYTHON_BINARY_IN_PATH)
-      execute_process(COMMAND ${PYTHON_BINARY_IN_PATH} -c "import sys;print(sys.version_info[0])"
-                      OUTPUT_VARIABLE PYTHON_PREFER_VERSION
-                      ERROR_VARIABLE PYTHON_PREFER_VERSION_ERR)
-      if(PYTHON_PREFER_VERSION_ERR)
-        message(WARNING "Unable to determine version of ${PYTHON_BINARY_IN_PATH}: ${PYTHON_PREFER_VERSION_ERR}")
-      endif()
-      string(STRIP "${PYTHON_PREFER_VERSION}" PYTHON_PREFER_VERSION)
-    endif()
-  endif()
-
-  if(python)
-    set(REQUIRED_PYTHON_Development Development)
-  endif()
-
-  message(STATUS "Preferring Python version ${PYTHON_PREFER_VERSION}")
-
-  if("${PYTHON_PREFER_VERSION}" MATCHES "2")
-    # Means PYTHON_EXECUTABLE wasn't defined.
-    if(PYTHON_INCLUDE_DIRS AND NOT Python2_INCLUDE_DIRS)
-      set(Python2_INCLUDE_DIRS "${PYTHON_INCLUDE_DIRS}")
-    endif()
-    if(PYTHON_LIBRARIES AND NOT Python2_LIBRARIES)
-      set(Python2_LIBRARIES "${PYTHON_LIBRARIES}")
-    endif()
-    find_package(Python2 COMPONENTS Interpreter ${REQUIRED_PYTHON_Development} REQUIRED)
-    if(Python2_Development_FOUND)
-      # Re-run, now with NumPy, but not required:
-      find_package(Python2 COMPONENTS Interpreter Development NumPy)
-      # Compat with find_package(PythonInterp), find_package(PythonLibs)
-      set(PYTHON_EXECUTABLE "${Python2_EXECUTABLE}")
-      set(PYTHON_INCLUDE_DIRS "${Python2_INCLUDE_DIRS}")
-      set(PYTHON_LIBRARIES "${Python2_LIBRARIES}")
-      set(PYTHON_VERSION_STRING "${Python2_VERSION}")
-      set(PYTHON_VERSION_MAJOR "${Python2_VERSION_MAJOR}")
-      set(PYTHON_VERSION_MINOR "${Python2_VERSION_MINOR}")
-      set(NUMPY_FOUND ${Python2_NumPy_FOUND})
-      set(NUMPY_INCLUDE_DIRS "${Python2_NumPy_INCLUDE_DIRS}")
-    endif()
-  else()
-    if(PYTHON_EXECUTABLE AND NOT Python_EXECUTABLE)
-      set(Python_EXECUTABLE "${PYTHON_EXECUTABLE}")
-    endif()
-    if(PYTHON_INCLUDE_DIRS AND NOT Python_INCLUDE_DIRS)
-      set(Python_INCLUDE_DIRS "${PYTHON_INCLUDE_DIRS}")
-    endif()
-    if(PYTHON_LIBRARIES AND NOT Python_LIBRARIES)
-      set(Python_LIBRARIES "${PYTHON_LIBRARIES}")
-    endif()
-    find_package(Python COMPONENTS Interpreter ${REQUIRED_PYTHON_Development} REQUIRED)
-    if(Python_Development_FOUND)
-      # Re-run, now with NumPy, but not required:
-      find_package(Python COMPONENTS Interpreter Development NumPy)
-      # Compat with find_package(PythonInterp), find_package(PythonLibs), find_package(NumPy)
-      set(PYTHON_EXECUTABLE "${Python_EXECUTABLE}")
-      set(PYTHON_INCLUDE_DIRS "${Python_INCLUDE_DIRS}")
-      set(PYTHON_LIBRARIES "${Python_LIBRARIES}")
-      set(PYTHON_VERSION_STRING "${Python_VERSION}")
-      set(PYTHON_VERSION_MAJOR "${Python_VERSION_MAJOR}")
-      set(PYTHON_VERSION_MINOR "${Python_VERSION_MINOR}")
-      set(NUMPY_FOUND ${Python_NumPy_FOUND})
-      set(NUMPY_INCLUDE_DIRS "${Python_NumPy_INCLUDE_DIRS}")
-    endif()
-  endif()
-
-else()
-  find_package(PythonInterp ${python_version} REQUIRED)
-
-  if(python)
-    find_package(PythonLibs ${python_version} REQUIRED)
-
-    if(NOT "${PYTHONLIBS_VERSION_STRING}" MATCHES "${PYTHON_VERSION_STRING}")
-      message(FATAL_ERROR "Version mismatch between Python interpreter (${PYTHON_VERSION_STRING})"
-      " and libraries (${PYTHONLIBS_VERSION_STRING}).\nROOT cannot work with this configuration. "
-      "Please specify only PYTHON_EXECUTABLE to CMake with an absolute path to ensure matching versions are found.")
-    endif()
-
-    find_package(NumPy)
-  endif()
-endif()
-
-# set variables necessary for MultiPython
-set(python_dir "python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}")
-if(WIN32)
-  set(py_localruntimedir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${python_dir})
-else()
-  set(py_localruntimedir ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${python_dir})
 endif()
 
 #---Check for OpenGL installation-------------------------------------------------------
@@ -1540,6 +1430,17 @@ if(cuda OR tmva-gpu)
     endif()
 
     enable_language(CUDA)
+
+    ### look for package CuDNN
+    find_package(CuDNN)
+
+    if (CUDNN_FOUND)
+      message(STATUS "CuDNN library found: " ${CUDNN_LIBRARIES})
+    else()
+      message(STATUS "CuDNN library not found")
+    endif()
+
+
   elseif(fail-on-missing)
     message(FATAL_ERROR "CUDA not found. Ensure that the installation of CUDA is in the CMAKE_PREFIX_PATH")
   endif()
@@ -1694,9 +1595,41 @@ if(webgui)
   ExternalProject_Add(
      OPENUI5
      URL ${CMAKE_SOURCE_DIR}/gui/webdisplay/res/openui5.tar.gz
-     URL_HASH SHA256=984d221d6a3246732ca75cc38de0d974b887f4bd6beb9346133face602398696
+     URL_HASH SHA256=b264661fb397906714b8253fc3a32ecb6ac0da575cc01ce61636354e6bfccf3c
      CONFIGURE_COMMAND ""
      BUILD_COMMAND ""
      INSTALL_COMMAND ""
      SOURCE_DIR ${CMAKE_BINARY_DIR}/ui5/distribution)
+  install(DIRECTORY ${CMAKE_BINARY_DIR}/ui5/distribution/ DESTINATION ${CMAKE_INSTALL_OPENUI5DIR}/distribution/ COMPONENT libraries FILES_MATCHING PATTERN "*")
+endif()
+
+#------------------------------------------------------------------------------------
+# Check if we need libatomic to use atomic operations in the C++ code. On ARM systems
+# we generally do. First just test if CMake is able to compile a test executable
+# using atomic operations without the help of a library. Only if it can't do we start
+# looking for libatomic for the build.
+#
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+#include <atomic>
+#include <cstdint>
+int main() {
+   std::atomic<int> a1;
+   int a1val = a1.load();
+   (void)a1val;
+   std::atomic<uint64_t> a2;
+   uint64_t a2val = a2.load(std::memory_order_relaxed);
+   (void)a2val;
+   return 0;
+}
+" ROOT_HAVE_CXX_ATOMICS_WITHOUT_LIB)
+set(ROOT_ATOMIC_LIBS)
+if(NOT ROOT_HAVE_CXX_ATOMICS_WITHOUT_LIB)
+  find_library(ROOT_ATOMIC_LIB NAMES atomic
+    HINTS ENV LD_LIBRARY_PATH
+    DOC "Path to the atomic library to use during the build")
+  mark_as_advanced(ROOT_ATOMIC_LIB)
+  if(ROOT_ATOMIC_LIB)
+    set(ROOT_ATOMIC_LIBS ${ROOT_ATOMIC_LIB})
+  endif()
 endif()

@@ -21,6 +21,7 @@ namespace ROOT {
 namespace Experimental {
 
 class RAttrBase;
+class RStyle;
 
 /** \class RAttrMap
 \ingroup GpadROOT7
@@ -32,6 +33,7 @@ class RAttrBase;
 class RAttrMap {
 
    friend class RAttrBase;
+   friend class RStyle;
 
 public:
 
@@ -61,6 +63,9 @@ public:
       explicit BoolValue_t(bool _v = false) : v(_v) {}
       EValuesKind Kind() const final { return kBool; }
       bool GetBool() const final { return v; }
+      int GetInt() const final { return v ? 1 : 0; }
+      double GetDouble() const final { return v ? 1 : 0; }
+      std::string GetString() const final { return v ? "true" : "false"; }
       std::unique_ptr<Value_t> Copy() const final { return std::make_unique<BoolValue_t>(v); }
       bool IsEqual(const Value_t &tgt) const final { return (tgt.Kind() == kBool) && (tgt.GetBool() == v); }
    };
@@ -70,7 +75,10 @@ public:
    public:
       IntValue_t(int _v = 0) : v(_v) {}
       EValuesKind Kind() const final { return kInt; }
+      bool GetBool() const final { return v ? true : false; }
       int GetInt() const final { return v; }
+      double GetDouble() const final { return v; }
+      std::string GetString() const final { return std::to_string(v); }
       std::unique_ptr<Value_t> Copy() const final { return std::make_unique<IntValue_t>(v); }
       bool IsEqual(const Value_t &tgt) const final { return (tgt.Kind() == kInt) && (tgt.GetInt() == v); }
    };
@@ -80,7 +88,10 @@ public:
    public:
       DoubleValue_t(double _v = 0) : v(_v) {}
       EValuesKind Kind() const final { return kDouble; }
+      bool GetBool() const final { return v ? true : false; }
+      int GetInt() const final { return (int) v; }
       double GetDouble() const final { return v; }
+      std::string GetString() const final { return std::to_string(v); }
       std::unique_ptr<Value_t> Copy() const final { return std::make_unique<DoubleValue_t>(v); }
       bool IsEqual(const Value_t &tgt) const final { return (tgt.Kind() == kDouble) && (tgt.GetDouble() == v); }
    };
@@ -90,6 +101,7 @@ public:
    public:
       StringValue_t(const std::string _v = "") : v(_v) {}
       EValuesKind Kind() const final { return kString; }
+      bool GetBool() const final { return !v.empty(); }
       std::string GetString() const final { return v; }
       bool IsEqual(const Value_t &tgt) const final { return (tgt.Kind() == kString) && (tgt.GetString() == v); }
       std::unique_ptr<Value_t> Copy() const final { return std::make_unique<StringValue_t>(v); }
@@ -101,6 +113,7 @@ private:
    // Once problem fixed, one could make this container a base class
    std::unordered_map<std::string, std::unique_ptr<Value_t>> m; ///< JSON_object
 
+   void AddBestMatch(const std::string &name, const std::string &value);
 
 public:
 

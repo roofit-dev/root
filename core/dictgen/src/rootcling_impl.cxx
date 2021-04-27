@@ -497,11 +497,14 @@ void SetRootSys()
          if (s) *s = 0;
       } else {
          // There was no slashes at all let now change ROOTSYS
+         delete [] ep;
          return;
       }
 
-      if (!gBuildingROOT)
+      if (!gBuildingROOT) {
+         delete [] ep;
          return; // don't mess with user's ROOTSYS.
+      }
 
       int ncha = strlen(ep) + 10;
       char *env = new char[ncha];
@@ -517,6 +520,7 @@ void SetRootSys()
       }
 
       putenv(env);
+      // intentionally not call delete [] env, while GLIBC keep use pointer
       delete [] ep;
    }
 }
@@ -2003,8 +2007,6 @@ static bool WriteAST(StringRef fileName, clang::CompilerInstance *compilerInstan
 
    // Make sure it hits disk now.
    out->flush();
-   bool deleteOutputFile = compilerInstance->getDiagnostics().hasErrorOccurred();
-   compilerInstance->clearOutputFiles(deleteOutputFile);
 
    return true;
 }
@@ -3647,13 +3649,13 @@ enum VerboseLevel {
 };
 static llvm::cl::opt<VerboseLevel>
 gOptVerboseLevel(llvm::cl::desc("Choose verbosity level:"),
-                llvm::cl::values(clEnumVal(v, "Show errors (default)."),
+                llvm::cl::values(clEnumVal(v, "Show errors."),
                                  clEnumVal(v0, "Show only fatal errors."),
                                  clEnumVal(v1, "Show errors (the same as -v)."),
-                                 clEnumVal(v2, "Show warnings."),
+                                 clEnumVal(v2, "Show warnings (default)."),
                                  clEnumVal(v3, "Show notes."),
                                  clEnumVal(v4, "Show information.")),
-                llvm::cl::init(v),
+                llvm::cl::init(v2),
                 llvm::cl::cat(gRootclingOptions));
 
 static llvm::cl::opt<bool>
@@ -3681,8 +3683,7 @@ gOptGeneratePCH("generate-pch",
  // FIXME: We should remove the IgnoreExistingDict option as it is not used.
 static llvm::cl::opt<bool>
 gOptIgnoreExistingDict("r",
-               llvm::cl::desc("Similar to -f but it ignores the dictionary generation. \
-When -r is present rootcling becomes a tool to generate rootmaps (and capability files)."),
+               llvm::cl::desc("Deprecated, legacy flag which is ignored."),
                llvm::cl::Hidden,
                llvm::cl::cat(gRootclingOptions));
 static llvm::cl::opt<std::string>
@@ -3805,6 +3806,14 @@ gOptSink(llvm::cl::ZeroOrMore, llvm::cl::Sink,
          llvm::cl::desc("Consumes all unrecognized options."),
          llvm::cl::cat(gRootclingOptions));
 
+static llvm::cl::SubCommand
+gBareClingSubcommand("bare-cling", "Call directly cling and exit.");
+
+static llvm::cl::list<std::string>
+gOptBareClingSink(llvm::cl::OneOrMore, llvm::cl::Sink,
+                  llvm::cl::desc("Consumes options and sends them to cling."),
+                  llvm::cl::cat(gRootclingOptions), llvm::cl::sub(gBareClingSubcommand));
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Returns true iff a given module (and its submodules) contains all headers
 /// needed by the given ModuleGenerator.
@@ -3845,12 +3854,6 @@ static bool ModuleContainsHeaders(TModuleGenerator &modGen, clang::Module *modul
 static bool CheckModuleValid(TModuleGenerator &modGen, const std::string &resourceDir, cling::Interpreter &interpreter,
                            StringRef LinkdefPath, const std::string &moduleName)
 {
-#ifdef __APPLE__
-
-   if (moduleName == "Krb5Auth" || moduleName == "GCocoa" || moduleName == "GQuartz")
-      return true;
-#endif
-
    clang::CompilerInstance *CI = interpreter.getCI();
    clang::HeaderSearch &headerSearch = CI->getPreprocessor().getHeaderSearchInfo();
    headerSearch.loadTopLevelSystemModules();
@@ -3958,8 +3961,29 @@ int RootClingMain(int argc,
 
    llvm::cl::ParseCommandLineOptions(argc, argv, "rootcling");
 
+   std::string llvmResourceDir = std::string(gDriverConfig->fTROOT__GetEtcDir()) + "/cling";
+   if (gBareClingSubcommand) {
+      std::vector<const char *> clingArgsC;
+      clingArgsC.push_back(executableFileName);
+      // Help cling finds its runtime (RuntimeUniverse.h and such).
+      clingArgsC.push_back("-I");
+      clingArgsC.push_back(gDriverConfig->fTROOT__GetEtcDir());
+
+      //clingArgsC.push_back("-resource-dir");
+      //clingArgsC.push_back(llvmResourceDir.c_str());
+
+      for (const std::string& Opt : gOptBareClingSink)
+         clingArgsC.push_back(Opt.c_str());
+
+      auto interp = llvm::make_unique<cling::Interpreter>(clingArgsC.size(),
+                                                          &clingArgsC[0],
+                                                          llvmResourceDir.c_str());
+      // FIXME: Diagnose when we have misspelled a flag. Currently we show no
+      // diagnostic and report exit as success.
+      return interp->getDiagnostics().hasFatalErrorOccurred();
+   }
+
    std::string dictname;
-   std::string dictpathname;
 
    if (!gDriverConfig->fBuildingROOTStage1) {
       if (gOptRootBuild) {
@@ -3972,7 +3996,8 @@ int RootClingMain(int argc,
       ROOT::TMetaUtils::Error("", "Option %s can be used only when option %s is specified.\n",
                               gOptModuleMapFiles.ArgStr.str().c_str(),
                               gOptCxxModule.ArgStr.str().c_str());
-      // FIXME: Show the output of -help.
+      std::cout << "\n";
+      llvm::cl::PrintHelpMessage();
       return 1;
    }
 
@@ -3983,31 +4008,6 @@ int RootClingMain(int argc,
 
    if (gOptReflex)
       isGenreflex = true;
-
-#if ROOT_VERSION_CODE < ROOT_VERSION(6,21,00)
-   if (gOptCint)
-      fprintf(stderr, "warning: Please remove the deprecated flag -cint.\n");
-   if (gOptGccXml)
-      fprintf(stderr, "warning: Please remove the deprecated flag -gccxml.\n");
-   if (gOptC)
-      fprintf(stderr, "warning: Please remove the deprecated flag -c.\n");
-   if (gOptP)
-      fprintf(stderr, "warning: Please remove the deprecated flag -p.\n");
-
-   for (auto I = gOptDictionaryHeaderFiles.begin(), E = gOptDictionaryHeaderFiles.end(); I != E; ++I) {
-      if ((*I)[0] == '+') {
-         // Mostly for +P, +V, +STUB which are legacy CINT flags.
-         fprintf(stderr, "warning: Please remove the deprecated flag %s\n", I->c_str());
-         // Remove it from the list because it will mess up our header input.
-         gOptDictionaryHeaderFiles.erase(I);
-      }
-   }
-
-   for (const std::string& Opt : gOptSink)
-      fprintf(stderr, "warning: Please remove the deprecated flag %s\n", Opt.c_str());
-#else
-# error "Remove this deprecated code"
-#endif
 
    if (!gOptLibListPrefix.empty()) {
       string filein = gOptLibListPrefix + ".in";
@@ -4036,7 +4036,6 @@ int RootClingMain(int argc,
          return 1;
       }
 
-      dictpathname = gOptDictionaryFileName;
       dictname = llvm::sys::path::filename(gOptDictionaryFileName);
    }
 
@@ -4156,7 +4155,7 @@ int RootClingMain(int argc,
    // FIXME: This line is from TModuleGenerator, but we can't reuse this code
    // at this point because TModuleGenerator needs a CompilerInstance (and we
    // currently create the arguments for creating said CompilerInstance).
-   bool isPCH = (dictpathname == "allDict.cxx");
+   bool isPCH = (gOptDictionaryFileName.getValue() == "allDict.cxx");
    std::string outputFile;
    // Data is in 'outputFile', therefore in the same scope.
    StringRef moduleName;
@@ -4167,7 +4166,7 @@ int RootClingMain(int argc,
    auto clingArgsInterpreter = clingArgs;
 
    if (gOptSharedLibFileName.empty()) {
-      gOptSharedLibFileName = dictpathname;
+      gOptSharedLibFileName = gOptDictionaryFileName.getValue();
    }
 
    if (!isPCH && gOptCxxModule) {
@@ -4180,7 +4179,7 @@ int RootClingMain(int argc,
          clingArgsInterpreter.push_back("-fmodule-map-file=" + modulemap);
 
       clingArgsInterpreter.push_back("-fmodule-map-file=" +
-                                     ROOT::FoundationUtils::GetIncludeDir() +
+                                     std::string(gDriverConfig->fTROOT__GetIncludeDir()) +
                                      "/module.modulemap");
       std::string ModuleMapCWD = ROOT::FoundationUtils::GetCurrentDir() + "/module.modulemap";
       if (llvm::sys::fs::exists(ModuleMapCWD))
@@ -4217,6 +4216,8 @@ int RootClingMain(int argc,
 #endif
          remove((moduleCachePath + llvm::sys::path::get_separator() + "std.pcm").str().c_str());
          remove((moduleCachePath + llvm::sys::path::get_separator() + "cuda.pcm").str().c_str());
+         remove((moduleCachePath + llvm::sys::path::get_separator() + "boost.pcm").str().c_str());
+         remove((moduleCachePath + llvm::sys::path::get_separator() + "tinyxml2.pcm").str().c_str());
          remove((moduleCachePath + llvm::sys::path::get_separator() + "ROOT_Config.pcm").str().c_str());
          remove((moduleCachePath + llvm::sys::path::get_separator() + "ROOT_Rtypes.pcm").str().c_str());
          remove((moduleCachePath + llvm::sys::path::get_separator() + "ROOT_Foundation_C.pcm").str().c_str());
@@ -4247,7 +4248,6 @@ int RootClingMain(int argc,
    cling::Interpreter* interpPtr = nullptr;
 
    std::list<std::string> filesIncludedByLinkdef;
-   std::string llvmResourceDir = std::string(gDriverConfig->fTROOT__GetEtcDir()) + "/cling";
    if (!gDriverConfig->fBuildingROOTStage1) {
       // Pass the interpreter arguments to TCling's interpreter:
       clingArgsC.push_back("-resource-dir");
@@ -4435,7 +4435,7 @@ int RootClingMain(int argc,
          newName += gPathSeparator;
       newName += llvm::sys::path::stem(gOptSharedLibFileName);
       newName += "_";
-      newName += llvm::sys::path::stem(dictpathname);
+      newName += llvm::sys::path::stem(gOptDictionaryFileName);
       newName += llvm::sys::path::extension(gOptSharedLibFileName);
       gOptSharedLibFileName = newName;
    }
@@ -4519,18 +4519,18 @@ int RootClingMain(int argc,
 
    // Check if code goes to stdout or rootcling file
    std::ofstream fileout;
-   string main_dictname(dictpathname);
+   string main_dictname(gOptDictionaryFileName.getValue());
    std::ostream *dictStreamPtr = NULL;
    // Store the temp files
    tempFileNamesCatalog tmpCatalog;
    if (!gOptIgnoreExistingDict) {
-      if (!dictpathname.empty()) {
-         tmpCatalog.addFileName(dictpathname);
-         fileout.open(dictpathname.c_str());
+      if (!gOptDictionaryFileName.empty()) {
+         tmpCatalog.addFileName(gOptDictionaryFileName.getValue());
+         fileout.open(gOptDictionaryFileName.c_str());
          dictStreamPtr = &fileout;
          if (!(*dictStreamPtr)) {
             ROOT::TMetaUtils::Error(0, "rootcling: failed to open %s in main\n",
-                                    dictpathname.c_str());
+                                    gOptDictionaryFileName.c_str());
             return 1;
          }
       } else {
@@ -4542,7 +4542,14 @@ int RootClingMain(int argc,
    }
 
    // Now generate a second stream for the split dictionary if it is necessary
-   std::ostream *splitDictStreamPtr = gOptSplit ? CreateStreamPtrForSplitDict(dictpathname, tmpCatalog) : dictStreamPtr;
+   std::ostream *splitDictStreamPtr;
+   std::unique_ptr<std::ostream> splitDeleter(nullptr);
+   if (gOptSplit) {
+      splitDictStreamPtr = CreateStreamPtrForSplitDict(gOptDictionaryFileName.getValue(), tmpCatalog);
+      splitDeleter.reset(splitDictStreamPtr);
+   } else {
+      splitDictStreamPtr = dictStreamPtr;
+   }
    std::ostream &dictStream = *dictStreamPtr;
    std::ostream &splitDictStream = *splitDictStreamPtr;
 
@@ -4825,8 +4832,6 @@ int RootClingMain(int argc,
       return rootclingRetCode;
    }
 
-   if (gOptSplit && splitDictStreamPtr) delete splitDictStreamPtr;
-
    // Now we have done all our looping and thus all the possible
    // annotation, let's write the pcms.
    HeadersDeclsMap_t headersClassesMap;
@@ -4989,7 +4994,6 @@ int RootClingMain(int argc,
    {
       cling::Interpreter::PushTransactionRAII RAII(&interp);
       CI->getSema().getASTConsumer().HandleTranslationUnit(CI->getSema().getASTContext());
-      CI->clearOutputFiles(CI->getDiagnostics().hasErrorOccurred());
    }
 
    // Add the warnings
@@ -5659,18 +5663,6 @@ int GenReflexMain(int argc, char **argv)
          ROOT::option::FullArg::Required,
          "-m \tPcm file loaded before any header (option can be repeated).\n"
       },
-
-      {
-#if ROOT_VERSION_CODE >= ROOT_VERSION(6,20,00)
-# error "Remove this deprecated code"
-#endif
-         DEEP,  // Not active. Will be removed for 6.2
-         NOTYPE ,
-         "" , "deep",
-         ROOT::option::Arg::None,
-         ""
-      },
-      //"--deep\tGenerate dictionaries for all dependent classes (ignored).\n"
 
       {
          VERBOSE,

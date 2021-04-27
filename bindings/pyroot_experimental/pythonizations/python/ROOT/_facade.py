@@ -14,6 +14,28 @@ class PyROOTConfiguration(object):
 
     def __init__(self):
         self.IgnoreCommandLineOptions = False
+        self.ShutDown = True
+
+
+class _gROOTWrapper(object):
+    """Internal class to manage lookups of gROOT in the facade.
+       This wrapper calls _finalSetup on the facade when it
+       receives a lookup, unless the lookup is for SetBatch.
+       This allows to evaluate the command line parameters
+       before checking if batch mode is on in _finalSetup
+    """
+
+    def __init__(self, facade):
+        self.__dict__['_facade'] = facade
+        self.__dict__['_gROOT'] = gROOT
+
+    def __getattr__( self, name ):
+        if name != 'SetBatch' and self._facade.__dict__['gROOT'] != self._gROOT:
+            self._facade._finalSetup()
+        return getattr(self._gROOT, name)
+
+    def __setattr__(self, name, value):
+        return setattr(self._gROOT, name, value)
 
 
 class ROOTFacade(types.ModuleType):
@@ -31,7 +53,7 @@ class ROOTFacade(types.ModuleType):
         self.__file__ = module.__file__
 
         # Inject gROOT global
-        self.gROOT = gROOT
+        self.gROOT = _gROOTWrapper(self)
 
         # Expose some functionality from CPyCppyy extension module
         self._cppyy_exports = [ 'nullptr', 'bind_object', 'as_cobject',
@@ -85,25 +107,16 @@ class ROOTFacade(types.ModuleType):
         # Customises lookup in Python's main module to also
         # check in C++'s global namespace
 
-        if sys.hexversion >= 0x3000000:
-            raise ImportError('"from ROOT import *" is not supported in Python 3')
-        if self._is_ipython:
-            import warnings
-            warnings.warn('"from ROOT import *" is not supported in IPython')
-            # Continue anyway, just in case it works
-
-        # Get caller module (jump over the facade)
-        caller = sys.modules[sys._getframe(2).f_globals['__name__']]
-
-        # Inject some predefined attributes of the facade
-        for name in self._cppyy_exports + [ 'gROOT', 'AddressOf' ]:
-            caller.__dict__[name] = getattr(self, name)
+        # Get caller module (jump over the facade frames)
+        num_frame = 2
+        frame = sys._getframe(num_frame).f_globals['__name__']
+        while frame == 'ROOT._facade':
+            num_frame += 1
+            frame = sys._getframe(num_frame).f_globals['__name__']
+        caller = sys.modules[frame]
 
         # Install the hook
         cppyy_backend._set_cpp_lazy_lookup(caller.__dict__)
-
-        # Return empty list to prevent further copying
-        return self.module.__all__
 
     def _fallback_getattr(self, name):
         # Try:
@@ -116,12 +129,15 @@ class ROOTFacade(types.ModuleType):
 
         if name == '__all__':
             self._handle_import_all()
+            # Make the attributes of the facade be injected in the
+            # caller module
+            raise AttributeError()
 
         try:
             return getattr(gbl_namespace, name)
         except AttributeError as err:
             try:
-                return getattr(self.__dict__['ROOT_ns'], name)
+                return getattr(gbl_namespace.ROOT, name)
             except AttributeError:
                 res = gROOT.FindObject(name)
                 if res:
@@ -130,8 +146,11 @@ class ROOTFacade(types.ModuleType):
                     raise AttributeError(str(err))
 
     def _finalSetup(self):
+        # Prevent this method from being re-entered through the gROOT wrapper
+        self.__dict__['gROOT'] = gROOT
+
         # Setup interactive usage from Python
-        self.__dict__['app'] = PyROOTApplication(self.PyConfig)
+        self.__dict__['app'] = PyROOTApplication(self.PyConfig, self._is_ipython)
         if not self.gROOT.IsBatch():
             self.app.init_graphics()
 
@@ -141,7 +160,6 @@ class ROOTFacade(types.ModuleType):
         self.SetMemoryPolicy(self.kMemoryHeuristics)
 
         # Redirect lookups to cppyy's global namespace
-        self.__dict__['ROOT_ns'] = gbl_namespace.ROOT
         self.__class__.__getattr__ = self._fallback_getattr
         self.__class__.__setattr__ = lambda self, name, val: setattr(gbl_namespace, name, val)
 

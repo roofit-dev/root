@@ -63,8 +63,8 @@ void testMethodDL_CNN(TString architectureStr)
    TTree *background = (TTree *)input->Get("bkg");
 
    // Create a ROOT output file where TMVA will store ntuples, histograms, etc.
-   //TString outfileName("TMVA_MethodDL.root");
-   //TFile *outputFile = TFile::Open(outfileName, "RECREATE");
+   // TString outfileName("TMVA_MethodDL.root");
+   // TFile *outputFile = TFile::Open(outfileName, "RECREATE");
 
    TMVA::DataLoader *dataloader = new TMVA::DataLoader("dataset");
 
@@ -81,11 +81,11 @@ void testMethodDL_CNN(TString architectureStr)
    TCut mycuts = "";
    TCut mycutb = "";
 
-   dataloader->AddVariablesArray("ximage",8*8);
+   dataloader->AddVariablesArray("ximage", 8 * 8);
 
    dataloader->PrepareTrainingAndTestTree(
       mycuts, mycutb,
-      "nTrain_Signal=1000:nTrain_Background=1000:SplitMode=Random:NormMode=NumEvents:!V:!CalcCorrelations");
+      "nTrain_Signal=1000:nTrain_Background=1000:SplitMode=Random:NormMode=NumEvents:!CalcCorrelations:!V");
 
    // Input Layout
    TString inputLayoutString("InputLayout=1|8|8");
@@ -114,8 +114,8 @@ void testMethodDL_CNN(TString architectureStr)
    trainingStrategyString += training0 + "|" + training1 + "|" + training2;
 
    // General Options.
-   TString dnnOptions("!H:V:ErrorStrategy=CROSSENTROPY:"
-                      "WeightInitialization=XAVIERUNIFORM");
+   TString dnnOptions("!H:V:ErrorStrategy=CROSSENTROPY:RandomSeed=123"
+                      "VarTransform=None:WeightInitialization=XAVIERUNIFORM");
 
    // Concatenate all option strings
    dnnOptions.Append(":");
@@ -133,10 +133,10 @@ void testMethodDL_CNN(TString architectureStr)
    dnnOptions.Append(":Architecture=");
    dnnOptions.Append(architectureStr);
 
-   // Create a factory for booking the method
+   // Create a factory for booking the method and do not save any output file
    TMVA::Factory *factory =
-      new TMVA::Factory("TMVAClassification", /*  outputFile, */ // skip outputfile
-                        "!V:!Silent:Color:DrawProgressBar:Transformations=I:AnalysisType=Classification");
+      new TMVA::Factory("TMVAClassification", /* outputFile , */ // skip output file
+                        "!V:Color:DrawProgressBar:Transformations=None:!Correlations:AnalysisType=Classification");
 
    TString methodTitle = "DL_CNN_" + architectureStr;
    factory->BookMethod(dataloader, TMVA::Types::kDL, methodTitle, dnnOptions);
@@ -151,9 +151,9 @@ void testMethodDL_CNN(TString architectureStr)
    factory->EvaluateAllMethods();
 
    // Save the output
-   //outputFile->Close();
+   // outputFile->Close();
+   // std::cout << "==> Wrote root file: " << outputFile->GetName() << std::endl;
 
-   //std::cout << "==> Wrote root file: " << outputFile->GetName() << std::endl;
    std::cout << "==> TMVAClassification is done!" << std::endl;
 
    delete factory;
