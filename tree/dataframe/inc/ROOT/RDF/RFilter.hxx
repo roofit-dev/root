@@ -36,8 +36,9 @@ using namespace ROOT::Detail::RDF;
 namespace GraphDrawing {
 std::shared_ptr<GraphNode> CreateFilterNode(const RFilterBase *filterPtr);
 
-std::shared_ptr<GraphNode>
-CreateDefineNode(const std::string &columnName, const RDFDetail::RDefineBase *columnPtr);
+std::shared_ptr<GraphNode> AddDefinesToGraph(std::shared_ptr<GraphNode> node,
+                                             const RDFInternal::RBookedDefines &defines,
+                                             const std::vector<std::string> &prevNodeDefines);
 } // ns GraphDrawing
 
 } // ns RDF
@@ -58,7 +59,7 @@ class RFilter final : public RFilterBase {
    const std::shared_ptr<PrevDataFrame> fPrevDataPtr;
    PrevDataFrame &fPrevData;
    /// Column readers per slot and per input column
-   std::vector<std::array<std::unique_ptr<RDFInternal::RColumnReaderBase>, ColumnTypes_t::list_size>> fValues;
+   std::vector<std::array<std::unique_ptr<RColumnReaderBase>, ColumnTypes_t::list_size>> fValues;
    /// The nth flag signals whether the nth input column is a custom column or not.
    std::array<bool, ColumnTypes_t::list_size> fIsDefine;
 
@@ -110,7 +111,8 @@ public:
    {
       for (auto &bookedBranch : fDefines.GetColumns())
          bookedBranch.second->InitSlot(r, slot);
-      RDFInternal::RColumnReadersInfo info{fColumnNames, fDefines, fIsDefine.data(), fLoopManager->GetDSValuePtrs()};
+      RDFInternal::RColumnReadersInfo info{fColumnNames, fDefines, fIsDefine.data(), fLoopManager->GetDSValuePtrs(),
+                                           fLoopManager->GetDataSource()};
       fValues[slot] = RDFInternal::MakeColumnReaders(slot, r, ColumnTypes_t{}, info);
    }
 
@@ -176,25 +178,12 @@ public:
          return thisNode;
       }
 
-      auto evaluatedNode = thisNode;
-      /* Each column that this node has but the previous hadn't has been defined in between,
-       * so it has to be built and appended. */
-
-      for (auto &column : fDefines.GetColumns()) {
-         // Even if treated as custom columns by the Dataframe, datasource columns must not be in the graph.
-         if (RDFInternal::IsInternalColumn(column.first))
-            continue;
-         if (std::find(prevColumns.begin(), prevColumns.end(), column.first) == prevColumns.end()) {
-            auto defineNode = RDFGraphDrawing::CreateDefineNode(column.first, column.second.get());
-            evaluatedNode->SetPrevNode(defineNode);
-            evaluatedNode = defineNode;
-         }
-      }
+      auto upmostNode = AddDefinesToGraph(thisNode, fDefines, prevColumns);
 
       // Keep track of the columns defined up to this point.
       thisNode->AddDefinedColumns(fDefines.GetNames());
 
-      evaluatedNode->SetPrevNode(prevNode);
+      upmostNode->SetPrevNode(prevNode);
       return thisNode;
    }
 };

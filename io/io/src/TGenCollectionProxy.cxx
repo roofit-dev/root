@@ -15,6 +15,7 @@
 #include "TClassEdit.h"
 #include "TClass.h"
 #include "TError.h"
+#include "TEnum.h"
 #include "TROOT.h"
 #include "TInterpreter.h" // For gInterpreterMutex
 #include "TVirtualMutex.h"
@@ -24,9 +25,6 @@
 #include <cstdlib>
 
 #define MESSAGE(which,text)
-
-// See TEmulatedCollectionProxy.cxx
-extern TStreamerInfo *R__GenerateTClassForPair(const std::string &f, const std::string &s);
 
 /**
 \class TGenVectorProxy
@@ -149,7 +147,6 @@ public:
    {
       // Return the address of the value at index 'idx'
 
-      // However we can 'take' the address of the content of std::vector<bool>.
       if ( fEnv && fEnv->fObject ) {
          switch( idx ) {
             case 0:
@@ -387,10 +384,7 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent)
          // Try to avoid autoparsing.
 
          THashTable *typeTable = dynamic_cast<THashTable*>( gROOT->GetListOfTypes() );
-         THashList *enumTable = dynamic_cast<THashList*>( gROOT->GetListOfEnums() );
-
          assert(typeTable && "The type of the list of type has changed");
-         assert(enumTable && "The type of the list of enum has changed");
 
          TDataType *fundType = (TDataType *)typeTable->THashTable::FindObject( intype.c_str() );
          if (fundType && fundType->GetType() < 0x17 && fundType->GetType() > 0) {
@@ -404,7 +398,7 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent)
             } else {
                fSize = fundType->Size();
             }
-         } else if (enumTable->THashList::FindObject( intype.c_str() ) ) {
+         } else if (TEnum::GetEnum( intype.c_str(), TEnum::kNone) ) {
             // This is a known enum.
             fCase = kIsEnum;
             fSize = sizeof(Int_t);
@@ -457,21 +451,23 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent)
                if ( prop&kIsStruct ) {
                   prop |= kIsClass;
                }
-               // Since we already searched GetClass earlier, this should
-               // never be true.
-               R__ASSERT(! (prop&kIsClass) && "Impossible code path" );
-//               if ( prop&kIsClass ) {
-//                  fType = TClass::GetClass(intype.c_str(),kTRUE,silent);
-//                  R__ASSERT(fType);
-//                  fCtor   = fType->GetNew();
-//                  fDtor   = fType->GetDestructor();
-//                  fDelete = fType->GetDelete();
-//               }
-//               else
-               if ( prop&kIsFundamental ) {
+
+               if ( prop&kIsClass ) {
+                  // We can get here in the case where the value if forward declared or
+                  // is an std::pair that can not be (yet) emulated (eg. "std::pair<int,void*>")
+                  fSize = std::string::npos;
+                  if (!silent)
+                     Error("TGenCollectionProxy", "Could not retrieve the TClass for %s", intype.c_str());
+//                fType = TClass::GetClass(intype.c_str(),kTRUE,silent);
+//                R__ASSERT(fType);
+//                fCtor   = fType->GetNew();
+//                fDtor   = fType->GetDestructor();
+//                fDelete = fType->GetDelete();
+               }
+               else if ( prop&kIsFundamental ) {
                   fundType = gROOT->GetType( intype.c_str() );
                   if (fundType==0) {
-                     if (intype != "long double") {
+                     if (intype != "long double" && !silent) {
                         Error("TGenCollectionProxy","Unknown fundamental type %s",intype.c_str());
                      }
                      fSize = sizeof(int);
@@ -885,9 +881,29 @@ TGenCollectionProxy *TGenCollectionProxy::InitializeEx(Bool_t silent)
 
                {
                   TInterpreter::SuspendAutoParsing autoParseRaii(gCling);
-                  if (0==TClass::GetClass(nam.c_str())) {
+                  if (0==TClass::GetClass(nam.c_str(), true, false, fValOffset, fValDiff)) {
                      // We need to emulate the pair
-                     R__GenerateTClassForPair(inside[1],inside[2]);
+                     TVirtualStreamerInfo::Factory()->GenerateInfoForPair(inside[1], inside[2], silent, fValOffset, fValDiff);
+                  } else {
+                     TClass *paircl = TClass::GetClass(nam.c_str());
+                     if (paircl->GetClassSize() != fValDiff) {
+                        if (paircl->GetState() >= TClass::kInterpreted)
+                           Fatal("InitializeEx",
+                                 "The %s for %s reports a class size that is inconsistent with the one registered "
+                                 "through the CollectionProxy for %s:  %d vs %d\n",
+                                 paircl->IsLoaded() ? "dictionary" : "interpreter information for", nam.c_str(),
+                                 cl->GetName(), (int)paircl->GetClassSize(), (int)fValDiff);
+                        else {
+                           gROOT->GetListOfClasses()->Remove(paircl);
+                           TClass *newpaircl = TClass::GetClass(nam.c_str(), true, false, fValOffset, fValDiff);
+                           if (newpaircl == paircl || newpaircl->GetClassSize() != fValDiff)
+                              Fatal("InitializeEx",
+                                    "The TClass creation for %s did not get the right size: %d instead of%d\n",
+                                    nam.c_str(), (int)paircl->GetClassSize(), (int)fValDiff);
+                           paircl->ReplaceWith(newpaircl);
+                           delete paircl;
+                        }
+                     }
                   }
                }
                newfValue = R__CreateValue(nam, silent);

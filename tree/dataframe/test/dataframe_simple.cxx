@@ -40,7 +40,6 @@ protected:
 };
 
 // Create file `filename` containing a test tree `treeName` with `nevents` events
-// TODO: create just one file at the beginning of the test execution, delete the file at test exit
 void FillTree(const char *filename, const char *treeName, int nevents = 0)
 {
    TFile f(filename, "RECREATE");
@@ -836,8 +835,11 @@ TEST_P(RDFSimpleTests, NonExistingFile)
 {
    ROOT::RDataFrame r("myTree", "nonexistingfile.root");
 
+   TString expecteddiag;
+   expecteddiag.Form("file %s/nonexistingfile.root does not exist", gSystem->pwd());
+
    // We try to use the tree for jitting: an exception is thrown
-   ROOT_EXPECT_ERROR(EXPECT_ANY_THROW(r.Filter("inventedVar > 0")), "TFile::TFile", "file nonexistingfile.root does not exist");
+   ROOT_EXPECT_ERROR(EXPECT_ANY_THROW(r.Filter("inventedVar > 0")), "TFile::TFile", expecteddiag.Data());
 }
 
 // ROOT-10549: check we throw if a file is unreadable
@@ -848,11 +850,18 @@ TEST_P(RDFSimpleTests, NonExistingFileInChain)
 
    ROOT::RDataFrame df("t", {filename, "doesnotexist.root"});
 
-   const auto errmsg ="file doesnotexist.root does not exist";
+   const auto errmsg = "file %s/doesnotexist.root does not exist";
+   TString expecteddiag;
+   expecteddiag.Form(errmsg, gSystem->pwd());
+   // in the single-thread case the error happens when TTreeReader is calling LoadTree the first time
+   // otherwise we notice the file does not exist beforehand, e.g. in TTreeProcessorMT
+   if (!ROOT::IsImplicitMTEnabled())
+      expecteddiag += "\nWarning in <TTreeReader::SetEntryBase()>: There was an issue opening the last file associated "
+                      "to the TChain being processed.";
 
    bool exceptionCaught = false;
    try {
-      ROOT_EXPECT_ERROR(df.Count().GetValue(), "TFile::TFile", errmsg);
+      ROOT_EXPECT_ERROR(df.Count().GetValue(), "TFile::TFile", expecteddiag.Data());
    } catch (const std::runtime_error &e) {
       const std::string expected_msg =
          ROOT::IsImplicitMTEnabled()
@@ -950,6 +959,11 @@ TEST_P(RDFSimpleTests, ChainWithDifferentTreeNames)
 
    gSystem->Unlink(fname1);
    gSystem->Unlink(fname2);
+}
+
+TEST_P(RDFSimpleTests, WritingToFundamentalType)
+{
+   EXPECT_THROW(ROOT::RDataFrame(1).Define("x", [] { return 1; }).Filter("x = 42"), std::runtime_error);
 }
 
 // run single-thread tests

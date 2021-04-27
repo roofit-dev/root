@@ -93,7 +93,9 @@ ROOT_BUILD_OPTION(builtin_gsl OFF "Build GSL internally (requires network)")
 ROOT_BUILD_OPTION(builtin_llvm ON "Build bundled copy of LLVM")
 ROOT_BUILD_OPTION(builtin_lz4 OFF "Build bundled copy of lz4")
 ROOT_BUILD_OPTION(builtin_lzma OFF "Build bundled copy of lzma")
+ROOT_BUILD_OPTION(builtin_nlohmannjson ON "Use nlohmann/json.hpp file distributed with ROOT")
 ROOT_BUILD_OPTION(builtin_openssl OFF "Build OpenSSL internally (requires network)")
+ROOT_BUILD_OPTION(builtin_openui5 ON "Use openui5 bundle distributed with ROOT")
 ROOT_BUILD_OPTION(builtin_pcre OFF "Build bundled copy of PCRE")
 ROOT_BUILD_OPTION(builtin_tbb OFF "Build TBB internally (requires network)")
 ROOT_BUILD_OPTION(builtin_unuran OFF "Build bundled copy of unuran")
@@ -191,6 +193,7 @@ option(rootbench "Build rootbench if rootbench exists in root or if it is a sibl
 option(roottest "Build roottest if roottest exists in root or if it is a sibling directory." OFF)
 option(testing "Enable testing with CTest" OFF)
 option(asan "Build ROOT with address sanitizer instrumentation" OFF)
+option(asserts "Enable asserts (is ON for CMAKE_BUILD_TYPE=Debug and dev=ON)" OFF)
 
 set(gcctoolchain "" CACHE PATH "Set path to GCC toolchain used to build llvm/clang")
 
@@ -281,7 +284,9 @@ if(builtin_all)
   set(builtin_llvm_defvalue ON)
   set(builtin_lz4_defvalue ON)
   set(builtin_lzma_defvalue ON)
+  set(builtin_nlohmannjson_defvalue ON)
   set(builtin_openssl_defvalue ON)
+  set(builtin_openui5_defvalue ON)
   set(builtin_pcre_defvalue ON)
   set(builtin_tbb_defvalue ON)
   set(builtin_unuran_defvalue ON)
@@ -359,8 +364,13 @@ endif()
 #---webgui by default always build together with root7-----------------------------------------
 set(webgui_defvalue ${root7_defvalue})
 
-#---Define at moment the options with the selected default values-----------------------------
+#---Define at moment the options with the selected default values------------------------------
 ROOT_APPLY_OPTIONS()
+
+#---Enable asserts for Debug builds and for the dev mode---------------------------------------
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR dev)
+  set(asserts ON CACHE BOOL "" FORCE)
+endif()
 
 #---roottest option implies testing
 if(roottest OR rootbench)
@@ -421,7 +431,7 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE) # point to directories outside the b
 
 # Check whether to add RPATH to the installation (the build tree always has the RPATH enabled)
 if(rpath)
-  set(CMAKE_INSTALL_RPATH ${CMAKE_INSTALL_FULL_LIBDIR}) # install LIBDIR
+  set(CMAKE_INSTALL_RPATH ${CMAKE_INSTALL_FULL_LIBDIR} CACHE INTERNAL "") # install LIBDIR
   set(CMAKE_SKIP_INSTALL_RPATH FALSE)          # don't skip the full RPATH for the install tree
 elseif(APPLE)
   set(CMAKE_INSTALL_NAME_DIR "@rpath")
@@ -439,7 +449,7 @@ endif()
 if(macos_native)
   if(APPLE)
     set(CMAKE_IGNORE_PATH)
-    foreach(_prefix /sw /opt/local /usr/local) # Fink installs in /sw, and MacPort in /opt/local and Brew in /usr/local
+    foreach(_prefix /sw /opt/local /usr/local /opt/homebrew) # Fink installs in /sw, and MacPort in /opt/local and Brew in /usr/local (x86-64) and /opt/homebrew (arm64)
       list(APPEND CMAKE_IGNORE_PATH ${_prefix}/bin ${_prefix}/include ${_prefix}/lib)
     endforeach()
     if(CMAKE_VERSION VERSION_GREATER 3.15)

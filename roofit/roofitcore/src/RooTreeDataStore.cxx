@@ -455,7 +455,10 @@ void RooTreeDataStore::createTree(const char* name, const char* title)
 void RooTreeDataStore::loadValues(const TTree *t, const RooFormulaVar* select, const char* /*rangeName*/, Int_t /*nStart*/, Int_t /*nStop*/) 
 {
   // Make our local copy of the tree, so we can safely loop through it.
-  std::unique_ptr<TTree> tClone( static_cast<TTree*>(t->Clone()) );
+  // We need a custom deleter, because if we don't deregister the Tree from the directory
+  // of the original, it tears it down at destruction time!
+  auto deleter = [](TTree* tree){tree->SetDirectory(nullptr); delete tree;};
+  std::unique_ptr<TTree, decltype(deleter)> tClone(static_cast<TTree*>(t->Clone()), deleter);
   tClone->SetDirectory(t->GetDirectory());
 
   // Clone list of variables  
@@ -1381,3 +1384,25 @@ std::string RooTreeDataStore::makeTreeName() const {
   return std::string("RooTreeDataStore_") + GetName() + "_" + title;
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get the weights of the events in the range [first, first+len).
+/// This implementation will fill a vector with every event retrieved one by one
+/// (even if the weight is constant). Then, it returns a span.
+RooSpan<const double> RooTreeDataStore::getWeightBatch(std::size_t first, std::size_t len) const {
+
+  if (_extWgtArray) {
+    return {_extWgtArray + first, len};
+  }
+
+  if (!_weightBuffer) {
+    _weightBuffer.reset(new std::vector<double>());
+    _weightBuffer->reserve(len);
+
+    for (std::size_t i = 0; i < GetEntries(); ++i) {
+      _weightBuffer->push_back(weight(i));
+    }
+  }
+
+  return {_weightBuffer->data() + first, len};
+}

@@ -185,8 +185,7 @@ bool CPyCppyy::InsertDispatcher(CPPScope* klass, PyObject* dct)
 // sure the python object is properly carried, but they can only be generated
 // if the base class supports them
     if (has_default || !has_constructors)
-        code << "  " << derivedName << "() {}\n"
-             << "  " << derivedName << "(PyObject* pyobj) : m_self(pyobj) {}\n";
+        code << "  " << derivedName << "() {}\n";
     if (has_default || has_cctor || !has_constructors) {
         code << "  " << derivedName << "(const " << derivedName << "& other) : ";
         if (has_cctor)
@@ -205,6 +204,11 @@ bool CPyCppyy::InsertDispatcher(CPPScope* klass, PyObject* dct)
             code << "  using " << baseName << "::" << protected_names.back() << ";\n";
         }
     }
+
+// add an offset calculator for the dispatch ptr as needed
+    code << "public:\n"
+         << "static size_t _dispatchptr_offset() { return (size_t)&(("
+         << derivedName << "*)(0x0))->m_self; }";
 
 // finish class declaration
     code << "};\n}";

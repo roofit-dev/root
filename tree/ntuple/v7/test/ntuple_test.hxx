@@ -59,12 +59,14 @@ template <class T>
 using RField = ROOT::Experimental::RField<T>;
 using RFieldBase = ROOT::Experimental::Detail::RFieldBase;
 using RFieldDescriptor = ROOT::Experimental::RFieldDescriptor;
+using RFieldFuse = ROOT::Experimental::Detail::RFieldFuse;
 using RFieldMerger = ROOT::Experimental::RFieldMerger;
 using RFieldValue = ROOT::Experimental::Detail::RFieldValue;
 using RMiniFileReader = ROOT::Experimental::Internal::RMiniFileReader;
 using RNTuple = ROOT::Experimental::RNTuple;
 using RNTupleAtomicCounter = ROOT::Experimental::Detail::RNTupleAtomicCounter;
 using RNTupleAtomicTimer = ROOT::Experimental::Detail::RNTupleAtomicTimer;
+using RNTupleCalcPerf = ROOT::Experimental::Detail::RNTupleCalcPerf;
 using RNTupleCompressor = ROOT::Experimental::Detail::RNTupleCompressor;
 using RNTupleDecompressor = ROOT::Experimental::Detail::RNTupleDecompressor;
 using RNTupleDescriptor = ROOT::Experimental::RNTupleDescriptor;

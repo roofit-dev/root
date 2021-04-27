@@ -50,6 +50,7 @@ to the fractions of the various functions. **This requires setting the last argu
 #include "RooRealProxy.h"
 #include "RooRealVar.h"
 #include "RooMsgService.h"
+#include "RooNaNPacker.h"
 
 #include <TError.h>
 
@@ -244,6 +245,8 @@ Double_t RooRealSumPdf::evaluate() const
             << sumCoeff << ". This means that the PDF is not properly normalised. If the PDF was meant to be extended, provide as many coefficients as functions." << endl ;
         _haveWarned = true;
       }
+      // Signal that we are in an undefined region:
+      value = RooNaNPacker::packFloatIntoNaN(100.f * (coefVal < 0. ? -coefVal : coefVal - 1.));
     }
 
     if (func->isSelectedComp()) {
@@ -410,10 +413,11 @@ Double_t RooRealSumPdf::analyticalIntegralWN(Int_t code, const RooArgSet* normSe
     }
     
     // Warn about coefficient degeneration
-    if (lastCoef<0 || lastCoef>1) {
+    if (!_haveWarned && (lastCoef<0 || lastCoef>1)) {
       coutW(Eval) << "RooRealSumPdf::evaluate(" << GetName() 
 		  << " WARNING: sum of FUNC coefficients not in range [0-1], value=" 
 		  << 1-lastCoef << endl ;
+      _haveWarned = true;
     } 
   }
   

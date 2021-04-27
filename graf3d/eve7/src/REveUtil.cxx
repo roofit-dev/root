@@ -13,6 +13,8 @@
 #include <ROOT/REveElement.hxx>
 #include <ROOT/REveManager.hxx>
 
+#include <ROOT/RLogger.hxx>
+
 #include "TError.h"
 #include "TGeoManager.h"
 #include "TGeoMatrix.h"
@@ -33,12 +35,17 @@
 using namespace ROOT::Experimental;
 namespace REX = ROOT::Experimental;
 
+REX::RLogChannel &REX::EveLog() {
+   static RLogChannel sLog("ROOT.Eve");
+   return sLog;
+}
+
 /** \class REveUtil
 \ingroup REve
 Standard utility functions for Eve.
 */
 
-TObjArray* REX::REveUtil::fgDefaultColors = nullptr;
+TObjArray *REveUtil::fgDefaultColors = nullptr;
 
 namespace
 {

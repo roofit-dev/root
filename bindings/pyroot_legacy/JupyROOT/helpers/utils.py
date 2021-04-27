@@ -97,9 +97,9 @@ function requirejs_success(base_url) {{
 }}
 
 function display_{jsDivId}() {{
-    require(['scripts/JSRootCore'],
+    require(['scripts/JSRoot.core'],
         function(Core) {{
-            var obj = Core.JSONR_unref({jsonContent});
+            var obj = Core.parse({jsonContent});
             Core.key_handling = false;
             Core.draw("{jsDivId}", obj, "{jsDrawOptions}");
         }}
