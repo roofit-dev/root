@@ -343,10 +343,10 @@ RooCmdArg MultiArg(const RooCmdArg& arg1, const RooCmdArg& arg2,
  
 RooConstVar& RooConst(Double_t val) ; 
 
+// End group CmdArgs:
 /**
  * @}
  */
-
 }
 
 namespace RooFitShortHand {
