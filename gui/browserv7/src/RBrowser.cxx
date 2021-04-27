@@ -189,13 +189,10 @@ RBrowser::~RBrowser()
 
 std::string RBrowser::ProcessBrowserRequest(const std::string &msg)
 {
-   std::string res;
-
    std::unique_ptr<RBrowserRequest> request;
 
    if (msg.empty()) {
       request = std::make_unique<RBrowserRequest>();
-      request->path = "/";
       request->first = 0;
       request->number = 100;
    } else {
@@ -203,7 +200,7 @@ std::string RBrowser::ProcessBrowserRequest(const std::string &msg)
    }
 
    if (!request)
-      return res;
+      return ""s;
 
    return "BREPL:"s + fBrowsable.ProcessRequest(*request.get());
 }
@@ -230,13 +227,45 @@ long RBrowser::ProcessRunMacro(const std::string &file_path)
 /////////////////////////////////////////////////////////////////////////////////
 /// Process dbl click on browser item
 
-std::string RBrowser::ProcessDblClick(const std::string &item_path, const std::string &drawingOptions, const std::string &)
+std::string RBrowser::ProcessDblClick(std::vector<std::string> &args)
 {
-   R__LOG_DEBUG(0, BrowserLog()) << "DoubleClick " << item_path;
+   args.pop_back(); // remove exec string, not used now
 
-   auto path = fBrowsable.DecomposePath(item_path, true);
+   std::string drawingOptions = args.back();
+   args.pop_back(); // remove draw option
+
+   auto path = fBrowsable.GetWorkingPath();
+   path.insert(path.end(), args.begin(), args.end());
+
+   R__LOG_DEBUG(0, BrowserLog()) << "DoubleClick " << Browsable::RElement::GetPathAsString(path);
+
    auto elem = fBrowsable.GetSubElement(path);
    if (!elem) return ""s;
+
+   auto dflt_action = elem->GetDefaultAction();
+
+   // special case when canvas is clicked - always start new widget
+   if (dflt_action == Browsable::RElement::kActCanvas) {
+      std::string widget_kind;
+
+      if (elem->IsCapable(Browsable::RElement::kActDraw7))
+         widget_kind = "rcanvas";
+      else
+         widget_kind = "tcanvas";
+
+      std::string name = widget_kind + std::to_string(++fWidgetCnt);
+
+      auto new_widget = RBrowserWidgetProvider::CreateWidgetFor(widget_kind, name, elem);
+
+      if (!new_widget)
+         return ""s;
+
+      new_widget->Show("embed");
+      fWidgets.emplace_back(new_widget);
+      fActiveWidgetName = new_widget->GetName();
+
+      return NewWidgetMsg(new_widget);
+   }
 
    auto widget = GetActiveWidget();
    if (widget && widget->DrawElement(elem, drawingOptions)) {
@@ -250,8 +279,6 @@ std::string RBrowser::ProcessDblClick(const std::string &item_path, const std::s
 
    if (iter != fWidgets.end())
       return "SELECT_WIDGET:"s + (*iter)->GetName();
-
-   auto dflt_action = elem->GetDefaultAction();
 
    // check if object can be drawn in RCanvas even when default action is drawing in TCanvas
    if ((dflt_action == Browsable::RElement::kActDraw6) && GetUseRCanvas() && elem->IsCapable(Browsable::RElement::kActDraw7))
@@ -494,8 +521,8 @@ void RBrowser::ProcessMsg(unsigned connid, const std::string &arg0)
       std::string reply;
 
       auto arr = TBufferJSON::FromJSON<std::vector<std::string>>(msg);
-      if (arr && (arr->size() == 3))
-         reply = ProcessDblClick(arr->at(0), arr->at(1), arr->at(2));
+      if (arr && (arr->size() > 2))
+         reply = ProcessDblClick(*arr);
 
       if (!reply.empty())
          fWebWindow->Send(connid, reply);
