@@ -20,19 +20,16 @@
 PDF implementing the Crystal Ball line shape.
 **/
 
-#include "RooFit.h"
-
-#include "Riostream.h"
-#include "Riostream.h"
-#include <math.h>
-
 #include "RooCBShape.h"
+
 #include "RooAbsReal.h"
 #include "RooRealVar.h"
 #include "RooMath.h"
+#include "RooBatchCompute.h"
+
 #include "TMath.h"
 
-#include "TError.h"
+#include <cmath>
 
 using namespace std;
 
@@ -91,6 +88,12 @@ Double_t RooCBShape::evaluate() const {
 
     return a/TMath::Power(b - t, n);
   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Compute multiple values of Crystal ball Shape distribution.  
+RooSpan<double> RooCBShape::evaluateSpan(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const {
+  return RooBatchCompute::dispatch->computeCBShape(this, evalData, m->getValues(evalData, normSet), m0->getValues(evalData, normSet), sigma->getValues(evalData, normSet), alpha->getValues(evalData, normSet), n->getValues(evalData, normSet));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -174,11 +177,11 @@ Double_t RooCBShape::analyticalIntegral(Int_t code, const char* rangeName) const
 
 Int_t RooCBShape::getMaxVal(const RooArgSet& vars) const
 {
-  RooArgSet dummy ;
+   RooArgSet dummy ;
 
   if (matchArgs(vars,dummy,m)) {
-    return 1 ;
-  }
+     return 1 ;
+   }
   return 0 ;
 }
 
@@ -189,5 +192,6 @@ Double_t RooCBShape::maxVal(Int_t code) const
   R__ASSERT(code==1) ;
 
   // The maximum value for given (m0,alpha,n,sigma)
-  return 1.0 ;
+  // is 1./ Integral in the variable range
+  return 1.0/analyticalIntegral(1) ;
 }

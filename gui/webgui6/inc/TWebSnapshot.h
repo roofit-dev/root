@@ -8,17 +8,8 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-
 #ifndef ROOT_TWebSnapshot
 #define ROOT_TWebSnapshot
-
-//////////////////////////////////////////////////////////////////////////
-//                                                                      //
-// TWebSnapshot                                                         //
-//                                                                      //
-// Paint state of object to transfer to JavaScript side                 //
-//                                                                      //
-//////////////////////////////////////////////////////////////////////////
 
 #include "TObject.h"
 
@@ -96,11 +87,14 @@ public:
 class TCanvasWebSnapshot : public TPadWebSnapshot {
 protected:
    Long64_t fVersion{0};           ///< actual canvas version
+   std::string fScripts;           ///< custom scripts to load
 public:
-   TCanvasWebSnapshot() = default;
+   TCanvasWebSnapshot() {} // NOLINT: not allowed to use = default because of TObject::kIsOnHeap detection, see ROOT-10300
    TCanvasWebSnapshot(bool readonly, Long64_t v) : TPadWebSnapshot(readonly), fVersion(v) {}
 
    Long64_t GetVersion() const { return fVersion; }
+
+   void SetScripts(const std::string &src) { fScripts = src; }
 
    ClassDef(TCanvasWebSnapshot, 1) // Canvas painting snapshot, used for JSROOT
 };

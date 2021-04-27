@@ -32,17 +32,22 @@ ROOT_OBJECT_LIBRARY(Dictgen
 add_dependencies(Dictgen CLING)
 
 target_include_directories(Dictgen PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/src
-  ${CMAKE_CURRENT_SOURCE_DIR}/res
-  ${CMAKE_CURRENT_SOURCE_DIR}/../foundation/res
-  ${CMAKE_CURRENT_SOURCE_DIR}/../clingutils/res
+  ${CMAKE_SOURCE_DIR}/core/dictgen/src
+  ${CMAKE_SOURCE_DIR}/core/dictgen/res
+  ${CMAKE_SOURCE_DIR}/core/foundation/res
+  ${CMAKE_SOURCE_DIR}/core/clingutils/res
+  ${CMAKE_SOURCE_DIR}/core/base/inc
+  ${CMAKE_SOURCE_DIR}/core/clib/inc
+  ${CMAKE_SOURCE_DIR}/core/meta/inc
+  ${CMAKE_SOURCE_DIR}/core/foundation/inc
+  ${CMAKE_BINARY_DIR}/ginclude
   ${CLING_INCLUDE_DIRS}
 )
 
 # Register the llvm include directories after clangs. This instructs the compiler to resolve
 # headers from our builtin clang. That's an issue when we are building with bultin_llvm=Off
 # and we have installed clang headers, too.
-target_include_directories(Dictgen PRIVATE SYSTEM ${CLANG_INCLUDE_DIRS} ${LLVM_INCLUDE_DIRS})
+target_include_directories(Dictgen SYSTEM PRIVATE ${CLANG_INCLUDE_DIRS} ${LLVM_INCLUDE_DIRS})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CLING_CXXFLAGS}")
 CHECK_CXX_COMPILER_FLAG("-fno-rtti" CXX_HAS_fno_rtti)
@@ -55,7 +60,7 @@ endif()
 #---CreateRootClingCommandLineOptions------------------------------------------------------------------
 generateHeader(Dictgen
   ${CMAKE_SOURCE_DIR}/core/dictgen/src/rootcling-argparse.py
-  ${CMAKE_BINARY_DIR}/include/rootclingCommandLineOptionsHelp.h
+  ${CMAKE_BINARY_DIR}/ginclude/rootclingCommandLineOptionsHelp.h
 )
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

@@ -26,8 +26,6 @@
 
 #include "TObject.h"
 #include "TString.h"
-#include "TMap.h"
-
 
 class THashList;
 class TMap;
@@ -56,7 +54,7 @@ private:
    enum EStatusBits { kUrlWithDefaultPort = BIT(14), kUrlHasDefaultPort = BIT(15) };
 
 public:
-   TUrl() = default;
+   TUrl() {} // NOLINT: not allowed to use = default because of TObject::kIsOnHeap detection, see ROOT-10300
    TUrl(const char *url, Bool_t defaultIsFile = kFALSE);
    TUrl(const TUrl &url);
    TUrl &operator=(const TUrl &rhs);

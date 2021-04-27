@@ -16,9 +16,8 @@
 #include "TObject.h"
 #include "TAttLine.h"
 #include "TAttBBox2D.h"
-#include "TPoint.h"
-#include "GuiTypes.h"
 
+class TPoint;
 
 class TLine : public TObject, public TAttLine, public TAttBBox2D {
 
@@ -36,7 +35,7 @@ public:
       kHorizontal = BIT(16)  ///< Line is horizontal
    };
 
-   TLine() = default;
+   TLine() {}
    TLine(Double_t x1, Double_t y1, Double_t x2, Double_t  y2);
    TLine(const TLine &line);
    virtual ~TLine() = default;

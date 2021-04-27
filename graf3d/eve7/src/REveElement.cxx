@@ -27,11 +27,10 @@
 #include "TROOT.h"
 #include "TColor.h"
 
-#include "json.hpp"
 #include <cassert>
-
-
 #include <algorithm>
+
+#include <nlohmann/json.hpp>
 
 using namespace ROOT::Experimental;
 namespace REX = ROOT::Experimental;
@@ -97,10 +96,6 @@ REveElement::REveElement(const REveElement& e) :
 
 REveElement::~REveElement()
 {
-   if (fScene && fScene->IsAcceptingChanges()) {
-      fScene->SceneElementRemoved( fElementId);
-   }
-
    if (fDestructing != kAnnihilate)
    {
       fDestructing = kStandard;
@@ -109,6 +104,10 @@ REveElement::~REveElement()
       if (fMother) {
         fMother->RemoveElementLocal(this);
         fMother->fChildren.remove(this);
+      }
+
+      if (fScene) {
+         fScene->SceneElementRemoved( fElementId);
       }
 
       for (auto &au : fAunts)
@@ -137,6 +136,18 @@ void REveElement::assign_element_id_recurisvely()
       c->assign_element_id_recurisvely();
 }
 
+std::string REveElement::GetHighlightTooltip(const std::set<int>& iSet) const
+{
+   std::string res = fTitle;
+   if (res.empty())
+      res = fName;
+
+   if (!iSet.empty())
+      res = TString::Format("%s idx=%d", res.c_str(), *iSet.begin());
+
+   return res;
+}
+
 void REveElement::assign_scene_recursively(REveScene* s)
 {
    assert(fScene == nullptr);
@@ -147,7 +158,7 @@ void REveElement::assign_scene_recursively(REveScene* s)
    //           If yes, shouldn't we block it in AddElement() already?
    if (fDestructing == kNone && fScene && fScene->IsAcceptingChanges())
    {
-       s->SceneElementAdded(this);
+      StampElementAdded();
    }
    for (auto &c : fChildren)
       c->assign_scene_recursively(s);
@@ -495,31 +506,6 @@ void REveElement::VizDB_Insert(const std::string& tag, Bool_t replace, Bool_t up
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Returns the master element - that is:
-/// - master of projectable, if this is a projected;
-/// - master of compound, if fCompound is set;
-/// - master of mother, if kSCBTakeMotherAsMaster bit is set;
-/// If non of the above is true, *this* is returned.
-
-REveElement *REveElement::GetMaster()
-{
-   REveProjected* proj = dynamic_cast<REveProjected*>(this);
-   if (proj)
-   {
-      return dynamic_cast<REveElement*>(proj->GetProjectable())->GetMaster();
-   }
-   if (fCompound)
-   {
-      return fCompound->GetMaster();
-   }
-   if (TestCSCBits(kCSCBTakeMotherAsMaster) && fMother)
-   {
-      return fMother->GetMaster();
-   }
-   return this;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 /// Add el into the list aunts.
 ///
 /// Adding aunt is subordinate to adding a niece.
@@ -564,17 +550,6 @@ void REveElement::CheckReferenceCount(const std::string& from)
       PreDeleteElement();
       delete this;
    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Collect all parents of class REveScene. This is needed to
-/// automatically detect which scenes need to be updated.
-///
-/// Overriden in REveScene to include itself and return.
-
-void REveElement::CollectScenes(List_t& scenes)
-{
-   if (fScene) scenes.push_back(fScene);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -917,11 +892,7 @@ void REveElement::RemoveElement(REveElement* el)
 
    RemoveElementLocal(el);
 
-   if (fScene && fScene->IsAcceptingChanges())
-   {
-      fScene->SceneElementRemoved(fElementId);
-   }
-
+   el->fScene->SceneElementRemoved(fElementId);
    el->fMother = nullptr;
    el->fScene  = nullptr;
 
@@ -961,11 +932,7 @@ void REveElement::RemoveElementsInternal()
 
    for (auto &c : fChildren)
    {
-      if (fScene && fScene->IsAcceptingChanges())
-      {
-         fScene->SceneElementRemoved(fElementId);
-      }
-
+      c->fScene->SceneElementRemoved(c->fElementId);
       c->fMother = nullptr;
       c->fScene  = nullptr;
 
@@ -1370,25 +1337,6 @@ void REveElement::DecDenyDestroy()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// React to element being pasted or dnd-ed.
-/// Return true if redraw is needed.
-
-Bool_t REveElement::HandleElementPaste(REveElement* el)
-{
-   REX::gEve->AddElement(el, this);
-   return kTRUE;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Call this after an element has been changed so that the state
-/// can be propagated around the framework.
-
-void REveElement::ElementChanged(Bool_t update_scenes, Bool_t redraw)
-{
-   REX::gEve->ElementChanged(this, update_scenes, redraw);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 /// Set pickable state on the element and all its children.
 
 void REveElement::SetPickableRecursively(Bool_t p)
@@ -1399,13 +1347,30 @@ void REveElement::SetPickableRecursively(Bool_t p)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Returns element to be selected when this element is chosen.
-/// If value is zero the selected object will follow rules in
-/// REveSelection (function MapPickedToSelected).
+/// Returns the master element - that is:
+/// - master of projectable, if this is a projected;
+/// - master of compound, if fCompound is set;
+/// - master of mother, if kSCBTakeMotherAsMaster bit is set;
+/// If non of the above is true, *this* is returned.
 
-REveElement* REveElement::ForwardSelection()
+REveElement *REveElement::GetSelectionMaster()
 {
-   return nullptr;
+   if (fSelectionMaster) return fSelectionMaster;
+
+   REveProjected* proj = dynamic_cast<REveProjected*>(this);
+   if (proj)
+   {
+      return dynamic_cast<REveElement*>(proj->GetProjectable())->GetSelectionMaster();
+   }
+   if (fCompound)
+   {
+      return fCompound->GetSelectionMaster();
+   }
+   if (TestCSCBits(kCSCBTakeMotherAsMaster) && fMother)
+   {
+      return fMother->GetSelectionMaster();
+   }
+   return this;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1460,12 +1425,17 @@ void REveElement::RecheckImpliedSelections()
 
 void REveElement::AddStamp(UChar_t bits)
 {
-   if (fDestructing == kNone && fScene && fScene->IsAcceptingChanges()) {
-
+   if (fDestructing == kNone && fScene && fScene->IsAcceptingChanges())
+   {
       if (gDebug > 0)
          ::Info(Form("%s::AddStamp", GetCName()), "%d + (%d) -> %d", fChangeBits, bits, fChangeBits | bits);
+
+      if (fChangeBits == 0)
+      {
+         fScene->SceneElementChanged(this);
+      }
+
       fChangeBits |= bits;
-      fScene->SceneElementChanged(this);
    }
 }
 
@@ -1506,7 +1476,7 @@ Int_t REveElement::WriteCoreJson(nlohmann::json &j, Int_t rnr_offset)
    j["fElementId"] = GetElementId();
    j["fMotherId"]  = get_mother_id();
    j["fSceneId"]   = get_scene_id();
-   j["fMasterId"]  = GetMaster()->GetElementId();
+   j["fMasterId"]  = GetSelectionMaster()->GetElementId();
 
    j["fRnrSelf"]     = GetRnrSelf();
    j["fRnrChildren"] = GetRnrChildren();
