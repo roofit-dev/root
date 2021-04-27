@@ -16,12 +16,14 @@
 #ifndef ROO_DATA_SET
 #define ROO_DATA_SET
 
-class TDirectory ;
-class RooAbsRealLValue ;
-class RooRealVar ;
-class RooDataHist ;
+class TDirectory;
+class RooAbsRealLValue;
+class RooRealVar;
+class RooDataHist;
+
 #include "RooAbsData.h"
 #include "RooDirItem.h"
+#include <list>
 
 
 #define USEMEMPOOLFORDATASET
@@ -150,9 +152,9 @@ protected:
   
   // Cache copy feature is not publicly accessible
   RooAbsData* reduceEng(const RooArgSet& varSubset, const RooFormulaVar* cutVar, const char* cutRange=0, 
-	                Int_t nStart=0, Int_t nStop=2000000000, Bool_t copyCache=kTRUE) override;
+	                std::size_t nStart=0, std::size_t nStop = std::numeric_limits<std::size_t>::max(), Bool_t copyCache=kTRUE) override;
   RooDataSet(const char *name, const char *title, RooDataSet *ntuple, 
-	     const RooArgSet& vars, const RooFormulaVar* cutVar, const char* cutRange, int nStart, int nStop, Bool_t copyCache, const char* wgtVarName=0);
+	     const RooArgSet& vars, const RooFormulaVar* cutVar, const char* cutRange, std::size_t nStart, std::size_t nStop, Bool_t copyCache, const char* wgtVarName=0);
   
   RooArgSet addWgtVar(const RooArgSet& origVars, const RooAbsArg* wgtVar) ; 
   

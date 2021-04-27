@@ -22,7 +22,6 @@
 #include "TDatime.h"
 #include "TTimeStamp.h"
 #include "TROOT.h"
-#include "TClass.h"
 #include "TMath.h"
 #include <time.h>
 #include <cassert>
@@ -242,6 +241,18 @@ void TAxis::Copy(TObject &obj) const
       axis.fModLabs->Delete();
       delete axis.fModLabs;
       axis.fModLabs = 0;
+   }
+   if (fModLabs) {
+      TIter next(fModLabs);
+      TAxisModLab *modlabel;
+      if(! axis.fModLabs) {
+         axis.fModLabs = new TList();
+      }
+      while( (modlabel=(TAxisModLab*)next()) ) {
+         TAxisModLab *copyModLabel = new TAxisModLab(*modlabel);
+         axis.fModLabs->Add(copyModLabel);
+         copyModLabel->SetUniqueID(modlabel->GetUniqueID());
+      }
    }
 }
 
