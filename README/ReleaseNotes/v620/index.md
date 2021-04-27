@@ -62,7 +62,7 @@ instead of the splash screen. The splash screen can still be seen with `root -a`
 or in `TBrowser` by opening `Browser Help → About ROOT`.
 
 ## Deprecation and Removal
- * rootcling flags `-cint`, `-gccxml`, `-p` and `-c` have no effect
+ * rootcling flags `-cint`, `-gccxml`, `-p`, `-r` and `-c` have no effect
    and will be removed. Please remove them from the rootcling invocations.
  * rootcling legacy cint flags `+P`, `+V` and `+STUB` have no effect and will be
    removed. Please remove them from the rootcling invocations.
@@ -73,6 +73,7 @@ or in `TBrowser` by opening `Browser Help → About ROOT`.
    the warning will become a hard error in the next releases.
  * The empty headers `Gtypes.h` and `Htypes.h` are deprecated. Please include
    `Rtypes.h`
+ * TInterpreter::EnableAutoLoading currently does nothing and is deprecated.
 
 ### Deprecated packages
 

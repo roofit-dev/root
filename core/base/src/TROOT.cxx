@@ -71,7 +71,6 @@ of a main program creating an interactive version is shown below:
 #include "RConfigOptions.h"
 #include "RVersion.h"
 #include "RGitCommit.h"
-
 #include <string>
 #include <map>
 #include <stdlib.h>
@@ -628,7 +627,8 @@ namespace Internal {
 #endif
    }
 
-}
+
+} // end of ROOT namespace
 
 TROOT *ROOT::Internal::gROOTLocal = ROOT::GetROOT();
 
@@ -924,14 +924,15 @@ TROOT::~TROOT()
 
       // ATTENTION!!! Order is important!
 
-#ifdef R__COMPLETE_MEM_TERMINATION
       SafeDelete(fBrowsables);
 
       // FIXME: Causes rootcling to deadlock, debug and uncomment
       // SafeDelete(fRootFolder);
 
+#ifdef R__COMPLETE_MEM_TERMINATION
       fSpecials->Delete();   SafeDelete(fSpecials);    // delete special objects : PostScript, Minuit, Html
 #endif
+
       fClosedObjects->Delete("slow"); // and closed files
       fFiles->Delete("slow");       // and files
       SafeDelete(fFiles);
@@ -948,9 +949,7 @@ TROOT::~TROOT()
       fFunctions->Delete();  SafeDelete(fFunctions);   // etc..
       fGeometries->Delete(); SafeDelete(fGeometries);
       fBrowsers->Delete();   SafeDelete(fBrowsers);
-#ifdef R__COMPLETE_MEM_TERMINATION
       SafeDelete(fCanvases);
-#endif
       fColors->Delete();     SafeDelete(fColors);
       fStyles->Delete();     SafeDelete(fStyles);
 
@@ -1019,16 +1018,14 @@ TROOT::~TROOT()
       //
       //    delete fInterpreter;
 
+      // We cannot delete fCleanups because of the logic in atexit which needs it.
       SafeDelete(fCleanups);
 #endif
 
-      // llvm::TimingGroup used for measuring the timing relies the destructors.
-      // In order to make use of this feature we have to call the destructor of
-      // TCling which will shut down clang, cling and llvm.
-      // gSystem->Getenv is not available anymore.
-      if (::getenv("ROOT_CLING_TIMING"))
-         delete fInterpreter;
-
+#ifndef _MSC_VER
+      // deleting the interpreter makes things crash at exit in some cases
+      delete fInterpreter;
+#endif
 
       // Prints memory stats
       TStorage::PrintStatistics();
@@ -2145,11 +2142,6 @@ void TROOT::InitInterpreter()
    GetModuleHeaderInfoBuffer().clear();
 
    fInterpreter->Initialize();
-
-   // Read the rules before enabling the auto loading to not inadvertently
-   // load the libraries for the classes concerned even-though the user is
-   // *not* using them.
-   TClass::ReadRules(); // Read the default customization rules ...
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2853,6 +2845,13 @@ Int_t TROOT::IncreaseDirLevel()
 void TROOT::IndentLevel()
 {
    for (int i = 0; i < fgDirLevel; i++) std::cout.put(' ');
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Initialize ROOT explicitly.
+
+void TROOT::Initialize() {
+   (void) gROOT;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

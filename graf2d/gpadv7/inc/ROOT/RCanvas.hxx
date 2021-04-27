@@ -115,7 +115,7 @@ public:
    void Run(double tm = 0.);
 
    /// Save canvas in image file
-   void SaveAs(const std::string &filename, bool async = false, CanvasCallback_t callback = nullptr);
+   bool SaveAs(const std::string &filename);
 
    /// Get the canvas's title.
    const std::string &GetTitle() const { return fTitle; }

@@ -42,12 +42,11 @@ sap.ui.define(['sap/ui/core/Component',
          var toolbar = this.byId("otb1");
 
          this.commands = cmds;
-         var pthis = this;
-         for (var k=cmds.length-1;k>=0;--k) {
+         for (var k = cmds.length-1; k>=0; --k) {
             var btn = new mButton({
                icon: cmds[k].icon,
                tooltip: cmds[k].name,
-               press: pthis.executeCommand.bind(pthis, cmds[k])
+               press: this.executeCommand.bind(this, cmds[k])
             });
             toolbar.insertContentLeft(btn, 0);
          }
@@ -61,7 +60,7 @@ sap.ui.define(['sap/ui/core/Component',
          if (name.indexOf(" ")>0) name = name.substr(0, name.indexOf(" "));
 
          // FIXME: one need better way to deliver parameters to the selected view
-         JSROOT.$eve7tmp = { mgr: this.mgr, elementid: elem.fElementId, kind: elem.view_kind };
+         JSROOT.$eve7tmp = { mgr: this.mgr, eveViewerId: elem.fElementId, kind: elem.view_kind };
 
          var oRouter = UIComponent.getRouterFor(this);
          oRouter.navTo("View", { viewName: name });
@@ -114,7 +113,7 @@ sap.ui.define(['sap/ui/core/Component',
                return new sap.ui.xmlview({
                   id: viewid,
                   viewName: vtype,
-                  viewData: { mgr: main.mgr, elementid: elem.fElementId, kind: elem.view_kind },
+                  viewData: { mgr: main.mgr, eveViewerId: elem.fElementId, kind: elem.view_kind },
                   layoutData: oLd
                });
             });
@@ -201,11 +200,8 @@ sap.ui.define(['sap/ui/core/Component',
             return;
          }
 
-         var obj = { "mir": cmd.func, "fElementId": cmd.elementid, "class": cmd.elementclass };
-         // only for real connections send commands to server
-         // only with NextEvent command meaningful handling is possible
-         if ((this.mgr.handle.kind != "file") || (cmd.name == "NextEvent"))
-            this.mgr.SendMIR(obj);
+         this.mgr.SendMIR(cmd.func, cmd.elementid, cmd.elementclass);
+
          if ((cmd.name == "QuitRoot") && window) {
              window.close();
          }

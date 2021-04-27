@@ -18,6 +18,7 @@
 #include <ROOT/REveClient.hxx>
 #include <ROOT/REveGeomViewer.hxx>
 #include <ROOT/RWebWindow.hxx>
+#include <ROOT/RLogger.hxx>
 
 #include "TGeoManager.h"
 #include "TObjString.h"
@@ -28,7 +29,6 @@
 #include "TMacro.h"
 #include "TFolder.h"
 #include "TSystem.h"
-#include "TRint.h"
 #include "TEnv.h"
 #include "TColor.h"
 #include "TPluginManager.h"
@@ -45,15 +45,21 @@
 using namespace ROOT::Experimental;
 namespace REX = ROOT::Experimental;
 
-REveManager* REX::gEve = 0;
-
-
+REveManager *REX::gEve = nullptr;
 
 
 /** \class REveManager
 \ingroup REve
 Central application manager for Eve.
 Manages elements, GUI, GL scenes and GL viewers.
+
+Following parameters can be specified in .rootrc file
+
+WebEve.GLViewer:  Three  # kind of GLViewer, either Three, JSRoot or RCore
+WebEve.DisableShow:   1  # do not start new web browser when REveManager::Show is called
+WebEve.HTimeout:     200 # timeout in ms for elements highlight
+WebEve.DblClick:    Off  # mouse double click handling in GL viewer: Off or Reset
+WebEve.TableRowHeight: 33  # size of each row in pixels in the Table view, can be used to make design more compact
 */
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -139,6 +145,12 @@ REveManager::REveManager() : // (Bool_t map_window, Option_t* opt) :
 
    fWebWindow = RWebWindow::Create();
    fWebWindow->SetDefaultPage("file:rootui5sys/eve7/index.html");
+
+   const char *gl_viewer = gEnv->GetValue("WebEve.GLViewer", "Three");
+   const char *gl_dblclick = gEnv->GetValue("WebEve.DblClick", "Off");
+   Int_t htimeout = gEnv->GetValue("WebEve.HTimeout", 250);
+   Int_t table_row_height = gEnv->GetValue("WebEve.TableRowHeight", 0);
+   fWebWindow->SetUserArgs(Form("{ GLViewer: \"%s\", DblClick: \"%s\", HTimeout: %d, TableRowHeight: %d }", gl_viewer, gl_dblclick, htimeout, table_row_height));
 
    // this is call-back, invoked when message received via websocket
    fWebWindow->SetCallBacks([this](unsigned connid) { WindowConnect(connid); },
@@ -232,7 +244,7 @@ void REveManager::DoRedraw3D()
 {
    static const REveException eh("REveManager::DoRedraw3D ");
    nlohmann::json jobj = {};
-   
+
    jobj["content"] = "BeginChanges";
    fWebWindow->Send(0, jobj.dump());
 
@@ -340,6 +352,20 @@ next_free_id:
    fElementIdMap.insert(std::make_pair(fLastElementId, element));
    ++fNumElementIds;
 }
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Activate EVE browser (summary view) for specified element id
+
+void REveManager::BrowseElement(ElementId_t id)
+{
+   nlohmann::json msg = {};
+   msg["content"] = "BrowseElement";
+   msg["id"] = id;
+
+   fWebWindow->Send(0, msg.dump());
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Called from REveElement prior to its destruction so the
@@ -798,35 +824,43 @@ void REveManager::WindowData(unsigned connid, const std::string &arg)
    static const REveException eh("REveManager::WindowData ");
 
    // find connection object
-   auto conn = fConnList.end();
-   for (auto i = fConnList.begin(); i != fConnList.end(); ++i)
-   {
-      if (i->fId == connid)
-      {
-         conn = i;
+   bool found = false;
+   for (auto &conn : fConnList) {
+      if (conn.fId == connid) {
+         found = true;
          break;
       }
    }
    // this should not happen, just check
-   if (conn == fConnList.end()) {
-      printf("error, connection not found!");
+   if (!found) {
+      R__ERROR_HERE("webeve") << "Internal error - no connection with id " << connid << " found";
       return;
+   }
+
+   nlohmann::json cj = nlohmann::json::parse(arg);
+   if (gDebug > 0)
+      ::Info("REveManager::WindowData", "MIR test %s", cj.dump().c_str());
+   std::string mir = cj["mir"];
+   int id = cj["fElementId"];
+
+   // MIR
+   std::stringstream cmd;
+
+   if (id == 0) {
+      cmd << "((ROOT::Experimental::REveManager *)" << std::hex << std::showbase << (size_t) this << ")->" << mir << ";";
+   } else {
+      auto el = FindElementById(id);
+      if (!el) {
+         R__ERROR_HERE("webeve") << "Element with id " << id << " not found";
+         return;
+      }
+      std::string ctype = cj["class"];
+      cmd << "((" << ctype << "*)" << std::hex << std::showbase << (size_t)el << ")->" << mir << ";";
    }
 
    fWorld->BeginAcceptingChanges();
    fScenes->AcceptChanges(true);
 
-   // MIR
-   nlohmann::json cj = nlohmann::json::parse(arg);
-   if (gDebug > 0)
-      ::Info("REveManager::WindowData", "MIR test %s", cj.dump().c_str());
-   std::string mir = cj["mir"];
-   std::string ctype = cj["class"];
-   int id = cj["fElementId"];
-
-   auto el = FindElementById(id);
-   std::stringstream cmd;
-   cmd << "((" << ctype << "*)" << std::hex << std::showbase << (size_t)el << ")->" << mir << ";";
    if (gDebug > 0)
       ::Info("REveManager::WindowData", "MIR cmd %s", cmd.str().c_str());
    gROOT->ProcessLine(cmd.str().c_str());

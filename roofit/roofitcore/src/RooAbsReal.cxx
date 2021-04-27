@@ -227,7 +227,7 @@ Bool_t RooAbsReal::operator==(Double_t value) const
 /// Equality operator when comparing to another RooAbsArg.
 /// Only functional when the other arg is a RooAbsReal
 
-Bool_t RooAbsReal::operator==(const RooAbsArg& other)
+Bool_t RooAbsReal::operator==(const RooAbsArg& other) const
 {
   const RooAbsReal* otherReal = dynamic_cast<const RooAbsReal*>(&other) ;
   return otherReal ? operator==(otherReal->getVal()) : kFALSE ;
@@ -236,13 +236,13 @@ Bool_t RooAbsReal::operator==(const RooAbsArg& other)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Bool_t RooAbsReal::isIdentical(const RooAbsArg& other, Bool_t assumeSameType)
+Bool_t RooAbsReal::isIdentical(const RooAbsArg& other, Bool_t assumeSameType) const
 {
   if (!assumeSameType) {
     const RooAbsReal* otherReal = dynamic_cast<const RooAbsReal*>(&other) ;
     return otherReal ? operator==(otherReal->getVal()) : kFALSE ;
   } else {
-    return getVal()==((RooAbsReal&)other).getVal() ;
+    return getVal() == static_cast<const RooAbsReal&>(other).getVal();
   }
 }
 
@@ -906,17 +906,15 @@ const RooAbsReal* RooAbsReal::createPlotProjection(const RooArgSet& depVars, con
 /// where \f$ F[x,y,p] \f$ is the function we represent, and
 /// \f$ \{ p \} \f$ are the remaining variables ("parameters").
 ///
-/// \param[in] dependentVars Dependent variables over which to normalise, \f$ \{x\} \f$
-/// \param[in] projectedVars Variables to project out, \f$ \{ y \} \f$
+/// \param[in] dependentVars Dependent variables over which to normalise, \f$ \{x\} \f$.
+/// \param[in] projectedVars Variables to project out, \f$ \{ y \} \f$.
 /// \param[out] cloneSet Will be set to a RooArgSet*, which will contain a clone of *this plus its projection integral object.
 /// The latter will also be returned. The caller takes ownership of this set.
 /// \param[in] rangeName Optional range for projection integrals
 /// \param[in] condObs Conditional observables, which are not integrated for normalisation, even if they
-/// are in `dependentVars` or `projectedVars`
-/// \return A pointer to the newly created object, or else zero in case of an
-/// error. The caller is responsible for deleting the contents of
-/// cloneSet (which includes the returned projection object)
-
+/// are in `dependentVars` or `projectedVars`.
+/// \return A pointer to the newly created object, or zero in case of an
+/// error. The caller is responsible for deleting the `cloneSet` (which includes the returned projection object).
 const RooAbsReal *RooAbsReal::createPlotProjection(const RooArgSet &dependentVars, const RooArgSet *projectedVars,
 						   RooArgSet *&cloneSet, const char* rangeName, const RooArgSet* condObs) const
 {
@@ -930,51 +928,41 @@ const RooAbsReal *RooAbsReal::createPlotProjection(const RooArgSet &dependentVar
   // Check that the dependents are all fundamental. Filter out any that we
   // do not depend on, and make substitutions by name in our leaf list.
   // Check for overlaps with the projection variables.
-
-  TIterator *dependentIterator= dependentVars.createIterator();
-  assert(0 != dependentIterator);
-  const RooAbsArg *arg = 0;
-  while((arg= (const RooAbsArg*)dependentIterator->Next())) {
+  for (const auto arg : dependentVars) {
     if(!arg->isFundamental() && !dynamic_cast<const RooAbsLValue*>(arg)) {
       coutE(Plotting) << ClassName() << "::" << GetName() << ":createPlotProjection: variable \"" << arg->GetName()
-	   << "\" of wrong type: " << arg->ClassName() << endl;
-      delete dependentIterator;
+	       << "\" of wrong type: " << arg->ClassName() << endl;
       return 0;
     }
 
     RooAbsArg *found= treeNodes.find(arg->GetName());
     if(!found) {
       coutE(Plotting) << ClassName() << "::" << GetName() << ":createPlotProjection: \"" << arg->GetName()
-		      << "\" is not a dependent and will be ignored." << endl;
+		          << "\" is not a dependent and will be ignored." << endl;
       continue;
     }
     if(found != arg) {
       if (leafNodes.find(found->GetName())) {
-	leafNodes.replace(*found,*arg);
+        leafNodes.replace(*found,*arg);
       } else {
-	leafNodes.add(*arg) ;
+        leafNodes.add(*arg) ;
 
-	// Remove any dependents of found, replace by dependents of LV node
-	RooArgSet* lvDep = arg->getObservables(&leafNodes) ;
-	RooAbsArg* lvs ;
-	TIterator* iter = lvDep->createIterator() ;
-	while((lvs=(RooAbsArg*)iter->Next())) {
-	  RooAbsArg* tmp = leafNodes.find(lvs->GetName()) ;
-	  if (tmp) {
-	    leafNodes.remove(*tmp) ;
-	    leafNodes.add(*lvs) ;
-	  }
-	}
-	delete iter ;
-
+        // Remove any dependents of found, replace by dependents of LV node
+        RooArgSet* lvDep = arg->getObservables(&leafNodes) ;
+        for (const auto lvs : *lvDep) {
+          RooAbsArg* tmp = leafNodes.find(lvs->GetName()) ;
+          if (tmp) {
+            leafNodes.remove(*tmp) ;
+            leafNodes.add(*lvs) ;
+          }
+        }
       }
     }
 
     // check if this arg is also in the projection set
     if(0 != projectedVars && projectedVars->find(arg->GetName())) {
       coutE(Plotting) << ClassName() << "::" << GetName() << ":createPlotProjection: \"" << arg->GetName()
-		      << "\" cannot be both a dependent and a projected variable." << endl;
-      delete dependentIterator;
+		          << "\" cannot be both a dependent and a projected variable." << endl;
       return 0;
     }
   }
@@ -1027,7 +1015,6 @@ const RooAbsReal *RooAbsReal::createPlotProjection(const RooArgSet &dependentVar
     projectedVars->printStream(cout,kName|kArgs,kSingleLine);
     // cleanup and exit
     if(0 != projected) delete projected;
-    delete dependentIterator;
     return 0;
   }
 
@@ -1040,9 +1027,6 @@ const RooAbsReal *RooAbsReal::createPlotProjection(const RooArgSet &dependentVar
 
   // Add the projection integral to the cloneSet so that it eventually gets cleaned up by the caller.
   cloneSet->addOwned(*projected);
-
-  // cleanup
-  delete dependentIterator;
 
   // return a const pointer to remind the caller that they do not delete the returned object
   // directly (it is contained in the cloneSet instead).
