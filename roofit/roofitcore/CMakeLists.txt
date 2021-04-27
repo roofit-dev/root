@@ -267,6 +267,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         MultiProcess/util.h
         MultiProcess/zmq.hxx
     RooHelpers.h
+    RooSpan.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -525,4 +526,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
 
 if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)
+endif()
+
+if(builtin_vdt)
+#  target_link_libraries(RooFitCore PUBLIC $<INSTALL_INTERFACE:vdt>)
+  target_include_directories(RooFitCore PUBLIC $<INSTALL_INTERFACE:include>)
+elseif(vdt)
+#  target_link_libraries(RooFitCore PUBLIC ${VDT_LIBRARIES})
+  target_include_directories(RooFitCore PUBLIC ${VDT_INCLUDE_DIRS})
 endif()
