@@ -88,7 +88,6 @@
 
 #include "RooHelpers.h"
 #include "RooRealBinding.h"
-#include "BatchHelpers.h"
 #include "RunContext.h"
 
 #include "Math/Integrator.h"
@@ -154,7 +153,7 @@ double RooBinSamplingPdf::evaluate() const {
 /// Integrate the PDF over all its bins, and return a batch with those values.
 /// \param[in/out] evalData Struct with evaluation data.
 /// \param[in] normSet Normalisation set that's used to evaluate the PDF.
-RooSpan<double> RooBinSamplingPdf::evaluateSpan(BatchHelpers::RunContext& evalData, const RooArgSet* normSet) const {
+RooSpan<double> RooBinSamplingPdf::evaluateSpan(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const {
   // Retrieve binning, which we need to compute the probabilities
   auto boundaries = binBoundaries();
   auto xValues = _observable->getValues(evalData, normSet);
@@ -223,7 +222,7 @@ std::list<double>* RooBinSamplingPdf::binBoundaries(RooAbsRealLValue& obs, Doubl
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return a list of all bin centres, so the PDF is plotted correctly.
+/// Return a list of all bin edges, so the PDF is plotted as a step function.
 /// \param[in] obs Observable to generate the sampling hint for.
 /// \param[in] xlo Beginning of range to create sampling hint for.
 /// \param[in] xhi End of range to create sampling hint for.
@@ -235,19 +234,24 @@ std::list<double>* RooBinSamplingPdf::plotSamplingHint(RooAbsRealLValue& obs, Do
     return nullptr;
   }
 
-  auto binCentres = new std::list<double>;
+  auto binEdges = new std::list<double>;
   const auto& binning = obs.getBinning();
-  binCentres->push_back(xlo);
 
-  for (unsigned int bin=0; bin < static_cast<unsigned int>(binning.numBins()); ++bin) {
-    const double centre = binning.binCenter(bin);
+  for (unsigned int bin=0, numBins = static_cast<unsigned int>(binning.numBins()); bin < numBins; ++bin) {
+    const double low  = std::max(binning.binLow(bin), xlo);
+    const double high = std::min(binning.binHigh(bin), xhi);
+    const double width = high - low;
 
-    if (xlo <= centre && centre < xhi)
-      binCentres->push_back(centre);
+    // Check if this bin is in plotting range at all
+    if (low >= high)
+      continue;
+
+    // Move support points slightly inside the bin, so step function is plotted correctly.
+    binEdges->push_back(low  + 0.001 * width);
+    binEdges->push_back(high - 0.001 * width);
   }
-  binCentres->push_back(xhi);
 
-  return binCentres;
+  return binEdges;
 }
 
 
