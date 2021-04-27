@@ -166,8 +166,8 @@ macro(REFLEX_GENERATE_DICTIONARY dictionary)
 
   set(include_dirs -I${CMAKE_CURRENT_SOURCE_DIR})
   get_directory_property(incdirs INCLUDE_DIRECTORIES)
-  foreach( d ${incdirs})
-    if(NOT "${d}" MATCHES "AFTER|BEFORE|INTERFACE|PRIVATE|PUBLIC|SYSTEM")
+  foreach(d ${incdirs})
+    if(NOT "${d}" MATCHES "^(AFTER|BEFORE|INTERFACE|PRIVATE|PUBLIC|SYSTEM)$")
       set(include_dirs ${include_dirs} -I${d})
     endif()
   endforeach()
@@ -366,6 +366,13 @@ function(ROOT_GENERATE_DICTIONARY dictionary)
       set(cpp_module ${ARG_MODULE})
       if(runtime_cxxmodules)
         set(cpp_module_file ${library_output_dir}/${cpp_module}.pcm)
+        if (APPLE)
+          # FIXME: Krb5Auth.h triggers "declaration of '__mb_cur_max' has a different language linkage"
+          # problem.
+          if (${cpp_module} MATCHES "(Krb5Auth|GCocoa|GQuartz)")
+            set(cpp_module_file)
+          endif()
+        endif(APPLE)
       endif()
     endif()
   else()
@@ -466,7 +473,7 @@ function(ROOT_GENERATE_DICTIONARY dictionary)
   if(cpp_module)
     ROOT_CXXMODULES_APPEND_TO_MODULEMAP("${cpp_module}" "${headerfiles}")
   endif()
-endfunction()
+endfunction(ROOT_GENERATE_DICTIONARY)
 
 #---------------------------------------------------------------------------------------------------
 #---ROOT_CXXMODULES_APPEND_TO_MODULEMAP( library library_headers )
@@ -488,14 +495,6 @@ function (ROOT_CXXMODULES_APPEND_TO_MODULEMAP library library_headers)
                     FILTER "LinkDef" ${d}/*)
     list(APPEND found_headers "${dir_headers}")
   endforeach()
-
-  if (APPLE)
-    # FIXME: Krb5Auth.h triggers "declaration of '__mb_cur_max' has a different language linkage"
-    # problem.
-    if (${library} MATCHES "Krb5Auth" OR ${library} MATCHES "(GCocoa|GQuartz)")
-      return()
-    endif()
-  endif(APPLE)
 
   set(excluded_headers RConfig.h RVersion.h RtypesImp.h
                         RtypesCore.h TClassEdit.h
