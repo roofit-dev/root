@@ -19,7 +19,12 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                'sap/ui/layout/SplitterLayoutData',
                'sap/ui/codeeditor/CodeEditor',
                'sap/m/HBox',
-               'sap/m/Image'
+               'sap/m/Image',
+               'sap/tnt/ToolHeader',
+               'sap/m/ToolbarSpacer',
+               'sap/m/OverflowToolbarLayoutData',
+               'sap/m/Dialog',
+               'rootui5/browser/controller/FileDialog.controller'
 ],function(Controller,
            Link,
            Fragment,
@@ -41,7 +46,12 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
            SplitterLayoutData,
            CodeEditor,
            HBox,
-           Image) {
+           Image,
+           ToolHeader,
+           ToolbarSpacer,
+           OverflowToolbarLayoutData,
+           Dialog,
+           FileDialogController) {
 
 
    "use strict";
@@ -52,8 +62,35 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
    return Controller.extend("rootui5.browser.controller.Browser", {
       onInit: async function () {
 
+         let pthis = this;
+         let burgerMenu = pthis.getView().byId("burgerMenu");
+
+         sap.ui.Device.orientation.attachHandler((mParams) => {
+            burgerMenu.detachPress(pthis.onFullScreenPressLandscape, pthis);
+            burgerMenu.detachPress(pthis.onFullScreenPressPortrait, pthis);
+
+            if (mParams.landscape) {
+               burgerMenu.attachPress(pthis.onFullScreenPressLandscape, pthis);
+               this.getView().byId('expandMaster').setVisible(true);
+            } else {
+               burgerMenu.attachPress(pthis.onFullScreenPressPortrait, pthis);
+
+               this.getView().byId('masterPage').getParent().removeStyleClass('masterExpanded');
+               this.getView().byId('expandMaster').setVisible(false);
+               this.getView().byId('shrinkMaster').setVisible(false);
+            }
+         });
+
+         if(sap.ui.Device.orientation.landscape) {
+            burgerMenu.attachPress(pthis.onFullScreenPressLandscape, pthis);
+         } else {
+            burgerMenu.attachPress(pthis.onFullScreenPressPortrait, pthis);
+            this.getView().byId('expandMaster').setVisible(false);
+         }
+
         this.globalId = 1;
         this.nextElem = "";
+        this.DBLCLKRun = false;
 
          this.websocket = this.getView().getViewData().conn_handle;
 
@@ -202,42 +239,44 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       },
 
       newCodeEditorFragment: function (ID) {
-         return new Splitter({
-            orientation: "Vertical",
-            contentAreas: [
-               new Toolbar({
+         return [
+               new ToolHeader({
+                  height: "40px",
                   content: [
-                     new FileUploader({
-                        change: [this.onChangeFile, this]
+                     new Button(ID + "Run", {
+                        text: "Run",
+                        tooltip: "Run Current Macro",
+                        icon: "sap-icon://play",
+                        type: "Transparent",
+                        enabled: false,
+                        press: [this.onRunMacro, this]
+                     }),
+                     new ToolbarSpacer({
+                        layoutData: new OverflowToolbarLayoutData({
+                           priority:"NeverOverflow",
+                           minWidth: "16px"
+                        })
                      }),
                      new Button(ID + "SaveAs", {
                         text: "Save as...",
                         tooltip: "Save current file as...",
+                        type: "Transparent",
                         press: [this.onSaveAs, this]
                      }),
                      new Button(ID + "Save", {
                         text: "Save",
                         tooltip: "Save current file",
+                        type: "Transparent",
                         press: [this.onSaveFile, this]
-                     }),
-                     new Button(ID + "Run", {
-                        text: "Run",
-                        tooltip: "Run Current Macro",
-                        icon: "sap-icon://play",
-                        enabled: false,
-                        press: [this.onRunMacro, this]
-                     }),
-                  ],
-                  layoutData: new SplitterLayoutData({
-                     size: "35px",
-                     resizable: false
-                  })
+                     })
+                  ]
                }),
                new CodeEditor(ID + "Editor", {
-                  height: "100%",
+                  // height: 'auto',
                   colorTheme: "default",
                   type: "c_cpp",
                   value: "{/code}",
+                  height: "calc(100% - 40px)",
                   change: function () {
                      this.getModel().setProperty("/modified", true);
                   }
@@ -248,21 +287,29 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                   fullpath: "",
                   modified: false
                }))
-            ]
-         });
+            ];
       },
 
-      /** @brief Handle the "Save As..." button press event */
-      onSaveAs: function () {
+      /** @brief Invoke dialog with server side code */
+      onSaveAs: function() {
+
          const oEditor = this.getSelectedCodeEditor();
-         const oModel = oEditor.getModel();
-         const sText = oModel.getProperty("/code");
-         let filename = oModel.getProperty("/filename");
-         let ext = oModel.getProperty("/ext");
-         if (filename === undefined) filename = "untitled";
-         if (ext === undefined) ext = "txt";
-         File.save(sText, filename, ext);
-         oModel().setProperty("/modified", false);
+
+         FileDialogController.SaveAs({
+            websocket: this.websocket,
+            filename: oEditor.getModel().getProperty("/fullpath"),
+            title: "Select file name to save",
+            filter: "Any files",
+            filters: ["Text files (*.txt)", "C++ files (*.cxx *.cpp *.c)", "Any files (*)"],
+            onOk: function(fname) {
+               this.setFileNameType(oEditor, fname);
+               const sText = oEditor.getModel().getProperty("/code");
+               oEditor.getModel().setProperty("/modified", false);
+               this.websocket.Send("SAVEFILE:" + JSON.stringify([fname, sText]));
+            }.bind(this),
+            onCancel: function() { },
+            onFailure: function() { }
+         });
       },
 
       /** @brief Handle the "Save" button press event */
@@ -271,11 +318,10 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          const oModel = oEditor.getModel();
          const sText = oModel.getProperty("/code");
          const fullpath = oModel.getProperty("/fullpath");
-         if (fullpath === undefined) {
+         if (!fullpath)
             return onSaveAs();
-         }
          oModel.setProperty("/modified", false);
-         return this.websocket.Send("SAVEFILE:" + fullpath + ":" + sText);
+         return this.websocket.Send("SAVEFILE:" + JSON.stringify([fullpath, sText]));
       },
 
       reallyRunMacro: function () {
@@ -321,19 +367,22 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             return sap.ui.getCore().byId(oTabItemString + "Editor");
          } else {
             if (!no_warning) MessageToast.show("Sorry, you need to select a code editor tab", {duration: 1500});
-            return -1;
          }
       },
 
       /** @brief Extract the file name and extension
        * @desc Used to set the editor's model properties and display the file name on the tab element  */
-      setFileNameType: function (filename) {
-         let oEditor = this.getSelectedCodeEditor();
+      setFileNameType: function (oEditor, fullname) {
          let oModel = oEditor.getModel();
-         let oTabElement = oEditor.getParent().getParent();
+         let oTabElement = oEditor.getParent();
          let ext = "txt";
          let runButton = this.getElementFromCurrentTab("Run");
          runButton.setEnabled(false);
+
+         let filename = fullname;
+         let p = Math.max(filename.lastIndexOf("/"), filename.lastIndexOf("\\"));
+         if (p>0) filename = filename.substr(p+1);
+
          if (filename.lastIndexOf('.') > 0)
             ext = filename.substr(filename.lastIndexOf('.') + 1);
 
@@ -384,9 +433,6 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             case "sh":
                oEditor.setType('sh');
                break;
-            case "md":
-               oEditor.setType('markdown');
-               break;
             case "xml":
                oEditor.setType('xml');
                break;
@@ -396,10 +442,14 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                else
                   return false;
                break;
+
          }
          oTabElement.setAdditionalText(filename);
+
          if (filename.lastIndexOf('.') > 0)
             filename = filename.substr(0, filename.lastIndexOf('.'));
+
+         oModel.setProperty("/fullpath", fullname);
          oModel.setProperty("/filename", filename);
          oModel.setProperty("/ext", ext);
          return true;
@@ -408,13 +458,14 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /** @brief Handle the "Browse..." button press event */
       onChangeFile: function (oEvent) {
          let oEditor = this.getSelectedCodeEditor();
-         let oModel = oEditor.getModel();
+         if (!oEditor) return;
+
          let oReader = new FileReader();
          oReader.onload = function () {
-            oModel.setProperty("/code", oReader.result);
+            oEditor.getModel().setProperty("/code", oReader.result);
          };
          let file = oEvent.getParameter("files")[0];
-         if (this.setFileNameType(file.name))
+         if (this.setFileNameType(oEditor, file.name))
             oReader.readAsText(file);
       },
 
@@ -427,17 +478,16 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /* ============================================ */
 
       newImageViewerFragment: function (ID) {
-         return new HBox({
-            alignContent: "Center",
-            alignItems: "Center",
-            justifyContent: "Center",
-            height: "100%",
-            width: "100%",
-            items: new Image(ID + "Image", {
+         return new sap.m.Page({
+            showNavButton: false,
+            showFooter: false,
+            showSubHeader: false,
+            showHeader: false,
+            content: new Image(ID + "Image", {
                src: "",
                densityAware: false
             })
-         })
+         });
       },
 
       newImageViewer: async function () {
@@ -455,18 +505,17 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
          oTabContainer.addItem(tabContainerItem);
          oTabContainer.setSelectedItem(tabContainerItem);
+
+         sap.ui.getCore().byId(ID + 'Image').addStyleClass("imageViewer");
       },
 
       getSelectedImageViewer: function (no_warning) {
          let oTabItemString = this.getView().byId("myTabContainer").getSelectedItem();
 
-
-         if (oTabItemString.indexOf("ImageViewer") !== -1) {
+         if (oTabItemString.indexOf("ImageViewer") !== -1)
             return sap.ui.getCore().byId(oTabItemString + "Image");
-         }
 
          if (!no_warning) MessageToast.show("Sorry, you need to select an image viewer tab", {duration: 1500});
-         return -1;
       },
 
       /* ============================================ */
@@ -573,6 +622,10 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          this.drawingOptions[graphType] = oEvent.getSource().mProperties.value;
       },
 
+      settingsDBLCLKRun: function(oEvent) {
+         this.DBLCLKRun = oEvent.getSource().getSelected();
+      },
+
       /* ============================================= */
       /* =============== Settings menu =============== */
       /* ============================================= */
@@ -584,7 +637,6 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /** @brief Add Tab event handler */
       addNewButtonPressHandler: async function (oEvent) {
          //TODO: Change to some UI5 function (unknown for now)
-
          let oButton = oEvent.getSource().mAggregations._tabStrip.mAggregations.addButton;
 
          // create action sheet only once
@@ -720,8 +772,6 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
       onTerminalSubmit: function(oEvent) {
          let command = oEvent.getSource().getValue();
-         let url = '/ProcessLine/cmd.json?arg1="' + command + '"';
-         console.log(command);
          this.websocket.Send("CMD:" + command);
          oEvent.getSource().setValue("");
          this.requestRootHist();
@@ -757,6 +807,45 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /* =============== Terminal =============== */
       /* ======================================== */
 
+      /* ========================================== */
+      /* =============== ToolHeader =============== */
+      /* ========================================== */
+
+      onFullScreenPressLandscape: function () {
+         let splitApp = this.getView().byId("SplitAppBrowser");
+         let mode = splitApp.getMode();
+         if(mode === "ShowHideMode") {
+            splitApp.setMode("HideMode");
+         } else {
+            splitApp.setMode("ShowHideMode");
+         }
+      },
+
+      onFullScreenPressPortrait: function () {
+         let splitApp = this.getView().byId("SplitAppBrowser");
+         if(splitApp.isMasterShown()) {
+            splitApp.hideMaster();
+         } else {
+            splitApp.showMaster();
+         }
+      },
+
+      onExpandMaster: function () {
+         this.getView().byId('expandMaster').setVisible(false);
+         this.getView().byId('shrinkMaster').setVisible(true);
+         this.getView().byId('masterPage').getParent().addStyleClass('masterExpanded');
+      },
+
+      onShrinkMaster: function () {
+         this.getView().byId('expandMaster').setVisible(true);
+         this.getView().byId('shrinkMaster').setVisible(false);
+         this.getView().byId('masterPage').getParent().removeStyleClass('masterExpanded');
+      },
+
+      /* ========================================== */
+      /* =============== ToolHeader =============== */
+      /* ========================================== */
+
       /** @brief Assign the "double click" event handler to each row */
       assignRowHandlers: function () {
          var rows = this.byId("treeTable").getRows();
@@ -765,14 +854,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          }
       },
 
-      /** @brief Send RBrowserRequest to the browser */
-      sendBrowserRequest: function (_oper, args) {
-         var req = {path: "", first: 0, number: 0, sort: _oper};
-         JSROOT.extend(req, args);
-         this.websocket.Send("BRREQ:" + JSON.stringify(req));
-      },
-
       sendDblClick: function (fullpath, opt) {
+         if(this.DBLCLKRun) {
+            if(opt !== '$$$editor$$$') {
+               opt = '$$$execute$$$';
+               console.log(fullpath);
+            }
+         }
          this.websocket.Send('DBLCLK: ["' + fullpath + '","' + (opt || "") + '"]');
       },
 
@@ -810,16 +898,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
          // first try to activate editor
          let codeEditor = this.getSelectedCodeEditor(true);
-         if (codeEditor !== -1) {
-            this.nextElem = { fullpath };
-            let filename = fullpath.substr(fullpath.lastIndexOf('/') + 1);
-            if (this.setFileNameType(filename))
+         if (codeEditor) {
+            if (this.setFileNameType(codeEditor, fullpath))
                return this.sendDblClick(fullpath, "$$$editor$$$");
          }
 
          let viewerTab = this.getSelectedImageViewer(true);
-         if (viewerTab !== -1) {
-            this.nextElem = { fullpath };
+         if (viewerTab) {
             return this.sendDblClick(fullpath, "$$$image$$$");
          }
 
@@ -872,19 +957,28 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          case "INMSG":
             this.processInitMsg(msg);
             break;
-         case "FREAD":  // file read
-            let result = this.getSelectedCodeEditor();
-            if (result !== -1) {
-               result.getModel().setProperty("/code", msg);
+         case "FREAD":  // text file read
+            var oEditor = this.getSelectedCodeEditor();
+
+            if (oEditor) {
+               var arr = JSON.parse(msg);
+
+               this.setFileNameType(oEditor, arr[0]);
+
+               oEditor.getModel().setProperty("/code", arr[1]);
+
                this.getElementFromCurrentTab("Save").setEnabled(true);
-               result.getModel().setProperty("/fullpath", this.nextElem.fullpath);
             }
             break;
          case "FIMG":  // image file read
-            const image = this.getSelectedImageViewer(true);
-            if(image !== -1) {
-               image.getParent().getParent().setAdditionalText(this.nextElem.fullpath);
-               image.setSrc(msg);
+            const oViewer = this.getSelectedImageViewer(true);
+            if(oViewer) {
+               var arr = JSON.parse(msg);
+               var filename = arr[0];
+               let p = Math.max(filename.lastIndexOf("/"), filename.lastIndexOf("\\"));
+               if (p>0) filename = filename.substr(p+1);
+               oViewer.getParent().getParent().setAdditionalText(filename);
+               oViewer.setSrc(arr[1]);
             }
             break;
          case "CANVS":  // canvas created by server, need to establish connection
@@ -1073,6 +1167,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             // JSROOT.CallBack(call_back, true);
          });
       },
+
    });
 
 });

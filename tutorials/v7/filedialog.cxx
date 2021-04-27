@@ -15,14 +15,17 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <ROOT/RFileDialog.hxx>
-#include <ROOT/RDirectory.hxx>
-
 // Show how RFileDialog can be used in sync and async modes
 // Normally file dialogs will be used inside other widgets as ui5 dialogs
 // By default, dialog starts in async mode - means macro immediately returns to command line
 // To start OpenFile dialog in sync mode, call `root "filedialog.cxx(1)" -q`.
 // Once file is selected, root execution will be stopped
+
+
+// macro must be here to let macro work on Windows
+R__LOAD_LIBRARY(libROOTBrowserv7)
+
+#include <ROOT/RFileDialog.hxx>
 
 
 using namespace ROOT::Experimental;
@@ -33,24 +36,28 @@ void filedialog(int kind = 0)
 
    // example of sync methods, blocks until name is selected
    switch (kind) {
-      case 1: fileName = RFileDialog::OpenFile("Open file title"); break;
-      case 2: fileName = RFileDialog::SaveAsFile("Save as title"); break;
-      case 3: fileName = RFileDialog::NewFile("New File title"); break;
+      case 1: fileName = RFileDialog::OpenFile("OpenFile title"); break;
+      case 2: fileName = RFileDialog::SaveAs("SaveAs title", "newfile.xml"); break;
+      case 3: fileName = RFileDialog::NewFile("NewFile title", "test.txt"); break;
    }
 
    if (kind > 0) {
-      printf("fileName %s\n", fileName.c_str());
+      printf("Selected file: %s\n", fileName.c_str());
       return;
    }
 
-   auto dialog = std::make_shared<RFileDialog>(RFileDialog::kOpenFile, "Open file (async) title");
-   // add to global list
-   RDirectory::Heap().Add("filedialog", dialog);
+   auto dialog = std::make_shared<RFileDialog>(RFileDialog::kOpenFile, "OpenFile dialog in async mode");
 
-   dialog->SetCallback([](const std::string &res) {
-      printf("Selected %s\n", res.c_str());
-      // remove from global list
-      RDirectory::Heap().Remove("filedialog");
+   dialog->SetNameFilters({ "C++ files (*.cxx *.cpp *.c *.C)", "Image files (*.png *.jpg *.jpeg)", "Text files (*.txt)", "Any files (*)" });
+
+   dialog->SetSelectedFilter("C++ files");
+
+   // use dialog capture to keep reference until file name is selected
+   dialog->SetCallback([dialog](const std::string &res) mutable {
+      printf("Selected file: %s\n", res.c_str());
+
+      // cleanup dialog - actually not needed, lambda is cleaned up after that call anyway
+      // dialog.reset();
    });
 
    dialog->Show();
