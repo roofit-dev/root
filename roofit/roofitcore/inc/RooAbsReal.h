@@ -22,6 +22,8 @@
 #include "RooArgSet.h"
 #include "RooArgList.h"
 #include "RooGlobalFunc.h"
+#include "RooSpan.h"
+#include "BatchData.h"
 
 class RooArgList ;
 class RooDataSet ;
@@ -49,6 +51,11 @@ class TH3F;
 #include <list>
 #include <string>
 #include <iostream>
+#include <sstream>
+
+#ifndef NDEBUG
+#define ROOFIT_CHECK_CACHED_VALUES
+#endif
 
 class RooAbsReal : public RooAbsArg {
 public:
@@ -60,26 +67,42 @@ public:
   RooAbsReal(const RooAbsReal& other, const char* name=0);
   virtual ~RooAbsReal();
 
+
+
+
   //////////////////////////////////////////////////////////////////////////////////
   /// Evaluate object. Returns either cached value or triggers a recalculation.
   /// The recalculation happens by calling getValV(), which in the end calls the
   /// virtual evaluate() functions of the respective PDFs.
   /// \param[in] normalisationSet getValV() reacts differently depending on the value of the normalisation set.
-  /// If the set is `nullptr`, an unnormalised value is returned. To normalise,
-  /// a RooArgSet has to be given that contains the variables. These are integrated
-  /// over their current ranges to compute the normalisation constant.
+  /// If the set is `nullptr`, an unnormalised value is returned.
+  /// \note The normalisation is arbitrary, because it is up to the implementation
+  /// of the PDF to e.g. leave out normalisation constants for speed reasons. The range
+  /// of the variables is also ignored.
+  ///
+  /// To normalise the result properly, a RooArgSet has to be passed, which contains
+  /// the variables to normalise over.
+  /// These are integrated over their current ranges to compute the normalisation constant,
+  /// and the unnormalised result is divided by this value.
+#ifdef ROOFIT_CHECK_CACHED_VALUES
+  Double_t getVal(const RooArgSet* normalisationSet = nullptr) const;
+#else
   inline Double_t getVal(const RooArgSet* normalisationSet = nullptr) const {
-/*     if (_fast && !_inhibitDirty && std::string("RooHistFunc")==IsA()->GetName()) std::cout << "RooAbsReal::getVal(" << GetName() << ") CLEAN value = " << _value << std::endl ;  */
 #ifndef _WIN32
     return (_fast && !_inhibitDirty) ? _value : getValV(normalisationSet) ;
 #else
     return (_fast && !inhibitDirty()) ? _value : getValV(normalisationSet) ;
 #endif
   }
+
+#endif
+
   /// Like getVal(const RooArgSet*), but always requires an argument for normalisation.
   inline  Double_t getVal(const RooArgSet& normalisationSet) const { return _fast ? _value : getValV(&normalisationSet) ; }
 
   virtual Double_t getValV(const RooArgSet* normalisationSet = nullptr) const ;
+
+  virtual RooSpan<const double> getValBatch(std::size_t begin, std::size_t maxSize, const RooArgSet* normSet = nullptr) const;
 
   Double_t getPropagatedError(const RooFitResult &fr, const RooArgSet &nset = RooArgSet());
 
@@ -374,13 +397,38 @@ protected:
 
   // Function evaluation and error tracing
   Double_t traceEval(const RooArgSet* set) const ;
-  virtual Bool_t traceEvalHook(Double_t /*value*/) const { 
-    // Hook function to add functionality to evaluation tracing in derived classes
-    return kFALSE ;
-  }
+//  virtual Bool_t traceEvalHook(Double_t /*value*/) const {
+//    // Hook function to add functionality to evaluation tracing in derived classes
+//    return kFALSE ;
+//  }
   /// Evaluate this PDF / function / constant. Needs to be overridden by all derived classes.
-  virtual Double_t evaluate() const = 0 ;
+  virtual Double_t evaluate() const = 0;
+  virtual RooSpan<double> evaluateBatch(std::size_t begin, std::size_t maxSize) const;
 
+  //---------- Interface to access batch data ---------------------------
+  //
+  friend class BatchInterfaceAccessor;
+  void clearBatchMemory() {
+    _batchData.clear();
+    for (auto arg : _serverList) {
+      //TODO get rid of this cast?
+      auto absReal = dynamic_cast<RooAbsReal*>(arg);
+      if (absReal)
+        absReal->clearBatchMemory();
+    }
+  }
+
+#ifdef ROOFIT_CHECK_CACHED_VALUES
+ public:
+  void checkBatchComputation(std::size_t evtNo, const RooArgSet* normSet = nullptr, double relAccuracy = 1.E-13) const;
+  const BatchHelpers::BatchData& batchData() const {
+    return _batchData;
+  }
+#endif
+
+  //--------------------------------------------------------------------
+
+ protected:
   // Hooks for RooDataSet interface
   friend class RooRealIntegral ;
   friend class RooVectorDataStore ;
@@ -396,6 +444,7 @@ protected:
   Double_t _plotMax ;       // Maximum of plot range
   Int_t    _plotBins ;      // Number of plot bins
   mutable Double_t _value ; // Cache for current value of object
+  mutable BatchHelpers::BatchData _batchData; //! Value storage for batches of events
   TString  _unit ;          // Unit for objects value
   TString  _label ;         // Plot label for objects value
   Bool_t   _forceNumInt ;   // Force numerical integration if flag set
@@ -414,8 +463,6 @@ protected:
   RooNumIntConfig* _specIntegratorConfig ; // Numeric integrator configuration specific for this object
 
   Bool_t   _treeVar ;       // !do not persist
-
-  static Bool_t _cacheCheck ; // If true, always validate contents of clean which outcome of evaluate()
 
   friend class RooDataProjBinding ;
   friend class RooAbsOptGoodnessOfFit ;
@@ -488,6 +535,23 @@ protected:
   static void globalSelectComp(Bool_t flag) ;
   Bool_t _selectComp ;               //! Component selection flag for RooAbsPdf::plotCompOn
   static Bool_t _globalSelectComp ;  // Global activation switch for component selection
+  // This struct can be used to flip the global switch to select components.
+  // Doing this with RAII prevents forgetting to reset the state.
+  struct GlobalSelectComponentRAII {
+      GlobalSelectComponentRAII(bool state) :
+      _oldState{_globalSelectComp} {
+        if (state != RooAbsReal::_globalSelectComp)
+          RooAbsReal::_globalSelectComp = state;
+      }
+
+      ~GlobalSelectComponentRAII() {
+        if (RooAbsReal::_globalSelectComp != _oldState)
+          RooAbsReal::_globalSelectComp = _oldState;
+      }
+
+      bool _oldState;
+  };
+
 
   mutable RooArgSet* _lastNSet ; //!
   static Bool_t _hideOffset ; // Offset hiding flag
