@@ -10,41 +10,74 @@
  *************************************************************************/
 
 
-//////////////////////////////////////////////////////////////////////////
-//                                                                      //
-// TGedPatternFrame, TGedPatternSelector, TGedPatternPopup              //
-// and TGedPatternColor                                                 //
-//                                                                      //
-// The TGedPatternFrame is a small frame with border showing            //
-// a specific pattern (fill style.                                      //
-//                                                                      //
-// The TGedPatternSelector is a composite frame with TGedPatternFrames  //
-// of all diferent styles                                               //
-//                                                                      //
-// The TGedPatternPopup is a popup containing a TGedPatternSelector.    //
-//                                                                      //
-// The TGedPatternSelect widget is a button with pattern area with      //
-// a little down arrow. When clicked on the arrow the                   //
-// TGedPatternPopup pops up.                                            //
-//                                                                      //
-// Selecting a pattern in this widget will generate the event:          //
-// kC_PATTERNSEL, kPAT_SELCHANGED, widget id, style.                    //
-//                                                                      //
-// and the signal:                                                      //
-// PatternSelected(Style_t pattern)                                     //
-//                                                                      //
-// TGedSelect is button that shows popup window when clicked.           //
-// TGedPopup is a popup window.                                         //
-//                                                                      //
-//////////////////////////////////////////////////////////////////////////
+/** \class TGedPatternFrame,
+    \ingroup ged
+
+The TGedPatternFrame is a small frame with border showing
+a specific pattern (fill style.
+
+*/
+
+
+/** \class TGedPatternSelector,
+    \ingroup ged
+
+The TGedPatternSelector is a composite frame with TGedPatternFrames
+of all diferent styles
+
+*/
+
+
+/** \class TGedPatternPopup
+    \ingroup ged
+
+The TGedPatternPopup is a popup containing a TGedPatternSelector.
+
+*/
+
+
+/** \class  The TGedPatternSelect
+    \ingroup ged
+
+is a button with pattern area with
+a little down arrow. When clicked on the arrow the
+TGedPatternPopup pops up.
+
+Selecting a pattern in this widget will generate the event:
+kC_PATTERNSEL, kPAT_SELCHANGED, widget id, style.
+
+and the signal:
+PatternSelected(Style_t pattern)
+
+*/
+
+
+/** \class TGedSelect
+    \ingroup ged
+
+is button that shows popup window when clicked.
+
+*/
+
+
+/** \class TGedPopup
+    \ingroup ged
+
+is a popup window.
+
+*/
+
 
 #include "TGResourcePool.h"
 #include "TGedPatternSelect.h"
 #include "RConfigure.h"
 #include "TGToolTip.h"
 #include "TGButton.h"
-#include "Riostream.h"
 #include "RStipples.h"
+#include "TVirtualX.h"
+#include "snprintf.h"
+
+#include <iostream>
 
 ClassImp(TGedPopup);
 ClassImp(TGedSelect);
@@ -53,7 +86,7 @@ ClassImp(TGedPatternSelector);
 ClassImp(TGedPatternPopup);
 ClassImp(TGedPatternSelect);
 
-TGGC* TGedPatternFrame::fgGC = 0;
+TGGC* TGedPatternFrame::fgGC = nullptr;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -178,8 +211,17 @@ void TGedPatternFrame::SetFillStyle(TGGC* gc, Style_t fstyle)
             gVirtualX->DeletePixmap(fillPattern);
             fillPattern = 0;
          }
+#ifdef R__WIN32
+         char pattern[32];
+         // invert (flip) gStipples bitmap bits on Windows
+         for (int i=0;i<32;++i)
+            pattern[i] = ~gStipples[stn][i];
+         fillPattern = gVirtualX->CreateBitmap(gClient->GetDefaultRoot()->GetId(),
+                                               (const char *)&pattern, 16, 16);
+#else
          fillPattern = gVirtualX->CreateBitmap(gClient->GetDefaultRoot()->GetId(),
                                                (const char*)gStipples[stn], 16, 16);
+#endif
          gc->SetStipple(fillPattern);
          break;
       default:

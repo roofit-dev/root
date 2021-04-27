@@ -28,7 +28,6 @@ implemented using the container denoted by RooAbsCollection::Storage_t.
 
 #include "RooAbsCollection.h"
 
-#include "Riostream.h"
 #include "TClass.h"
 #include "TStopwatch.h"
 #include "TRegexp.h"
@@ -45,9 +44,12 @@ implemented using the container denoted by RooAbsCollection::Storage_t.
 #include "RooGlobalFunc.h"
 #include "RooMsgService.h"
 #include <ROOT/RMakeUnique.hxx>
+#include "strlcpy.h"
 
 #include <algorithm>
 #include <iomanip>
+#include <iostream>
+#include <fstream>
 
 using std::endl;
 using std::vector;
@@ -69,7 +71,8 @@ RooAbsCollection::RooAbsCollection() :
   _list(),
   _ownCont(kFALSE),
   _name(),
-  _allRRV(kTRUE)
+  _allRRV(kTRUE),
+  _sizeThresholdForMapSearch(100)
 {
   _list.reserve(8);
 }
@@ -83,7 +86,8 @@ RooAbsCollection::RooAbsCollection(const char *name) :
   _list(),
   _ownCont(kFALSE),
   _name(name),
-  _allRRV(kTRUE)
+  _allRRV(kTRUE),
+  _sizeThresholdForMapSearch(100)
 {
   _list.reserve(8);
 }
@@ -101,7 +105,8 @@ RooAbsCollection::RooAbsCollection(const RooAbsCollection& other, const char *na
   _list(),
   _ownCont(kFALSE),
   _name(name),
-  _allRRV(other._allRRV)
+  _allRRV(other._allRRV),
+  _sizeThresholdForMapSearch(100)
 {
   RooTrace::create(this) ;
   if (!name) setName(other.GetName()) ;
@@ -134,6 +139,8 @@ RooAbsCollection::~RooAbsCollection()
 
 void RooAbsCollection::safeDeleteList()
 {
+  _nameToItemMap = nullptr;
+
   // Handle trivial case here
   if (_list.size() > 1) {
     std::vector<RooAbsArg*> tmp;
@@ -176,13 +183,14 @@ void RooAbsCollection::safeDeleteList()
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Take a snap shot of current collection contents:
+/// Take a snap shot of current collection contents.
 /// An owning collection is returned containing clones of
+/// - Elements in this collection
+/// - External dependents of all elements and recursively any dependents of those dependents
+///   (if deepCopy flag is set)
 ///
-///     - Elements in this collection
-///     - External dependents of all elements
-///       and recursively any dependents of those dependents
-///       (if deepCopy flag is set)
+/// This is useful to save the values of variables or parameters. It doesn't require
+/// deep copying if the parameters are direct members of the collection.
 ///
 /// If deepCopy is specified, the client-server links between the cloned
 /// list elements and the cloned external dependents are reconnected to
@@ -213,10 +221,9 @@ RooAbsCollection* RooAbsCollection::snapshot(Bool_t deepCopy) const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Take a snap shot of current collection contents:
-/// An owning collection is returned containing clones of
-///
+/// A collection that owns its elements is returned containing clones of
 ///     - Elements in this collection
-///     - External dependents of all elements
+///     - External dependents of those elements
 ///       and recursively any dependents of those dependents
 ///       (if deepCopy flag is set)
 ///
@@ -275,19 +282,19 @@ Bool_t RooAbsCollection::addServerClonesToList(const RooAbsArg& var)
 {
   Bool_t ret(kFALSE) ;
 
+  // This can be a very heavy operation if existing elements depend on many others,
+  // so make sure that we have the hash map available for faster finding.
+  if (var.servers().size() > 20 || _list.size() > 30)
+    useHashMapForFind(true);
+
   for (const auto server : var.servers()) {
     RooAbsArg* tmp = find(*server) ;
 
     if (!tmp) {
       RooAbsArg* serverClone = (RooAbsArg*)server->Clone() ;
       serverClone->setAttribute("SnapShot_ExtRefClone") ;
-      _list.push_back(serverClone) ;
-      if (_allRRV && dynamic_cast<RooRealVar*>(serverClone)==0) {
-        _allRRV=kFALSE ;
-      }
+      insert(serverClone);
       ret |= addServerClonesToList(*server) ;
-    } else {
-
     }
   }
 
@@ -388,10 +395,7 @@ Bool_t RooAbsCollection::addOwned(RooAbsArg& var, Bool_t silent)
   }
   _ownCont= kTRUE;
 
-  _list.push_back(&var);
-  if (_allRRV && dynamic_cast<RooRealVar*>(&var)==0) {
-    _allRRV=kFALSE ;
-  }
+  insert(&var);
 
   return kTRUE;
 }
@@ -416,10 +420,9 @@ RooAbsArg *RooAbsCollection::addClone(const RooAbsArg& var, Bool_t silent)
 
   // add a pointer to a clone of this variable to our list (we now own it!)
   auto clone2 = static_cast<RooAbsArg*>(var.Clone());
-  if (clone2) _list.push_back(clone2);
-  if (_allRRV && dynamic_cast<const RooRealVar*>(&var)==0) {
-    _allRRV=kFALSE ;
-  }
+  assert(clone2);
+
+  insert(clone2);
 
   return clone2;
 }
@@ -440,10 +443,8 @@ Bool_t RooAbsCollection::add(const RooAbsArg& var, Bool_t silent)
   }
 
   // add a pointer to this variable to our list (we don't own it!)
-  _list.push_back(const_cast<RooAbsArg*>(&var)); //FIXME
-  if (_allRRV && dynamic_cast<const RooRealVar*>(&var)==0) {
-    _allRRV=kFALSE ;
-  }
+  insert(const_cast<RooAbsArg*>(&var)); //FIXME const_cast
+
   return kTRUE;
 }
 
@@ -559,7 +560,11 @@ Bool_t RooAbsCollection::replace(const RooAbsArg& var1, const RooAbsArg& var2)
   }
 
   // replace var1 with var2
-  *var1It = const_cast<RooAbsArg*>(&var2); //FIXME
+  if (_nameToItemMap) {
+    _nameToItemMap->erase((*var1It)->namePtr());
+    (*_nameToItemMap)[var2.namePtr()] = const_cast<RooAbsArg*>(&var2);
+  }
+  *var1It = const_cast<RooAbsArg*>(&var2); //FIXME try to get rid of const_cast
 
   if (_allRRV && dynamic_cast<const RooRealVar*>(&var2)==0) {
     _allRRV=kFALSE ;
@@ -573,15 +578,13 @@ Bool_t RooAbsCollection::replace(const RooAbsArg& var1, const RooAbsArg& var2)
 ////////////////////////////////////////////////////////////////////////////////
 /// Remove the specified argument from our list. Return kFALSE if
 /// the specified argument is not found in our list. An exact pointer
-/// match is required, not just a match by name. A variable can be
-/// removed from a copied list and will be deleted at the same time.
-
+/// match is required, not just a match by name.
+/// If `matchByNameOnly` is set, items will be looked up by name. In this case, if
+/// the collection also owns the item, it will delete it.
 Bool_t RooAbsCollection::remove(const RooAbsArg& var, Bool_t , Bool_t matchByNameOnly)
 {
   // is var already in this list?
   const auto sizeBefore = _list.size();
-
-  _list.erase(std::remove(_list.begin(), _list.end(), &var), _list.end());
 
   if (matchByNameOnly) {
     const std::string name(var.GetName());
@@ -602,6 +605,12 @@ Bool_t RooAbsCollection::remove(const RooAbsArg& var, Bool_t , Bool_t matchByNam
 
     for (auto arg : toBeDeleted)
       delete arg;
+  } else {
+    _list.erase(std::remove(_list.begin(), _list.end(), &var), _list.end());
+  }
+
+  if (_nameToItemMap && sizeBefore != _list.size()) {
+    _nameToItemMap->erase(var.namePtr());
   }
 
   return sizeBefore != _list.size();
@@ -633,6 +642,8 @@ Bool_t RooAbsCollection::remove(const RooAbsCollection& list, Bool_t silent, Boo
 
 void RooAbsCollection::removeAll()
 {
+  _nameToItemMap = nullptr;
+
   if(_ownCont) {
     safeDeleteList() ;
     _ownCont= kFALSE;
@@ -780,64 +791,238 @@ Bool_t RooAbsCollection::overlaps(const RooAbsCollection& otherColl) const
   return kFALSE ;
 }
 
+namespace {
+////////////////////////////////////////////////////////////////////////////////
+/// Linear search through list of stored objects.
+template<class Collection_t>
+RooAbsArg* findUsingNamePointer(const Collection_t& coll, const TNamed* ptr) {
+  auto findByNamePtr = [ptr](const RooAbsArg* elm) {
+    return ptr == elm->namePtr();
+  };
 
+  auto item = std::find_if(coll.begin(), coll.end(), findByNamePtr);
+
+  return item != coll.end() ? *item : nullptr;
+}
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Find object with given name in list. A null pointer
-/// is returned if no object with the given name is found
-
+/// is returned if no object with the given name is found.
 RooAbsArg * RooAbsCollection::find(const char *name) const
 {
   if (!name)
     return nullptr;
   
-  decltype(_list)::const_iterator item;
+  // If an object with such a name exists, its name has been registered.
+  const TNamed* nptr = RooNameReg::known(name);
+  if (!nptr) return nullptr;
 
-  if (_list.size() < 10) {
-    auto findByName = [name](const RooAbsArg * elm){
-      return strcmp(elm->GetName(), name) == 0;
-    };
+  RooAbsArg* item = tryFastFind(nptr);
 
-    item = std::find_if(_list.begin(), _list.end(), findByName);
-  }
-  else {
-    const TNamed* nptr= RooNameReg::known(name);
-    if (!nptr) return nullptr;
-
-    auto findByNamePtr = [nptr](const RooAbsArg* elm) {
-      return nptr == elm->namePtr();
-    };
-
-    item = std::find_if(_list.begin(), _list.end(), findByNamePtr);
-  }
-  
-  return item != _list.end() ? *item : nullptr;
+  return item ? item : findUsingNamePointer(_list, nptr);
 }
 
 
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Find object with given name in list. A null pointer
-/// is returned if no object with the given name is found
-
+/// is returned if no object with the given name is found.
 RooAbsArg * RooAbsCollection::find(const RooAbsArg& arg) const
 {
   const auto nptr = arg.namePtr();
-  auto findByNamePtr = [nptr](const RooAbsArg * listItem) {
-    return nptr == listItem->namePtr();
-  };
+  RooAbsArg* item = tryFastFind(nptr);
 
-  auto item = std::find_if(_list.begin(), _list.end(), findByNamePtr);
+  return item ? item : findUsingNamePointer(_list, nptr);
+}
 
-  return item != _list.end() ? *item : nullptr;
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return index of item with given name, or -1 in case it's not in the collection.
+Int_t RooAbsCollection::index(const char* name) const {
+  const std::string theName(name);
+  auto item = std::find_if(_list.begin(), _list.end(), [&theName](const RooAbsArg * elm){
+    return elm->GetName() == theName;
+  });
+  return item != _list.end() ? item - _list.begin() : -1;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get value of a RooAbsReal stored in set with given name. If none is found, value of defVal is returned.
+/// No error messages are printed unless the verbose flag is set
+
+Double_t RooAbsCollection::getRealValue(const char* name, Double_t defVal, Bool_t verbose) const
+{
+   RooAbsArg* raa = find(name) ;
+   if (!raa) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::getRealValue(" << GetName() << ") ERROR no object with name '" << name << "' found" << endl ;
+      return defVal ;
+   }
+   RooAbsReal* rar = dynamic_cast<RooAbsReal*>(raa) ;
+   if (!rar) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::getRealValue(" << GetName() << ") ERROR object '" << name << "' is not of type RooAbsReal" << endl ;
+      return defVal ;
+   }
+   return rar->getVal() ;
 }
 
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return comma separated list of contained object names as STL string
+/// Set value of a RooAbsRealLValye stored in set with given name to newVal
+/// No error messages are printed unless the verbose flag is set
 
+Bool_t RooAbsCollection::setRealValue(const char* name, Double_t newVal, Bool_t verbose)
+{
+   RooAbsArg* raa = find(name) ;
+   if (!raa) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::setRealValue(" << GetName() << ") ERROR no object with name '" << name << "' found" << endl ;
+      return kTRUE ;
+   }
+   RooAbsRealLValue* rar = dynamic_cast<RooAbsRealLValue*>(raa) ;
+   if (!rar) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::setRealValue(" << GetName() << ") ERROR object '" << name << "' is not of type RooAbsRealLValue" << endl ;
+      return kTRUE;
+   }
+   rar->setVal(newVal) ;
+   return kFALSE ;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get state name of a RooAbsCategory stored in set with given name. If none is found, value of defVal is returned.
+/// No error messages are printed unless the verbose flag is set
+
+const char* RooAbsCollection::getCatLabel(const char* name, const char* defVal, Bool_t verbose) const
+{
+   RooAbsArg* raa = find(name) ;
+   if (!raa) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::getCatLabel(" << GetName() << ") ERROR no object with name '" << name << "' found" << endl ;
+      return defVal ;
+   }
+   RooAbsCategory* rac = dynamic_cast<RooAbsCategory*>(raa) ;
+   if (!rac) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::getCatLabel(" << GetName() << ") ERROR object '" << name << "' is not of type RooAbsCategory" << endl ;
+      return defVal ;
+   }
+   return rac->getCurrentLabel() ;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Set state name of a RooAbsCategoryLValue stored in set with given name to newVal.
+/// No error messages are printed unless the verbose flag is set
+
+Bool_t RooAbsCollection::setCatLabel(const char* name, const char* newVal, Bool_t verbose)
+{
+   RooAbsArg* raa = find(name) ;
+   if (!raa) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::setCatLabel(" << GetName() << ") ERROR no object with name '" << name << "' found" << endl ;
+      return kTRUE ;
+   }
+   RooAbsCategoryLValue* rac = dynamic_cast<RooAbsCategoryLValue*>(raa) ;
+   if (!rac) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::setCatLabel(" << GetName() << ") ERROR object '" << name << "' is not of type RooAbsCategory" << endl ;
+      return kTRUE ;
+   }
+   rac->setLabel(newVal) ;
+   return kFALSE ;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get index value of a RooAbsCategory stored in set with given name. If none is found, value of defVal is returned.
+/// No error messages are printed unless the verbose flag is set
+
+Int_t RooAbsCollection::getCatIndex(const char* name, Int_t defVal, Bool_t verbose) const
+{
+   RooAbsArg* raa = find(name) ;
+   if (!raa) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::getCatLabel(" << GetName() << ") ERROR no object with name '" << name << "' found" << endl ;
+      return defVal ;
+   }
+   RooAbsCategory* rac = dynamic_cast<RooAbsCategory*>(raa) ;
+   if (!rac) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::getCatLabel(" << GetName() << ") ERROR object '" << name << "' is not of type RooAbsCategory" << endl ;
+      return defVal ;
+   }
+   return rac->getCurrentIndex() ;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Set index value of a RooAbsCategoryLValue stored in set with given name to newVal.
+/// No error messages are printed unless the verbose flag is set
+
+Bool_t RooAbsCollection::setCatIndex(const char* name, Int_t newVal, Bool_t verbose)
+{
+   RooAbsArg* raa = find(name) ;
+   if (!raa) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::setCatLabel(" << GetName() << ") ERROR no object with name '" << name << "' found" << endl ;
+      return kTRUE ;
+   }
+   RooAbsCategoryLValue* rac = dynamic_cast<RooAbsCategoryLValue*>(raa) ;
+   if (!rac) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::setCatLabel(" << GetName() << ") ERROR object '" << name << "' is not of type RooAbsCategory" << endl ;
+      return kTRUE ;
+   }
+   rac->setIndex(newVal) ;
+   return kFALSE ;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get string value of a RooStringVar stored in set with given name. If none is found, value of defVal is returned.
+/// No error messages are printed unless the verbose flag is set
+
+const char* RooAbsCollection::getStringValue(const char* name, const char* defVal, Bool_t verbose) const
+{
+   RooAbsArg* raa = find(name) ;
+   if (!raa) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::getStringValue(" << GetName() << ") ERROR no object with name '" << name << "' found" << endl ;
+      return defVal ;
+   }
+   auto ras = dynamic_cast<const RooStringVar*>(raa) ;
+   if (!ras) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::getStringValue(" << GetName() << ") ERROR object '" << name << "' is not of type RooStringVar" << endl ;
+      return defVal ;
+   }
+
+   return ras->getVal() ;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Set string value of a RooStringVar stored in set with given name to newVal.
+/// No error messages are printed unless the verbose flag is set
+
+Bool_t RooAbsCollection::setStringValue(const char* name, const char* newVal, Bool_t verbose)
+{
+   RooAbsArg* raa = find(name) ;
+   if (!raa) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::setStringValue(" << GetName() << ") ERROR no object with name '" << name << "' found" << endl ;
+      return kTRUE ;
+   }
+   auto ras = dynamic_cast<RooStringVar*>(raa);
+   if (!ras) {
+      if (verbose) coutE(InputArguments) << "RooAbsCollection::setStringValue(" << GetName() << ") ERROR object '" << name << "' is not of type RooStringVar" << endl ;
+      return kTRUE ;
+   }
+   ras->setVal(newVal);
+
+   return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return comma separated list of contained object names as STL string
 string RooAbsCollection::contentsString() const
 {
   string retVal ;
@@ -939,7 +1124,6 @@ void RooAbsCollection::printMultiline(ostream&os, Int_t contents, Bool_t /*verbo
     os << indent << ClassName() << "::" << GetName() << ":" << (_ownCont?" (Owning contents)":"") << endl;
   }
 
-  int index= 0;
   TString deeper(indent);
   deeper.Append("     ");
 
@@ -954,8 +1138,9 @@ void RooAbsCollection::printMultiline(ostream&os, Int_t contents, Bool_t /*verbo
     RooPrintable::nameFieldLength(maxNameLen+1) ;
   }
 
+  unsigned int idx = 0;
   for (auto next : _list) {
-    os << indent << std::setw(3) << ++index << ") ";
+    os << indent << std::setw(3) << ++idx << ") ";
     next->printStream(os,contents,kSingleLine,"");
   }
 
@@ -1280,3 +1465,68 @@ std::unique_ptr<RooAbsCollection::LegacyIterator_t> RooAbsCollection::makeLegacy
   return std::make_unique<LegacyIterator_t>(_list);
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// Insert an element into the owned collections.
+void RooAbsCollection::insert(RooAbsArg* item) {
+  _list.push_back(item);
+
+  if (_allRRV && dynamic_cast<const RooRealVar*>(item)==0) {
+    _allRRV= false;
+  }
+
+  if (_nameToItemMap) {
+    (*_nameToItemMap)[item->namePtr()] = item;
+  }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Install an internal hash map for fast finding of elements by name.
+void RooAbsCollection::useHashMapForFind(bool flag) const {
+  if (!flag && _nameToItemMap){
+    _nameToItemMap = nullptr;
+  }
+
+  if (flag && !_nameToItemMap) {
+    _nameToItemMap.reset(new std::unordered_map<const TNamed*, Storage_t::value_type>());
+    for (const auto item : _list) {
+      (*_nameToItemMap)[item->namePtr()] = item;
+    }
+  }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Perform a search in a hash map.
+/// This only happens if this collection is larger than _sizeThresholdForMapSearch.
+/// This search is *not guaranteed* to find an existing
+/// element because elements can be renamed while
+/// being stored in the collection.
+RooAbsArg* RooAbsCollection::tryFastFind(const TNamed* namePtr) const {
+  if (_list.size() >= _sizeThresholdForMapSearch && !_nameToItemMap) {
+    useHashMapForFind(true);
+    assert(_nameToItemMap);
+  }
+
+  if (!_nameToItemMap) {
+    return nullptr;
+  }
+
+  auto item = _nameToItemMap->find(namePtr);
+  if (item != _nameToItemMap->end()) {
+    // Have an element. Check that it didn't get renamed.
+    if (item->second->namePtr() == item->first) {
+      return item->second;
+    } else {
+      // Item has been renamed / replaced.
+      _nameToItemMap->erase(item);
+      if (auto arg = findUsingNamePointer(_list, namePtr)) {
+        (*_nameToItemMap)[arg->namePtr()] = arg;
+        return arg;
+      }
+    }
+  }
+
+  return nullptr;
+}

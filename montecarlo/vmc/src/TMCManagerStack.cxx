@@ -68,6 +68,7 @@ TParticle *TMCManagerStack::PopNextTrack(Int_t &itrack)
    }
    itrack = mcStack->top();
    mcStack->pop();
+   SetCurrentTrack(itrack);
    return fParticles->operator[](itrack);
 }
 
@@ -226,31 +227,6 @@ const TGeoBranchArray *TMCManagerStack::GetGeoState(Int_t trackId) const
 const TGeoBranchArray *TMCManagerStack::GetCurrentGeoState() const
 {
    return fBranchArrayContainer->GetGeoState(fParticlesStatus->operator[](fCurrentTrackId)->fGeoStateIndex);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-/// To free the cached geo state which was associated to the current track
-///
-
-void TMCManagerStack::NotifyOnRestoredGeometry()
-{
-   fBranchArrayContainer->FreeGeoState(fParticlesStatus->operator[](fCurrentTrackId)->fGeoStateIndex);
-   fParticlesStatus->operator[](fCurrentTrackId)->fGeoStateIndex = 0;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-/// To free the cached geo state which was associated to a track
-///
-
-void TMCManagerStack::NotifyOnRestoredGeometry(Int_t trackId)
-{
-   if (!HasTrackId(trackId)) {
-      Fatal("NotifyOnRestoredGeometry", "Invalid track ID %i", trackId);
-   }
-   fBranchArrayContainer->FreeGeoState(fParticlesStatus->operator[](trackId)->fGeoStateIndex);
-   fParticlesStatus->operator[](trackId)->fGeoStateIndex = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

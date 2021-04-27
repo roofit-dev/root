@@ -85,7 +85,7 @@ value that the functions \f$f_j(\vec\theta)\f$ are quasi-linear all over
 the parallelepiped.
 
 FUMILI takes into account simple linear inequalities in the form:
-\f]
+\f[
 \theta_i^{\rm min}\le\theta_i\le\theta^{\rm max}_i\tag{7}
 \f]
 
@@ -99,7 +99,7 @@ function argument.
 
 #include "TFumili.h"
 
-#include "Riostream.h"
+#include <iostream>
 #include "TGraphAsymmErrors.h"
 #include "TF1.h"
 #include "TF2.h"
@@ -107,6 +107,7 @@ function argument.
 #include "TH1.h"
 #include "TMath.h"
 #include "TROOT.h"
+#include "TList.h"
 #include "TVirtualFitter.h"
 
 

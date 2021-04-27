@@ -20,7 +20,6 @@ In addition to the value, the synapse can return the DeDw
 
 #include "TSynapse.h"
 #include "TNeuron.h"
-#include "Riostream.h"
 
 ClassImp(TSynapse);
 
@@ -53,7 +52,7 @@ TSynapse::TSynapse(TNeuron * pre, TNeuron * post, Double_t w)
 
 void TSynapse::SetPre(TNeuron * pre)
 {
-   if (pre) {
+   if (fpre) {
       Error("SetPre","this synapse is already assigned to a pre-neuron.");
       return;
    }
@@ -66,7 +65,7 @@ void TSynapse::SetPre(TNeuron * pre)
 
 void TSynapse::SetPost(TNeuron * post)
 {
-   if (post) {
+   if (fpost) {
       Error("SetPost","this synapse is already assigned to a post-neuron.");
       return;
    }

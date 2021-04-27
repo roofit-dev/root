@@ -19,11 +19,9 @@
 
 #include <cassert>
 
-#include "json.hpp"
-
+#include <nlohmann/json.hpp>
 
 using namespace ROOT::Experimental;
-namespace REX = ROOT::Experimental;
 
 /** \class REveJetCone
 \ingroup REve
@@ -62,6 +60,7 @@ REveJetCone::REveJetCone(const Text_t* n, const Text_t* t) :
    fLimits(), fThetaC(10),
    fEta(0), fPhi(0), fDEta(0), fDPhi(0), fNDiv(36)
 {
+   fPickable  = true;
    fFillColor = kGreen;
 }
 

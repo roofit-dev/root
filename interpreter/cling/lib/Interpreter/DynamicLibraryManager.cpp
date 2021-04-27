@@ -23,7 +23,7 @@
 
 namespace cling {
   DynamicLibraryManager::DynamicLibraryManager(const InvocationOptions& Opts)
-    : m_Opts(Opts), m_Callbacks(0) {
+    : m_Opts(Opts) {
     const llvm::SmallVector<const char*, 10> kSysLibraryEnv = {
       "LD_LIBRARY_PATH",
   #if __APPLE__
@@ -35,7 +35,7 @@ namespace cling {
       "DYLD_FALLBACK_FRAMEWORK_PATH",
       "DYLD_VERSIONED_FRAMEWORK_PATH",
       */
-  #elif defined(LLVM_ON_WIN32)
+  #elif defined(_WIN32)
       "PATH",
   #endif
     };
@@ -50,28 +50,32 @@ namespace cling {
         SplitPaths(Env, CurPaths, utils::kPruneNonExistant, platform::kEnvDelim,
                    Opts.Verbose());
         for (const auto& Path : CurPaths)
-          m_SystemSearchPaths.push_back(Path.str());
+          m_SearchPaths.push_back({Path.str(), /*IsUser*/true});
       }
     }
 
-    platform::GetSystemLibraryPaths(m_SystemSearchPaths);
+    llvm::SmallVector<std::string, 64> SysPaths;
+    platform::GetSystemLibraryPaths(SysPaths);
+
+    for (const std::string& P : SysPaths)
+      m_SearchPaths.push_back({P, /*IsUser*/false});
 
     // This will currently be the last path searched, should it be pushed to
     // the front of the line, or even to the front of user paths?
-    m_SystemSearchPaths.push_back(".");
+    m_SearchPaths.push_back({".", /*IsUser*/true});
   }
-
-  DynamicLibraryManager::~DynamicLibraryManager() {}
 
   std::string
   DynamicLibraryManager::lookupLibInPaths(llvm::StringRef libStem) const {
-    llvm::SmallVector<std::string, 128>
-      Paths(m_Opts.LibSearchPath.begin(), m_Opts.LibSearchPath.end());
-    Paths.append(m_SystemSearchPaths.begin(), m_SystemSearchPaths.end());
+    llvm::SmallVector<SearchPathInfo, 128> Paths;
+    for (const std::string &P : m_Opts.LibSearchPath)
+      Paths.push_back({P, /*IsUser*/true});
 
-    for (llvm::SmallVectorImpl<std::string>::const_iterator
-           IPath = Paths.begin(), E = Paths.end();IPath != E; ++IPath) {
-      llvm::SmallString<512> ThisPath(*IPath); // FIXME: move alloc outside loop
+    Paths.append(m_SearchPaths.begin(), m_SearchPaths.end());
+
+    llvm::SmallString<512> ThisPath;
+    for (const SearchPathInfo& Info : Paths) {
+      ThisPath = Info.Path;
       llvm::sys::path::append(ThisPath, libStem);
       bool exists;
       if (isSharedLibrary(ThisPath.str(), &exists))
@@ -96,7 +100,7 @@ namespace cling {
       llvm::SmallString<512>::iterator IStemEnd = filenameWithExt.end() - 1;
 #endif
       static const char* DyLibExt = ".so";
-#elif defined(LLVM_ON_WIN32)
+#elif defined(_WIN32)
       static const char* DyLibExt = ".dll";
 #else
 # error "Unsupported platform."
@@ -245,6 +249,15 @@ namespace cling {
   bool DynamicLibraryManager::isSharedLibrary(llvm::StringRef libFullPath,
                                               bool* exists /*=0*/) {
     using namespace llvm;
+    auto filetype = sys::fs::get_file_type(libFullPath, /*Follow*/ true);
+    if (filetype != sys::fs::file_type::regular_file) {
+      if (exists) {
+        // get_file_type returns status_error also in case of file_not_found.
+        *exists = filetype != sys::fs::file_type::status_error;
+      }
+      return false;
+    }
+
     file_magic Magic;
     const std::error_code Error = identify_magic(libFullPath, Magic);
     if (exists)
@@ -262,7 +275,7 @@ namespace cling {
 #else
       (Magic == file_magic::elf_shared_object)
 #endif
-#elif defined(LLVM_ON_WIN32)
+#elif defined(_WIN32)
       (Magic == file_magic::pecoff_executable
        || platform::IsDLL(libFullPath.str()))
 #else

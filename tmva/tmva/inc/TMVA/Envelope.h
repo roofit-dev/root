@@ -11,20 +11,20 @@
 #ifndef ROOT_TMVA_Envelope
 #define ROOT_TMVA_Envelope
 
-#include <sstream>
-#include<iostream>
 #include <memory>
+#include <vector>
 
+#include <TString.h>
 #include <TROOT.h>
 #include <TStopwatch.h>
 
+#ifndef _MSC_VER
 #include <TProcPool.h>
-#include <TStopwatch.h>
+#endif
 
 #include <TMVA/OptionMap.h>
 #include <TMVA/Config.h>
 #include <TMVA/Tools.h>
-#include <TMVA/DataLoader.h>
 #include <TMVA/DataLoader.h>
 
 /*! \class TMVA::Envelope
@@ -50,7 +50,9 @@ namespace TMVA {
          Bool_t fVerbose;                         //! flag for extra information
          TString fTransformations;                //! List of transformations to test
          Bool_t fSilentFile;                      //! if true dont produce file output
+#ifndef _MSC_VER
          TProcPool fWorkers;                      //! procpool object
+#endif
          UInt_t fJobs;                            //! number of jobs to run some high level algorithm in parallel
          TStopwatch fTimer;                       //! timer to measute the time.
 

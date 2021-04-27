@@ -212,5 +212,3 @@ void RooAbsDataStore::printMultiline(ostream& os, Int_t /*content*/, Bool_t verb
   }
 }
 
-
-
