@@ -496,7 +496,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/BatchData.cxx
     src/BatchHelpers.cxx
     src/RooWrapperPdf.cxx
-    DICTIONARY_OPTIONS
+  DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
   DEPENDENCIES
     Core
@@ -511,6 +511,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     Foam
   LIBRARIES
     ${RT_LIBRARY}
+  LINKDEF inc/LinkDef.h
 )
 
 target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
