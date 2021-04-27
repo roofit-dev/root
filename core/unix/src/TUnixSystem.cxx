@@ -28,7 +28,6 @@
 #include "TException.h"
 #include "Demangle.h"
 #include "TEnv.h"
-#include "TSocket.h"
 #include "Getline.h"
 #include "TInterpreter.h"
 #include "TApplication.h"
@@ -66,11 +65,6 @@
 #endif
 #if defined(R__AIX) || defined(R__SOLARIS)
 #   include <sys/select.h>
-#endif
-#if defined(R__LINUX) || defined(R__HURD)
-#   ifndef SIGSYS
-#      define SIGSYS  SIGUNUSED       // SIGSYS does not exist in linux ??
-#   endif
 #endif
 #if defined(R__MACOSX)
 #   include <mach-o/dyld.h>
