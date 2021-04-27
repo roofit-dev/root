@@ -423,8 +423,12 @@ void TApplication::GetOptions(Int_t *argc, char **argv)
          TString argw;
          if (gROOT->IsBatch()) argw = "batch";
          if (*opt == '=') argw.Append(opt+1);
-         gROOT->SetWebDisplay(argw.Data());
-         gEnv->SetValue("Gui.Factory", "web");
+         if (gSystem->Load("libROOTWebDisplay") == 0) {
+            gROOT->SetWebDisplay(argw.Data());
+            gEnv->SetValue("Gui.Factory", "web");
+         } else {
+            Error("GetOptions", "--web option not supported, ROOT should be build with at least c++14 enabled");
+         }
       } else if (!strcmp(argv[i], "-e")) {
          argv[i] = null;
          ++i;
@@ -603,13 +607,13 @@ void TApplication::HandleException(Int_t sig)
          gInterpreter->ClearFileBusy();
       }
       if (fExitOnException == kExit)
-         gSystem->Exit(sig);
+         gSystem->Exit(128 + sig);
       else if (fExitOnException == kAbort)
          gSystem->Abort();
       else
          Throw(sig);
    }
-   gSystem->Exit(sig);
+   gSystem->Exit(128 + sig);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -947,7 +951,7 @@ Long_t TApplication::ProcessLine(const char *line, Bool_t sync, Int_t *err)
 
    if (!strncmp(line, ".which", 6)) {
       char *fn  = Strip(line+7);
-      char *s   = strtok(fn, "+(");
+      char *s = strtok(fn, "+("); // this method does not need to be reentrant
       char *mac = gSystem->Which(TROOT::GetMacroPath(), s, kReadPermission);
       if (!mac)
          Printf("No macro %s in path %s", s, TROOT::GetMacroPath());
