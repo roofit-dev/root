@@ -483,12 +483,12 @@ void RooMinimizer::optimizeConst(Int_t flag)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Save and return a RooFitResult snaphot of current minimizer status.
+/// Save and return a RooFitResult snapshot of current minimizer status.
 /// This snapshot contains the values of all constant parameters,
 /// the value of all floating parameters at RooMinimizer construction and
 /// after the last MINUIT operation, the MINUIT status, variance quality,
 /// EDM setting, number of calls with evaluation problems, the minimized
-/// function value and the full correlation matrix
+/// function value and the full correlation matrix.
 
 RooFitResult* RooMinimizer::save(const char* userName, const char* userTitle)
 {
@@ -521,10 +521,17 @@ RooFitResult* RooMinimizer::save(const char* userName, const char* userTitle)
   fitRes->setConstParList(saveConstList) ;
   fitRes->setInitParList(saveFloatInitList) ;
 
+  // The fitter often clones the function. We therefore have to ask it for its copy.
+  const auto fitFcn = dynamic_cast<const RooMinimizerFcn*>(_theFitter->GetFCN());
+  double removeOffset = 0.;
+  if (fitFcn) {
+    fitRes->setNumInvalidNLL(fitFcn->GetNumInvalidNLL());
+    removeOffset = - fitFcn->getOffset();
+  }
+
   fitRes->setStatus(_status) ;
   fitRes->setCovQual(_theFitter->GetMinimizer()->CovMatrixStatus()) ;
-  fitRes->setMinNLL(_theFitter->Result().MinFcnValue()) ;
-  fitRes->setNumInvalidNLL(_fcn->GetNumInvalidNLL()) ;
+  fitRes->setMinNLL(_theFitter->Result().MinFcnValue() + removeOffset);
   fitRes->setEDM(_theFitter->Result().Edm()) ;
   fitRes->setFinalParList(saveFloatFinalList) ;
   if (!_extV) {

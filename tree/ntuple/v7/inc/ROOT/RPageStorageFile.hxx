@@ -16,16 +16,17 @@
 #ifndef ROOT7_RPageStorageFile
 #define ROOT7_RPageStorageFile
 
-#include <ROOT/RPageStorage.hxx>
 #include <ROOT/RMiniFile.hxx>
 #include <ROOT/RNTupleMetrics.hxx>
 #include <ROOT/RNTupleZip.hxx>
+#include <ROOT/RPageStorage.hxx>
 #include <ROOT/RStringView.hxx>
 
 #include <array>
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <utility>
 
 class TFile;
 
@@ -38,7 +39,6 @@ class RRawFile;
 namespace Experimental {
 namespace Detail {
 
-class RCluster;
 class RClusterPool;
 class RPageAllocatorHeap;
 class RPagePool;
@@ -80,6 +80,10 @@ public:
    RPageSinkFile(std::string_view ntupleName, std::string_view path, const RNTupleWriteOptions &options,
                  std::unique_ptr<TFile> &file);
    RPageSinkFile(std::string_view ntupleName, TFile &file, const RNTupleWriteOptions &options);
+   RPageSinkFile(const RPageSinkFile&) = delete;
+   RPageSinkFile& operator=(const RPageSinkFile&) = delete;
+   RPageSinkFile(RPageSinkFile&&) = default;
+   RPageSinkFile& operator=(RPageSinkFile&&) = default;
    virtual ~RPageSinkFile();
 
    RPage ReservePage(ColumnHandle_t columnHandle, std::size_t nElements = 0) final;
@@ -122,14 +126,19 @@ private:
       RNTupleAtomicCounter &fNRead;
       RNTupleAtomicCounter &fSzReadPayload ;
       RNTupleAtomicCounter &fSzReadOverhead;
-      RNTuplePlainCounter  &fSzUnzip;
+      RNTupleAtomicCounter &fSzUnzip;
       RNTupleAtomicCounter &fNClusterLoaded;
-      RNTuplePlainCounter  &fNPageLoaded;
-      RNTuplePlainCounter  &fNPagePopulated;
+      RNTupleAtomicCounter &fNPageLoaded;
+      RNTupleAtomicCounter &fNPagePopulated;
       RNTupleAtomicCounter &fTimeWallRead;
-      RNTuplePlainCounter  &fTimeWallUnzip;
+      RNTupleAtomicCounter &fTimeWallUnzip;
       RNTupleTickCounter<RNTupleAtomicCounter> &fTimeCpuRead;
-      RNTupleTickCounter<RNTuplePlainCounter>  &fTimeCpuUnzip;
+      RNTupleTickCounter<RNTupleAtomicCounter> &fTimeCpuUnzip;
+      RNTupleCalcPerf &fBandwidthReadUncompressed;
+      RNTupleCalcPerf &fBandwidthReadCompressed;
+      RNTupleCalcPerf &fBandwidthUnzip;
+      RNTupleCalcPerf &fFractionReadOverhead;
+      RNTupleCalcPerf &fCompressionRatio;
    };
    std::unique_ptr<RCounters> fCounters;
    /// Wraps the I/O counters and is observed by the RNTupleReader metrics
@@ -152,16 +161,22 @@ private:
 
    RPageSourceFile(std::string_view ntupleName, const RNTupleReadOptions &options);
    RPage PopulatePageFromCluster(ColumnHandle_t columnHandle, const RClusterDescriptor &clusterDescriptor,
-                                 ClusterSize_t::ValueType clusterIndex);
+                                 ClusterSize_t::ValueType idxInCluster);
 
 protected:
    RNTupleDescriptor AttachImpl() final;
+   void UnzipClusterImpl(RCluster *cluster) final;
 
 public:
    RPageSourceFile(std::string_view ntupleName, std::string_view path, const RNTupleReadOptions &options);
    /// The cloned page source creates a new raw file and reader and opens its own file descriptor to the data.
    /// The meta-data (header and footer) is reread and parsed by the clone.
    std::unique_ptr<RPageSource> Clone() const final;
+
+   RPageSourceFile(const RPageSourceFile&) = delete;
+   RPageSourceFile& operator=(const RPageSourceFile&) = delete;
+   RPageSourceFile(RPageSourceFile&&) = default;
+   RPageSourceFile& operator=(RPageSourceFile&&) = default;
    virtual ~RPageSourceFile();
 
    RPage PopulatePage(ColumnHandle_t columnHandle, NTupleSize_t globalIndex) final;

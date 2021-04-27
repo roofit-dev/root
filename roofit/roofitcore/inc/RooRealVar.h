@@ -17,6 +17,7 @@
 #define ROO_REAL_VAR
 
 #include "RooAbsRealLValue.h"
+#include "RunContext.h"
 
 #include "TString.h"
 
@@ -50,14 +51,7 @@ public:
   
   // Parameter value and error accessors
   virtual Double_t getValV(const RooArgSet* nset=0) const ;
-  ////////////////////////////////////////////////////////////////////////////////
-  /// Return batch of data starting at `begin`.
-  /// \param begin First event to return.
-  /// \param batchSize Size of the batch.
-  /// \return Span with event data. If not attached to a data store, empty batch. The batch will be shorter if data store ends.
-  RooSpan<const double> getValBatch(std::size_t begin, std::size_t batchSize, const RooArgSet* = nullptr) const final {
-    return _batchData.getBatch(begin, batchSize);
-  }
+  RooSpan<const double> getValues(BatchHelpers::RunContext& inputData, const RooArgSet*) const final;
 
   virtual void setVal(Double_t value);
   virtual void setVal(Double_t value, const char* rangeName);
@@ -163,9 +157,9 @@ public:
   void installSharedProp(std::shared_ptr<RooRealVarSharedProperties>&& prop);
 
   virtual void setExpensiveObjectCache(RooExpensiveObjectCache&) { ; } // variables don't need caches 
+  static RooRealVarSharedProperties& _nullProp(); // Null property
+  static std::map<std::string,std::weak_ptr<RooRealVarSharedProperties>>& _sharedPropList(); // List of properties shared among clones of a variable
   
-  static std::map<std::string,std::weak_ptr<RooRealVarSharedProperties>> _sharedPropList; // List of properties shared among clones of a variable
-  static const std::unique_ptr<RooRealVarSharedProperties> _nullProp ; // Null property
   std::shared_ptr<RooRealVarSharedProperties> _sharedProp; //! Shared binnings associated with this instance
 
   ClassDef(RooRealVar,7) // Real-valued variable

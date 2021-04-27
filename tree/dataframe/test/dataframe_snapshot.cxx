@@ -6,6 +6,7 @@
 #include "TSystem.h"
 #include <TInterpreter.h>
 #include "TTree.h"
+#include "TChain.h"
 #include "gtest/gtest.h"
 #include <limits>
 #include <memory>
@@ -468,14 +469,17 @@ void ReadWriteCarray(const char *outFileNameBase)
    auto size = 0;
    int v[maxArraySize];
    bool vb[maxArraySize];
+   long int vl[maxArraySize];
    t.Branch("size", &size, "size/I");
    t.Branch("v", v, "v[size]/I");
    t.Branch("vb", vb, "vb[size]/O");
+   t.Branch("vl", vl, "vl[size]/G");
 
    // Size 1
    size = 1;
    v[0] = 12;
    vb[0] = true;
+   vl[0] = 8589934592; // 2**33
    t.Fill();
 
    // Size 0 (see ROOT-9860)
@@ -487,6 +491,7 @@ void ReadWriteCarray(const char *outFileNameBase)
    for (auto i : ROOT::TSeqU(size)) {
       v[i] = 84;
       vb[i] = true;
+      vl[i] = 42;
    }
    t.Fill();
 
@@ -498,6 +503,9 @@ void ReadWriteCarray(const char *outFileNameBase)
    vb[0] = true;
    vb[1] = false;
    vb[2] = true;
+   vl[0] = -1;
+   vl[1] = 0;
+   vl[2] = 1;
    t.Fill();
 
    t.Write();
@@ -509,30 +517,36 @@ void ReadWriteCarray(const char *outFileNameBase)
       TTreeReader r(treename, &f2);
       TTreeReaderArray<int> rv(r, "v");
       TTreeReaderArray<bool> rvb(r, "vb");
+      TTreeReaderArray<long int> rvl(r, "vl");
 
       // Size 1
-      r.Next();
+      EXPECT_TRUE(r.Next());
       EXPECT_EQ(rv.GetSize(), 1u);
       EXPECT_EQ(rv[0], 12);
       EXPECT_EQ(rvb.GetSize(), 1u);
       EXPECT_TRUE(rvb[0]);
+      EXPECT_EQ(rvl.GetSize(), 1u);
+      EXPECT_EQ(rvl[0], 8589934592);
 
       // Size 0
-      r.Next();
+      EXPECT_TRUE(r.Next());
       EXPECT_EQ(rv.GetSize(), 0u);
       EXPECT_EQ(rvb.GetSize(), 0u);
+      EXPECT_EQ(rvl.GetSize(), 0u);
 
       // Size 100k
-      r.Next();
+      EXPECT_TRUE(r.Next());
       EXPECT_EQ(rv.GetSize(), 100000u);
       EXPECT_EQ(rvb.GetSize(), 100000u);
       for (auto e : rv)
          EXPECT_EQ(e, 84);
       for (auto e : rvb)
          EXPECT_TRUE(e);
+      for (auto e : rvl)
+         EXPECT_EQ(e, 42);
 
       // Size 3
-      r.Next();
+      EXPECT_TRUE(r.Next());
       EXPECT_EQ(rv.GetSize(), 3u);
       EXPECT_EQ(rv[0], 42);
       EXPECT_EQ(rv[1], 43);
@@ -541,6 +555,12 @@ void ReadWriteCarray(const char *outFileNameBase)
       EXPECT_TRUE(rvb[0]);
       EXPECT_FALSE(rvb[1]);
       EXPECT_TRUE(rvb[2]);
+      EXPECT_EQ(rvl.GetSize(), 3u);
+      EXPECT_EQ(rvl[0], -1);
+      EXPECT_EQ(rvl[1], 0);
+      EXPECT_EQ(rvl[2], 1);
+
+      EXPECT_FALSE(r.Next());
    };
 
    // read and write using RDataFrame
@@ -549,7 +569,8 @@ void ReadWriteCarray(const char *outFileNameBase)
    outputChecker(outfname1.c_str());
 
    const auto outfname2 = outFileNameBaseStr + "_out2.root";
-   RDataFrame(treename, fname).Snapshot<int, RVec<int>, RVec<bool>>(treename, outfname2, {"size", "v", "vb"});
+   RDataFrame(treename, fname)
+      .Snapshot<int, RVec<int>, RVec<bool>, RVec<long int>>(treename, outfname2, {"size", "v", "vb", "vl"});
    outputChecker(outfname2.c_str());
 
    gSystem->Unlink(fname.c_str());
@@ -1034,6 +1055,74 @@ TEST(RDFSnapshotMore, ForbiddenOutputFilenameMT)
    // "SysError in <TFile::TFile>: file /definitely/not/a/valid/path/f.root can not be opened No such file or directory\nError in <TReentrantRWLock::WriteUnLock>: Write lock already released for 0x55f179989378\n"
    // but the address printed changes every time
    EXPECT_THROW(df.Snapshot("t", out_fname, {"rdfslot_"}), std::runtime_error);
+}
+
+/**
+ * Test against issue #6523 and #6640
+ * Try to force `TTree::ChangeFile` behaviour. Within RDataFrame, this should
+ * not happen and both sequential and multithreaded Snapshot should only create
+ * one file.
+ */
+TEST(RDFSnapshotMore, SetMaxTreeSizeMT)
+{
+   // Set TTree max size to a low number. Normally this would trigger the
+   // behaviour of TTree::ChangeFile, but not within RDataFrame.
+   auto old_maxtreesize{TTree::GetMaxTreeSize()};
+   TTree::SetMaxTreeSize(1000);
+
+   // Create TTree, fill it and Snapshot (should create one single file).
+   {
+      TTree t{"T", "SetMaxTreeSize(1000)"};
+      int x{};
+      auto nentries{20000};
+
+      t.Branch("x", &x, "x/I");
+
+      for (auto i = 0; i < nentries; i++) {
+         x = i;
+         t.Fill();
+      }
+
+      ROOT::RDataFrame df{t};
+      df.Snapshot<Int_t>("T", "rdfsnapshot_ttree_sequential_setmaxtreesize.root", {"x"});
+   }
+
+   // Create an RDF from the previously snapshotted file, then Snapshot again
+   // with IMT enabled.
+   {
+      ROOT::EnableImplicitMT();
+
+      ROOT::RDataFrame df{"T", "rdfsnapshot_ttree_sequential_setmaxtreesize.root"};
+      df.Snapshot<Int_t>("T", "rdfsnapshot_imt_setmaxtreesize.root", {"x"});
+
+      ROOT::DisableImplicitMT();
+   }
+
+   // Check the file for data integrity.
+   {
+      TFile f{"rdfsnapshot_imt_setmaxtreesize.root"};
+      std::unique_ptr<TTree> t{f.Get<TTree>("T")};
+
+      EXPECT_EQ(t->GetEntries(), 20000);
+
+      int sum{0};
+      int x{0};
+      t->SetBranchAddress("x", &x);
+
+      for (auto i = 0; i < t->GetEntries(); i++) {
+         t->GetEntry(i);
+         sum += x;
+      }
+
+      // sum(range(20000)) == 199990000
+      EXPECT_EQ(sum, 199990000);
+   }
+
+   gSystem->Unlink("rdfsnapshot_ttree_sequential_setmaxtreesize.root");
+   gSystem->Unlink("rdfsnapshot_imt_setmaxtreesize.root");
+
+   // Reset TTree max size to its old value
+   TTree::SetMaxTreeSize(old_maxtreesize);
 }
 
 #endif // R__USE_IMT

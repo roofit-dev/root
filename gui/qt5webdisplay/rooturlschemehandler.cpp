@@ -16,6 +16,8 @@
 
 #include "rooturlschemehandler.h"
 
+#include "rootwebpage.h" // only because of logger channel
+
 #include <QBuffer>
 #include <QByteArray>
 #include <QFile>
@@ -78,7 +80,7 @@ protected:
 
    void CheckWSPageContent(THttpWSHandler *) override
    {
-      std::string search = "JSROOT.ConnectWebWindow({";
+      std::string search = "JSROOT.connectWebWindow({";
       std::string replace = search + "platform:\"qt5\",socket_kind:\"rawlongpoll\",";
 
       ReplaceAllinContent(search, replace, true);
@@ -118,12 +120,12 @@ public:
       QWebEngineUrlRequestJob *req = fRequest.req();
 
       if (!req) {
-         R__ERROR_HERE("Qt5") << "Qt5 request already processed path " << GetPathName() << " file " << GetFileName();
+         R__LOG_ERROR(QtWebDisplayLog()) << "Qt5 request already processed path " << GetPathName() << " file " << GetFileName();
          return;
       }
 
       if (Is404()) {
-         R__ERROR_HERE("Qt5") << "Qt5 request FAIL path " << GetPathName() << " file " << GetFileName();
+         R__LOG_ERROR(QtWebDisplayLog()) << "Qt5 request FAIL path " << GetPathName() << " file " << GetFileName();
 
          req->fail(QWebEngineUrlRequestJob::UrlNotFound);
          // abort request
@@ -173,7 +175,7 @@ void RootUrlSchemeHandler::requestStarted(QWebEngineUrlRequestJob *request)
    QUrl url = request->requestUrl();
 
    if (!fServer) {
-      R__ERROR_HERE("webgui") << "Server not specified when request is started";
+      R__LOG_ERROR(QtWebDisplayLog()) << "Server not specified when request is started";
       request->fail(QWebEngineUrlRequestJob::UrlNotFound);
       return;
    }

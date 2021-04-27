@@ -1,7 +1,7 @@
 ## \file
 ## \ingroup tutorial_dataframe
 ## \notebook -draw
-## \brief The Higgs to four lepton analysis from the ATLAS Open Data release of 2020, with RDataFrame.
+## The Higgs to four lepton analysis from the ATLAS Open Data release of 2020, with RDataFrame.
 ##
 ## This tutorial is the Higgs to four lepton analysis from the ATLAS Open Data release in 2020
 ## (http://opendata.atlas.cern/release/2020/documentation/). The data was taken with the ATLAS detector
@@ -113,6 +113,12 @@ for s in samples:
 
 # Run the event loop and merge histograms of the respective processes
 
+# RunGraphs allows to run the event loops of the separate RDataFrame graphs
+# concurrently. This results in an improved usage of the available resources
+# if each separate RDataFrame can not utilize all available resources, e.g.,
+# because not enough data is available.
+ROOT.RDF.RunGraphs([histos[s] for s in samples])
+
 def merge_histos(label):
     h = None
     for i, d in enumerate(files[label]):
@@ -193,4 +199,5 @@ text.SetTextSize(0.04)
 text.DrawLatex(0.21, 0.80, "#sqrt{s} = 13 TeV, 10 fb^{-1}")
 
 # Save the plot
-c.SaveAs("HiggsToFourLeptons.pdf")
+c.SaveAs("df106_HiggsToFourLeptons.png")
+print("Saved figure to df106_HiggsToFourLeptons.png")

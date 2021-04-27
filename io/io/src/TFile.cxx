@@ -406,6 +406,9 @@ TFile::TFile(const char *fname1, Option_t *option, const char *ftitle, Int_t com
       SetName(fname);
       delete [] fname;
       fRealName = GetName();
+      if (!gSystem->IsAbsoluteFileName(fRealName)) {
+         gSystem->PrependPathName(gSystem->WorkingDirectory(),fRealName);
+      }
       fname = fRealName.Data();
    } else {
       Error("TFile", "error expanding path %s", fname1);
@@ -3070,7 +3073,7 @@ void TFile::MakeProject(const char *dirname, const char * /*classes*/,
                   break;
                }
             default:
-               if (strncmp(key->GetName(),"pair<",strlen("pair<"))==0) {
+               if (TClassEdit::IsStdPair(key->GetName())) {
                   if (genreflex) {
                      tmp.Form("<class name=\"%s\" />\n",key->GetName());
                      if ( selections.Index(tmp) == kNPOS ) {
@@ -3611,7 +3614,7 @@ void TFile::ReadStreamerInfo()
             Int_t asize = fClassIndex->GetSize();
             if (uid >= asize && uid <100000) fClassIndex->Set(2*asize);
             if (uid >= 0 && uid < fClassIndex->GetSize()) fClassIndex->fArray[uid] = 1;
-            else if (!isstl) {
+            else if (!isstl && !info->GetClass()->IsSyntheticPair()) {
                printf("ReadStreamerInfo, class:%s, illegal uid=%d\n",info->GetName(),uid);
             }
             if (gDebug > 0) printf(" -class: %s version: %d info read at slot %d\n",info->GetName(), info->GetClassVersion(),uid);
@@ -3726,7 +3729,6 @@ void TFile::WriteStreamerInfo()
    listOfRules.SetOwner(kTRUE);
    listOfRules.SetName("listOfRules");
    std::set<TClass*> classSet;
-
 
    while ((info = (TStreamerInfo*)next())) {
       Int_t uid = info->GetNumber();

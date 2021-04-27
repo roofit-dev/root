@@ -651,7 +651,7 @@ Int_t TSystem::SetFPEMask(Int_t)
 ////////////////////////////////////////////////////////////////////////////////
 /// Execute a command.
 
-int TSystem::Exec(const char*)
+int TSystem::Exec(const char *)
 {
    AbstractMethod("Exec");
    return -1;
@@ -660,7 +660,7 @@ int TSystem::Exec(const char*)
 ////////////////////////////////////////////////////////////////////////////////
 /// Open a pipe.
 
-FILE *TSystem::OpenPipe(const char*, const char*)
+FILE *TSystem::OpenPipe(const char *, const char *)
 {
    AbstractMethod("OpenPipe");
    return nullptr;
@@ -823,7 +823,7 @@ Bool_t TSystem::ConsistentWith(const char *path, void *dirptr)
 /// -1 if the directory could not be created (either already exists or
 /// illegal path name).
 
-int TSystem::MakeDirectory(const char*)
+int TSystem::MakeDirectory(const char *)
 {
    AbstractMethod("MakeDirectory");
    return 0;
@@ -891,7 +891,7 @@ const char *TSystem::HomeDirectory(const char *)
 //////////////////////////////////////////////////////////////////////////////
 /// Return the user's home directory.
 
-std::string TSystem::GetHomeDirectory(const char*) const
+std::string TSystem::GetHomeDirectory(const char *) const
 {
    return std::string();
 }
@@ -936,7 +936,7 @@ const char *TSystem::BaseName(const char *name)
       if (name[0] == '/' && name[1] == '\0')
          return name;
       char *cp;
-      if ((cp = (char*)strrchr(name, '/')))
+      if ((cp = (char *)strrchr(name, '/')))
          return ++cp;
       return name;
    }
@@ -1459,7 +1459,7 @@ int TSystem::GetPathInfo(const char *path, Long_t *id, Long64_t *size,
 
 int TSystem::GetPathInfo(const char *, FileStat_t &)
 {
-   AbstractMethod("GetPathInfo(const char*, FileStat_t&)");
+   AbstractMethod("GetPathInfo(const char *, FileStat_t&)");
    return 1;
 }
 
@@ -1642,7 +1642,7 @@ UserGroup_t *TSystem::GetGroupInfo(const char * /*group*/)
 ////////////////////////////////////////////////////////////////////////////////
 /// Set environment variable.
 
-void TSystem::Setenv(const char*, const char*)
+void TSystem::Setenv(const char *, const char *)
 {
    AbstractMethod("Setenv");
 }
@@ -1658,7 +1658,7 @@ void TSystem::Unsetenv(const char *name)
 ////////////////////////////////////////////////////////////////////////////////
 /// Get environment variable.
 
-const char *TSystem::Getenv(const char*)
+const char *TSystem::Getenv(const char *)
 {
    AbstractMethod("Getenv");
    return nullptr;
@@ -1788,7 +1788,7 @@ void TSystem::AddDynamicPath(const char *)
 ////////////////////////////////////////////////////////////////////////////////
 /// Return the dynamic path (used to find shared libraries).
 
-const char* TSystem::GetDynamicPath()
+const char *TSystem::GetDynamicPath()
 {
    AbstractMethod("GetDynamicPath");
    return nullptr;
@@ -1838,6 +1838,7 @@ static bool R__MatchFilename(const char *left, const char *right)
            );
 #endif
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Load a shared library. Returns 0 on successful loading, 1 in
@@ -2134,9 +2135,7 @@ const char *TSystem::GetLinkedLibraries()
 ///  - S: shared libraries loaded at the start of the executable, because
 ///       they were specified on the link line.
 ///  - D: shared libraries dynamically loaded after the start of the program.
-/// For MacOS only:
-///  - L: list the .dylib rather than the .so (this is intended for linking)
-///       This options is not the default
+///  - L: this option is ignored, and available for backward compatibility.
 
 const char *TSystem::GetLibraries(const char *regexp, const char *options,
                                   Bool_t isRegexp)
@@ -2285,39 +2284,6 @@ const char *TSystem::GetLibraries(const char *regexp, const char *options,
 }
 #endif
 
-#if defined(R__MACOSX) && !defined(MAC_OS_X_VERSION_10_5)
-   if (so2dylib) {
-      TString libs2 = fListLibs;
-      TString maclibs;
-
-      static TRegexp separator("[^ \\t\\s]+");
-      static TRegexp user_so("\\.so$");
-
-      Ssiz_t start, index, end;
-      start = index = end = 0;
-
-      while ((start < libs2.Length()) && (index != kNPOS)) {
-         index = libs2.Index(separator, &end, start);
-         if (index >= 0) {
-            // Change .so into .dylib and remove the
-            // path info if it is not accessible
-            TString s = libs2(index, end);
-            if (s.Index(user_so) != kNPOS) {
-               s.ReplaceAll(".so",".dylib");
-               if ( GetPathInfo( s, 0, (Long_t*)0, 0, 0 ) != 0 ) {
-                  s.Replace( 0, s.Last('/')+1, 0, 0);
-                  s.Replace( 0, s.Last('\\')+1, 0, 0);
-               }
-            }
-            if (!maclibs.IsNull()) maclibs.Append(" ");
-            maclibs.Append(s);
-         }
-         start += end+1;
-      }
-      fListLibs = maclibs;
-   }
-#endif
-
    return fListLibs.Data();
 }
 
@@ -2371,7 +2337,7 @@ char *TSystem::GetServiceByPort(int)
 ////////////////////////////////////////////////////////////////////////////////
 /// Open a connection to another host.
 
-int TSystem::OpenConnection(const char*, int, int, const char*)
+int TSystem::OpenConnection(const char *, int, int, const char *)
 {
    AbstractMethod("OpenConnection");
    return -1;
@@ -2836,7 +2802,7 @@ static void R__WriteDependencyFile(const TString & build_loc, const TString &dep
 /// root[2] .x myfunc.C++(10,20);
 /// ~~~
 /// The user may sometimes try to compile a script before it has loaded all the
-/// needed shared libraries.  In this case we want to be helpfull and output a
+/// needed shared libraries.  In this case we want to be helpful and output a
 /// list of the unresolved symbols. So if the loading of the created shared
 /// library fails, we will try to build a executable that contains the
 /// script. The linker should then output a list of missing symbols.
@@ -2844,7 +2810,7 @@ static void R__WriteDependencyFile(const TString & build_loc, const TString &dep
 /// To support this we provide a TSystem::SetMakeExe() function, that sets the
 /// directive telling how to create an executable. The loader will need
 /// to be informed of all the libraries available. The information about
-/// the libraries that has been loaded by .L and TSystem::Load() is accesible
+/// the libraries that has been loaded by .L and TSystem::Load() is accessible
 /// to the script compiler. However, the information about
 /// the libraries that have been selected at link time by the application
 /// builder (like the root libraries for root.exe) are not available and need
@@ -2975,7 +2941,7 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
    TString file_dirname = GetDirName( filename_fullpath );
    // For some probably good reason, DirName on Windows returns the 'name' of
    // the directory, omitting the drive letter (even if there was one). In
-   // consequence the result is not useable as a 'root directory', we need to
+   // consequence the result is not usable as a 'root directory', we need to
    // add the drive letter if there was one..
    if (library.Length()>1 && isalpha(library[0]) && library[1]==':') {
       file_dirname.Prepend(library(0,2));
@@ -2984,14 +2950,18 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
    incPath.Prepend( file_location + ":" );
 
    Ssiz_t dot_pos = library.Last('.');
-   TString extension = library;
-   extension.Replace( 0, dot_pos+1, 0 , 0);
-   TString libname_noext = library;
-   if (dot_pos>=0) libname_noext.Remove( dot_pos );
+   TString extension, libname_noext = library;
+   if (dot_pos >= 0) {
+      libname_noext.Remove(dot_pos);
+      extension = library(dot_pos+1, library.Length()-dot_pos-1);
+   }
 
    // Extension of shared library is platform dependent!!
-   library.Replace( dot_pos, library.Length()-dot_pos,
-                    TString("_") + extension + "." + fSoExt );
+   TString suffix = TString("_") + extension + "." + fSoExt;
+   if (dot_pos >= 0)
+      library.Replace( dot_pos, library.Length()-dot_pos, suffix);
+   else
+      library.Append(suffix);
 
    TString libname ( BaseName( libname_noext ) );
    libname.Append("_").Append(extension);
@@ -3690,7 +3660,7 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
    Bool_t collectingSingleLibraryNameTokens = kFALSE;
    for (auto tokenObj : *linkLibrariesNoQuotes.Tokenize(" ")) {
       singleLibrary = ((TObjString*)tokenObj)->GetString();
-      if (!AccessPathName(singleLibrary) || singleLibrary[0]=='-') {
+      if (singleLibrary[0]=='-' || !AccessPathName(singleLibrary)) {
          if (collectingSingleLibraryNameTokens) {
             librariesWithQuotes.Chop();
             librariesWithQuotes += "\" \"" + singleLibrary + "\"";
@@ -4040,7 +4010,7 @@ const char *TSystem::GetObjExt() const
 /// Set the location where ACLiC will create libraries and use as
 /// a scratch area.
 ///
-/// If isflast is flase, then the libraries are actually stored in
+/// If 'isflat' is false, then the libraries are actually stored in
 /// sub-directories of 'build_dir' including the full pathname of the
 /// script.  If the script is location at /full/path/name/macro.C
 /// the library will be located at 'build_dir+/full/path/name/macro_C.so'
@@ -4049,7 +4019,7 @@ const char *TSystem::GetObjExt() const
 /// mode there is a risk than 2 script of the same in different source
 /// directory will over-write each other.
 
-void TSystem::SetBuildDir(const char* build_dir, Bool_t isflat)
+void TSystem::SetBuildDir(const char *build_dir, Bool_t isflat)
 {
    fBuildDir = build_dir;
    if (isflat)
@@ -4264,7 +4234,7 @@ void TSystem::SetObjExt(const char *ObjExt)
 /// the arguments (including parenthesis) in arg
 /// and the I/O indirection in io
 
-TString TSystem::SplitAclicMode(const char* filename, TString &aclicMode,
+TString TSystem::SplitAclicMode(const char *filename, TString &aclicMode,
                                 TString &arguments, TString &io) const
 {
    char *fname = Strip(filename);
