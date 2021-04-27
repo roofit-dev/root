@@ -220,6 +220,9 @@ if (NOT ROOT_tmva_FOUND)
 else()
   #---These do not need to run for TMVA
   list(APPEND tmva_veto tmva/createData.C)
+  if(MSVC AND NOT win_broken_tests)
+    list(APPEND tmva_veto tmva/tmva103_Application.C tmva/envelope/classification.C)
+  endif()
 endif()
 
 if (NOT ROOT_pythia6_FOUND)
@@ -244,6 +247,9 @@ if(root7)
                  v7/fitpanel.cxx
                  v7/fitpanel6.cxx
       )
+  if(MSVC AND NOT win_broken_tests)
+    list(APPEND root7_veto v7/box.cxx v7/draw*.cxx )
+  endif()
 endif()
 
 if(NOT root7)
@@ -338,9 +344,6 @@ if(mpi)
   set(tutorials ${temp_list})
   list(REMOVE_ITEM tutorials ${mpi_tutorials})
 endif()
-
-list(LENGTH mpi_tutorials mpi_total)
-message(STATUS "${mpi_total} MPI tutorials in total")
 
 #---Special return code------------------------------------------------
 set(returncode_1 fit/fit2a.C fit/graph2dfit.C
@@ -480,7 +483,7 @@ foreach(t ${mpi_tutorials})
 endforeach()
 
 #---Python tutorials-----------------------------------------------------
-if(ROOT_python_FOUND)
+if(ROOT_pyroot_FOUND)
   if(NOT PYTHON_EXECUTABLE)
     find_package(PythonInterp REQUIRED)
   endif()

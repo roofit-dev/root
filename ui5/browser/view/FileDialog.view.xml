@@ -5,20 +5,17 @@
           xmlns:core="sap.ui.core"
           xmlns:t="sap.ui.table"
           xmlns:l="sap.ui.layout">
-   <Page title="{/dialogTitle}" showNavButton="false" showFooter="true"
+   <Page id="dialogPage" title="{/dialogTitle}" showNavButton="false" showFooter="true"
          showSubHeader="false" showHeader="true" enableScrolling="true">
          <content>
-            <Breadcrumbs id="breadcrumbs" separatorStyle="GreaterThan">
-            </Breadcrumbs>
-            <List headerText="Files" items="{ path: '/filesList' }" itemPress="onItemPress">
-               <StandardListItem title="{name}" icon="{icon}" type="Active" />
-            </List>
          </content>
          <footer>
             <OverflowToolbar>
                <ToolbarSpacer/>
-               <Button text="Close" icon="sap-icon://log" type="Transparent"
-                       tooltip="close dialog" press="onClosePress"/>
+               <Button text="Close" icon="sap-icon://decline" type="Transparent"
+                       tooltip="close dialog" press="onCancelPress"/>
+               <Button text="Ok" icon="sap-icon://accept" type="Transparent" enabled="{= ${/fileName} !== '' }"
+                       tooltip="Accept selection" press="onOkPress"/>
             </OverflowToolbar>
          </footer>
    </Page>

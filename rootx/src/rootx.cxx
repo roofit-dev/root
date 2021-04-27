@@ -148,7 +148,7 @@ static void SetRootSys()
    }
 }
 
-
+#ifndef IS_RPATH_BUILD
 static void SetLibraryPath()
 {
 #ifdef ROOTPREFIX
@@ -201,9 +201,13 @@ static void SetLibraryPath()
 #  endif
    putenv(msg);
 #ifdef ROOTPREFIX
+   } else {
+      char *msg = strdup("LD_LIBRARY_PATH=" ROOTLIBDIR);
+      putenv(msg);
    }
 #endif
 }
+#endif
 
 extern "C" {
    static void SigUsr1(int);
@@ -448,8 +452,10 @@ int main(int argc, char **argv)
       argvv[1+i] = argv[i];
    argvv[1+i] = 0;
 
+#ifndef IS_RPATH_BUILD
    // Make sure library path is set
    SetLibraryPath();
+#endif
 
    // Execute actual ROOT module
    execv(arg0, argvv);

@@ -95,7 +95,7 @@
 
    "use strict";
 
-   JSROOT.version = "dev 20/11/2019";
+   JSROOT.version = "dev 17/02/2020";
 
    JSROOT.source_dir = "";
    JSROOT.source_min = false;
@@ -663,6 +663,8 @@
       var pos = url.indexOf("?"), nquotes;
       if (pos<0) return dflt;
       url = decodeURI(url.slice(pos+1));
+      pos = url.lastIndexOf("#");
+      if (pos>=0) url = url.substr(0,pos);
 
       while (url.length>0) {
 
