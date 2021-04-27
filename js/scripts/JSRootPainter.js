@@ -265,6 +265,9 @@
                 // only required for MathJax to provide correct replacement
                 '#sqrt': '\u221A',
                 '#bar': '',
+                '#overline' : '',
+                '#underline' : '',
+                '#strike' : '',
 
                 // from TLatex tables #2 & #3
                 '#leq': '\u2264',
@@ -1644,11 +1647,12 @@
          this.connid = "connect";
       } else if (kind === "close") {
          if ((this.connid===null) || (this.connid==="close")) return;
-         url+="?connection="+this.connid + "&close";
+         url+="?connection=" + this.connid + "&close";
          this.connid = "close";
-         reqmode += ";sync"; // use sync mode to close connection before browser window closed
+         reqmode = "text;sync"; // use sync mode to close connection before browser window closed
       } else if ((this.connid===null) || (typeof this.connid!=='number')) {
-         return console.error("No connection");
+         if (!JSROOT.browser.qt5) console.error("No connection");
+         return;
       } else {
          url+="?connection="+this.connid;
          if (kind==="dummy") url+="&dummy";
@@ -1682,7 +1686,7 @@
 
             var str = "", i = 0, u8Arr = new Uint8Array(res), offset = u8Arr.length;
             if (offset < 4) {
-               console.error('longpoll got short message in raw mode ' + offset);
+               if (!JSROOT.browser.qt5) console.error('longpoll got short message in raw mode ' + offset);
                return this.handle.processreq(null);
             }
 
@@ -1806,7 +1810,7 @@
       this.wait_for_file = false;
       if (!res) return;
       if (this.receiver.ProvideData)
-         this.receiver.ProvideData(res, 0);
+         this.receiver.ProvideData(1, res, 0);
       setTimeout(this.next_operation.bind(this),10);
    }
 
@@ -1856,16 +1860,40 @@
 
    /** Invoke method in the receiver.
     * @private */
-   WebWindowHandle.prototype.InvokeReceiver = function(method, arg, arg2) {
+   WebWindowHandle.prototype.InvokeReceiver = function(brdcst, method, arg, arg2) {
       if (this.receiver && (typeof this.receiver[method] == 'function'))
          this.receiver[method](this, arg, arg2);
+
+      if (brdcst && this.channels) {
+         var ks = Object.keys(this.channels);
+         for (var n=0;n<ks.length;++n)
+            this.channels[ks[n]].InvokeReceiver(false, method, arg, arg2);
+      }
    }
 
    /** Provide data for receiver. When no queue - do it directly.
     * @private */
-   WebWindowHandle.prototype.ProvideData = function(_msg, _len) {
-      if (!this.msgqueue || !this.msgqueue.length)
-         return this.InvokeReceiver("OnWebsocketMsg", _msg, _len);
+   WebWindowHandle.prototype.ProvideData = function(chid, _msg, _len) {
+      if (this.wait_first_recv) {
+         console.log("FIRST MESSAGE", chid, _msg);
+         delete this.wait_first_recv;
+         return this.InvokeReceiver(false, "OnWebsocketOpened");
+      }
+
+      if ((chid > 1) && this.channels)  {
+         var channel = this.channels[chid];
+         if (channel)
+            return channel.ProvideData(1, _msg, _len);
+      }
+
+      var force_queue = _len && (_len < 0);
+
+      if (!force_queue && (!this.msgqueue || !this.msgqueue.length))
+         return this.InvokeReceiver(false, "OnWebsocketMsg", _msg, _len);
+
+      if (!this.msgqueue) this.msgqueue = [];
+      if (force_queue) _len = undefined;
+
       this.msgqueue.push({ ready: true, msg: _msg, len: _len});
    }
 
@@ -1884,11 +1912,16 @@
       item.ready = true;
       item.msg = _msg;
       item.len = _len;
-      if (this._loop_msgqueue) return;
+      this.ProcessQueue();
+   }
+
+   /** Process completed messages in the queue @private */
+   WebWindowHandle.prototype.ProcessQueue = function() {
+      if (this._loop_msgqueue || !this.msgqueue) return;
       this._loop_msgqueue = true;
       while ((this.msgqueue.length > 0) && this.msgqueue[0].ready) {
          var front = this.msgqueue.shift();
-         this.InvokeReceiver("OnWebsocketMsg", front.msg, front.len);
+         this.InvokeReceiver(false, "OnWebsocketMsg", front.msg, front.len);
       }
       if (this.msgqueue.length == 0)
          delete this.msgqueue;
@@ -1897,6 +1930,13 @@
 
    /** Close connection. */
    WebWindowHandle.prototype.Close = function(force) {
+      if (this.master) {
+         this.master.Send("CLOSECH=" + this.channelid, 0);
+         delete this.master.channels[this.channelid];
+         delete this.master;
+         return;
+      }
+
       if (this.timerid) {
          clearTimeout(this.timerid);
          delete this.timerid;
@@ -1917,6 +1957,9 @@
 
    /** Send text message via the connection. */
    WebWindowHandle.prototype.Send = function(msg, chid) {
+      if (this.master)
+         return this.master.Send(msg, this.channelid);
+
       if (!this._websocket || (this.state<=0)) return false;
 
       if (isNaN(chid) || (chid===undefined)) chid = 1; // when not configured, channel 1 is used - main widget
@@ -1936,12 +1979,60 @@
       return true;
    }
 
+   /** Inject message(s) into input queue, for debug purposes only
+     * @private */
+   WebWindowHandle.prototype.Inject = function(msg, chid, immediate) {
+      // use timeout to avoid too deep call stack
+      if (!immediate)
+         return setTimeout(this.Inject.bind(this, msg, chid, true), 0);
+
+      if (chid === undefined) chid = 1;
+
+      if (Array.isArray(msg)) {
+         for (var k=0;k<msg.length;++k)
+            this.ProvideData(chid, (typeof msg[k] == "string") ? msg[k] : JSON.stringify(msg[k]), -1);
+         this.ProcessQueue();
+      } else if (msg) {
+         this.ProvideData(chid, typeof msg == "string" ? msg : JSON.stringify(msg));
+      }
+   }
+
    /** Send keepalive message.
     * @private */
    WebWindowHandle.prototype.KeepAlive = function() {
       delete this.timerid;
       this.Send("KEEPALIVE", 0);
    }
+
+   /** Method open channel, which will share same connection, but can be used independently from main
+    * @private */
+   WebWindowHandle.prototype.CreateChannel = function() {
+      if (this.master)
+         return master.CreateChannel();
+
+      var channel = new WebWindowHandle("channel");
+      channel.wait_first_recv = true; // first received message via the channel is confirmation of established connection
+
+      if (!this.channels) {
+         this.channels = {};
+         this.freechannelid = 2;
+      }
+
+      channel.master = this;
+      channel.channelid = this.freechannelid++;
+
+      // register
+      this.channels[channel.channelid] = channel;
+
+      // now server-side entity should be initialized and init message send from server side!
+      return channel;
+   }
+
+   /** Returns used channel ID, 1 by default */
+   WebWindowHandle.prototype.getChannelId = function() {
+      return this.channelid && this.master ? this.channelid : 1;
+   }
+
 
    /** Method opens relative path with the same kind of socket.
     * @private
@@ -2012,13 +2103,15 @@
             var key = pthis.key || "";
 
             pthis.Send("READY=" + key, 0); // need to confirm connection
-            pthis.InvokeReceiver('OnWebsocketOpened');
+            pthis.InvokeReceiver(false, "OnWebsocketOpened");
          }
 
          conn.onmessage = function(e) {
             var msg = e.data;
 
             if (pthis.next_binary) {
+
+               var binchid = pthis.next_binary;
                delete pthis.next_binary;
 
                if (msg instanceof Blob) {
@@ -2033,7 +2126,7 @@
                } else {
                   // console.log('got array ' + (typeof msg) + ' len = ' + msg.byteLength);
                   // this is from CEF or LongPoll handler
-                  pthis.ProvideData(msg, e.offset || 0);
+                  pthis.ProvideData(binchid, msg, e.offset || 0);
                }
 
                return;
@@ -2059,14 +2152,14 @@
                console.log('GET chid=0 message', msg);
                if (msg == "CLOSE") {
                   pthis.Close(true); // force closing of socket
-                  pthis.InvokeReceiver('OnWebsocketClosed');
+                  pthis.InvokeReceiver(true, "OnWebsocketClosed");
                }
             } else if (msg == "$$binary$$") {
-               pthis.next_binary = true;
+               pthis.next_binary = chid;
             } else if (msg == "$$nullbinary$$") {
-               pthis.ProvideData(new ArrayBuffer(0), 0);
+               pthis.ProvideData(chid, new ArrayBuffer(0), 0);
             } else {
-               pthis.ProvideData(msg);
+               pthis.ProvideData(chid, msg);
             }
 
             if (pthis.ackn > 7)
@@ -2078,14 +2171,14 @@
             if (pthis.state > 0) {
                console.log('websocket closed');
                pthis.state = 0;
-               pthis.InvokeReceiver('OnWebsocketClosed');
+               pthis.InvokeReceiver(true, "OnWebsocketClosed");
             }
          }
 
          conn.onerror = function (err) {
             console.log("websocket error " + err);
             if (pthis.state > 0) {
-               pthis.InvokeReceiver('OnWebsocketError', err);
+               pthis.InvokeReceiver(true, "OnWebsocketError", err);
                pthis.state = 0;
             }
          }
@@ -4938,6 +5031,9 @@
       var features = [
           { name: "#it{" }, // italic
           { name: "#bf{" }, // bold
+          { name: "#underline{", deco: "underline" }, // underline
+          { name: "#overline{", deco: "overline" }, // overline
+          { name: "#strike{", deco: "line-through" }, // line through
           { name: "kern[", arg: 'float' }, // horizontal shift
           { name: "lower[", arg: 'float' },  // vertical shift
           { name: "scale[", arg: 'float' },  // font scale
@@ -4945,7 +5041,7 @@
           { name: "#font[", arg: 'int' },
           { name: "_{" },  // subscript
           { name: "^{" },   // superscript
-          { name: "#bar{", accent: "\u02C9" }, // "\u0305"
+          { name: "#bar{", deco: "overline" /* accent: "\u02C9" */ }, // "\u0305"
           { name: "#hat{", accent: "\u02C6" }, // "\u0302"
           { name: "#check{", accent: "\u02C7" }, // "\u030C"
           { name: "#acute{", accent: "\u02CA" }, // "\u0301"
@@ -5074,6 +5170,8 @@
                left_brace = found.name;
                right_brace = found.right;
             }
+         } else if (found.deco) {
+            subpos.deco = found.deco;
          } else if (found.accent) {
             subpos.accent = found.accent;
          } else
@@ -5114,6 +5212,12 @@
                     break;
                  }
               subnode.attr('font-weight', curr.bold ? 'bold' : 'normal');
+              break;
+           case "#underline{":
+              subnode.attr('text-decoration', 'underline');
+              break;
+           case "#overline{":
+              subnode.attr('text-decoration', 'overline');
               break;
            case "_{":
               scale = 0.6;
@@ -5274,6 +5378,29 @@
 
                subpos.square_root.append('svg:tspan').attr("dy", makeem(0.25-sqrt_dy)).attr("dx", makeem(-a.length/3-0.2)).text('\u2009'); // unicode tiny space
 
+               break;
+            }
+
+            if (subpos.deco) {
+
+               // use text-decoration attribute when there are no extra elements inside
+               if (subnode1.selectAll('tspan').size() == 0) {
+                  subnode1.attr('text-decoration', subpos.deco);
+                  break;
+               }
+
+               var be = get_boundary(this, subnode1, subpos.rect),
+                   len = be.width / subpos.fsize, fact, dy, symb;
+               switch (subpos.deco) {
+                  case "underline": dy = 0.35; fact = 1.2; symb = '\uFF3F'; break; // '\u2014'; // underline
+                  case "overline": dy = -0.35; fact = 3; symb = '\u203E'; break; // overline
+                  default: dy = 0; fact = 1.8; symb = '\u23AF'; break;
+               }
+               var nn = Math.round(Math.max(len*fact,1)), a = "";
+               while (nn--) a += symb;
+
+               subnode1.append('svg:tspan').attr("dx",  makeem(-len - 0.2)).attr("dy", makeem(dy)).text(a);
+               curr.dy -= dy;
                break;
             }
 
@@ -6192,7 +6319,8 @@
    JSROOT.addDrawFunc({ name: "kind:TopFolder", icon: "img_base" });
    JSROOT.addDrawFunc({ name: "kind:Folder", icon: "img_folder", icon2: "img_folderopen", noinspect:true });
 
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::TCanvas", icon: "img_canvas", prereq: "v7", func: "JSROOT.v7.drawCanvas", opt: "", expand_item: "fPrimitives" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RCanvas", icon: "img_canvas", prereq: "v7", func: "JSROOT.v7.drawCanvas", opt: "", expand_item: "fPrimitives" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RCanvasDisplayItem", icon: "img_canvas", prereq: "v7", func: "JSROOT.v7.drawPadSnapshot", opt: "", expand_item: "fPrimitives" });
 
 
    JSROOT.getDrawHandle = function(kind, selector) {
@@ -6609,7 +6737,7 @@
       }
 
       if (!JSROOT.nodejs) {
-         build(d3.select(window.document).append("div").style("visible", "hidden"));
+         build(d3.select('body').append("div").style("visible", "hidden"));
       } else if (JSROOT.nodejs_document) {
          build(JSROOT.nodejs_window.d3.select('body').append('div'));
       } else {

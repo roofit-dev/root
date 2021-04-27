@@ -18,8 +18,7 @@
 #define ROOT7_RBrowser
 
 #include <ROOT/RWebWindow.hxx>
-#include <ROOT/RBrowserItem.hxx>
-#include <ROOT/RBrowsable.hxx>
+#include <ROOT/RBrowserData.hxx>
 
 #include <vector>
 #include <memory>
@@ -50,7 +49,7 @@ protected:
 
    std::shared_ptr<RWebWindow> fWebWindow;   ///<! web window to browser
 
-   RBrowsable  fBrowsable;                   ///<! central browsing element
+   RBrowserData  fBrowsable;                   ///<! central browsing element
 
    TCanvas *AddCanvas();
    TCanvas *GetActiveCanvas() const;
@@ -64,11 +63,11 @@ protected:
    std::string ProcessBrowserRequest(const std::string &msg);
    std::string ProcessDblClick(const std::string &path, const std::string &drawingOptions);
    long ProcessRunCommand(const std::string &file_path);
-   bool ProcessSaveFile(const std::string &file_path);
+   void ProcessSaveFile(const std::string &file_path);
    std::string GetCurrentWorkingDirectory();
 
    void SendInitMsg(unsigned connid);
-   void WebWindowCallback(unsigned connid, const std::string &arg);
+   void ProcessMsg(unsigned connid, const std::string &arg);
 
 public:
    RBrowser(bool use_rcanvas = true);
