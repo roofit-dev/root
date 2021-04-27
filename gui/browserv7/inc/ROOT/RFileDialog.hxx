@@ -17,7 +17,7 @@
 #define ROOT7_RFileDialog
 
 #include <ROOT/RWebWindow.hxx>
-#include <ROOT/RBrowsable.hxx>
+#include <ROOT/RBrowserData.hxx>
 
 #include <vector>
 #include <memory>
@@ -42,40 +42,54 @@ public:
 
    enum EDialogTypes {
       kOpenFile,
-      kSaveAsFile,
+      kSaveAs,
       kNewFile
    };
 
 protected:
 
    EDialogTypes fKind{kOpenFile};      ///<! dialog kind OpenFile, SaveAs, NewFile
-   std::string  fTitle;                ///<! title
-   RBrowsable   fBrowsable;            ///<! central browsing element
-
-   unsigned fConnId{0}; ///<! default connection id
+   std::string  fTitle;                ///<! title, when not specified default will be used
+   RBrowserData   fBrowsable;            ///<! central browsing element
 
    std::shared_ptr<RWebWindow> fWebWindow;   ///<! web window for file dialog
 
-   bool fDidSelect{false};           ///<! true when dialog is selected or closed
-   std::string fSelect;              ///<! result of file selection
-   RFileDialogCallback_t fCallback;  ///<! function receiving result
+   bool fDidSelect{false};                ///<! true when dialog is selected or closed
+   std::string fSelectedFilter;           ///<! name of selected filter
+   std::vector<std::string> fNameFilters; ///<! name filters
+   std::string fSelect;                   ///<! result of file selection
+   RFileDialogCallback_t fCallback;       ///<! function receiving result, called once
 
-   std::string ProcessBrowserRequest(const std::string &msg);
-   std::string GetCurrentWorkingDirectory();
+   static std::string TypeAsString(EDialogTypes kind);
 
    void SendInitMsg(unsigned connid);
-   void SendDirContent(unsigned connid);
+   void SendChPathMsg(unsigned connid);
 
-   void WebWindowCallback(unsigned connid, const std::string &arg);
+   void ProcessMsg(unsigned connid, const std::string &arg);
 
-   static std::string Dialog(EDialogTypes kind, const std::string &title);
+   void InvokeCallBack();
+
+   std::string GetRegexp(const std::string &name) const;
+
+   static std::string Dialog(EDialogTypes kind, const std::string &title, const std::string &fname);
 
 public:
 
-   RFileDialog(EDialogTypes kind = kOpenFile, const std::string &title = "OpenFile dialog");
+   RFileDialog(EDialogTypes kind = kOpenFile, const std::string &title = "", const std::string &fname = "");
    virtual ~RFileDialog();
 
+   const EDialogTypes &GetType() const { return fKind; }
+
    void SetCallback(RFileDialogCallback_t callback);
+
+   /** Set array of name filters like "Text files (*.txt)", "Any files (*)", "Image files (*png *.jpg)"
+    * Should be specified before starting dialog */
+   void SetNameFilters(const std::vector<std::string> &arr) { fNameFilters = arr; }
+   /** Returns array of name filters*/
+   const auto &GetNameFilters() const { return fNameFilters; }
+
+   void SetSelectedFilter(const std::string &name);
+   std::string GetSelectedFilter() const;
 
    void Show(const RWebDisplayArgs &args = "");
    void Hide();
@@ -83,9 +97,11 @@ public:
    bool IsCompleted() const { return fDidSelect; }
    const std::string &GetFileName() const { return fSelect; }
 
-   static std::string OpenFile(const std::string &title);
-   static std::string SaveAsFile(const std::string &title);
-   static std::string NewFile(const std::string &title);
+   static std::string OpenFile(const std::string &title = "", const std::string &fname = "");
+   static std::string SaveAs(const std::string &title = "", const std::string &fname = "");
+   static std::string NewFile(const std::string &title = "", const std::string &fname = "");
+
+   static std::shared_ptr<RFileDialog> Embedded(const std::shared_ptr<RWebWindow> &window, const std::string &args);
 
 };
 

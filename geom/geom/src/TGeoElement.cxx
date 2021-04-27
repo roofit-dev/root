@@ -151,6 +151,17 @@ TGeoElement::TGeoElement(const char *name, const char *title, Int_t z, Int_t n, 
    fAbundances = NULL;
    ComputeDerivedQuantities();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// destructor
+
+TGeoElement::~TGeoElement()
+{
+   delete fIsotopes;
+   delete [] fAbundances;
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Calculate properties for an atomic number
 

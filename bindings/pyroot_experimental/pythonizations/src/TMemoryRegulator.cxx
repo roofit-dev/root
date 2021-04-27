@@ -11,6 +11,12 @@
 
 #include "TMemoryRegulator.h"
 
+#include "ProxyWrappers.h"
+#include "CPPInstance.h"
+#include "CPPInstance.h"
+
+using namespace CPyCppyy;
+
 PyROOT::ObjectMap_t PyROOT::TMemoryRegulator::fObjectMap = PyROOT::ObjectMap_t();
 
 ////////////////////////////////////////////////////////////////////////////
@@ -18,8 +24,8 @@ PyROOT::ObjectMap_t PyROOT::TMemoryRegulator::fObjectMap = PyROOT::ObjectMap_t()
 ///        construction and destruction
 PyROOT::TMemoryRegulator::TMemoryRegulator()
 {
-   CPyCppyy::MemoryRegulator::SetRegisterHook(PyROOT::TMemoryRegulator::RegisterHook);
-   CPyCppyy::MemoryRegulator::SetUnregisterHook(PyROOT::TMemoryRegulator::UnregisterHook);
+   MemoryRegulator::SetRegisterHook(PyROOT::TMemoryRegulator::RegisterHook);
+   MemoryRegulator::SetUnregisterHook(PyROOT::TMemoryRegulator::UnregisterHook);
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -35,8 +41,6 @@ std::pair<bool, bool> PyROOT::TMemoryRegulator::RegisterHook(Cppyy::TCppObject_t
    if (Cppyy::IsSubtype(klass, tobjectTypeID)) {
       ObjectMap_t::iterator ppo = fObjectMap.find(cppobj);
       if (ppo == fObjectMap.end()) {
-         // Set cleanup bit so RecursiveRemove is tried on registered object
-         ((TObject*)cppobj)->SetBit(TObject::kMustCleanup);
          fObjectMap.insert({cppobj, klass});
       }
    }
@@ -76,6 +80,33 @@ void PyROOT::TMemoryRegulator::RecursiveRemove(TObject *object)
    ObjectMap_t::iterator ppo = fObjectMap.find(cppobj);
    if (ppo != fObjectMap.end()) {
       klass = ppo->second;
-      CPyCppyy::MemoryRegulator::RecursiveRemove(cppobj, klass);
+      MemoryRegulator::RecursiveRemove(cppobj, klass);
+      fObjectMap.erase(ppo);
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////
+/// \brief Clean up all tracked objects.
+void PyROOT::TMemoryRegulator::ClearProxiedObjects()
+{
+   while (!fObjectMap.empty()) {
+      auto elem = fObjectMap.begin();
+      auto cppobj = elem->first;
+      auto klassid = elem->second;
+      auto pyclass = CreateScopeProxy(klassid);
+      auto pyobj = (CPPInstance *)MemoryRegulator::RetrievePyObject(cppobj, pyclass);
+
+      if (pyobj && (pyobj->fFlags & CPPInstance::kIsOwner)) {
+         // Only delete the C++ object if the Python proxy owns it.
+         // Invoke RecursiveRemove on it first so that proxy cleanup is done
+         auto o = static_cast<TObject *>(cppobj);
+         RecursiveRemove(o);
+         delete o;
+      }
+      else {
+         // Non-owning proxy, just unregister to clean tables.
+         // The proxy deletion by Python will have no effect on C++, so all good
+         MemoryRegulator::UnregisterPyObject(pyobj, pyclass);
+      }
    }
 }

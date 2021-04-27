@@ -428,14 +428,12 @@ function(ROOT_GENERATE_DICTIONARY dictionary)
     endif(ARG_MULTIDICT)
 
     if(runtime_cxxmodules)
-      set(pcm_name)
+      # If we specify NO_CXXMODULE we should be able to still install the produced _rdict.pcm file.
+      if(NOT ARG_NO_CXXMODULE)
+        set(pcm_name)
+      endif()
       if(cpp_module)
         set(cpp_module_file ${library_output_dir}/${cpp_module}.pcm)
-        if (APPLE)
-          if (${cpp_module} MATCHES "(GCocoa|GQuartz)")
-            set(cpp_module_file)
-          endif()
-        endif(APPLE)
         # The module depends on its modulemap file.
         if (cpp_module_file)
           set (runtime_cxxmodule_dependencies copymodulemap "${CMAKE_BINARY_DIR}/include/module.modulemap")
@@ -630,10 +628,8 @@ function (ROOT_CXXMODULES_APPEND_TO_MODULEMAP library library_headers)
     set (modulemap_entry "${modulemap_entry}\n  use ROOT_Foundation_C\n")
   endif()
 
-  # For modules GCocoa and GQuartz we need objc context.
-  if (${library} MATCHES "(GCocoa|GQuartz)")
-    set (modulemap_entry "${modulemap_entry}\n  requires objc\n")
-  else()
+  # For modules GCocoa and GQuartz we need objc and cplusplus context.
+  if (NOT ${library} MATCHES "(GCocoa|GQuartz)")
     set (modulemap_entry "${modulemap_entry}\n  requires cplusplus\n")
   endif()
   if (library_headers)
@@ -1068,7 +1064,7 @@ endfunction()
 #                                 LIBRARIES lib1 lib2          : linking flags such as dl, readline
 #                                 DEPENDENCIES lib1 lib2       : dependencies such as Core, MathCore
 #                                 BUILTINS builtin1 builtin2   : builtins like AFTERIMAGE
-#                                 LINKDEF LinkDef.h LinkDef2.h : linkdef files, default value is "LinkDef.h"
+#                                 LINKDEF LinkDef.h            : linkdef file, default value is "LinkDef.h"
 #                                 DICTIONARY_OPTIONS option    : options passed to rootcling
 #                                 INSTALL_OPTIONS option       : options passed to install headers
 #                                 NO_CXXMODULE                 : don't generate a C++ module for this package
@@ -1076,8 +1072,8 @@ endfunction()
 #---------------------------------------------------------------------------------------------------
 function(ROOT_STANDARD_LIBRARY_PACKAGE libname)
   set(options NO_INSTALL_HEADERS STAGE1 NO_HEADERS NO_SOURCES OBJECT_LIBRARY NO_CXXMODULE)
-  set(oneValueArgs)
-  set(multiValueArgs DEPENDENCIES HEADERS NODEPHEADERS SOURCES BUILTINS LIBRARIES DICTIONARY_OPTIONS LINKDEF INSTALL_OPTIONS)
+  set(oneValueArgs LINKDEF)
+  set(multiValueArgs DEPENDENCIES HEADERS NODEPHEADERS SOURCES BUILTINS LIBRARIES DICTIONARY_OPTIONS INSTALL_OPTIONS)
   CMAKE_PARSE_ARGUMENTS(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
   # Check if we have any unparsed arguments
@@ -1259,7 +1255,8 @@ set(ROOT_TEST_DRIVER ${CMAKE_CURRENT_LIST_DIR}/RootTestDriver.cmake)
 #                        [WORKING_DIR dir] [COPY_TO_BUILDDIR files]
 #                        [BUILD target] [PROJECT project]
 #                        [PASSREGEX exp] [FAILREGEX epx]
-#                        [PASSRC code])
+#                        [PASSRC code]
+#                        [LABELS label1 label2])
 #
 function(ROOT_ADD_TEST test)
   CMAKE_PARSE_ARGUMENTS(ARG "DEBUG;WILLFAIL;CHECKOUT;CHECKERR;RUN_SERIAL"
@@ -1493,7 +1490,7 @@ endfunction()
 # function ROOT_ADD_GTEST(<testsuite> source1 source2... COPY_TO_BUILDDIR file1 file2 LIBRARIES)
 #
 function(ROOT_ADD_GTEST test_suite)
-  CMAKE_PARSE_ARGUMENTS(ARG "WILLFAIL" "" "COPY_TO_BUILDDIR;LIBRARIES" ${ARGN})
+  CMAKE_PARSE_ARGUMENTS(ARG "WILLFAIL" "" "COPY_TO_BUILDDIR;LIBRARIES;LABELS" ${ARGN})
   include_directories(${CMAKE_CURRENT_BINARY_DIR} ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
 
   ROOT_GET_SOURCES(source_files . ${ARG_UNPARSED_ARGUMENTS})
@@ -1513,6 +1510,9 @@ function(ROOT_ADD_GTEST test_suite)
   if(ARG_WILLFAIL)
     set(willfail WILLFAIL)
   endif()
+  if(ARG_LABELS)
+    set(labels "LABELS ${ARG_LABELS}")
+  endif()
 
   ROOT_PATH_TO_STRING(mangled_name ${test_suite} PATH_SEPARATOR_REPLACEMENT "-")
   ROOT_ADD_TEST(
@@ -1521,6 +1521,7 @@ function(ROOT_ADD_GTEST test_suite)
     WORKING_DIR ${CMAKE_CURRENT_BINARY_DIR}
     COPY_TO_BUILDDIR ${ARG_COPY_TO_BUILDDIR}
     ${willfail}
+    ${labels}
   )
 endfunction()
 

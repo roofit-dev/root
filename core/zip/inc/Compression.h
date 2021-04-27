@@ -47,11 +47,11 @@ struct RCompressionSetting {
          /// Use the global compression setting for this process; may be affected by rootrc.
          kUseGlobal = 0,
          /// Use the compile-time default setting
-         kUseCompiledDefault = 404,
+         kUseCompiledDefault = 101,
          /// Use the default analysis setting; fast reading but poor compression ratio
          kUseAnalysis = 404,
-         /// Use the recommended general-purpose setting; moderate read / write speed and compression ratio
-         kUseGeneralPurpose = 101,
+         /// Use the new recommended general-purpose setting; it is a best trade-off between compression ratio/decompression speed
+         kUseGeneralPurpose = 505,
          /// Use the setting that results in the smallest files; very slow read and write
          kUseSmallest = 207,
       };
@@ -62,14 +62,19 @@ struct RCompressionSetting {
          /// Some objects use this value to denote that the compression algorithm
          /// should be inherited from the parent object
          kInherit = -1,
-         // Compression level reserved for "uncompressed state"
+         /// Compression level reserved for "uncompressed state"
          kUncompressed = 0,
-         // Compression level reserved when we are not sure what to use (1 is for the fastest compression)
+         /// Compression level reserved when we are not sure what to use (1 is for the fastest compression)
          kUseMin = 1,
+         /// Compression level reserved for ZLIB compression algorithm (fastest compression)
          kDefaultZLIB = 1,
+         /// Compression level reserved for LZ4 compression algorithm (trade-off between file ratio/decompression speed)
          kDefaultLZ4 = 4,
+         /// Compression level reserved for ZSYD compression algorithm (trade-off between file ratio/decompression speed)
          kDefaultZSTD = 5,
+         /// Compression level reserved for old ROOT compression algorithm
          kDefaultOld = 6,
+         /// Compression level reserved for LZMA compression algorithm (slowest compression with smallest files)
          kDefaultLZMA = 7
       };
    };
