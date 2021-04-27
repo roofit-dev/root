@@ -252,7 +252,7 @@ void MethodDL::ProcessOptions()
 #ifndef R__HAS_TMVAGPU    // case TMVA does not support GPU
       Log() << kERROR << "CUDA backend not enabled. Please make sure "
          "you have CUDA installed and it was successfully "
-         "detected by CMAKE by using -Dcuda=On "
+         "detected by CMAKE by using -Dtmva-gpu=On  "
             << Endl;
 #ifdef R__HAS_TMVACPU
       fArchitectureString = "CPU";
@@ -267,9 +267,9 @@ void MethodDL::ProcessOptions()
    }
   else if (fArchitectureString == "CUDNN") {
 #ifndef R__HAS_TMVAGPU    // case TMVA does not support GPU
-      Log() << kERROR << "CUDA backend not enabled. Please make sure "
+      Log() << kERROR << "CUDA+CUDNN backend not enabled. Please make sure "
             "you have CUDNN and CUDA installed and that the GPU capability/CUDA "
-            "was successfully detected by CMAKE by using -Dcuda=On"
+            "was successfully detected by CMAKE by using -Dtmva-gpu=On"
             << Endl;
 #ifdef R__HAS_TMVACPU
       fArchitectureString = "CPU";
@@ -1283,13 +1283,7 @@ void MethodDL::TrainDeepNet()
       if (trainingPhase > 1) {
          // copy initial weights from fNet to deepnet
          for (size_t i = 0; i < deepNet.GetDepth(); ++i) {
-            const auto & nLayer = fNet->GetLayerAt(i);
-            const auto & dLayer = deepNet.GetLayerAt(i);
-            // could use a traits for detecting equal architectures
-           // dLayer->CopyWeights(nLayer->GetWeights());
-           //  dLayer->CopyBiases(nLayer->GetBiases());
-            Architecture_t::CopyDiffArch(dLayer->GetWeights(), nLayer->GetWeights() );
-            Architecture_t::CopyDiffArch(dLayer->GetBiases(), nLayer->GetBiases() );
+            deepNet.GetLayerAt(i)->CopyParameters(*fNet->GetLayerAt(i));
          }
       }
 
@@ -1432,8 +1426,9 @@ void MethodDL::TrainDeepNet()
       Log() << "   Start epoch iteration ..." << Endl;
       bool debugFirstEpoch = false;
       bool computeLossInTraining = true;  // compute loss in training or at test time
+      size_t nTrainEpochs = 0;
       while (!converged) {
-         optimizer->IncrementGlobalStep();
+         nTrainEpochs++;
          trainingData.Shuffle(rng);
 
          // execute all epochs
@@ -1493,6 +1488,8 @@ void MethodDL::TrainDeepNet()
             if (debugFirstEpoch)
                std::cout << "- doing optimizer update  \n";
 
+            // increment optimizer step that is used in some algorithms (e.g. ADAM)
+            optimizer->IncrementGlobalStep();
             optimizer->Step();
 
 #ifdef DEBUG
@@ -1510,7 +1507,7 @@ void MethodDL::TrainDeepNet()
          if (debugFirstEpoch) std::cout << "\n End batch loop - compute validation loss   \n";
          //}
          debugFirstEpoch = false;
-         if ((optimizer->GetGlobalStep() % settings.testInterval) == 0) {
+         if ((nTrainEpochs % settings.testInterval) == 0) {
 
             std::chrono::time_point<std::chrono::system_clock> t1,t2;
 
@@ -1534,7 +1531,7 @@ void MethodDL::TrainDeepNet()
             valError += regTerm;
 
             //Log the loss value
-            fTrainHistory.AddValue("valError",optimizer->GetGlobalStep(),valError);
+            fTrainHistory.AddValue("valError",nTrainEpochs,valError);
 
             t2 = std::chrono::system_clock::now();
 
@@ -1548,17 +1545,14 @@ void MethodDL::TrainDeepNet()
             // copy configuration when reached a minimum error
             if (valError < minValError ) {
                // Copy weights from deepNet to fNet
-               Log() << std::setw(10) << optimizer->GetGlobalStep()
+               Log() << std::setw(10) << nTrainEpochs
                      << " Minimum Test error found - save the configuration " << Endl;
                for (size_t i = 0; i < deepNet.GetDepth(); ++i) {
-                  const auto & nLayer = fNet->GetLayerAt(i);
-                  const auto & dLayer = deepNet.GetLayerAt(i);
-                  ArchitectureImpl_t::CopyDiffArch(nLayer->GetWeights(), dLayer->GetWeights() );
-                  ArchitectureImpl_t::CopyDiffArch(nLayer->GetBiases(), dLayer->GetBiases() );
-                  // std::cout << "Weights for layer " << i << std::endl;
-                  // for (size_t k = 0; k < dlayer->GetWeights().size(); ++k)
-                  //    dLayer->GetWeightsAt(k).Print();
-                  // debug tensors
+                  fNet->GetLayerAt(i)->CopyParameters(*deepNet.GetLayerAt(i));
+                  // if (i == 0 && deepNet.GetLayerAt(0)->GetWeights().size() > 1) {
+                  //    Architecture_t::PrintTensor(deepNet.GetLayerAt(0)->GetWeightsAt(0), " input weights");
+                  //    Architecture_t::PrintTensor(deepNet.GetLayerAt(0)->GetWeightsAt(1), " state weights");
+                  // }
                }
                // Architecture_t::PrintTensor(deepNet.GetLayerAt(1)->GetWeightsAt(0), " cudnn weights");
                // ArchitectureImpl_t::PrintTensor(fNet->GetLayerAt(1)->GetWeightsAt(0), " cpu weights");
@@ -1583,7 +1577,7 @@ void MethodDL::TrainDeepNet()
             trainingError += regTerm;
 
             //Log the loss value
-            fTrainHistory.AddValue("trainingError",optimizer->GetGlobalStep(),trainingError);
+            fTrainHistory.AddValue("trainingError",nTrainEpochs,trainingError);
 
             // stop measuring
             tend = std::chrono::system_clock::now();
@@ -1601,10 +1595,10 @@ void MethodDL::TrainDeepNet()
             double eventTime = elapsed1.count()/( batchesInEpoch * settings.testInterval * settings.batchSize);
 
             converged =
-               convergenceCount > settings.convergenceSteps || optimizer->GetGlobalStep() >= settings.maxEpochs;
+               convergenceCount > settings.convergenceSteps || nTrainEpochs >= settings.maxEpochs;
 
 
-            Log() << std::setw(10) << optimizer->GetGlobalStep()  << " | "
+            Log() << std::setw(10) << nTrainEpochs  << " | "
                   << std::setw(12) << trainingError
                   << std::setw(12) << valError
                   << std::setw(12) << seconds / settings.testInterval
@@ -1621,7 +1615,7 @@ void MethodDL::TrainDeepNet()
 
          // if (stepCount % 10 == 0 || converged) {
          if (converged && debug) {
-            Log() << "Final Deep Net Weights for phase  " << trainingPhase << " epoch " << optimizer->GetGlobalStep()
+            Log() << "Final Deep Net Weights for phase  " << trainingPhase << " epoch " << nTrainEpochs
                   << Endl;
             auto & weights_tensor = deepNet.GetLayerAt(0)->GetWeights();
             auto & bias_tensor = deepNet.GetLayerAt(0)->GetBiases();
@@ -1648,7 +1642,11 @@ void MethodDL::Train()
    if (this->GetArchitectureString() == "GPU") {
 #ifdef R__HAS_TMVAGPU
       Log() << kINFO << "Start of deep neural network training on GPU." << Endl << Endl;
+#ifdef R__HAS_CUDNN
       TrainDeepNet<DNN::TCudnn<ScalarImpl_t> >();
+#else
+      TrainDeepNet<DNN::TCuda<ScalarImpl_t>>();
+#endif
 #else
       Log() << kFATAL << "CUDA backend not enabled. Please make sure "
          "you have CUDA installed and it was successfully "
@@ -1855,10 +1853,11 @@ std::vector<Double_t> MethodDL::PredictDeepNet(Long64_t firstEvt, Long64_t lastE
 
    // copy weights from the saved fNet to the built DeepNet
    for (size_t i = 0; i < deepNet.GetDepth(); ++i) {
-      const auto & nLayer = fNet->GetLayerAt(i);
-      const auto & dLayer = deepNet.GetLayerAt(i);
-      Architecture_t::CopyDiffArch(dLayer->GetWeights(), nLayer->GetWeights() );
-      Architecture_t::CopyDiffArch(dLayer->GetBiases(), nLayer->GetBiases() );
+      deepNet.GetLayerAt(i)->CopyParameters(*fNet->GetLayerAt(i));
+      // if (i == 0 && deepNet.GetLayerAt(0)->GetWeights().size() > 1) {
+      //    Architecture_t::PrintTensor(deepNet.GetLayerAt(0)->GetWeightsAt(0), "Inference: input weights");
+      //    Architecture_t::PrintTensor(deepNet.GetLayerAt(0)->GetWeightsAt(1), "Inference: state weights");
+      // }
    }
 
    size_t n1 = deepNet.GetBatchHeight();
@@ -2039,7 +2038,12 @@ std::vector<Double_t> MethodDL::GetMvaValues(Long64_t firstEvt, Long64_t lastEvt
    if (this->GetArchitectureString() == "GPU") {
 #ifdef R__HAS_TMVAGPU
       Log() << kINFO << "Evaluate deep neural network on GPU using batches with size = " <<  batchSize << Endl << Endl;
-      return PredictDeepNet<DNN::TCudnn<ScalarImpl_t> >(firstEvt, lastEvt, batchSize, logProgress);
+#ifdef R__HAS_CUDNN
+      return PredictDeepNet<DNN::TCudnn<ScalarImpl_t>>(firstEvt, lastEvt, batchSize, logProgress);
+#else
+      return PredictDeepNet<DNN::TCuda<ScalarImpl_t>>(firstEvt, lastEvt, batchSize, logProgress);
+#endif
+
 #endif
    } else if (this->GetArchitectureString() == "CPU") {
 //#ifdef R__HAS_TMVACPU

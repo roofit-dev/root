@@ -3597,8 +3597,12 @@
       if (svg_p.empty()) return true;
 
       var pp = svg_p.property('pad_painter');
-      if (pp && (pp !== this))
+      if (pp && (pp !== this)) {
          pp.painters.push(this);
+         // workround to provide style for next object draing
+         if (!this.rstyle && pp.next_rstyle)
+            this.rstyle = pp.next_rstyle;
+      }
 
       if (((is_main === 1) || (is_main === 4) || (is_main === 5)) && !svg_p.property('mainpainter'))
          // when this is first main painter in the pad
@@ -4222,7 +4226,8 @@
          var items = reply ? reply.fItems : null;
 
          if (items && items.length) {
-            _menu.add("separator");
+            if (_menu.size() > 0)
+              _menu.add("separator");
 
             this.args_menu_items = items;
             this.args_menu_id = reply.fId;
@@ -4510,13 +4515,13 @@
     * @desc used to find title drawing
     * @private */
    TObjectPainter.prototype.FindInPrimitives = function(objname) {
-
       var painter = this.pad_painter();
-      if (!painter || !painter.pad) return null;
 
-      if (painter.pad.fPrimitives)
-         for (var n=0;n<painter.pad.fPrimitives.arr.length;++n) {
-            var prim = painter.pad.fPrimitives.arr[n];
+      var arr = painter && painter.pad && painter.pad.fPrimitives ? painter.pad.fPrimitives.arr : null;
+
+      if (arr && arr.length)
+         for (var n=0;n<arr.length;++n) {
+            var prim = arr[n];
             if (('fName' in prim) && (prim.fName === objname)) return prim;
          }
 
