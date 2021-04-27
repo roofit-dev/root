@@ -264,6 +264,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         MultiProcess/zmq.hxx
     RooHelpers.h
     RooSpan.h
+    BatchData.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -496,6 +497,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/MultiProcess/TaskManager.cxx
         src/MultiProcess/messages.cxx
     src/RooHelpers.cxx
+    src/BatchData.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
   DEPENDENCIES
