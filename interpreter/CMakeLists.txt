@@ -86,6 +86,10 @@ else()
   set(ROOT_CLING_TARGET "all")
 endif()
 
+if(NOT "${ROOT_CLING_TARGET}" STREQUAL "all")
+  string(APPEND ROOT_CLING_TARGET ";NVPTX")
+endif()
+
 if(MSVC)
   # replace dashes in the -EH* and -GR* flags with slashes (/EH* /GR*)
   string(REPLACE " -EH" " /EH" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -155,7 +159,7 @@ if(builtin_llvm)
   # in that case we set the flags for all configurations to the
   # flags of the build type assigned to LLVM_BUILD_TYPE.
 
-  if(GENERATOR_IS_MULTI_CONFIG)
+  if(MSVC OR XCODE)
     string(TOUPPER ${LLVM_BUILD_TYPE} LLVM_BUILD_TYPE)
     set(LLVM_C_FLAGS ${CMAKE_C_FLAGS_${LLVM_BUILD_TYPE}})
     set(LLVM_CXX_FLAGS ${CMAKE_CXX_FLAGS_${LLVM_BUILD_TYPE}})
