@@ -255,6 +255,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         MultiProcess/Vector.h
         MultiProcess/messages.h
         MultiProcess/zmq.hxx
+    RooHelpers.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -486,6 +487,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/MultiProcess/NLLVar.cxx
         src/MultiProcess/TaskManager.cxx
         src/MultiProcess/messages.cxx
+    src/RooHelpers.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
   DEPENDENCIES
