@@ -40,7 +40,6 @@ public:
   virtual TObject* clone(const char* newname) const { return new RooAddPdf(*this,newname) ; }
   virtual ~RooAddPdf() ;
 
-  Double_t evaluate() const ;
   virtual Bool_t checkObservables(const RooArgSet* nset) const ;	
 
   virtual Bool_t forceAnalyticalInt(const RooAbsArg& /*dep*/) const { 
@@ -128,13 +127,15 @@ protected:
                                        const RooArgSet* auxProto=0, Bool_t verbose= kFALSE) const ;
 
 
+  Double_t evaluate() const;
+  virtual RooSpan<double> evaluateBatch(std::size_t begin, std::size_t batchSize) const;
+
+
   mutable RooAICRegistry _codeReg ;  //! Registry of component analytical integration codes
 
   RooListProxy _pdfList ;   //  List of component PDFs
   RooListProxy _coefList ;  //  List of coefficients
-  mutable RooArgList* _snormList ;  //!  List of supplemental normalization factors
-  TIterator* _pdfIter ;     //! Iterator over PDF list
-  TIterator* _coefIter ;    //! Iterator over coefficient list
+  mutable RooArgList* _snormList{nullptr};  //!  List of supplemental normalization factors
   
   Bool_t _haveLastCoef ;    //  Flag indicating if last PDFs coefficient was supplied in the ctor
   Bool_t _allExtendable ;   //  Flag indicating if all PDF components are extendable
@@ -143,6 +144,7 @@ protected:
   mutable Int_t _coefErrCount ; //! Coefficient error counter
 
 private:
+  std::pair<const RooArgSet*, CacheElem*> getNormAndCache() const;
 
   ClassDef(RooAddPdf,3) // PDF representing a sum of PDFs
 };
