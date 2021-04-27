@@ -2213,8 +2213,12 @@ RooPlot* RooAbsReal::plotOn(RooPlot *frame, PlotOpt o) const
     projection->attachDataSet(*projDataSel) ;
 
     // Construct optimized data weighted average
+    RooAbsTestStatistic::Configuration cfg;
+    cfg.nCPU = o.numCPU;
+    cfg.interleave = o.interleave;
+    cfg.CPUAffinity=o.CPUAffinity;
     RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*projection,*projDataSel,RooArgSet()/**projDataSel->get()*/,
-                               {.nCPU=o.numCPU,.interleave=o.interleave, .CPUAffinity=o.CPUAffinity}, true) ;
+            std::move(cfg), true) ;
     //RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*projection,*projDataSel,*projDataSel->get(),o.numCPU,o.interleave,kTRUE) ;
 
     // Do _not_ activate cache-and-track as necessary information to define normalization observables are not present in the underlying dataset
@@ -2585,8 +2589,12 @@ RooPlot* RooAbsReal::plotAsymOn(RooPlot *frame, const RooAbsCategoryLValue& asym
     }
 
 
+    RooAbsTestStatistic::Configuration cfg;
+    cfg.nCPU = o.numCPU;
+    cfg.interleave = o.interleave;
+    cfg.CPUAffinity=o.CPUAffinity;
     RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*funcAsym,*projDataSel,RooArgSet()/**projDataSel->get()*/,
-            {.nCPU=o.numCPU,.interleave=o.interleave, .CPUAffinity=o.CPUAffinity},true) ;
+            std::move(cfg),true) ;
     //RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*funcAsym,*projDataSel,*projDataSel->get(),o.numCPU,o.interleave,kTRUE) ;
     dwa.constOptimizeTestStatistic(Activate) ;
 
