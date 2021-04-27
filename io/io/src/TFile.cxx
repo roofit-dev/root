@@ -1083,7 +1083,12 @@ Int_t TFile::GetBestBuffer() const
    if (!fWritten) return TBuffer::kInitialSize;
    Double_t mean = fSumBuffer/fWritten;
    Double_t rms2 = TMath::Abs(fSum2Buffer/fSumBuffer -mean*mean);
-   return (Int_t)(mean + sqrt(rms2));
+   Double_t result = mean + sqrt(rms2);
+   if (result >= (double)std::numeric_limits<Int_t>::max()) {
+      return std::numeric_limits<Int_t>::max() -1;
+   } else {
+      return (Int_t)result;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2030,10 +2035,8 @@ Int_t TFile::ReOpen(Option_t *mode)
          FlushWriteCache();
 
          // delete free segments from free list
-         if (fFree) {
-            fFree->Delete();
-            SafeDelete(fFree);
-         }
+         fFree->Delete();
+         SafeDelete(fFree);
 
          SysClose(fD);
          fD = -1;
@@ -3955,7 +3958,7 @@ TFile *TFile::Open(const char *url, Option_t *options, const char *ftitle,
          TFile::EAsyncOpenStatus aos = TFile::kAOSNotAsync;
          aos = TFile::GetAsyncOpenStatus(fh);
          Int_t xtms = toms;
-         while (aos != TFile::kAOSNotAsync && aos == TFile::kAOSInProgress && xtms > 0) {
+         while (aos == TFile::kAOSInProgress && xtms > 0) {
             gSystem->Sleep(1);
             xtms -= 1;
             aos = TFile::GetAsyncOpenStatus(fh);
