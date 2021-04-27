@@ -9,7 +9,7 @@
 ################################################################################
 
 from ROOT import pythonization
-from cppyy.gbl import TIter
+import cppyy
 
 from ._generic import add_len
 
@@ -29,10 +29,9 @@ def _extend_pyz(self, c):
     # Parameters:
     # - self: collection
     # - c: collection to extend self with
-    lenc = c.GetEntries()
-    it = TIter(c)
-    for _ in range(lenc):
-        self.Add(it.Next())
+    it = iter(c)
+    for _ in range(len(c)):
+        self.Add(next(it))
 
 def _count_pyz(self, o):
     # Parameters:
@@ -42,12 +41,9 @@ def _count_pyz(self, o):
     # - Number of occurrences of the object in the collection
     n = 0
 
-    it = TIter(self)
-    obj = it.Next()
-    while obj:
-        if obj == o:
+    for elem in self:
+        if elem == o:
             n += 1
-        obj = it.Next()
 
     return n
 
@@ -91,7 +87,7 @@ def _iter_pyz(self):
     # Generator function to iterate on TCollections
     # Parameters:
     # - self: collection to be iterated
-    it = TIter(self)
+    it = cppyy.gbl.TIter(self)
     o = it.Next()
     while o:
         yield o

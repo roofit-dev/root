@@ -70,7 +70,11 @@ namespace RDF {
 std::set<std::string> GetPotentialColumnNames(const std::string &expr)
 {
    lexertk::generator generator;
-   generator.process(expr);
+   const auto ok = generator.process(expr);
+   if (!ok) {
+      const auto msg = "Failed to tokenize expression:\n" + expr + "\n\nMake sure it is valid C++.";
+      throw std::runtime_error(msg);
+   }
 
    std::set<std::string> potCols;
    const auto nToks = generator.size();
@@ -150,7 +154,7 @@ std::string DemangleTypeIdName(const std::type_info &typeInfo)
    return TClassEdit::DemangleTypeIdName(typeInfo, dummy);
 }
 
-ColumnNames_t ConvertRegexToColumns(RDFInternal::RBookedCustomColumns & customColumns,
+ColumnNames_t ConvertRegexToColumns(const RDFInternal::RBookedCustomColumns & customColumns,
                                     TTree *tree,
                                     ROOT::RDF::RDataSource *dataSource,
                                     std::string_view columnNameRegexp,
@@ -520,7 +524,7 @@ std::vector<std::string> ColumnTypesAsString(ColumnNames_t &colNames, ColumnName
       const auto &realColName = aliasMapEnd == aliasMapIt ? colName : aliasMapIt->second;
       // The map is a const reference, so no operator[]
       const auto isCustomCol = customCols.HasName(realColName);
-      const auto customColID = isCustomCol ? customCols.GetColumns()[realColName]->GetID() : 0;
+      const auto customColID = isCustomCol ? customCols.GetColumns().at(realColName)->GetID() : 0;
       const auto colTypeName =
          ColumnName2ColumnTypeName(realColName, namespaceID, tree, ds, isCustomCol, /*vector2rvec=*/true, customColID);
       colTypes.emplace_back(colTypeName);
@@ -576,9 +580,10 @@ BuildLambdaString(const std::string &expr, const ColumnNames_t &vars, const Colu
       ss.seekp(-2, ss.cur);
 
    if (hasReturnStmt)
-      ss << "){\n" << expr << "\n}";
+      ss << "){";
    else
-      ss << "){return " << expr << "\n;}";
+      ss << "){return ";
+   ss << expr << "\n;}";
 
    return ss.str();
 }
@@ -608,7 +613,7 @@ void BookFilterJit(RJittedFilter *jittedFilter, void *prevNodeOnHeap, std::strin
    const auto usedColTypes =
       ColumnTypesAsString(usedBranches, varNames, aliasMap, tree, ds, dotlessExpr, namespaceID, customCols);
 
-   TRegexp re("[^a-zA-Z0-9_]return[^a-zA-Z0-9_]");
+   TRegexp re("[^a-zA-Z0-9_]?return[^a-zA-Z0-9_]");
    Ssiz_t matchedLen;
    const bool hasReturnStmt = re.Index(dotlessExpr, &matchedLen) != -1;
 
@@ -661,7 +666,7 @@ void BookDefineJit(std::string_view name, std::string_view expression, RLoopMana
    const auto usedColTypes =
       ColumnTypesAsString(usedBranches, varNames, aliasMap, tree, ds, dotlessExpr, namespaceID, customCols);
 
-   TRegexp re("[^a-zA-Z0-9_]return[^a-zA-Z0-9_]");
+   TRegexp re("[^a-zA-Z0-9_]?return[^a-zA-Z0-9_]");
    Ssiz_t matchedLen;
    const bool hasReturnStmt = re.Index(dotlessExpr, &matchedLen) != -1;
 
@@ -715,7 +720,7 @@ std::string JitBuildAction(const ColumnNames_t &bl, void *prevNode, const std::t
    std::vector<std::string> columnTypeNames(nBranches);
    for (auto i = 0u; i < nBranches; ++i) {
       const auto isCustomCol = customCols.HasName(bl[i]);
-      const auto customColID = isCustomCol ? customCols.GetColumns()[bl[i]]->GetID() : 0;
+      const auto customColID = isCustomCol ? customCols.GetColumns().at(bl[i])->GetID() : 0;
       const auto columnTypeName =
          ColumnName2ColumnTypeName(bl[i], namespaceID, tree, ds, isCustomCol, /*vector2rvec=*/true, customColID);
       if (columnTypeName.empty()) {
