@@ -508,6 +508,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RIO
     MathCore
     Foam
+    Smatrix
   LIBRARIES
     ${RT_LIBRARY}
   LINKDEF
