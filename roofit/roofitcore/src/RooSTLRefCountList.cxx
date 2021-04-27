@@ -1,7 +1,6 @@
+// Author: Stephan Hageboeck, CERN, 12/2018
 /*****************************************************************************
  * Project: RooFit                                                           *
- * Package: RooFitCore                                                       *
- * @(#)root/roofitcore:$Id$
  * Authors:                                                                  *
  *   WV, Wouter Verkerke, UC Santa Barbara, verkerke@slac.stanford.edu       *
  *   DK, David Kirkby,    UC Irvine,         dkirkby@uci.edu                 *
@@ -14,21 +13,32 @@
  * listed in LICENSE (http://roofit.sourceforge.net/license.txt)             *
  *****************************************************************************/
 
-/**
-\file RooLinkedListIter.cxx
-\class RooLinkedListIter
-\ingroup Roofitcore
+#include "RooSTLRefCountList.h"
 
-RooLinkedListIter is the TIterator implementation for RooLinkedList
-**/
-
-#include "RooFit.h"
-
+#include "RooRefCountList.h"
 #include "RooLinkedListIter.h"
-#include "RooLinkedListIter.h"
+#include "RooAbsArg.h"
+#include <string>
 
-using namespace std;
+/// Template specialisation used in RooAbsArg:
+ClassImp(RooSTLRefCountList<RooAbsArg>);
 
-ClassImp(RooLinkedListIter);
+namespace RooFit {
+namespace STLRefCountListHelpers {
+/// Converts RooRefCountList to RooSTLRefCountList<RooAbsArg>.
+/// This converter only yields lists with T=RooAbsArg. This is ok because this
+/// the old RefCountList was only holding these.
+RooSTLRefCountList<RooAbsArg> convert(const RooRefCountList& old) {
+  RooSTLRefCountList<RooAbsArg> newList;
+  newList.reserve(old.GetSize());
 
-;
+  auto it = old.fwdIterator();
+  for (RooAbsArg * elm = it.next(); elm != nullptr; elm = it.next()) {
+    newList.Add(elm, old.refCount(elm));
+  }
+
+  return newList;
+}
+}
+}
+
