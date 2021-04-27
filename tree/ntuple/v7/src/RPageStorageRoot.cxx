@@ -40,6 +40,7 @@ static constexpr const char* kKeyPagePayload = "NTPLP";
 ROOT::Experimental::Detail::RPageSinkRoot::RPageSinkRoot(std::string_view ntupleName, std::string_view path,
    const RNTupleWriteOptions &options)
    : RPageSink(ntupleName, options)
+   , fMetrics("RPageSinkRoot")
    , fPageAllocator(std::make_unique<RPageAllocatorHeap>())
 {
    R__WARNING_HERE("NTuple") << "The RNTuple file format will change. " <<
@@ -57,9 +58,6 @@ ROOT::Experimental::Detail::RPageSinkRoot::~RPageSinkRoot()
 void ROOT::Experimental::Detail::RPageSinkRoot::DoCreate(const RNTupleModel & /* model */)
 {
    fDirectory = fFile->mkdir(fNTupleName.c_str());
-   // In TBrowser, use RNTupleBrowser(TDirectory *directory) in order to show the ntuple contents
-   fDirectory->SetBit(TDirectoryFile::kCustomBrowse);
-   fDirectory->SetTitle("ROOT::Experimental::Detail::RNTupleBrowser");
 
    const auto &descriptor = fDescriptorBuilder.GetDescriptor();
    auto szHeader = descriptor.SerializeHeader(nullptr);
@@ -164,6 +162,7 @@ void ROOT::Experimental::Detail::RPageAllocatorKey::DeletePage(
 ROOT::Experimental::Detail::RPageSourceRoot::RPageSourceRoot(std::string_view ntupleName, std::string_view path,
    const RNTupleReadOptions &options)
    : RPageSource(ntupleName, options)
+   , fMetrics("RPageSourceRoot")
    , fPageAllocator(std::make_unique<RPageAllocatorKey>())
    , fPagePool(std::make_shared<RPagePool>())
 {
