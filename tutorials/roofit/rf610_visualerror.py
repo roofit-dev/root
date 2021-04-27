@@ -2,12 +2,12 @@
 ## \ingroup tutorial_roofit
 ## \notebook
 ##
-## Likelihood and minimization: visualization of errors from a covariance matrix
+## \brief Likelihood and minimization: visualization of errors from a covariance matrix
 ##
 ## \macro_code
 ##
 ## \date February 2018
-## \author Clemens Lange, Wouter Verkerke (C++ version)
+## \authors Clemens Lange, Wouter Verkerke (C++ version)
 
 import ROOT
 

@@ -1,7 +1,7 @@
 ## \file
 ## \ingroup tutorial_dataframe
 ## \notebook
-## This tutorial shows how read data of a RDataFrame into Numpy arrays.
+## \brief Read data from RDataFrame into Numpy arrays.
 ##
 ## \macro_code
 ## \macro_output
@@ -63,8 +63,8 @@ print("Access to all methods and data members of the C++ object:\nObject: {}\nAc
 try:
     import pandas
 except:
-    print("Failed to import pandas.")
-    exit()
+    print("Please install the pandas package to run this section of the tutorial.")
+    exit(1)
 
 df = pandas.DataFrame(npy5)
 print("Content of the ROOT.RDataFrame as pandas.DataFrame:\n{}\n".format(df))

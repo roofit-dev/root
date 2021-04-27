@@ -5,7 +5,7 @@
 #include "TString.h"
 #include "TFile.h"
 #include "TRandom.h"
-#include "TCanvas.h"
+#include "TVirtualPad.h"
 #include "TF1.h"
 #include "TH1.h"
 
@@ -132,6 +132,7 @@ struct  TestKDE  {
          gPad->SaveAs(gfname);
       }
       //f->Close();
+      delete f;
    }
    
 };

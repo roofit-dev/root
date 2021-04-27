@@ -36,7 +36,7 @@ occur.
 #include "TSAXParser.h"
 #include "TXMLAttr.h"
 #include "Varargs.h"
-#include "TObjString.h"
+#include "strlcpy.h"
 #include "TList.h"
 #include "TClass.h"
 

@@ -2081,8 +2081,10 @@ InputFile ASTReader::getInputFile(ModuleFile &F, unsigned ID, bool Complain) {
 
   // For an overridden file, create a virtual file with the stored
   // size/timestamp.
-  if ((Overridden || Transient) && File == nullptr)
+  if ((Overridden || Transient) && (DisableValidation || File == nullptr)) {
     File = FileMgr.getVirtualFile(Filename, StoredSize, StoredTime);
+    Overridden = true;
+  }
 
   if (File == nullptr) {
     if (Complain) {
@@ -2163,6 +2165,10 @@ InputFile ASTReader::getInputFile(ModuleFile &F, unsigned ID, bool Complain) {
   }
   // FIXME: If the file is overridden and we've already opened it,
   // issue an error (or split it into a separate FileEntry).
+  // FIXME: Complain before hitting the assert. We should investigate why we
+  // hit this unforeseen case.
+  if ((Overridden || Transient) && IsOutOfDate)
+    Error(diag::err_fe_pch_file_overridden, Filename);
 
   InputFile IF = InputFile(File, Overridden || Transient, IsOutOfDate);
 
@@ -3356,10 +3362,11 @@ ASTReader::ReadASTBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
       break;
     }
 
-    case LATE_PARSED_TEMPLATE: {
-      LateParsedTemplates.append(Record.begin(), Record.end());
+    case LATE_PARSED_TEMPLATE:
+      LateParsedTemplates.emplace_back(
+          std::piecewise_construct, std::forward_as_tuple(&F),
+          std::forward_as_tuple(Record.begin(), Record.end()));
       break;
-    }
 
     case OPTIMIZE_PRAGMA_OPTIONS:
       if (Record.size() != 1) {
@@ -6315,7 +6322,7 @@ void ASTReader::readExceptionSpec(ModuleFile &ModuleFile,
     for (unsigned I = 0, N = Record[Idx++]; I != N; ++I)
       Exceptions.push_back(readType(ModuleFile, Record, Idx));
     ESI.Exceptions = Exceptions;
-  } else if (EST == EST_ComputedNoexcept) {
+  } else if (isComputedNoexcept(EST)) {
     ESI.NoexceptExpr = ReadExpr(ModuleFile);
   } else if (EST == EST_Uninstantiated) {
     ESI.SourceDecl = ReadDeclAs<FunctionDecl>(ModuleFile, Record, Idx);
@@ -7211,8 +7218,8 @@ Stmt *ASTReader::GetExternalDeclStmt(uint64_t Offset) {
   // Offset here is a global offset across the entire chain.
   RecordLocation Loc = getLocalBitOffset(Offset);
   Loc.F->DeclsCursor.JumpToBit(Loc.Offset);
-  assert(NumCurrentElementsDeserializing == 0 &&
-         "should not be called while already deserializing");
+  // assert(NumCurrentElementsDeserializing == 0 &&
+  //        "should not be called while already deserializing");
   Deserializing D(this);
   return ReadStmtFromStream(*Loc.F);
 }
@@ -8076,25 +8083,28 @@ void ASTReader::ReadPendingInstantiations(
 void ASTReader::ReadLateParsedTemplates(
     llvm::MapVector<const FunctionDecl *, std::unique_ptr<LateParsedTemplate>>
         &LPTMap) {
-  for (unsigned Idx = 0, N = LateParsedTemplates.size(); Idx < N;
-       /* In loop */) {
-    FunctionDecl *FD = cast<FunctionDecl>(GetDecl(LateParsedTemplates[Idx++]));
+  for (auto &LPT : LateParsedTemplates) {
+    ModuleFile *FMod = LPT.first;
+    RecordDataImpl &LateParsed = LPT.second;
+    for (unsigned Idx = 0, N = LateParsed.size(); Idx < N;
+         /* In loop */) {
+      FunctionDecl *FD =
+          cast<FunctionDecl>(GetLocalDecl(*FMod, LateParsed[Idx++]));
 
-    auto LT = llvm::make_unique<LateParsedTemplate>();
-    LT->D = GetDecl(LateParsedTemplates[Idx++]);
+      auto LT = llvm::make_unique<LateParsedTemplate>();
+      LT->D = GetLocalDecl(*FMod, LateParsed[Idx++]);
 
-    ModuleFile *F = getOwningModuleFile(LT->D);
-    assert(F && "No module");
+      ModuleFile *F = getOwningModuleFile(LT->D);
+      assert(F && "No module");
 
-    unsigned TokN = LateParsedTemplates[Idx++];
-    LT->Toks.reserve(TokN);
-    for (unsigned T = 0; T < TokN; ++T)
-      LT->Toks.push_back(ReadToken(*F, LateParsedTemplates, Idx));
+      unsigned TokN = LateParsed[Idx++];
+      LT->Toks.reserve(TokN);
+      for (unsigned T = 0; T < TokN; ++T)
+        LT->Toks.push_back(ReadToken(*F, LateParsed, Idx));
 
-    LPTMap.insert(std::make_pair(FD, std::move(LT)));
+      LPTMap.insert(std::make_pair(FD, std::move(LT)));
+    }
   }
-
-  LateParsedTemplates.clear();
 }
 
 void ASTReader::LoadSelector(Selector Sel) {

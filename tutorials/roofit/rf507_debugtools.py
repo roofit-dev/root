@@ -2,12 +2,12 @@
 ## \ingroup tutorial_roofit
 ## \notebook -nodraw
 ##
-## Organization and simultaneous fits: RooFit memory tracing debug tool
+## \brief Organization and simultaneous fits: RooFit memory tracing debug tool
 ##
 ## \macro_code
 ##
 ## \date February 2018
-## \author Clemens Lange, Wouter Verkerke (C++ version)
+## \authors Clemens Lange, Wouter Verkerke (C++ version)
 
 import ROOT
 

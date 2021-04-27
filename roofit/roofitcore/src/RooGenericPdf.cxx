@@ -23,22 +23,28 @@ RooGenericPdf is a concrete implementation of a probability density function,
 which takes a RooArgList of servers and a C++ expression string defining how
 its value should be calculated from the given list of servers.
 A fully numerical integration is automatically performed to normalize the given
-expression. RooGenericPdf uses a RooFormula object to perform the expression evaluation
+expression. RooGenericPdf uses a RooFormula object to perform the expression evaluation.
 
 The string expression can be any valid TFormula expression referring to the
-listed servers either by name or by their ordinal list position:
+listed servers either by name or by their ordinal list position. These three are
+equivalent:
+```
+  RooFormulaVar("gen", "x*y", RooArgList(x,y))       // reference by name
+  RooFormulaVar("gen", "@0*@1", RooArgList(x,y))     // reference by ordinal with @
+  RooFormulaVar("gen", "x[0]*x[1]", RooArgList(x,y)) // TFormula-builtin reference by ordinal
+```
+Note that `x[i]` is an expression reserved for TFormula. All variable references
+are automatically converted to the TFormula-native format. If a variable with
+the name `x` is given, the RooFormula interprets `x[i]` as a list position,
+but `x` without brackets as the name of a RooFit object.
 
-  RooGenericPdf("gen","x*y",RooArgList(x,y))  or
-  RooGenericPdf("gen","@0*@1",RooArgList(x,y)) 
-
-The latter form, while slightly less readable, is more versatile because it
-doesn't hardcode any of the variable names it expects
+The last two versions, while slightly less readable, are more versatile because
+the names of the arguments are not hard coded.
 **/
 
 #include "RooFit.h"
 #include "Riostream.h"
 
-#include "RooGenericPdf.h"
 #include "RooGenericPdf.h"
 #include "RooStreamParser.h"
 #include "RooMsgService.h"
@@ -58,10 +64,10 @@ ClassImp(RooGenericPdf);
 RooGenericPdf::RooGenericPdf(const char *name, const char *title, const RooArgList& dependents) : 
   RooAbsPdf(name,title), 
   _actualVars("actualVars","Variables used by PDF expression",this),
-  _formula(0),
   _formExpr(title)
 {  
   _actualVars.add(dependents) ; 
+  formula();
 
   if (_actualVars.getSize()==0) _value = traceEval(0) ;
 }
@@ -75,10 +81,10 @@ RooGenericPdf::RooGenericPdf(const char *name, const char *title,
 			     const char* inFormula, const RooArgList& dependents) : 
   RooAbsPdf(name,title), 
   _actualVars("actualVars","Variables used by PDF expression",this),
-  _formula(0),
   _formExpr(inFormula)
 {  
-  _actualVars.add(dependents) ; 
+  _actualVars.add(dependents) ;
+  formula();
 
   if (_actualVars.getSize()==0) _value = traceEval(0) ;
 }
@@ -91,21 +97,10 @@ RooGenericPdf::RooGenericPdf(const char *name, const char *title,
 RooGenericPdf::RooGenericPdf(const RooGenericPdf& other, const char* name) : 
   RooAbsPdf(other, name), 
   _actualVars("actualVars",this,other._actualVars),
-  _formula(0),
   _formExpr(other._formExpr)
 {
+  formula();
 }
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooGenericPdf::~RooGenericPdf() 
-{
-  if (_formula) delete _formula ;
-}
-
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,8 +108,10 @@ RooGenericPdf::~RooGenericPdf()
 RooFormula& RooGenericPdf::formula() const
 {
   if (!_formula) {
-    _formula = new RooFormula(GetName(),_formExpr.Data(),_actualVars) ;
-  } 
+    const_cast<std::unique_ptr<RooFormula>&>(_formula).reset(
+        new RooFormula(GetName(),_formExpr.Data(),_actualVars));
+    const_cast<TString&>(_formExpr) = _formula->formulaString().c_str();
+  }
   return *_formula ;
 }
 
@@ -160,7 +157,7 @@ Bool_t RooGenericPdf::isValidReal(Double_t /*value*/, Bool_t /*printError*/) con
 Bool_t RooGenericPdf::redirectServersHook(const RooAbsCollection& newServerList, Bool_t mustReplaceAll, Bool_t nameChange, Bool_t /*isRecursive*/)
 {
   if (_formula) {
-     return _formula->changeDependents(newServerList,mustReplaceAll,nameChange) ;
+     return _formula->changeDependents(newServerList,mustReplaceAll,nameChange);
   } else {
     return kTRUE ;
   }

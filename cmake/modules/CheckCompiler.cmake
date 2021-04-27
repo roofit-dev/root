@@ -1,6 +1,19 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 #---------------------------------------------------------------------------------------------------
 #  CheckCompiler.cmake
 #---------------------------------------------------------------------------------------------------
+
+if(NOT GENERATOR_IS_MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
+  if(NOT CMAKE_C_FLAGS AND NOT CMAKE_CXX_FLAGS AND NOT CMAKE_Fortran_FLAGS)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING
+      "Specifies the build type on single-configuration generators" FORCE)
+  endif()
+endif()
 
 include(CheckLanguage)
 #---Enable FORTRAN (unfortunatelly is not not possible in all cases)-------------------------------
@@ -75,13 +88,17 @@ if (CMAKE_COMPILER_IS_GNUCXX)
   endif()
   message(STATUS "Found GCC. Major version ${GCC_MAJOR}, minor version ${GCC_MINOR}")
   set(COMPILER_VERSION gcc${GCC_MAJOR}${GCC_MINOR}${GCC_PATCH})
+  if("${GCC_MAJOR}.${GCC_MINOR}" VERSION_GREATER_EQUAL 4.9
+      AND CMAKE_GENERATOR STREQUAL "Ninja")
+    # GCC checks automatically if we are in interactive terminal mode.
+    # We use color output only for Ninja, because Ninja by default is buffering the output,
+    # so Clang disables colors as it is sure whether the output goes to a file or to a terminal.
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fdiagnostics-color=always")
+  endif()
 else()
   set(GCC_MAJOR 0)
   set(GCC_MINOR 0)
-endif()
-
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Choose the type of build, options are: Release, MinSizeRel, Debug, RelWithDebInfo." FORCE)
 endif()
 
 include(CheckCXXCompilerFlag)
@@ -115,15 +132,7 @@ if(NOT CMAKE_CXX_STANDARD MATCHES "11|14|17")
 endif()
 
 # needed by roottest, to be removed once roottest is fixed
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++${CMAKE_CXX_STANDARD}")
-
-if(root7)
-  if(CMAKE_CXX_STANDARD EQUAL 11)
-    message(FATAL_ERROR "ROOT 7 requires C++14 or higher")
-  elseif(NOT http)
-    set(http ON CACHE BOOL "(Enabled since it's needed by ROOT 7)" FORCE)
-  endif()
-endif()
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_CXX${CMAKE_CXX_STANDARD}_STANDARD_COMPILE_OPTION}")
 
 #---Check for libcxx option------------------------------------------------------------
 if(libcxx)
@@ -179,7 +188,7 @@ if(gcctoolchain)
 endif()
 
 if(gnuinstall)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DR__HAVE_CONFIG")
+  set(R__HAVE_CONFIG 1)
 endif()
 
 #---Check if we use the new libstdc++ CXX11 ABI-----------------------------------------------------
@@ -197,5 +206,6 @@ int main() {}
 #---Print the final compiler flags--------------------------------------------------------------------
 message(STATUS "ROOT Platform: ${ROOT_PLATFORM}")
 message(STATUS "ROOT Architecture: ${ROOT_ARCHITECTURE}")
-message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "Compiler Flags: ${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${uppercase_CMAKE_BUILD_TYPE}}")
+string(TOUPPER "${CMAKE_BUILD_TYPE}" uppercase_CMAKE_BUILD_TYPE)
+message(STATUS "Build Type: ${CMAKE_BUILD_TYPE} (flags = '${CMAKE_CXX_FLAGS_${uppercase_CMAKE_BUILD_TYPE}}')")
+message(STATUS "Compiler Flags: ${CMAKE_CXX_FLAGS_${uppercase_CMAKE_BUILD_TYPE}} ${CMAKE_CXX_FLAGS}")

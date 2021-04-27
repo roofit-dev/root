@@ -9,12 +9,8 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#if __cplusplus >= 201103L
-#define ROOT_CPLUSPLUS11 1
-#endif
-
 #include "TROOT.h"
-#include "TClass.h"
+#include "TBuffer.h"
 #include "TMethod.h"
 #include "TMath.h"
 #include "TF1.h"
@@ -30,6 +26,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <functional>
+#include <set>
 
 using namespace std;
 
@@ -214,6 +211,25 @@ static const TString gNamePrefix = "TFormula__";
 // static map of function pointers and expressions
 //static std::unordered_map<std::string,  TInterpreter::CallFuncIFacePtr_t::Generic_t> gClingFunctions = std::unordered_map<TString,  TInterpreter::CallFuncIFacePtr_t::Generic_t>();
 static std::unordered_map<std::string,  void *> gClingFunctions = std::unordered_map<std::string,  void * >();
+
+static void R__v5TFormulaUpdater(Int_t nobjects, TObject **from, TObject **to)
+{
+   auto **fromv5 = (ROOT::v5::TFormula **)from;
+   auto **target = (TFormula **)to;
+
+   for (int i = 0; i < nobjects; ++i) {
+      if (fromv5[i] && target[i]) {
+         TFormula fnew(fromv5[i]->GetName(), fromv5[i]->GetExpFormula());
+         *(target[i]) = fnew;
+         target[i]->SetParameters(fromv5[i]->GetParameters());
+      }
+   }
+}
+
+using TFormulaUpdater_t = void (*)(Int_t nobjects, TObject **from, TObject **to);
+bool R__SetClonesArrayTFormulaUpdater(TFormulaUpdater_t func);
+
+int R__RegisterTFormulaUpdaterTrigger = R__SetClonesArrayTFormulaUpdater(R__v5TFormulaUpdater);
 
 ////////////////////////////////////////////////////////////////////////////////
 Bool_t TFormula::IsOperator(const char c)
@@ -779,6 +795,7 @@ prepareMethod(bool HasParameters, bool HasVariables, const char* FuncName,
 
 static TInterpreter::CallFuncIFacePtr_t::Generic_t
 prepareFuncPtr(TMethodCall *Method) {
+   if (!Method) return nullptr;
    CallFunc_t *callfunc = Method->GetCallFunc();
 
    if (!gCling->CallFunc_IsValid(callfunc)) {
@@ -808,6 +825,7 @@ bool TFormula::PrepareEvalMethod()
       Bool_t hasVariables = (fNdim > 0);
       fMethod = prepareMethod(hasParameters, hasVariables, fClingName,
                               fVectorized).release();
+      if (!fMethod) return false; 
       fFuncPtr = prepareFuncPtr(fMethod);
    }
    return fFuncPtr;
@@ -844,8 +862,6 @@ void TFormula::InputFormulaIntoCling()
 
 void TFormula::FillDefaults()
 {
-   //#ifdef ROOT_CPLUSPLUS11
-
    const TString defvars[] = { "x","y","z","t"};
    const pair<TString, Double_t> defconsts[] = {{"pi", TMath::Pi()},
                                                 {"sqrt2", TMath::Sqrt2()},
@@ -1085,13 +1101,14 @@ void TFormula::HandleParametrizedFunctions(TString &formula)
          // should also check that function is not something else (e.g. exponential - parse the expo)
          Int_t lastFunPos = funPos + funName.Length();
 
-         // check that first and last character is not alphanumeric
+         // check that first and last character is not a special character
          Int_t iposBefore = funPos - 1;
          // std::cout << "looping on  funpos is " << funPos << " formula is " << formula << " function " << funName <<
          // std::endl;
          if (iposBefore >= 0) {
             assert(iposBefore < formula.Length());
-            if (isalpha(formula[iposBefore])) {
+            //if (isalpha(formula[iposBefore])) {
+            if (IsFunctionNameChar(formula[iposBefore])) {
                // std::cout << "previous character for function " << funName << " is " << formula[iposBefore] << "- skip
                // " << std::endl;
                funPos = formula.Index(funName, lastFunPos);
@@ -1264,9 +1281,9 @@ void TFormula::HandleParametrizedFunctions(TString &formula)
 void TFormula::HandleParamRanges(TString &formula)
 {
    TRegexp rangePattern("\\[[0-9]+\\.\\.[0-9]+\\]");
-   Ssiz_t *len = new Ssiz_t();
+   Ssiz_t len;
    int matchIdx = 0;
-   while ((matchIdx = rangePattern.Index(formula, len, matchIdx)) != -1) {
+   while ((matchIdx = rangePattern.Index(formula, &len, matchIdx)) != -1) {
       int startIdx = matchIdx + 1;
       int endIdx = formula.Index("..", startIdx) + 2; // +2 for ".."
       int startCnt = TString(formula(startIdx, formula.Length())).Atoi();
@@ -1372,7 +1389,7 @@ void TFormula::HandleFunctionArguments(TString &formula)
          // The other possibility we need to consider is that this is a
          // parametrized function (else case below)
 
-         bool nameRecognized = (f != NULL);
+         bool nameRecognized = (f != nullptr);
 
          // Get ndim, npar, and replacementFormula of function
          int ndim = 0;
@@ -3157,7 +3174,7 @@ bool TFormula::GenerateGradientPar()
          fGradGenerationInput = std::string("#pragma cling optimize(2)\n") +
             "#pragma clad ON\n" +
             "void " + GradReqFuncName + "() {\n" +
-            "clad::gradient(" + std::string(fClingName) + ");\n }\n" +
+            "clad::gradient(" + std::string(fClingName.Data()) + ");\n }\n" +
             "#pragma clad OFF";
 
          if (!gInterpreter->Declare(fGradGenerationInput.c_str()))

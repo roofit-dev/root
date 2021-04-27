@@ -1,5 +1,8 @@
 #include "ROOT/RDataFrame.hxx"
+#include "TBranchObject.h"
+#include "TBranchElement.h"
 #include "TROOT.h"
+#include "TVector3.h"
 #include "TSystem.h"
 
 #include <algorithm>
@@ -105,4 +108,100 @@ TEST(TEST_CATEGORY, UniqueEntryNumbers)
       EXPECT_EQ(i, entries[i]);
 
    gSystem->Unlink(fname);
+}
+
+// ROOT-9731
+TEST(TEST_CATEGORY, ReadWriteVector3)
+{
+   const std::string filename = "readwritetvector3.root";
+   {
+      TFile tfile(filename.c_str(), "recreate");
+      TTree tree("t", "t");
+      TVector3 a;
+      tree.Branch("a", &a); // TVector3 as TBranchElement
+      auto *c = new TVector3();
+      tree.Branch("b", "TVector3", &c, 32000, 0); // TVector3 as TBranchObject
+      for (int i = 0; i < 10; ++i) {
+         a.SetX(i);
+         c->SetX(i);
+         tree.Fill();
+      }
+      tree.Write();
+      delete c;
+   }
+
+   const std::string snap_fname = std::string("snap_") + filename;
+
+   ROOT::RDataFrame rdf("t", filename);
+   auto ha = rdf.Define("aval", "a.X()").Histo1D("aval");
+   auto hb = rdf.Define("bval", "b.X()").Histo1D("bval");
+   EXPECT_EQ(ha->GetMean(), 4.5);
+   EXPECT_EQ(ha->GetMean(), hb->GetMean());
+
+   auto out_df = rdf.Snapshot<TVector3, TVector3>("t", snap_fname, {"a", "b"});
+
+   auto ha_snap = out_df->Define("aval", "a.X()").Histo1D("aval");
+   auto hb_snap = out_df->Define("bval", "b.X()").Histo1D("bval");
+   EXPECT_EQ(ha_snap->GetMean(), 4.5);
+   EXPECT_EQ(ha_snap->GetMean(), hb_snap->GetMean());
+
+   gSystem->Unlink(snap_fname.c_str());
+   gSystem->Unlink(filename.c_str());
+}
+
+TEST(TEST_CATEGORY, PolymorphicTBranchObject)
+{
+   const std::string filename = "polymorphictbranchobject.root";
+   {
+      TFile f(filename.c_str(), "recreate");
+      TTree t("t", "t");
+      TObject *o = nullptr;
+      t.Branch("o", &o, 32000, 0); // must be unsplit to generate a TBranchObject
+
+      // Fill branch with different concrete types
+      TNamed name("name", "title");
+      TList list;
+      list.Add(&name);
+      o = &list;
+      t.Fill();
+      TH1D h("h", "h", 100, 0, 100);
+      h.Fill(42);
+      o = &h;
+      t.Fill();
+      o = nullptr;
+
+      t.Write();
+   }
+
+   auto checkEntries = [](const TObject &obj, ULong64_t entry) {
+      if (entry % 2 == 0) {
+         EXPECT_STREQ(obj.ClassName(), "TList");
+         auto &asList = dynamic_cast<const TList &>(obj);
+         EXPECT_EQ(asList.GetEntries(), 1);
+         EXPECT_STREQ(asList.At(0)->GetTitle(), "title");
+         EXPECT_STREQ(asList.At(0)->GetName(), "name");
+      } else {
+         EXPECT_STREQ(obj.ClassName(), "TH1D");
+         EXPECT_DOUBLE_EQ(dynamic_cast<const TH1D &>(obj).GetMean(), 42.);
+      }
+   };
+
+   const std::string snap_fname = std::string("snap_") + filename;
+
+   // Read in the same file twice to force the use of TChain,
+   // which has trickier edge cases due to object addresses changing
+   // when switching from one file to the other.
+   ROOT::RDataFrame rdf("t", {filename, filename});
+   ASSERT_EQ(rdf.Count().GetValue(), 4ull);
+   rdf.Foreach(checkEntries, {"o", "rdfentry_"});
+
+   auto out_df = rdf.Snapshot<TObject>("t", snap_fname, {"o"});
+   out_df->Foreach(checkEntries, {"o", "rdfentry_"});
+
+   TFile f(snap_fname.c_str());
+   auto t = f.Get<TTree>("t");
+   EXPECT_EQ(t->GetBranch("o")->IsA(), TBranchObject::Class());
+
+   gSystem->Unlink(snap_fname.c_str());
+   gSystem->Unlink(filename.c_str());
 }

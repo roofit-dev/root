@@ -138,6 +138,9 @@ but also in Dump() and Inspect() methods and by the THtml class.
 #include "TDataMember.h"
 
 #include "Strlen.h"
+#include "strtok.h"
+#include "strlcpy.h"
+#include "TBuffer.h"
 #include "TClass.h"
 #include "TClassEdit.h"
 #include "TDataType.h"
@@ -156,7 +159,7 @@ but also in Dump() and Inspect() methods and by the THtml class.
 
 #include <cassert>
 #include <cctype>
-#include <stdlib.h>
+#include <cstdlib>
 
 
 ClassImp(TDataMember);
@@ -345,7 +348,7 @@ void TDataMember::Init(bool afterReading)
       //Now let's parse option strings...
 
       Int_t  opt_cnt    = 0;
-      TList *optionlist = new TList();       //storage for options strings
+      std::unique_ptr<TList> optionlist{new TList()};       //storage for options strings
 
       for (i=0;i<token_cnt;i++) {
          if (strstr(tokens[i],"Items")) {
@@ -384,7 +387,7 @@ void TDataMember::Init(bool afterReading)
 
       fOptions = new TList();                //create the list
 
-      TIter next(optionlist);                //we'll iterate through all
+      TIter next(optionlist.get());                //we'll iterate through all
                                              //strings containing options
       TOptionListItem *it  = 0;
       TOptionListItem *it1 = 0;
@@ -431,9 +434,6 @@ void TDataMember::Init(bool afterReading)
       }
 
       // Garbage collection
-
-      // dispose of temporary option list...
-      delete optionlist;
 
       //And dispose tokens string...
       for (i=0;i<token_cnt;i++) if(tokens[i]) delete [] tokens[i];
@@ -551,7 +551,7 @@ Int_t TDataMember::GetArrayDim() const
       // fArrayMaxIndex should be zero
       if (dm->fArrayDim) {
          dm->fArrayMaxIndex = new Int_t[fArrayDim];
-         for(Int_t dim = 0; dim < fArrayDim; ++dim) {
+         for(Int_t dim = 0; dim < dm->fArrayDim; ++dim) {
             dm->fArrayMaxIndex[dim] = gCling->DataMemberInfo_MaxIndex(fInfo,dim);
          }
       }

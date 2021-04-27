@@ -2,12 +2,12 @@
 ## \ingroup tutorial_roofit
 ## \notebook -nodraw
 ##
-## Organization and simultaneous fits: creating and writing a workspace
+## \brief Organization and simultaneous fits: creating and writing a workspace
 ##
 ## \macro_code
 ##
 ## \date February 2018
-## \author Clemens Lange, Wouter Verkerke (C++ version)
+## \authors Clemens Lange, Wouter Verkerke (C++ version)
 
 import ROOT
 
@@ -53,10 +53,10 @@ data = model.generate(ROOT.RooArgSet(x), 1000)
 w = ROOT.RooWorkspace("w", "workspace")
 
 # Import model and all its components into the workspace
-getattr(w, 'import')(model)
+w.Import(model)
 
 # Import data into the workspace
-getattr(w, 'import')(data)
+w.Import(data)
 
 # Print workspace contents
 w.Print()

@@ -11,13 +11,15 @@
 
 #include <stdlib.h>
 
-#include "Riostream.h"
+#include <iostream>
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TEllipse.h"
 #include "TVirtualPad.h"
 #include "TMath.h"
-#include "TClass.h"
 #include "TPoint.h"
+#include "TVirtualX.h"
+
 
 const Double_t kPI = 3.14159265358979323846;
 

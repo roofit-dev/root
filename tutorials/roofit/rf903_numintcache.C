@@ -1,12 +1,16 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook -js
-/// Numeric algorithm tuning: caching of slow numeric integrals and parameterization of slow numeric integrals
+///
+///
+/// \brief Numeric algorithm tuning: caching of slow numeric integrals and parameterization of slow numeric integrals
 ///
 /// \macro_image
 /// \macro_output
 /// \macro_code
-/// \author 07/2008 - Wouter Verkerke
+///
+/// \date 07/2008
+/// \author Wouter Verkerke
 
 #include "RooRealVar.h"
 #include "RooDataSet.h"
@@ -70,13 +74,12 @@ void rf903_numintcache(Int_t mode = 0)
    w1->pdf("model")->plotOn(framex);
 
    // Draw x projection on canvas
-   new TCanvas("rf903_numintcache", "rf903_numintcache", 600, 600);
+   auto canv = new TCanvas("rf903_numintcache", "rf903_numintcache", 600, 600);
    framex->Draw();
+   canv->Draw();
 
    // Make workspace available on command line after macro finishes
    gDirectory->Add(w1);
-
-   return;
 }
 
 RooWorkspace *getWorkspace(Int_t mode)

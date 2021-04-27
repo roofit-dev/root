@@ -52,25 +52,22 @@ as an identifier of the modifier method.
 General purpose message signal
 */
 
-#include "Varargs.h"
 #include "TQObject.h"
 #include "TQConnection.h"
 #include "THashList.h"
 #include "TPRegexp.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TClass.h"
-#include "TSystem.h"
 #include "TMethod.h"
 #include "TBaseClass.h"
 #include "TDataType.h"
 #include "TInterpreter.h"
 #include "TQClass.h"
 #include "TError.h"
-#include "Riostream.h"
+#include <iostream>
 #include "RQ_OBJECT.h"
 #include "TVirtualMutex.h"
-#include "Varargs.h"
-#include "TInterpreter.h"
 #include "RConfigure.h"
 
 void *gTQSender; // A pointer to the object that sent the last signal.
@@ -1011,7 +1008,7 @@ Bool_t TQObject::Disconnect(const char *class_name,
    TClass *sender = TClass::GetClass(class_name);
 
    // sender should be TQClass (which derives from TQObject)
-   if (!sender->IsA()->InheritsFrom(TQObject::Class()))
+   if (!sender || !sender->IsA()->InheritsFrom(TQObject::Class()))
       return kFALSE;
 
    TQClass *qcl = (TQClass*)sender;   // cast TClass to TQClass
