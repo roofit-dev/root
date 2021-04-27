@@ -1652,6 +1652,24 @@ TBranch* TTree::BranchImpRef(const char* branchname, TClass* ptrClass, EDataType
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Wrapper to turn Branch call with an std::array into the relevant leaf list
+// call
+TBranch *TTree::BranchImpArr(const char *branchname, EDataType datatype, std::size_t N, void *addobj, Int_t bufsize,
+                             Int_t /* splitlevel */)
+{
+   if (datatype == kOther_t || datatype == kNoType_t) {
+      Error("Branch",
+            "The inner type of the std::array passed specified for %s is not of a class or type known to ROOT",
+            branchname);
+   } else {
+      TString varname;
+      varname.Form("%s[%d]/%c", branchname, (int)N, DataTypeToChar(datatype));
+      return Branch(branchname, addobj, varname.Data(), bufsize);
+   }
+   return nullptr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Deprecated function. Use next function instead.
 
 Int_t TTree::Branch(TList* li, Int_t bufsize /* = 32000 */ , Int_t splitlevel /* = 99 */)
@@ -8914,13 +8932,37 @@ void TTree::SetObject(const char* name, const char* title)
 
 void TTree::SetParallelUnzip(Bool_t opt, Float_t RelSize)
 {
-   if (opt) TTreeCacheUnzip::SetParallelUnzip(TTreeCacheUnzip::kEnable);
-   else     TTreeCacheUnzip::SetParallelUnzip(TTreeCacheUnzip::kDisable);
-
-   if (RelSize > 0) {
-      TTreeCacheUnzip::SetUnzipRelBufferSize(RelSize);
+#ifdef R__USE_IMT
+   if (GetTree() == 0) {
+      LoadTree(GetReadEntry());
+      if (!GetTree())
+         return;
    }
+   if (GetTree() != this) {
+      GetTree()->SetParallelUnzip(opt, RelSize);
+      return;
+   }
+   TFile* file = GetCurrentFile();
+   if (!file)
+      return;
 
+   TTreeCache* pf = GetReadCache(file);
+   if (pf && !( opt ^ (nullptr != dynamic_cast<TTreeCacheUnzip*>(pf)))) {
+      // done with opt and type are in agreement.
+      return;
+   }
+   delete pf;
+   auto cacheSize = GetCacheAutoSize(kTRUE);
+   if (opt) {
+      auto unzip = new TTreeCacheUnzip(this, cacheSize);
+      unzip->SetUnzipBufferSize( Long64_t(cacheSize * RelSize) );
+   } else {
+      pf = new TTreeCache(this, cacheSize);
+   }
+#else
+   (void)opt;
+   (void)RelSize;
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

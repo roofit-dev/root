@@ -1,10 +1,9 @@
+#include "TClass.h"
 #include <ROOT/REveTableProxyBuilder.hxx>
 #include <ROOT/REveTableInfo.hxx>
 #include <ROOT/REveViewContext.hxx>
 #include <ROOT/REveDataClasses.hxx>
 #include <ROOT/REveManager.hxx>
-
-
 
 using namespace ROOT::Experimental;
 
@@ -40,12 +39,12 @@ void REveTableProxyBuilder::Build(const REveDataCollection* collection, REveElem
 
    if (info->GetConfigChanged() || fTable->NumChildren() == 0) {
       fTable->DestroyElements();
-      auto tableEntries =  context->GetTableViewInfo()->RefTableEntries(collection->GetName());
+      auto tableEntries =  context->GetTableViewInfo()->RefTableEntries(collection->GetItemClass()->GetName());
       for (const REveTableEntry& spec : tableEntries) {
          auto c = new REveDataColumn(spec.fName.c_str());
          fTable->AddElement(c);
          using namespace std::string_literals;
-         std::string exp  = "i."s + spec.fExpression + "()"s;
+         std::string exp  =  spec.fExpression;
          c->SetExpressionAndType(exp.c_str(), spec.fType);
          c->SetPrecision(spec.fPrecision);
       }

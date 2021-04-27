@@ -27,6 +27,10 @@ if(dataframe)
         TMVA/RStandardScaler.hxx
         TMVA/RReader.hxx
         TMVA/RInferenceUtils.hxx
+        TMVA/RBDT.hxx
+    )
+    set(TMVA_EXTRA_SOURCES
+        RBDT.cxx
     )
     set(TMVA_EXTRA_DEPENDENCIES
         ROOTDataFrame
@@ -181,6 +185,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(TMVA
     TMVA/TNeuronInputSqSum.h
     TMVA/TNeuronInputSum.h
     TMVA/Tools.h
+    TMVA/TrainingHistory.h
     TMVA/TransformationHandler.h
     TMVA/TSpline1.h
     TMVA/TSpline2.h
@@ -199,6 +204,10 @@ ROOT_STANDARD_LIBRARY_PACKAGE(TMVA
     TMVA/VarTransformHandler.h
     TMVA/Version.h
     TMVA/Volume.h
+    TMVA/TreeInference/PythonHelpers.hxx
+    TMVA/TreeInference/BranchlessTree.hxx
+    TMVA/TreeInference/Forest.hxx
+    TMVA/TreeInference/Objectives.hxx
     ${TMVA_EXTRA_HEADERS}
   SOURCES
     src/BDTEventWrapper.cxx
@@ -341,6 +350,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(TMVA
     src/TNeuronInputSqSum.cxx
     src/TNeuronInputSum.cxx
     src/Tools.cxx
+    src/TrainingHistory.cxx
     src/TransformationHandler.cxx
     src/TSpline1.cxx
     src/TSpline2.cxx
@@ -361,6 +371,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(TMVA
     src/DNN/Architectures/Reference.cxx
     src/DNN/Architectures/Reference/DataLoader.cxx
     src/DNN/Architectures/Reference/TensorDataLoader.cxx
+    ${TMVA_EXTRA_SOURCES}
     #src/DNN/Architectures/Reference/ActivationFunctions.cxx
     #src/DNN/Architectures/Reference/Arithmetic.cxx
     #src/DNN/Architectures/Reference/DenoisePropagation.cxx
@@ -416,6 +427,7 @@ if(tmva-cpu)
   )
   target_include_directories(TMVA PRIVATE ${TBB_INCLUDE_DIRS})
   target_link_libraries(TMVA PRIVATE ${TBB_LIBRARIES})
+  set_target_properties(TMVA PROPERTIES COMPILE_FLAGS "${TBB_CXXFLAGS}")
 
   if(BLAS_FOUND)
     target_link_libraries(TMVA PRIVATE ${BLAS_LINKER_FLAGS} ${BLAS_LIBRARIES})
