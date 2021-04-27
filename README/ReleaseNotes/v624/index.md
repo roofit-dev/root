@@ -121,8 +121,28 @@ For details, see the RooFit tutorial [rf612_recoverFromInvalidParameters.C](http
 
 ## Networking Libraries
 
+### Multithreaded support for FastCGI
+Now when THttpServer creates FastCGI engine, 10 worker threds used to process requests
+received via FastCGI channel. This significantly increase a performance, especially when
+several clients are connected.
+
+### Better security for THttpServer with webgui
+If THttpServer created for use with webgui widgets (RBrowser, RCanvas, REve), it only will
+provide access to the widgets via websocket connection - any other kind of requests like root.json
+or exe.json will be refused completely. Cobined with connection tokens and https protocol,
+this makes usage of webgui components in public networks more secure.
+
 
 ## GUI Libraries
+
+### RBrowser improvments
+- central factory methods to handle browsing, editing and drawing of different classes
+- simple possibility to extend RBrowser on user-defined classes
+- support of web-based geometry viewer
+- better support of TTree drawing
+- server-side handling of code editor and image viewer widgets
+- rbrowser content is fully recovered when web-browser is reloaded
+- load of widgets code only when really required (shorter startup time for RBrowser)
 
 
 ## Montecarlo Libraries
@@ -155,6 +175,10 @@ For details, see the RooFit tutorial [rf612_recoverFromInvalidParameters.C](http
 
 - a new cmake variable, `CMAKE_INSTALL_PYTHONDIR`, has been added: it allows customization of the installation directory of ROOT's python modules
 - The developer build option `asserts` is introduced to enable/disable asserts via the `NDEBUG` C/CXX flag. Asserts are always enabled for `CMAKE_BUILD_TYPE=Debug` and `dev=ON`. The previous behavior of the builds set via the `CMAKE_BUILD_TYPE` variable has not changed.
+
+The following builtins have been updated:
+
+- VecCore 0.7.0
 
 ## PyROOT
 
