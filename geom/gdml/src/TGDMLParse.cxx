@@ -123,6 +123,34 @@ When most solids or volumes are added to the geometry they
 ClassImp(TGDMLParse);
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Constructor
+
+TGDMLParse::TGDMLParse()
+{
+   fWorldName = "";
+   fWorld = 0;
+   fVolID = 0;
+   fFILENO = 0;
+   for (Int_t i=0; i<20; i++) fFileEngine[i] = 0;
+   fStartFile = 0;
+   fCurrentFile = 0;
+   auto def_units = TGeoManager::GetDefaultUnits();
+   switch (def_units) {
+      case TGeoManager::kG4Units:
+         fDefault_lunit = "mm";
+         fDefault_aunit = "rad";
+         break;
+      case TGeoManager::kRootUnits:
+         fDefault_lunit = "cm";
+         fDefault_aunit = "deg";
+         break;
+      default: // G4 units
+         fDefault_lunit = "mm";
+         fDefault_aunit = "rad";
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Creates the new instance of the XMLEngine called 'gdml', using the filename >>
 /// then parses the file and creates the DOM tree. Then passes the DOM to the
 /// next function to translate it.
@@ -443,7 +471,9 @@ XMLNodePointer_t TGDMLParse::ConProcess(TXMLEngine* gdml, XMLNodePointer_t node,
    // name = TString::Format("%s_%s", name.Data(), fCurrentFile);
    //}
 
-   fconsts[name.Data()] = Value(value);
+   Double_t val = Value(value);
+   fconsts[name.Data()] = val;
+   gGeoManager->AddProperty(name.Data(), val);
 
    return node;
 }
@@ -551,7 +581,8 @@ XMLNodePointer_t TGDMLParse::MatrixProcess(TXMLEngine* gdml, XMLNodePointer_t no
    {
       std::string matrixValue;
       valueStream >> matrixValue;
-
+      // protect against trailing '\n' and other white spaces
+      if ( matrixValue.empty() ) continue;
       valueList.push_back(Value(matrixValue.c_str()));
    }
 
@@ -1247,8 +1278,9 @@ XMLNodePointer_t TGDMLParse::MatProcess(TXMLEngine* gdml, XMLNodePointer_t node,
 
    TGeoManager* mgr = gGeoManager;
    TGeoElementTable* tab_ele = mgr->GetElementTable();
-   TList properties;
+   TList properties, constproperties;
    properties.SetOwner();
+   constproperties.SetOwner();
    // We have to assume the media are monotonic increasing starting with 1
    static int medid = mgr->GetListOfMedia()->GetSize()+1;
    XMLNodePointer_t child = gdml->GetChild(node);
@@ -1286,9 +1318,15 @@ XMLNodePointer_t TGDMLParse::MatProcess(TXMLEngine* gdml, XMLNodePointer_t node,
                else if(tempattr == "ref") {
                   property->SetTitle(gdml->GetAttrValue(attr));
                   TGDMLMatrix *matrix = fmatrices[property->GetTitle()];
-                  if (!matrix)
-                     Error("MatProcess", "Reference matrix %s for material %s not found", property->GetTitle(), name.Data());
-                  properties.Add(property);
+                  if (matrix) properties.Add(property);
+                  else {
+                     Bool_t error = 0;
+                     gGeoManager->GetProperty(property->GetTitle(), &error);
+                     if (error)
+                        Error("MatProcess", "Reference %s for material %s not found", property->GetTitle(), name.Data());
+                     else
+                        constproperties.Add(property);
+                  }
                }
                attr = gdml->GetNextAttr(attr);
             }
@@ -1345,6 +1383,12 @@ XMLNodePointer_t TGDMLParse::MatProcess(TXMLEngine* gdml, XMLNodePointer_t node,
          while ((property = (TNamed*)next()))
             mat->AddProperty(property->GetName(), property->GetTitle());
       }
+      if (constproperties.GetSize()) {
+         TNamed *property;
+         TIter next(&constproperties);
+         while ((property = (TNamed*)next()))
+            mat->AddConstProperty(property->GetName(), property->GetTitle());
+      }
       mixflag = 0;
       //Note: Object(name, title) corresponds to Element(formula, name)
       TGeoElement* mat_ele = tab_ele->FindElement(mat_name);
@@ -1377,9 +1421,15 @@ XMLNodePointer_t TGDMLParse::MatProcess(TXMLEngine* gdml, XMLNodePointer_t node,
                else if(tempattr == "ref") {
                   property->SetTitle(gdml->GetAttrValue(attr));
                   TGDMLMatrix *matrix = fmatrices[property->GetTitle()];
-                  if (!matrix)
-                     Error("MatProcess", "Reference matrix %s for material %s not found", property->GetTitle(), name.Data());
-                  properties.Add(property);
+                  if (matrix) properties.Add(property);
+                  else {
+                     Bool_t error = 0;
+                     gGeoManager->GetProperty(property->GetTitle(), &error);
+                     if (error)
+                        Error("MatProcess", "Reference %s for material %s not found", property->GetTitle(), name.Data());
+                     else
+                        constproperties.Add(property);
+                  }
                }
                attr = gdml->GetNextAttr(attr);
             }
@@ -1466,6 +1516,12 @@ XMLNodePointer_t TGDMLParse::MatProcess(TXMLEngine* gdml, XMLNodePointer_t node,
          TIter next(&properties);
          while ((property = (TNamed*)next()))
             mix->AddProperty(property->GetName(), property->GetTitle());
+      }
+      if (constproperties.GetSize()) {
+         TNamed *property;
+         TIter next(&constproperties);
+         while ((property = (TNamed*)next()))
+            mix->AddConstProperty(property->GetName(), property->GetTitle());
       }
       Int_t natoms;
       Double_t weight;
@@ -1609,8 +1665,10 @@ XMLNodePointer_t TGDMLParse::BorderSurfaceProcess(TXMLEngine* gdml, XMLNodePoint
    TGeoNode *node1 = fpvolmap[nodename[0].Data()];
    TGeoNode *node2 = fpvolmap[nodename[1].Data()];
    if (!node1 || !node2)
-      Fatal("BorderSurfaceProcess", "Border surface %s: not found nodes %s or %s",
-            name.Data(), nodename[0].Data(), nodename[1].Data());
+      Fatal("BorderSurfaceProcess", "Border surface %s: not found nodes %s [%s] or %s [%s]",
+            name.Data(),
+            nodename[0].Data(), node1 ? "present" : "missing",
+            nodename[1].Data(), node2 ? "present" : "missing");
 
    TGeoBorderSurface *border = new TGeoBorderSurface(name, surfname, surf, node1, node2);
    gGeoManager->AddBorderSurface(border);

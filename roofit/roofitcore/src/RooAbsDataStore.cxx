@@ -42,8 +42,6 @@ ClassImp(RooAbsDataStore);
 
 RooAbsDataStore::RooAbsDataStore() 
 {
-  _iterator = _vars.createIterator() ;
-  _cacheIter = _cachedVars.createIterator() ;
   _doDirtyProp = kTRUE ;
 }
 
@@ -59,8 +57,6 @@ RooAbsDataStore::RooAbsDataStore(const char* name, const char* title, const RooA
   // clone the fundamentals of the given data set into internal buffer
   _vars.add(vars) ;
 
-  _iterator = _vars.createIterator() ;
-  _cacheIter = _cachedVars.createIterator() ;
   _doDirtyProp = kTRUE ;
 }
 
@@ -75,8 +71,6 @@ RooAbsDataStore::RooAbsDataStore(const RooAbsDataStore& other, const char* newna
     SetName(newname) ;
   }
   _vars.add(other._vars) ;
-  _iterator = _vars.createIterator() ;
-  _cacheIter = _cachedVars.createIterator() ;
   _doDirtyProp = other._doDirtyProp ;
 }
 
@@ -90,8 +84,6 @@ RooAbsDataStore::RooAbsDataStore(const RooAbsDataStore& other, const RooArgSet& 
     SetName(newname) ;
   }
   _vars.add(vars) ;
-  _iterator = _vars.createIterator() ;
-  _cacheIter = _cachedVars.createIterator() ;
   _doDirtyProp = other._doDirtyProp ;
 }
 
@@ -102,8 +94,7 @@ RooAbsDataStore::RooAbsDataStore(const RooAbsDataStore& other, const RooArgSet& 
 
 RooAbsDataStore::~RooAbsDataStore()
 {
-  delete _iterator ;
-  delete _cacheIter ;
+
 }
 
 
@@ -164,10 +155,8 @@ void RooAbsDataStore::printValue(ostream& os) const
 void RooAbsDataStore::printArgs(ostream& os) const 
 {
   os << "[" ;    
-  _iterator->Reset() ;
-  RooAbsArg* arg ;
   Bool_t first(kTRUE) ;
-  while((arg=(RooAbsArg*)_iterator->Next())) {
+  for (const auto arg : _vars) {
     if (first) {
       first=kFALSE ;
     } else {
@@ -224,4 +213,22 @@ void RooAbsDataStore::printMultiline(ostream& os, Int_t /*content*/, Bool_t verb
 }
 
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get the weights of the events in the range [first, last[.
+/// This is a slow default implementation that will fill a vector with every
+/// event retrieved one by one.
+/// Derived classes may just return the range of the original data.
+
+RooSpan<const double> RooAbsDataStore::getWeightBatch(std::size_t first, std::size_t last) const {
+
+    std::vector<double> ret;//TODO try to align storage
+    ret.reserve(last-first);
+
+    for (auto i = first; i < last; ++i) {
+      ret.push_back(weight(i));
+    }
+
+    return RooSpan<const double>(std::move(ret));
+}
 
