@@ -133,8 +133,10 @@ endif()
 #---Check for PCRE-------------------------------------------------------------------
 if(NOT builtin_pcre)
   message(STATUS "Looking for PCRE")
-  # Clear cache variables, or LLVM may use old values for PCRE
-  foreach(suffix FOUND INCLUDE_DIR LIBRARY LIBRARY_DEBUG LIBRARY_RELEASE)
+  # Clear cache before calling find_package(PCRE),
+  # necessary to be able to toggle builtin_pcre and
+  # not have find_package(PCRE) find builtin pcre.
+  foreach(suffix FOUND INCLUDE_DIR PCRE_LIBRARY)
     unset(PCRE_${suffix} CACHE)
   endforeach()
   find_package(PCRE)
@@ -159,7 +161,7 @@ if(NOT builtin_lzma)
   endif()
 endif()
 if(builtin_lzma)
-  set(lzma_version 5.2.1)
+  set(lzma_version 5.2.4)
   set(LZMA_TARGET LZMA)
   message(STATUS "Building LZMA version ${lzma_version} included in ROOT itself")
   if(WIN32)
@@ -167,7 +169,7 @@ if(builtin_lzma)
     ExternalProject_Add(
       LZMA
       URL ${CMAKE_SOURCE_DIR}/core/lzma/src/xz-${lzma_version}-win32.tar.gz
-      URL_HASH SHA256=ce92be2df485a2bd461939908ba9666c88f44e3194d4fb2d4990ac8de7c5929f
+      URL_HASH SHA256=c5910475aa8c7b4ed322f3e043c9cc9214e997f2a85b6b32f7702ac6d47364f8
       PREFIX LZMA
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       CONFIGURE_COMMAND ""
@@ -191,7 +193,7 @@ if(builtin_lzma)
     ExternalProject_Add(
       LZMA
       URL ${CMAKE_SOURCE_DIR}/core/lzma/src/xz-${lzma_version}.tar.gz
-      URL_HASH SHA256=b918b6648076e74f8d7ae19db5ee663df800049e187259faf5eb997a7b974681
+      URL_HASH SHA256=b512f3b726d3b37b6dc4c8570e137b9311e7552e8ccbab4d39d47ce5f4177145
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR> --libdir <INSTALL_DIR>/lib
                         --with-pic --disable-shared --quiet
@@ -501,20 +503,6 @@ if(opengl AND NOT builtin_gl2ps)
   if(NOT GL2PS_FOUND)
     message(STATUS "gl2ps not found. Switching on builtin_gl2ps option")
     set(builtin_gl2ps ON CACHE BOOL "Enabled because opengl requested and gl2ps not found (${builtin_gl2ps_description})" FORCE)
-  endif()
-endif()
-
-#---Check for Graphviz installation-------------------------------------------------------
-if(gviz)
-  message(STATUS "Looking for Graphviz")
-  find_package(Graphviz)
-  if(NOT GRAPHVIZ_FOUND)
-    if(fail-on-missing)
-      message(FATAL_ERROR "Graphviz package not found and gviz option required")
-    else()
-      message(STATUS "Graphviz not found. Switching off gviz option")
-      set(gviz OFF CACHE BOOL "Disabled because Graphviz not found (${gviz_description})" FORCE)
-    endif()
   endif()
 endif()
 
