@@ -224,6 +224,8 @@ namespace {
                // add the __cppname__ for templates
                PyObject* cppnamepy = PyROOT_PyUnicode_FromString(cname);
                PyDict_SetItem(dct, PyStrings::gCppName, cppnamepy);
+               // add also __cpp_name__ for forward compatibility
+               PyDict_SetItem(dct, PyStrings::gCppNameNew, cppnamepy);
                Py_DECREF(cppnamepy);
 
                // create new type with labeled values in place
@@ -796,13 +798,19 @@ static PyMethodDef gPyROOTMethods[] = {
      METH_NOARGS, (char*) "PyROOT internal function" },
    { (char*) "_ResetRootModule", (PyCFunction)RootModuleResetCallback,
      METH_NOARGS, (char*) "PyROOT internal function" },
+   { (char*) "ClearProxiedObjects", (PyCFunction)ClearProxiedObjects,
+     METH_NOARGS, (char*) "PyROOT internal function" },
    { (char*) "AddressOf", (PyCFunction)AddressOf,
      METH_VARARGS, (char*) "Retrieve address of held object in a buffer" },
    { (char*) "addressof", (PyCFunction)addressof,
      METH_VARARGS, (char*) "Retrieve address of held object as a value" },
    { (char*) "AsCObject", (PyCFunction)AsCObject,
      METH_VARARGS, (char*) "Retrieve held object in a CObject" },
+   { (char*) "as_cobject", (PyCFunction)AsCObject,
+     METH_VARARGS, (char*) "Retrieve held object in a CObject" },
    { (char*) "BindObject", (PyCFunction)BindObject,
+     METH_VARARGS, (char*) "Create an object of given type, from given address" },
+   { (char*) "bind_object", (PyCFunction)BindObject,
      METH_VARARGS, (char*) "Create an object of given type, from given address" },
    { (char*) "MakeNullPointer", (PyCFunction)MakeNullPointer,
      METH_VARARGS, (char*) "Create a NULL pointer of the given type" },

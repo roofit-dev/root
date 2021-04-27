@@ -43,6 +43,7 @@ In extended mode, a
 #include "RooRealSumPdf.h"
 #include "RooRealVar.h"
 #include "RooProdPdf.h"
+#include "RooHelpers.h"
 
 #include "Math/Util.h"
 
@@ -241,13 +242,6 @@ void RooNLLVar::applyWeightSquared(Bool_t flag)
   }
 }
 
-class BatchInterfaceAccessor {
-  public:
-    static void clearBatchMemory(RooAbsReal* theReal) {
-      theReal->clearBatchMemory();
-    }
-};
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Calculate and return likelihood on subset of data.
@@ -295,7 +289,7 @@ Double_t RooNLLVar::evaluatePartition(std::size_t firstEvent, std::size_t lastEv
       if (mu<=0 && N>0) {
 
         // Catch error condition: data present where zero events are predicted
-        logEvalError(Form("Observed %f events in bin %lu with zero event yield",N,i)) ;
+        logEvalError(Form("Observed %f events in bin %lu with zero event yield",N,(unsigned long)i)) ;
 
       } else if (fabs(mu)<1e-10 && fabs(N)<1e-10) {
 
@@ -464,7 +458,7 @@ std::tuple<double, double, double> RooNLLVar::computeBatched(std::size_t stepSiz
     assert(_dataClone->valid());
     pdfClone->getValV(_normSet);
     try {
-      pdfClone->checkBatchComputation(evtNo, _normSet);
+      RooHelpers::BatchInterfaceAccessor::checkBatchComputation(*pdfClone, evtNo, _normSet);
     } catch (std::exception& e) {
       std::cerr << "ERROR when checking batch computation for event " << evtNo << ":\n"
           << e.what() << std::endl;
