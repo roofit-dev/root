@@ -447,7 +447,6 @@ if(ROOT_python_FOUND)
                  tutorial-hist-fillrandom-py
                  tutorial-math-Legendre-py
                  tutorial-math-tStudent-py
-                 tutorial-pyroot-DynamicSlice-py
                  tutorial-pyroot-benchmarks-py
                  tutorial-pyroot-fillrandom-py
                  tutorial-pyroot-fit1-py
@@ -464,7 +463,6 @@ if(ROOT_python_FOUND)
                  tutorial-pyroot-staff-py
                  tutorial-pyroot-tornado-py
                  tutorial-pyroot-tree-py
-                 tutorial-roofit-rf104_classfactory-py
                  tutorial-roofit-rf106_plotdecoration-py
                  tutorial-roofit-rf315_projectpdf-py
                  tutorial-roofit-rf402_datahandling-py
