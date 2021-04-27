@@ -19,7 +19,12 @@ c = loader.load_cpp_backend()
 import libcppyy as _backend
 _backend._cpp_backend = c
 
+# explicitly expose APIs from libcppyy
+import ctypes
+_w = ctypes.CDLL(_backend.__file__, ctypes.RTLD_GLOBAL)
 
+
+# some beautification for inspect (only on p2)
 import sys
 if sys.hexversion < 0x3000000:
   # TODO: this reliese on CPPOverload cooking up a func_code object, which atm
@@ -90,18 +95,6 @@ gbl.__class__.__repr__ = lambda cls : '<namespace cppyy.gbl at 0x%x>' % id(cls)
 gbl.std =  _backend.CreateScopeProxy('std')
 # for move, we want our "pythonized" one, not the C++ template
 gbl.std.move  = _backend.move
-
-
-#- fake namespace for interactive lazy lookups -------------------------------
-class InteractiveLazy(object):
-    def __getattr__(self, attr):
-        if attr == '__all__':
-            caller = sys.modules[sys._getframe(1).f_globals['__name__']]
-            _backend._set_cpp_lazy_lookup(caller.__dict__)
-        return []
-
-sys.modules['cppyy.interactive'] = InteractiveLazy()
-del InteractiveLazy
 
 
 #- add to the dynamic path as needed -----------------------------------------
