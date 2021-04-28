@@ -38,7 +38,6 @@
 #include "TError.h"
 #include "TPRegexp.h"
 #include "TVirtualMonitoring.h"
-#include "TObjArray.h"
 #include "THashList.h"
 #include "TKey.h"
 #include "TTree.h"
@@ -520,7 +519,7 @@ Int_t TDataSetManagerFile::CreateLsFile(const char *group, const char *user,
 #ifndef WIN32
       // Make sure that the ownership and permissions are those expected
       FileStat_t udirst;
-      if (!fIsRemote && gSystem->GetPathInfo(gSystem->DirName(tmpfile), udirst) == 0) {
+      if (!fIsRemote && gSystem->GetPathInfo(gSystem->GetDirName(tmpfile), udirst) == 0) {
          if (chown(lsfile.Data(), udirst.fUid, udirst.fGid) != 0) {
             Warning("CreateLsFile", "problems setting ownership on file '%s' (errno: %d)",
                                     lsfile.Data(), TSystem::GetErrno());

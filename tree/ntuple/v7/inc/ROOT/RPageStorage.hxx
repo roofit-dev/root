@@ -38,6 +38,7 @@ namespace Detail {
 class RColumn;
 class RPagePool;
 class RFieldBase;
+class RNTupleMetrics;
 
 enum class EPageStorageType {
    kSink,
@@ -82,6 +83,9 @@ public:
    /// Every page store needs to be able to free pages it handed out.  But Sinks and sources have different means
    /// of allocating pages.
    virtual void ReleasePage(RPage &page) = 0;
+
+   /// Page storage implementations usually have their own metrics
+   virtual RNTupleMetrics &GetMetrics() = 0;
 };
 
 // clang-format off
@@ -111,10 +115,10 @@ protected:
    std::vector<RClusterDescriptor::RPageRange> fOpenPageRanges;
    RNTupleDescriptorBuilder fDescriptorBuilder;
 
-   virtual void DoCreate(const RNTupleModel &model) = 0;
-   virtual RClusterDescriptor::RLocator DoCommitPage(ColumnHandle_t columnHandle, const RPage &page) = 0;
-   virtual RClusterDescriptor::RLocator DoCommitCluster(NTupleSize_t nEntries) = 0;
-   virtual void DoCommitDataset() = 0;
+   virtual void CreateImpl(const RNTupleModel &model) = 0;
+   virtual RClusterDescriptor::RLocator CommitPageImpl(ColumnHandle_t columnHandle, const RPage &page) = 0;
+   virtual RClusterDescriptor::RLocator CommitClusterImpl(NTupleSize_t nEntries) = 0;
+   virtual void CommitDatasetImpl() = 0;
 
 public:
    RPageSink(std::string_view ntupleName, const RNTupleWriteOptions &options);
@@ -127,7 +131,7 @@ public:
    ColumnHandle_t AddColumn(DescriptorId_t fieldId, const RColumn &column) final;
 
    /// Physically creates the storage container to hold the ntuple (e.g., a keys a TFile or an S3 bucket)
-   /// To do so, Create() calls DoCreate() after updating the descriptor.
+   /// To do so, Create() calls CreateImpl() after updating the descriptor.
    /// Create() associates column handles to the columns referenced by the model
    void Create(RNTupleModel &model);
    /// Write a page to the storage. The column must have been added before.
@@ -135,7 +139,7 @@ public:
    /// Finalize the current cluster and create a new one for the following data.
    void CommitCluster(NTupleSize_t nEntries);
    /// Finalize the current cluster and the entrire data set.
-   void CommitDataset() { DoCommitDataset(); }
+   void CommitDataset() { CommitDatasetImpl(); }
 
    /// Get a new, empty page for the given column that can be filled with up to nElements.  If nElements is zero,
    /// the page sink picks an appropriate size.
@@ -157,7 +161,7 @@ protected:
    const RNTupleReadOptions fOptions;
    RNTupleDescriptor fDescriptor;
 
-   virtual RNTupleDescriptor DoAttach() = 0;
+   virtual RNTupleDescriptor AttachImpl() = 0;
 
 public:
    RPageSource(std::string_view ntupleName, const RNTupleReadOptions &fOptions);
@@ -173,7 +177,7 @@ public:
    ColumnHandle_t AddColumn(DescriptorId_t fieldId, const RColumn &column) final;
 
    /// Open the physical storage container for the tree
-   void Attach() { fDescriptor = DoAttach(); }
+   void Attach() { fDescriptor = AttachImpl(); }
    NTupleSize_t GetNEntries();
    NTupleSize_t GetNElements(ColumnHandle_t columnHandle);
    ColumnId_t GetColumnId(ColumnHandle_t columnHandle);

@@ -765,6 +765,7 @@ TTree::TTree()
 , fIndex()
 , fTreeIndex(0)
 , fFriends(0)
+, fExternalFriends(0)
 , fPerfStats(0)
 , fUserInfo(0)
 , fPlayer(0)
@@ -845,6 +846,7 @@ TTree::TTree(const char* name, const char* title, Int_t splitlevel /* = 99 */,
 , fIndex()
 , fTreeIndex(0)
 , fFriends(0)
+, fExternalFriends(0)
 , fPerfStats(0)
 , fUserInfo(0)
 , fPlayer(0)
@@ -946,6 +948,13 @@ TTree::~TTree()
    // FIXME: We must consider what to do with the reset of these if we are a clone.
    delete fPlayer;
    fPlayer = 0;
+   if (fExternalFriends) {
+      using namespace ROOT::Detail;
+      for(auto fetree : TRangeStaticCast<TFriendElement>(*fExternalFriends))
+         fetree->Reset();
+      fExternalFriends->Clear("nodelete");
+      SafeDelete(fExternalFriends);
+   }
    if (fFriends) {
       fFriends->Delete();
       delete fFriends;
@@ -1312,7 +1321,7 @@ TFriendElement* TTree::AddFriend(const char* treename, TFile* file)
       if (!t->GetTreeIndex() && (t->GetEntries() < fEntries)) {
          Warning("AddFriend", "FriendElement %s in file %s has less entries %lld than its parent tree: %lld", treename, file->GetName(), t->GetEntries(), fEntries);
       }
-   } else {
+  } else {
       Warning("AddFriend", "unknown tree '%s' in file '%s'", treename, file->GetName());
    }
    return fe;
@@ -1340,6 +1349,7 @@ TFriendElement* TTree::AddFriend(TTree* tree, const char* alias, Bool_t warn)
       Warning("AddFriend", "FriendElement '%s' in file '%s' has less entries %lld than its parent tree: %lld",
               tree->GetName(), fe->GetFile() ? fe->GetFile()->GetName() : "(memory resident)", t->GetEntries(), fEntries);
    }
+   tree->RegisterExternalFriend(fe);
    return fe;
 }
 
@@ -1649,6 +1659,24 @@ TBranch* TTree::BranchImpRef(const char* branchname, TClass* ptrClass, EDataType
       return 0;
    }
    return BronchExec(branchname, actualClass->GetName(), (void*) addobj, kFALSE, bufsize, splitlevel);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Wrapper to turn Branch call with an std::array into the relevant leaf list
+// call
+TBranch *TTree::BranchImpArr(const char *branchname, EDataType datatype, std::size_t N, void *addobj, Int_t bufsize,
+                             Int_t /* splitlevel */)
+{
+   if (datatype == kOther_t || datatype == kNoType_t) {
+      Error("Branch",
+            "The inner type of the std::array passed specified for %s is not of a class or type known to ROOT",
+            branchname);
+   } else {
+      TString varname;
+      varname.Form("%s[%d]/%c", branchname, (int)N, DataTypeToChar(datatype));
+      return Branch(branchname, addobj, varname.Data(), bufsize);
+   }
+   return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -6282,26 +6310,14 @@ Long64_t TTree::LoadTree(Long64_t entry)
                continue;
             }
             TTree* friendTree = fe->GetTree();
-            if (friendTree == 0) {
-               // Somehow we failed to retrieve the friend TTree.
-            } else if (friendTree->IsA() == TTree::Class()) {
-               // Friend is actually a tree.
+            if (friendTree) {
                if (friendTree->LoadTreeFriend(entry, this) >= 0) {
                   friendHasEntry = kTRUE;
                }
-            } else {
-               // Friend is actually a chain.
-               // FIXME: This logic should be in the TChain override.
-               Int_t oldNumber = friendTree->GetTreeNumber();
-               if (friendTree->LoadTreeFriend(entry, this) >= 0) {
-                  friendHasEntry = kTRUE;
-               }
-               Int_t newNumber = friendTree->GetTreeNumber();
-               if (oldNumber != newNumber) {
-                  // We can not just compare the tree pointers because they could be reused.
-                  // So we compare the tree number instead.
-                  needUpdate = kTRUE;
-               }
+            }
+            if (fe->IsUpdated()) {
+               needUpdate = kTRUE;
+               fe->ResetUpdated();
             }
          } // for each friend
       }
@@ -7018,19 +7034,50 @@ void TTree::Print(Option_t* option) const
       option = "";
 
    if (strncmp(option,"clusters",strlen("clusters"))==0) {
-      Printf("%-16s %-16s %-16s %5s",
-             "Cluster Range #", "Entry Start", "Last Entry", "Size");
+      Printf("%-16s %-16s %-16s %8s %20s",
+             "Cluster Range #", "Entry Start", "Last Entry", "Size", "Number of clusters");
       Int_t index= 0;
       Long64_t clusterRangeStart = 0;
+      Long64_t totalClusters = 0;
+      bool estimated = false;
+      bool unknown = false;
+      auto printer = [this, &totalClusters, &estimated, &unknown](Int_t ind, Long64_t start, Long64_t end, Long64_t recordedSize) {
+            Long64_t nclusters = 0;
+            if (recordedSize > 0) {
+               nclusters = (1 + end - start) / recordedSize;
+               Printf("%-16d %-16lld %-16lld %8lld %10lld",
+                      ind, start, end, recordedSize, nclusters);
+            } else {
+               // NOTE: const_cast ... DO NOT Merge for now
+               TClusterIterator iter((TTree*)this, start);
+               iter.Next();
+               auto estimated_size = iter.GetNextEntry() - start;
+               if (estimated_size > 0) {
+                  nclusters = (1 + end - start) / estimated_size;
+                  Printf("%-16d %-16lld %-16lld %8lld %10lld (estimated)",
+                      ind, start, end, recordedSize, nclusters);
+                  estimated = true;
+               } else {
+                  Printf("%-16d %-16lld %-16lld %8lld    (unknown)",
+                        ind, start, end, recordedSize);
+                  unknown = true;
+               }
+            }
+            start = end + 1;
+            totalClusters += nclusters;
+      };
       if (fNClusterRange) {
          for( ; index < fNClusterRange; ++index) {
-            Printf("%-16d %-16lld %-16lld %5lld",
-                   index, clusterRangeStart, fClusterRangeEnd[index], fClusterSize[index]);
+            printer(index, clusterRangeStart, fClusterRangeEnd[index], fClusterSize[index]);
             clusterRangeStart = fClusterRangeEnd[index] + 1;
          }
       }
-      Printf("%-16d %-16lld %-16lld %5lld",
-             index, clusterRangeStart, fEntries - 1, fAutoFlush);
+      printer(index, clusterRangeStart, fEntries - 1, fAutoFlush);
+      if (unknown) {
+         Printf("Total number of clusters: (unknown)");
+      } else  {
+         Printf("Total number of clusters: %lld %s", totalClusters, estimated ? "(estimated)" : "");
+      }
       return;
    }
 
@@ -7669,6 +7716,18 @@ void TTree::Refresh()
    fDirectory->Append(this);
    delete tree;
    tree = 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Record a TFriendElement that we need to warn when the chain switches to
+/// a new file (typically this is because this chain is a friend of another
+/// TChain)
+
+void TTree::RegisterExternalFriend(TFriendElement *fe)
+{
+   if (!fExternalFriends)
+      fExternalFriends = new TList();
+   fExternalFriends->Add(fe);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -8551,7 +8610,7 @@ void TTree::SetCircular(Long64_t maxEntries)
       //a file, reset the compression level to the file compression level
       if (fDirectory) {
          TFile* bfile = fDirectory->GetFile();
-         Int_t compress = ROOT::RCompressionSetting::EDefaults::kUseGeneralPurpose;
+         Int_t compress = ROOT::RCompressionSetting::EDefaults::kUseCompiledDefault;
          if (bfile) {
             compress = bfile->GetCompressionSettings();
          }
@@ -8914,13 +8973,37 @@ void TTree::SetObject(const char* name, const char* title)
 
 void TTree::SetParallelUnzip(Bool_t opt, Float_t RelSize)
 {
-   if (opt) TTreeCacheUnzip::SetParallelUnzip(TTreeCacheUnzip::kEnable);
-   else     TTreeCacheUnzip::SetParallelUnzip(TTreeCacheUnzip::kDisable);
-
-   if (RelSize > 0) {
-      TTreeCacheUnzip::SetUnzipRelBufferSize(RelSize);
+#ifdef R__USE_IMT
+   if (GetTree() == 0) {
+      LoadTree(GetReadEntry());
+      if (!GetTree())
+         return;
    }
+   if (GetTree() != this) {
+      GetTree()->SetParallelUnzip(opt, RelSize);
+      return;
+   }
+   TFile* file = GetCurrentFile();
+   if (!file)
+      return;
 
+   TTreeCache* pf = GetReadCache(file);
+   if (pf && !( opt ^ (nullptr != dynamic_cast<TTreeCacheUnzip*>(pf)))) {
+      // done with opt and type are in agreement.
+      return;
+   }
+   delete pf;
+   auto cacheSize = GetCacheAutoSize(kTRUE);
+   if (opt) {
+      auto unzip = new TTreeCacheUnzip(this, cacheSize);
+      unzip->SetUnzipBufferSize( Long64_t(cacheSize * RelSize) );
+   } else {
+      pf = new TTreeCache(this, cacheSize);
+   }
+#else
+   (void)opt;
+   (void)RelSize;
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

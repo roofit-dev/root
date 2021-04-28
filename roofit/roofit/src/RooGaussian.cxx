@@ -20,23 +20,16 @@
 Plain Gaussian p.d.f
 **/
 
-#include "RooFit.h"
-
-#include "Riostream.h"
-#include "Riostream.h"
-#include <math.h>
-
 #include "RooGaussian.h"
 
+#include "RooFit.h"
 #include "BatchHelpers.h"
 #include "RooAbsReal.h"
 #include "RooRealVar.h"
 #include "RooRandom.h"
 #include "RooMath.h"
 
-#ifdef USE_VDT
-#include "vdt/exp.h"
-#endif
+#include "RooVDTHeaders.h"
 
 using namespace BatchHelpers;
 using namespace std;
@@ -83,16 +76,11 @@ template<class Tx, class TMean, class TSig>
 void compute(RooSpan<double> output, Tx x, TMean mean, TSig sigma) {
   const int n = output.size();
 
-  #pragma omp simd
   for (int i = 0; i < n; ++i) {
     const double arg = x[i] - mean[i];
     const double halfBySigmaSq = -0.5 / (sigma[i] * sigma[i]);
 
-#ifdef USE_VDT
-    output[i] = vdt::fast_exp(arg*arg * halfBySigmaSq);
-#else
-    output[i] = exp(arg*arg * halfBySigmaSq);
-#endif
+    output[i] = _rf_fast_exp(arg*arg * halfBySigmaSq);
   }
 }
 
@@ -109,8 +97,6 @@ void compute(RooSpan<double> output, Tx x, TMean mean, TSig sigma) {
 /// \return A span with the computed values.
 
 RooSpan<double> RooGaussian::evaluateBatch(std::size_t begin, std::size_t batchSize) const {
-  auto output = _batchData.makeWritableBatchUnInit(begin, batchSize);
-
   auto xData = x.getValBatch(begin, batchSize);
   auto meanData = mean.getValBatch(begin, batchSize);
   auto sigmaData = sigma.getValBatch(begin, batchSize);
@@ -120,28 +106,32 @@ RooSpan<double> RooGaussian::evaluateBatch(std::size_t begin, std::size_t batchS
   const bool batchMean = !meanData.empty();
   const bool batchSigma = !sigmaData.empty();
 
+  if (!(batchX || batchMean || batchSigma)) {
+    return {};
+  }
+
+  auto output = _batchData.makeWritableBatchUnInit(begin, batchSize);
+
   if (batchX && !batchMean && !batchSigma) {
-    compute(output, xData, BracketAdapter<RooRealProxy>(mean), BracketAdapter<RooRealProxy>(sigma));
+    compute(output, xData, BracketAdapter<double>(mean), BracketAdapter<double>(sigma));
   }
   else if (batchX && batchMean && !batchSigma) {
-    compute(output, xData, meanData, BracketAdapter<RooRealProxy>(sigma));
+    compute(output, xData, meanData, BracketAdapter<double>(sigma));
   }
   else if (batchX && !batchMean && batchSigma) {
-    compute(output, xData, BracketAdapter<RooRealProxy>(mean), sigmaData);
+    compute(output, xData, BracketAdapter<double>(mean), sigmaData);
   }
   else if (batchX && batchMean && batchSigma) {
     compute(output, xData, meanData, sigmaData);
   }
   else if (!batchX && batchMean && !batchSigma) {
-    compute(output, BracketAdapter<RooRealProxy>(x), meanData, BracketAdapter<RooRealProxy>(sigma));
+    compute(output, BracketAdapter<double>(x), meanData, BracketAdapter<double>(sigma));
   }
   else if (!batchX && !batchMean && batchSigma) {
-    compute(output, BracketAdapter<RooRealProxy>(x), BracketAdapter<RooRealProxy>(mean), sigmaData);
+    compute(output, BracketAdapter<double>(x), BracketAdapter<double>(mean), sigmaData);
   }
   else if (!batchX && batchMean && batchSigma) {
-    compute(output, BracketAdapter<RooRealProxy>(x), meanData, sigmaData);
-  } else {
-    throw std::logic_error("Requested a batch computation, but no batch data available.");
+    compute(output, BracketAdapter<double>(x), meanData, sigmaData);
   }
 
   return output;

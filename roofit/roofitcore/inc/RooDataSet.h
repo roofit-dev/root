@@ -16,12 +16,14 @@
 #ifndef ROO_DATA_SET
 #define ROO_DATA_SET
 
-class TDirectory ;
-class RooAbsRealLValue ;
-class RooRealVar ;
-class RooDataHist ;
+class TDirectory;
+class RooAbsRealLValue;
+class RooRealVar;
+class RooDataHist;
+
 #include "RooAbsData.h"
 #include "RooDirItem.h"
+#include <list>
 
 
 #define USEMEMPOOLFORDATASET
@@ -106,9 +108,7 @@ public:
   virtual const RooArgSet* get(Int_t index) const override;
   virtual const RooArgSet* get() const override;
 
-
-  virtual std::vector<RooSpan<const double>> getBatch(std::size_t first, std::size_t last) const override;
-  virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t last) const override;
+  virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t len) const override;
 
   // Add one ore more rows of data
   virtual void add(const RooArgSet& row, Double_t weight=1.0, Double_t weightError=0) override;
@@ -139,6 +139,8 @@ public:
   void SetNameTitle(const char *name, const char* title) override;
 
   static void cleanup();
+
+  void convertToTreeStore() override;
 
 protected:
 

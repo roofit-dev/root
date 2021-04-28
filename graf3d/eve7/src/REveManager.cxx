@@ -18,6 +18,7 @@
 #include <ROOT/REveClient.hxx>
 #include <ROOT/REveGeomViewer.hxx>
 #include <ROOT/RWebWindow.hxx>
+#include <ROOT/RLogger.hxx>
 
 #include "TGeoManager.h"
 #include "TObjString.h"
@@ -28,7 +29,6 @@
 #include "TMacro.h"
 #include "TFolder.h"
 #include "TSystem.h"
-#include "TRint.h"
 #include "TEnv.h"
 #include "TColor.h"
 #include "TPluginManager.h"
@@ -45,15 +45,21 @@
 using namespace ROOT::Experimental;
 namespace REX = ROOT::Experimental;
 
-REveManager* REX::gEve = 0;
-
-
+REveManager *REX::gEve = nullptr;
 
 
 /** \class REveManager
 \ingroup REve
 Central application manager for Eve.
 Manages elements, GUI, GL scenes and GL viewers.
+
+Following parameters can be specified in .rootrc file
+
+WebEve.GLViewer:  Three  # kind of GLViewer, either Three, JSRoot or RCore
+WebEve.DisableShow:   1  # do not start new web browser when REveManager::Show is called
+WebEve.HTimeout:     200 # timeout in ms for elements highlight
+WebEve.DblClick:    Off  # mouse double click handling in GL viewer: Off or Reset
+WebEve.TableRowHeight: 33  # size of each row in pixels in the Table view, can be used to make design more compact
 */
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -101,12 +107,13 @@ REveManager::REveManager() : // (Bool_t map_window, Option_t* opt) :
    AssignElementId(fWorld);
 
    fSelectionList = new REveElement("Selection List");
+   fSelectionList->SetChildClass(TClass::GetClass<REveSelection>());
    fSelectionList->IncDenyDestroy();
    fWorld->AddElement(fSelectionList);
-   fSelection = new REveSelection("Global Selection");
+   fSelection = new REveSelection("Global Selection", "", kRed, kViolet);
    fSelection->IncDenyDestroy();
    fSelectionList->AddElement(fSelection);
-   fHighlight = new REveSelection("Global Highlight");
+   fHighlight = new REveSelection("Global Highlight", "", kGreen, kCyan);
    fHighlight->SetHighlightMode();
    fHighlight->IncDenyDestroy();
    fSelectionList->AddElement(fHighlight);
@@ -138,6 +145,12 @@ REveManager::REveManager() : // (Bool_t map_window, Option_t* opt) :
 
    fWebWindow = RWebWindow::Create();
    fWebWindow->SetDefaultPage("file:rootui5sys/eve7/index.html");
+
+   const char *gl_viewer = gEnv->GetValue("WebEve.GLViewer", "Three");
+   const char *gl_dblclick = gEnv->GetValue("WebEve.DblClick", "Off");
+   Int_t htimeout = gEnv->GetValue("WebEve.HTimeout", 250);
+   Int_t table_row_height = gEnv->GetValue("WebEve.TableRowHeight", 0);
+   fWebWindow->SetUserArgs(Form("{ GLViewer: \"%s\", DblClick: \"%s\", HTimeout: %d, TableRowHeight: %d }", gl_viewer, gl_dblclick, htimeout, table_row_height));
 
    // this is call-back, invoked when message received via websocket
    fWebWindow->SetCallBacks([this](unsigned connid) { WindowConnect(connid); },
@@ -215,16 +228,6 @@ TMacro* REveManager::GetMacro(const char* name) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Show element in default editor.
-
-void REveManager::EditElement(REveElement* /*element*/)
-{
-   static const REveException eh("REveManager::EditElement ");
-
-   // GetEditor()->DisplayElement(element);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 /// Register a request for 3D redraw.
 
 void REveManager::RegisterRedraw3D()
@@ -241,7 +244,7 @@ void REveManager::DoRedraw3D()
 {
    static const REveException eh("REveManager::DoRedraw3D ");
    nlohmann::json jobj = {};
-   
+
    jobj["content"] = "BeginChanges";
    fWebWindow->Send(0, jobj.dump());
 
@@ -268,31 +271,16 @@ void REveManager::FullRedraw3D(Bool_t /*resetCameras*/, Bool_t /*dropLogicals*/)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Element was changed, perform framework side action.
-/// Called from REveElement::ElementChanged().
+/// Clear all selection objects. Can make things easier for EVE when going to
+/// the next event. Still, destruction os selected object should still work
+/// correctly as long as it is executed within a change cycle.
 
-void REveManager::ElementChanged(REveElement* element, Bool_t update_scenes, Bool_t redraw)
+void REveManager::ClearAllSelections()
 {
-   static const REveException eh("REveElement::ElementChanged ");
-
-   // XXXXis this still needed at all ????
-   if (update_scenes) {
-      REveElement::List_t scenes;
-      element->CollectScenes(scenes);
-      ScenesChanged(scenes);
+   for (auto el : fSelectionList->fChildren)
+   {
+      dynamic_cast<REveSelection*>(el)->ClearSelection();
    }
-
-   if (redraw)
-      Redraw3D();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Mark all scenes from the given list as changed.
-
-void REveManager::ScenesChanged(REveElement::List_t &scenes)
-{
-   for (auto &s: scenes)
-      ((REveScene*)s)->Changed();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -365,6 +353,20 @@ next_free_id:
    ++fNumElementIds;
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// Activate EVE browser (summary view) for specified element id
+
+void REveManager::BrowseElement(ElementId_t id)
+{
+   nlohmann::json msg = {};
+   msg["content"] = "BrowseElement";
+   msg["id"] = id;
+
+   fWebWindow->Send(0, msg.dump());
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Called from REveElement prior to its destruction so the
 /// framework components (like object editor) can unreference it.
@@ -382,6 +384,7 @@ void REveManager::PreDeleteElement(REveElement* el)
       if (el->fImpliedSelected != 0)
          Error("REveManager::PreDeleteElement", "ImpliedSelected not zero (%d) after cleanup of selections.", el->fImpliedSelected);
    }
+   // Primary selection deregistration is handled through Niece removal from Aunts.
 
    if (el->fElementId != 0)
    {
@@ -398,30 +401,6 @@ void REveManager::PreDeleteElement(REveElement* el)
       else Error("PreDeleteElement", "element id %u was not registered in ElementIdMap.", el->fElementId);
    }
    else Error("PreDeleteElement", "element with 0 ElementId passed in.");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Select an element.
-/// Now it only calls EditElement() - should also update selection state.
-
-void REveManager::ElementSelect(REveElement* element)
-{
-   if (element)
-      EditElement(element);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Paste has been called.
-
-Bool_t REveManager::ElementPaste(REveElement* element)
-{
-   // The object to paste is taken from the editor (this is not
-   // exactly right) and handed to 'element' for pasting.
-
-   REveElement* src = 0; // GetEditor()->GetEveElement();
-   if (src)
-      return element->HandleElementPaste(src);
-   return kFALSE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -845,35 +824,43 @@ void REveManager::WindowData(unsigned connid, const std::string &arg)
    static const REveException eh("REveManager::WindowData ");
 
    // find connection object
-   auto conn = fConnList.end();
-   for (auto i = fConnList.begin(); i != fConnList.end(); ++i)
-   {
-      if (i->fId == connid)
-      {
-         conn = i;
+   bool found = false;
+   for (auto &conn : fConnList) {
+      if (conn.fId == connid) {
+         found = true;
          break;
       }
    }
    // this should not happen, just check
-   if (conn == fConnList.end()) {
-      printf("error, connection not found!");
+   if (!found) {
+      R__ERROR_HERE("webeve") << "Internal error - no connection with id " << connid << " found";
       return;
+   }
+
+   nlohmann::json cj = nlohmann::json::parse(arg);
+   if (gDebug > 0)
+      ::Info("REveManager::WindowData", "MIR test %s", cj.dump().c_str());
+   std::string mir = cj["mir"];
+   int id = cj["fElementId"];
+
+   // MIR
+   std::stringstream cmd;
+
+   if (id == 0) {
+      cmd << "((ROOT::Experimental::REveManager *)" << std::hex << std::showbase << (size_t) this << ")->" << mir << ";";
+   } else {
+      auto el = FindElementById(id);
+      if (!el) {
+         R__ERROR_HERE("webeve") << "Element with id " << id << " not found";
+         return;
+      }
+      std::string ctype = cj["class"];
+      cmd << "((" << ctype << "*)" << std::hex << std::showbase << (size_t)el << ")->" << mir << ";";
    }
 
    fWorld->BeginAcceptingChanges();
    fScenes->AcceptChanges(true);
 
-   // MIR
-   nlohmann::json cj = nlohmann::json::parse(arg);
-   if (gDebug > 0)
-      ::Info("REveManager::WindowData", "MIR test %s", cj.dump().c_str());
-   std::string mir = cj["mir"];
-   std::string ctype = cj["class"];
-   int id = cj["fElementId"];
-
-   auto el = FindElementById(id);
-   std::stringstream cmd;
-   cmd << "((" << ctype << "*)" << std::hex << std::showbase << (size_t)el << ")->" << mir << ";";
    if (gDebug > 0)
       ::Info("REveManager::WindowData", "MIR cmd %s", cmd.str().c_str());
    gROOT->ProcessLine(cmd.str().c_str());

@@ -113,7 +113,6 @@ the selection.
 #include "Riostream.h"
 #include "TRandom3.h"
 #include "TMath.h"
-#include "TObjString.h"
 
 #include <algorithm>
 
@@ -280,7 +279,7 @@ void TMVA::MethodDT::ProcessOptions()
 
    if (fPruneStrength < 0) fAutomatic = kTRUE;
    else fAutomatic = kFALSE;
-   if (fAutomatic && fPruneMethod==!DecisionTree::kCostComplexityPruning){
+   if (fAutomatic && fPruneMethod == DecisionTree::kExpectedErrorPruning){
       Log() << kFATAL
             <<  "Sorry automatic pruning strength determination is not implemented yet for ExpectedErrorPruning" << Endl;
    }

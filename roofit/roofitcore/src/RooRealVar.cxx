@@ -31,7 +31,6 @@ optionally a series of alternate named ranges.
 #include "RooTrace.h"
 
 #include <math.h>
-#include "TObjString.h"
 #include "TTree.h"
 #include "RooRealVar.h"
 #include "RooStreamParser.h"
@@ -46,7 +45,7 @@ optionally a series of alternate named ranges.
 using namespace std;
 
 ClassImp(RooRealVar);
-;
+
 
 Bool_t RooRealVar::_printScientific(kFALSE) ;
 Int_t  RooRealVar::_printSigDigits(5) ;
@@ -146,7 +145,7 @@ RooRealVar::RooRealVar(const RooRealVar& other, const char* name) :
   _asymErrLo(other._asymErrLo),
   _asymErrHi(other._asymErrHi)
 {
-  _sharedProp =  (RooRealVarSharedProperties*) _sharedPropList.registerProperties(other.sharedProp()) ;
+  _sharedProp = (RooRealVarSharedProperties*) _sharedPropList.registerProperties(other.sharedProp()) ;
   if (other._binning) {
      _binning = other._binning->clone() ;
      _binning->insertHook(*this) ;
@@ -167,6 +166,35 @@ RooRealVar::RooRealVar(const RooRealVar& other, const char* name) :
 
   TRACE_CREATE
 
+}
+
+/// Assign the values of another RooRealVar to this instance.
+RooRealVar& RooRealVar::operator=(const RooRealVar& other) {
+  RooAbsRealLValue::operator=(other);
+
+  _error = other._error;
+  _asymErrLo = other._asymErrLo;
+  _asymErrHi = other._asymErrHi;
+
+  delete _binning;
+  _binning = nullptr;
+  if (other._binning) {
+    _binning = other._binning->clone() ;
+    _binning->insertHook(*this) ;
+  }
+
+  _altNonSharedBinning.Clear();
+  RooAbsBinning* ab ;
+  std::unique_ptr<TIterator> iter(other._altNonSharedBinning.MakeIterator());
+  while((ab=(RooAbsBinning*)iter->Next())) {
+    RooAbsBinning* abc = ab->clone() ;
+    _altNonSharedBinning.Add(abc) ;
+    abc->insertHook(*this) ;
+  }
+
+  _sharedProp = (RooRealVarSharedProperties*) _sharedPropList.registerProperties(other.sharedProp());
+
+  return *this;
 }
 
 

@@ -116,9 +116,14 @@ function(ROOT_GET_SOURCES variable cwd )
 endfunction()
 
 #---------------------------------------------------------------------------------------------------
-#---REFLEX_GENERATE_DICTIONARY( dictionary headerfiles SELECTION selectionfile OPTIONS opt1 opt2 ...)
+#---REFLEX_GENERATE_DICTIONARY( dictionary headerfiles SELECTION selectionfile OPTIONS opt1 opt2 ...
+#                               DEPENDS dependency1 dependency2 ...
+#                             )
+# if dictionary is a TARGET (e.g., created with add_library), we inherit the INCLUDE_DIRECTORES and
+# COMPILE_DEFINITIONS properties
+#
 #---------------------------------------------------------------------------------------------------
-macro(REFLEX_GENERATE_DICTIONARY dictionary)
+function(REFLEX_GENERATE_DICTIONARY dictionary)
   CMAKE_PARSE_ARGUMENTS(ARG "" "SELECTION" "OPTIONS;DEPENDS" ${ARGN})
   #---Get List of header files---------------
   set(headerfiles)
@@ -157,25 +162,42 @@ macro(REFLEX_GENERATE_DICTIONARY dictionary)
     set(rootmapopts --rootmap=${rootmapname} --rootmap-lib=${libprefix}${dictionary}Dict)
   endif()
 
-  set(include_dirs -I${CMAKE_CURRENT_SOURCE_DIR})
+  set(include_dirs ${CMAKE_CURRENT_SOURCE_DIR})
   get_directory_property(incdirs INCLUDE_DIRECTORIES)
   foreach(d ${incdirs})
     if(NOT "${d}" MATCHES "^(AFTER|BEFORE|INTERFACE|PRIVATE|PUBLIC|SYSTEM)$")
-      set(include_dirs ${include_dirs} -I${d})
+      list(APPEND include_dirs ${d})
     endif()
   endforeach()
 
   get_directory_property(defs COMPILE_DEFINITIONS)
   foreach( d ${defs})
-   set(definitions ${definitions} -D${d})
+   list(APPEND definitions ${d})
   endforeach()
+
+  IF(TARGET ${dictionary})
+    LIST(APPEND include_dirs $<TARGET_PROPERTY:${dictionary},INCLUDE_DIRECTORIES>)
+    LIST(APPEND definitions $<TARGET_PROPERTY:${dictionary},COMPILE_DEFINITIONS>)
+  ENDIF()
 
   add_custom_command(
     OUTPUT ${gensrcdict} ${rootmapname}
     COMMAND ${ROOT_genreflex_CMD}
     ARGS ${headerfiles} -o ${gensrcdict} ${rootmapopts} --select=${selectionfile}
-         --gccxmlpath=${GCCXML_home}/bin ${ARG_OPTIONS} ${include_dirs} ${definitions}
-    DEPENDS ${headerfiles} ${selectionfile} ${ARG_DEPENDS})
+         --gccxmlpath=${GCCXML_home}/bin ${ARG_OPTIONS}
+         "-I$<JOIN:${include_dirs},;-I>"
+         "$<$<BOOL:$<JOIN:${definitions},>>:-D$<JOIN:${definitions},;-D>>"
+    DEPENDS ${headerfiles} ${selectionfile} ${ARG_DEPENDS}
+
+    COMMAND_EXPAND_LISTS
+    )
+  IF(TARGET ${dictionary})
+    target_sources(${dictionary} PRIVATE ${gensrcdict})
+  ENDIF()
+  # FIXME: Do not set gensrcdict variable to the outer scope but use an argument to
+  # REFLEX_GENERATE_DICTIONARY passed from the outside. Note this would be a
+  # breaking change for roottest and other external users.
+  set(gensrcdict ${dictionary}.cxx PARENT_SCOPE)
 
   #---roottest compability---------------------------------
   if(CMAKE_ROOTTEST_DICT)
@@ -191,7 +213,7 @@ macro(REFLEX_GENERATE_DICTIONARY dictionary)
     add_custom_target(${targetname} ALL DEPENDS ${gensrcdict})
   endif()
 
-endmacro()
+endfunction()
 
 #---------------------------------------------------------------------------------------------------
 #---ROOT_GET_LIBRARY_OUTPUT_DIR( result_var )
@@ -243,7 +265,7 @@ endfunction(ROOT_GET_INSTALL_DIR)
 #   no error is emitted. The dictionary does not depend on these headers.
 #---------------------------------------------------------------------------------------------------
 function(ROOT_GENERATE_DICTIONARY dictionary)
-  CMAKE_PARSE_ARGUMENTS(ARG "STAGE1;MULTIDICT;NOINSTALL"
+  CMAKE_PARSE_ARGUMENTS(ARG "STAGE1;MULTIDICT;NOINSTALL;NO_CXXMODULE"
     "MODULE;LINKDEF" "NODEPHEADERS;OPTIONS;DEPENDENCIES;EXTRA_DEPENDENCIES;BUILTINS" ${ARGN})
 
   # Check if OPTIONS start with a dash.
@@ -393,50 +415,58 @@ function(ROOT_GENERATE_DICTIONARY dictionary)
   endforeach()
 
   #---Build the names for library, pcm and rootmap file ----
+  set(library_target_name)
   if(dictionary MATCHES "^G__")
-    string(SUBSTRING ${dictionary} 3 -1 deduced_arg_module)
+    string(REGEX REPLACE "^G__(.*)" "\\1"  library_target_name ${dictionary})
+    if (ARG_MULTIDICT)
+      string(REGEX REPLACE "(.*)32$" "\\1"  library_target_name ${library_target_name})
+    endif (ARG_MULTIDICT)
   else()
-    get_filename_component(deduced_arg_module ${dictionary} NAME_WE)
+    get_filename_component(library_target_name ${dictionary} NAME_WE)
   endif()
+  if (ARG_MODULE)
+    if (NOT ${ARG_MODULE} STREQUAL ${library_target_name})
+#      message(AUTHOR_WARNING "The MODULE argument ${ARG_MODULE} and the deduced library name "
+#        "${library_target_name} mismatch. Deduction stem: ${dictionary}.")
+      set(library_target_name ${ARG_MODULE})
+    endif()
+  endif(ARG_MODULE)
 
   #---Set the library output directory-----------------------
   ROOT_GET_LIBRARY_OUTPUT_DIR(library_output_dir)
-  set (runtime_cxxmodule_dependencies )
+  set(runtime_cxxmodule_dependencies )
+  set(cpp_module)
+  set(library_name ${libprefix}${library_target_name}${libsuffix})
+  set(newargs -s ${library_output_dir}/${library_name})
+  set(rootmap_name ${library_output_dir}/${libprefix}${library_target_name}.rootmap)
+  set(pcm_name ${library_output_dir}/${libprefix}${library_target_name}_rdict.pcm)
   if(ARG_MODULE)
-    set(cpp_module)
-    set(library_name ${libprefix}${ARG_MODULE}${libsuffix})
-    set(newargs -s ${library_output_dir}/${library_name})
-    set(master_pcm_name ${library_output_dir}/${libprefix}${ARG_MODULE}_rdict.pcm)
     if(ARG_MULTIDICT)
       set(newargs ${newargs} -multiDict)
-      set(pcm_name ${library_output_dir}/${libprefix}${ARG_MODULE}_${dictionary}_rdict.pcm)
-      set(rootmap_name ${library_output_dir}/${libprefix}${deduced_arg_module}.rootmap)
+      set(pcm_name ${library_output_dir}/${libprefix}${library_target_name}_${dictionary}_rdict.pcm)
+      set(rootmap_name ${library_output_dir}/${libprefix}${library_target_name}32.rootmap)
     else()
-      set(cpp_module ${ARG_MODULE})
-      set(pcm_name ${master_pcm_name})
-      set(rootmap_name ${library_output_dir}/${libprefix}${ARG_MODULE}.rootmap)
+      set(cpp_module ${library_target_name})
     endif(ARG_MULTIDICT)
 
     if(runtime_cxxmodules)
-      set(pcm_name)
+      # If we specify NO_CXXMODULE we should be able to still install the produced _rdict.pcm file.
+      if(NOT ARG_NO_CXXMODULE)
+        set(pcm_name)
+      endif()
       if(cpp_module)
         set(cpp_module_file ${library_output_dir}/${cpp_module}.pcm)
-        if (APPLE)
-          if (${cpp_module} MATCHES "(GCocoa|GQuartz)")
-            set(cpp_module_file)
-          endif()
-        endif(APPLE)
         # The module depends on its modulemap file.
         if (cpp_module_file)
           set (runtime_cxxmodule_dependencies copymodulemap "${CMAKE_BINARY_DIR}/include/module.modulemap")
         endif()
       endif(cpp_module)
     endif()
-  else()
-    set(library_name ${libprefix}${deduced_arg_module}${libsuffix})
-    set(newargs -s ${library_output_dir}/${library_name})
-    set(pcm_name ${library_output_dir}/${libprefix}${deduced_arg_module}_rdict.pcm)
-    set(rootmap_name ${library_output_dir}/${libprefix}${deduced_arg_module}.rootmap)
+  endif()
+
+  if (ARG_NO_CXXMODULE)
+    unset(cpp_module)
+    unset(cpp_module_file)
   endif()
 
   if(CMAKE_ROOTTEST_NOROOTMAP OR cpp_module_file)
@@ -531,6 +561,7 @@ function(ROOT_GENERATE_DICTIONARY dictionary)
 
   if(PROJECT_NAME STREQUAL "ROOT")
     set_property(GLOBAL APPEND PROPERTY ROOT_PCH_DEPENDENCIES ${dictionary})
+    set_property(GLOBAL APPEND PROPERTY ROOT_PCH_DICTIONARIES ${CMAKE_CURRENT_BINARY_DIR}/${dictionary}.cxx)
   endif()
 
   if(ARG_MULTIDICT)
@@ -619,10 +650,8 @@ function (ROOT_CXXMODULES_APPEND_TO_MODULEMAP library library_headers)
     set (modulemap_entry "${modulemap_entry}\n  use ROOT_Foundation_C\n")
   endif()
 
-  # For modules GCocoa and GQuartz we need objc context.
-  if (${library} MATCHES "(GCocoa|GQuartz)")
-    set (modulemap_entry "${modulemap_entry}\n  requires objc\n")
-  else()
+  # For modules GCocoa and GQuartz we need objc and cplusplus context.
+  if (NOT ${library} MATCHES "(GCocoa|GQuartz)")
     set (modulemap_entry "${modulemap_entry}\n  requires cplusplus\n")
   endif()
   if (library_headers)
@@ -758,35 +787,9 @@ function(ROOT_LINKER_LIBRARY library)
     if(NOT TARGET ROOT::${library})
       add_library(ROOT::${library} ALIAS ${library})
     endif()
-
-    if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/inc)
-      target_include_directories(${library}
-        PRIVATE
-          ${CMAKE_CURRENT_SOURCE_DIR}/inc
-        INTERFACE
-          $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
-      )
-    endif()
-
-    if(root7 AND IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/v7/inc)
-      target_include_directories(${library}
-        PRIVATE
-          ${CMAKE_CURRENT_SOURCE_DIR}/v7/inc
-        INTERFACE
-          $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/v7/inc>
-      )
-    endif()
-
-    if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/res)
-      target_include_directories(${library}
-        PRIVATE
-          ${CMAKE_CURRENT_SOURCE_DIR}/res
-      )
-    endif()
-
-    # needed for generated headers like RConfigure.h and ROOT/RConfig.hxx
-    target_include_directories(${library} PRIVATE ${CMAKE_BINARY_DIR}/include)
   endif()
+
+  ROOT_ADD_INCLUDE_DIRECTORIES(${library})
 
   if(TARGET G__${library})
     add_dependencies(${library} G__${library})
@@ -833,18 +836,11 @@ function(ROOT_LINKER_LIBRARY library)
 endfunction()
 
 #---------------------------------------------------------------------------------------------------
-#---ROOT_OBJECT_LIBRARY( <name> source1 source2 ... BUILTINS dep1 dep2 ...)
+#---ROOT_ADD_INCLUDE_DIRECTORIES( library )
 #---------------------------------------------------------------------------------------------------
-function(ROOT_OBJECT_LIBRARY library)
-  CMAKE_PARSE_ARGUMENTS(ARG "" "" "BUILTINS"  ${ARGN})
-  ROOT_GET_SOURCES(lib_srcs src ${ARG_UNPARSED_ARGUMENTS})
-  add_library( ${library} OBJECT ${lib_srcs})
-  if(lib_srcs MATCHES "(^|/)(G__[^.]*)[.]cxx.*")
-     add_dependencies(${library} ${CMAKE_MATCH_2})
-  endif()
-  add_dependencies(${library} move_headers)
-
+function(ROOT_ADD_INCLUDE_DIRECTORIES library)
   if(PROJECT_NAME STREQUAL "ROOT")
+
     if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/inc)
       target_include_directories(${library}
         PRIVATE
@@ -870,9 +866,36 @@ function(ROOT_OBJECT_LIBRARY library)
       )
     endif()
 
-    # needed for generated headers like RConfigure.h and ROOT/RConfig.hxx
-    target_include_directories(${library} PRIVATE ${CMAKE_BINARY_DIR}/include)
+    if (cxxmodules)
+      # needed for generated headers like RConfigure.h and ROOT/RConfig.hxx
+      # FIXME: We prepend ROOTSYS/include because if we have built a module
+      # and try to resolve the 'same' header from a different location we will
+      # get a redefinition error.
+      # We should remove these lines when the fallback include is removed. Then
+      # we will need a module.modulemap file per `inc` directory.
+      target_include_directories(${library} BEFORE PRIVATE ${CMAKE_BINARY_DIR}/include)
+    else()
+      # needed for generated headers like RConfigure.h and ROOT/RConfig.hxx
+      target_include_directories(${library} PRIVATE ${CMAKE_BINARY_DIR}/include)
+    endif()
+
   endif()
+
+endfunction(ROOT_ADD_INCLUDE_DIRECTORIES)
+
+#---------------------------------------------------------------------------------------------------
+#---ROOT_OBJECT_LIBRARY( <name> source1 source2 ... BUILTINS dep1 dep2 ...)
+#---------------------------------------------------------------------------------------------------
+function(ROOT_OBJECT_LIBRARY library)
+  CMAKE_PARSE_ARGUMENTS(ARG "" "" "BUILTINS"  ${ARGN})
+  ROOT_GET_SOURCES(lib_srcs src ${ARG_UNPARSED_ARGUMENTS})
+  add_library( ${library} OBJECT ${lib_srcs})
+  if(lib_srcs MATCHES "(^|/)(G__[^.]*)[.]cxx.*")
+     add_dependencies(${library} ${CMAKE_MATCH_2})
+  endif()
+  add_dependencies(${library} move_headers)
+
+  ROOT_ADD_INCLUDE_DIRECTORIES(${library})
 
   #--- Only for building shared libraries
   set_property(TARGET ${library} PROPERTY POSITION_INDEPENDENT_CODE 1)
@@ -936,35 +959,7 @@ function(ROOT_MODULE_LIBRARY library)
   # macros.
   set_target_properties(${library} PROPERTIES DEFINE_SYMBOL "")
 
-  if(PROJECT_NAME STREQUAL "ROOT")
-    if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/inc)
-      target_include_directories(${library}
-        PRIVATE
-          ${CMAKE_CURRENT_SOURCE_DIR}/inc
-        INTERFACE
-          $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
-      )
-    endif()
-
-    if(root7 AND IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/v7/inc)
-      target_include_directories(${library}
-        PRIVATE
-          ${CMAKE_CURRENT_SOURCE_DIR}/v7/inc
-        INTERFACE
-          $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/v7/inc>
-      )
-    endif()
-
-    if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/res)
-      target_include_directories(${library}
-        PRIVATE
-          ${CMAKE_CURRENT_SOURCE_DIR}/res
-      )
-    endif()
-
-    # needed for generated headers like RConfigure.h and ROOT/RConfig.hxx
-    target_include_directories(${library} PRIVATE ${CMAKE_BINARY_DIR}/include)
-  endif()
+  ROOT_ADD_INCLUDE_DIRECTORIES(${library})
 
   target_link_libraries(${library} PUBLIC ${ARG_LIBRARIES})
   #----Installation details-------------------------------------------------------
@@ -1091,16 +1086,16 @@ endfunction()
 #                                 LIBRARIES lib1 lib2          : linking flags such as dl, readline
 #                                 DEPENDENCIES lib1 lib2       : dependencies such as Core, MathCore
 #                                 BUILTINS builtin1 builtin2   : builtins like AFTERIMAGE
-#                                 LINKDEF LinkDef.h LinkDef2.h : linkdef files, default value is "LinkDef.h"
+#                                 LINKDEF LinkDef.h            : linkdef file, default value is "LinkDef.h"
 #                                 DICTIONARY_OPTIONS option    : options passed to rootcling
 #                                 INSTALL_OPTIONS option       : options passed to install headers
-#                                 NO_MODULE                    : don't generate a C++ module for this package
+#                                 NO_CXXMODULE                 : don't generate a C++ module for this package
 #                                )
 #---------------------------------------------------------------------------------------------------
 function(ROOT_STANDARD_LIBRARY_PACKAGE libname)
-  set(options NO_INSTALL_HEADERS STAGE1 NO_HEADERS NO_SOURCES OBJECT_LIBRARY NO_MODULE)
-  set(oneValueArgs)
-  set(multiValueArgs DEPENDENCIES HEADERS NODEPHEADERS SOURCES BUILTINS LIBRARIES DICTIONARY_OPTIONS LINKDEF INSTALL_OPTIONS)
+  set(options NO_INSTALL_HEADERS STAGE1 NO_HEADERS NO_SOURCES OBJECT_LIBRARY NO_CXXMODULE)
+  set(oneValueArgs LINKDEF)
+  set(multiValueArgs DEPENDENCIES HEADERS NODEPHEADERS SOURCES BUILTINS LIBRARIES DICTIONARY_OPTIONS INSTALL_OPTIONS)
   CMAKE_PARSE_ARGUMENTS(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
   # Check if we have any unparsed arguments
@@ -1131,10 +1126,8 @@ function(ROOT_STANDARD_LIBRARY_PACKAGE libname)
     set(STAGE1_FLAG "STAGE1")
   endif()
 
-  # Don't pass the MODULE arg to ROOT_GENERATE_DICTIONARY when
-  # NO_MODULE is set.
-  if(NOT ARG_NO_MODULE)
-    set(MODULE_GEN_ARG MODULE ${libname})
+  if (ARG_NO_CXXMODULE)
+    set(NO_CXXMODULE_FLAG "NO_CXXMODULE")
   endif()
 
   if(ARG_NO_SOURCES)
@@ -1178,18 +1171,15 @@ function(ROOT_STANDARD_LIBRARY_PACKAGE libname)
   endif()
 
   ROOT_GENERATE_DICTIONARY(G__${libname} ${ARG_HEADERS}
-                          ${MODULE_GEN_ARG}
+                          ${NO_CXXMODULE_FLAG}
                           ${STAGE1_FLAG}
+                          MODULE ${libname}
                           LINKDEF ${ARG_LINKDEF}
                           NODEPHEADERS ${ARG_NODEPHEADERS}
                           OPTIONS ${ARG_DICTIONARY_OPTIONS}
                           DEPENDENCIES ${ARG_DEPENDENCIES}
                           BUILTINS ${ARG_BUILTINS}
                           )
-
-  if(ARG_NO_MODULE)
-    target_sources(${libname} PRIVATE G__${libname}.cxx)
-  endif()
 
   # Dictionary might include things from the current src dir, e.g. tests. Alas
   # there is no way to set the include directory for a source file (except for
@@ -1228,7 +1218,9 @@ function(ROOT_EXECUTABLE executable)
   if (ARG_ADDITIONAL_COMPILE_FLAGS)
     set_target_properties(${executable} PROPERTIES COMPILE_FLAGS ${ARG_ADDITIONAL_COMPILE_FLAGS})
   endif()
-  add_dependencies(${executable} move_headers)
+  if(CMAKE_PROJECT_NAME STREQUAL ROOT)
+    add_dependencies(${executable} move_headers)
+  endif()
   if(ARG_BUILTINS)
     foreach(arg1 ${ARG_BUILTINS})
       if(${arg1}_TARGET)
@@ -1282,10 +1274,11 @@ set(ROOT_TEST_DRIVER ${CMAKE_CURRENT_LIST_DIR}/RootTestDriver.cmake)
 #                        [TIMEOUT seconds]
 #                        [DEBUG]
 #                        [SOURCE_DIR dir] [BINARY_DIR dir]
-#                        [WORKING_DIR dir]
+#                        [WORKING_DIR dir] [COPY_TO_BUILDDIR files]
 #                        [BUILD target] [PROJECT project]
 #                        [PASSREGEX exp] [FAILREGEX epx]
-#                        [PASSRC code])
+#                        [PASSRC code]
+#                        [LABELS label1 label2])
 #
 function(ROOT_ADD_TEST test)
   CMAKE_PARSE_ARGUMENTS(ARG "DEBUG;WILLFAIL;CHECKOUT;CHECKERR;RUN_SERIAL"
@@ -1519,7 +1512,7 @@ endfunction()
 # function ROOT_ADD_GTEST(<testsuite> source1 source2... COPY_TO_BUILDDIR file1 file2 LIBRARIES)
 #
 function(ROOT_ADD_GTEST test_suite)
-  CMAKE_PARSE_ARGUMENTS(ARG "" "" "COPY_TO_BUILDDIR;LIBRARIES" ${ARGN})
+  CMAKE_PARSE_ARGUMENTS(ARG "WILLFAIL" "" "COPY_TO_BUILDDIR;LIBRARIES;LABELS" ${ARGN})
   include_directories(${CMAKE_CURRENT_BINARY_DIR} ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
 
   ROOT_GET_SOURCES(source_files . ${ARG_UNPARSED_ARGUMENTS})
@@ -1536,11 +1529,21 @@ function(ROOT_ADD_GTEST test_suite)
     set_property(TARGET ${test_suite} APPEND_STRING PROPERTY LINK_FLAGS ${test_exports})
   endif()
 
+  if(ARG_WILLFAIL)
+    set(willfail WILLFAIL)
+  endif()
+  if(ARG_LABELS)
+    set(labels "LABELS ${ARG_LABELS}")
+  endif()
+
   ROOT_PATH_TO_STRING(mangled_name ${test_suite} PATH_SEPARATOR_REPLACEMENT "-")
   ROOT_ADD_TEST(
     gtest${mangled_name}
     COMMAND ${test_suite}
     WORKING_DIR ${CMAKE_CURRENT_BINARY_DIR}
+    COPY_TO_BUILDDIR ${ARG_COPY_TO_BUILDDIR}
+    ${willfail}
+    ${labels}
   )
 endfunction()
 
@@ -1557,10 +1560,17 @@ endfunction()
 # ROOT_ADD_PYUNITTESTS( <name> )
 #----------------------------------------------------------------------------
 function(ROOT_ADD_PYUNITTESTS name)
-  set(ROOT_ENV ROOTSYS=${ROOTSYS}
-      PATH=${ROOTSYS}/bin:$ENV{PATH}
-      LD_LIBRARY_PATH=${ROOTSYS}/lib:$ENV{LD_LIBRARY_PATH}
-      PYTHONPATH=${ROOTSYS}/lib:$ENV{PYTHONPATH})
+  if(pyroot_experimental)
+    set(ROOT_ENV ROOTSYS=${ROOTSYS}
+        PATH=${ROOTSYS}/bin:$ENV{PATH}
+        LD_LIBRARY_PATH=${ROOTSYS}/lib:${ROOTSYS}/lib/${python_dir}:$ENV{LD_LIBRARY_PATH}
+        PYTHONPATH=${ROOTSYS}/lib:${ROOTSYS}/lib/${python_dir}:$ENV{PYTHONPATH})
+  else()
+    set(ROOT_ENV ROOTSYS=${ROOTSYS}
+        PATH=${ROOTSYS}/bin:$ENV{PATH}
+        LD_LIBRARY_PATH=${ROOTSYS}/lib:$ENV{LD_LIBRARY_PATH}
+        PYTHONPATH=${ROOTSYS}/lib:$ENV{PYTHONPATH})
+  endif()
   string(REGEX REPLACE "[_]" "-" good_name "${name}")
   ROOT_ADD_TEST(pyunittests-${good_name}
                 COMMAND ${PYTHON_EXECUTABLE} -B -m unittest discover -s ${CMAKE_CURRENT_SOURCE_DIR} -p "*.py" -v
@@ -1572,11 +1582,17 @@ endfunction()
 #----------------------------------------------------------------------------
 function(ROOT_ADD_PYUNITTEST name file)
   CMAKE_PARSE_ARGUMENTS(ARG "WILLFAIL" "" "COPY_TO_BUILDDIR;ENVIRONMENT" ${ARGN})
-
-  set(ROOT_ENV ROOTSYS=${ROOTSYS}
-      PATH=${ROOTSYS}/bin:$ENV{PATH}
-      LD_LIBRARY_PATH=${ROOTSYS}/lib:$ENV{LD_LIBRARY_PATH}
-      PYTHONPATH=${ROOTSYS}/lib:$ENV{PYTHONPATH})
+  if(pyroot_experimental)
+    set(ROOT_ENV ROOTSYS=${ROOTSYS}
+        PATH=${ROOTSYS}/bin:$ENV{PATH}
+        LD_LIBRARY_PATH=${ROOTSYS}/lib:${ROOTSYS}/lib/${python_dir}:$ENV{LD_LIBRARY_PATH}
+        PYTHONPATH=${ROOTSYS}/lib:${ROOTSYS}/lib/${python_dir}:$ENV{PYTHONPATH})
+  else()
+    set(ROOT_ENV ROOTSYS=${ROOTSYS}
+        PATH=${ROOTSYS}/bin:$ENV{PATH}
+        LD_LIBRARY_PATH=${ROOTSYS}/lib:$ENV{LD_LIBRARY_PATH}
+        PYTHONPATH=${ROOTSYS}/lib:$ENV{PYTHONPATH})
+  endif()
   string(REGEX REPLACE "[_]" "-" good_name "${name}")
   get_filename_component(file_name ${file} NAME)
   get_filename_component(file_dir ${file} DIRECTORY)

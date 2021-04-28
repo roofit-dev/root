@@ -764,8 +764,8 @@ void TMVA::MethodBase::AddRegressionOutput(Types::ETreeType type)
    regRes->Resize( nEvents );
 
    // Drawing the progress bar every event was causing a huge slowdown in the evaluation time
-   // So we set some parameters to draw the progress bar a total of totalProgressDraws, i.e. only draw every 1 in 100 
-   
+   // So we set some parameters to draw the progress bar a total of totalProgressDraws, i.e. only draw every 1 in 100
+
    Int_t totalProgressDraws = 100; // total number of times to update the progress bar
    Int_t drawProgressEvery = 1;    // draw every nth event such that we have a total of totalProgressDraws
    if(nEvents >= totalProgressDraws) drawProgressEvery = nEvents/totalProgressDraws;
@@ -1973,6 +1973,13 @@ TDirectory* TMVA::MethodBase::BaseDir() const
    if (fBaseDir != 0) return fBaseDir;
    Log()<<kDEBUG<<Form("Dataset[%s] : ",DataInfo().GetName())<<" Base Directory for " << GetMethodName() << " not set yet --> check if already there.." <<Endl;
 
+   if (IsSilentFile()) {
+      Log() << kFATAL << Form("Dataset[%s] : ", DataInfo().GetName())
+            << "MethodBase::BaseDir() - No directory exists when running a Method without output file. Enable the "
+               "output when creating the factory"
+            << Endl;
+   }
+
    TDirectory* methodDir = MethodBaseDir();
    if (methodDir==0)
       Log() << kFATAL <<Form("Dataset[%s] : ",DataInfo().GetName())<< "MethodBase::BaseDir() - MethodBaseDir() return a NULL pointer!" << Endl;
@@ -1985,7 +1992,7 @@ TDirectory* TMVA::MethodBase::BaseDir() const
          sdir = methodDir->mkdir(defaultDir);
          sdir->cd();
          // write weight file name into target file
-         if (fModelPersistence) { 
+         if (fModelPersistence) {
             TObjString wfilePath( gSystem->WorkingDirectory() );
             TObjString wfileName( GetWeightFileName() );
             wfilePath.Write( "TrainingPath" );
@@ -2013,6 +2020,7 @@ TDirectory *TMVA::MethodBase::MethodBaseDir() const
          << " not set yet --> check if already there.." << Endl;
 
    TDirectory *factoryBaseDir = GetFile();
+   if (!factoryBaseDir) return nullptr;
    fMethodBaseDir = factoryBaseDir->GetDirectory(datasetName);
    if (!fMethodBaseDir) {
       fMethodBaseDir = factoryBaseDir->mkdir(datasetName, Form("Base directory for dataset %s", datasetName));
@@ -2042,7 +2050,7 @@ TDirectory *TMVA::MethodBase::MethodBaseDir() const
 void TMVA::MethodBase::SetWeightFileDir( TString fileDir )
 {
    fFileDir = fileDir;
-   gSystem->MakeDirectory( fFileDir );
+   gSystem->mkdir( fFileDir, kTRUE );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2099,7 +2107,13 @@ void TMVA::MethodBase::WriteEvaluationHistosToFile(Types::ETreeType treetype)
             << "/kMaxAnalysisType" << Endl;
    results->GetStorage()->Write();
    if (treetype==Types::kTesting) {
-      GetTransformationHandler().PlotVariables (GetEventCollection( Types::kTesting ), BaseDir() );
+      // skipping plotting of variables if too many (default is 200)
+      if ((int) DataInfo().GetNVariables()< gConfig().GetVariablePlotting().fMaxNumOfAllowedVariables)
+         GetTransformationHandler().PlotVariables (GetEventCollection( Types::kTesting ), BaseDir() );
+      else
+         Log() << kINFO << TString::Format("Dataset[%s] : ",DataInfo().GetName())
+               << " variable plots are not produces ! The number of variables is " << DataInfo().GetNVariables()
+               << " , it is larger than " << gConfig().GetVariablePlotting().fMaxNumOfAllowedVariables << Endl;
    }
 }
 
@@ -3202,7 +3216,7 @@ void TMVA::MethodBase::MakeClass( const TString& theClassFileName ) const
           GetMethodType() != Types::kHMatrix) {
          fout << "         Transform( iV, -1 );" << std::endl;
       }
-      
+
       if(GetAnalysisType() == Types::kMulticlass) {
          fout << "         retval = GetMulticlassValues__( iV );" << std::endl;
       } else {

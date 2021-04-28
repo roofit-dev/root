@@ -16,9 +16,9 @@
 
 // Global helper functions
 
-#include "RooFit.h"
-
 #include "RooGlobalFunc.h"
+
+#include "RooFit.h"
 #include "RooCategory.h"
 #include "RooRealConstant.h"
 #include "RooDataSet.h"
@@ -27,6 +27,7 @@
 #include "RooRealVar.h"
 #include "RooFitResult.h"
 #include "RooAbsPdf.h"
+#include "RooFormulaVar.h"
 #include "TH1.h"
 
 using namespace std;
@@ -59,7 +60,7 @@ namespace RooFit {
   RooCmdArg FillStyle(Style_t style)               { return RooCmdArg("FillStyle",style,0,0,0,0,0,0,0) ; }
   RooCmdArg ProjectionRange(const char* rangeName) { return RooCmdArg("ProjectionRange",0,0,0,0,rangeName,0,0,0) ; }
   RooCmdArg Name(const char* name)                 { return RooCmdArg("Name",0,0,0,0,name,0,0,0) ; }
-  RooCmdArg Invisible()                            { return RooCmdArg("Invisible",1,0,0,0,0,0,0,0) ; }
+  RooCmdArg Invisible(bool inv)                    { return RooCmdArg("Invisible",inv,0,0,0,0,0,0,0) ; }
   RooCmdArg AddTo(const char* name, double wgtSel, double wgtOther) { return RooCmdArg("AddTo",0,0,wgtSel,wgtOther,name,0,0,0) ; }
   RooCmdArg EvalErrorValue(Double_t val)           { return RooCmdArg("EvalErrorValue",1,0,val,0,0,0,0,0) ; }
   RooCmdArg MoveToBack()                           { return RooCmdArg("MoveToBack",1,0,0,0,0,0,0,0) ; }
@@ -206,6 +207,7 @@ namespace RooFit {
   RooCmdArg PrintEvalErrors(Int_t numErrors)             { return RooCmdArg("PrintEvalErrors",numErrors,0,0,0,0,0,0,0) ; }
   RooCmdArg EvalErrorWall(Bool_t flag)                   { return RooCmdArg("EvalErrorWall",flag,0,0,0,0,0,0,0) ; }
   RooCmdArg SumW2Error(Bool_t flag)                      { return RooCmdArg("SumW2Error",flag,0,0,0,0,0,0,0) ; }
+  RooCmdArg AsymptoticError(Bool_t flag)                      { return RooCmdArg("AsymptoticError",flag,0,0,0,0,0,0,0) ; }  
   RooCmdArg CloneData(Bool_t flag)                       { return RooCmdArg("CloneData",flag,0,0,0,0,0,0,0) ; }
   RooCmdArg Integrate(Bool_t flag)                       { return RooCmdArg("Integrate",flag,0,0,0,0,0,0,0) ; }
   RooCmdArg Minimizer(const char* type, const char* alg) { return RooCmdArg("Minimizer",0,0,0,0,type,alg,0,0) ; }
@@ -380,4 +382,3 @@ RooArgList L(const RooAbsArg& v1, const RooAbsArg& v2, const RooAbsArg& v3, cons
 RooConstVar& C(Double_t value) { return RooFit::RooConst(value) ; }
 
 } // End namespace Shorthand
-

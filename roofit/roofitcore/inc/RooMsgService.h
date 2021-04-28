@@ -16,7 +16,6 @@
 #ifndef ROO_MSG_SERVICE
 #define ROO_MSG_SERVICE
 
-#include <assert.h>
 #include "TObject.h"
 #include <string>
 #include <vector>
@@ -34,6 +33,7 @@ class RooWorkspace ;
 #define coutE(a) RooMsgService::instance().log(this,RooFit::ERROR,RooFit::a) 
 #define coutF(a) RooMsgService::instance().log(this,RooFit::FATAL,RooFit::a) 
 
+// Skip the message prefix
 #define ccoutD(a) RooMsgService::instance().log(this,RooFit::DEBUG,RooFit::a,kTRUE) 
 #define ccoutI(a) RooMsgService::instance().log(this,RooFit::INFO,RooFit::a,kTRUE) 
 #define ccoutP(a) RooMsgService::instance().log(this,RooFit::PROGRESS,RooFit::a,kTRUE) 
@@ -41,12 +41,14 @@ class RooWorkspace ;
 #define ccoutE(a) RooMsgService::instance().log(this,RooFit::ERROR,RooFit::a,kTRUE) 
 #define ccoutF(a) RooMsgService::instance().log(this,RooFit::FATAL,RooFit::a,kTRUE) 
 
+// Message from given object instead of "this"
 #define oocoutI(o,a) RooMsgService::instance().log(o,RooFit::INFO,RooFit::a) 
 #define oocoutP(o,a) RooMsgService::instance().log(o,RooFit::PROGRESS,RooFit::a) 
 #define oocoutW(o,a) RooMsgService::instance().log(o,RooFit::WARNING,RooFit::a) 
 #define oocoutE(o,a) RooMsgService::instance().log(o,RooFit::ERROR,RooFit::a) 
 #define oocoutF(o,a) RooMsgService::instance().log(o,RooFit::FATAL,RooFit::a) 
 
+// Message from given object instead of "this" and skip message prefix
 #define ooccoutD(o,a) RooMsgService::instance().log(o,RooFit::DEBUG,RooFit::a,kTRUE) 
 #define ooccoutI(o,a) RooMsgService::instance().log(o,RooFit::INFO,RooFit::a,kTRUE) 
 #define ooccoutP(o,a) RooMsgService::instance().log(o,RooFit::PROGRESS,RooFit::a,kTRUE) 
