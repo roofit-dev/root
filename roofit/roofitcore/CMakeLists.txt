@@ -27,6 +27,7 @@ endif()
 
 ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
   HEADERS
+    Floats.h
     Roo1DTable.h
     RooAbsAnaConvPdf.h
     RooAbsArg.h
@@ -139,6 +140,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooIntegratorBinding.h
     RooInt.h
     RooInvTransform.h
+    RooLinearCombination.h
     RooLinearVar.h
     RooLinkedListElem.h
     RooLinkedList.h
@@ -186,6 +188,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooProofDriverSelector.h
     RooPullVar.h
     RooQuasiRandomGenerator.h
+    RooRatio.h
     RooRandom.h
     RooRandomizeParamMCSModule.h
     RooRangeBinning.h
@@ -374,6 +377,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooIntegrator2D.cxx
     src/RooIntegratorBinding.cxx
     src/RooInvTransform.cxx
+    src/RooLinearCombination.cxx
     src/RooLinearVar.cxx
     src/RooLinkedList.cxx
     src/RooLinkedListElem.cxx
@@ -420,6 +424,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooProofDriverSelector.cxx
     src/RooPullVar.cxx
     src/RooQuasiRandomGenerator.cxx
+    src/RooRatio.cxx
     src/RooRandom.cxx
     src/RooRandomizeParamMCSModule.cxx
     src/RooRangeBinning.cxx
@@ -512,7 +517,13 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     inc/LinkDef.h
 )
 
-#target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
+# For recent clang, this can facilitate auto-vectorisation.
+# In RooFit, the errno side effect is not needed, anyway:
+if(NOT MSVC)
+  target_compile_options(RooFitCore PUBLIC -fno-math-errno)
+endif()
+
+target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
 
 if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)

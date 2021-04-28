@@ -324,7 +324,6 @@ protected:
   class CacheElem : public RooAbsCacheElement {
   public:
     CacheElem(RooAbsReal& norm) : _norm(&norm) {} ;
-    void operModeHook(RooAbsArg::OperMode) ;
     virtual ~CacheElem() ; 
     virtual RooArgList containedArgs(Action) { return RooArgList(*_norm) ; }
     RooAbsReal* _norm ;
@@ -353,7 +352,14 @@ protected:
   RooNumGenConfig* _specGeneratorConfig ; //! MC generator configuration specific for this object
   
   TString _normRange ; // Normalization range
-  static TString _normRangeOverride ;
+  static TString _normRangeOverride ; 
+
+private:
+  template<class Minimizer>
+  int calculateAsymptoticCorrectedCovMatrix(Minimizer& minimizer, RooAbsData const& data);
+
+  template<class Minimizer>
+  int calculateSumW2CorrectedCovMatrix(Minimizer& minimizer, RooAbsReal const& nll) const;
 
 public:
   Bool_t num_int_timing_flag() const;

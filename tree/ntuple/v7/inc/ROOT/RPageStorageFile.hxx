@@ -58,6 +58,11 @@ public:
    static constexpr std::size_t kDefaultElementsPerPage = 10000;
 
 private:
+   /// I/O performance counters that get registered in fMetrics
+   struct RCounters {
+      RNTupleAtomicCounter &fNPageCommitted;
+   };
+   std::unique_ptr<RCounters> fCounters;
    RNTupleMetrics fMetrics;
    std::unique_ptr<RPageAllocatorHeap> fPageAllocator;
 
@@ -66,8 +71,7 @@ private:
    std::uint64_t fClusterMinOffset = std::uint64_t(-1);
    /// Byte offset of the end of the last page of the current cluster
    std::uint64_t fClusterMaxOffset = 0;
-   /// Helper for zipping keys and header / footer; comprises a 16MB zip buffer
-   RNTupleCompressor fCompressor;
+   RPageSinkFile(std::string_view ntupleName, const RNTupleWriteOptions &options);
 
 protected:
    void CreateImpl(const RNTupleModel &model) final;
@@ -150,8 +154,6 @@ private:
    std::shared_ptr<RPagePool> fPagePool;
    /// The last cluster from which a page got populated.  Points into fClusterPool->fPool
    RCluster *fCurrentCluster = nullptr;
-   /// Helper to unzip pages and header/footer; comprises a 16MB unzip buffer
-   RNTupleDecompressor fDecompressor;
    /// An RRawFile is used to request the necessary byte ranges from a local or a remote file
    std::unique_ptr<ROOT::Internal::RRawFile> fFile;
    /// Takes the fFile to read ntuple blobs from it
