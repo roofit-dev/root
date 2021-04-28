@@ -5026,7 +5026,7 @@ RooSpan<double> RooAbsReal::evaluateSpan(BatchHelpers::RunContext& evalData, con
     }
   }
 
-  const auto dataSize = std::max<std::size_t>(1, BatchHelpers::findSize(leafValues));
+  const auto dataSize = std::max<std::size_t>(1, BatchHelpers::findSmallestBatch(leafValues));
   auto outputData = evalData.makeBatch(this, dataSize);
 
   {
