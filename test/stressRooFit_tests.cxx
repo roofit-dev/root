@@ -17,6 +17,7 @@
 #include "RooRealVar.h"
 #include "RooDataSet.h"
 #include "RooGaussian.h"
+#include "RooFormulaVar.h"
 #include "TCanvas.h"
 #include "RooPlot.h"
 #include "RooUnitTest.h"
@@ -860,8 +861,9 @@ public:
     // Construct a custom configuration which uses the adaptive Gauss-Kronrod technique
     // for closed 1D integrals
     RooNumIntConfig customConfig(*RooAbsReal::defaultIntegratorConfig()) ;
+#ifdef R__HAS_MATHMORE
     customConfig.method1D().setLabel("RooAdaptiveGaussKronrodIntegrator1D") ;
-
+#endif
 
     // Calculate integral over landau with custom integral specification
     RooAbsReal* intLandau2 = landau.createIntegral(x,NumIntConfig(customConfig)) ;
@@ -938,7 +940,7 @@ public:
 
     // Build Chebychev polynomial p.d.f.
     RooRealVar a0("a0","a0",0.5,0.,1.) ;
-    RooRealVar a1("a1","a1",-0.2,-1.,1.) ; 
+    RooRealVar a1("a1","a1",-0.2,-1.,1.) ;
     RooChebychev bkg("bkg","Background",x,RooArgSet(a0,a1)) ;
 
 
@@ -1065,7 +1067,7 @@ public:
 
     // Build Chebychev polynomial p.d.f.
     RooRealVar a0("a0","a0",0.5,0.,1.) ;
-    RooRealVar a1("a1","a1",-0.2,-1.,1.) ; 
+    RooRealVar a1("a1","a1",-0.2,-1.,1.) ;
     RooChebychev bkg("bkg","Background",x,RooArgSet(a0,a1)) ;
 
     // Sum the signal components into a composite signal p.d.f.
@@ -1212,7 +1214,7 @@ public:
     // Make plot frame in x and add data and fitted model
     RooPlot* frame = x.frame(Title("Fitting a sub range")) ;
     modelData->plotOn(frame) ;
-    model.plotOn(frame,Range("Full"),LineStyle(kDashed),LineColor(kRed)) ; // Add shape in full ranged dashed
+    model.plotOn(frame,LineStyle(kDashed),LineColor(kRed)) ; // Add shape in full ranged dashed
     model.plotOn(frame) ; // By default only fitted range is shown
 
     regPlot(frame,"rf203_plot") ;
@@ -6443,4 +6445,3 @@ public:
   return kTRUE ;
   }
 } ;
-

@@ -1,14 +1,17 @@
 // Bindings
 #include "CPyCppyy.h"
 #include "CPPMethod.h"
+#include "CPPExcInstance.h"
 #include "CPPInstance.h"
 #include "Converters.h"
 #include "Executors.h"
 #include "ProxyWrappers.h"
 #include "PyStrings.h"
-#include "TPyException.h"
 #include "TypeManip.h"
+#include "SignalTryCatch.h"
 #include "Utility.h"
+
+#include "CPyCppyy/PyException.h"
 
 // Standard
 #include <assert.h>
@@ -23,6 +26,10 @@
 //- data and local helpers ---------------------------------------------------
 namespace CPyCppyy {
     extern PyObject* gThisModule;
+    extern PyObject* gBusException;
+    extern PyObject* gSegvException;
+    extern PyObject* gIllException;
+    extern PyObject* gAbrtException;
 }
 
 
@@ -33,92 +40,124 @@ inline void CPyCppyy::CPPMethod::Copy_(const CPPMethod& /* other */)
 
 // do not copy caches
     fExecutor     = nullptr;
+    fArgIndices   = nullptr;
     fArgsRequired = -1;
-
-// being uninitialized will trigger setting up caches as appropriate
-    fIsInitialized = false;
 }
 
 //----------------------------------------------------------------------------
 inline void CPyCppyy::CPPMethod::Destroy_() const
 {
 // destroy executor and argument converters
-    delete fExecutor;
+    if (fExecutor && fExecutor->HasState()) delete fExecutor;
 
-    for (int i = 0; i < (int)fConverters.size(); ++i)
-        delete fConverters[i];
+    for (auto p : fConverters) {
+        if (p && p->HasState()) delete p;
+    }
+
+    delete fArgIndices;
 }
 
 //----------------------------------------------------------------------------
-inline PyObject* CPyCppyy::CPPMethod::CallFast(
+inline PyObject* CPyCppyy::CPPMethod::ExecuteFast(
     void* self, ptrdiff_t offset, CallContext* ctxt)
 {
-// Helper code to prevent some duplication; this is called from CallSafe() as well
-// as directly from CPPMethod::Execute in fast mode.
+// call into C++ through fExecutor; abstracted out from Execute() to prevent some
+// code duplication with ProtectedCall()
     PyObject* result = nullptr;
 
     try {       // C++ try block
         result = fExecutor->Execute(fMethod, (Cppyy::TCppObject_t)((intptr_t)self+offset), ctxt);
-    } catch (TPyException&) {
+    } catch (PyException&) {
         result = nullptr;           // error already set
     } catch (std::exception& e) {
-    /* TODO: figure out what this is about ... ?
-        if (gInterpreter->DiagnoseIfInterpreterException(e)) {
-           return result;
+    // attempt to set the exception to the actual type, to allow catching with the Python C++ type
+        static Cppyy::TCppType_t exc_type = (Cppyy::TCppType_t)Cppyy::GetScope("std::exception");
+
+        PyObject* pyexc_type = nullptr;
+        PyObject* pyexc_obj  = nullptr;
+
+    // TODO: factor this code with the same in ProxyWrappers (and cache it there to be able to
+    // look up based on TCppType_t):
+        Cppyy::TCppType_t actual = Cppyy::GetActualClass(exc_type, &e);
+        const std::string& finalname = Cppyy::GetScopedFinalName(actual);
+        const std::string& parentname = TypeManip::extract_namespace(finalname);
+        PyObject* parent = CreateScopeProxy(parentname);
+        if (parent) {
+            pyexc_type = PyObject_GetAttrString(parent,
+                parentname.empty() ? finalname.c_str() : finalname.substr(parentname.size()+2, std::string::npos).c_str());
+            Py_DECREF(parent);
         }
 
-        // TODO: write w/o use of TClass
-
-    // map user exceptions .. this needs to move to Cppyy.cxx
-        TClass* cl = TClass::GetClass(typeid(e));
-
-        PyObject* pyUserExcepts = PyObject_GetAttrString(gThisModule, "UserExceptions");
-        std::string exception_type;
-        if (cl) exception_type = cl->GetName();
-        else {
-            int errorCode;
-            std::unique_ptr<char[]> demangled(TClassEdit::DemangleTypeIdName(typeid(e),errorCode));
-            if (errorCode) exception_type = typeid(e).name();
-            else exception_type = demangled.get();
-        }
-        PyObject* pyexc = PyDict_GetItemString(pyUserExcepts, exception_type.c_str());
-        if (!pyexc) {
+        if (pyexc_type) {
+        // create a copy of the exception (TODO: factor this code with the same in ProxyWrappers)
+            PyObject* pyclass = CPyCppyy::GetScopeProxy(actual);
+            PyObject* source = BindCppObjectNoCast(&e, actual);
+            PyObject* pyexc_copy = PyObject_CallFunctionObjArgs(pyclass, source, nullptr);
+            Py_DECREF(source);
+            Py_DECREF(pyclass);
+            if (pyexc_copy) {
+                pyexc_obj = CPPExcInstance_Type.tp_new((PyTypeObject*)pyexc_type, nullptr, nullptr);
+                ((CPPExcInstance*)pyexc_obj)->fCppInstance = (PyObject*)pyexc_copy;
+            } else
+                PyErr_Clear();
+        } else
             PyErr_Clear();
-            pyexc = PyDict_GetItemString(pyUserExcepts, ("std::"+exception_type).c_str());
-        }
-        Py_DECREF(pyUserExcepts);
 
-        if (pyexc) {
-            PyErr_Format(pyexc, "%s", e.what());
+        if (pyexc_type && pyexc_obj) {
+            PyErr_SetObject(pyexc_type, pyexc_obj);
+            Py_DECREF(pyexc_obj);
+            Py_DECREF(pyexc_type);
         } else {
-            PyErr_Format(PyExc_Exception, "%s (C++ exception of type %s)", e.what(), exception_type.c_str());
+            PyErr_Format(PyExc_Exception, "%s (C++ exception)", e.what());
+            Py_XDECREF(pyexc_obj);
+            Py_XDECREF(pyexc_type);
         }
-    */
 
-        PyErr_Format(PyExc_Exception, "%s (C++ exception)", e.what());
         result = nullptr;
     } catch (...) {
         PyErr_SetString(PyExc_Exception, "unhandled, unknown C++ exception");
         result = nullptr;
     }
+
+// TODO: covers the PyException throw case, which does not seem to work on Windows, so
+// instead leaves the error be
+#ifdef _WIN32
+    if (PyErr_Occurred()) {
+        Py_XDECREF(result);
+        result = nullptr;
+    }
+#endif
+
     return result;
 }
 
 //----------------------------------------------------------------------------
-inline PyObject* CPyCppyy::CPPMethod::CallSafe(
+inline PyObject* CPyCppyy::CPPMethod::ExecuteProtected(
     void* self, ptrdiff_t offset, CallContext* ctxt)
 {
-// Helper code to prevent some code duplication; this code embeds a "try/catch"
-// block that saves the stack for restoration in case of an otherwise fatal signal.
+// helper code to prevent some code duplication; this code embeds a "try/catch"
+// block that saves the call environment for restoration in case of an otherwise
+// fatal signal
     PyObject* result = 0;
 
-//   TRY {       // ROOT "try block"
-    result = CallFast(self, offset, ctxt);
-   //   } CATCH(excode) {
-   //      PyErr_SetString(PyExc_SystemError, "problem in C++; program state has been reset");
-   //      result = 0;
-   //      Throw(excode);
-   //   } ENDTRY;
+    TRY {     // copy call environment to be able to jump back on signal
+        result = ExecuteFast(self, offset, ctxt);
+    } CATCH(excode) {
+    // Unfortunately, the excodes are not the ones from signal.h, but enums from TSysEvtHandler.h
+        if (excode == 0)
+            PyErr_SetString(gBusException, "bus error in C++; program state was reset");
+        else if (excode == 1)
+            PyErr_SetString(gSegvException, "segfault in C++; program state was reset");
+        else if (excode == 4)
+            PyErr_SetString(gIllException, "illegal instruction in C++; program state was reset");
+        else if (excode == 5)
+            PyErr_SetString(gAbrtException, "abort from C++; program state was reset");
+        else if (excode == 12)
+            PyErr_SetString(PyExc_FloatingPointError, "floating point exception in C++; program state was reset");
+        else
+            PyErr_SetString(PyExc_SystemError, "problem in C++; program state was reset");
+        result = 0;
+    } ENDTRY;
 
     return result;
 }
@@ -146,11 +185,11 @@ bool CPyCppyy::CPPMethod::InitConverters_()
 }
 
 //----------------------------------------------------------------------------
-bool CPyCppyy::CPPMethod::InitExecutor_(Executor*& executor, CallContext* ctxt)
+bool CPyCppyy::CPPMethod::InitExecutor_(Executor*& executor, CallContext* /* ctxt */)
 {
 // install executor conform to the return type
     executor = CreateExecutor(
-        (bool)fMethod == true ? Cppyy::ResolveName(Cppyy::GetMethodResultType(fMethod))\
+        (bool)fMethod == true ? Cppyy::GetMethodResultType(fMethod) \
                               : Cppyy::GetScopedFinalName(fScope));
 
     if (!executor)
@@ -190,42 +229,58 @@ std::string CPyCppyy::CPPMethod::GetSignatureString(bool fa)
 void CPyCppyy::CPPMethod::SetPyError_(PyObject* msg)
 {
 // helper to report errors in a consistent format (derefs msg)
-    PyObject *etype, *evalue, *etrace;
-    PyErr_Fetch(&etype, &evalue, &etrace);
+    std::string details{};
 
-    std::string details = "";
-    if (evalue) {
-        PyObject* descr = PyObject_Str(evalue);
-        if (descr) {
-            details = CPyCppyy_PyUnicode_AsString(descr);
-            Py_DECREF(descr);
+    PyObject *etype = nullptr, *evalue = nullptr;
+    if (PyErr_Occurred()) {
+        PyObject* etrace = nullptr;
+
+        PyErr_Fetch(&etype, &evalue, &etrace);
+
+        if (evalue) {
+            PyObject* descr = PyObject_Str(evalue);
+            if (descr) {
+                details = CPyCppyy_PyText_AsString(descr);
+                Py_DECREF(descr);
+            }
         }
-    }
 
-    Py_XDECREF(evalue); Py_XDECREF(etrace);
+        Py_XDECREF(etrace);
+    }
 
     PyObject* doc = GetDocString();
     PyObject* errtype = etype;
-    if (!errtype) {
-        Py_INCREF(PyExc_TypeError);
+    if (!errtype)
         errtype = PyExc_TypeError;
-    }
     PyObject* pyname = PyObject_GetAttr(errtype, PyStrings::gName);
-    const char* cname = pyname ? CPyCppyy_PyUnicode_AsString(pyname) : "Exception";
+    const char* cname = pyname ? CPyCppyy_PyText_AsString(pyname) : "Exception";
 
-    if (details.empty()) {
-        PyErr_Format(errtype, "%s =>\n    %s: %s", CPyCppyy_PyUnicode_AsString(doc),
-            cname, msg ? CPyCppyy_PyUnicode_AsString(msg) : "");
-    } else if (msg) {
-        PyErr_Format(errtype, "%s =>\n    %s: %s (%s)",
-            CPyCppyy_PyUnicode_AsString(doc), cname, CPyCppyy_PyUnicode_AsString(msg),
-            details.c_str());
+    if (!PyType_IsSubtype((PyTypeObject*)errtype, &CPPExcInstance_Type)) {
+        if (details.empty()) {
+            PyErr_Format(errtype, "%s =>\n    %s: %s", CPyCppyy_PyText_AsString(doc),
+                 cname, msg ? CPyCppyy_PyText_AsString(msg) : "");
+        } else if (msg) {
+            PyErr_Format(errtype, "%s =>\n    %s: %s (%s)",
+                CPyCppyy_PyText_AsString(doc), cname, CPyCppyy_PyText_AsString(msg),
+                details.c_str());
+        } else {
+            PyErr_Format(errtype, "%s =>\n    %s: %s",
+                CPyCppyy_PyText_AsString(doc), cname, details.c_str());
+        }
     } else {
-        PyErr_Format(errtype, "%s =>\n    %s: %s",
-            CPyCppyy_PyUnicode_AsString(doc), cname, details.c_str());
+        Py_XDECREF(((CPPExcInstance*)evalue)->fTopMessage);
+        if (msg) {
+            ((CPPExcInstance*)evalue)->fTopMessage = CPyCppyy_PyText_FromFormat(\
+                "%s =>\n    %s: %s | ", CPyCppyy_PyText_AsString(doc), cname, CPyCppyy_PyText_AsString(msg));
+        } else {
+            ((CPPExcInstance*)evalue)->fTopMessage = CPyCppyy_PyText_FromFormat(\
+                 "%s =>\n    %s: ", CPyCppyy_PyText_AsString(doc), cname);
+        }
+        PyErr_SetObject(errtype, evalue);
     }
 
     Py_XDECREF(pyname);
+    Py_XDECREF(evalue);
     Py_XDECREF(etype);
     Py_DECREF(doc);
     Py_XDECREF(msg);
@@ -234,15 +289,15 @@ void CPyCppyy::CPPMethod::SetPyError_(PyObject* msg)
 //- constructors and destructor ----------------------------------------------
 CPyCppyy::CPPMethod::CPPMethod(
         Cppyy::TCppScope_t scope, Cppyy::TCppMethod_t method) :
-    fMethod(method), fScope(scope), fExecutor(nullptr), fArgsRequired(-1),
-    fIsInitialized(false)
+    fMethod(method), fScope(scope), fExecutor(nullptr), fArgIndices(nullptr),
+    fArgsRequired(-1)
 {
    // empty
 }
 
 //----------------------------------------------------------------------------
 CPyCppyy::CPPMethod::CPPMethod(const CPPMethod& other) :
-        PyCallable(other), fMethod(other.fMethod), fScope(other.fScope)
+    PyCallable(other), fMethod(other.fMethod), fScope(other.fScope)
 {
     Copy_(other);
 }
@@ -271,7 +326,7 @@ CPyCppyy::CPPMethod::~CPPMethod()
 PyObject* CPyCppyy::CPPMethod::GetPrototype(bool fa)
 {
 // construct python string from the method's prototype
-    return CPyCppyy_PyUnicode_FromFormat("%s%s %s::%s%s",
+    return CPyCppyy_PyText_FromFormat("%s%s %s::%s%s",
         (Cppyy::IsStaticMethod(fMethod) ? "static " : ""),
         Cppyy::GetMethodResultType(fMethod).c_str(),
         Cppyy::GetScopedFinalName(fScope).c_str(), Cppyy::GetMethodName(fMethod).c_str(),
@@ -281,56 +336,123 @@ PyObject* CPyCppyy::CPPMethod::GetPrototype(bool fa)
 //----------------------------------------------------------------------------
 int CPyCppyy::CPPMethod::GetPriority()
 {
-// Method priorities exist (in lieu of true overloading) there to prevent
-// void* or <unknown>* from usurping otherwise valid calls. TODO: extend this
-// to favour classes that are not bases.
+// To help with overload selection, methods are given a priority based on the
+// affinity of Python and C++ types. Priority only matters for methods that have
+// an equal number of arguments and types that are possible substitutes (the
+// normal selection mechanisms would simply distinguish them otherwise).
+
+// The following types are ordered, in favor (variants implicit):
+//
+//  bool >> long >> int >> short
+//  double >> long double >> float
+//  const char* >> char
+//
+// Further, all integer types are preferred over floating point b/c int to float
+// is allowed implicitly, float to int is not.
+//
+// Special cases that are disliked include void* and unknown/incomplete types.
+// Also, moves are preferred over references. std::initializer_list is not a nice
+// conversion candidate either, but needs to be higher priority to mix well with
+// implicit conversions.
+// TODO: extend this to favour classes that are not bases.
+// TODO: profile this method (it's expensive, but should be called too often)
+
     int priority = 0;
 
     const size_t nArgs = Cppyy::GetMethodNumArgs(fMethod);
     for (int iarg = 0; iarg < (int)nArgs; ++iarg) {
         const std::string aname = Cppyy::GetMethodArgType(fMethod, iarg);
 
-    // the following numbers are made up and may cause problems in specific
-    // situations: use <obj>.<meth>.disp() for choice of exact dispatch
         if (Cppyy::IsBuiltin(aname)) {
-        // happens for builtin types (and namespaces, but those can never be an
-        // argument), NOT for unknown classes as that concept no longer exists
-            if (strstr(aname.c_str(), "void*"))
-            // TODO: figure out in general all void* converters
-                priority -= 10000;     // void*/void** shouldn't be too greedy
+        // integer types
+            if (strstr(aname.c_str(), "bool"))
+                priority +=    1;      // bool over int (does accept 1 and 0)
+            else if (strstr(aname.c_str(), "long long"))
+                priority +=   -5;      // will very likely fit
+            else if (strstr(aname.c_str(), "long"))
+                priority +=  -10;      // most affine integer type
+            // no need to compare with int; leave at zero
+            else if (strstr(aname.c_str(), "short"))
+                priority +=  -50;      // not really relevant as a type
+
+        // floating point types (note all numbers lower than integer types)
             else if (strstr(aname.c_str(), "float"))
-                priority -= 1000;      // double preferred (no float in python)
+                priority += -100;      // not really relevant as a type
             else if (strstr(aname.c_str(), "long double"))
-                priority -= 100;       // id, but better than float
+                priority +=  -90;      // fits double with least loss of precision
             else if (strstr(aname.c_str(), "double"))
-                priority -= 10;        // char, int, long can't convert float,
-                                       // but vv. works, so prefer the int types
-            else if (strstr(aname.c_str(), "bool"))
-                priority += 1;         // bool over int (does accept 1 and 0)
+                priority +=  -80;      // most affine floating point type
 
-        } else if (aname.rfind("&&", aname.size()-2) != std::string::npos) {
-            priority += 100;
-        } else if (!aname.empty() && !Cppyy::IsComplete(aname)) {
-        // class is known, but no dictionary available, 2 more cases: * and &
-            if (aname[ aname.size() - 1 ] == '&')
-                priority -= 1000000;
-            else
-                priority -= 100000; // prefer pointer passing over reference
+        // string/char types
+            else if (strstr(aname.c_str(), "char") && aname[aname.size()-1] != '*')
+                priority += -60;       // prefer (const) char* over char
+
+        // oddball
+            else if (strstr(aname.c_str(), "void*"))
+                priority -= 1000;      // void*/void** shouldn't be too greedy
+
+        } else {
+        // This is a user-defined type (class, struct, enum, etc.).
+
+        // There's a bit of hysteresis here for templates: once GetScope() is called, their
+        // IsComplete() succeeds, the other way around it does not. Since GetPriority() is
+        // likely called several times in a sort, the GetScope() _must_ come first, or
+        // different GetPriority() calls may return different results (since the 2nd time,
+        // GetScope() will have been called from the first), killing the stable_sort.
+
+        // prefer more derived classes
+            const std::string& clean_name = TypeManip::clean_type(aname, false);
+            Cppyy::TCppScope_t scope = Cppyy::GetScope(clean_name);
+            if (scope)
+                priority += (int)Cppyy::GetNumBases(scope);
+
+            if (Cppyy::IsEnum(clean_name))
+                priority -= 100;
+
+        // a couple of special cases as explained above
+            if (aname.find("initializer_list") != std::string::npos) {
+                priority +=   150;     // needed for proper implicit conversion rules
+            } else if (aname.rfind("&&", aname.size()-2) != std::string::npos) {
+                priority +=   100;     // prefer moves over other ref/ptr
+            } else if (!aname.empty() && !Cppyy::IsComplete(aname)) {
+            // class is known, but no dictionary available, 2 more cases: * and &
+                if (aname[aname.size() - 1] == '&')
+                    priority += -5000;
+                else
+                    priority += -2000; // prefer pointer passing over reference
+            }
         }
-
-    // prefer more derived classes
-        Cppyy::TCppScope_t scope = Cppyy::GetScope(TypeManip::clean_type(aname));
-        if (scope)
-            priority += (int)Cppyy::GetNumBases(scope);
     }
 
-// add a small penalty to prefer non-const methods over const ones for
-// getitem/setitem
+// prefer methods w/o optional arguments b/c ones with optional arguments are easier to
+// select by providing the optional arguments explicitly
+    priority += ((int)Cppyy::GetMethodReqArgs(fMethod) - (int)nArgs);
+
+// add a small penalty to prefer non-const methods over const ones for get/setitem
     if (Cppyy::IsConstMethod(fMethod) && Cppyy::GetMethodName(fMethod) == "operator[]")
-        priority -= 1;
+        priority += -10;
 
     return priority;
 }
+
+//----------------------------------------------------------------------------
+bool CPyCppyy::CPPMethod::IsGreedy()
+{
+// Methods will all void*-like arguments should be sorted after template
+// instanstations, so that they don't greedily take over pointers to object.
+// GetPriority() is too heavy-handed, as it will pull in all the argument
+// types, so use this cheaper check.
+    const size_t nArgs = Cppyy::GetMethodReqArgs(fMethod);
+    if (!nArgs) return false;
+
+    for (int iarg = 0; iarg < (int)nArgs; ++iarg) {
+        const std::string aname = Cppyy::GetMethodArgType(fMethod, iarg);
+        if (aname.find("void*") != 0)
+            return false;
+    }
+    return true;
+}
+
 
 //----------------------------------------------------------------------------
 int CPyCppyy::CPPMethod::GetMaxArgs()
@@ -347,7 +469,7 @@ PyObject* CPyCppyy::CPPMethod::GetCoVarNames()
 // TODO: static methods need no 'self' (but is harmless otherwise)
 
     PyObject* co_varnames = PyTuple_New(co_argcount+1 /* self */);
-    PyTuple_SET_ITEM(co_varnames, 0, CPyCppyy_PyUnicode_FromString("self"));
+    PyTuple_SET_ITEM(co_varnames, 0, CPyCppyy_PyText_FromString("self"));
     for (int iarg = 0; iarg < co_argcount; ++iarg) {
         std::string argrep = Cppyy::GetMethodArgType(fMethod, iarg);
         const std::string& parname = Cppyy::GetMethodArgName(fMethod, iarg);
@@ -356,7 +478,7 @@ PyObject* CPyCppyy::CPPMethod::GetCoVarNames()
             argrep += parname;
         }
 
-        PyObject* pyspec = CPyCppyy_PyUnicode_FromString(argrep.c_str());
+        PyObject* pyspec = CPyCppyy_PyText_FromString(argrep.c_str());
         PyTuple_SET_ITEM(co_varnames, iarg+1, pyspec);
     }
 
@@ -377,7 +499,7 @@ PyObject* CPyCppyy::CPPMethod::GetArgDefault(int iarg)
             (char*)defvalue.c_str(), Py_eval_input, gThisModule, gThisModule);
         if (!pyval && PyErr_Occurred()) {
             PyErr_Clear();
-            return CPyCppyy_PyUnicode_FromString(defvalue.c_str());
+            return CPyCppyy_PyText_FromString(defvalue.c_str());
         }
 
         return pyval;
@@ -398,7 +520,7 @@ PyObject* CPyCppyy::CPPMethod::GetScopeProxy()
 Cppyy::TCppFuncAddr_t CPyCppyy::CPPMethod::GetFunctionAddress()
 {
 // Return the C++ pointer of this function
-    return Cppyy::GetFunctionAddress(fMethod);
+    return Cppyy::GetFunctionAddress(fMethod, false /* don't check fast path envar */);
 }
 
 
@@ -406,7 +528,7 @@ Cppyy::TCppFuncAddr_t CPyCppyy::CPPMethod::GetFunctionAddress()
 bool CPyCppyy::CPPMethod::Initialize(CallContext* ctxt)
 {
 // done if cache is already setup
-    if (fIsInitialized == true)
+    if (fArgsRequired != -1)
         return true;
 
     if (!InitConverters_())
@@ -416,20 +538,97 @@ bool CPyCppyy::CPPMethod::Initialize(CallContext* ctxt)
         return false;
 
 // minimum number of arguments when calling
-    fArgsRequired = (bool)fMethod == true ? Cppyy::GetMethodReqArgs(fMethod) : 0;
-
-// init done
-    fIsInitialized = true;
+    fArgsRequired = (int)((bool)fMethod == true ? Cppyy::GetMethodReqArgs(fMethod) : 0);
 
     return true;
 }
 
 //----------------------------------------------------------------------------
+PyObject* CPyCppyy::CPPMethod::ProcessKeywords(PyObject* self, PyObject* args, PyObject* kwds)
+{
+    if (!PyDict_CheckExact(kwds)) {
+        SetPyError_(CPyCppyy_PyText_FromString("received unknown keyword arguments object"));
+        return nullptr;
+    }
+
+    if (PyDict_Size(kwds) == 0 && !self) {
+        Py_INCREF(args);
+        return args;
+    }
+
+    if (!fArgIndices) {
+        fArgIndices = new std::map<std::string, int>{};
+        for (int iarg = 0; iarg < (int)Cppyy::GetMethodNumArgs(fMethod); ++iarg)
+            (*fArgIndices)[Cppyy::GetMethodArgName(fMethod, iarg)] = iarg;
+    }
+
+    Py_ssize_t nKeys = PyDict_Size(kwds);
+    Py_ssize_t nArgs = PyTuple_GET_SIZE(args) + (self ? 1 : 0);
+    if (nKeys+nArgs < fArgsRequired) {
+        SetPyError_(CPyCppyy_PyText_FromFormat(
+            "takes at least %d arguments (%zd given)", fArgsRequired, nKeys+nArgs));
+        return nullptr;
+    }
+
+    PyObject* newArgs = PyTuple_New(nArgs+nKeys);
+
+// set all values to zero to be able to check them later (this also guarantees normal
+// cleanup by the tuple deallocation)
+    for (Py_ssize_t i = 0; i < nArgs+nKeys; ++i)
+        PyTuple_SET_ITEM(newArgs, i, nullptr);
+
+// next, insert the keyword values
+    PyObject *key, *value;
+    Py_ssize_t pos = 0;
+
+    while (PyDict_Next(kwds, &pos, &key, &value)) {
+        const char* ckey = CPyCppyy_PyText_AsStringChecked(key);
+        if (!ckey) {
+            Py_DECREF(newArgs);
+            return nullptr;
+        }
+        auto p = fArgIndices->find(ckey);
+        if (p == fArgIndices->end()) {
+            SetPyError_(CPyCppyy_PyText_FromFormat("%s::%s got an unexpected keyword argument \'%s\'",
+                Cppyy::GetFinalName(fScope).c_str(), Cppyy::GetMethodName(fMethod).c_str(), ckey));
+            Py_DECREF(newArgs);
+            return nullptr;
+        }
+        Py_INCREF(value);
+        PyTuple_SetItem(newArgs, (*fArgIndices)[ckey], value);
+    }
+
+// fill out the rest of the arguments
+    Py_ssize_t start = 0;
+    if (self) {
+        Py_INCREF(self);
+        PyTuple_SET_ITEM(newArgs, 0, self);
+        start = 1;
+    }
+
+    for (Py_ssize_t i = start; i < nArgs; ++i) {
+        if (PyTuple_GET_ITEM(newArgs, i)) {
+            SetPyError_(CPyCppyy_PyText_FromFormat("%s::%s got multiple values for argument %d",
+                Cppyy::GetFinalName(fScope).c_str(), Cppyy::GetMethodName(fMethod).c_str(), (int)i+1));
+            Py_DECREF(newArgs);
+            return nullptr;
+        }
+
+        PyObject* item = PyTuple_GET_ITEM(args, i);
+        Py_INCREF(item);
+        PyTuple_SET_ITEM(newArgs, i, item);
+    }
+
+    return newArgs;
+}
+
+//----------------------------------------------------------------------------
 PyObject* CPyCppyy::CPPMethod::PreProcessArgs(
-        CPPInstance*& self, PyObject* args, PyObject*)
+    CPPInstance*& self, PyObject* args, PyObject* kwds)
 {
 // verify existence of self, return if ok
     if (self) {
+        if (kwds) return ProcessKeywords(nullptr, args, kwds);
         Py_INCREF(args);
         return args;
     }
@@ -445,16 +644,25 @@ PyObject* CPyCppyy::CPPMethod::PreProcessArgs(
              (Cppyy::IsSubtype(pyobj->ObjectIsA(), fScope)))) { // matching types
 
         // reset self
+            Py_INCREF(pyobj);      // corresponding Py_DECREF is in CPPOverload
             self = pyobj;
-            Py_INCREF(self);       // corresponding Py_DECREF is in CPPOverload
 
         // offset args by 1 (new ref)
-            return PyTuple_GetSlice(args, 1, PyTuple_GET_SIZE(args));
+            PyObject* newArgs = PyTuple_GetSlice(args, 1, PyTuple_GET_SIZE(args));
+
+        // put the keywords, if any, in their places in the arguments array
+            if (kwds) {
+                args = ProcessKeywords(nullptr, newArgs, kwds);
+                Py_DECREF(newArgs);
+                newArgs = args;
+            }
+
+            return newArgs;  // may be nullptr if kwds insertion failed
         }
     }
 
 // no self, set error and lament
-    SetPyError_(CPyCppyy_PyUnicode_FromFormat(
+    SetPyError_(CPyCppyy_PyText_FromFormat(
         "unbound method %s::%s must be called with a %s instance as first argument",
         Cppyy::GetFinalName(fScope).c_str(), Cppyy::GetMethodName(fMethod).c_str(),
         Cppyy::GetFinalName(fScope).c_str()));
@@ -467,28 +675,37 @@ bool CPyCppyy::CPPMethod::ConvertAndSetArgs(PyObject* args, CallContext* ctxt)
     Py_ssize_t argc = PyTuple_GET_SIZE(args);
     Py_ssize_t argMax = (Py_ssize_t)fConverters.size();
 
-// argc must be between min and max number of arguments
-    if (argc < fArgsRequired) {
-        SetPyError_(CPyCppyy_PyUnicode_FromFormat(
-            "takes at least %ld arguments (%ld given)", fArgsRequired, argc));
-        return false;
-    } else if (argMax < argc) {
-        SetPyError_(CPyCppyy_PyUnicode_FromFormat(
-            "takes at most %ld arguments (%ld given)", argMax, argc));
-        return false;
-    }
-
-// convert the arguments to the method call array
-    Parameter* cppArgs = ctxt->GetArgs(argc);
-    for (int i = 0; i < (int)argc; ++i) {
-        if (!fConverters[i]->SetArg(
-                PyTuple_GET_ITEM(args, i), cppArgs[i], ctxt)) {
-            SetPyError_(CPyCppyy_PyUnicode_FromFormat("could not convert argument %d", i+1));
+    if (argMax != argc) {
+    // argc must be between min and max number of arguments
+        if (argc < (Py_ssize_t)fArgsRequired) {
+            SetPyError_(CPyCppyy_PyText_FromFormat(
+                "takes at least %d arguments (%zd given)", fArgsRequired, argc));
+            return false;
+        } else if (argMax < argc) {
+            SetPyError_(CPyCppyy_PyText_FromFormat(
+                "takes at most %zd arguments (%zd given)", argMax, argc));
             return false;
         }
     }
 
-    return true;
+    if (argc == 0)
+        return true;
+
+// pass current scope for which the call is made
+    ctxt->fCurScope = fScope;
+
+// convert the arguments to the method call array
+    bool isOK = true;
+    Parameter* cppArgs = ctxt->GetArgs(argc);
+    for (int i = 0; i < (int)argc; ++i) {
+        if (!fConverters[i]->SetArg(PyTuple_GET_ITEM(args, i), cppArgs[i], ctxt)) {
+            SetPyError_(CPyCppyy_PyText_FromFormat("could not convert argument %d", i+1));
+            isOK = false;
+            break;
+        }
+    }
+
+    return isOK;
 }
 
 //----------------------------------------------------------------------------
@@ -497,12 +714,13 @@ PyObject* CPyCppyy::CPPMethod::Execute(void* self, ptrdiff_t offset, CallContext
 // call the interface method
     PyObject* result = 0;
 
-    if (CallContext::sSignalPolicy == CallContext::kFast) {
+    if (CallContext::sSignalPolicy != CallContext::kProtected && \
+        !(ctxt->fFlags & CallContext::kProtected)) {
     // bypasses try block (i.e. segfaults will abort)
-        result = CallFast(self, offset, ctxt);
+        result = ExecuteFast(self, offset, ctxt);
     } else {
     // at the cost of ~10% performance, don't abort the interpreter on any signal
-        result = CallSafe(self, offset, ctxt);
+        result = ExecuteProtected(self, offset, ctxt);
     }
 
 // TODO: the following is dreadfully slow and dead-locks on Apache: revisit
@@ -520,16 +738,10 @@ PyObject* CPyCppyy::CPPMethod::Execute(void* self, ptrdiff_t offset, CallContext
 
 //----------------------------------------------------------------------------
 PyObject* CPyCppyy::CPPMethod::Call(
-        CPPInstance*& self, PyObject* args, PyObject* kwds, CallContext* ctxt)
+    CPPInstance*& self, PyObject* args, PyObject* kwds, CallContext* ctxt)
 {
-// preliminary check in case keywords are accidently used (they are ignored otherwise)
-    if (kwds && PyDict_Size(kwds)) {
-        PyErr_SetString(PyExc_TypeError, "keyword arguments are not yet supported");
-        return nullptr;
-    }
-
 // setup as necessary
-    if (!fIsInitialized && !Initialize(ctxt))
+    if (fArgsRequired == -1 && !Initialize(ctxt))
         return nullptr;
 
 // fetch self, verify, and put the arguments in usable order
@@ -581,7 +793,7 @@ PyObject* CPyCppyy::CPPMethod::Call(
 PyObject* CPyCppyy::CPPMethod::GetSignature(bool fa)
 {
 // construct python string from the method's signature
-    return CPyCppyy_PyUnicode_FromString(GetSignatureString(fa).c_str());
+    return CPyCppyy_PyText_FromString(GetSignatureString(fa).c_str());
 }
 
 //----------------------------------------------------------------------------

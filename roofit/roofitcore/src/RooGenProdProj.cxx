@@ -21,20 +21,18 @@
 
 
 RooGenProdProj is an auxiliary class for RooProdPdf that calculates
-a general normalized projection of a product of non-factorizing PDFs, e.g.
+a general normalised projection of a product of non-factorising PDFs, e.g.
+\f[
+ P_{x,xy} = \frac{\int ( P1 * P2 * \ldots) \mathrm{d}x}{\int ( P1 * P2 * \ldots ) \mathrm{d}x \mathrm{d}y}
+\f]
 
-           Int ( P1 * P2 * ....) dx
- P_x_xy = -------------------------------
-           Int (P1 * P2 * ... ) dx dy
-
-Partial integrals that factorize that can be calculated are calculated
-analytically. Remaining non-factorizing observables are integrated numerically.
+Partial integrals, which factorise and can be calculated, are calculated
+analytically. Remaining non-factorising observables are integrated numerically.
 **/
 
 
 #include "RooFit.h"
 
-#include "Riostream.h"
 #include "Riostream.h"
 #include <math.h>
 
@@ -47,7 +45,7 @@ analytically. Remaining non-factorizing observables are integrated numerically.
 using namespace std;
 
 ClassImp(RooGenProdProj);
-;
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -165,10 +163,16 @@ RooGenProdProj::~RooGenProdProj()
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Utility function to create integral over observables intSet in range isetRangeName over product of p.d.fs in compSet.
+/// Utility function to create integral for product over certain observables.
+/// \param[in] name Name of integral to be created.
+/// \param[in] compSet All components of the product.
+/// \param[in] intSet Observables to be integrated.
+/// \param[in] isetRangeName Integral range.
+/// \param[out] saveSet All component objects needed to represent the product integral are added as owned members to saveSet.
+/// The caller should take ownership of this set.
+/// \return A RooAbsReal object representing the requested integral.
+///
 /// The integration is factorized into components as much as possible and done analytically as far as possible.
-/// All component object needed to represent product integral are added as owned members to saveSet.
-/// The return value is a RooAbsReal object representing the requested integral
 
 RooAbsReal* RooGenProdProj::makeIntegral(const char* name, const RooArgSet& compSet, const RooArgSet& intSet, 
 					 RooArgSet& saveSet, const char* isetRangeName, Bool_t doFactorize) 

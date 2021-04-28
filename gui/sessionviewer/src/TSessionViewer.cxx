@@ -64,6 +64,7 @@
 #include "TH2.h"
 #include "TTreePlayer.h"
 #include "TFileCollection.h"
+#include "TVirtualX.h"
 #ifdef WIN32
 #include "TWin32SplashThread.h"
 #endif
@@ -5637,8 +5638,8 @@ Bool_t TSessionViewer::ProcessMessage(Long_t msg, Long_t parm1, Long_t)
                   case kFileLoadConfig:
                      {
                         TGFileInfo fi;
-                        fi.fFilename = strdup((char *)gSystem->BaseName(fConfigFile));
-                        fi.fIniDir = strdup((char *)gSystem->HomeDirectory());
+                        fi.SetFilename(gSystem->BaseName(fConfigFile));
+                        fi.SetIniDir(gSystem->HomeDirectory());
                         fi.fFileTypes = conftypes;
                         new TGFileDialog(fClient->GetRoot(), this, kFDOpen, &fi);
                         if (fi.fFilename) {
@@ -5652,8 +5653,8 @@ Bool_t TSessionViewer::ProcessMessage(Long_t msg, Long_t parm1, Long_t)
                   case kFileSaveConfig:
                      {
                         TGFileInfo fi;
-                        fi.fFilename = strdup((char *)gSystem->BaseName(fConfigFile));
-                        fi.fIniDir = strdup((char *)gSystem->HomeDirectory());
+                        fi.SetFilename(gSystem->BaseName(fConfigFile));
+                        fi.SetIniDir(gSystem->HomeDirectory());
                         fi.fFileTypes = conftypes;
                         new TGFileDialog(fClient->GetRoot(), this, kFDSave, &fi);
                         if (fi.fFilename) {
