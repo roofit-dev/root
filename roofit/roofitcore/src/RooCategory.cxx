@@ -15,16 +15,19 @@
  *****************************************************************************/
 
 /**
-\file RooCategory.cxx
 \class RooCategory
 \ingroup Roofitcore
 
-RooCategory represents a fundamental (non-derived) discrete category object. "Fundamental" means that
-it can be written into a dataset. (Objects in datasets cannot depend on other objects' values,
-they need to have their own value). A category object can be used to *e.g.* conduct a simultaneous fit of
-the same observable in multiple categories
-The states of the category can be denoted by integers (faster) or state names.
+RooCategory is an object to represent discrete states.
+States have names and index numbers, and the index numbers can be written into datasets and
+used in calculations.
+A category is "fundamental", i.e., its value doesn't depend on the value of other objects.
+(Objects in datasets cannot depend on other objects' values, they need to be self-consistent.)
 
+A category object can be used to *e.g.* conduct a simultaneous fit of
+the same observable in multiple categories.
+
+### Setting up a category
 A category can be set up like this:
 ~~~{.cpp}
 RooCategory myCat("myCat", "Lepton multiplicity category", {
@@ -34,20 +37,37 @@ RooCategory myCat("myCat", "Lepton multiplicity category", {
                   {"3Lep", 3}
 });
 ~~~
+Like this:
+~~~{.cpp}
+RooCategory myCat("myCat", "Asymmetry");
+myCat["left"]  = -1;
+myCat["right"] =  1;
+~~~
 Or like this:
 ~~~{.cpp}
 RooCategory myCat("myCat", "Asymmetry");
 myCat.defineType("left", -1);
 myCat.defineType("right", 1);
 ~~~
-Inspect the pairs of index number and state names like this:
+Inspect the pairs of state names and state numbers like this:
 ~~~{.cpp}
-for (const auto& idxAndName : myCat) {
-  std::cout << idxAndName.first << " --> " << idxAndName.second << std::endl;
+for (const auto& nameIdx : myCat) {
+  std::cout << nameIdx.first << " --> " << nameIdx.second << std::endl;
 }
 ~~~
 
-Also refer to the RooFit tutorials rf404_categories.C for an introduction, and to rf405_realtocatfuncs.C and rf406_cattocatfuncs.C
+### Changing category states
+Category states can be modified either by using the index state (faster) or state names.
+For example:
+~~~{.cpp}
+myCat.setIndex(5);
+myCat.setLabel("left");
+for (const auto& otherNameIdx : otherCat) {
+  myCat.setIndex(otherNameIdx);
+}
+~~~
+
+Also refer to \ref tutorial_roofit, especially rf404_categories.C for an introduction, and to rf405_realtocatfuncs.C and rf406_cattocatfuncs.C
 for advanced uses of categories.
 **/
 
@@ -65,10 +85,14 @@ for advanced uses of categories.
 #include "TBuffer.h"
 #include "TString.h"
 #include "ROOT/RMakeUnique.hxx"
+#include "TList.h"
+
+#include <iostream>
+#include <cstdlib>
 
 using namespace std;
 
-ClassImp(RooCategory); 
+ClassImp(RooCategory);
 
 std::map<std::string, std::weak_ptr<RooCategory::RangeMap_t>> RooCategory::_uuidToSharedRangeIOHelper; // Helper for restoring shared properties
 std::map<std::string, std::weak_ptr<RooCategory::RangeMap_t>> RooCategory::_sharedRangeIOHelper;
@@ -230,8 +254,11 @@ void RooCategory::defineTypes(const std::map<std::string, int>& allowedStates) {
 /// \return Reference to the category index. If no state exists, it will be created on the fly.
 RooAbsCategory::value_type& RooCategory::operator[](const std::string& stateName) {
   setShapeDirty();
-  if (stateNames().count(stateName) == 0)
+  if (stateNames().count(stateName) == 0) {
+    _insertionOrder.push_back(stateName);
     return stateNames()[stateName] = nextAvailableStateIndex();
+
+  }
 
   return stateNames()[stateName];
 }
@@ -242,11 +269,13 @@ RooAbsCategory::value_type& RooCategory::operator[](const std::string& stateName
 /// This can be used to manipulate the category.
 /// \note Calling this function will **always** trigger recomputations of
 /// of **everything** that depends on this category, since in case the map gets
-/// manipulated, names or indices might change.
+/// manipulated, names or indices might change. Also, the order that states have
+/// been inserted in gets lost. This changes what is returned by getOrdinal().
 std::map<std::string, RooAbsCategory::value_type>& RooCategory::states() {
   auto& theStates = stateNames();
   setValueDirty();
   setShapeDirty();
+  _insertionOrder.clear();
   return theStates;
 }
 

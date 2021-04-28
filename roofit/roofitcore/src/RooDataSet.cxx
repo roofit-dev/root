@@ -50,7 +50,6 @@ For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 
 #include "RooDataSet.h"
 
-#include "Riostream.h"
 #include "RooPlot.h"
 #include "RooAbsReal.h"
 #include "Roo1DTable.h"
@@ -78,6 +77,7 @@ For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 #include "TBuffer.h"
 #include "ROOT/RMakeUnique.hxx"
 
+#include <iostream>
 #include <fstream>
 
 
@@ -298,12 +298,12 @@ RooDataSet::RooDataSet(const char* name, const char* title, const RooArgSet& var
     }
     for (map<string,RooAbsData*>::iterator hiter = hmap.begin() ; hiter!=hmap.end() ; ++hiter) {
       // Define state labels in index category (both in provided indexCat and in internal copy in dataset)
-      if (indexCat && !indexCat->lookupType(hiter->first.c_str())) {
-        indexCat->defineType(hiter->first.c_str()) ;
+      if (indexCat && !indexCat->hasLabel(hiter->first)) {
+        indexCat->defineType(hiter->first) ;
         coutI(InputArguments) << "RooDataSet::ctor(" << GetName() << ") defining state \"" << hiter->first << "\" in index category " << indexCat->GetName() << endl ;
       }
-      if (icat && !icat->lookupType(hiter->first.c_str())) {	
-        icat->defineType(hiter->first.c_str()) ;
+      if (icat && !icat->hasLabel(hiter->first)) {
+        icat->defineType(hiter->first) ;
       }
       icat->setLabel(hiter->first.c_str()) ;
       storeMap[icat->getCurrentLabel()]=hiter->second->store() ;
@@ -354,13 +354,9 @@ RooDataSet::RooDataSet(const char* name, const char* title, const RooArgSet& var
     // Make import mapping if index category is specified
     map<string,RooDataSet*> hmap ;  
     if (indexCat) {
-      char tmp[100000] ;
-      strlcpy(tmp,impSliceNames,100000) ;
-      char* token = strtok(tmp,",") ;
       TIterator* hiter = impSliceData.MakeIterator() ;
-      while(token) {
+      for (const auto& token : RooHelpers::tokenise(impSliceNames, ",")) {
         hmap[token] = (RooDataSet*) hiter->Next() ;
-        token = strtok(0,",") ;
       }
       delete hiter ;
     }
@@ -431,12 +427,12 @@ RooDataSet::RooDataSet(const char* name, const char* title, const RooArgSet& var
         RooCategory* icat = (RooCategory*) _vars.find(indexCat->GetName()) ;
         for (map<string,RooDataSet*>::iterator hiter = hmap.begin() ; hiter!=hmap.end() ; ++hiter) {
           // Define state labels in index category (both in provided indexCat and in internal copy in dataset)
-          if (!indexCat->lookupType(hiter->first.c_str())) {
-            indexCat->defineType(hiter->first.c_str()) ;
+          if (!indexCat->hasLabel(hiter->first)) {
+            indexCat->defineType(hiter->first) ;
             coutI(InputArguments) << "RooDataSet::ctor(" << GetName() << ") defining state \"" << hiter->first << "\" in index category " << indexCat->GetName() << endl ;
           }
-          if (!icat->lookupType(hiter->first.c_str())) {
-            icat->defineType(hiter->first.c_str()) ;
+          if (!icat->hasLabel(hiter->first)) {
+            icat->defineType(hiter->first) ;
           }
           icat->setLabel(hiter->first.c_str()) ;
 
@@ -495,12 +491,12 @@ RooDataSet::RooDataSet(const char* name, const char* title, const RooArgSet& var
         RooCategory* icat = (RooCategory*) _vars.find(indexCat->GetName()) ;
         for (map<string,RooDataSet*>::iterator hiter = hmap.begin() ; hiter!=hmap.end() ; ++hiter) {
           // Define state labels in index category (both in provided indexCat and in internal copy in dataset)
-          if (!indexCat->lookupType(hiter->first.c_str())) {
-            indexCat->defineType(hiter->first.c_str()) ;
+          if (!indexCat->hasLabel(hiter->first)) {
+            indexCat->defineType(hiter->first) ;
             coutI(InputArguments) << "RooDataSet::ctor(" << GetName() << ") defining state \"" << hiter->first << "\" in index category " << indexCat->GetName() << endl ;
           }
-          if (!icat->lookupType(hiter->first.c_str())) {
-            icat->defineType(hiter->first.c_str()) ;
+          if (!icat->hasLabel(hiter->first)) {
+            icat->defineType(hiter->first) ;
           }
           icat->setLabel(hiter->first.c_str()) ;
           _dstore->loadValues(hiter->second->store(),cutVar,cutRange) ;
@@ -550,18 +546,17 @@ RooDataSet::RooDataSet(const char* name, const char* title, const RooArgSet& var
         RooCategory* icat = (RooCategory*) _vars.find(indexCat->GetName()) ;
         for (map<string,RooDataSet*>::iterator hiter = hmap.begin() ; hiter!=hmap.end() ; ++hiter) {
           // Define state labels in index category (both in provided indexCat and in internal copy in dataset)
-          if (!indexCat->lookupType(hiter->first.c_str())) {
-            indexCat->defineType(hiter->first.c_str()) ;
+          if (!indexCat->hasLabel(hiter->first)) {
+            indexCat->defineType(hiter->first) ;
             coutI(InputArguments) << "RooDataSet::ctor(" << GetName() << ") defining state \"" << hiter->first << "\" in index category " << indexCat->GetName() << endl ;
           }
-          if (!icat->lookupType(hiter->first.c_str())) {
-            icat->defineType(hiter->first.c_str()) ;
+          if (!icat->hasLabel(hiter->first)) {
+            icat->defineType(hiter->first) ;
           }
           icat->setLabel(hiter->first.c_str()) ;
           // Case 2c --- Import multiple RooDataSets as slices
           _dstore->loadValues(hiter->second->store(),0,cutRange) ;
         }
-
 
       } else if (impData) {
         // Case 3c --- Import RooDataSet
@@ -812,17 +807,13 @@ RooDataSet::RooDataSet(const char *name, const char *title, RooDataSet *dset,
 		       std::size_t nStart, std::size_t nStop, Bool_t copyCache, const char* wgtVarName) :
   RooAbsData(name,title,vars)
 {
-   _dstore =
-      (defaultStorageType == Tree)
-         ? ((RooAbsDataStore *)new RooTreeDataStore(name, title, *dset->_dstore, _vars, cutVar, cutRange, nStart, nStop,
-                                                    copyCache, wgtVarName))
-         : (
-              //     ( dset->_dstore->IsA()==RooCompositeDataStore::Class() )?
-              //      ((RooAbsDataStore*) new
-              //      RooCompositeDataStore(name,title,(RooCompositeDataStore&)(*dset->_dstore),_vars,cutVar,cutRange,nStart,nStop,copyCache,wgtVarName))
-              //      :
-              ((RooAbsDataStore *)new RooVectorDataStore(name, title, *dset->_dstore, _vars, cutVar, cutRange, nStart,
-                                                         nStop, copyCache, wgtVarName)));
+  if (defaultStorageType == Tree) {
+    _dstore = new RooTreeDataStore(name, title, *dset->_dstore, _vars, cutVar, cutRange, nStart, nStop,
+        copyCache, wgtVarName);
+  } else {
+    _dstore = new RooVectorDataStore(name, title, *dset->_dstore, _vars, cutVar, cutRange, nStart,
+        nStop, copyCache, wgtVarName);
+  }
 
    _cachedVars.add(_dstore->cachedVars());
 
@@ -1776,10 +1767,9 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
         // Use user category name if provided
         catname++ ;
 
-	const RooCatType* type = indexCat->lookupType(catname,kFALSE) ;
-	if (type) {
+	if (indexCat->hasLabel(catname)) {
 	  // Use existing category index
-	  indexCat->setIndex(type->getVal()) ;
+	  indexCat->setLabel(catname);
 	} else {
 	  // Register cat name
 	  indexCat->defineType(catname,fileSeqNum) ;
@@ -1859,9 +1849,10 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
 
   if (indexCat) {
     // Copy dynamically defined types from new data set to indexCat in original list
-    RooCategory* origIndexCat = (RooCategory*) variables.find(indexCatName) ;
-    for (const auto& type : *indexCat) {
-      origIndexCat->defineType(type.first, type.second);
+    assert(dynamic_cast<RooCategory*>(variables.find(indexCatName)));
+    const auto origIndexCat = static_cast<RooCategory*>(variables.find(indexCatName));
+    for (const auto& nameIdx : *indexCat) {
+      origIndexCat->defineType(nameIdx.first, nameIdx.second);
     }
   }
   oocoutI(data.get(),DataHandling) << "RooDataSet::read: read " << data->numEntries()

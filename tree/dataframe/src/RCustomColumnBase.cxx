@@ -9,7 +9,6 @@
  *************************************************************************/
 
 #include "ROOT/RDF/RCustomColumnBase.hxx"
-#include "ROOT/RDF/RLoopManager.hxx"
 #include "ROOT/RStringView.hxx"
 #include "RtypesCore.h" // Long64_t
 
@@ -17,7 +16,6 @@
 #include <vector>
 
 using ROOT::Detail::RDF::RCustomColumnBase;
-using ROOT::Detail::RDF::RLoopManager;
 namespace RDFInternal = ROOT::Internal::RDF;
 
 unsigned int RCustomColumnBase::GetNextID()
@@ -27,20 +25,15 @@ unsigned int RCustomColumnBase::GetNextID()
    return id;
 }
 
-RCustomColumnBase::RCustomColumnBase(RLoopManager *lm, std::string_view name, std::string_view type,
-                                     unsigned int nSlots, bool isDSColumn,
+RCustomColumnBase::RCustomColumnBase(std::string_view name, std::string_view type, unsigned int nSlots, bool isDSColumn,
                                      const RDFInternal::RBookedCustomColumns &customColumns)
-   : fLoopManager(lm), fName(name), fType(type), fNSlots(nSlots), fIsDataSourceColumn(isDSColumn),
+   : fName(name), fType(type), fNSlots(nSlots), fIsDataSourceColumn(isDSColumn), fLastCheckedEntry(fNSlots, -1),
      fCustomColumns(customColumns), fIsInitialized(nSlots, false)
 {
-   fLoopManager->RegisterCustomColumn(this);
 }
 
 // pin vtable. Work around cling JIT issue.
-RCustomColumnBase::~RCustomColumnBase()
-{
-   fLoopManager->DeRegisterCustomColumn(this);
-}
+RCustomColumnBase::~RCustomColumnBase() {}
 
 std::string RCustomColumnBase::GetName() const
 {
@@ -50,9 +43,4 @@ std::string RCustomColumnBase::GetName() const
 std::string RCustomColumnBase::GetTypeName() const
 {
    return fType;
-}
-
-void RCustomColumnBase::InitNode()
-{
-   fLastCheckedEntry = std::vector<Long64_t>(fNSlots, -1);
 }

@@ -66,11 +66,6 @@ public:
 
    std::shared_ptr<HistImpl_t> GetHist() const { return fHistImpl.get_shared(); }
 
-   void Execute(const std::string &) override
-   {
-      // should execute menu item
-   }
-
 //   template <class HIST>
 //   RHistDrawable(std::unique_ptr<HIST> &&hist)
 //      : fHistImpl(std::unique_ptr<HistImpl_t>(std::move(*hist).TakeImpl())), fOpts(opts)
