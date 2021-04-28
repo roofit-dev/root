@@ -92,6 +92,17 @@ public:
       return fElements[fCounter];
    }
 
+   bool Find(const std::string &name, int indx = -1) override
+   {
+      if ((indx >= 0) && (indx < (int) fElements.size()) && (name == fElements[indx]->GetName())) {
+         fCounter = indx;
+         return true;
+      }
+
+      return RLevelIter::Find(name, -1);
+   }
+
+
 };
 
 // ===============================================================================================================
@@ -185,6 +196,7 @@ public:
 
       return RProvider::Browse(holder);
    }
+
 };
 
 
@@ -353,6 +365,7 @@ RElement::EActionKind TObjectElement::GetDefaultAction() const
 {
    auto cl = GetClass();
    if (!cl) return kActNone;
+   if ("TCanvas"s == cl->GetName()) return kActCanvas;
    if (("TGeoManager"s == cl->GetName()) || ("TGeoVolume"s == cl->GetName())) return kActGeom;
    if (RProvider::CanDraw6(cl)) return kActDraw6;
    if (RProvider::CanDraw7(cl)) return kActDraw7;
@@ -374,6 +387,7 @@ bool TObjectElement::IsCapable(RElement::EActionKind action) const
       case kActImage:
       case kActDraw6: return RProvider::CanDraw6(cl); // if can draw in TCanvas, can produce image
       case kActDraw7: return RProvider::CanDraw7(cl);
+      case kActCanvas: return "TCanvas"s == cl->GetName();
       case kActGeom: return ("TGeoManager"s == cl->GetName()) || ("TGeoVolume"s == cl->GetName());
       default: return false;
    }
@@ -425,6 +439,7 @@ public:
       RegisterTObject("TProfile", "sap-icon://vertical-bar-chart");
       RegisterTObject("TGraph", "sap-icon://line-chart");
       RegisterTObject("TCanvas", "sap-icon://business-objects-experience", false, 1); // only can use TWebCanvas
+      RegisterTObject("TASImage", "sap-icon://picture", false, 1); // only can use TWebCanvas
 
       RegisterTObject("THStack", "sap-icon://multiple-bar-chart");
       RegisterTObject("TMultiGraph", "sap-icon://multiple-line-chart");

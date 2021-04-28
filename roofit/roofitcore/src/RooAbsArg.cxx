@@ -95,6 +95,7 @@ for single nodes.
 #include "RooVectorDataStore.h"
 #include "RooTreeDataStore.h"
 #include "ROOT/RMakeUnique.hxx"
+#include "RooHelpers.h"
 
 #include <iostream>
 #include <fstream>
@@ -1623,11 +1624,24 @@ void RooAbsArg::optimizeCacheMode(const RooArgSet& observables, RooArgSet& optim
 
 
   // Terminate call if this node was already processed (tree structure may be cyclical)
-  if (processedNodes.findArg(this)) {
-    return ;
-  } else {
-    processedNodes.Add(this) ;
-  }
+  // LM : RooLinkedList::findArg looks by name and not but by object pointer,
+  //  should one use RooLinkedList::FindObject (look byt pointer) instead of findArg when
+  // tree contains nodes with the same name ?
+  // Add an info message if the require node does not exist but a different node already exists with same name
+
+  if (processedNodes.FindObject(this))
+     return;
+
+  // check if findArgs returns something different (i.e. a different node with same name) when
+  // this node has not been processed (FindObject returns a null pointer)
+  auto obj = processedNodes.findArg(this);
+  assert(obj != this); // obj == this cannot happen
+  if (obj)
+     // here for nodes with duplicate names
+     cxcoutI(Optimization) << "RooAbsArg::optimizeCacheMode(" << GetName()
+                           << " node " << this << " exists already as " << obj << " but with the SAME name !" << endl;
+
+  processedNodes.Add(this);
 
   // Set cache mode operator to 'AlwaysDirty' if we depend on any of the given observables
   if (dependsOnValue(observables)) {
@@ -1988,9 +2002,11 @@ RooLinkedList RooAbsArg::getCloningAncestors() const
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a GraphViz .dot file visualizing the expression tree headed by
 /// this RooAbsArg object. Use the GraphViz tool suite to make e.g. a gif
-/// or ps file from the .dot file
+/// or ps file from the .dot file.
+/// If a node derives from RooAbsReal, its current (unnormalised) value is
+/// printed as well.
 ///
-/// Based on concept developed by Kyle Cranmer
+/// Based on concept developed by Kyle Cranmer.
 
 void RooAbsArg::graphVizTree(const char* fileName, const char* delimiter, bool useTitle, bool useLatex)
 {
@@ -2005,8 +2021,10 @@ void RooAbsArg::graphVizTree(const char* fileName, const char* delimiter, bool u
 ////////////////////////////////////////////////////////////////////////////////
 /// Write the GraphViz representation of the expression tree headed by
 /// this RooAbsArg object to the given ostream.
+/// If a node derives from RooAbsReal, its current (unnormalised) value is
+/// printed as well.
 ///
-/// Based on concept developed by Kyle Cranmer
+/// Based on concept developed by Kyle Cranmer.
 
 void RooAbsArg::graphVizTree(ostream& os, const char* delimiter, bool useTitle, bool useLatex)
 {
@@ -2014,8 +2032,11 @@ void RooAbsArg::graphVizTree(ostream& os, const char* delimiter, bool useTitle, 
     coutE(InputArguments) << "RooAbsArg::graphVizTree() ERROR: output stream provided as input argument is in invalid state" << endl ;
   }
 
+  // silent warning messages coming when evaluating a RooAddPdf without a normalization set
+  RooHelpers::LocalChangeMsgLevel locmsg(RooFit::WARNING, 0u, RooFit::Eval, false);
+
   // Write header
-  os << "digraph " << GetName() << "{" << endl ;
+  os << "digraph \"" << GetName() << "\"{" << endl ;
 
   // First list all the tree nodes
   RooArgSet nodeSet ;
@@ -2038,6 +2059,10 @@ void RooAbsArg::graphVizTree(ostream& os, const char* delimiter, bool useTitle, 
     string typeFormat = "\\texttt{";
     string nodeType = (useLatex) ? typeFormat+node->IsA()->GetName()+"}" : node->IsA()->GetName();
 
+    if (auto realNode = dynamic_cast<RooAbsReal*>(node)) {
+      nodeLabel += delimiter + std::to_string(realNode->getVal());
+    }
+
     os << "\"" << nodeName << "\" [ color=" << (node->isFundamental()?"blue":"red")
        << ", label=\"" << nodeType << delimiter << nodeLabel << "\"];" << endl ;
 
@@ -2048,9 +2073,8 @@ void RooAbsArg::graphVizTree(ostream& os, const char* delimiter, bool useTitle, 
   graphVizAddConnections(links) ;
 
   // And write them out
-  set<pair<RooAbsArg*,RooAbsArg*> >::iterator liter = links.begin() ;
-  for( ; liter != links.end() ; ++liter ) {
-    os << "\"" << liter->first->GetName() << "\" -> \"" << liter->second->GetName() << "\";" << endl ;
+  for(auto const& link : links) {
+    os << "\"" << link.first->GetName() << "\" -> \"" << link.second->GetName() << "\";" << endl ;
   }
 
   // Write trailer
@@ -2416,4 +2440,3 @@ std::string printValue(RooAbsArg *raa)
    return s.str();
 }
 } // namespace cling
-
