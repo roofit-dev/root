@@ -228,7 +228,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooThresholdCategory.h
     RooTObjWrap.h
     RooTrace.h
-    RooTreeData.h
     RooTreeDataStore.h
     RooTruthModel.h
     RooUniformBinning.h
@@ -265,9 +264,10 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooVDTHeaders.h
     RooWrapperPdf.h
     RunContext.h
+    RooNaNPacker.h
     RooFitLegacy/RooCatTypeLegacy.h
     RooFitLegacy/RooCategorySharedProperties.h
-    RooNaNPacker.h
+    RooFitLegacy/RooTreeData.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -464,7 +464,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooThresholdCategory.cxx
     src/RooTObjWrap.cxx
     src/RooTrace.cxx
-    src/RooTreeData.cxx
     src/RooTreeDataStore.cxx
     src/RooTruthModel.cxx
     src/RooUniformBinning.cxx
