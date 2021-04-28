@@ -4,7 +4,7 @@ sap.ui.define([
    'rootui5/eve7/lib/OrbitControlsEve',
    'rootui5/eve7/lib/OutlinePass',
    'rootui5/eve7/lib/FXAAShader'
-],  function(GlViewer, EveElements) {
+], function(GlViewer, EveElements) {
 
    "use strict";
 
@@ -24,10 +24,10 @@ sap.ui.define([
          let gh = mgr.GetElement(mgr.global_highlight_id);
 
          if (gs && gh) {
-            sa[0].visibleEdgeColor.setStyle(JSROOT.Painter.root_colors[gs.fVisibleEdgeColor]);
-            sa[0].hiddenEdgeColor .setStyle(JSROOT.Painter.root_colors[gs.fHiddenEdgeColor]);
-            sa[1].visibleEdgeColor.setStyle(JSROOT.Painter.root_colors[gh.fVisibleEdgeColor]);
-            sa[1].hiddenEdgeColor .setStyle(JSROOT.Painter.root_colors[gh.fHiddenEdgeColor]);
+            sa[0].visibleEdgeColor.setStyle(JSROOT.Painter.getColor(gs.fVisibleEdgeColor));
+            sa[0].hiddenEdgeColor .setStyle(JSROOT.Painter.getColor(gs.fHiddenEdgeColor));
+            sa[1].visibleEdgeColor.setStyle(JSROOT.Painter.getColor(gh.fVisibleEdgeColor));
+            sa[1].hiddenEdgeColor .setStyle(JSROOT.Painter.getColor(gh.fHiddenEdgeColor));
          }
       },
 
@@ -37,7 +37,7 @@ sap.ui.define([
          //super.init(controller);
 
          this.creator = new EveElements(controller);
-         this.creator.useIndexAsIs = (JSROOT.GetUrlOption('useindx') !== null);
+         this.creator.useIndexAsIs = JSROOT.decodeUrl().has('useindx');
 
          if(!GlViewerThree.g_global_init_done)
          {
@@ -101,7 +101,7 @@ sap.ui.define([
 
          this.raycaster = new THREE.Raycaster();
          this.raycaster.params.Points.threshold = 4;   // ???
-         this.raycaster.linePrecision           = 2.5; // ???
+         this.raycaster.params.Line.threshold = 2.5;   // new three.js r121
 
          // Lights are positioned in resetRenderer
 
@@ -202,7 +202,6 @@ sap.ui.define([
                   // Was needed for "on press with timeout"
                   // glc.controls.resetMouseDown(event);
 
-                  JSROOT.Painter.createMenu(glc, glc.showContextMenu.bind(glc, event2));
                }
             }
 
@@ -482,7 +481,10 @@ sap.ui.define([
 
          this.ttip.style.display= "block";
       },
-
+      remoteToolTip: function (msg)
+      {
+         this.ttip_text.innerHTML = msg;
+      },
       getRelativeOffsets: function(elem)
       {
          // Based on:

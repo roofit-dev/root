@@ -623,7 +623,7 @@ std::uint32_t ROOT::Experimental::RNTupleDescriptor::SerializeFooter(void* buffe
    pos += SerializeUInt16(kFrameVersionCurrent, *where);
    pos += SerializeUInt16(kFrameVersionMin, *where);
    // Add the CRC32 bytes to the header and footer sizes
-   pos += SerializeUInt32(SerializeHeader(nullptr), *where);
+   pos += SerializeUInt32(GetHeaderSize(), *where);
    std::uint32_t size = pos - base + 4;
    pos += SerializeUInt32(size + 4, *where);
    size += SerializeCrc32(base, size, *where);
@@ -765,7 +765,7 @@ std::unique_ptr<ROOT::Experimental::RNTupleModel> ROOT::Experimental::RNTupleDes
    auto model = std::make_unique<RNTupleModel>();
    for (const auto &topDesc : GetTopLevelFields()) {
       auto field = Detail::RFieldBase::Create(topDesc.GetFieldName(), topDesc.GetTypeName());
-      model->AddField(std::unique_ptr<Detail::RFieldBase>(field));
+      model->AddField(field.Unwrap());
    }
    return model;
 }

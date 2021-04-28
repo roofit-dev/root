@@ -8,9 +8,15 @@
 # CMakeLists.txt file for building ROOT core/imt package
 ############################################################################
 
+if(NOT WIN32)
+  set(MULTIPROC_LIB "MultiProc")
+endif()
+
 ROOT_LINKER_LIBRARY(Imt
     src/base.cxx
     src/TTaskGroup.cxx
+  DEPENDENCIES
+    ${MULTIPROC_LIB}
   BUILTINS
     TBB
 )
@@ -27,6 +33,7 @@ if(imt)
     ROOT/TFuture.hxx
     ROOT/TTaskGroup.hxx
     ROOT/RTaskArena.hxx
+    ROOT/TExecutor.hxx
     ROOT/TThreadExecutor.hxx
     LINKDEF
       LinkDef.h
@@ -35,6 +42,7 @@ if(imt)
     DEPENDENCIES
       Core
       Thread
+      MultiProc
     BUILTINS
       TBB
   )
@@ -51,6 +59,17 @@ if(imt)
   set_target_properties(Imt PROPERTIES COMPILE_FLAGS "${TBB_CXXFLAGS}")
 
   ROOT_ADD_TEST_SUBDIRECTORY(test)
+else()
+  ROOT_GENERATE_DICTIONARY(G__Imt STAGE1
+    ROOT/TExecutor.hxx
+    LINKDEF
+      LinkDef.h
+    MODULE
+      Imt
+    DEPENDENCIES
+      Core
+      MultiProc
+  )
 endif()
 
 ROOT_INSTALL_HEADERS()

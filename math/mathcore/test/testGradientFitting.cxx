@@ -231,15 +231,15 @@ protected:
 
    // function actually running the test.
    // We define here the condition to say that the test is valid
-   bool RunFit(ROOT::Fit::ExecutionPolicy executionPolicy) {
+   bool RunFit(ROOT::EExecutionPolicy executionPolicy) {
       fExecutionPolicy = executionPolicy;
       if (printLevel>0) {
          std::cout << "**************************************\n";
-         if (fExecutionPolicy == ROOT::Fit::ExecutionPolicy::kSerial)
+         if (fExecutionPolicy == ROOT::EExecutionPolicy::kSequential)
             std::cout << "   RUN SEQUENTIAL \n";
-         else if (fExecutionPolicy == ROOT::Fit::ExecutionPolicy::kMultithread)
+         else if (fExecutionPolicy == ROOT::EExecutionPolicy::kMultiThread)
             std::cout << "   RUN MULTI-THREAD \n";
-         else if (fExecutionPolicy == ROOT::Fit::ExecutionPolicy::kMultiprocess)
+         else if (fExecutionPolicy == ROOT::EExecutionPolicy::kMultiProcess)
             std::cout << "   RUN MULTI-PROCESS \n";
 
          std::cout << "**************************************\n";
@@ -254,7 +254,7 @@ protected:
    typename T::FittingDataType *fData;
    TH2D *fHistogram;
    ROOT::Fit::Fitter fFitter;
-   ROOT::Fit::ExecutionPolicy fExecutionPolicy = ROOT::Fit::ExecutionPolicy::kSerial;
+   ROOT::EExecutionPolicy fExecutionPolicy = ROOT::EExecutionPolicy::kSequential;
    static const unsigned fNumPoints = 401;
 };
 
@@ -275,12 +275,12 @@ TYPED_TEST_SUITE_P(GradientFittingTest);
 // Test the fitting using the gradient is successful
 TYPED_TEST_P(GradientFittingTest, Sequential)
 {
-   EXPECT_TRUE(TestFixture::RunFit(ROOT::Fit::ExecutionPolicy::kSerial));
+   EXPECT_TRUE(TestFixture::RunFit(ROOT::EExecutionPolicy::kSequential));
 }
 
 TYPED_TEST_P(GradientFittingTest, Multithread)
 {
-   EXPECT_TRUE(TestFixture::RunFit(ROOT::Fit::ExecutionPolicy::kMultithread));
+   EXPECT_TRUE(TestFixture::RunFit(ROOT::EExecutionPolicy::kMultiThread));
 }
 
 REGISTER_TYPED_TEST_SUITE_P(GradientFittingTest,Sequential,Multithread);
@@ -289,8 +289,8 @@ INSTANTIATE_TYPED_TEST_SUITE_P(GradientFitting, GradientFittingTest, TestTypes);
 
 int main(int argc, char** argv) {
 
-// Disables elapsed time by default.
-  //::testing::GTEST_FLAG(print_time) = false;
+   // Disables elapsed time by default.
+   //::testing::GTEST_FLAG(print_time) = false;
 
    // Parse command line arguments
    for (Int_t i = 1 ;  i < argc ; i++) {

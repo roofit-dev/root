@@ -1,24 +1,31 @@
 #include "RConfigure.h" // R__USE_IMT
+#include "ROOT/RDataSource.hxx"
 #include "ROOT/RDF/GraphNode.hxx"
 #include "ROOT/RDF/RActionBase.hxx"
 #include "ROOT/RDF/RFilterBase.hxx"
 #include "ROOT/RDF/RLoopManager.hxx"
 #include "ROOT/RDF/RRangeBase.hxx"
 #include "ROOT/RDF/RSlotStack.hxx"
+#include "ROOT/RLogger.hxx"
 #include "RtypesCore.h" // Long64_t
+#include "TStopwatch.h"
 #include "TBranchElement.h"
 #include "TBranchObject.h"
+#include "TChain.h"
 #include "TEntryList.h"
+#include "TFile.h"
 #include "TFriendElement.h"
 #include "TInterpreter.h"
 #include "TROOT.h" // IsImplicitMTEnabled
 #include "TTreeReader.h"
+#include "TTree.h" // For MaxTreeSizeRAII. Revert when #6640 will be solved.
 
 #ifdef R__USE_IMT
 #include "ROOT/TThreadExecutor.hxx"
 #include "ROOT/TTreeProcessorMT.hxx"
 #endif
 
+#include <algorithm>
 #include <atomic>
 #include <exception>
 #include <functional>
@@ -26,9 +33,12 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <sstream>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 #include <set>
+#include <limits> // For MaxTreeSizeRAII. Revert when #6640 will be solved.
 
 using namespace ROOT::Detail::RDF;
 using namespace ROOT::Internal::RDF;
@@ -97,8 +107,11 @@ static void ExploreBranch(TTree &t, std::set<std::string> &bNamesReg, ColumnName
 
       ExploreBranch(t, bNamesReg, bNames, subBranch, newPrefix, friendName);
 
-      if (t.GetBranch(fullName.c_str()) || t.FindBranch(fullName.c_str()))
-         UpdateList(bNamesReg, bNames, fullName, friendName);
+      auto branchDirectlyFromTree = t.GetBranch(fullName.c_str());
+      if (!branchDirectlyFromTree)
+         branchDirectlyFromTree = t.FindBranch(fullName.c_str()); // try harder
+      if (branchDirectlyFromTree)
+         UpdateList(bNamesReg, bNames, std::string(branchDirectlyFromTree->GetFullName()), friendName);
 
       if (t.GetBranch(subBranchName.c_str()))
          UpdateList(bNamesReg, bNames, subBranchName, friendName);
@@ -169,7 +182,10 @@ static void GetBranchNamesImpl(TTree &t, std::set<std::string> &bNamesReg, Colum
       }
    }
 
-   auto friendTrees = t.GetListOfFriends();
+   // The list of friends needs to be accessed via GetTree()->GetListOfFriends()
+   // (and not via GetListOfFriends() directly), otherwise when `t` is a TChain we
+   // might not recover the list correctly (https://github.com/root-project/root/issues/6741).
+   auto friendTrees = t.GetTree()->GetListOfFriends();
 
    if (!friendTrees)
       return;
@@ -201,6 +217,75 @@ static void ThrowIfNSlotsChanged(unsigned int nSlots)
          msg += " Maybe DisableImplicitMT() was called after the RDataFrame was constructed?";
       throw std::runtime_error(msg);
    }
+}
+
+/**
+\struct MaxTreeSizeRAII
+\brief Scope-bound change of `TTree::fgMaxTreeSize`.
+
+This RAII object stores the current value result of `TTree::GetMaxTreeSize`,
+changes it to maximum at construction time and restores it back at destruction
+time. Needed for issue #6523 and should be reverted when #6640 will be solved.
+*/
+struct MaxTreeSizeRAII {
+   Long64_t fOldMaxTreeSize;
+
+   MaxTreeSizeRAII() : fOldMaxTreeSize(TTree::GetMaxTreeSize())
+   {
+      TTree::SetMaxTreeSize(std::numeric_limits<Long64_t>::max());
+   }
+
+   ~MaxTreeSizeRAII() { TTree::SetMaxTreeSize(fOldMaxTreeSize); }
+};
+
+struct DatasetLogInfo {
+   std::string fDataSet;
+   ULong64_t fRangeStart;
+   ULong64_t fRangeEnd;
+   unsigned int fSlot;
+};
+
+std::string LogRangeProcessing(const DatasetLogInfo &info)
+{
+   std::stringstream msg;
+   msg << "Processing " << info.fDataSet << ": entry range [" << info.fRangeStart << "," << info.fRangeEnd - 1
+       << "], using slot " << info.fSlot << " in thread " << std::this_thread::get_id() << '.';
+   return msg.str();
+}
+
+DatasetLogInfo TreeDatasetLogInfo(const TTreeReader &r, unsigned int slot)
+{
+   const auto tree = r.GetTree();
+   const auto chain = dynamic_cast<TChain *>(tree);
+   std::string what;
+   if (chain) {
+      auto files = chain->GetListOfFiles();
+      std::vector<std::string> treeNames;
+      std::vector<std::string> fileNames;
+      for (TObject *f : *files) {
+         treeNames.emplace_back(f->GetName());
+         fileNames.emplace_back(f->GetTitle());
+      }
+      what = "trees {";
+      for (const auto &t : treeNames) {
+         what += t + ",";
+      }
+      what.back() = '}';
+      what += " in files {";
+      for (const auto &f : fileNames) {
+         what += f + ",";
+      }
+      what.back() = '}';
+   } else {
+      const auto treeName = tree->GetName();
+      what = std::string("tree \"") + treeName + "\"";
+      const auto file = tree->GetCurrentFile();
+      if (file)
+         what += std::string(" in file \"") + file->GetName() + "\"";
+   }
+   const auto entryRange = r.GetEntriesRange();
+   const ULong64_t end = entryRange.second == -1ll ? tree->GetEntries() : entryRange.second;
+   return {std::move(what), static_cast<ULong64_t>(entryRange.first), end, slot};
 }
 
 } // anonymous namespace
@@ -290,6 +375,7 @@ void RLoopManager::RunEmptySourceMT()
       RSlotRAII slotRAII(slotStack);
       auto slot = slotRAII.fSlot;
       InitNodeSlots(nullptr, slot);
+      R__LOG_INFO(RDFLogChannel()) << LogRangeProcessing({"an empty source", range.first, range.second, slot});
       try {
          for (auto currEntry = range.first; currEntry < range.second; ++currEntry) {
             RunAndCheckFilters(slot, currEntry);
@@ -313,6 +399,7 @@ void RLoopManager::RunEmptySourceMT()
 void RLoopManager::RunEmptySource()
 {
    InitNodeSlots(nullptr, 0);
+   R__LOG_INFO(RDFLogChannel()) << LogRangeProcessing({"an empty source", 0, fNEmptyEntries, 0u});
    try {
       for (ULong64_t currEntry = 0; currEntry < fNEmptyEntries && fNStopsReceived < fNChildren; ++currEntry) {
          RunAndCheckFilters(0, currEntry);
@@ -340,6 +427,7 @@ void RLoopManager::RunTreeProcessorMT()
       RSlotRAII slotRAII(slotStack);
       auto slot = slotRAII.fSlot;
       InitNodeSlots(&r, slot);
+      R__LOG_INFO(RDFLogChannel()) << LogRangeProcessing(TreeDatasetLogInfo(r, slot));
       const auto entryRange = r.GetEntriesRange(); // we trust TTreeProcessorMT to call SetEntriesRange
       const auto nEntries = entryRange.second - entryRange.first;
       auto count = entryCount.fetch_add(nEntries);
@@ -366,6 +454,7 @@ void RLoopManager::RunTreeReader()
    if (0 == fTree->GetEntriesFast())
       return;
    InitNodeSlots(&r, 0);
+   R__LOG_INFO(RDFLogChannel()) << LogRangeProcessing(TreeDatasetLogInfo(r, 0u));
 
    // recursive call to check filters and conditionally execute actions
    // in the non-MT case processing can be stopped early by ranges, hence the check on fNStopsReceived
@@ -397,8 +486,10 @@ void RLoopManager::RunDataSource()
       fDataSource->InitSlot(0u, 0ull);
       try {
          for (const auto &range : ranges) {
-            auto end = range.second;
-            for (auto entry = range.first; entry < end && fNStopsReceived < fNChildren; ++entry) {
+            const auto start = range.first;
+            const auto end = range.second;
+            R__LOG_INFO(RDFLogChannel()) << LogRangeProcessing({fDataSource->GetLabel(), start, end, 0u});
+            for (auto entry = start; entry < end && fNStopsReceived < fNChildren; ++entry) {
                if (fDataSource->SetEntry(0u, entry)) {
                   RunAndCheckFilters(0u, entry);
                }
@@ -430,9 +521,11 @@ void RLoopManager::RunDataSourceMT()
       const auto slot = slotRAII.fSlot;
       InitNodeSlots(nullptr, slot);
       fDataSource->InitSlot(slot, range.first);
+      const auto start = range.first;
       const auto end = range.second;
+      R__LOG_INFO(RDFLogChannel()) << LogRangeProcessing({fDataSource->GetLabel(), start, end, slot});
       try {
-         for (auto entry = range.first; entry < end; ++entry) {
+         for (auto entry = start; entry < end; ++entry) {
             if (fDataSource->SetEntry(slot, entry)) {
                RunAndCheckFilters(slot, entry);
             }
@@ -533,13 +626,21 @@ void RLoopManager::CleanUpTask(unsigned int slot)
 /// This method also clears the contents of GetCodeToJit().
 void RLoopManager::Jit()
 {
+   // TODO this should be a read lock unless we find GetCodeToJit non-empty
    R__LOCKGUARD(gROOTMutex);
 
    const std::string code = std::move(GetCodeToJit());
-   if (code.empty())
+   if (code.empty()) {
+      R__LOG_INFO(RDFLogChannel()) << "Nothing to jit and execute.";
       return;
+   }
 
+   TStopwatch s;
+   s.Start();
    RDFInternal::InterpreterCalc(code, "RLoopManager::Run");
+   s.Stop();
+   R__LOG_INFO(RDFLogChannel()) << "Just-in-time compilation phase completed"
+                                << (s.RealTime() > 1e-3 ? " in " + std::to_string(s.RealTime()) + " seconds." : ".");
 }
 
 /// Trigger counting of number of children nodes for each node of the functional graph.
@@ -560,12 +661,19 @@ void RLoopManager::EvalChildrenCounts()
 /// Also perform a few setup and clean-up operations (jit actions if necessary, clear booked actions after the loop...).
 void RLoopManager::Run()
 {
+   // Change value of TTree::GetMaxTreeSize only for this scope. Revert when #6640 will be solved.
+   MaxTreeSizeRAII ctxtmts;
+
+   R__LOG_INFO(RDFLogChannel()) << "Starting event loop number " << fNRuns << '.';
+
    ThrowIfNSlotsChanged(GetNSlots());
 
    Jit();
 
    InitNodes();
 
+   TStopwatch s;
+   s.Start();
    switch (fLoopType) {
    case ELoopType::kNoFilesMT: RunEmptySourceMT(); break;
    case ELoopType::kROOTFilesMT: RunTreeProcessorMT(); break;
@@ -574,10 +682,14 @@ void RLoopManager::Run()
    case ELoopType::kROOTFiles: RunTreeReader(); break;
    case ELoopType::kDataSource: RunDataSource(); break;
    }
+   s.Stop();
 
    CleanUpNodes();
 
    fNRuns++;
+
+   R__LOG_INFO(RDFLogChannel()) << "Finished event loop number " << fNRuns - 1 << " (" << s.CpuTime() << "s CPU, "
+                                << s.RealTime() << "s elapsed).";
 }
 
 /// Return the list of default columns -- empty if none was provided when constructing the RDataFrame
@@ -664,11 +776,19 @@ std::vector<std::string> RLoopManager::GetFiltersNames()
    return filters;
 }
 
-std::vector<RDFInternal::RActionBase *> RLoopManager::GetAllActions()
+std::vector<RNodeBase *> RLoopManager::GetGraphEdges() const
 {
-   std::vector<RDFInternal::RActionBase *> actions;
-   actions.insert(actions.begin(), fBookedActions.begin(), fBookedActions.end());
-   actions.insert(actions.begin(), fRunActions.begin(), fRunActions.end());
+   std::vector<RNodeBase *> nodes(fBookedFilters.size() + fBookedRanges.size());
+   auto it = std::copy(fBookedFilters.begin(), fBookedFilters.end(), nodes.begin());
+   std::copy(fBookedRanges.begin(), fBookedRanges.end(), it);
+   return nodes;
+}
+
+std::vector<RDFInternal::RActionBase *> RLoopManager::GetAllActions() const
+{
+   std::vector<RDFInternal::RActionBase *> actions(fBookedActions.size() + fRunActions.size());
+   auto it = std::copy(fBookedActions.begin(), fBookedActions.end(), actions.begin());
+   std::copy(fRunActions.begin(), fRunActions.end(), it);
    return actions;
 }
 

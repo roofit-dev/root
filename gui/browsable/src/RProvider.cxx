@@ -77,7 +77,7 @@ void RProvider::RegisterFile(const std::string &extension, FileFunc_t func)
     auto &fmap = GetFileMap();
 
     if ((extension != "*") && (fmap.find(extension) != fmap.end()))
-       R__ERROR_HERE("Browserv7") << "Provider for file extension  " << extension << " already exists";
+       R__LOG_ERROR(BrowsableLog()) << "Provider for file extension  " << extension << " already exists";
 
     fmap.emplace(extension, StructFile{this,func});
 }
@@ -90,7 +90,7 @@ void RProvider::RegisterBrowse(const TClass *cl, BrowseFunc_t func)
     auto &bmap = GetBrowseMap();
 
     if (cl && (bmap.find(cl) != bmap.end()))
-       R__ERROR_HERE("Browserv7") << "Browse provider for class " << cl->GetName() << " already exists";
+       R__LOG_ERROR(BrowsableLog()) << "Browse provider for class " << cl->GetName() << " already exists";
 
     bmap.emplace(cl, StructBrowse{this,func});
 }
@@ -104,7 +104,7 @@ void RProvider::RegisterDraw6(const TClass *cl, Draw6Func_t func)
     auto &bmap = GetDraw6Map();
 
     if (cl && (bmap.find(cl) != bmap.end()))
-       R__ERROR_HERE("Browserv7") << "Draw v6 handler for class " << cl->GetName() << " already exists";
+       R__LOG_ERROR(BrowsableLog()) << "Draw v6 handler for class " << cl->GetName() << " already exists";
 
     bmap.emplace(cl, StructDraw6{this, func});
 }
@@ -117,7 +117,7 @@ void RProvider::RegisterDraw7(const TClass *cl, Draw7Func_t func)
     auto &bmap = GetDraw7Map();
 
     if (cl && (bmap.find(cl) != bmap.end()))
-       R__ERROR_HERE("Browserv7") << "Draw v7 handler for class " << cl->GetName() << " already exists";
+       R__LOG_ERROR(BrowsableLog()) << "Draw v7 handler for class " << cl->GetName() << " already exists";
 
     bmap.emplace(cl, StructDraw7{this, func});
 }
@@ -192,13 +192,21 @@ std::shared_ptr<RElement> RProvider::Browse(std::unique_ptr<RHolder> &object)
 {
    std::shared_ptr<RElement> res;
 
-   if (object)
-      ScanProviderMap<BrowseMap_t,BrowseMap_t::iterator>(GetBrowseMap(), object->GetClass(), true,
-            [&res, &object] (BrowseMap_t::iterator &iter) -> bool {
-              res = iter->second.func(object);
-              return (res || !object) ? true : false;
-            }
-      );
+   if (!object) return res;
+
+   auto test_func = [&res, &object] (BrowseMap_t::iterator &iter) -> bool {
+      res = iter->second.func(object);
+      return (res || !object) ? true : false;
+   };
+
+   if (ScanProviderMap<BrowseMap_t,BrowseMap_t::iterator>(GetBrowseMap(), object->GetClass(), false, test_func))
+      return res;
+
+   if (object && object->GetClass()->InheritsFrom("TBranchElement")) {
+      gSystem->Load("libROOTBranchBrowseProvider");
+   }
+
+   ScanProviderMap<BrowseMap_t,BrowseMap_t::iterator>(GetBrowseMap(), object->GetClass(), true, test_func);
 
    return res;
 }
@@ -219,7 +227,7 @@ bool RProvider::Draw6(TVirtualPad *subpad, std::unique_ptr<RHolder> &object, con
    if (ScanProviderMap<Draw6Map_t, Draw6Map_t::iterator>(GetDraw6Map(), object->GetClass(), false, draw_func))
       return true;
 
-   if (object->GetClass()->InheritsFrom("TLeaf"))
+   if (object->GetClass()->InheritsFrom("TLeaf") || object->GetClass()->InheritsFrom("TBranchElement"))
       gSystem->Load("libROOTLeafDraw6Provider");
    else if (object->GetClass()->InheritsFrom(TObject::Class()))
       gSystem->Load("libROOTObjectDraw6Provider");
@@ -247,7 +255,7 @@ bool RProvider::Draw7(std::shared_ptr<ROOT::Experimental::RPadBase> &subpad, std
 
    // TODO: need factory methods for that
 
-   if (object->GetClass()->InheritsFrom("TLeaf"))
+   if (object->GetClass()->InheritsFrom("TLeaf") || object->GetClass()->InheritsFrom("TBranchElement"))
       gSystem->Load("libROOTLeafDraw7Provider");
    else if (object->GetClass()->InheritsFrom(TObject::Class()))
       gSystem->Load("libROOTObjectDraw7Provider");

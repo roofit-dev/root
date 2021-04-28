@@ -511,7 +511,7 @@ TLegend *TPad::BuildLegend(Double_t x1, Double_t y1, Double_t x2, Double_t y2,
    TObject *o=0;
    TString opt("");
    while( (o=next()) ) {
-      if((o->InheritsFrom(TAttLine::Class()) || o->InheritsFrom(TAttMarker::Class()) ||
+      if ((o->InheritsFrom(TAttLine::Class()) || o->InheritsFrom(TAttMarker::Class()) ||
           o->InheritsFrom(TAttFill::Class())) &&
          ( !(o->InheritsFrom(TFrame::Class())) && !(o->InheritsFrom(TPave::Class())) )) {
             if (!leg) leg = new TLegend(x1, y1, x2, y2, title);
@@ -1306,7 +1306,8 @@ void TPad::Draw(Option_t *option)
    // pad cannot be in itself and it can only be in one other pad at a time
    if (!fPrimitives) fPrimitives = new TList;
    if (gPad != this) {
-      if (fMother && fMother->TestBit(kNotDeleted)) fMother->GetListOfPrimitives()->Remove(this);
+      if (fMother && fMother->TestBit(kNotDeleted)) 
+            if (fMother->GetListOfPrimitives()) fMother->GetListOfPrimitives()->Remove(this);
       TPad *oldMother = fMother;
       fCanvas = gPad->GetCanvas();
       //
@@ -1317,7 +1318,7 @@ void TPad::Draw(Option_t *option)
    Paint();
 
    if (gPad->IsRetained() && gPad != this && fMother)
-      fMother->GetListOfPrimitives()->Add(this, option);
+      if (fMother->GetListOfPrimitives()) fMother->GetListOfPrimitives()->Add(this, option);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2484,9 +2485,9 @@ void TPad::ExecuteEventAxis(Int_t event, Int_t px, Int_t py, TAxis *axis)
                }
                Float_t newmin = zmin + (zmax-zmin)*ratio1;
                Float_t newmax = zmin + (zmax-zmin)*ratio2;
-               if(newmin < zmin)newmin = hobj->GetBinContent(hobj->GetMinimumBin());
-               if(newmax > zmax)newmax = hobj->GetBinContent(hobj->GetMaximumBin());
-               if(GetLogz()){
+               if (newmin < zmin) newmin = hobj->GetBinContent(hobj->GetMinimumBin());
+               if (newmax > zmax) newmax = hobj->GetBinContent(hobj->GetMaximumBin());
+               if (GetLogz()){
                   newmin = TMath::Exp(2.302585092994*newmin);
                   newmax = TMath::Exp(2.302585092994*newmax);
                }
@@ -3451,7 +3452,7 @@ void TPad::Paint(Option_t * /*option*/)
       if (GetGLDevice()!=-1 && gVirtualPS) {
          TPad *padsav = (TPad*)gPad;
          gPad = this;
-         gGLManager->PrintViewer(GetViewer3D());
+         if (gGLManager) gGLManager->PrintViewer(GetViewer3D());
          gPad = padsav;
       }
       return;
@@ -3506,7 +3507,7 @@ void TPad::Paint(Option_t * /*option*/)
 
 void TPad::PaintBorder(Color_t color, Bool_t tops)
 {
-   if(color >= 0) {
+   if (color >= 0) {
       TAttLine::Modify();  //Change line attributes only if necessary
       TAttFill::Modify();  //Change fill area attributes only if necessary
 
@@ -3553,7 +3554,7 @@ void TPad::PaintBorder(Color_t color, Bool_t tops)
 
    Double_t frameXs[7] = {}, frameYs[7] = {};
 
-   if (!IsBatch()) {
+   if (!IsBatch() && GetPainter()) {
       // Draw top&left part of the box
       frameXs[0] = xl;           frameYs[0] = yl;
       frameXs[1] = xl + realBsX; frameYs[1] = yl + realBsY;
@@ -3734,7 +3735,7 @@ void TPad::PaintModified()
    // This must be done after modified flag is cleared, as some
    // viewers will invoke another paint by marking pad modified again
    if (began3DScene) {
-      fViewer3D->EndScene();
+      if (fViewer3D) fViewer3D->EndScene();
    }
 
    gVirtualPS = saveps;
@@ -3862,7 +3863,7 @@ void TPad::CopyBackgroundPixmap(Int_t x, Int_t y)
 {
    int px, py;
    XYtoAbsPixel(fX1, fY2, px, py);
-   GetPainter()->CopyDrawable(GetPixmapID(), px-x, py-y);
+   if (GetPainter()) GetPainter()->CopyDrawable(GetPixmapID(), px-x, py-y);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4926,8 +4927,10 @@ void TPad::Print(const char *filenam, Option_t *option)
          gPad->GetCanvas()->SetHighLightColor(-1);
          gPad->Modified();
          gPad->Update();
-         GetPainter()->SelectDrawable(wid);
-         GetPainter()->SaveImage(this, psname.Data(), gtype);
+         if (GetPainter()){
+           GetPainter()->SelectDrawable(wid);
+           GetPainter()->SaveImage(this, psname.Data(), gtype);
+         }
          if (!gSystem->AccessPathName(psname.Data())) {
             Info("Print", "GIF file %s has been created", psname.Data());
          }
@@ -4941,7 +4944,7 @@ void TPad::Print(const char *filenam, Option_t *option)
          gPad->Update();
          gVirtualX->Update(1);
          gSystem->Sleep(30); // synchronize
-         GetPainter()->SaveImage(this, psname, gtype);
+         if (GetPainter()) GetPainter()->SaveImage(this, psname, gtype);
          if (!gSystem->AccessPathName(psname)) {
             Info("Print", "file %s has been created", psname.Data());
          }
@@ -5478,7 +5481,14 @@ void TPad::ResizePad(Option_t *option)
       Error("ResizePad", "Cannot resize pad. No current pad available.");
       return;
    }
-
+   if (gPad->GetWw()==0.0||gPad->GetWh()==0.0) {
+      Warning("ResizePad", "gPad has at least one zero dimension.");
+      return;
+   }
+   if (fX1==fX2||fY1==fY2) {
+      Warning("ResizePad", "The pad has at least one zero dimension.");
+      return;
+   }
    // Recompute subpad positions in case pad has been moved/resized
    TPad *parent = fMother;
    if (this == gPad->GetCanvas()) {
@@ -5488,6 +5498,10 @@ void TPad::ResizePad(Option_t *option)
       fAbsHNDC     = fHNDC;
    }
    else {
+      if (parent->GetAbsWNDC()==0.0||parent->GetAbsWNDC()==0.0||fHNDC==0.0||fWNDC==0.0) {
+         Warning("ResizePad", "The parent pad has at least one zero dimension.");
+         return;
+      }
       fAbsXlowNDC  = fXlowNDC*parent->GetAbsWNDC() + parent->GetAbsXlowNDC();
       fAbsYlowNDC  = fYlowNDC*parent->GetAbsHNDC() + parent->GetAbsYlowNDC();
       fAbsWNDC     = fWNDC*parent->GetAbsWNDC();
@@ -6204,7 +6218,8 @@ void TPad::ShowGuidelines(TObject *object, const Int_t event, const char mode, c
    TPad *is_pad = dynamic_cast<TPad *>( object );
    TVirtualPad *padSave = 0;
    padSave = gPad;
-   if (is_pad) is_pad->GetMother()->cd();
+   if (is_pad) 
+     if (is_pad->GetMother()) is_pad->GetMother()->cd();
 
    static TPad * tmpGuideLinePad;
 
@@ -7185,4 +7200,3 @@ void TPad::SetBBoxY2(const Int_t y)
    fHNDC = fYUpNDC - fYlowNDC;
    ResizePad();
 }
-

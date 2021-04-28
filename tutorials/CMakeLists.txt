@@ -84,7 +84,6 @@ if (NOT dataframe)
     list(APPEND dataframe_veto tmva/tmva*.C)
 elseif(MSVC AND NOT win_broken_tests)
     list(APPEND dataframe_veto dataframe/*.py)
-    list(APPEND dataframe_veto tmva/tmva003_RReader.C)
 endif()
 
 if(NOT sqlite)
@@ -110,7 +109,11 @@ if(NOT ROOT_roofit_FOUND)
                    roofit/*.py)
 else()
   if(MSVC AND NOT win_broken_tests)
-    set(roofit_veto roofit/rf401_importttreethx.C)
+    set(roofit_veto roofit/rf104_classfactory.C
+                    roofit/rf104_classfactory.py
+                    roofit/rf401_importttreethx.C
+                    roofit/rf512_wsfactory_oper.C
+    )
   endif()
 endif()
 
@@ -230,7 +233,7 @@ set(gui_veto fit/fitpanel_playback.C
              webgui/panel/server.cxx webgui/webwindow/server.cxx)
 
 if (NOT ROOT_tmva_FOUND)
-  list(APPEND tmva_veto tmva/*.C tmva/*.py tmva/envelope/*.C tmva/keras/*.C tmva/keras/*.py)
+  list(APPEND tmva_veto tmva/*.C tmva/*.py tmva/envelope/*.C tmva/keras/*.C tmva/keras/*.py tmva/pytorch/*.py )
 else()
   #---These do not need to run for TMVA
   list(APPEND tmva_veto tmva/createData.C)
@@ -261,11 +264,12 @@ if(root7)
                  v7/fitpanel.cxx
                  v7/fitpanel6.cxx
       )
-  if(MSVC AND NOT win_broken_tests)
-    list(APPEND root7_veto v7/box.cxx v7/draw*.cxx )
+  if(NOT davix)
+    list(APPEND root7_veto v7/ntuple/ntpl003_lhcbOpenData.C)
+    list(APPEND root7_veto v7/ntuple/ntpl004_dimuon.C)
   endif()
   if(NOT dataframe)
-    set(root7_veto v7/ntuple/ntpl004_dimuon.C)
+    list(APPEND root7_veto v7/ntuple/ntpl004_dimuon.C)
   endif()
 else()
   file(GLOB v7_veto_files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/ v7/*.cxx v7/*/*.cxx v7/*.C v7/*/*.C)
@@ -430,6 +434,8 @@ set (tmva-TMVAMulticlassApplication-depends tutorial-tmva-TMVAMulticlass)
 set (tmva-TMVARegressionApplication-depends tutorial-tmva-TMVARegression)
 set (tmva-tmva101_Training-depends tutorial-tmva-tmva100_DataPreparation-py)
 set (tmva-tmva102_Testing-depends tutorial-tmva-tmva101_Training-py)
+set (tmva-pytorch-ApplicationClassificationPyTorch-depends tutorial-tmva-pytorch-ClassificationPyTorch-py)
+set (tmva-pytorch-ApplicationRegressionPyTorch-depends tutorial-tmva-pytorch-RegressionPyTorch-py)
 
 #--List long-running tutorials to label them as "longtest"
 set (long_running
@@ -576,6 +582,12 @@ if(ROOT_pyroot_FOUND)
     list(APPEND pyveto ${tmva_veto_py})
   endif()
 
+  find_python_module(torch QUIET)
+  if(NOT PY_TORCH_FOUND)
+    file(GLOB tmva_veto_py RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/pytorch/*.py)
+    list(APPEND pyveto ${tmva_veto_py})
+  endif()
+
   # Now glob all vetos for pyroot
   file(GLOB pyveto RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${pyveto})
 
@@ -607,8 +619,9 @@ if(ROOT_pyroot_FOUND)
   file(GLOB requires_numba   RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} pyroot/pyroot004_NumbaDeclare.py)
   file(GLOB requires_pandas  RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} dataframe/df026_AsNumpyArrays.py)
   file(GLOB requires_keras   RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/keras/*.py)
+  file(GLOB requires_torch   RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/pytorch/*.py)
   file(GLOB requires_xgboost RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/tmva10*.py)
-  set(fixtureLists requires_numpy requires_numba requires_pandas requires_keras requires_xgboost)
+  set(fixtureLists requires_numpy requires_numba requires_pandas requires_keras requires_xgboost requires_torch)
 
   # Now set up all the tests
   foreach(t ${pytutorials})
