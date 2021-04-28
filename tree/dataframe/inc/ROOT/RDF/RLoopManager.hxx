@@ -47,7 +47,6 @@ namespace RDF {
 using namespace ROOT::TypeTraits;
 namespace RDFInternal = ROOT::Internal::RDF;
 
-class RCustomColumnBase;
 class RFilterBase;
 class RRangeBase;
 using ROOT::RDF::RDataSource;
@@ -115,7 +114,6 @@ class RLoopManager : public RNodeBase {
    std::vector<TOneTimeCallback> fCallbacksOnce; ///< Registered callbacks to invoke just once before running the loop
    unsigned int fNRuns{0}; ///< Number of event loops run
 
-   std::vector<RCustomColumnBase *> fCustomColumns; ///< Non-owning container of all custom columns created so far.
    /// Cache of the tree/chain branch names. Never access directy, always use GetBranchNames().
    ColumnNames_t fValidBranchNames;
 
@@ -176,13 +174,6 @@ public:
 
    /// For all the actions, either booked or run
    std::vector<RDFInternal::RActionBase *> GetAllActions();
-
-   void RegisterCustomColumn(RCustomColumnBase *column) { fCustomColumns.push_back(column); }
-
-   void DeRegisterCustomColumn(RCustomColumnBase *column)
-   {
-      fCustomColumns.erase(std::remove(fCustomColumns.begin(), fCustomColumns.end(), column), fCustomColumns.end());
-   }
 
    std::vector<RDFInternal::RActionBase *> GetBookedActions() { return fBookedActions; }
    std::shared_ptr<ROOT::Internal::RDF::GraphDrawing::GraphNode> GetGraph();

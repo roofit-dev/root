@@ -6,9 +6,12 @@
 
 # CMakeLists.txt for the ROOT tutorials programs.
 # Author: Pere Mato, 25/10/2010
-cmake_minimum_required(VERSION 2.6 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
 
 project(tutorials)
+
+# Sergey: make no sence while CMakeLists.txt file cannot be used separately from ROOT
+# but variables like ROOT_asimage_FOUND used here and produced in ROOTConfig.cmake
 find_package(ROOT REQUIRED)
 
 if(DEFINED ROOT_SOURCE_DIR)  # Testing using the binary tree
@@ -127,10 +130,11 @@ if(NOT ROOT_mpi_FOUND)
   set(mpi_veto io/testTMPIFile.C)
 endif()
 
-if(NOT XROOTD_FOUND)
+if(NOT xrootd)
   set(xrootd_veto dataframe/df101_h1Analysis.C
                   dataframe/df102_NanoAODDimuonAnalysis.C
-                  dataframe/df103_NanoAODHiggsAnalysis.C)
+                  dataframe/df103_NanoAODHiggsAnalysis.C
+                  tmva/tmva103_Application.C)
 endif()
 
 # variables identifying the package must have the package name  in lower case (it corresponds to the CMake option name)

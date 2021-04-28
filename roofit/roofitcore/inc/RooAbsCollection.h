@@ -138,6 +138,14 @@ public:
     return _list.end();
   }
 
+  Storage_t::const_reverse_iterator rbegin() const {
+    return _list.rbegin();
+  }
+
+  Storage_t::const_reverse_iterator rend() const {
+      return _list.rend();
+    }
+
   Storage_t::size_type size() const {
     return _list.size();
   }
@@ -238,9 +246,6 @@ public:
   virtual void RecursiveRemove(TObject *obj);
 
 protected:
-
-  friend class RooMultiCatIter ;
-
   Storage_t _list; // Actual object storage
   using LegacyIterator_t = TIteratorToSTLInterface<Storage_t>;
 

@@ -104,7 +104,8 @@ namespace {
                                        llvm::SmallVectorImpl<char>& Buf,
                                        AdditionalArgList& Args,
                                        bool Verbose) {
-    std::string CppInclQuery(Compiler);
+    std::string CppInclQuery("LC_ALL=C ");
+    CppInclQuery.append(Compiler);
 
     CppInclQuery.append(" -xc++ -E -v /dev/null 2>&1 |"
                         " sed -n -e '/^.include/,${' -e '/^ \\/.*++/p' -e '}'");
@@ -557,6 +558,9 @@ namespace {
     clang::HeaderSearchOptions& HSOpts = CI.getHeaderSearchOpts();
 
     // We can't use "assert.h" because it is defined in the resource dir, too.
+#ifdef LLVM_ON_WIN32
+    llvm::SmallString<256> vcIncLoc(getIncludePathForHeader(HS, "vcruntime.h"));
+#endif
     llvm::SmallString<128> cIncLoc(getIncludePathForHeader(HS, "time.h"));
 
     llvm::SmallString<256> stdIncLoc(getIncludePathForHeader(HS, "cassert"));
@@ -645,6 +649,8 @@ namespace {
 
     std::string MOverlay;
 #ifdef LLVM_ON_WIN32
+    maybeAppendOverlayEntry(vcIncLoc.str(), "vcruntime.modulemap",
+                            clingIncLoc.str(), MOverlay);
     maybeAppendOverlayEntry(cIncLoc.str(), "libc_msvc.modulemap",
                             clingIncLoc.str(), MOverlay);
     maybeAppendOverlayEntry(stdIncLoc.str(), "std_msvc.modulemap",
