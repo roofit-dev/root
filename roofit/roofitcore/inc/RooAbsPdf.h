@@ -352,7 +352,14 @@ protected:
   RooNumGenConfig* _specGeneratorConfig ; //! MC generator configuration specific for this object
   
   TString _normRange ; // Normalization range
-  static TString _normRangeOverride ;
+  static TString _normRangeOverride ; 
+
+private:
+  template<class Minimizer>
+  int calculateAsymptoticCorrectedCovMatrix(Minimizer& minimizer, RooAbsData const& data);
+
+  template<class Minimizer>
+  int calculateSumW2CorrectedCovMatrix(Minimizer& minimizer, RooAbsReal const& nll) const;
 
 public:
   Bool_t num_int_timing_flag() const;

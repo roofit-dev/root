@@ -159,6 +159,7 @@ public:
 
 protected:
   
+  friend class RooAbsPdf ;
   friend class RooMinuit ;
   template <class MF, RooFit::MinimizerType dmt, typename... MinFcnCArgs>
   friend class RooMinimizerTemplate;
