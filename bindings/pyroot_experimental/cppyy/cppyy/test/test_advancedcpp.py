@@ -522,7 +522,9 @@ class TestADVANCEDCPP:
 
         import cppyy
         base_class = cppyy.gbl.base_class
+        base_class.clone.__creates__ = True
         derived_class = cppyy.gbl.derived_class
+        derived_class.clone.__creates__ = True
 
         b = base_class()
         d = derived_class()
@@ -563,11 +565,13 @@ class TestADVANCEDCPP:
 
         import cppyy
 
+        cppyy.gbl.create_c1.__creates__ = True
         c1 = cppyy.gbl.create_c1()
         assert type(c1) == cppyy.gbl.c_class_1
         assert c1.m_c == 3
         c1.__destruct__()
 
+        cppyy.gbl.create_c2.__creates__ = True
         c2 = cppyy.gbl.create_c2()
         assert type(c2) == cppyy.gbl.c_class_2
         assert c2.m_c == 3
@@ -679,6 +683,7 @@ class TestADVANCEDCPP:
         assert len(cppyy.gbl.my_global_array) == 500
         assert cppyy.gbl.my_global_string1 == "aap  noot  mies"
         assert cppyy.gbl.my_global_string2 == "zus jet teun"
+        assert list(cppyy.gbl.my_global_string3) == ["aap", "noot", "mies"]
         # TODO: currently fails b/c double** not understood as &double*
         #assert cppyy.gbl.my_global_ptr[0] == 1234.
 
@@ -702,10 +707,13 @@ class TestADVANCEDCPP:
         assert raises(Exception, t.throw_anything)
         assert raises(Exception, t.throw_exception)
 
+        caught = False
         try:
             t.throw_exception()
         except Exception as e:
-            "C++ function failed" in str(e)
+            assert "C++ function failed" in str(e)
+            caught = True
+        assert caught == True
 
     def test23_using(self):
         """Accessibility of using declarations"""
@@ -757,7 +765,8 @@ class TestADVANCEDCPP:
         assert str(ns.Printable1()) == "Printable1::operator<<"
         for tst in [(ns.Printable2,         "Cpp2PyPrinting::operator<<"),
                     (ns.Printable3,         "::operator<<(3)"),
-                    (cppyy.gbl.Printable4,  "::operator<<(4)")]:
+                    (cppyy.gbl.Printable4,  "::operator<<(4)"),
+                    (cppyy.gbl.Printable6,  "Printable6")]:
             assert str(tst[0]()) == tst[1]
             assert '__lshiftc__' in tst[0].__dict__
             assert tst[0].__lshiftc__

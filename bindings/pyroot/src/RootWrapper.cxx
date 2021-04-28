@@ -175,6 +175,11 @@ namespace {
 } // unnamed namespace
 
 
+static TMemoryRegulator &GetMemoryRegulator() {
+   static TMemoryRegulator m;
+   return m;
+}
+
 //- public functions ---------------------------------------------------------
 void PyROOT::InitRoot()
 {
@@ -182,8 +187,7 @@ void PyROOT::InitRoot()
    PyEval_InitThreads();
 
 // memory management
-   static TMemoryRegulator m;
-   gROOT->GetListOfCleanups()->Add( &m );
+   gROOT->GetListOfCleanups()->Add( &GetMemoryRegulator() );
 
 // bind ROOT globals that are needed in ROOT.py
    AddToGlobalScope( "gROOT", "TROOT.h", gROOT, Cppyy::GetScope( gROOT->IsA()->GetName() ) );
@@ -708,6 +712,8 @@ PyObject* PyROOT::CreateScopeProxy( const std::string& scope_name, PyObject* par
 
    // add __cppname__ to keep the C++ name of the class/scope
    PyObject_SetAttr( pyclass, PyStrings::gCppName, PyROOT_PyUnicode_FromString( actual.c_str() ) );
+   // add also __cpp_name__ for forward compatibility
+   PyObject_SetAttr( pyclass, PyStrings::gCppNameNew, PyROOT_PyUnicode_FromString( actual.c_str() ) );
 
    // add __module__  (see https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_name) 
    std::string module;
@@ -806,6 +812,15 @@ PyObject* PyROOT::GetCppGlobal( const std::string& name )
 // nothing found
    PyErr_Format( PyExc_LookupError, "no such global: %s", name.c_str() );
    return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Delete all memory-regulated objects
+
+PyObject *PyROOT::ClearProxiedObjects()
+{
+   GetMemoryRegulator().ClearProxiedObjects();
+   Py_RETURN_NONE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

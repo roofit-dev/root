@@ -19,7 +19,6 @@
 
 #include "RooSpan.h"
 #include <unordered_map>
-#include <assert.h>
 
 namespace BatchHelpers {
 
@@ -81,7 +80,7 @@ class BatchData {
     ///
     /// The status of foreign read-only data will never change.
     /// \return True if status successfully set, false if no such batch / not writable.
-    bool setStatus(std::size_t begin, std::size_t size, Status_t status) {
+    bool setStatus(std::size_t begin, std::size_t size, Status_t stat) {
       if (_foreignData)
         return false;
 
@@ -89,7 +88,7 @@ class BatchData {
       if (item == _ownedBatches.end() || size != item->second.data.size())
         return false;
 
-      item->second.status = status;
+      item->second.status = stat;
       return true;
     }
 

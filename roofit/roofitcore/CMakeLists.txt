@@ -60,7 +60,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooAbsStudy.h
     RooAbsTestStatistic.h
     RooAcceptReject.h
-    RooAdaptiveGaussKronrodIntegrator1D.h
     RooAdaptiveIntegratorND.h
     RooAddGenContext.h
     RooAddition.h
@@ -125,7 +124,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooFormulaVar.h
     RooFracRemainder.h
     RooFunctor.h
-    RooGaussKronrodIntegrator1D.h
     RooGenContext.h
     RooGenericPdf.h
     RooGenFitStudy.h
@@ -202,6 +200,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooRealConstant.h
     RooRealIntegral.h
     RooRealMPFE.h
+    RooProxy.h
     RooRealProxy.h
     RooRealSumFunc.h
     RooRealSumPdf.h
@@ -232,7 +231,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooSuperCategory.h
     RooTable.h
     RooTFoamBinding.h
-    RooThreshEntry.h
     RooThresholdCategory.h
     RooTObjWrap.h
     RooTrace.h
@@ -269,6 +267,9 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooHelpers.h
     RooSpan.h
     BatchData.h
+    BatchHelpers.h
+    RooVDTHeaders.h
+    RooWrapperPdf.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -299,11 +300,9 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooAbsRootFinder.cxx
     src/RooAbsSelfCachedPdf.cxx
     src/RooAbsSelfCachedReal.cxx
-    src/RooAbsString.cxx
     src/RooAbsStudy.cxx
     src/RooAbsTestStatistic.cxx
     src/RooAcceptReject.cxx
-    src/RooAdaptiveGaussKronrodIntegrator1D.cxx
     src/RooAdaptiveIntegratorND.cxx
     src/RooAddGenContext.cxx
     src/RooAddition.cxx
@@ -323,7 +322,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooCachedReal.cxx
     src/RooCacheManager.cxx
     src/RooCategory.cxx
-    src/RooCategoryProxy.cxx
     src/RooCategorySharedProperties.cxx
     src/RooCatType.cxx
     src/RooChangeTracker.cxx
@@ -366,7 +364,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooFormulaVar.cxx
     src/RooFracRemainder.cxx
     src/RooFunctor.cxx
-    src/RooGaussKronrodIntegrator1D.cxx
     src/RooGenContext.cxx
     src/RooGenericPdf.cxx
     src/RooGenFitStudy.cxx
@@ -442,7 +439,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooRealConstant.cxx
     src/RooRealIntegral.cxx
     src/RooRealMPFE.cxx
-    src/RooRealProxy.cxx
     src/RooRealSumFunc.cxx
     src/RooRealSumPdf.cxx
     src/RooRealVar.cxx
@@ -472,7 +468,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooSuperCategory.cxx
     src/RooTable.cxx
     src/RooTFoamBinding.cxx
-    src/RooThreshEntry.cxx
     src/RooThresholdCategory.cxx
     src/RooTObjWrap.cxx
     src/RooTrace.cxx
@@ -503,6 +498,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/MultiProcess/util.cxx
     src/RooHelpers.cxx
     src/BatchData.cxx
+    src/BatchHelpers.cxx
+    src/RooWrapperPdf.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
     -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
@@ -522,6 +519,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
   LIBRARIES
         ${RT_LIBRARY}
         ${ZeroMQ_LIBRARY}
+  LINKDEF inc/LinkDef.h
 )
 
 #target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
@@ -530,10 +528,6 @@ if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)
 endif()
 
-if(builtin_vdt)
-#  target_link_libraries(RooFitCore PUBLIC $<INSTALL_INTERFACE:vdt>)
-  target_include_directories(RooFitCore PUBLIC $<INSTALL_INTERFACE:include>)
-elseif(vdt)
-#  target_link_libraries(RooFitCore PUBLIC ${VDT_LIBRARIES})
-  target_include_directories(RooFitCore PUBLIC ${VDT_INCLUDE_DIRS})
+if(vdt AND NOT builtin_vdt)
+  target_include_directories(RooFitCore PRIVATE ${VDT_INCLUDE_DIR})
 endif()

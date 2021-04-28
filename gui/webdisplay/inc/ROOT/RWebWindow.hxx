@@ -86,6 +86,7 @@ private:
       int fClientCredits{0};               ///<! number of credits received from client
       bool fDoingSend{false};              ///<! true when performing send operation
       std::queue<QueueItem> fQueue;        ///<! output queue
+      std::map<int,std::shared_ptr<RWebWindow>> fEmbed; ///<! map of embed window for that connection, key value is channel id
       WebConn() = default;
       WebConn(unsigned connid) : fConnId(connid) {}
       WebConn(unsigned connid, unsigned wsid) : fConnId(connid), fActive(true), fWSId(wsid) {}
@@ -109,9 +110,12 @@ private:
       QueueEntry(unsigned connid, EQueueEntryKind kind, std::string &&data) : fConnId(connid), fKind(kind), fData(data) {}
    };
 
-   typedef std::vector<std::shared_ptr<WebConn>> ConnectionsList;
+   using ConnectionsList_t = std::vector<std::shared_ptr<WebConn>>;
 
    std::shared_ptr<RWebWindowsManager> fMgr;        ///<! display manager
+   std::shared_ptr<RWebWindow> fMaster;             ///<! master window where this window is embeded
+   unsigned fMasterConnId{0};                       ///<! master connection id
+   int fMasterChannel{-1};                          ///<! channel id in the master window
    std::string fDefaultPage;                        ///<! HTML page (or file name) returned when window URL is opened
    std::string fPanelName;                          ///<! panel name which should be shown in the window
    unsigned fId{0};                                 ///<! unique identifier
@@ -119,8 +123,8 @@ private:
    bool fSendMT{false};                             ///<! true is special threads should be used for sending data
    std::shared_ptr<RWebWindowWSHandler> fWSHandler; ///<! specialize websocket handler for all incoming connections
    unsigned fConnCnt{0};                            ///<! counter of new connections to assign ids
-   ConnectionsList fPendingConn;                    ///<! list of pending connection with pre-assigned keys
-   ConnectionsList fConn;                           ///<! list of all accepted connections
+   ConnectionsList_t fPendingConn;                  ///<! list of pending connection with pre-assigned keys
+   ConnectionsList_t fConn;                         ///<! list of all accepted connections
    mutable std::mutex fConnMutex;                   ///<! mutex used to protect connection list
    unsigned fConnLimit{1};                          ///<! number of allowed active connections
    bool fNativeOnlyConn{false};                     ///<! only native connection are allowed, created by Show() method
@@ -149,7 +153,7 @@ private:
 
    void CompleteWSSend(unsigned wsid);
 
-   ConnectionsList GetConnections(unsigned connid = 0, bool only_active = false) const;
+   ConnectionsList_t GetConnections(unsigned connid = 0, bool only_active = false) const;
 
    std::shared_ptr<WebConn> FindOrCreateConnection(unsigned wsid, bool make_new, const char *query);
 
@@ -176,6 +180,10 @@ private:
    void CheckInactiveConnections();
 
    unsigned AddDisplayHandle(bool batch_mode, const std::string &key, std::unique_ptr<RWebDisplayHandle> &handle);
+
+   unsigned AddEmbedWindow(std::shared_ptr<RWebWindow> window, int channel);
+
+   void RemoveEmbedWindow(unsigned connid, int channel);
 
    bool ProcessBatchHolder(std::shared_ptr<THttpCallArg> &arg);
 
@@ -295,7 +303,9 @@ public:
 
    void RecordData(const std::string &fname = "protocol.json", const std::string &fprefix = "");
 
-   std::string RelativeAddr(std::shared_ptr<RWebWindow> &win) const;
+   std::string GetAddr() const;
+
+   std::string GetRelativeAddr(const std::shared_ptr<RWebWindow> &win) const;
 
    void SetCallBacks(WebWindowConnectCallback_t conn, WebWindowDataCallback_t data, WebWindowConnectCallback_t disconn = nullptr);
 
@@ -314,6 +324,9 @@ public:
    void TerminateROOT();
 
    static std::shared_ptr<RWebWindow> Create();
+
+   static unsigned ShowWindow(std::shared_ptr<RWebWindow> window, const RWebDisplayArgs &args = "");
+
 };
 
 } // namespace Experimental

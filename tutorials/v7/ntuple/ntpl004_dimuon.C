@@ -25,7 +25,6 @@
 #include <TH1D.h>
 #include <TLatex.h>
 #include <TStyle.h>
-#include <TSystem.h>
 
 #include <cassert>
 #include <cmath>
@@ -121,7 +120,7 @@ public:
 template <typename T>
 T InvariantMassStdVector(std::vector<T>& pt, std::vector<T>& eta, std::vector<T>& phi, std::vector<T>& mass)
 {
-   assert(pt.size() == eta.size() == phi.size() == mass.size() == 2);
+   assert(pt.size() == 2 && eta.size() == 2 && phi.size() == 2 && mass.size() == 2);
 
    // We adopt the memory here, no copy
    ROOT::RVec<float> rvPt(pt);
@@ -166,8 +165,7 @@ void Convert() {
 
 
 void ntpl004_dimuon() {
-   if (gSystem->AccessPathName(kNTupleFileName))
-      Convert();
+   Convert();
 
    // Enable mutli-threading only after the conversion because we use RDF's Range() in it,
    // which currently does not support multi-threading
