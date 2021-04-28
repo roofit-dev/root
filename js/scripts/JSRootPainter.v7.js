@@ -1178,7 +1178,7 @@
 
 
    /* Set axes ranges for drawing, check configured attributes if range already specified */
-   TFramePainter.prototype.SetAxesRanges = function(xmin, xmax, ymin, ymax) {
+   TFramePainter.prototype.SetAxesRanges = function(xmin, xmax, ymin, ymax, zmin, zmax) {
       if (this.axes_drawn) return;
 
       var min, max;
@@ -1227,8 +1227,31 @@
                this.zoom_ymax = (max === undefined) ? this.ymax : max;
             }
          }
-
       }
+
+      if (this.zmin == this.zmax) {
+         min = this.v7EvalAttr("z_min");
+         max = this.v7EvalAttr("z_max");
+
+         if (min !== undefined) zmin = min;
+         if (max !== undefined) zmax = max;
+
+         if (zmin < zmax) {
+            this.zmin = zmin;
+            this.zmax = zmax;
+         }
+
+         if ((this.zoom_zmin == this.zoom_zmax) && !this.zoom_changed_interactive) {
+            min = this.v7EvalAttr("z_zoommin");
+            max = this.v7EvalAttr("z_zoommax");
+
+            if ((min !== undefined) || (max !== undefined)) {
+               this.zoom_zmin = (min === undefined) ? this.zmin : min;
+               this.zoom_zmax = (max === undefined) ? this.zmax : max;
+            }
+         }
+      }
+
    }
 
    TFramePainter.prototype.DrawAxes = function(shrink_forbidden) {
@@ -1567,6 +1590,33 @@
          hint_delta_x: 0,
          hint_delta_y: 0
       }
+   }
+
+   /** Returns palette associated with frame. Either from existing palette painter or just default palette */
+   TFramePainter.prototype.GetPalette = function(force) {
+      var pp = this.FindPainterFor(undefined, undefined, "ROOT::Experimental::RPaletteDrawable");
+
+      if (pp) return pp.GetPalette();
+
+      if (!this.fDfltPalette) {
+         this.fDfltPalette = {
+            _typename : "ROOT::Experimental::RPalette",
+            fColors : [{ fOrdinal : 0,     fColor : { fRGBA : [53, 42, 135] } },
+                       { fOrdinal : 0.125, fColor : { fRGBA : [15, 92, 221] } },
+                       { fOrdinal : 0.25,  fColor : { fRGBA : [20, 129, 214] } },
+                       { fOrdinal : 0.375, fColor : { fRGBA : [6, 164, 202] } },
+                       { fOrdinal : 0.5,   fColor : { fRGBA : [46, 183, 164] } },
+                       { fOrdinal : 0.625, fColor : { fRGBA : [135, 191, 119] } },
+                       { fOrdinal : 0.75,  fColor : { fRGBA : [209, 187, 89] } },
+                       { fOrdinal : 0.875, fColor : { fRGBA : [254, 200, 50] } },
+                       { fOrdinal : 1,     fColor : { fRGBA : [249, 251, 14] } }],
+             fInterpolate : true,
+             fNormalized : true
+         };
+         JSROOT.addMethods(this.fDfltPalette, "ROOT::Experimental::RPalette");
+      }
+
+      return this.fDfltPalette;
    }
 
    /** Function called when frame is clicked and object selection can be performed
@@ -2454,10 +2504,11 @@
       this.reverse_y = false;
 
       // if (this.options.BarStyle>=20) this.swap_xy = true;
-      this.logx = this.logy = false;
+      this.logx = this.logy = this.logz = false;
 
       this.logx = !!this.v7EvalAttr("x_log");
       this.logy = !!this.v7EvalAttr("y_log");
+      this.logz = !!this.v7EvalAttr("z_log");
 
       var w = this.frame_width(), h = this.frame_height();
 
@@ -4456,14 +4507,336 @@
       this.FinishTextDrawing();
    }
 
+   ////////////////////////////////////////////////////////////////////////////////////////////
+
+   JSROOT.v7.ExtractRColor = function(rcolor) {
+      if (rcolor.fName)
+         return rcolor.fName;
+
+      if (rcolor.fRGBA.length == 3)
+         return "rgb(" + rcolor.fRGBA[0] + "," + rcolor.fRGBA[1] + "," + rcolor.fRGBA[2] + ")";
+
+      if (rcolor.fRGBA.length == 4)
+         return "rgba(" + rcolor.fRGBA[0] + "," + rcolor.fRGBA[1] + "," + rcolor.fRGBA[2] + "," + rcolor.fRGBA[3] + ")";
+
+      return "black";
+   }
+
+   JSROOT.registerMethods("ROOT::Experimental::RPalette", {
+
+      getColor: function(indx) {
+         return this.palette[indx];
+      },
+
+      getContourIndex: function(zc) {
+         var cntr = this.fContour, l = 0, r = cntr.length-1, mid;
+
+         if (zc < cntr[0]) return -1;
+         if (zc >= cntr[r]) return r-1;
+
+         if (this.fCustomContour) {
+            while (l < r-1) {
+               mid = Math.round((l+r)/2);
+               if (cntr[mid] > zc) r = mid; else l = mid;
+            }
+            return l;
+         }
+
+         // last color in pallette starts from level cntr[r-1]
+         return Math.floor((zc-cntr[0]) / (cntr[r-1] - cntr[0]) * (r-1));
+      },
+
+      getContourColor: function(zc) {
+         var zindx = this.getContourIndex(zc);
+         return (zindx < 0) ? "" : this.getColor(zindx);
+      },
+
+      GetContour: function() {
+         return this.fContour && (this.fContour.length > 1) ? this.fContour : null;
+      },
+
+      DeleteContour: function() {
+         delete this.fContour;
+      },
+
+      CreatePaletteColors: function(len) {
+         var arr = [], indx = 0;
+
+         while (arr.length < len) {
+            var value = arr.length / (len-1);
+
+            var entry = this.fColors[indx];
+
+            if ((Math.abs(entry.fOrdinal - value)<0.0001) || (indx == this.fColors.length-1)) {
+               arr.push(JSROOT.v7.ExtractRColor(entry.fColor));
+               continue;
+            }
+
+            var next = this.fColors[indx+1];
+            if (next.fOrdinal <= value) {
+               indx++;
+               continue;
+            }
+
+            var dist = next.fOrdinal - entry.fOrdinal,
+                r1 = (next.fOrdinal - value) / dist,
+                r2 = (value - entry.fOrdinal) / dist;
+
+            // interpolate
+            var col1 = d3.rgb(JSROOT.v7.ExtractRColor(entry.fColor));
+            var col2 = d3.rgb(JSROOT.v7.ExtractRColor(next.fColor));
+
+            var color = d3.rgb(Math.round(col1.r*r1 + col2.r*r2), Math.round(col1.g*r1 + col2.g*r2), Math.round(col1.b*r1 + col2.b*r2));
+
+            arr.push(color.toString());
+         }
+
+         return arr;
+      },
+
+      CreateContour: function(logz, nlevels, zmin, zmax, zminpositive) {
+         this.fContour = [];
+         delete this.fCustomContour;
+         this.colzmin = zmin;
+         this.colzmax = zmax;
+
+         if (logz) {
+            if (this.colzmax <= 0) this.colzmax = 1.;
+            if (this.colzmin <= 0)
+               if ((zminpositive===undefined) || (zminpositive <= 0))
+                  this.colzmin = 0.0001*this.colzmax;
+               else
+                  this.colzmin = ((zminpositive < 3) || (zminpositive>100)) ? 0.3*zminpositive : 1;
+            if (this.colzmin >= this.colzmax) this.colzmin = 0.0001*this.colzmax;
+
+            var logmin = Math.log(this.colzmin)/Math.log(10),
+                logmax = Math.log(this.colzmax)/Math.log(10),
+                dz = (logmax-logmin)/nlevels;
+            this.fContour.push(this.colzmin);
+            for (var level=1; level<nlevels; level++)
+               this.fContour.push(Math.exp((logmin + dz*level)*Math.log(10)));
+            this.fContour.push(this.colzmax);
+            this.fCustomContour = true;
+         } else {
+            if ((this.colzmin === this.colzmax) && (this.colzmin !== 0)) {
+               this.colzmax += 0.01*Math.abs(this.colzmax);
+               this.colzmin -= 0.01*Math.abs(this.colzmin);
+            }
+            var dz = (this.colzmax-this.colzmin)/nlevels;
+            for (var level=0; level<=nlevels; level++)
+               this.fContour.push(this.colzmin + dz*level);
+         }
+
+         if (!this.palette || (this.palette.length != nlevels))
+            this.palette = this.CreatePaletteColors(nlevels);
+      }
+
+   });
+
+
+   function RPalettePainter(palette) {
+      JSROOT.TObjectPainter.call(this, palette);
+      this.csstype = "palette";
+   }
+
+   RPalettePainter.prototype = Object.create(JSROOT.TObjectPainter.prototype);
+
+   RPalettePainter.prototype.GetPalette = function()
+   {
+      var drawable = this.GetObject();
+      var pal = drawable ? drawable.fPalette : null;
+
+      if (pal && !pal.getColor)
+         JSROOT.addMethods(pal, "ROOT::Experimental::RPalette");
+
+      return pal;
+   }
+
+   RPalettePainter.prototype.DrawPalette = function() {
+
+      var pthis = this,
+          palette = this.GetPalette(),
+          contour = palette.GetContour(),
+          can_move = false,
+          nbr1 = 8,
+          framep = this.frame_painter(),
+          zmin = contour[0],
+          zmax = contour[contour.length-1];
+
+      // frame painter must  be there
+      if (!framep)
+         return console.log('no frame painter - no palette');
+
+      // zmin = Math.min(contour[0], framep.zmin);
+      // zmax = Math.max(contour[contour.length-1], framep.zmax);
+
+
+
+      var fx = this.frame_x(),
+          fy = this.frame_y(),
+          fw = this.frame_width(),
+          fh = this.frame_height(),
+          pw = this.pad_width(),
+          obj          = this.GetObject(),
+          pp           = this.pad_painter(),
+          use_frame    = false,
+          visible        = this.v7EvalAttr("visible", true),
+          palette_margin = this.v7EvalLength("margin", pw, 0.02),
+          palette_width = this.v7EvalLength("size", pw, 0.05),
+          palette_height = fh;
+
+      this.draw_g.selectAll("rect").remove();
+
+      if (!visible) return;
+
+      this.draw_g.attr("transform","translate(" + Math.round(fx + fw + palette_margin) +  "," + fy + ")");
+
+
+      var g_btns = this.draw_g.select(".colbtns");
+      if (g_btns.empty())
+         g_btns = this.draw_g.append("svg:g").attr("class", "colbtns");
+      else
+         g_btns.selectAll().remove();
+
+      g_btns.append("svg:rect")
+          .attr("x", 0)
+          .attr("width", palette_width)
+          .attr("y", 0)
+          .attr("height", palette_height)
+          .style("stroke", "black")
+          .attr("fill", "none");
+
+      var z = null, z_kind = "normal";
+
+      if (framep && framep.logz) {
+         z = d3.scaleLog();
+         z_kind = "log";
+      } else {
+         z = d3.scaleLinear();
+      }
+      z.domain([zmin, zmax]).range([palette_height,0]);
+
+      for (var i=0;i<contour.length-1;++i) {
+         var z0 = z(contour[i]),
+             z1 = z(contour[i+1]),
+             col = palette.getContourColor((contour[i]+contour[i+1])/2);
+
+         var r = g_btns.append("svg:rect")
+                     .attr("x", 0)
+                     .attr("y",  Math.round(z1))
+                     .attr("width", palette_width)
+                     .attr("height", Math.round(z0) - Math.round(z1))
+                     .style("fill", col)
+                     .style("stroke", col)
+                     .property("fill0", col)
+                     .property("fill1", d3.rgb(col).darker(0.5).toString())
+
+         if (this.IsTooltipAllowed())
+            r.on('mouseover', function() {
+               d3.select(this).transition().duration(100).style("fill", d3.select(this).property('fill1'));
+            }).on('mouseout', function() {
+               d3.select(this).transition().duration(100).style("fill", d3.select(this).property('fill0'));
+            }).append("svg:title").text(contour[i].toFixed(2) + " - " + contour[i+1].toFixed(2));
+
+         if (JSROOT.gStyle.Zooming)
+            r.on("dblclick", function() { framep.Unzoom("z"); });
+      }
+
+      this.z_handle.SetAxisConfig("zaxis", z_kind, z, zmin, zmax, zmin, zmax);
+
+      this.z_handle.max_tick_size = Math.round(palette_width*0.3);
+
+      this.z_handle.DrawAxis(true, this.draw_g, palette_width, palette_height, "translate(" + palette_width + ", 0)");
+
+      if (!JSROOT.gStyle.Zooming) return;
+
+      var evnt = null, doing_zoom = false, sel1 = 0, sel2 = 0, zoom_rect = null;
+
+      function moveRectSel() {
+
+         if (!doing_zoom) return;
+
+         d3.event.preventDefault();
+         var m = d3.mouse(evnt);
+
+         if (m[1] < sel1) sel1 = m[1]; else sel2 = m[1];
+
+         zoom_rect.attr("y", sel1)
+                 .attr("height", Math.abs(sel2-sel1));
+      }
+
+      function endRectSel() {
+         if (!doing_zoom) return;
+
+         d3.event.preventDefault();
+         d3.select(window).on("mousemove.colzoomRect", null)
+                          .on("mouseup.colzoomRect", null);
+         zoom_rect.remove();
+         zoom_rect = null;
+         doing_zoom = false;
+
+         var zmin = Math.min(z.invert(sel1), z.invert(sel2)),
+             zmax = Math.max(z.invert(sel1), z.invert(sel2));
+
+         framep.Zoom("z", zmin, zmax);
+      }
+
+      function startRectSel() {
+         // ignore when touch selection is activated
+         if (doing_zoom) return;
+         doing_zoom = true;
+
+         d3.event.preventDefault();
+
+         evnt = this;
+         var origin = d3.mouse(evnt);
+
+         sel1 = sel2 = origin[1];
+
+         zoom_rect = g_btns
+              .append("svg:rect")
+              .attr("class", "zoom")
+              .attr("id", "colzoomRect")
+              .attr("x", "0")
+              .attr("width", palette_width)
+              .attr("y", sel1)
+              .attr("height", 5);
+
+         d3.select(window).on("mousemove.colzoomRect", moveRectSel)
+                          .on("mouseup.colzoomRect", endRectSel, true);
+
+         d3.event.stopPropagation();
+      }
+
+      this.draw_g.select(".axis_zoom")
+                 .on("mousedown", startRectSel)
+                 .on("dblclick", function() { framep.Unzoom("z"); });
+   }
+
+   function drawPalette(divid, palette, opt) {
+      var painter = new RPalettePainter(palette, opt);
+
+      painter.SetDivId(divid);
+
+      painter.CreateG(false);
+
+      painter.z_handle = new JSROOT.v7.TAxisPainter(true, "z_");
+      painter.z_handle.SetDivId(divid, -1);
+      painter.z_handle.pad_name = painter.pad_name;
+      painter.z_handle.invert_side = true;
+      painter.z_handle.rstyle = painter.rstyle;
+
+      return painter.DrawingReady();
+   }
 
 
    // JSROOT.addDrawFunc({ name: "ROOT::Experimental::RPadDisplayItem", icon: "img_canvas", func: drawPad, opt: "" });
 
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHistDrawable<1>", icon: "img_histo1d", prereq: "v7hist", func: "JSROOT.v7.drawHist1", opt: "" });
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHistDrawable<2>", icon: "img_histo2d", prereq: "v7hist", func: "JSROOT.v7.drawHist2", opt: "" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHist1Drawable", icon: "img_histo1d", prereq: "v7hist", func: "JSROOT.v7.drawHist1", opt: "" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHist2Drawable", icon: "img_histo2d", prereq: "v7hist", func: "JSROOT.v7.drawHist2", opt: "" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RText", icon: "img_text", prereq: "v7more", func: "JSROOT.v7.drawText", opt: "", direct: true, csstype: "text" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RFrameTitle", icon: "img_text", func: drawFrameTitle, opt: "", direct: true, csstype: "title" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RPaletteDrawable", icon: "img_text", func: drawPalette, opt: "" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RLine", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawLine", opt: "", direct: true, csstype: "line" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RBox", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawBox", opt: "", direct: true, csstype: "box" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RMarker", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawMarker", opt: "", direct: true, csstype: "marker" });
@@ -4472,6 +4845,7 @@
 
    JSROOT.v7.TAxisPainter = TAxisPainter;
    JSROOT.v7.TFramePainter = TFramePainter;
+   JSROOT.v7.RPalettePainter = RPalettePainter;
    JSROOT.v7.TPadPainter = TPadPainter;
    JSROOT.v7.TCanvasPainter = TCanvasPainter;
    JSROOT.v7.drawFrame = drawFrame;

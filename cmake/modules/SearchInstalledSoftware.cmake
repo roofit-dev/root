@@ -1431,13 +1431,20 @@ if(cuda OR tmva-gpu)
 
     enable_language(CUDA)
 
-    ### look for package CuDNN
-    find_package(CuDNN)
+    set(cuda ON CACHE BOOL "Found Cuda for TMVA GPU" FORCE)
 
-    if (CUDNN_FOUND)
-      message(STATUS "CuDNN library found: " ${CUDNN_LIBRARIES})
-    else()
-      message(STATUS "CuDNN library not found")
+
+    ### look for package CuDNN
+    if (cudnn )
+      find_package(CuDNN)
+
+      if (CUDNN_FOUND)
+	message(STATUS "CuDNN library found: " ${CUDNN_LIBRARIES})
+      	set(tmva-cudnn ON)
+      else()
+	message(STATUS "CuDNN library not found")
+        set(cudnn OFF CACHE BOOL "Disabled because cudnn is not found" FORCE)
+      endif()
     endif()
 
 
@@ -1445,6 +1452,8 @@ if(cuda OR tmva-gpu)
     message(FATAL_ERROR "CUDA not found. Ensure that the installation of CUDA is in the CMAKE_PREFIX_PATH")
   endif()
 
+else()
+  set(cudnn OFF)
 endif()
 
 #---TMVA and its dependencies------------------------------------------------------------
@@ -1472,7 +1481,7 @@ if(tmva)
     set(tmva-gpu OFF CACHE BOOL "Disabled because cuda not found" FORCE)
   endif()
 
-  if(python AND tmva-pymva)
+  if(tmva-pymva)
     if(fail-on-missing AND NOT NUMPY_FOUND)
       message(FATAL_ERROR "TMVA: numpy python package not found and tmva-pymva component required"
                           " (python executable: ${PYTHON_EXECUTABLE})")

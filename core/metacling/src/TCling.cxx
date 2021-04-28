@@ -1410,7 +1410,17 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
 
          clingArgsStorage.push_back("-fmodule-map-file=" + ModuleMapLoc);
       }
-      clingArgsStorage.push_back("-fmodules-cache-path=" + std::string(TROOT::GetLibDir()));
+      std::string ModulesCachePath;
+      EnvOpt = llvm::sys::Process::GetEnv("CLING_MODULES_CACHE_PATH");
+      if (EnvOpt.hasValue()){
+         StringRef Env(*EnvOpt);
+         assert(llvm::sys::fs::exists(Env) && "Path does not exist!");
+         ModulesCachePath = Env.str();
+      } else {
+         ModulesCachePath = TROOT::GetLibDir();
+      }
+
+      clingArgsStorage.push_back("-fmodules-cache-path=" + ModulesCachePath);
    }
 
    std::vector<const char*> interpArgs;
@@ -8080,10 +8090,10 @@ int TCling::ClassInfo_GetMethodNArg(ClassInfo_t* cinfo, const char* method, cons
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TCling::ClassInfo_HasDefaultConstructor(ClassInfo_t* cinfo) const
+bool TCling::ClassInfo_HasDefaultConstructor(ClassInfo_t* cinfo, Bool_t testio) const
 {
-   TClingClassInfo* TClinginfo = (TClingClassInfo*) cinfo;
-   return TClinginfo->HasDefaultConstructor();
+   TClingClassInfo *TClinginfo = (TClingClassInfo *) cinfo;
+   return TClinginfo->HasDefaultConstructor(testio) != ROOT::TMetaUtils::EIOCtorCategory::kAbsent;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

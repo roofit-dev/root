@@ -457,17 +457,18 @@ endif()
 if(tmva-gpu)
   target_link_libraries(TMVA PRIVATE ${CUDA_CUBLAS_LIBRARIES})
   	target_include_directories(TMVA PRIVATE ${CUDA_INCLUDE_DIRS})
-  if (CUDNN_FOUND)
-    message(STATUS "using cudnn in tmva")
+  if (tmva-cudnn)
+    message(STATUS "Using cuDNN for TMVA Deep Learning on GPU")
 	 target_sources(TMVA PRIVATE
     src/DNN/Architectures/Cuda.cu
     src/DNN/Architectures/Cuda/CudaBuffers.cxx
     src/DNN/Architectures/Cuda/CudaMatrix.cu
     src/DNN/Architectures/Cuda/CudaTensor.cu
+    src/DNN/Architectures/Cudnn/TensorDataLoader.cxx
 	 src/DNN/Architectures/Cudnn.cu)
     target_link_libraries(TMVA PRIVATE ${CUDA_CUBLAS_LIBRARIES} ${CUDNN_LIBRARIES})
   else()
-   message(STATUS "cudnn not found - use only Cuda+Cublas")
+   message(STATUS "cuDNN not found or disabled - use only Cuda+Cublas for TMVA Deep Learning on GPU")
    target_compile_definitions(TMVA PRIVATE -DDNN_NO_CUDNN)
 	target_link_libraries(TMVA PRIVATE ${CUDA_CUBLAS_LIBRARIES})
 	target_sources(TMVA PRIVATE
