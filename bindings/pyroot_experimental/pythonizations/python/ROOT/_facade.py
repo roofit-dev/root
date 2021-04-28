@@ -1,20 +1,27 @@
 import types
 import sys
+import os
 from functools import partial
 
 import libcppyy as cppyy_backend
 from cppyy import gbl as gbl_namespace
-from libROOTPythonizations import gROOT
+from cppyy import cppdef
+from libROOTPythonizations import gROOT, CreateBufferFromAddress
 
 from ._application import PyROOTApplication
+_numba_pyversion = (2, 7, 5)
+if sys.version_info[:3] > _numba_pyversion:
+    # Python <= 2.7.5 cannot use exec in an inner function
+    from ._numbadeclare import _NumbaDeclareDecorator
 
 
 class PyROOTConfiguration(object):
     """Class for configuring PyROOT"""
 
     def __init__(self):
-        self.IgnoreCommandLineOptions = False
+        self.IgnoreCommandLineOptions = True
         self.ShutDown = True
+        self.DisableRootLogon = False
 
 
 class _gROOTWrapper(object):
@@ -81,13 +88,17 @@ class ROOTFacade(types.ModuleType):
         # Setup import hook
         self._set_import_hook()
 
-    def AddressOf(self, *args):
-        # Return a bytearray that can fit a long long, which is what addressof
-        # returns (wrapped in a Python integer). The bytes of the bytearray
-        # correspond to the address of the object in args
-        import struct
-        ad = self.addressof(*args)
-        return bytearray(struct.pack('q', ad))
+    def AddressOf(self, obj):
+        # Return an indexable buffer of length 1, whose only element
+        # is the address of the object.
+        # The address of the buffer is the same as the address of the
+        # address of the object
+
+        # addr is the address of the address of the object
+        addr = self.addressof(instance = obj, byref = True)
+
+        # Create a buffer (LowLevelView) from address
+        return CreateBufferFromAddress(addr)
 
     def _set_import_hook(self):
         # This hook allows to write e.g:
@@ -168,6 +179,9 @@ class ROOTFacade(types.ModuleType):
         self.__class__.__getattr__ = self._fallback_getattr
         self.__class__.__setattr__ = lambda self, name, val: setattr(gbl_namespace, name, val)
 
+        # Run rootlogon if exists
+        self._run_rootlogon()
+
     def _getattr(self, name):
         # Special case, to allow "from ROOT import gROOT" w/o starting the graphics
         if name == '__path__':
@@ -181,6 +195,40 @@ class ROOTFacade(types.ModuleType):
         self._finalSetup()
 
         return setattr(self, name, val)
+
+    def _run_rootlogon(self):
+        # Run custom logon file (must be after creation of ROOT globals)
+        hasargv = hasattr(sys, 'argv')
+        # -n disables the reading of the logon file, just like with root
+        if hasargv and not '-n' in sys.argv and not self.PyConfig.DisableRootLogon:
+            file_path = os.path.expanduser('~/.rootlogon.py')
+            if os.path.exists(file_path):
+                # Could also have used execfile, but import is likely to give fewer surprises
+                module_name = 'rootlogon'
+                if sys.version_info >= (3,5):
+                    import importlib.util
+                    spec = importlib.util.spec_from_file_location(module_name, file_path)
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[module_name] = module
+                    spec.loader.exec_module(module)
+                else:
+                    import imp
+                    imp.load_module(module_name, open(file_path, 'r'), file_path, ('.py','r',1))
+                    del imp
+            else:
+                # If the .py version of rootlogon exists, the .C is ignored (the user can
+                # load the .C from the .py, if so desired).
+                # System logon, user logon, and local logon (skip Rint.Logon)
+                name = '.rootlogon.C'
+                logons = [
+                    os.path.join(str(self.TROOT.GetEtcDir()), 'system' + name),
+                    os.path.expanduser(os.path.join('~', name))
+                    ]
+                if logons[-1] != os.path.join(os.getcwd(), name):
+                    logons.append(name)
+                for rootlogon in logons:
+                    if os.path.exists(rootlogon):
+                        self.TApplication.ExecuteFile(rootlogon)
 
     # Inject version as __version__ property in ROOT module
     @property
@@ -225,4 +273,15 @@ class ROOTFacade(types.ModuleType):
         except:
             raise Exception('Failed to pythonize the namespace TMVA')
         del type(self).TMVA
+        return ns
+
+    # Create and overload Numba namespace
+    @property
+    def Numba(self):
+        if sys.version_info[:3] <= _numba_pyversion:
+            raise Exception('ROOT.Numba requires Python above version {}.{}.{}'.format(*_numba_pyversion))
+        cppdef('namespace Numba {}')
+        ns = self._fallback_getattr('Numba')
+        ns.Declare = staticmethod(_NumbaDeclareDecorator)
+        del type(self).Numba
         return ns

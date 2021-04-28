@@ -16,22 +16,21 @@
 #ifndef ROO_REAL_VAR
 #define ROO_REAL_VAR
 
-#include <list>
-#include <string>
-#include <cmath>
-#include <float.h>
+#include "RooAbsRealLValue.h"
+
 #include "TString.h"
 
-#include "RooAbsRealLValue.h"
-#include "RooUniformBinning.h"
-#include "RooNumber.h"
-#include "RooSharedPropertiesList.h"
-#include "RooRealVarSharedProperties.h"
+#include <list>
+#include <string>
+#include <map>
+#include <memory>
+
 
 class RooArgSet ;
 class RooErrorVar ;
 class RooVectorDataStore ;
 class RooExpensiveObjectCache ;
+class RooRealVarSharedProperties;
 
 class RooRealVar : public RooAbsRealLValue {
 public:
@@ -84,7 +83,7 @@ public:
   inline void setRange(Double_t min, Double_t max) { setRange(0,min,max) ; }
   inline void setRange(RooAbsReal& min, RooAbsReal& max) { setRange(0,min,max) ; }
 
-  void setBins(Int_t nBins, const char* name=0) { setBinning(RooUniformBinning(getMin(name),getMax(name),nBins),name) ; } 
+  void setBins(Int_t nBins, const char* name=0);
   void setBinning(const RooAbsBinning& binning, const char* name=0) ;
 
   // RooAbsRealLValue implementation
@@ -94,9 +93,12 @@ public:
   std::list<std::string> getBinningNames() const ;
 
   // Set infinite fit range limits
-  inline void removeMin(const char* name=0) { getBinning(name).setMin(-RooNumber::infinity()) ; }
-  inline void removeMax(const char* name=0) { getBinning(name).setMax(RooNumber::infinity()) ; }
-  inline void removeRange(const char* name=0) { getBinning(name).setRange(-RooNumber::infinity(),RooNumber::infinity()) ; }
+  /// Remove lower range limit for binning with given name. Empty name means default range.
+  void removeMin(const char* name=0);
+  /// Remove upper range limit for binning with given name. Empty name means default range.
+  void removeMax(const char* name=0);
+  /// Remove range limits for binning with given name. Empty name means default range.
+  void removeRange(const char* name=0);
  
   // I/O streaming interface (machine readable)
   virtual Bool_t readFromStream(std::istream& is, Bool_t compact, Bool_t verbose=kFALSE) ;
@@ -152,23 +154,19 @@ public:
   Double_t _error;      // Symmetric error associated with current value
   Double_t _asymErrLo ; // Low side of asymmetric error associated with current value
   Double_t _asymErrHi ; // High side of asymmetric error associated with current value
-  RooAbsBinning* _binning ; 
+  std::unique_ptr<RooAbsBinning> _binning;
   RooLinkedList _altNonSharedBinning ; // Non-shareable alternative binnings
 
-  inline RooRealVarSharedProperties* sharedProp() const {
-    if (!_sharedProp) {
-      _sharedProp = (RooRealVarSharedProperties*) _sharedPropList.registerProperties(new RooRealVarSharedProperties()) ;
-    }
-    return _sharedProp ;
-  }
+  std::shared_ptr<RooRealVarSharedProperties> sharedProp() const;
+  void installSharedProp(std::shared_ptr<RooRealVarSharedProperties>&& prop);
 
   virtual void setExpensiveObjectCache(RooExpensiveObjectCache&) { ; } // variables don't need caches 
   
-  static RooSharedPropertiesList _sharedPropList; // List of properties shared among clone sets 
-  static RooRealVarSharedProperties _nullProp ; // Null property
-  mutable RooRealVarSharedProperties* _sharedProp ; //! Shared properties associated with this instance
+  static std::map<std::string,std::weak_ptr<RooRealVarSharedProperties>> _sharedPropList; // List of properties shared among clones of a variable
+  static const std::unique_ptr<RooRealVarSharedProperties> _nullProp ; // Null property
+  std::shared_ptr<RooRealVarSharedProperties> _sharedProp; //! Shared binnings associated with this instance
 
-  ClassDef(RooRealVar,5) // Real-valued variable 
+  ClassDef(RooRealVar,6) // Real-valued variable
 };
 
 
