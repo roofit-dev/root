@@ -514,8 +514,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RIO
     MathCore
     Foam
-        RooFitZMQ
-#        ZeroMQ # as noted above, this doesn't work here, so we instead list it as a library below
+    Smatrix
   LIBRARIES
     ${RT_LIBRARY}
   LINKDEF
