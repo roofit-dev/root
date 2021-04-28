@@ -3231,7 +3231,7 @@ TTree* TTree::CloneTree(Long64_t nentries /* = -1 */, Option_t* option /* = "" *
 
    if (nentries != 0) {
       if (fastClone && (nentries < 0)) {
-         if ( newtree->CopyEntries( this, -1, option ) < 0 ) {
+         if ( newtree->CopyEntries( this, -1, option, kFALSE ) < 0 ) {
             // There was a problem!
             Error("CloneTTree", "TTree has not been cloned\n");
             delete newtree;
@@ -3239,7 +3239,7 @@ TTree* TTree::CloneTree(Long64_t nentries /* = -1 */, Option_t* option /* = "" *
             return 0;
          }
       } else {
-         newtree->CopyEntries( this, nentries, option );
+         newtree->CopyEntries( this, nentries, option, kFALSE );
       }
    }
 
@@ -3479,7 +3479,7 @@ namespace {
 /// - BuildIndexOnError : If any of the underlying TTree objects do not have a TTreeIndex,
 ///                          all TTreeIndex are 'ignored' and the missing piece are rebuilt.
 
-Long64_t TTree::CopyEntries(TTree* tree, Long64_t nentries /* = -1 */, Option_t* option /* = "" */)
+Long64_t TTree::CopyEntries(TTree* tree, Long64_t nentries /* = -1 */, Option_t* option /* = "" */, Bool_t needCopyAddresses /* = false */)
 {
    if (!tree) {
       return 0;
@@ -3559,12 +3559,20 @@ Long64_t TTree::CopyEntries(TTree* tree, Long64_t nentries /* = -1 */, Option_t*
                if (cloner.NeedConversion()) {
                   TTree *localtree = tree->GetTree();
                   Long64_t tentries = localtree->GetEntries();
+                  if (needCopyAddresses) {
+                     // Copy MakeClass status.
+                     tree->SetMakeClass(fMakeClass);
+                     // Copy branch addresses.
+                     CopyAddresses(tree);
+                  }
                   for (Long64_t ii = 0; ii < tentries; ii++) {
                      if (localtree->GetEntry(ii) <= 0) {
                         break;
                      }
                      this->Fill();
                   }
+                  if (needCopyAddresses)
+                     tree->ResetBranchAddresses();
                   if (this->GetTreeIndex()) {
                      this->GetTreeIndex()->Append(tree->GetTree()->GetTreeIndex(), kTRUE);
                   }
@@ -3590,6 +3598,12 @@ Long64_t TTree::CopyEntries(TTree* tree, Long64_t nentries /* = -1 */, Option_t*
       } else if (nentries > treeEntries) {
          nentries = treeEntries;
       }
+      if (needCopyAddresses) {
+         // Copy MakeClass status.
+         tree->SetMakeClass(fMakeClass);
+         // Copy branch addresses.
+         CopyAddresses(tree);
+      }
       Int_t treenumber = -1;
       for (Long64_t i = 0; i < nentries; i++) {
          if (tree->LoadTree(i) < 0) {
@@ -3606,6 +3620,8 @@ Long64_t TTree::CopyEntries(TTree* tree, Long64_t nentries /* = -1 */, Option_t*
          }
          nbytes += this->Fill();
       }
+      if (needCopyAddresses)
+         tree->ResetBranchAddresses();
       if (this->GetTreeIndex()) {
          this->GetTreeIndex()->Append(0,kFALSE); // Force the sorting
       }
@@ -3789,12 +3805,14 @@ Long64_t TTree::Draw(const char* varexp, const TCut& selection, Option_t* option
    return TTree::Draw(varexp, selection.GetTitle(), option, nentries, firstentry);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// Draw expression varexp for specified entries.
+/////////////////////////////////////////////////////////////////////////////////////////
+/// \brief Draw expression varexp for entries and objects that pass a (optional) selection.
 ///
 /// \return -1 in case of error or number of selected events in case of success.
 ///
-/// \param [in] varexp is an expression of the general form
+/// \param [in] varexp
+/// \parblock
+///  A string that takes one of these general forms:
 ///  - "e1"           produces a 1-d histogram (TH1F) of expression "e1"
 ///  - "e1:e2"        produces an unbinned 2-d scatter-plot (TGraph) of "e1"
 ///                   on the y-axis versus "e2" on the x-axis
@@ -3805,55 +3823,50 @@ Long64_t TTree::Draw(const char* varexp, const TCut& selection, Option_t* option
 ///                   (to create histograms in the 2, 3, and 4 dimensional case,
 ///                   see section "Saving the result of Draw to an histogram")
 ///
-///   Example:
-///    -  varexp = x     simplest case: draw a 1-Dim distribution of column named x
-///    -  varexp = sqrt(x)            : draw distribution of sqrt(x)
-///    -  varexp = x*y/z
-///    -  varexp = y:sqrt(x) 2-Dim distribution of y versus sqrt(x)
-///    -  varexp = px:py:pz:2.5*E  produces a 3-d scatter-plot of px vs py ps pz
-///               and the color number of each marker will be 2.5*E.
-///               If the color number is negative it is set to 0.
-///               If the color number is greater than the current number of colors
-///               it is set to the highest color number.The default number of
-///               colors is 50. see TStyle::SetPalette for setting a new color palette.
+///   Examples:
+///    - "x": the simplest case, it draws a 1-Dim histogram of column x
+///    - "sqrt(x)", "x*y/z": draw histogram with the values of the specified numerical expression across TTree events
+///    - "y:sqrt(x)": 2-Dim histogram of y versus sqrt(x)
+///    - "px:py:pz:2.5*E": produces a 3-d scatter-plot of px vs py ps pz
+///                        and the color number of each marker will be 2.5*E.
+///                        If the color number is negative it is set to 0.
+///                        If the color number is greater than the current number of colors
+///                        it is set to the highest color number. The default number of
+///                        colors is 50. See TStyle::SetPalette for setting a new color palette.
 ///
-///   Note that the variables e1, e2 or e3 may contain a selection.
-///   example, if e1= x*(y<0), the value histogrammed will be x if y<0
-///   and will be 0 otherwise.
-///
-///   The expressions can use all the operations and build-in functions
-///   supported by TFormula (See TFormula::Analyze), including free
-///   standing function taking numerical arguments (TMath::Bessel).
+///   The expressions can use all the operations and built-in functions
+///   supported by TFormula (see TFormula::Analyze()), including free
+///   functions taking numerical arguments (e.g. TMath::Bessel()).
 ///   In addition, you can call member functions taking numerical
-///   arguments. For example:
+///   arguments. For example, these are two valid expressions:
 ///   ~~~ {.cpp}
 ///       TMath::BreitWigner(fPx,3,2)
 ///       event.GetHistogram()->GetXaxis()->GetXmax()
 ///   ~~~
-///   Note: You can only pass expression that depend on the TTree's data
-///   to static functions and you can only call non-static member function
-///   with 'fixed' parameters.
-///
-/// \param [in] selection is an expression with a combination of the columns.
-///   In a selection all the C++ operators are authorized.
+///   \endparblock
+/// \param [in] selection
+/// \parblock
+/// A string containing a selection expression.
+///   In a selection all usual C++ mathematical and logical operators are allowed.
 ///   The value corresponding to the selection expression is used as a weight
-///   to fill the histogram.
-///   If the expression includes only boolean operations, the result
-///   is 0 or 1. If the result is 0, the histogram is not filled.
-///   In general, the expression may be of the form:
-///   ~~~ {.cpp}
-///       value*(boolean expression)
-///   ~~~
-///   if boolean expression is true, the histogram is filled with
-///   a `weight = value`.
+///   to fill the histogram (a weight of 0 is equivalent to not filling the histogram).\n
+///   \n
 ///   Examples:
-///    -  selection1 = "x<y && sqrt(z)>3.2"
-///    -  selection2 = "(x+y)*(sqrt(z)>3.2)"
-///    -  selection1 returns a weight = 0 or 1
-///    -  selection2 returns a weight = x+y if sqrt(z)>3.2
-///                  returns a weight = 0 otherwise.
-///
-/// \param [in] option is the drawing option.
+///    - "x<y && sqrt(z)>3.2": returns a weight = 0 or 1
+///    - "(x+y)*(sqrt(z)>3.2)": returns a weight = x+y if sqrt(z)>3.2, 0 otherwise\n
+///   \n
+///   If the selection expression returns an array, it is iterated over in sync with the
+///   array returned by the varexp argument (as described below in "Drawing expressions using arrays and array
+///   elements"). For example, if, for a given event, varexp evaluates to
+///   `{1., 2., 3.}` and selection evaluates to `{0, 1, 0}`, the resulting histogram is filled with the value 2. For example, for each event here we perform a simple object selection:
+///   ~~~{.cpp}
+///   // Muon_pt is an array: fill a histogram with the array elements > 100 in each event
+///   tree->Draw('Muon_pt', 'Muon_pt > 100')
+///   ~~~
+///  \endparblock
+/// \param [in] option
+/// \parblock
+/// The drawing option.
 ///    - When an histogram is produced it can be any histogram drawing option
 ///      listed in THistPainter.
 ///    - when no option is specified:
@@ -3875,10 +3888,9 @@ Long64_t TTree::Draw(const char* varexp, const TCut& selection, Option_t* option
 ///    - if expression has more than four fields the option "PARA"or "CANDLE"
 ///      can be used.
 ///    - If option contains the string "goff", no graphics is generated.
-///
-/// \param [in] nentries is the number of entries to process (default is all)
-///
-/// \param [in] firstentry is the first entry to process (default is 0)
+/// \endparblock
+/// \param [in] nentries The number of entries to process (default is all)
+/// \param [in] firstentry The first entry to process (default is 0)
 ///
 /// ### Drawing expressions using arrays and array elements
 ///
@@ -4148,7 +4160,7 @@ Long64_t TTree::Draw(const char* varexp, const TCut& selection, Option_t* option
 /// -  `Sum$(formula )`  : return the sum of the value of the elements of the
 ///     formula given as a parameter.  For example the mean for all the elements in
 ///     one entry can be calculated with: `Sum$(formula )/Length$(formula )`
-/// -  `Min$(formula )` : return the minimun (within one TTree entry) of the value of the
+/// -  `Min$(formula )` : return the minimum (within one TTree entry) of the value of the
 ///     elements of the formula given as a parameter.
 /// -  `Max$(formula )` : return the maximum (within one TTree entry) of the value of the
 ///     elements of the formula given as a parameter.
@@ -4525,8 +4537,8 @@ void TTree::DropBuffers(Int_t)
 /// Note that the user can decide to call FlushBaskets and AutoSave in her event loop
 /// base on the number of events written instead of the number of bytes written.
 ///
-/// \note Calling `TTree::FlushBaskets` too often increases the IO time. 
-/// 
+/// \note Calling `TTree::FlushBaskets` too often increases the IO time.
+///
 /// \note Calling `TTree::AutoSave` too often increases the IO time and also the
 ///       file size.
 ///
@@ -5229,8 +5241,14 @@ TBranch* TTree::GetBranch(const char* name)
       return 0;
    }
 
+   // Look for an exact match in the list of top level
+   // branches.
+   TBranch *result = (TBranch*)fBranches.FindObject(name);
+   if (result)
+      return result;
+
    // Search using branches, breadth first.
-   TBranch *result = R__GetBranch(fBranches, name);
+   result = R__GetBranch(fBranches, name);
    if (result)
      return result;
 
@@ -6773,7 +6791,7 @@ TTree* TTree::MergeTrees(TList* li, Option_t* options)
       Long64_t nentries = tree->GetEntries();
       if (nentries == 0) continue;
       if (!newtree) {
-         newtree = (TTree*)tree->CloneTree();
+         newtree = (TTree*)tree->CloneTree(-1, options);
          if (!newtree) continue;
 
          // Once the cloning is done, separate the trees,
@@ -6786,11 +6804,7 @@ TTree* TTree::MergeTrees(TList* li, Option_t* options)
          continue;
       }
 
-      newtree->CopyAddresses(tree);
-
-      newtree->CopyEntries(tree,-1,options);
-
-      tree->ResetBranchAddresses(); // Disconnect from new tree.
+      newtree->CopyEntries(tree, -1, options, kTRUE);
    }
    if (newtree && newtree->GetTreeIndex()) {
       newtree->GetTreeIndex()->Append(0,kFALSE); // Force the sorting
@@ -6825,11 +6839,7 @@ Long64_t TTree::Merge(TCollection* li, Option_t *options)
       Long64_t nentries = tree->GetEntries();
       if (nentries == 0) continue;
 
-      CopyAddresses(tree);
-
-      CopyEntries(tree,-1,options);
-
-      tree->ResetBranchAddresses();
+      CopyEntries(tree, -1, options, kTRUE);
    }
    fAutoSave = storeAutoSave;
    return GetEntries();
@@ -6848,20 +6858,29 @@ Long64_t TTree::Merge(TCollection* li, TFileMergeInfo *info)
 {
    const char *options = info ? info->fOptions.Data() : "";
    if (info && info->fIsFirst && info->fOutputDirectory && info->fOutputDirectory->GetFile() != GetCurrentFile()) {
-      TDirectory::TContext ctxt(info->fOutputDirectory);
-      TIOFeatures saved_features = fIOFeatures;
-      if (info->fIOFeatures) {
-         fIOFeatures = *(info->fIOFeatures);
+      if (GetCurrentFile() == nullptr) {
+         // In memory TTree, all we need to do is ... write it.
+         SetDirectory(info->fOutputDirectory);
+         FlushBasketsImpl();
+         fDirectory->WriteTObject(this);
+      } else if (info->fOptions.Contains("fast")) {
+         InPlaceClone(info->fOutputDirectory);
+      } else {
+         TDirectory::TContext ctxt(info->fOutputDirectory);
+         TIOFeatures saved_features = fIOFeatures;
+         TTree *newtree = CloneTree(-1, options);
+         if (info->fIOFeatures)
+            fIOFeatures = *(info->fIOFeatures);
+         else
+            fIOFeatures = saved_features;
+         if (newtree) {
+            newtree->Write();
+            delete newtree;
+         }
+         // Make sure things are really written out to disk before attempting any reading.
+         info->fOutputDirectory->GetFile()->Flush();
+         info->fOutputDirectory->ReadTObject(this,this->GetName());
       }
-      TTree *newtree = CloneTree(-1, options);
-      fIOFeatures = saved_features;
-      if (newtree) {
-         newtree->Write();
-         delete newtree;
-      }
-      // Make sure things are really written out to disk before attempting any reading.
-      info->fOutputDirectory->GetFile()->Flush();
-      info->fOutputDirectory->ReadTObject(this,this->GetName());
    }
    if (!li) return 0;
    Long64_t storeAutoSave = fAutoSave;
@@ -6879,15 +6898,8 @@ Long64_t TTree::Merge(TCollection* li, TFileMergeInfo *info)
          fAutoSave = storeAutoSave;
          return -1;
       }
-      // Copy MakeClass status.
-      tree->SetMakeClass(fMakeClass);
 
-      // Copy branch addresses.
-      CopyAddresses(tree);
-
-      CopyEntries(tree,-1,options);
-
-      tree->ResetBranchAddresses();
+      CopyEntries(tree, -1, options, kTRUE);
    }
    fAutoSave = storeAutoSave;
    return GetEntries();
@@ -6915,6 +6927,34 @@ void TTree::MoveReadCache(TFile *src, TDirectory *dir)
       src->SetCacheRead(0,this);
       delete pf;
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Copy the content to a new new file, update this TTree with the new
+/// location information and attach this TTree to the new directory.
+///
+/// options: Indicates a basket sorting method, see TTreeCloner::TTreeCloner for
+///          details
+///
+/// If new and old directory are in the same file, the data is untouched,
+/// this "just" does a call to SetDirectory.
+/// Equivalent to an "in place" cloning of the TTree.
+Bool_t TTree::InPlaceClone(TDirectory *newdirectory, const char *options)
+{
+   if (!newdirectory) {
+      LoadBaskets(2*fTotBytes);
+      SetDirectory(nullptr);
+      return true;
+   }
+   if (newdirectory->GetFile() == GetCurrentFile()) {
+      SetDirectory(newdirectory);
+      return true;
+   }
+   TTreeCloner cloner(this, newdirectory, options);
+   if (cloner.IsValid())
+      return cloner.Exec();
+   else
+      return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -9320,13 +9360,11 @@ static void TBranch__SetTree(TTree *tree, TObjArray &branches)
       TBranch* br = (TBranch*) branches.UncheckedAt(i);
       br->SetTree(tree);
 
-      Int_t nBaskets = br->GetListOfBaskets()->GetEntries();
       Int_t writeBasket = br->GetWriteBasket();
-      for (Int_t j=writeBasket,n=0;j>=0 && n<nBaskets;--j) {
+      for (Int_t j = writeBasket; j >= 0; --j) {
          TBasket *bk = (TBasket*)br->GetListOfBaskets()->UncheckedAt(j);
          if (bk) {
             tree->IncrementTotalBuffers(bk->GetBufferSize());
-            ++n;
          }
       }
 
@@ -9572,6 +9610,8 @@ void TTree::UseCurrentStyle()
 Int_t TTree::Write(const char *name, Int_t option, Int_t bufsize) const
 {
    FlushBasketsImpl();
+   if (R__unlikely(option & kOnlyPrepStep))
+      return 0;
    return TObject::Write(name, option, bufsize);
 }
 
