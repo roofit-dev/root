@@ -1832,9 +1832,7 @@ void TCling::LoadPCM(std::string pcmFileNameFullPath)
       TMemFile pcmMemFile(RDictFileOpts.c_str(), range);
 
       LoadPCMImpl(pcmMemFile);
-      // FIXME: Uncomment this when we implement UnLoadPCM as per
-      // root-project/root#5420
-      //fPendingRdicts.erase(pendingRdict);
+      fPendingRdicts.erase(pendingRdict);
 
       return;
    }
@@ -3874,7 +3872,12 @@ void TCling::SetClassInfo(TClass* cl, Bool_t reload)
 
    }
 
-   TClingClassInfo* info = new TClingClassInfo(GetInterpreterImpl(), name.c_str());
+   bool instantiateTemplate = !cl->TestBit(TClass::kUnloading);
+   // FIXME: Rather than adding an option to the TClingClassInfo, we should consider combining code 
+   // that is currently in the caller (like SetUnloaded) that disable AutoLoading and AutoParsing and
+   // code is in the callee (disabling template instantiation) and end up with a more explicit class:
+   //      TClingClassInfoReadOnly.
+   TClingClassInfo* info = new TClingClassInfo(GetInterpreterImpl(), name.c_str(), instantiateTemplate);
    if (!info->IsValid()) {
       if (cl->fState != TClass::kHasTClassInit) {
          if (cl->fStreamerInfo->GetEntries() != 0) {

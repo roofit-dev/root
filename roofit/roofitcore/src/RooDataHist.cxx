@@ -47,10 +47,12 @@ or RooStringVar objects, thus data can be binned in real and/or discrete dimensi
 #include "RooHelpers.h"
 #include "RooFormulaVar.h"
 #include "RooFormula.h"
+#include "RooUniformBinning.h"
 
 #include "TH1.h"
 #include "TTree.h"
 #include "TDirectory.h"
+#include "TBuffer.h"
 #include "TMath.h"
 #include "Math/Util.h"
 
@@ -501,7 +503,7 @@ void RooDataHist::importTH1Set(const RooArgList& vars, RooCategory& indexCat, ma
   Int_t ic(0),ix(0),iy(0),iz(0) ;
   for (ic=0 ; ic < icat->numBins(0) ; ic++) {
     icat->setBin(ic) ;
-    histo = hmap[icat->getLabel()] ;
+    histo = hmap[icat->getCurrentLabel()] ;
     for (ix=0 ; ix < xvar->getBins() ; ix++) {
       xvar->setBin(ix) ;
       if (yvar) {

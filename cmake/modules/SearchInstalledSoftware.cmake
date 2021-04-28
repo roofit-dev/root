@@ -514,20 +514,26 @@ endif()
 if(opengl AND NOT builtin_glew)
   message(STATUS "Looking for GLEW")
   if(fail-on-missing)
-    find_Package(GLEW REQUIRED)
+    find_package(GLEW REQUIRED)
   else()
-    find_Package(GLEW)
+    find_package(GLEW)
+    # Bug was reported on newer version of CMake on Mac OS X:
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/19662
+    # https://github.com/microsoft/vcpkg/pull/7967
+    if(GLEW_FOUND AND APPLE AND CMAKE_VERSION VERSION_GREATER 3.15)
+      message(FATAL_ERROR "Please enable builtin Glew due bug in latest CMake (use cmake option -Dbuiltin_glew=ON).")
+      unset(GLEW_FOUND)
+    endif()
     if(NOT GLEW_FOUND)
-      # set variables to emulate find_package(GLEW)
-      set(GLEW_FOUND TRUE CACHE INTERNAL "" FORCE)
-      set(GLEW_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/graf3d/glew/inc CACHE INTERNAL "" FORCE)
-      set(GLEW_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/graf3d/glew/inc CACHE INTERNAL "" FORCE)
-      set(GLEW_LIBRARY GLEW CACHE INTERNAL "" FORCE)
-      set(GLEW_LIBRARIES GLEW CACHE INTERNAL "" FORCE)
       message(STATUS "GLEW not found. Switching on builtin_glew option")
       set(builtin_glew ON CACHE BOOL "Enabled because opengl requested and GLEW not found (${builtin_glew_description})" FORCE)
     endif()
   endif()
+endif()
+
+if(builtin_glew)
+  list(APPEND ROOT_BUILTINS GLEW)
+  add_subdirectory(builtins/glew)
 endif()
 
 #---Check for gl2ps ------------------------------------------------------------------
@@ -1179,7 +1185,12 @@ if(builtin_tbb)
     )
     install(DIRECTORY ${CMAKE_BINARY_DIR}/lib/ DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries FILES_MATCHING PATTERN "libtbb*")
   endif()
-  set(TBB_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/include)
+  ExternalProject_Add_Step(
+     TBB tbb2externals
+     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/include/tbb ${CMAKE_BINARY_DIR}/ginclude/tbb
+     DEPENDEES install
+  )
+  set(TBB_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/ginclude)
   set(TBB_CXXFLAGS "-DTBB_SUPPRESS_DEPRECATED_MESSAGES=1")
   set(TBB_TARGET TBB)
 endif()
@@ -1394,8 +1405,13 @@ if(vdt OR builtin_vdt)
       LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1
       BUILD_BYPRODUCTS ${VDT_LIBRARIES}
     )
-    set(VDT_INCLUDE_DIR ${CMAKE_BINARY_DIR}/include)
-    set(VDT_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/include)
+    ExternalProject_Add_Step(
+       VDT copy2externals
+       COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/include/vdt ${CMAKE_BINARY_DIR}/ginclude/vdt
+       DEPENDEES install
+    )
+    set(VDT_INCLUDE_DIR ${CMAKE_BINARY_DIR}/ginclude)
+    set(VDT_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/ginclude)
     install(FILES ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vdt${CMAKE_SHARED_LIBRARY_SUFFIX}
             DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries)
     install(DIRECTORY ${CMAKE_BINARY_DIR}/include/vdt
@@ -1409,12 +1425,18 @@ endif()
 if (vecgeom)
   message(STATUS "Looking for VecGeom")
   find_package(VecGeom ${VecGeom_FIND_VERSION} CONFIG QUIET)
+  if(builtin_veccore)
+    message(WARNING "ROOT must be built against the VecCore installation that was used to build VecGeom; builtin_veccore cannot be used. Option VecGeom will be disabled.")
+    set(vecgeom OFF CACHE BOOL "Disabled because non-builtin VecGeom specified but its VecCore cannot be found" FORCE)
+  elseif(builtin_veccore AND fail-on-missing)
+    message(FATAL_ERROR "ROOT must be built against the VecCore installation that was used to build VecGeom; builtin_veccore cannot be used. Ensure that builtin_veccore option is OFF.")
+  endif()
   if(NOT VecGeom_FOUND )
     if(fail-on-missing)
       message(FATAL_ERROR "VecGeom not found. Ensure that the installation of VecGeom is in the CMAKE_PREFIX_PATH")
     else()
       message(STATUS "VecGeom not found. Ensure that the installation of VecGeom is in the CMAKE_PREFIX_PATH")
-      message(STATUS "              example: CMAKE_PREFIX_PATH=<VecGeom_install_path>/lib/CMake/VecGeom")
+      message(STATUS "              example: CMAKE_PREFIX_PATH=<VecGeom_install_path>/lib/cmake/VecGeom")
       message(STATUS "              For the time being switching OFF 'vecgeom' option")
       set(vecgeom OFF CACHE BOOL "Disabled because VecGeom not found (${vecgeom_description})" FORCE)
     endif()
@@ -1484,10 +1506,10 @@ if(tmva)
     set(tmva-gpu OFF CACHE BOOL "Disabled because cuda not found" FORCE)
   endif()
   if(tmva-pymva)
-    if(fail-on-missing AND (NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND)))
+    if(fail-on-missing AND (NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND AND NOT Python_Development_FOUND)))
       message(FATAL_ERROR "TMVA: numpy python package or Python development package not found and tmva-pymva component required"
                           " (python executable: ${PYTHON_EXECUTABLE})")
-    elseif(NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND))
+    elseif(NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND AND NOT Python_Development_FOUND))
       message(STATUS "TMVA: Numpy or Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off tmva-pymva option")
       set(tmva-pymva OFF CACHE BOOL "Disabled because Numpy or Python development package were not found (${tmva-pymva_description})" FORCE)
     endif()
@@ -1504,21 +1526,30 @@ endif()
 
 #---Check for Pyroot---------------------------------------------------------------------
 if(pyroot)
-  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND))
+  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND AND NOT Python_Development_FOUND))
     message(FATAL_ERROR "PyROOT: Python development package not found and pyroot component required"
                         " (python executable: ${PYTHON_EXECUTABLE})")
-  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND)
+  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND AND NOT Python_Development_FOUND)
     message(STATUS "PyROOT: Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off pyroot option")
     set(pyroot OFF CACHE BOOL "Disabled because Python development package was not found" FORCE)
+  endif()
+  mark_as_advanced(FORCE pyroot2 pyroot3)
+  if(fail-on-missing AND pyroot2 AND NOT Python2_Development_FOUND)
+    message(FATAL_ERROR "PyROOT2: Python2 development package not found and pyroot2 component required"
+                        " (python2 executable: ${Python2_EXECUTABLE})")
+  endif()
+  if(fail-on-missing AND pyroot3 AND NOT Python3_Development_FOUND)
+    message(FATAL_ERROR "PyROOT3: Python3 development package not found and pyroot3 component required"
+                        " (python3 executable: ${Python3_EXECUTABLE})")
   endif()
 endif()
 
 #---Check for Pyroot Exp---------------------------------------------------------------------
 if(pyroot_experimental)
-  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND))
+  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND AND NOT Python_Development_FOUND))
     message(FATAL_ERROR "PyROOT: Python development package not found and pyroot component required"
                         " (python executable: ${PYTHON_EXECUTABLE})")
-  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND)
+  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND AND NOT Python_Development_FOUND)
     message(STATUS "PyROOT: Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off pyroot_experimental option")
     set(pyroot_experimental OFF CACHE BOOL "Disabled because Python development package was not found" FORCE)
   endif()
@@ -1548,20 +1579,22 @@ if (testing)
   # http://stackoverflow.com/questions/9689183/cmake-googletest
 
   set(_gtest_byproduct_binary_dir
-    ${CMAKE_CURRENT_BINARY_DIR}/googletest-prefix/src/googletest-build/googlemock/)
+    ${CMAKE_CURRENT_BINARY_DIR}/googletest-prefix/src/googletest-build)
   set(_gtest_byproducts
-    ${_gtest_byproduct_binary_dir}/gtest/libgtest.a
-    ${_gtest_byproduct_binary_dir}/gtest/libgtest_main.a
-    ${_gtest_byproduct_binary_dir}/libgmock.a
-    ${_gtest_byproduct_binary_dir}/libgmock_main.a
+    ${_gtest_byproduct_binary_dir}/lib/libgtest.a
+    ${_gtest_byproduct_binary_dir}/lib/libgtest_main.a
+    ${_gtest_byproduct_binary_dir}/lib/libgmock.a
+    ${_gtest_byproduct_binary_dir}/lib/libgmock_main.a
     )
 
   if(MSVC)
     set(EXTRA_GTEST_OPTS
-      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG:PATH=\\\"\\\"
-      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL:PATH=\\\"\\\"
-      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE:PATH=\\\"\\\"
-      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO:PATH=\\\"\\\")
+      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG:PATH=${_gtest_byproduct_binary_dir}/lib/
+      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL:PATH=${_gtest_byproduct_binary_dir}/lib/
+      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE:PATH=${_gtest_byproduct_binary_dir}/lib/
+      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO:PATH=${_gtest_byproduct_binary_dir}/lib/
+      -Dgtest_force_shared_crt=ON
+      BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config Release)
   endif()
   if(APPLE)
     set(EXTRA_GTEST_OPTS
@@ -1572,7 +1605,7 @@ if (testing)
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_SHALLOW 1
-    GIT_TAG release-1.8.0
+    GIT_TAG release-1.10.0
     UPDATE_COMMAND ""
     # TIMEOUT 10
     # # Force separate output paths for debug and release builds to allow easy
@@ -1581,7 +1614,7 @@ if (testing)
     #            -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE:PATH=ReleaseLibs
     #            -Dgtest_force_shared_crt=ON
     CMAKE_ARGS -G ${CMAKE_GENERATOR}
-                  -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                  -DCMAKE_BUILD_TYPE=Release
                   -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
                   -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
                   -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
@@ -1606,11 +1639,16 @@ if (testing)
 
   # Libraries
   ExternalProject_Get_Property(googletest binary_dir)
-  set(_G_LIBRARY_PATH ${binary_dir}/googlemock/)
+  set(_G_LIBRARY_PATH ${binary_dir}/lib/)
 
-  # Register gtest, gtest_main, gmock, gmock_main
-  foreach (lib gtest gtest_main gmock gmock_main)
+  # Use gmock_main instead of gtest_main because it initializes gtest as well.
+  # Note: The libraries are listed in reverse order of their dependancies.
+  foreach(lib gtest gtest_main gmock gmock_main)
     add_library(${lib} IMPORTED STATIC GLOBAL)
+    set_target_properties(${lib} PROPERTIES
+      IMPORTED_LOCATION "${_G_LIBRARY_PATH}${CMAKE_STATIC_LIBRARY_PREFIX}${lib}${CMAKE_STATIC_LIBRARY_SUFFIX}"
+      INTERFACE_INCLUDE_DIRECTORIES "${GTEST_INCLUDE_DIRS}"
+    )
     add_dependencies(${lib} googletest)
     if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND
         ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 9)
@@ -1625,8 +1663,8 @@ if (testing)
   #target_include_directories(gtest INTERFACE ${GTEST_INCLUDE_DIR})
   #target_include_directories(gmock INTERFACE ${GMOCK_INCLUDE_DIR})
 
-  set_property(TARGET gtest PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/gtest/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX})
-  set_property(TARGET gtest_main PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/gtest/${CMAKE_STATIC_LIBRARY_PREFIX}gtest_main${CMAKE_STATIC_LIBRARY_SUFFIX})
+  set_property(TARGET gtest PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX})
+  set_property(TARGET gtest_main PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/${CMAKE_STATIC_LIBRARY_PREFIX}gtest_main${CMAKE_STATIC_LIBRARY_SUFFIX})
   set_property(TARGET gmock PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/${CMAKE_STATIC_LIBRARY_PREFIX}gmock${CMAKE_STATIC_LIBRARY_SUFFIX})
   set_property(TARGET gmock_main PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/${CMAKE_STATIC_LIBRARY_PREFIX}gmock_main${CMAKE_STATIC_LIBRARY_SUFFIX})
 
