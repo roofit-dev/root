@@ -9,14 +9,15 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-//////////////////////////////////////////////////////////////////////////
-//                                                                      //
-// TRootCanvas                                                          //
-//                                                                      //
-// This class creates a main window with menubar, scrollbars and a      //
-// drawing area. The widgets used are the new native ROOT GUI widgets.  //
-//                                                                      //
-//////////////////////////////////////////////////////////////////////////
+
+/** \class TRootCanvas
+    \ingroup guiwidgets
+
+This class creates a main window with menubar, scrollbars and a
+drawing area. The widgets used are the new native ROOT GUI widgets.
+
+*/
+
 
 #include "RConfigure.h"
 
@@ -45,7 +46,7 @@
 #include "TInterpreter.h"
 #include "TEnv.h"
 #include "TMath.h"
-#include "Riostream.h"
+#include <iostream>
 #include "TGDockableFrame.h"
 
 #include "TG3DLine.h"
@@ -53,7 +54,6 @@
 #include "TGToolTip.h"
 #include "TVirtualPadEditor.h"
 #include "TRootControlBar.h"
-#include "TGLabel.h"
 #include "TGuiBuilder.h"
 #include "TImage.h"
 #include "TError.h"

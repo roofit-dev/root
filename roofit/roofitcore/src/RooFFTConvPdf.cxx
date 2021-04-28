@@ -108,33 +108,32 @@
 ///      Look up and set the proper paths for ROOT to discover FFTW. See https://root.cern.ch/building-root
 ///
 
+#include "RooFFTConvPdf.h"
 
-#include "Riostream.h" 
-
-#include "RooFit.h"
-#include "RooFFTConvPdf.h" 
-#include "RooAbsReal.h" 
+#include "RooAbsReal.h"
 #include "RooMsgService.h"
 #include "RooDataHist.h"
 #include "RooHistPdf.h"
 #include "RooRealVar.h"
-#include "TComplex.h"
-#include "TVirtualFFT.h"
 #include "RooGenContext.h"
 #include "RooConvGenContext.h"
 #include "RooBinning.h"
 #include "RooLinearVar.h"
 #include "RooCustomizer.h"
 #include "RooGlobalFunc.h"
-#include "RooLinearVar.h"
 #include "RooConstVar.h"
+#include "RooUniformBinning.h"
+
 #include "TClass.h"
-#include "TSystem.h"
+#include "TComplex.h"
+#include "TVirtualFFT.h"
 
-using namespace std ;
+#include <iostream>
+#include <stdexcept>
 
-ClassImp(RooFFTConvPdf); 
+using namespace std;
 
+ClassImp(RooFFTConvPdf);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -439,7 +438,6 @@ void RooFFTConvPdf::fillCacheObject(RooAbsCachedPdf::PdfCacheElem& cache) const
   RooAbsArg* histArg = otherObs.find(_x.arg().GetName()) ;
   if (histArg) {
     otherObs.remove(*histArg,kTRUE,kTRUE) ;
-    delete histArg ;
   } 
 
   //cout << "RooFFTConvPdf::fillCacheObject() otherObs = " << otherObs << endl ;
@@ -545,6 +543,11 @@ void RooFFTConvPdf::fillCacheSlice(FFTCacheElem& aux, const RooArgSet& slicePos)
     aux.fftr2c1 = TVirtualFFT::FFT(1, &N2, "R2CK");
     aux.fftr2c2 = TVirtualFFT::FFT(1, &N2, "R2CK");
     aux.fftc2r  = TVirtualFFT::FFT(1, &N2, "C2RK");
+
+    if (aux.fftr2c1 == nullptr || aux.fftr2c2 == nullptr || aux.fftc2r == nullptr) {
+      coutF(Eval) << "RooFFTConvPdf::fillCacheSlice(" << GetName() << "Cannot get a handle to fftw. Maybe ROOT was built without it?" << std::endl;
+      throw std::runtime_error("Cannot get a handle to fftw.");
+    }
   }
   
   // Real->Complex FFT Transform on p.d.f. 1 sampling
