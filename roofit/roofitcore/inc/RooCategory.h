@@ -37,7 +37,9 @@ public:
   }
 
   virtual Bool_t setIndex(Int_t index, bool printError = true) override;
+  using RooAbsCategoryLValue::setIndex;
   virtual Bool_t setLabel(const char* label, bool printError = true) override;
+  using RooAbsCategoryLValue::setLabel;
   
   // I/O streaming interface (machine readable)
   virtual Bool_t readFromStream(std::istream& is, Bool_t compact, Bool_t verbose=kFALSE) override;
@@ -53,10 +55,10 @@ public:
   bool defineType(const char* label) {
     return defineType(std::string(label));
   }
-  /// \cond LEGACY
   bool defineType(const char* label, Int_t index) {
     return defineType(std::string(label), index);
   }
+  /// \endcond
 
   /// Clear all defined category states.
   void clear() {
@@ -69,7 +71,7 @@ public:
   void addToRange(const char* rangeName, const char* stateNameList) ;
 
 
-  /// \group RooFit interface
+  /// \name RooFit interface
   /// @{
 
   /// Tell whether we can be stored in a dataset. Always true for RooCategory.
