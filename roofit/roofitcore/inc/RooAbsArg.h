@@ -17,13 +17,13 @@
 #define ROO_ABS_ARG
 
 #include "TNamed.h"
-#include "THashList.h"
+#include "TObjArray.h"
 #include "TRefArray.h"
 #include "RooPrintable.h"
 #include "RooSTLRefCountList.h"
 #include "RooAbsCache.h"
-#include "RooLinkedListIter.h"
 #include "RooNameReg.h"
+#include "RooLinkedListIter.h"
 #include <map>
 #include <set>
 #include <deque>
@@ -31,8 +31,11 @@
 
 #include <iostream>
 
-
+#ifndef R__LESS_INCLUDES
 #include "TClass.h"
+#include "THashList.h"
+#endif
+
 
 class TTree ;
 class RooArgSet ;
@@ -89,16 +92,23 @@ public:
   /// Does value or shape of this arg depend on any other arg?
   virtual Bool_t isDerived() const {
     return kTRUE ;
-    //std::cout << IsA()->GetName() << "::isDerived(" << GetName() << ") = " << (_serverList.GetSize()>0 || _proxyList.GetSize()>0) << std::endl ;
-    //return (_serverList.GetSize()>0 || _proxyList.GetSize()>0)?kTRUE:kFALSE;
   }
   Bool_t isCloneOf(const RooAbsArg& other) const ;
+
+  /// Check whether this object depends on values from an element in the `serverList`.
+  ///
+  /// @param serverList Test if one of the elements in this list serves values to `this`.
+  /// @param ignoreArg Ignore values served by this object.
+  /// @return True if values are served.
   Bool_t dependsOnValue(const RooAbsCollection& serverList, const RooAbsArg* ignoreArg=0) const {
-    // Does this arg depend on the value of any of of the values in serverList?
     return dependsOn(serverList,ignoreArg,kTRUE) ;
   }
+  /// Check whether this object depends on values served from the object passed as `server`.
+  ///
+  /// @param server Test if `server` serves values to `this`.
+  /// @param ignoreArg Ignore values served by this object.
+  /// @return True if values are served.
   Bool_t dependsOnValue(const RooAbsArg& server, const RooAbsArg* ignoreArg=0) const {
-    // Does this arg depend on the value of server?
     return dependsOn(server,ignoreArg,kTRUE) ;
   }
   Bool_t dependsOn(const RooAbsCollection& serverList, const RooAbsArg* ignoreArg=0, Bool_t valueOnly=kFALSE) const ;
@@ -107,7 +117,12 @@ public:
   Bool_t hasClients() const { return !_clientList.empty(); }
 
   ////////////////////////////////////////////////////////////////////////////
-  // Legacy iterators
+  /// \name Legacy RooFit interface.
+  /// This is a collection of functions that remain supported, but more elegant
+  /// interfaces are usually available.
+  /// @{
+
+  /// Retrieve a client iterator.
   inline TIterator* clientIterator() const
   R__SUGGEST_ALTERNATIVE("Use clients() and begin(), end() or range-based loops.") {
     // Return iterator over all client RooAbsArgs
@@ -138,11 +153,33 @@ public:
     return RooFIter(std::unique_ptr<RefCountListLegacyIterator_t>(makeLegacyIterator(_clientListShape)));
   }
   inline RooFIter serverMIterator() const
-  R__SUGGEST_ALTERNATIVE("Use shapeClients() and begin(), end() or range-based loops.") {
+  R__SUGGEST_ALTERNATIVE("Use servers() and begin(), end() or range-based loops.") {
     return RooFIter(std::unique_ptr<RefCountListLegacyIterator_t>(makeLegacyIterator(_serverList)));
   }
 
+  // --- Obsolete functions for backward compatibility
+  /// \deprecated Use getObservables()
+  inline RooArgSet* getDependents(const RooArgSet& set) const { return getObservables(set) ; }
+  /// \deprecated Use getObservables()
+  inline RooArgSet* getDependents(const RooAbsData* set) const { return getObservables(set) ; }
+  /// \deprecated Use getObservables()
+  inline RooArgSet* getDependents(const RooArgSet* depList) const { return getObservables(depList) ; }
+  /// \deprecated Use observableOverlaps()
+  inline Bool_t dependentOverlaps(const RooAbsData* dset, const RooAbsArg& testArg) const { return observableOverlaps(dset,testArg) ; }
+  /// \deprecated Use observableOverlaps()
+  inline Bool_t dependentOverlaps(const RooArgSet* depList, const RooAbsArg& testArg) const { return observableOverlaps(depList, testArg) ; }
+  /// \deprecated Use checkObservables()
+  inline Bool_t checkDependents(const RooArgSet* nset) const { return checkObservables(nset) ; }
+  /// \deprecated Use recursiveCheckObservables()
+  inline Bool_t recursiveCheckDependents(const RooArgSet* nset) const { return recursiveCheckObservables(nset) ; }
+  // --- End obsolete functions for backward compatibility
+  /// @}
   ////////////////////////////////////////////////////////////////////////////
+
+  ////////////////////////////////////////////////////////////////////////////
+  /// \name Client-Server Interface.
+  /// These functions allow RooFit to figure out who is serving values to whom.
+  /// @{
 
   /// List of all clients of this object.
   const RefCountList_t& clients() const {
@@ -251,22 +288,7 @@ public:
   Bool_t recursiveCheckObservables(const RooArgSet* nset) const ;
   RooArgSet* getComponents() const ;
 
-  // --- Obsolete functions for backward compatibility
-  /// \deprecated Use getObservables()
-  inline RooArgSet* getDependents(const RooArgSet& set) const { return getObservables(set) ; }
-  /// \deprecated Use getObservables()
-  inline RooArgSet* getDependents(const RooAbsData* set) const { return getObservables(set) ; }
-  /// \deprecated Use getObservables()
-  inline RooArgSet* getDependents(const RooArgSet* depList) const { return getObservables(depList) ; }
-  /// \deprecated Use observableOverlaps()
-  inline Bool_t dependentOverlaps(const RooAbsData* dset, const RooAbsArg& testArg) const { return observableOverlaps(dset,testArg) ; }
-  /// \deprecated Use observableOverlaps()
-  inline Bool_t dependentOverlaps(const RooArgSet* depList, const RooAbsArg& testArg) const { return observableOverlaps(depList, testArg) ; }
-  /// \deprecated Use checkObservables()
-  inline Bool_t checkDependents(const RooArgSet* nset) const { return checkObservables(nset) ; }
-  /// \deprecated Use recursiveCheckObservables()
-  inline Bool_t recursiveCheckDependents(const RooArgSet* nset) const { return recursiveCheckObservables(nset) ; }
-  // --- End obsolete functions for backward compatibility
+
 
   void attachDataSet(const RooAbsData &set);
   void attachDataStore(const RooAbsDataStore &set);
@@ -316,8 +338,8 @@ public:
     return _boolAttribTransient ;
   }
 
+  /// Check if the "Constant" attribute is set.
   inline Bool_t isConstant() const {
-    // Returns true if 'Constant' attribute is set
     return _isConstant ; //getAttribute("Constant") ;
   }
   RooLinkedList getCloningAncestors() const ;

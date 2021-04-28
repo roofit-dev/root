@@ -33,18 +33,28 @@ if(APPLE)
   endif()
 endif()
 
-add_library(GLEW STATIC ${GLEW_HEADERS} ${GLEW_SOURCES})
+if(NOT MSVC)
+  add_library(GLEW SHARED ${GLEW_HEADERS} ${GLEW_SOURCES})
+  target_compile_options(GLEW PRIVATE -fPIC)
+else()
+  add_library(GLEW STATIC ${GLEW_HEADERS} ${GLEW_SOURCES})
+  set_target_properties(GLEW PROPERTIES COMPILE_DEFINITIONS "GLEW_STATIC" PREFIX "lib")
+  target_compile_definitions (GLEW PRIVATE "GLEW_STATIC")
+endif()
 target_compile_options(GLEW PRIVATE ${GLEW_DEFINITIONS})
 target_include_directories(GLEW INTERFACE $<BUILD_INTERFACE:${GLEW_INCLUDE_DIR}>)
 target_link_libraries(GLEW PRIVATE OpenGL::GL OpenGL::GLU)
-set_target_properties(GLEW PROPERTIES COMPILE_DEFINITIONS "GLEW_STATIC")
-if(NOT MSVC)
-  target_compile_options(GLEW PRIVATE -fPIC)
-else()
-  target_compile_definitions (GLEW PRIVATE "GLEW_STATIC")
-endif()
 
-set(GLEW_LIBRARY GLEW CACHE INTERNAL "")
-set(GLEW_LIBRARIES GLEW CACHE INTERNAL "")
+add_library(GLEW::GLEW ALIAS GLEW)
 
-set_property(GLOBAL APPEND PROPERTY ROOT_BUILTIN_TARGETS GLEW)
+set(GLEW_LIBRARY $<TARGET_FILE:GLEW> CACHE INTERNAL "")
+set(GLEW_LIBRARIES GLEW::GLEW CACHE INTERNAL "")
+
+set_property(GLOBAL APPEND PROPERTY ROOT_BUILTIN_TARGETS GLEW::GLEW)
+
+install(TARGETS GLEW
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+        )
+
+ROOT_INSTALL_HEADERS()
