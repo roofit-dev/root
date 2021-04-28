@@ -517,9 +517,9 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         RooFitZMQ
 #        ZeroMQ # as noted above, this doesn't work here, so we instead list it as a library below
   LIBRARIES
-        ${RT_LIBRARY}
-        ${ZeroMQ_LIBRARY}
-  LINKDEF inc/LinkDef.h
+    ${RT_LIBRARY}
+  LINKDEF
+    inc/LinkDef.h
 )
 
 #target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
