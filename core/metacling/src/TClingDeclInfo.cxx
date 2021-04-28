@@ -26,7 +26,7 @@ using namespace clang;
 // pin the vtable here.
 TClingDeclInfo::~TClingDeclInfo() {}
 
-const char* TClingDeclInfo::Name()
+const char* TClingDeclInfo::Name() const
 {
    if (!IsValid())
       return 0;
@@ -46,7 +46,7 @@ const char* TClingDeclInfo::Name()
    return fNameCache.c_str();
 }
 
-long TClingDeclInfo::Property(long property, clang::QualType qt) const
+long TClingDeclInfo::Property(long property, clang::QualType &qt) const
 {
    if (!IsValid()) {
       return 0L;
@@ -56,6 +56,7 @@ long TClingDeclInfo::Property(long property, clang::QualType qt) const
    }
    while (1) {
       if (qt->isArrayType()) {
+         property |= kIsArray;
          qt = llvm::cast<clang::ArrayType>(qt)->getElementType();
          continue;
       }

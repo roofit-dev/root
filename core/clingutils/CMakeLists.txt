@@ -23,8 +23,15 @@ ROOT_OBJECT_LIBRARY(ClingUtils
 
 add_dependencies(ClingUtils CLING)
 
-target_include_directories(ClingUtils PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/res ${CMAKE_CURRENT_SOURCE_DIR}/../foundation/res)
-target_include_directories(ClingUtils PRIVATE ${CLING_INCLUDE_DIRS})
+target_include_directories(ClingUtils PRIVATE 
+   ${CLING_INCLUDE_DIRS}
+   ${CMAKE_SOURCE_DIR}/core/foundation/res
+   ${CMAKE_SOURCE_DIR}/core/foundation/inc
+   ${CMAKE_SOURCE_DIR}/core/base/inc
+   ${CMAKE_SOURCE_DIR}/core/clib/inc
+   ${CMAKE_SOURCE_DIR}/core/meta/inc
+   ${CMAKE_BINARY_DIR}/ginclude)
+
 # Register the llvm include directories after clangs. This instructs the compiler to resolve
 # headers from our builtin clang. That's an issue when we are building with bultin_llvm=Off
 # and we have installed clang headers, too.
@@ -103,8 +110,18 @@ set(clinginclude ${CMAKE_SOURCE_DIR}/interpreter/cling/include)
 set(custom_modulemaps)
 if (runtime_cxxmodules)
   set(custom_modulemaps boost.modulemap tinyxml2.modulemap cuda.modulemap module.modulemap.build)
-  if (NOT APPLE)
-    set(custom_modulemaps ${custom_modulemaps} libc.modulemap std.modulemap)
+  if (NOT libcxx)
+    if (MSVC)
+      set(custom_modulemaps ${custom_modulemaps} std_msvc.modulemap)
+    else()
+      set(custom_modulemaps ${custom_modulemaps} std.modulemap)
+    endif()
+  endif()
+  # Handle libc. Apple's libc is modularized.
+  if (MSVC)
+    set(custom_modulemaps ${custom_modulemaps} libc_msvc.modulemap)
+  elseif (NOT APPLE)
+    set(custom_modulemaps ${custom_modulemaps} libc.modulemap)
   endif()
 endif(runtime_cxxmodules)
 
