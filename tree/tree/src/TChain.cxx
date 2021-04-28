@@ -26,14 +26,17 @@ the trees in the chain.
 
 #include "TChain.h"
 
+#include <iostream>
+#include <cfloat>
+
 #include "TBranch.h"
 #include "TBrowser.h"
+#include "TBuffer.h"
 #include "TChainElement.h"
 #include "TClass.h"
 #include "TColor.h"
 #include "TCut.h"
 #include "TError.h"
-#include "TMath.h"
 #include "TFile.h"
 #include "TFileInfo.h"
 #include "TFriendElement.h"
@@ -55,6 +58,9 @@ the trees in the chain.
 #include "TFileStager.h"
 #include "TFilePrefetch.h"
 #include "TVirtualMutex.h"
+#include "TVirtualPerfStats.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 ClassImp(TChain);
 
@@ -192,7 +198,7 @@ TChain::~TChain()
    fFiles = 0;
 
    //first delete cache if exists
-   auto tc = fFile ? fTree->GetReadCache(fFile) : nullptr;
+   auto tc = fFile && fTree ? fTree->GetReadCache(fFile) : nullptr;
    if (tc) {
       delete tc;
       fFile->SetCacheRead(0, fTree);
@@ -784,7 +790,7 @@ Long64_t TChain::Draw(const char* varexp, const TCut& selection,
                       Option_t* option, Long64_t nentries, Long64_t firstentry)
 {
    if (fProofChain) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       fProofChain->SetEventList(fEventList);
@@ -804,7 +810,7 @@ Long64_t TChain::Draw(const char* varexp, const char* selection,
                       Option_t* option,Long64_t nentries, Long64_t firstentry)
 {
    if (fProofChain) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       fProofChain->SetEventList(fEventList);
@@ -822,7 +828,7 @@ Long64_t TChain::Draw(const char* varexp, const char* selection,
 TBranch* TChain::FindBranch(const char* branchname)
 {
    if (fProofChain && !(fProofChain->TestBit(kProofLite))) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       return fProofChain->FindBranch(branchname);
@@ -843,7 +849,7 @@ TBranch* TChain::FindBranch(const char* branchname)
 TLeaf* TChain::FindLeaf(const char* searchname)
 {
    if (fProofChain && !(fProofChain->TestBit(kProofLite))) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       return fProofChain->FindLeaf(searchname);
@@ -883,7 +889,7 @@ const char* TChain::GetAlias(const char* aliasName) const
 TBranch* TChain::GetBranch(const char* name)
 {
    if (fProofChain && !(fProofChain->TestBit(kProofLite))) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       return fProofChain->GetBranch(name);
@@ -904,7 +910,7 @@ TBranch* TChain::GetBranch(const char* name)
 Bool_t TChain::GetBranchStatus(const char* branchname) const
 {
    if (fProofChain && !(fProofChain->TestBit(kProofLite))) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          Warning("GetBranchStatus", "PROOF proxy not up-to-date:"
                                     " run TChain::SetProof(kTRUE, kTRUE) first");
@@ -942,7 +948,7 @@ Long64_t TChain::GetChainEntryNumber(Long64_t entry) const
 Long64_t TChain::GetEntries() const
 {
    if (fProofChain && !(fProofChain->TestBit(kProofLite))) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          Warning("GetEntries", "PROOF proxy not up-to-date:"
                                " run TChain::SetProof(kTRUE, kTRUE) first");
@@ -1042,7 +1048,7 @@ TFile* TChain::GetFile() const
 TLeaf* TChain::GetLeaf(const char* branchname, const char *leafname)
 {
    if (fProofChain && !(fProofChain->TestBit(kProofLite))) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       return fProofChain->GetLeaf(branchname, leafname);
@@ -1063,7 +1069,7 @@ TLeaf* TChain::GetLeaf(const char* branchname, const char *leafname)
 TLeaf* TChain::GetLeaf(const char* name)
 {
    if (fProofChain && !(fProofChain->TestBit(kProofLite))) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       return fProofChain->GetLeaf(name);
@@ -1089,7 +1095,7 @@ TLeaf* TChain::GetLeaf(const char* name)
 TObjArray* TChain::GetListOfBranches()
 {
    if (fProofChain && !(fProofChain->TestBit(kProofLite))) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       return fProofChain->GetListOfBranches();
@@ -1112,7 +1118,7 @@ TObjArray* TChain::GetListOfBranches()
 TObjArray* TChain::GetListOfLeaves()
 {
    if (fProofChain && !(fProofChain->TestBit(kProofLite))) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       return fProofChain->GetListOfLeaves();
@@ -1184,7 +1190,7 @@ Int_t TChain::GetNbranches()
 Long64_t TChain::GetReadEntry() const
 {
    if (fProofChain && !(fProofChain->TestBit(kProofLite))) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          Warning("GetBranchStatus", "PROOF proxy not up-to-date:"
                                     " run TChain::SetProof(kTRUE, kTRUE) first");
@@ -1216,6 +1222,14 @@ Double_t TChain::GetWeight() const
       }
       return 0;
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Move content to a new file. (NOT IMPLEMENTED for TChain)
+Bool_t TChain::InPlaceClone(TDirectory * /* new directory */, const char * /* options */)
+{
+   Error("InPlaceClone", "not implemented");
+   return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1346,7 +1360,7 @@ Long64_t TChain::LoadTree(Long64_t entry)
          }
          if (needUpdate) {
             // Update the branch/leaf addresses and
-            // thelist of leaves in all TTreeFormula of the TTreePlayer (if any).
+            // the list of leaves in all TTreeFormula of the TTreePlayer (if any).
 
             // Set the branch statuses for the newly opened file.
             TChainElement *frelement;
@@ -1368,6 +1382,15 @@ Long64_t TChain::LoadTree(Long64_t entry)
                      *pp = br;
                   }
                   if (br) {
+                     if (!frelement->GetCheckedType()) {
+                        Int_t res = CheckBranchAddressType(br, TClass::GetClass(frelement->GetBaddressClassName()),
+                                                         (EDataType) frelement->GetBaddressType(), frelement->GetBaddressIsPtr());
+                        if ((res & kNeedEnableDecomposedObj) && !br->GetMakeClass()) {
+                           br->SetMakeClass(kTRUE);
+                        }
+                        frelement->SetDecomposedObj(br->GetMakeClass());
+                        frelement->SetCheckedType(kTRUE);
+                     }
                      // FIXME: We may have to tell the branch it should
                      //        not be an owner of the object pointed at.
                      br->SetAddress(addr);
@@ -1478,6 +1501,9 @@ Long64_t TChain::LoadTree(Long64_t entry)
       fTree = 0;
       returnCode = -3;
    } else {
+      if (fPerfStats)
+         fPerfStats->SetFile(fFile);
+
       // Note: We do *not* own fTree after this, the file does!
       fTree = dynamic_cast<TTree*>(fFile->Get(element->GetName()));
       if (!fTree) {
@@ -1606,7 +1632,12 @@ Long64_t TChain::LoadTree(Long64_t entry)
          if (t->GetTree() && t->GetTree()->GetTreeIndex()) {
             t->GetTree()->GetTreeIndex()->UpdateFormulaLeaves(GetTree());
          }
-         t->LoadTreeFriend(entry, this);
+         if (treeReadEntry == -2) {
+            // an entry after the end of the chain was requested (it usually happens when GetEntries is called)
+            t->LoadTree(entry);
+         } else {
+            t->LoadTreeFriend(entry, this);
+         }
          TTree* friend_t = t->GetTree();
          if (friend_t) {
             auto localfe = fTree->AddFriend(t, fe->GetName());
@@ -1639,6 +1670,15 @@ Long64_t TChain::LoadTree(Long64_t entry)
             *pp = br;
          }
          if (br) {
+            if (!element->GetCheckedType()) {
+               Int_t res = CheckBranchAddressType(br, TClass::GetClass(element->GetBaddressClassName()),
+                                                  (EDataType) element->GetBaddressType(), element->GetBaddressIsPtr());
+               if ((res & kNeedEnableDecomposedObj) && !br->GetMakeClass()) {
+                  br->SetMakeClass(kTRUE);
+               }
+               element->SetDecomposedObj(br->GetMakeClass());
+               element->SetCheckedType(kTRUE);
+            }
             // FIXME: We may have to tell the branch it should
             //        not be an owner of the object pointed at.
             br->SetAddress(addr);
@@ -2104,7 +2144,7 @@ void TChain::ParseTreeFilename(const char *name, TString &filename, TString &tre
    // General case
    TUrl url(name, kTRUE);
    filename = (strcmp(url.GetProtocol(), "file")) ? url.GetUrl() : url.GetFileAndOptions();
-   
+
    TString fn = url.GetFile();
    // Extract query, if any
    if (url.GetOptions() && (strlen(url.GetOptions()) > 0))
@@ -2142,7 +2182,7 @@ void TChain::ParseTreeFilename(const char *name, TString &filename, TString &tre
       // Find the last one
       Ssiz_t ppIdx = filename.Index(slash, pIdx + dotrl);
       if (ppIdx != kNPOS) {
-         // Good treename with the old receipe
+         // Good treename with the old recipe
          treename = filename(ppIdx + slashl, filename.Length());
          filename.Remove(ppIdx + slashl - 1);
          suffix.Insert(0, TString::Format("/%s", treename.Data()));
@@ -2180,7 +2220,7 @@ void TChain::Print(Option_t *option) const
 Long64_t TChain::Process(const char *filename, Option_t *option, Long64_t nentries, Long64_t firstentry)
 {
    if (fProofChain) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       fProofChain->SetEventList(fEventList);
@@ -2202,7 +2242,7 @@ Long64_t TChain::Process(const char *filename, Option_t *option, Long64_t nentri
 Long64_t TChain::Process(TSelector* selector, Option_t* option, Long64_t nentries, Long64_t firstentry)
 {
    if (fProofChain) {
-      // Make sure the element list is uptodate
+      // Make sure the element list is up to date
       if (!TestBit(kProofUptodate))
          SetProof(kTRUE, kTRUE);
       fProofChain->SetEventList(fEventList);
@@ -2295,7 +2335,7 @@ void TChain::ResetAfterMerge(TFileMergeInfo *info)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Save TChain as a C++ statements on output stream out.
-/// With the option "friend" save the description of all the 
+/// With the option "friend" save the description of all the
 /// TChain's friend trees or chains as well.
 
 void TChain::SavePrimitive(std::ostream &out, Option_t *option)
@@ -2481,6 +2521,11 @@ Int_t TChain::SetBranchAddress(const char *bname, void* add, TBranch** ptr)
       }
       if (branch) {
          res = CheckBranchAddressType(branch, TClass::GetClass(element->GetBaddressClassName()), (EDataType) element->GetBaddressType(), element->GetBaddressIsPtr());
+         if ((res & kNeedEnableDecomposedObj) && !branch->GetMakeClass()) {
+            branch->SetMakeClass(kTRUE);
+         }
+         element->SetDecomposedObj(branch->GetMakeClass());
+         element->SetCheckedType(kTRUE);
          if (fClones) {
             void* oldAdd = branch->GetAddress();
             for (TObjLink* lnk = fClones->FirstLink(); lnk; lnk = lnk->Next()) {
@@ -2489,9 +2534,13 @@ Int_t TChain::SetBranchAddress(const char *bname, void* add, TBranch** ptr)
                if (cloneBr && (cloneBr->GetAddress() == oldAdd)) {
                   // the clone's branch is still pointing to us
                   cloneBr->SetAddress(add);
+                  if ((res & kNeedEnableDecomposedObj) && !cloneBr->GetMakeClass()) {
+                     cloneBr->SetMakeClass(kTRUE);
+                  }
                }
             }
          }
+
          branch->SetAddress(add);
       } else {
          Error("SetBranchAddress", "unknown branch -> %s", bname);
