@@ -11,7 +11,8 @@
 #ifndef ROOT_RCUSTOMCOLUMN
 #define ROOT_RCUSTOMCOLUMN
 
-#include "ROOT/RDF/ColumnReaders.hxx"
+#include "ROOT/RDF/ColumnReaderUtils.hxx"
+#include "ROOT/RDF/RColumnReaderBase.hxx"
 #include "ROOT/RDF/RDefineBase.hxx"
 #include "ROOT/RDF/Utils.hxx"
 #include "ROOT/RIntegerSequence.hxx"
@@ -19,6 +20,7 @@
 #include "ROOT/TypeTraits.hxx"
 #include "RtypesCore.h"
 
+#include <array>
 #include <deque>
 #include <type_traits>
 #include <vector>
@@ -62,7 +64,7 @@ class RDefine final : public RDefineBase {
    ValuesPerSlot_t fLastResults;
 
    /// Column readers per slot and per input column
-   std::vector<std::vector<std::unique_ptr<RDFInternal::RColumnReaderBase>>> fValues;
+   std::vector<std::array<std::unique_ptr<RColumnReaderBase>, ColumnTypes_t::list_size>> fValues;
 
    /// The nth flag signals whether the nth input column is a custom column or not.
    std::array<bool, ColumnTypes_t::list_size> fIsDefine;
@@ -98,8 +100,8 @@ class RDefine final : public RDefineBase {
 public:
    RDefine(std::string_view name, std::string_view type, F expression, const ColumnNames_t &columns,
                  unsigned int nSlots, const RDFInternal::RBookedDefines &defines,
-                 const std::map<std::string, std::vector<void *>> &DSValuePtrs)
-      : RDefineBase(name, type, nSlots, defines, DSValuePtrs), fExpression(std::move(expression)),
+                 const std::map<std::string, std::vector<void *>> &DSValuePtrs, ROOT::RDF::RDataSource *ds)
+      : RDefineBase(name, type, nSlots, defines, DSValuePtrs, ds), fExpression(std::move(expression)),
         fColumnNames(columns), fLastResults(fNSlots), fValues(fNSlots), fIsDefine()
    {
       const auto nColumns = fColumnNames.size();
@@ -114,7 +116,7 @@ public:
    {
       if (!fIsInitialized[slot]) {
          fIsInitialized[slot] = true;
-         RDFInternal::RColumnReadersInfo info{fColumnNames, fDefines, fIsDefine.data(), fDSValuePtrs};
+         RDFInternal::RColumnReadersInfo info{fColumnNames, fDefines, fIsDefine.data(), fDSValuePtrs, fDataSource};
          fValues[slot] = RDFInternal::MakeColumnReaders(slot, r, ColumnTypes_t{}, info);
          fLastCheckedEntry[slot] = -1;
       }
@@ -139,7 +141,8 @@ public:
    void FinaliseSlot(unsigned int slot) final
    {
       if (fIsInitialized[slot]) {
-         fValues[slot].clear();
+         for (auto &v : fValues[slot])
+            v.reset();
          fIsInitialized[slot] = false;
       }
    }

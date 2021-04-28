@@ -40,9 +40,10 @@
 
 namespace clang {
 class BuiltinType;
+class CXXMethodDecl;
+class DeclContext;
 class Expr;
 class FunctionDecl;
-class CXXMethodDecl;
 }
 
 namespace cling {
@@ -201,18 +202,22 @@ public:
    void* InterfaceMethod();
    bool IsValid() const;
    TInterpreter::CallFuncIFacePtr_t IFacePtr();
-   const clang::FunctionDecl *GetDecl() {
-      if (!fDecl)
-         fDecl = fMethod->GetMethodDecl();
-      return fDecl;
-   }
+   const clang::DeclContext *GetDeclContext() const;
 
    int get_wrapper_code(std::string &wrapper_name, std::string &wrapper);
 
+   const clang::FunctionDecl *GetDecl() {
+      if (!fDecl)
+         fDecl = fMethod->GetTargetFunctionDecl();
+      return fDecl;
+   }
    const clang::FunctionDecl* GetDecl() const {
       if (fDecl)
          return fDecl;
-      return fMethod->GetMethodDecl();
+      return fMethod->GetTargetFunctionDecl();
+   }
+   const clang::Decl *GetFunctionOrShadowDecl() const {
+      return fMethod->GetDecl();
    }
    void ResetArg();
    void SetArg(long arg);
