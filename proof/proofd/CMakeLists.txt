@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT proof/proofd package
 # @author Pere Mato, CERN
@@ -73,4 +79,10 @@ else()
     ${CMAKE_SOURCE_DIR}/net/rpdutils/src/rpdconn.cxx
     ${CMAKE_SOURCE_DIR}/net/rpdutils/src/rpdpriv.cxx
   )
+
+  target_include_directories(proofexecv PRIVATE
+    ${CMAKE_SOURCE_DIR}/core/base/inc    # for RConfig.hxx
+    ${CMAKE_BINARY_DIR}/ginclude         # for RConfigure.h
+  )
+
 endif()

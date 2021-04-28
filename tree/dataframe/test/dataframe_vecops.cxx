@@ -54,11 +54,11 @@ TEST(RDFAndVecOps, SnapshotRVec)
 
    // check the RVec was written as a RVec
    TFile f(fname);
-   auto t = static_cast<TTree *>(f.Get(treename));
+   auto t = f.Get<TTree>(treename);
    auto b = static_cast<TBranchElement *>(t->GetBranch("v"));
    ASSERT_TRUE(b != nullptr);
    auto branchTypeName = b->GetClassName();
-   EXPECT_STREQ(branchTypeName, "vector<int,ROOT::Detail::VecOps::RAdoptAllocator<int> >");
+   EXPECT_STREQ(branchTypeName, "ROOT::VecOps::RVec<int>");
 
    gSystem->Unlink(fname);
 }

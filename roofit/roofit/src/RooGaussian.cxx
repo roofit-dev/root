@@ -20,19 +20,13 @@
 Plain Gaussian p.d.f
 **/
 
-#include "RooFit.h"
-
-#include "Riostream.h"
-#include "Riostream.h"
-#include <math.h>
-
 #include "RooGaussian.h"
-#include "RooAbsReal.h"
-#include "RooRealVar.h"
+
 #include "RooRandom.h"
 #include "RooMath.h"
+#include "RooHelpers.h"
+#include "RooBatchCompute.h"
 
-using namespace std;
 
 ClassImp(RooGaussian);
 
@@ -46,6 +40,7 @@ RooGaussian::RooGaussian(const char *name, const char *title,
   mean("mean","Mean",this,_mean),
   sigma("sigma","Width",this,_sigma)
 {
+  RooHelpers::checkRangeOfParameters(this, {&_sigma}, 0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -62,27 +57,14 @@ Double_t RooGaussian::evaluate() const
 {
   const double arg = x - mean;
   const double sig = sigma;
-  return exp(-0.5*arg*arg/(sig*sig)) ;
+  return std::exp(-0.5*arg*arg/(sig*sig));
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
-/// calculate and return the negative log-likelihood of the Poisson
-
-Double_t RooGaussian::getLogVal(const RooArgSet* set) const
-{
-  return RooAbsPdf::getLogVal(set) ;
-//   Double_t prob = getVal(set) ;
-//   return log(prob) ;
-
-  Double_t arg= x - mean;
-  Double_t sig = sigma ;
-
-  //static const Double_t rootPiBy2 = sqrt(atan2(0.0,-1.0)/2.0);
-  //Double_t extra = -0.5*arg*arg/(sig*sig) - log(2*rootPiBy2*sig) ;
-  Double_t extra = -0.5*arg*arg/(sig*sig) - log(analyticalIntegral(1,0)) ;
-
-  return extra ;
-
+/// Compute multiple values of Gaussian distribution.  
+RooSpan<double> RooGaussian::evaluateSpan(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const {
+  return RooBatchCompute::dispatch->computeGaussian(this, evalData, x->getValues(evalData, normSet), mean->getValues(evalData, normSet), sigma->getValues(evalData, normSet));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -103,7 +85,7 @@ Double_t RooGaussian::analyticalIntegral(Int_t code, const char* rangeName) cons
   //The normalisation constant 1./sqrt(2*pi*sigma^2) is left out in evaluate().
   //Therefore, the integral is scaled up by that amount to make RooFit normalise
   //correctly.
-  const double resultScale = sqrt(TMath::TwoPi()) * sigma;
+  const double resultScale = std::sqrt(TMath::TwoPi()) * sigma;
 
   //Here everything is scaled and shifted into a standard normal distribution:
   const double xscale = TMath::Sqrt2() * sigma;
@@ -164,7 +146,7 @@ void RooGaussian::generateEvent(Int_t code)
       }
     }
   } else {
-    cout << "error in RooGaussian generateEvent"<< endl;
+    std::cout << "error in RooGaussian generateEvent"<< std::endl;
   }
 
   return;

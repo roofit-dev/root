@@ -1859,7 +1859,7 @@ will illustrate them by examples.
     row-beside-row inside the container, making life much easier for its
     navigation algorithms. The problem is that in order to reproduce the
     honeycomb structure out of rows of cells, we have to overlap row
-    containers. Woops - we have not obeyed rule No. 2 in positioning.
+    containers. Whoops - we have not obeyed rule No. 2 in positioning.
     The way out is to position our rows with a special prototype:
 
 ``` {.cpp}
@@ -1933,7 +1933,7 @@ few chambers, but definitely not for 1000. Fortunately the modeller is
 smarter than that and creates for each volume some optimization
 structures called `voxels` to minimize the penalty having too many
 daughters, but if you have 100 pads like this in your geometry you will
-anyway loose a lot in your tracking performance. The way out when
+anyway lose a lot in your tracking performance. The way out when
 volumes can be arranged according to simple patterns is the usage of
 divisions. We will describe them in detail later on. Let's think now at
 a different situation: instead of 1000 chambers of the same type, we may
@@ -3305,7 +3305,7 @@ suppose you already did that with your simple geometry and immediately
 noticed a new ROOT canvas popping-up and having some more or less
 strange picture inside. Here are few questions that might come:
 
--   ***`Q: "The picture is strangely rotated; where are the coordinate axes?"`***
+***`Q:`*** "The picture is strangely rotated; where are the coordinate axes?"
 
 ***`A:`*** If drawn in a new canvas, any view has some default
 viewpoint, center of view and size. One can then perform mouse/keyboard
@@ -3319,21 +3319,21 @@ display as well as changing top or side viewpoints can be activated from
 the **`TView`** context menu: right-click on the picture when no object
 is selected;
 
--   ***`Q: "Every line is black! I cannot figure out what is what..."`***
+***`Q:`*** "Every line is black! I cannot figure out what is what..."
 
 ***`A:`*** Volumes can have different colors (those known by ROOT of
 course). Think at using them after each volume creation:
 `myvolume->SetLineColor(Int_t color);` otherwise everything is by
 default black.
 
--   ***`Q: "The top volume of my geometry is a box but I see only its content."`***
+***`Q:`*** "The top volume of my geometry is a box but I see only its content."
 
 ***`A:`*** By default the drawn volume is not displayed just because we
 do not want to hide its content when changing the view to HLR or solid
 mode. In order to see it in the default wire frame picture one has to
 call **`TGeoManager::SetTopVisible()`.**
 
--   ***`Q: "I do not see all volumes in my tree but just something inside."`***
+***`Q:`*** "I do not see all volumes in my tree but just something inside."
 
 ***`A:`*** By default, **`TGeoVolume`**`::Draw()` paints the content of
 a given volume three levels down. You can change this by using:
@@ -3347,7 +3347,7 @@ default one and corresponds to ‘leaves' global visualization mode
 intermediate containers, one can change this mode:
 `gGeoManager->SetVisOption(0)`.**
 
--   ***`Q: "Volumes are highlighted when moving the mouse over their vertices. What does it mean?"`***
+***`Q:`*** "Volumes are highlighted when moving the mouse over their vertices. What does it mean?"
 
 ***`A:`*** Indeed, moving the mouse close to some volume vertices
 selects it. By checking the `Event Status` entry in the root canvas
@@ -3355,7 +3355,7 @@ selects it. By checking the `Event Status` entry in the root canvas
 bottom right. Right-clicking when a volume is selected will open its
 context menu where several actions can be performed (e.g. drawing it).
 
--   ***`Q: "OK, but now I do not want to see all the geometry, but just a particular volume and its content. How can I do this?"`***
+***`Q:`*** "OK, but now I do not want to see all the geometry, but just a particular volume and its content. How can I do this?"
 
 ***`A:`*** Once you have set a convenient global visualization option
 and level, what you need is just call the `Draw()` method of your
@@ -3368,8 +3368,8 @@ name): `gGeoManager->GetVolume("vol_name")->Draw();`
 
 Supposing you now understand the basic things to do for drawing the
 geometry or parts of it, you still might be not happy and wishing to
-have more control on it. We will describe below how you can tune some
-fine settings. Since the corresponding attributes are flags belonging to
+have more control on it. We will describe below how you can fine-tune some
+ settings. Since the corresponding attributes are flags belonging to
 volume and node objects, you can change them at any time (even when the
 picture is already drawn) and see immediately the result.
 
@@ -3610,7 +3610,7 @@ Option_t *opt="vg")
     TGeoBBox\_0x1, TGeoBBox\_0x2, ...). If `"f"` option is set then then
     suffix will contain pointer of object (e.g. TGeoBBox\_0xAAAAA01,
     ...). Finally if option `"n"` is set then no suffix will be added,
-    though in this case uniqness of the names is not ensured and it can
+    though in this case uniqueness of the names is not ensured and it can
     cause that file will be invalid.
 
 Loading geometry from a root file can be done in the same way as for any

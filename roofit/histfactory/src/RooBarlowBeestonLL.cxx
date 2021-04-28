@@ -21,9 +21,8 @@
 */
 
 #include <stdexcept>
-#include <math.h>
-
-#include "Riostream.h" 
+#include <cmath>
+#include <iostream>
 
 #include "RooFit.h"
 #include "RooStats/HistFactory/RooBarlowBeestonLL.h" 
@@ -32,7 +31,6 @@
 //#include "RooMinuit.h"
 #include "RooMsgService.h"
 #include "RooRealVar.h"
-#include "RooMsgService.h"
 #include "RooNLLVar.h"
 
 #include "RooStats/RooStatsUtils.h"
@@ -195,24 +193,11 @@ void RooStats::HistFactory::RooBarlowBeestonLL::initializeBarlowCache() {
   // Loop over the channels
   RooSimultaneous* simPdf = (RooSimultaneous*) _pdf;
   RooCategory* channelCat = (RooCategory*) (&simPdf->indexCat());
-  TIterator* iter = channelCat->typeIterator() ;
-  RooCatType* tt = NULL;
-  while((tt=(RooCatType*) iter->Next())) {
-    /*
-      std::string ChannelName = tt->GetName();
-      
-      HHChannel_hh_edit
-      
-      TIterator* iter_channels = channelsWithConstraints->createIterator();
-      RooAbsPdf* channelPdf=NULL;
-      while(( channelPdf=(RooAbsPdf*)iter_channels->Next()  )) {
-      
-      std::string channel_name = RooStats::channelNameFromPdf( channelPdf );
-    */
+  for (const auto& nameIdx : *channelCat) {
 
     // Warning: channel cat name is not necesarily the same name
     // as the pdf's (for example, if someone does edits)
-    RooAbsPdf* channelPdf = simPdf->getPdf(tt->GetName());
+    RooAbsPdf* channelPdf = simPdf->getPdf(nameIdx.first.c_str());
     std::string channel_name = channelPdf->GetName();
 
     // First, we check if this channel uses Stat Uncertainties:
@@ -374,9 +359,9 @@ void RooStats::HistFactory::RooBarlowBeestonLL::initializeBarlowCache() {
 RooArgSet* RooStats::HistFactory::RooBarlowBeestonLL::getParameters(const RooArgSet* depList, Bool_t stripDisconnected) const {
   RooArgSet* allArgs = RooAbsArg::getParameters( depList, stripDisconnected );
 
-  TIterator* iter_args = allArgs->createIterator();
+  TIter iter_args = allArgs->createIterator();
   RooRealVar* arg;
-  while((arg=(RooRealVar*)iter_args->Next())) {
+  while((arg=(RooRealVar*)iter_args.Next())) {
     std::string arg_name = arg->GetName();
 
     // If there is a gamma in the name,
