@@ -143,6 +143,7 @@
 #pragma link C++ class ROOT::Experimental::REveViewContext+;
 #pragma link C++ class ROOT::Experimental::REveDataCollection+;
 #pragma link C++ class ROOT::Experimental::REveDataItem+;
+#pragma link C++ class ROOT::Experimental::REveDataItemList+;
 #pragma link C++ class ROOT::Experimental::REveDataProxyBuilderBase+;
 #pragma link C++ class ROOT::Experimental::REveDataSimpleProxyBuilder+;
 #pragma link C++ class ROOT::Experimental::REveDataTable+;
@@ -201,6 +202,16 @@
 // #pragma link C++ class ROOT::Experimental::REveGeoNode+;
 // #pragma link C++ class ROOT::Experimental::REveGeoTopNode+;
 
+// REveCalo
+#pragma link C++ class ROOT::Experimental::REveCaloData+;
+#pragma link C++ class ROOT::Experimental::REveCaloData::SliceInfo_t+;
+#pragma link C++ class ROOT::Experimental::REveCaloDataVec;
+#pragma link C++ class ROOT::Experimental::REveCaloDataHist+;
+#pragma link C++ class ROOT::Experimental::REveCaloViz+;
+#pragma link C++ class ROOT::Experimental::REveCalo3D+;
+#pragma link C++ class ROOT::Experimental::REveCalo2D+;
+#pragma link C++ class ROOT::Experimental::REveCaloLego+;
+
 // REveJetCone
 #pragma link C++ class ROOT::Experimental::REveJetCone+;
 #pragma link C++ class ROOT::Experimental::REveJetConeProjected+;
@@ -244,7 +255,5 @@
 #pragma link C++ class ROOT::Experimental::REveGeomRequest+;
 #pragma link C++ class ROOT::Experimental::REveGeomNodeInfo+;
 #pragma link C++ class ROOT::Experimental::REveGeomConfig+;
-#pragma link C++ class ROOT::Experimental::REveGeomViewer+;
-#pragma link C++ class ROOT::Experimental::REveGeoPainter+;
 
 #endif

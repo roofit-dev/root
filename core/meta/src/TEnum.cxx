@@ -36,7 +36,7 @@ ClassImp(TEnum);
 /// in TROOT::GetListOfGlobals).
 
 TEnum::TEnum(const char *name, DeclId_t declid, TClass *cls)
-   : fInfo(nullptr), fClass(cls)
+   : fClass(cls)
 {
    SetName(name);
    if (cls) {
@@ -99,19 +99,6 @@ Long_t TEnum::Property() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Get the unterlying integer type of the enum:
-///     enum E { kOne }; //  ==> int
-///     enum F: long; //  ==> long
-/// Returns kNumDataTypes if the enum is unknown / invalid.
-
-EDataType TEnum::GetUnderlyingType() const
-{
-   if (fInfo)
-      return gInterpreter->ClassInfo_GetUnderlyingType(fInfo);
-   return kNumDataTypes;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 TDictionary::DeclId_t TEnum::GetDeclId() const
 {
@@ -134,8 +121,10 @@ void TEnum::Update(DeclId_t id)
 
    fInfo = gInterpreter->ClassInfo_Factory(id);
 
-   if (fInfo)
+   if (fInfo) {
       SetBit(kBitIsScopedEnum, gInterpreter->ClassInfo_IsScopedEnum(fInfo));
+      fUnderlyingType = gInterpreter->ClassInfo_GetUnderlyingType(fInfo);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -206,9 +195,7 @@ TEnum *TEnum::GetEnum(const char *enumName, ESearchAction sa)
          return en;
       }
 
-      // Lock need for gROOT->GetListOfClasses() and the later update/modification to
-      // the autoparsing state.
-      R__LOCKGUARD(gInterpreterMutex);
+
       if (auto tClassScope = static_cast<TClass *>(gROOT->GetListOfClasses()->FindObject(scopeName))) {
          // If this is a class, load only if the user allowed interpreter lookup
          // If this is a namespace and the user did not allow for interpreter lookup, load but before disable
@@ -246,6 +233,10 @@ TEnum *TEnum::GetEnum(const char *enumName, ESearchAction sa)
       // enum.
       return nullptr;
    }
+
+   // Keep the state consistent.  I particular prevent change in the state of AutoLoading and AutoParsing allowance
+   // and gROOT->GetListOfClasses() and the later update/modification to the autoparsing state.
+   R__READ_LOCKGUARD(ROOT::gCoreMutex);
 
    if (lastPos != enumName) {
       // We have a scope

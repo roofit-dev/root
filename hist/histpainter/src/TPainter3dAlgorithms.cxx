@@ -10,8 +10,8 @@
  *************************************************************************/
 
 /*! \class TPainter3dAlgorithms
-\ingroup Histpainter
-\brief The Legos and Surfaces painter class.
+    \ingroup Histpainter
+    \brief The Legos and Surfaces painter class.
 
 3D graphics representations package.
 
@@ -24,7 +24,7 @@ This class is a subset of the original system. It has been converted to a C++
 class by Rene Brun.
 */
 
-#include <stdlib.h>
+#include <cstdlib>
 
 #include "TROOT.h"
 #include "TPainter3dAlgorithms.h"
@@ -33,7 +33,6 @@ class by Rene Brun.
 #include "TH1.h"
 #include "TF3.h"
 #include "TView.h"
-#include "TVirtualX.h"
 #include "Hoption.h"
 #include "Hparam.h"
 #include "TMath.h"
@@ -781,8 +780,8 @@ void TPainter3dAlgorithms::DrawFaceMove3(Int_t *icodes, Double_t *xyz, Int_t np,
    }
 
    //          Subdivide quadrilateral in two triangles
-   Int_t npol[2] = { np, 0 }; // number of vertices in subpolygons
-   Int_t ipol[2] = {  0, 0 }; // first vertices in subpolygons
+   Int_t npol[2] = { np, 0 }; // number of vertices in sub-polygons
+   Int_t ipol[2] = {  0, 0 }; // first vertices in sub-polygons
    if (np == 4 && icodes[2] != 0) {
       p3[4*3 + 0] = p3[0];
       p3[4*3 + 1] = p3[1];
@@ -865,8 +864,8 @@ void TPainter3dAlgorithms::DrawLevelLines(Int_t *icodes, Double_t *xyz, Int_t np
    }
 
    //          Subdivide quadrilateral in two triangles
-   Int_t npol[2] = { np, 0 }; // number of vertices in subpolygons
-   Int_t ipol[2] = {  0, 0 }; // first vertices in subpolygons
+   Int_t npol[2] = { np, 0 }; // number of vertices in sub-polygons
+   Int_t ipol[2] = {  0, 0 }; // first vertices in sub-polygons
    if (np == 4 && icodes[2] != 0) {
       p3[4*3 + 0] = p3[0];
       p3[4*3 + 1] = p3[1];
@@ -3123,8 +3122,8 @@ L500:
 /// Set light source
 ///
 /// \param[in] nl   source number: 1 off all light sources, 0 set diffused light
-/// \param[in] xl   intensity of the light source
-/// \param[in] xscr   `yscr` `zscr`  direction of the light (in respect of the screen)
+/// \param[in] yl   intensity of the light source
+/// \param[in] xscr, yscr, zscr  direction of the light (in respect of the screen)
 ///
 /// \param[out] irep   reply (0 - O.K, -1 error)
 
@@ -4075,7 +4074,7 @@ L500:
 /// \param[in] qqa   diffusion coefficient for diffused light  [0.,1.]
 /// \param[in] qqd   diffusion coefficient for direct light    [0.,1.]
 /// \param[in] qqs   diffusion coefficient for reflected light [0.,1.]
-/// \param[in] nncs   power coefficient for reflected light     (.GE.1)
+/// \param[in] nnqs   power coefficient for reflected light     (.GE.1)
 ///
 ///    Lightness model formula: Y = YD*QA + > YLi*(QD*cosNi+QS*cosRi)
 ///

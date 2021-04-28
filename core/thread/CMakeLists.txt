@@ -71,10 +71,22 @@ ROOT_STANDARD_LIBRARY_PACKAGE(Thread
 
 target_link_libraries(Thread PUBLIC ${CMAKE_THREAD_LIBS_INIT})
 
+target_include_directories(Thread PRIVATE
+   ${CMAKE_SOURCE_DIR}/core/base/inc
+   ${CMAKE_SOURCE_DIR}/core/clib/inc
+   ${CMAKE_BINARY_DIR}/ginclude
+)
+
 # keep include directory for ROOT/RSha256.hxx private
 set_source_files_properties(src/RConcurrentHashColl.cxx
-  PROPERTIES COMPILE_FLAGS -I${CMAKE_CURRENT_SOURCE_DIR}/../foundation/res)
+  PROPERTIES COMPILE_FLAGS -I${CMAKE_SOURCE_DIR}/core/foundation/res)
 
+if((tbb OR builtin_tbb) AND NOT MSVC)
+  target_include_directories(Thread PRIVATE ${TBB_INCLUDE_DIRS})
+  target_link_libraries(Thread PRIVATE ${TBB_LIBRARIES})
+  set_target_properties(Thread PROPERTIES COMPILE_FLAGS "${TBB_CXXFLAGS}")
+endif()
+  
 if(WIN32)
   target_sources(Thread PRIVATE
     src/TWin32Condition.cxx
@@ -82,6 +94,7 @@ if(WIN32)
     src/TWin32Thread.cxx
     src/TWin32ThreadFactory.cxx
   )
+  target_include_directories(Thread PRIVATE ${CMAKE_SOURCE_DIR}/core/winnt/inc)
 else()
   target_sources(Thread PRIVATE
     src/TPosixCondition.cxx

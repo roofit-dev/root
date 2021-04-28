@@ -1,6 +1,8 @@
 ## \file
 ## \ingroup tutorial_dataframe
 ## \notebook -draw
+## The Higgs to two photons analysis from the ATLAS Open Data 2020 release, with RDataFrame.
+##
 ## This tutorial is the Higgs to two photons analysis from the ATLAS Open Data release in 2020
 ## (http://opendata.atlas.cern/release/2020/documentation/). The data was taken with the ATLAS detector
 ## during 2016 at a center-of-mass energy of 13 TeV. Although the Higgs to two photons decay is very rare,
@@ -69,14 +71,26 @@ for p in processes:
     # Make additional kinematic cuts and select mass window
     df[p] = df[p].Filter("photon_pt[goodphotons][0] / 1000.0 / m_yy > 0.35")\
                  .Filter("photon_pt[goodphotons][1] / 1000.0 / m_yy > 0.25")\
-                 .Filter("(m_yy > 105) && (m_yy < 160)")
+                 .Filter("m_yy > 105 && m_yy < 160")
 
     # Book histogram of the invariant mass with this selection
     hists[p] = df[p].Histo1D(
-            ROOT.ROOT.RDF.TH1DModel(p, "Diphoton invariant mass; m_{#gamma#gamma} [GeV];Events", 30, 105, 160),
+            ROOT.RDF.TH1DModel(p, "Diphoton invariant mass; m_{#gamma#gamma} [GeV];Events", 30, 105, 160),
             "m_yy", "weight")
 
-# Run the event loop and create the plot
+# Run the event loop
+
+# RunGraphs allows to run the event loops of the separate RDataFrame graphs
+# concurrently. This results in an improved usage of the available resources
+# if each separate RDataFrame can not utilize all available resources, e.g.,
+# because not enough data is available.
+ROOT.RDF.RunGraphs([hists[s] for s in ["ggH", "VBF", "data"]])
+
+ggh = hists["ggH"].GetValue()
+vbf = hists["VBF"].GetValue()
+data = hists["data"].GetValue()
+
+# Create the plot
 
 # Set styles
 ROOT.gROOT.SetStyle("ATLAS")
@@ -97,11 +111,6 @@ lower_pad.SetBottomMargin(0.3)
 
 upper_pad.Draw()
 lower_pad.Draw()
-
-# Run the event loop
-ggh = hists["ggH"].GetValue()
-vbf = hists["VBF"].GetValue()
-data = hists["data"].GetValue()
 
 # Fit signal + background model to data
 upper_pad.cd()
@@ -202,13 +211,11 @@ text.SetNDC()
 text.SetTextFont(72)
 text.SetTextSize(0.05)
 text.DrawLatex(0.18, 0.84, "ATLAS")
-
 text.SetTextFont(42)
 text.DrawLatex(0.18 + 0.13, 0.84, "Open Data")
-
 text.SetTextSize(0.04)
-text.DrawLatex(0.18, 0.78, "#sqrt{s} = 13 TeV, 10 fb^{-1}");
+text.DrawLatex(0.18, 0.78, "#sqrt{s} = 13 TeV, 10 fb^{-1}")
 
-# Draw and save the plot
-c.Draw()
-c.SaveAs("HiggsToTwoPhotons.pdf");
+# Save the plot
+c.SaveAs("df104_HiggsToTwoPhotons.png")
+print("Saved figure to df104_HiggsToTwoPhotons.png")

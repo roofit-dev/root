@@ -23,6 +23,7 @@
 
 #include <cstring> // for memcpy
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 
 namespace ROOT {
@@ -68,7 +69,8 @@ public:
    RColumnElementBase& operator =(RColumnElementBase&& other) = default;
    virtual ~RColumnElementBase() = default;
 
-   static RColumnElementBase Generate(EColumnType type);
+   static std::unique_ptr<RColumnElementBase> Generate(EColumnType type);
+   static std::size_t GetBitsOnStorage(EColumnType type);
 
    /// Write one or multiple column elements into destination
    void WriteTo(void *destination, std::size_t count) const {
@@ -98,6 +100,7 @@ public:
 
    void *GetRawContent() const { return fRawContent; }
    std::size_t GetSize() const { return fSize; }
+   std::size_t GetPackedSize(std::size_t nElements) const { return (nElements * GetBitsOnStorage() + 7) / 8; }
 };
 
 /**
