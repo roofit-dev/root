@@ -10,6 +10,7 @@
 
 #include "RConfigure.h" // R__USE_IMT
 #include "ROOT/RDataSource.hxx"
+#include "ROOT/RDF/RCustomColumnBase.hxx"
 #include "ROOT/RDF/RLoopManager.hxx"
 #include "RtypesCore.h"
 #include "TBranch.h"
@@ -194,8 +195,8 @@ std::string GetBranchOrLeafTypeName(TTree &t, const std::string &colName)
 /// vector2rvec specifies whether typename 'std::vector<T>' should be converted to 'RVec<T>' or returned as is
 /// customColID is only used if isCustomColumn is true, and must correspond to the custom column's unique identifier
 /// returned by its `GetID()` method.
-std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, RDataSource *ds, bool isCustomColumn,
-                                      bool vector2rvec, unsigned int customColID)
+std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, RDataSource *ds,
+                                      RCustomColumnBase *customColumn, bool vector2rvec)
 {
    std::string colType;
 
@@ -213,9 +214,8 @@ std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, R
       }
    }
 
-   if (colType.empty() && isCustomColumn) {
-      // this must be a temporary branch, we know there is an alias for its type
-      colType = "__rdf::" + colName + std::to_string(customColID) + "_type";
+   if (colType.empty() && customColumn) {
+      colType = customColumn->GetTypeName();
    }
 
    if (colType.empty())
@@ -289,7 +289,9 @@ std::vector<std::string> ReplaceDotWithUnderscore(const std::vector<std::string>
 void InterpreterDeclare(const std::string &code)
 {
    if (!gInterpreter->Declare(code.c_str())) {
-      const auto msg = "\nAn error occurred while jitting. The lines above might indicate the cause of the crash\n";
+      const auto msg =
+         "\nRDataFrame: An error occurred during just-in-time compilation. The lines above might indicate the cause of "
+         "the crash\n All RDF objects that have not run an event loop yet should be considered in an invalid state.\n";
       throw std::runtime_error(msg);
    }
 }
@@ -299,10 +301,11 @@ Long64_t InterpreterCalc(const std::string &code, const std::string &context)
    TInterpreter::EErrorCode errorCode(TInterpreter::kNoError);
    auto res = gInterpreter->Calc(code.c_str(), &errorCode);
    if (errorCode != TInterpreter::EErrorCode::kNoError) {
-      std::string msg = "\nAn error occurred while jitting";
+      std::string msg = "\nAn error occurred during just-in-time compilation";
       if (!context.empty())
          msg += " in " + context;
-      msg += ". The lines above might indicate the cause of the crash\n";
+      msg += ". The lines above might indicate the cause of the crash\nAll RDF objects that have not run their event "
+             "loop yet should be considered in an invalid state.\n";
       throw std::runtime_error(msg);
    }
    return res;

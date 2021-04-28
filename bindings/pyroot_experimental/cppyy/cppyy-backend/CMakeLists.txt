@@ -30,12 +30,11 @@ foreach(val RANGE ${how_many_pythons})
   set(libname cppyy_backend${python_under_version_string})
 
   add_library(${libname} SHARED clingwrapper/src/clingwrapper.cxx)
-  target_include_directories(${libname} PRIVATE clingwrapper/src)
+
   target_link_libraries(${libname} Core ${CMAKE_DL_LIBS})
 
   # cppyy uses ROOT headers from binary directory
   add_dependencies(${libname} move_headers)
-  target_include_directories(${libname} PRIVATE ${CMAKE_BINARY_DIR}/include)
 
   set_property(GLOBAL APPEND PROPERTY ROOT_EXPORTED_TARGETS ${libname})
 
@@ -44,7 +43,7 @@ foreach(val RANGE ${how_many_pythons})
 
   # Install compiled .py files
   foreach(py_source ${py_sources})
-    install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${d}/${py_source})")
-    install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${d}/${py_source})")
+    install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${install_dir_lib}/${py_source})")
+    install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${install_dir_lib}/${py_source})")
   endforeach()
 endforeach()

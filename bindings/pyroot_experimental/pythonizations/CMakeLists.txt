@@ -21,6 +21,7 @@ endif()
 set(py_sources
   ROOT/__init__.py
   ROOT/_application.py
+  ROOT/_numbadeclare.py
   ROOT/_facade.py
   ROOT/pythonization/__init__.py
   ROOT/pythonization/_cppinstance.py
@@ -56,7 +57,6 @@ set(py_sources
 )
 
 set(cpp_sources
-    src/CppCallablePyz.cxx
     src/PyROOTModule.cxx
     src/PyROOTStrings.cxx
     src/PyROOTWrapper.cxx
@@ -74,6 +74,7 @@ set(cpp_sources
     src/PyzCppHelpers.cxx
     src/PyzPythonHelpers.cxx
     src/CPPInstancePyz.cxx
+    src/FacadeHelpers.cxx
     ${PYROOT_EXTRA_SOURCE}
 )
 
@@ -96,7 +97,7 @@ foreach(val RANGE ${how_many_pythons})
 
   ROOT_LINKER_LIBRARY(${libname} ${cpp_sources} DEPENDENCIES Core Tree cppyy${python_under_version_string} CMAKENOEXPORT)
 
-  target_include_directories(${libname} PRIVATE ${ROOT_headers_dir} ${python_include_dir})
+  target_include_directories(${libname} PRIVATE ${python_include_dir})
 
   # Disables warnings caused by Py_RETURN_TRUE/Py_RETURN_FALSE
   if(NOT MSVC)
@@ -114,8 +115,8 @@ foreach(val RANGE ${how_many_pythons})
 
   # Install compiled .py files
   foreach(py_source ${py_sources})
-    install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${d}/${py_source})")
-    install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${d}/${py_source})")
+    install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${install_dir_lib}/${py_source})")
+    install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${install_dir_lib}/${py_source})")
   endforeach()
 
 endforeach()

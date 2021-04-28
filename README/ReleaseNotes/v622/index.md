@@ -30,6 +30,7 @@ The following people have contributed to this new version:
  Vincenzo Eduardo Padulano, Bicocca/SFT,\
  Danilo Piparo, CERN/SFT,\
  Timur Pocheptsoff, Qt Company,\
+ Renato Quagliani, LPNHE, CNRS/IN2P3, Sorbonne Université,\
  Fons Rademakers, CERN/SFT,\
  Oksana Shadura, Nebraska,\
  Enric Tejedor Saavedra, CERN/SFT,\
@@ -75,24 +76,24 @@ Now,
 has been defined for the new PyROOT, which makes calling the function easier.
 
 ### Type-safe proxies for RooFit objects
-RooFit's proxy classes have been modernised. The new class `RooProxy` allows for access to other RooFit objects
+RooFit's proxy classes have been modernised. The class `RooTemplateProxy` allows for access to other RooFit objects
 similarly to a smart pointer. In older versions of RooFit, the objects held by *e.g.* `RooRealProxy` had to be
 accessed like this:
     RooAbsArg* absArg = realProxy.absArg();
     RooAbsPdf* pdf = dynamic_cast<RooAbsPdf*>(absArg);
-    assert(pdf); // This should work, but the proxy doesn't have a way to check
+    assert(pdf); // This *should* work, but the proxy doesn't have a way to check
     pdf->fitTo(...);
 That is, a `RooRealProxy` stores a pointer to a RooAbsArg, and this pointer has to be cast. There was no type
-safety, *i.e.* any object deriving from RooAbsArg could be stored in that proxy, and the user had to take care
-of ensuring the correct types.
-Now, if the class uses
-    RooProxy<RooAbsPdf> pdfProxy;
+safety, *i.e.*, any object deriving from RooAbsArg could be stored in that proxy, and the user had to take care
+of ensuring that types are correct.
+Now, if one uses
+    RooTemplateProxy<RooAbsPdf> pdfProxy;
 instead of
     RooRealProxy realProxy;
-the above code can be simplified to
+in RooFit classes, the above code can be simplified to
     pdfProxy->fitTo(...);
 
-Check the [doxygen reference guide](https://root.cern.ch/doc/master/classRooProxy.html) for `RooProxy` for
+Check the [doxygen reference guide](https://root.cern.ch/doc/master/classRooTemplateProxy.html) for `RooTemplateProxy` for
 more information on how to modernise old code.
 
 ### HistFactory
@@ -122,6 +123,7 @@ into RooFit's message stream number 2. The verbosity can therefore be adjusted u
     Jan Musinsky.
   - The crosshair type cursor type did not work on MacOS Catalina. This has been fixed by
     Timur Pocheptsoff.
+  - Take into account the Z errors when defining the frame to paint a TGraph2DErrors.
 
 ## 3D Graphics Libraries
 
@@ -185,3 +187,12 @@ See [core/sanitizer](https://github.com/root-project/root/tree/master/core/sanit
 - RDataFrame changed its error handling strategy in case of unreadable input files. Instead of simply logging an error
   and skipping the file, it now throws an exception if any of the input files is unreadable (this could also happen in
   the middle of an event loop). See [ROOT-10549](https://sft.its.cern.ch/jira/browse/ROOT-10549) for more details.
+- New analysis examples based on the recent ATLAS Open Data release ([`Higgs to two photons`](https://root.cern/doc/master/df104__HiggsToTwoPhotons_8py.html), [`W boson analysis`](https://root.cern/doc/master/df105__WBosonAnalysis_8py.html), [`Higgs to four leptons`](https://root.cern/doc/master/df106__HiggsToFourLeptons_8py.html))
+
+
+## PyROOT
+
+- Introduce the `ROOT.Numba.Declare` decorator which provides a simple way to call Python callables from C++. The Python callables are
+  just-in-time compiled with [numba](http://numba.pydata.org/), which ensures a runtime performance similar to a C++ implementation.
+  The feature is targeted to improve the performance of Python based analyses, e.g., allows seamless integration into `RDataFrame` workflows.
+  See the tutorial [`pyroot004_NumbaDeclare.py`](https://root.cern/doc/master/pyroot004__NumbaDeclare_8py.html) for further information.
