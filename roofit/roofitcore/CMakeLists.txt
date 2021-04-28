@@ -266,6 +266,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooWrapperPdf.h
     RooFitLegacy/RooCatTypeLegacy.h
     RooFitLegacy/RooCategorySharedProperties.h
+    RooNaNPacker.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
