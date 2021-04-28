@@ -158,7 +158,6 @@ TEST_F(RDFSnapshot, Snapshot_nocolumnmatch)
    const auto fname = "snapshotnocolumnmatch.root";
    RDataFrame d(1);
    auto op = [&](){
-      testing::internal::CaptureStderr();
       d.Snapshot("t", fname, "x");
    };
    EXPECT_ANY_THROW(op());
@@ -677,6 +676,40 @@ TEST_F(RDFSnapshotMT, Snapshot_action_with_options)
    test_snapshot_options(tdf);
 }
 
+TEST_F(RDFSnapshotMT, Reshuffled_friends)
+{
+   const auto fname = "snapshot_reshuffled_friends.root";
+   tdf.Snapshot("t", fname);
+
+   {
+      // add reshuffled tree as friend
+      testing::internal::CaptureStderr();
+      TFile f(fname);
+      TTree *t = f.Get<TTree>("t");
+      TTree t2("t2", "t2");
+      t2.AddFriend(t);
+      const std::string err = testing::internal::GetCapturedStderr();
+      const auto expected = "Error in <AddFriend>: Tree 't' has the kEntriesReshuffled bit set, and cannot be used as "
+                            "friend nor can be added as a friend unless the main tree has a TTreeIndex on the friend "
+                            "tree 't'. You can also unset the bit manually if you know what you are doing.\n";
+      EXPECT_EQ(err, expected);
+   }
+
+   {
+      // add friend to reshuffled tree
+      testing::internal::CaptureStderr();
+      TFile f(fname);
+      TTree *t = f.Get<TTree>("t");
+      TTree t2("t2", "t2");
+      t->AddFriend(&t2); // should throw
+      const std::string err = testing::internal::GetCapturedStderr();
+      const auto expected = "Error in <AddFriend>: Tree 't' has the kEntriesReshuffled bit set, and cannot be used as "
+                            "friend nor can be added as a friend unless the main tree has a TTreeIndex on the friend "
+                            "tree 't2'. You can also unset the bit manually if you know what you are doing.\n";
+      EXPECT_EQ(err, expected);
+   }
+}
+
 TEST(RDFSnapshotMore, ManyTasksPerThread)
 {
    const auto nSlots = 4u;
@@ -782,8 +815,9 @@ TEST(RDFSnapshotMore, ColsWithCustomTitlesMT)
 TEST(RDFSnapshotMore, TreeWithFriendsMT)
 {
    const auto fname = "treewithfriendsmt.root";
-   ROOT::EnableImplicitMT();
    RDataFrame(10).Define("x", []() { return 0; }).Snapshot<int>("t", fname, {"x"});
+
+   ROOT::EnableImplicitMT();
 
    TFile file(fname);
    auto tree = file.Get<TTree>("t");

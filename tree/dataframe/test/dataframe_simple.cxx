@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <ROOT/RDataFrame.hxx>
 #include <ROOT/TSeq.hxx>
+#include <TChain.h>
 #include <TFile.h>
 #include <TGraph.h>
 #include <TInterpreter.h>
@@ -853,7 +854,7 @@ TEST_P(RDFSimpleTests, NonExistingFileInChain)
    } catch (const std::runtime_error &e) {
       const std::string expected_msg =
          ROOT::IsImplicitMTEnabled()
-            ? "TTreeProcessorMT::Process: an error occurred while opening file doesnotexist.root"
+            ? "TTreeProcessorMT::Process: an error occurred while opening file \"doesnotexist.root\""
             : "An error was encountered while processing the data. TTreeReader status code is: 5";
       EXPECT_EQ(e.what(), expected_msg);
       exceptionCaught = true;
@@ -925,6 +926,28 @@ TEST(RDFSimpleTests, ScalarValuesCollectionWeights)
 
    // Check that the exception is thrown
    EXPECT_ANY_THROW(*h);
+}
+
+TEST_P(RDFSimpleTests, ChainWithDifferentTreeNames)
+{
+	const auto fname1 = "test_chainwithdifferenttreenames_1.root";
+	const auto fname2 = "test_chainwithdifferenttreenames_2.root";
+	{
+		ROOT::RDataFrame(10).Define("x", [] { return 1; }).Snapshot<int>("t1", fname1, {"x"});
+		ROOT::RDataFrame(10).Define("x", [] { return 3; }).Snapshot<int>("t2", fname2, {"x"});
+	}
+
+   // add trees to chain
+   TChain c("t1");
+   c.Add(fname1);
+   c.Add((std::string(fname2) + "/t2").c_str());
+
+   // pass chain to RDF and process trees with different names
+   ROOT::RDataFrame df2(c);
+   EXPECT_DOUBLE_EQ(*df2.Mean("x"), 2);
+
+   gSystem->Unlink(fname1);
+   gSystem->Unlink(fname2);
 }
 
 // run single-thread tests
