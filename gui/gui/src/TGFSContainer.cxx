@@ -20,13 +20,14 @@
 
 **************************************************************************/
 
-//////////////////////////////////////////////////////////////////////////
-//                                                                      //
-// TGFileIcon, TGFileEntry, TGFSContainer                               //
-//                                                                      //
-// Utility classes used by the file selection dialog (TGFSDialog).      //
-//                                                                      //
-//////////////////////////////////////////////////////////////////////////
+
+/** \class TGFileIcon, TGFileEntry, TGFSContainer
+    \ingroup guiwidgets
+
+Utility classes used by the file selection dialog (TGFSDialog).
+
+*/
+
 
 #include "TGFSContainer.h"
 #include "TGIcon.h"
@@ -37,13 +38,14 @@
 #include "TSystem.h"
 #include "TVirtualX.h"
 #include "TGDNDManager.h"
-#include "Riostream.h"
 #include "TRemoteObject.h"
 #include "TBufferFile.h"
 #include "TImage.h"
+#include "snprintf.h"
 
-#include <time.h>
-#include <stdlib.h>
+#include <ctime>
+#include <cstdlib>
+#include <iostream>
 
 ClassImp(TGFileItem);
 ClassImp(TGFileContainer);

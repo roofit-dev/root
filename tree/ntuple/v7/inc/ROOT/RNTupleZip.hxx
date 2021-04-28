@@ -51,10 +51,12 @@ public:
    RNTupleCompressor() : fZipBuffer(std::unique_ptr<Buffer_t>(new Buffer_t())) {}
    RNTupleCompressor(const RNTupleCompressor &other) = delete;
    RNTupleCompressor &operator =(const RNTupleCompressor &other) = delete;
+   RNTupleCompressor(RNTupleCompressor &&other) = default;
+   RNTupleCompressor &operator =(RNTupleCompressor &&other) = default;
 
-   /// Returns the size of the compressed data. Data is compressed in 16MB blocks and written
+   /// Returns the size of the compressed data. Data is compressed in 16MB (kMAXZIPBUF) blocks and written
    /// piecewise using the provided writer
-   size_t operator() (const void *from, size_t nbytes, int compression, Writer_t fnWriter) {
+   size_t Zip(const void *from, size_t nbytes, int compression, Writer_t fnWriter) {
       R__ASSERT(from != nullptr);
 
       auto cxLevel = compression % 100;
@@ -92,8 +94,8 @@ public:
    }
 
    /// Returns the size of the compressed data block. The data is written into the zip buffer.
-   /// This works only for small input buffer up to 16MB
-   size_t operator() (const void *from, size_t nbytes, int compression) {
+   /// This works only for small input buffer up to 16MB (kMAXZIPBUF)
+   size_t Zip(const void *from, size_t nbytes, int compression) {
       R__ASSERT(from != nullptr);
       R__ASSERT(nbytes <= kMAXZIPBUF);
 
@@ -138,12 +140,14 @@ public:
    RNTupleDecompressor() : fUnzipBuffer(std::unique_ptr<Buffer_t>(new Buffer_t())) {}
    RNTupleDecompressor(const RNTupleDecompressor &other) = delete;
    RNTupleDecompressor &operator =(const RNTupleDecompressor &other) = delete;
+   RNTupleDecompressor(RNTupleDecompressor &&other) = default;
+   RNTupleDecompressor &operator =(RNTupleDecompressor &&other) = default;
 
    /**
     * The nbytes parameter provides the size ls of the from buffer. The dataLen gives the size of the uncompressed data.
     * The block is uncompressed iff nbytes == dataLen.
     */
-   void operator() (const void *from, size_t nbytes, size_t dataLen, void *to) {
+   void Unzip(const void *from, size_t nbytes, size_t dataLen, void *to) {
       if (dataLen == nbytes) {
          memcpy(to, from, nbytes);
          return;
@@ -177,9 +181,9 @@ public:
    /**
     * In-place decompression via unzip buffer
     */
-   void operator() (void *fromto, size_t nbytes, size_t dataLen) {
+   void Unzip(void *fromto, size_t nbytes, size_t dataLen) {
       R__ASSERT(dataLen <= kMAXZIPBUF);
-      operator()(fromto, nbytes, dataLen, fUnzipBuffer->data());
+      Unzip(fromto, nbytes, dataLen, fUnzipBuffer->data());
       memcpy(fromto, fUnzipBuffer->data(), dataLen);
    }
 };

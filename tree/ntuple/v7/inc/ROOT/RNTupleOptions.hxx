@@ -48,8 +48,6 @@ class RNTupleWriteOptions {
   ENTupleContainerFormat fContainerFormat{ENTupleContainerFormat::kTFile};
 
 public:
-  RNTupleWriteOptions() = default;
-
   int GetCompression() const { return fCompression; }
   void SetCompression(int val) { fCompression = val; }
   void SetCompression(RCompressionSetting::EAlgorithm algorithm, int compressionLevel) {
@@ -71,6 +69,19 @@ All page source classes need to support the common options.
 */
 // clang-format on
 class RNTupleReadOptions {
+public:
+  enum EClusterCache {
+      kOff,
+      kOn,
+      kDefault = kOn,
+   };
+
+private:
+   EClusterCache fClusterCache = EClusterCache::kDefault;
+
+public:
+   EClusterCache GetClusterCache() const { return fClusterCache; }
+   void SetClusterCache(EClusterCache val) { fClusterCache = val; }
 };
 
 } // namespace Experimental

@@ -10,26 +10,7 @@ namespace ROOT {
 namespace ROOTX {
 
 const char *gROOTCoreTeam[] = {
-   "Rene Brun",
-   "Fons Rademakers",
-   "Philippe Canal",
-   "Axel Naumann",
-   "Olivier Couet",
-   "Lorenzo Moneta",
-   "Vassil Vassilev",
-   "Danilo Piparo",
-   "Sergey Linev",
-   "Gerardo Ganis",
-   "Bertrand Bellenot",
-   "Guilherme Amadio",
-   "Wouter Verkerke",
-   "Enrico Guiraud",
-   "Pere Mato Vila",
-   "Timur Pocheptsov",
-   "Matevz Tadel",
-   "Wim Lavrijsen",
-   "Enric Tejedor Saavedra",
-   "Ilka Antcheva",
+
    0 };
 
 } // namespace ROOTX
