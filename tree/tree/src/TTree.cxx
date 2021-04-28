@@ -2789,7 +2789,7 @@ TFile* TTree::ChangeFile(TFile* file)
       if (newfile) newfile->Append(obj);
       file->Remove(obj);
    }
-   delete file;
+   file->TObject::Delete();
    file = 0;
    delete[] fname;
    fname = 0;
@@ -6010,7 +6010,10 @@ TLeaf* TTree::GetLeafImpl(const char* branchname, const char *leafname)
    }
    TIter nextl(GetListOfLeaves());
    while ((leaf = (TLeaf*)nextl())) {
-      if (strcmp(leaf->GetName(),leafname)) continue;
+      if (!strcmp(leaf->GetFullName(),leafname))
+         return leaf;
+      if (strcmp(leaf->GetName(),leafname))
+         continue;
       if (branchname) {
          UInt_t nbch = strlen(branchname);
          TBranch *br = leaf->GetBranch();
@@ -6020,7 +6023,9 @@ TLeaf* TTree::GetLeafImpl(const char* branchname, const char *leafname)
             if (mother != br) {
                const char *mothername = mother->GetName();
                UInt_t motherlen = strlen(mothername);
-               if (nbch > motherlen && strncmp(mothername,branchname,motherlen)==0 && (mothername[motherlen-1]=='.' || branchname[motherlen]=='.')) {
+               if (!strcmp(mothername, branchname)) {
+                  return leaf;
+               } else if (nbch > motherlen && strncmp(mothername,branchname,motherlen)==0 && (mothername[motherlen-1]=='.' || branchname[motherlen]=='.')) {
                   // The left part of the requested name match the name of the mother, let's see if the right part match the name of the branch.
                   if (strncmp(brname,branchname+motherlen+1,nbch-motherlen-1)) {
                      // No it does not

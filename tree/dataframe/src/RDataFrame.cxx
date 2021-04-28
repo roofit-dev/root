@@ -54,7 +54,7 @@ You can directly see RDataFrame in action through its [code examples](https://ro
 - [More features](#more-features)
 - [Transformations](#transformations) -- manipulating data
 - [Actions](#actions) -- getting results
-- [Parallel execution](#parallel-execution) -- how to use it and common pitfalls
+- [Performance tips and parallel execution](#parallel-execution) -- how to use it and common pitfalls
 - [Class reference](#reference) -- most methods are implemented in the [RInterface](https://root.cern/doc/master/classROOT_1_1RDF_1_1RInterface.html) base class
 
 ## <a name="cheatsheet"></a>Cheat sheet
@@ -556,6 +556,11 @@ dataFrame.Min<MyNumber_t>("myObject"); // OK, "myObject" is deduced to be of typ
 Deducing types at runtime requires the just-in-time compilation of the relevant actions, which has a small runtime
 overhead, so specifying the type of the columns as template parameters to the action is good practice when performance is a goal.
 
+When deducing types at runtime, fundamental types are read as constant values, i.e. it is not possible to write to column values
+from Filters or Defines. This is typically perfectly fine and avoids certain common mistakes such as typing `x = 0` rather than `x == 0`.
+Classes and other complex types are read by non-constant references to avoid copies and to permit calls to non-const member functions.
+Note that calling non-const member functions will often not be thread-safe.
+
 ### Generic actions
 `RDataFrame` strives to offer a comprehensive set of standard actions that can be performed on each event. At the same
 time, it **allows users to execute arbitrary code (i.e. a generic action) inside the event loop** through the `Foreach`
@@ -818,7 +823,7 @@ Actions can be **instant** or **lazy**. Instant actions are executed as soon as 
 executed whenever the object they return is accessed for the first time. As a rule of thumb, actions with a return value
 are lazy, the others are instant.
 
-##  <a name="parallel-execution"></a>Parallel execution
+##  <a name="parallel-execution"></a>Performance tips and parallel execution
 As pointed out before in this document, `RDataFrame` can transparently perform multi-threaded event loops to speed up
 the execution of its actions. Users have to call `ROOT::EnableImplicitMT()` *before* constructing the `RDataFrame`
 object to indicate that it should take advantage of a pool of worker threads. **Each worker thread processes a distinct
@@ -856,6 +861,25 @@ will never receive the same slot at the same time.
 This extra parameter might facilitate writing safe parallel code by having each thread write/modify a different
 *processing slot*, e.g. a different element of a list. See [here](#generic-actions) for an example usage of `ForeachSlot`.
 
+### Parallel execution of multiple `RDataFrame` event loops
+A complex analysis may require multiple `RDatFrame` objects to compute all desired results. This poses the challenge that the
+event loops of each `RDataFrame` graph can be parallelized but run sequentially one after another. In the case of many threads
+you may encounter the problem that you run out of data to serve all available resources. To improve this scenario, the helper
+`ROOT::RDF::RunGraphs` allows you to process multiple `RDataFrame` graphs concurrently, which may improve the resource usage.
+~~~{.cpp}
+ROOT::EnableImplicitMT();
+ROOT::RDataFrame df1("tree1", "f1.root");
+ROOT::RDataFrame df2("tree2", "f2.root");
+auto histo1 = df1.Histo1D("x");
+auto histo2 = df2.Histo1D("y");
+
+// just accessing result pointers, the event loops of separate RDataFrames run one after the other
+histo1->Draw(); // runs first multi-thread event loop
+histo2->Draw(); // runs second multi-thread event loop
+
+// with ROOT::RDF::RunGraphs, event loops for separate computation graphs can run concurrently
+ROOT::RDF::RunGraphs({histo1, histo2});
+~~~
 <a name="reference"></a>
 */
 // clang-format on
