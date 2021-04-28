@@ -116,7 +116,6 @@ RooNLLVar::RooNLLVar(const char *name, const char *title, RooAbsPdf& pdf, RooAbs
 		     Int_t nCPU, RooFit::MPSplit interleave, Bool_t CPUAffinity, Bool_t verbose, Bool_t splitRange, Bool_t cloneData, Bool_t binnedL) :
   RooAbsOptTestStatistic(name,title,pdf,indata,RooArgSet(),rangeName,addCoefRangeName,nCPU,interleave,CPUAffinity,verbose,splitRange,cloneData),
   _extended(extended),
-  _batchEvaluations(false),
   _weightSq(kFALSE),
   _first(kTRUE), _offsetSaveW2(0.), _offsetCarrySaveW2(0.)
 {
@@ -162,7 +161,6 @@ RooNLLVar::RooNLLVar(const char *name, const char *title, RooAbsPdf& pdf, RooAbs
 		     Int_t nCPU,RooFit::MPSplit interleave, Bool_t CPUAffinity, Bool_t verbose, Bool_t splitRange, Bool_t cloneData, Bool_t binnedL) :
   RooAbsOptTestStatistic(name,title,pdf,indata,projDeps,rangeName,addCoefRangeName,nCPU,interleave,CPUAffinity,verbose,splitRange,cloneData),
   _extended(extended),
-  _batchEvaluations(false),
   _weightSq(kFALSE),
   _first(kTRUE), _offsetSaveW2(0.), _offsetCarrySaveW2(0.)
 {
