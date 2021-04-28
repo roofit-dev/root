@@ -188,15 +188,14 @@ static void GetBranchNamesImpl(TTree &t, std::set<std::string> &bNamesReg, Colum
    }
 }
 
-static void ThrowIfPoolSizeChanged(unsigned int nSlots)
+static void ThrowIfNSlotsChanged(unsigned int nSlots)
 {
-   const auto poolSize = ROOT::GetThreadPoolSize();
-   const bool isSingleThreadRun = (poolSize == 0 && nSlots == 1);
-   if (!isSingleThreadRun && poolSize != nSlots) {
-      std::string msg = "RLoopManager::Run: when the RDataFrame was constructed the size of the thread pool was " +
+   const auto currentSlots = RDFInternal::GetNSlots();
+   if (currentSlots != nSlots) {
+      std::string msg = "RLoopManager::Run: when the RDataFrame was constructed the number of slots required was " +
                         std::to_string(nSlots) + ", but when starting the event loop it was " +
-                        std::to_string(poolSize) + ".";
-      if (poolSize > nSlots)
+                        std::to_string(currentSlots) + ".";
+      if (currentSlots > nSlots)
          msg += " Maybe EnableImplicitMT() was called after the RDataFrame was constructed?";
       else
          msg += " Maybe DisableImplicitMT() was called after the RDataFrame was constructed?";
@@ -258,6 +257,13 @@ void RLoopManager::CheckIndexedFriends()
    }
 }
 
+struct RSlotRAII {
+   RSlotStack &fSlotStack;
+   unsigned int fSlot;
+   RSlotRAII(RSlotStack &slotStack) : fSlotStack(slotStack), fSlot(slotStack.GetSlot()) {}
+   ~RSlotRAII() { fSlotStack.ReturnSlot(fSlot); }
+};
+
 /// Run event loop with no source files, in parallel.
 void RLoopManager::RunEmptySourceMT()
 {
@@ -281,7 +287,8 @@ void RLoopManager::RunEmptySourceMT()
 
    // Each task will generate a subrange of entries
    auto genFunction = [this, &slotStack](const std::pair<ULong64_t, ULong64_t> &range) {
-      auto slot = slotStack.GetSlot();
+      RSlotRAII slotRAII(slotStack);
+      auto slot = slotRAII.fSlot;
       InitNodeSlots(nullptr, slot);
       try {
          for (auto currEntry = range.first; currEntry < range.second; ++currEntry) {
@@ -294,7 +301,6 @@ void RLoopManager::RunEmptySourceMT()
          throw;
       }
       CleanUpTask(slot);
-      slotStack.ReturnSlot(slot);
    };
 
    ROOT::TThreadExecutor pool;
@@ -331,7 +337,8 @@ void RLoopManager::RunTreeProcessorMT()
    std::atomic<ULong64_t> entryCount(0ull);
 
    tp->Process([this, &slotStack, &entryCount](TTreeReader &r) -> void {
-      auto slot = slotStack.GetSlot();
+      RSlotRAII slotRAII(slotStack);
+      auto slot = slotRAII.fSlot;
       InitNodeSlots(&r, slot);
       const auto entryRange = r.GetEntriesRange(); // we trust TTreeProcessorMT to call SetEntriesRange
       const auto nEntries = entryRange.second - entryRange.first;
@@ -347,7 +354,6 @@ void RLoopManager::RunTreeProcessorMT()
          throw;
       }
       CleanUpTask(slot);
-      slotStack.ReturnSlot(slot);
    });
 #endif // no-op otherwise (will not be called)
 }
@@ -386,13 +392,13 @@ void RLoopManager::RunDataSource()
    R__ASSERT(fDataSource != nullptr);
    fDataSource->Initialise();
    auto ranges = fDataSource->GetEntryRanges();
-   while (!ranges.empty()) {
+   while (!ranges.empty() && fNStopsReceived < fNChildren) {
       InitNodeSlots(nullptr, 0u);
       fDataSource->InitSlot(0u, 0ull);
       try {
          for (const auto &range : ranges) {
             auto end = range.second;
-            for (auto entry = range.first; entry < end; ++entry) {
+            for (auto entry = range.first; entry < end && fNStopsReceived < fNChildren; ++entry) {
                if (fDataSource->SetEntry(0u, entry)) {
                   RunAndCheckFilters(0u, entry);
                }
@@ -420,7 +426,8 @@ void RLoopManager::RunDataSourceMT()
 
    // Each task works on a subrange of entries
    auto runOnRange = [this, &slotStack](const std::pair<ULong64_t, ULong64_t> &range) {
-      const auto slot = slotStack.GetSlot();
+      RSlotRAII slotRAII(slotStack);
+      const auto slot = slotRAII.fSlot;
       InitNodeSlots(nullptr, slot);
       fDataSource->InitSlot(slot, range.first);
       const auto end = range.second;
@@ -437,7 +444,6 @@ void RLoopManager::RunDataSourceMT()
       }
       CleanUpTask(slot);
       fDataSource->FinaliseSlot(slot);
-      slotStack.ReturnSlot(slot);
    };
 
    fDataSource->Initialise();
@@ -527,6 +533,8 @@ void RLoopManager::CleanUpTask(unsigned int slot)
 /// This method also clears the contents of GetCodeToJit().
 void RLoopManager::Jit()
 {
+   R__LOCKGUARD(gROOTMutex);
+
    const std::string code = std::move(GetCodeToJit());
    if (code.empty())
       return;
@@ -552,7 +560,7 @@ void RLoopManager::EvalChildrenCounts()
 /// Also perform a few setup and clean-up operations (jit actions if necessary, clear booked actions after the loop...).
 void RLoopManager::Run()
 {
-   ThrowIfPoolSizeChanged(GetNSlots());
+   ThrowIfNSlotsChanged(GetNSlots());
 
    Jit();
 
@@ -634,6 +642,7 @@ void RLoopManager::Report(ROOT::RDF::RCutFlowReport &rep) const
 
 void RLoopManager::ToJitExec(const std::string &code) const
 {
+   R__LOCKGUARD(gROOTMutex);
    GetCodeToJit().append(code);
 }
 

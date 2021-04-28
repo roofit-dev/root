@@ -772,7 +772,7 @@ public:
    void Exec(unsigned int slot, const T &vs)
    {
       for (auto &&v : vs)
-         fMins[slot] = std::min(v, fMins[slot]);
+         fMins[slot] = std::min(static_cast<ResultType>(v), fMins[slot]);
    }
 
    void Initialize() { /* noop */}
@@ -822,7 +822,7 @@ public:
    void Exec(unsigned int slot, const T &vs)
    {
       for (auto &&v : vs)
-         fMaxs[slot] = std::max((ResultType)v, fMaxs[slot]);
+         fMaxs[slot] = std::max(static_cast<ResultType>(v), fMaxs[slot]);
    }
 
    void Initialize() { /* noop */}
@@ -1522,7 +1522,12 @@ public:
       }
 
       if (!fileWritten) {
-         Warning("Snapshot", "A lazy Snapshot action was booked but never triggered.");
+         if (std::none_of(fOutputFiles.begin(), fOutputFiles.end(), [] (const std::shared_ptr<ROOT::Experimental::TBufferMergerFile> ptr) { return bool(ptr); })) {
+            Warning("Snapshot",
+                    "No input entries (input TTree was empty or no entry passed the Filters). Output TTree is empty.");
+         } else {
+            Warning("Snapshot", "A lazy Snapshot action was booked but never triggered.");
+         }
       }
 
       // flush all buffers to disk by destroying the TBufferMerger
