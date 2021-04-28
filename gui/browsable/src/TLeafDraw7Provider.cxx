@@ -9,7 +9,7 @@
 #include "TLeafProvider.hxx"
 
 #include <ROOT/RCanvas.hxx>
-#include <ROOT/RObjectDrawable.hxx>
+#include <ROOT/TObjectDrawable.hxx>
 
 /** Provider for drawing of ROOT7 classes */
 
@@ -33,7 +33,33 @@ public:
          std::shared_ptr<TH1> shared;
          shared.reset(hist);
 
-         subpad->Draw<ROOT::Experimental::RObjectDrawable>(shared, opt);
+         subpad->Draw<ROOT::Experimental::TObjectDrawable>(shared, opt);
+
+         subpad->GetCanvas()->Update(true);
+
+
+         return true;
+      });
+
+      RegisterDraw7(TBranchElement::Class(), [](std::shared_ptr<ROOT::Experimental::RPadBase> &subpad, std::unique_ptr<RHolder> &obj, const std::string &opt) -> bool {
+
+         auto hist = TLeafProvider::DrawBranchElement(obj);
+
+         if (!hist)
+            return false;
+
+         if (subpad->NumPrimitives() > 0) {
+            subpad->Wipe();
+            subpad->GetCanvas()->Modified();
+            subpad->GetCanvas()->Update(true);
+         }
+
+         std::shared_ptr<TH1> shared;
+         shared.reset(hist);
+
+         subpad->Draw<ROOT::Experimental::TObjectDrawable>(shared, opt);
+
+         subpad->GetCanvas()->Update(true);
 
          return true;
       });
