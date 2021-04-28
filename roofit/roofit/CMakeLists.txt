@@ -140,14 +140,11 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
   DEPENDENCIES
     Core
     RooFitCore
+    RooBatchCompute
     Tree
     RIO
     Matrix
     MathCore
 )
-
-if(vdt AND NOT builtin_vdt)
-  target_include_directories(RooFit PRIVATE ${VDT_INCLUDE_DIR})
-endif()
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

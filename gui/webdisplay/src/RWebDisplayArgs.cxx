@@ -14,10 +14,19 @@
  *************************************************************************/
 
 #include <ROOT/RWebDisplayArgs.hxx>
-#include <ROOT/RWebWindow.hxx>
+
 #include <ROOT/RConfig.hxx>
+#include <ROOT/RLogger.hxx>
+#include <ROOT/RWebWindow.hxx>
 
 #include "TROOT.h"
+#include <string>
+
+ROOT::Experimental::RLogChannel &ROOT::Experimental::WebGUILog() {
+   static RLogChannel sLog("ROOT.WebGUI");
+   return sLog;
+}
+
 
 /** \class ROOT::Experimental::RWebDisplayArgs
  * \ingroup webdisplay
@@ -147,6 +156,9 @@ ROOT::Experimental::RWebDisplayArgs &ROOT::Experimental::RWebDisplayArgs::SetBro
    if (pos == 0) {
       SetUrlOpt(kind.substr(1));
       kind.clear();
+   } else if (pos != std::string::npos) {
+      SetUrlOpt(kind.substr(pos+1));
+      kind.resize(pos);
    }
 
    pos = kind.find("size:");
@@ -163,6 +175,12 @@ ROOT::Experimental::RWebDisplayArgs &ROOT::Experimental::RWebDisplayArgs::SetBro
       if (epos == std::string::npos) epos = kind.length();
       SetPosAsStr(kind.substr(pos+4, epos-pos-4));
       kind.erase(pos, epos-pos);
+   }
+
+   // very special handling of qt5 which can specify pointer as a string
+   if (kind.find("qt5:") == 0) {
+      SetDriverData((void *) std::stoul(kind.substr(4)));
+      kind.resize(3);
    }
 
    // remove all trailing spaces
@@ -288,3 +306,24 @@ std::string ROOT::Experimental::RWebDisplayArgs::GetCustomExec() const
 
    return fExec;
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////
+/// returns string which can be used as argument in RWebWindow::Show() method
+/// to display web window in provided QWidget
+/// After RWebWindow is displayed created QWebEngineView can be found with the command:
+///     auto view = qparent->findChild<QWebEngineView*>("RootWebView");
+
+std::string ROOT::Experimental::RWebDisplayArgs::GetQt5EmbedQualifier(const void *qparent, const std::string &urlopt)
+{
+   std::string where = "qt5";
+   if (qparent) {
+      where.append(":");
+      where.append(std::to_string((unsigned long) qparent));
+   }
+   if (!urlopt.empty()) {
+      where.append("?");
+      where.append(urlopt);
+   }
+   return where;
+}
+

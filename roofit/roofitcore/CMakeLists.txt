@@ -228,7 +228,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooThresholdCategory.h
     RooTObjWrap.h
     RooTrace.h
-    RooTreeData.h
     RooTreeDataStore.h
     RooTruthModel.h
     RooUniformBinning.h
@@ -259,13 +258,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         MultiProcess/util.h
         MultiProcess/zmq.hxx
     RooHelpers.h
-    RooSpan.h
-    BatchData.h
-    BatchHelpers.h
-    RooVDTHeaders.h
     RooWrapperPdf.h
+    RooNaNPacker.h
+    RooBinSamplingPdf.h
     RooFitLegacy/RooCatTypeLegacy.h
     RooFitLegacy/RooCategorySharedProperties.h
+    RooFitLegacy/RooTreeData.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -462,7 +460,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooThresholdCategory.cxx
     src/RooTObjWrap.cxx
     src/RooTrace.cxx
-    src/RooTreeData.cxx
     src/RooTreeDataStore.cxx
     src/RooTruthModel.cxx
     src/RooUniformBinning.cxx
@@ -488,9 +485,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/MultiProcess/messages.cxx
         src/MultiProcess/util.cxx
     src/RooHelpers.cxx
-    src/BatchData.cxx
-    src/BatchHelpers.cxx
     src/RooWrapperPdf.cxx
+    src/RooBinSamplingPdf.cxx
     src/RooFitLegacy/RooCatTypeLegacy.cxx
     src/RooFitLegacy/RooCategorySharedProperties.cxx
     src/RooFitLegacy/RooMultiCatIter.cxx
@@ -509,6 +505,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     MathCore
     Foam
     Smatrix
+    RooBatchCompute
   LIBRARIES
     ${RT_LIBRARY}
   LINKDEF
@@ -516,25 +513,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
 )
 
 #target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
-
-list(APPEND fitcore_incl ${CMAKE_SOURCE_DIR}/roofit/roofitcore/inc)
-
-if(vdt OR builtin_vdt)
-   target_include_directories(RooFitCore PRIVATE ${VDT_INCLUDE_DIRS})
-   list(APPEND fitcore_incl ${VDT_INCLUDE_DIRS})
-endif()
-
-foreach(incl ${fitcore_incl})
-   target_include_directories(RooFitCore PUBLIC $<BUILD_INTERFACE:${incl}>)
-endforeach()
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 5 AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 6)
-  # gcc 5 has a bug in that it fails to put its internal -lgcc into the right place when linking.
-  # We need it to check cpu flags in src/Initialisation.cxx
-  # Here, we add an explicit link instruction according to the workaround posted here:
-  # https://bugs.launchpad.net/ubuntu/+source/gcc-5/+bug/1568899
-  target_link_libraries(RooFitCore PRIVATE -lgcc_s -lgcc)
-endif()
 
 if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)

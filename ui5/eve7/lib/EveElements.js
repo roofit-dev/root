@@ -1,4 +1,4 @@
-/** @file EveElements.js
+8/** @file EveElements.js
  * used only together with OpenUI5 */
 
 // TODO: add dependency from JSROOT components
@@ -6,6 +6,8 @@
 sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
    "use strict";
+
+   let jsrp = JSROOT.Painter; // JSROOT naming convention
 
    // See also EveScene.js makeGLRepresentation(), there several members are
    // set for the top-level Object3D.
@@ -16,11 +18,11 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
    function EveElemControl(o3d)
    {
-      // JSROOT.Painter.GeoDrawingControl.call(this);
+      // jsrp.GeoDrawingControl.call(this);
       this.obj3d = o3d;
    }
 
-   EveElemControl.prototype = Object.create(JSROOT.Painter.GeoDrawingControl.prototype);
+   EveElemControl.prototype = Object.create(jsrp.GeoDrawingControl.prototype);
 
    EveElemControl.prototype.invokeSceneMethod = function(fname, arg)
    {
@@ -37,7 +39,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
    EveElemControl.prototype.getTooltipText = function(intersect)
    {
       let el =  this.obj3d.eve_el;
-      return el.fTitle || el.fName || "";
+      return el.fName || el.fTitle || "";
    }
 
    EveElemControl.prototype.elementHighlighted = function(indx)
@@ -52,7 +54,10 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       this.invokeSceneMethod("processElementSelected"); //, indx);
    }
 
-
+   EveElemControl.prototype.DrawForSelection = function(sec_idcs, res)
+   {
+      res.geom.push(this.obj3d);
+   }
    //==============================================================================
    // EveElements
    //==============================================================================
@@ -82,15 +87,15 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
       var hit_size = 8 * rnrData.fMarkerSize;
       var size     = rnrData.vtxBuff.length / 3;
-      var pnts     = new JSROOT.Painter.PointsCreator(size, true, hit_size);
+      var pnts     = new jsrp.PointsCreator(size, true, hit_size);
 
       for (var i=0; i<size; i++)
-         pnts.AddPoint(rnrData.vtxBuff[i*3],rnrData.vtxBuff[i*3+1],rnrData.vtxBuff[i*3+2]);
+         pnts.addPoint(rnrData.vtxBuff[i*3],rnrData.vtxBuff[i*3+1],rnrData.vtxBuff[i*3+2]);
 
-      var mesh = pnts.CreatePoints(JSROOT.Painter.root_colors[hit.fMarkerColor]);
+      var mesh = pnts.createPoints(jsrp.getColor(hit.fMarkerColor));
 
       // use points control to toggle highlight and selection
-      // mesh.get_ctrl = function() { return new JSROOT.Painter.PointsControl(this); }
+      // mesh.get_ctrl = function() { return new jsrp.PointsControl(this); }
 
       mesh.get_ctrl = function() { return new EveElemControl(this); }
 
@@ -107,9 +112,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
       var N = rnrData.vtxBuff.length/3;
       var track_width = track.fLineWidth || 1;
-      var track_color = JSROOT.Painter.root_colors[track.fLineColor] || "rgb(255,0,255)";
-
-      if (JSROOT.browser.isWin) track_width = 1;  // not supported on windows
+      var track_color = jsrp.getColor(track.fLineColor) || "rgb(255,0,255)";
 
       var buf = new Float32Array((N-1) * 6), pos = 0;
       for (var k=0;k<(N-1);++k) {
@@ -139,7 +142,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
          pos+=6;
       }
 
-      var style = (track.fLineStyle > 1) ? JSROOT.Painter.root_line_styles[track.fLineStyle] : "",
+      var style = (track.fLineStyle > 1) ? jsrp.root_line_styles[track.fLineStyle] : "",
           dash = style ? style.split(",") : [], lineMaterial;
 
       if (dash && (dash.length > 1)) {
@@ -149,7 +152,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       }
 
       var geom = new THREE.BufferGeometry();
-      geom.addAttribute( 'position', new THREE.BufferAttribute( buf, 3 )  );
+      geom.setAttribute( 'position', new THREE.BufferAttribute( buf, 3 )  );
       var line = new THREE.LineSegments(geom, lineMaterial);
 
       // required for the dashed material
@@ -173,7 +176,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       var N      = rnrData.vtxBuff.length / 3;
 
       var geo_body = new THREE.BufferGeometry();
-      geo_body.addAttribute('position', pos_ba);
+      geo_body.setAttribute('position', pos_ba);
       var idcs = [0, N-1, 1];
       for (var i = 1; i < N - 1; ++i)
          idcs.push( 0, i, i + 1 );
@@ -181,20 +184,20 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       geo_body.computeVertexNormals();
 
       var geo_rim = new THREE.BufferGeometry();
-      geo_rim.addAttribute('position', pos_ba);
+      geo_rim.setAttribute('position', pos_ba);
       idcs = new Uint16Array(N-1);
       for (var i = 1; i < N; ++i) idcs[i-1] = i;
       geo_rim.setIndex(new THREE.BufferAttribute( idcs, 1 ));
 
       var geo_rays = new THREE.BufferGeometry();
-      geo_rays.addAttribute('position', pos_ba);
+      geo_rays.setAttribute('position', pos_ba);
       idcs = [];
       for (var i = 1; i < N; i += 4)
          idcs.push( 0, i );
       geo_rays.setIndex( idcs );
 
-      var mcol = JSROOT.Painter.root_colors[jet.fMainColor];
-      var lcol = JSROOT.Painter.root_colors[jet.fLineColor];
+      var mcol = jsrp.getColor(jet.fMainColor);
+      var lcol = jsrp.getColor(jet.fLineColor);
 
       var mesh = new THREE.Mesh(geo_body, new THREE.MeshPhongMaterial({ depthWrite: false, color: mcol, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
       var line1 = new THREE.LineLoop(geo_rim,  new THREE.LineBasicMaterial({ linewidth: 2,   color: lcol, transparent: true, opacity: 0.5 }));
@@ -223,7 +226,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       var N      = rnrData.vtxBuff.length / 3;
 
       var geo_body = new THREE.BufferGeometry();
-      geo_body.addAttribute('position', pos_ba);
+      geo_body.setAttribute('position', pos_ba);
       var idcs = [0, 2, 1];
       if (N > 3)
          idcs.push( 0, 3, 2 );
@@ -231,18 +234,18 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       geo_body.computeVertexNormals();
 
       var geo_rim = new THREE.BufferGeometry();
-      geo_rim.addAttribute('position', pos_ba);
+      geo_rim.setAttribute('position', pos_ba);
       idcs = new Uint16Array(N-1);
       for (var i = 1; i < N; ++i) idcs[i-1] = i;
       geo_rim.setIndex(new THREE.BufferAttribute( idcs, 1 ));
 
       var geo_rays = new THREE.BufferGeometry();
-      geo_rays.addAttribute('position', pos_ba);
+      geo_rays.setAttribute('position', pos_ba);
       idcs = [ 0, 1, 0, N-1 ];
       geo_rays.setIndex( idcs );
 
-      var fcol = JSROOT.Painter.root_colors[jet.fFillColor];
-      var lcol = JSROOT.Painter.root_colors[jet.fLineColor];
+      var fcol = jsrp.getColor(jet.fFillColor);
+      var lcol = jsrp.getColor(jet.fLineColor);
       // Process transparency !!!
       // console.log("cols", fcol, lcol);
 
@@ -263,9 +266,9 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
    EveElements.prototype.makeFlatBox = function(ebox, rnrData, idxBegin, idxEnd )
    {
-      var fcol = JSROOT.Painter.root_colors[ebox.fMainColor];
+      var fcol = jsrp.getColor(ebox.fMainColor);
       var boxMaterial = new THREE.MeshPhongMaterial({color: fcol,  flatShading: true});
-      var fcol = JSROOT.Painter.root_colors[ebox.fMainColor];
+      var fcol = jsrp.getColor(ebox.fMainColor);
 
       // console.log("EveElements.prototype.makeFlatBox triangulate", idxBegin, idxEnd);
       let nTriang = (idxEnd - idxBegin) -2;
@@ -282,7 +285,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       var idcs = new THREE.BufferAttribute(idxBuff,1);
 
       var body = new THREE.BufferGeometry();
-      body.addAttribute('position', new THREE.BufferAttribute( rnrData.vtxBuff, 3 ));
+      body.setAttribute('position', new THREE.BufferAttribute( rnrData.vtxBuff, 3 ));
       body.setIndex(new THREE.BufferAttribute(idxBuff,1));
       body.computeVertexNormals();
       var mesh = new THREE.Mesh(body, boxMaterial);
@@ -317,10 +320,10 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       var vBuff = rnr_data.vtxBuff;
 
       var body = new THREE.BufferGeometry();
-      body.addAttribute('position', new THREE.BufferAttribute( vBuff, 3 ));
+      body.setAttribute('position', new THREE.BufferAttribute( vBuff, 3 ));
       body.setIndex( idxBuff );
 
-      var fcol = JSROOT.Painter.root_colors[ebox.fMainColor];
+      var fcol = jsrp.getColor(ebox.fMainColor);
       var boxMaterial = new THREE.MeshPhongMaterial({color: fcol,  flatShading: true});
       if (ebox.fMainTransparency) {
          boxMaterial.transparent = true;
@@ -331,7 +334,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       var mesh = new THREE.Mesh(body, boxMaterial);
       var geo_rim = new THREE.BufferGeometry();
 
-      geo_rim.addAttribute('position', vBuff);
+      geo_rim.setAttribute('position', vBuff);
 
       let nTrigs      = 6 * 2;
       let nSegs       = 6 * 2 * 3;
@@ -349,7 +352,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
          idcs[sbo + 5] = idxBuff[ibo];
       }
       geo_rim.setIndex(new THREE.BufferAttribute( idcs, 1 ));
-      var lcol = JSROOT.Painter.root_colors[ebox.fLineColor];
+      var lcol = jsrp.getColor(ebox.fLineColor);
       var line = new THREE.LineSegments(geo_rim,  new THREE.LineBasicMaterial({ linewidth: 2, color: lcol, transparent: true, opacity: 0.5 }));
       mesh.add(line);
 
@@ -416,7 +419,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       }
 
       var body = new THREE.BufferGeometry();
-      body.addAttribute('position', new THREE.BufferAttribute( vBuff, 3 ));
+      body.setAttribute('position', new THREE.BufferAttribute( vBuff, 3 ));
       body.setIndex( idxBuff );
 
       //
@@ -440,7 +443,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
                off += 3;
             }
          }
-         body.addAttribute( 'color', new THREE.BufferAttribute( colBuff, 3 ) );
+         body.setAttribute( 'color', new THREE.BufferAttribute( colBuff, 3 ) );
          material = new THREE.MeshPhongMaterial( {
 	    color: 0xffffff,
 	    flatShading: true,
@@ -449,7 +452,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
          } );
       }
       else {
-         var fcol = JSROOT.Painter.root_colors[boxset.fMainColor];
+         var fcol = jsrp.getColor(boxset.fMainColor);
          material = new THREE.MeshPhongMaterial({color:fcol, flatShading: true});
          if (boxset.fMainTransparency) {
             material.transparent = true;
@@ -477,15 +480,29 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
    BoxSetControl.prototype.DrawForSelection = function(sec_idcs, res)
    {
       var geobox = new THREE.BufferGeometry();
-      geobox.addAttribute( 'position', this.obj3d.geometry.getAttribute("position") );
+      geobox.setAttribute( 'position', this.obj3d.geometry.getAttribute("position") );
 
       let protoIdcs = [0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0, 1, 2, 3, 1, 3, 0, 4, 7, 6, 4, 6, 5];
-      let idxOff = sec_idcs[0] * 8;
-      for (let i = 0; i < protoIdcs.length; i++)
-         protoIdcs[i] += idxOff;
+      let idxBuff = new Array(sec_idcs.length * protoIdcs.length);
 
-      geobox.setIndex( protoIdcs );
+      let N = this.obj3d.eve_el.render_data.idxBuff.length / 2;
+      for (let b = 0; b < sec_idcs.length; ++b) {
+         let idx = sec_idcs[b]
+         if (this.obj3d.eve_el.fDetIdsAsSecondaryIndices) {
+            for (let x = 0; x < N; ++x) {
+               if (this.obj3d.eve_el.render_data.idxBuff[x + N] === idx)
+               {
+                  idx=x;
+                  break;
+               }
+            }
+         }
+         let idxOff = idx * 8;
+         for (let i = 0; i < protoIdcs.length; i++)
+            idxBuff.push(idxOff + protoIdcs[i]);
+      }
 
+      geobox.setIndex( idxBuff );
       let material = new THREE.MeshPhongMaterial({color:"purple", flatShading: true});
       let mesh     = new THREE.Mesh(geobox, material);
       res.geom.push(mesh);
@@ -501,11 +518,21 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
    {
       var t = this.obj3d.eve_el.fTitle || this.obj3d.eve_el.fName || "";
       var idx = this.extractIndex(intersect);
+      if (this.obj3d.eve_el.fDetIdsAsSecondaryIndices) {
+	 let N = this.obj3d.eve_el.render_data.idxBuff.length / 2;
+	 let id = this.obj3d.eve_el.render_data.idxBuff[N + idx];
+         return t + " idx=" + id;
+      }
       return t + " idx=" + idx;
    }
 
    BoxSetControl.prototype.elementSelected = function(indx)
    {
+       if (this.obj3d.eve_el.fDetIdsAsSecondaryIndices) {
+	  let N = this.obj3d.eve_el.render_data.idxBuff.length / 2;
+          indx = this.obj3d.eve_el.render_data.idxBuff[N + indx];
+       }
+
       this.invokeSceneMethod("processElementSelected", indx);
    }
 
@@ -547,7 +574,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
         var idcs = new THREE.BufferAttribute(idxBuff,1);
 
         var body = new THREE.BufferGeometry();
-        body.addAttribute('position', new THREE.BufferAttribute( rnrData.vtxBuff, 3 ));
+        body.setAttribute('position', new THREE.BufferAttribute( rnrData.vtxBuff, 3 ));
         body.setIndex(new THREE.BufferAttribute(idxBuff,1));
         body.computeVertexNormals();
 
@@ -559,7 +586,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
         {
             var slice = ci[x*2];
             var sliceColor =  calo2D.sliceColors[slice];
-            var tc = new THREE.Color(JSROOT.Painter.root_colors[sliceColor]);
+            var tc = new THREE.Color(jsrp.getColor(sliceColor));
             for (var i = 0; i < 4; ++i)
             {
                 colBuff[off    ] = tc.r;
@@ -568,7 +595,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
                 off += 3;
             }
         }
-        body.addAttribute( 'color', new THREE.BufferAttribute( colBuff, 3 ) );
+        body.setAttribute( 'color', new THREE.BufferAttribute( colBuff, 3 ) );
 
         let material = new THREE.MeshPhongMaterial( {
 	    color: 0xffffff,
@@ -589,15 +616,12 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
     Calo2DControl.prototype = Object.create(EveElemControl.prototype);
 
-    Calo2DControl.prototype.DrawForSelection = function(sec_idcs, res)
+    Calo2DControl.prototype.DrawForSelection = function(sec_idcs, res, extra)
     {
-        var s = this.obj3d.scene;
-        var caloData = s.mgr.GetElement(this.obj3d.eve_el.dataId);
-        let dataSelection = res.sel_type ?  caloData.highlight : caloData.select;
         let cells;
-        for (let i = 0; i < dataSelection.length; i++) {
-            if (dataSelection[i].caloVizId ==  this.obj3d.eve_el.fElementId) {
-                cells = dataSelection[i].cells;
+        for (let i = 0; i < extra.length; i++) {
+            if (extra[i].caloVizId ==  this.obj3d.eve_el.fElementId) {
+                cells = extra[i].cells;
                 break;
             }
         }
@@ -673,7 +697,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
         }
 
         let body = new THREE.BufferGeometry();
-        body.addAttribute('position', new THREE.BufferAttribute( vtxBuff, 3 ));
+        body.setAttribute('position', new THREE.BufferAttribute( vtxBuff, 3 ));
         body.setIndex( idxBuff );
 
         var mesh = new THREE.Mesh(body);
@@ -776,7 +800,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
         }
 
         var body = new THREE.BufferGeometry();
-        body.addAttribute('position', new THREE.BufferAttribute( vBuff, 3 ));
+        body.setAttribute('position', new THREE.BufferAttribute( vBuff, 3 ));
         body.setIndex( idxBuff );
 
         var material = 0;
@@ -788,7 +812,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
         {
             var slice = ci[x*2];
             var sliceColor =  calo3D.sliceColors[slice];
-            var tc = new THREE.Color(JSROOT.Painter.root_colors[sliceColor]);
+            var tc = new THREE.Color(jsrp.getColor(sliceColor));
             for (var i = 0; i < 8; ++i)
             {
                 colBuff[off    ] = tc.r;
@@ -797,7 +821,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
                 off += 3;
             }
         }
-        body.addAttribute( 'color', new THREE.BufferAttribute( colBuff, 3 ) );
+        body.setAttribute( 'color', new THREE.BufferAttribute( colBuff, 3 ) );
         material = new THREE.MeshPhongMaterial( {
 	    color: 0xffffff,
 	    flatShading: true,
@@ -818,54 +842,76 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
     Calo3DControl.prototype = Object.create(EveElemControl.prototype);
 
-    Calo3DControl.prototype.DrawForSelection = function(sec_idcs, res)
-    {
-        var s = this.obj3d.scene;
-        var caloData = s.mgr.GetElement(this.obj3d.eve_el.dataId);
-        let dataSelection = res.sel_type ?  caloData.highlight : caloData.select;
-        let cells;
-        for (let i = 0; i < dataSelection.length; i++) {
-            if (dataSelection[i].caloVizId ==  this.obj3d.eve_el.fElementId) {
-                cells = dataSelection[i].cells;
-                break;
+   Calo3DControl.prototype.DrawForSelection = function (sec_idcs, res, extra) {
+      console.log("CALO 3d draw for selection ", extra);
+      let cells;
+      for (let i = 0; i < extra.length; i++) {
+         if (extra[i].caloVizId == this.obj3d.eve_el.fElementId) {
+            cells = extra[i].cells;
+            break;
+         }
+      }
+
+      let ibuff = this.obj3d.eve_el.render_data.idxBuff;
+      let nbox = ibuff.length / 2;
+      let nBoxSelected = parseInt(cells.length);
+      let boxIdcs = new Array;
+      for (let i = 0; i < cells.length; i++) {
+         let tower = cells[i].t;
+         let slice = cells[i].s;
+
+         for (let r = 0; r < nbox; r++) {
+            if (ibuff[r * 2] == slice && ibuff[r * 2 + 1] == tower) {
+               boxIdcs.push(r);
+               break;
             }
-        }
+         }
+      }
+      let rnr_data = this.obj3d.eve_el.render_data;
+      let protoIdcs = [0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0, 1, 2, 3, 1, 3, 0, 4, 7, 6, 4, 6, 5];
+      var idxBuff = [];
+      let vtxBuff = new Float32Array(nbox * 8 * 3);
+      for (let i = 0; i < nBoxSelected; ++i) {
+         let BoxIdcs = boxIdcs[i];
+         for (let c = 0; c < 8; c++) {
+            let off = i * 24 + c * 3;
+            let pos = BoxIdcs * 24 + c * 3;
+            vtxBuff[off] = rnr_data.vtxBuff[pos];
+            vtxBuff[off + 1] = rnr_data.vtxBuff[pos + 1];
+            vtxBuff[off + 2] = rnr_data.vtxBuff[pos + 2];
+         }
 
-        let ibuff = this.obj3d.eve_el.render_data.idxBuff;
-        let nbox = ibuff.length/2;
-        let nBoxSelected = parseInt(cells.length);
-        let boxIdcs = new Array;
-        for (let i = 0; i < cells.length; i++)
-        {
-            let tower = cells[i].t;
-            let slice = cells[i].s;
+         // fix top corners
+         for (let c = 0; c < 4; c++) {
+            // fix vertex 1
+            let pos = BoxIdcs * 24 + c * 3;
+            let v1x = rnr_data.vtxBuff[pos];
+            let v1y = rnr_data.vtxBuff[pos + 1];
+            let v1z = rnr_data.vtxBuff[pos + 2];
+            pos += 12;
+            let v2x = rnr_data.vtxBuff[pos];
+            let v2y = rnr_data.vtxBuff[pos + 1];
+            let v2z = rnr_data.vtxBuff[pos + 2];
 
-            for (let r = 0; r < nbox; r++) {
-                if (ibuff[r*2] == slice && ibuff[r*2+1] == tower) {
-                    boxIdcs.push(r);
-                    break;
-                }
-            }
-        }
+            let off = i * 24 + 12 + c * 3;
+            vtxBuff[off]     = v1x + cells[i].f * (v2x - v1x);
+            vtxBuff[off + 1] = v1y + cells[i].f * (v2y - v1y);
+            vtxBuff[off + 2] = v1z + cells[i].f * (v2z - v1z);
+         }
 
-        let protoSize = 6 * 2 * 3;
-        let protoIdcs = [0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0, 1, 2, 3, 1, 3, 0, 4, 7, 6, 4, 6, 5];
-        var idxBuff = [];
-        for (let i = 0; i < nBoxSelected; ++i)
-        {
-            for (let c = 0; c < protoSize; c++) {
-                let off = boxIdcs[i] * 8;
-                idxBuff.push(protoIdcs[c] + off);
-            }
-        }
+         for (let c = 0; c < 36; c++) {
+            let off = i * 8;
+            idxBuff.push(protoIdcs[c] + off);
+         }
+      } // loop boxes
 
-        let body = new THREE.BufferGeometry();
-        body.addAttribute( 'position', this.obj3d.geometry.getAttribute("position") );
-        body.setIndex( idxBuff );
+      let body = new THREE.BufferGeometry();
+      body.setAttribute('position', new THREE.BufferAttribute(vtxBuff, 3));
+      body.setIndex(idxBuff);
 
-        var mesh = new THREE.Mesh(body);
-        res.geom.push(mesh);
-    }
+      var mesh = new THREE.Mesh(body);
+      res.geom.push(mesh);
+   }
 
     Calo3DControl.prototype.extractIndex = function(intersect)
     {
@@ -915,7 +961,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
     }
 
     Calo3DControl.prototype.elementHighlighted = function(pidx)
-    {
+   {
         let idx = pidx;
         let calo =  this.obj3d.eve_el;
         let idxBuff = calo.render_data.idxBuff;
@@ -949,7 +995,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
       if (this.useIndexAsIs) {
          var body = new THREE.BufferGeometry();
-         body.addAttribute('position', new THREE.BufferAttribute( rnr_data.vtxBuff, 3 ));
+         body.setAttribute('position', new THREE.BufferAttribute( rnr_data.vtxBuff, 3 ));
          body.setIndex(new THREE.BufferAttribute( rnr_data.idxBuff, 1 ));
          body.setDrawRange(2, nVert);
          // this does not work correctly - draw range ignored when calculating normals
@@ -982,10 +1028,10 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
       var body = new THREE.BufferGeometry();
 
-      body.addAttribute('position', new THREE.BufferAttribute( vBuf, 3 ));
+      body.setAttribute('position', new THREE.BufferAttribute( vBuf, 3 ));
 
       if (nBuf)
-         body.addAttribute('normal', new THREE.BufferAttribute( nBuf, 3 ));
+         body.setAttribute('normal', new THREE.BufferAttribute( nBuf, 3 ));
       else
          body.computeVertexNormals();
 
@@ -1007,7 +1053,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
       var geom = this.makeEveGeometry(rnr_data);
 
-      var fcol = JSROOT.Painter.root_colors[egs.fFillColor];
+      var fcol = jsrp.getColor(egs.fFillColor);
 
       var material = new THREE.MeshPhongMaterial({// side: THREE.DoubleSide,
                           depthWrite: false, color:fcol, transparent: true, opacity: 0.2 });
@@ -1028,7 +1074,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
       var ib_len = rnr_data.idxBuff.length;
 
-      var fcol = JSROOT.Painter.root_colors[psp.fMainColor];
+      var fcol = jsrp.getColor(psp.fMainColor);
       var line_mat = new THREE.LineBasicMaterial({color:fcol });
 
       for (var ib_pos = 0; ib_pos < ib_len; )
@@ -1042,7 +1088,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
             if (is_ok) {
                var body = new THREE.BufferGeometry();
-               body.addAttribute('position', pos_ba);
+               body.setAttribute('position', pos_ba);
                body.setIndex(idx_ba);
                body.setDrawRange(ib_pos + 2, 3 * rnr_data.idxBuff[ib_pos + 1]);
                body.computeVertexNormals();
@@ -1059,7 +1105,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
          else if (rnr_data.idxBuff[ib_pos] == GL.LINE_LOOP)
          {
             var body = new THREE.BufferGeometry();
-            body.addAttribute('position', pos_ba);
+            body.setAttribute('position', pos_ba);
             body.setIndex(idx_ba);
             body.setDrawRange(ib_pos + 2, rnr_data.idxBuff[ib_pos + 1]);
 
@@ -1085,7 +1131,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
       var psp_ro = new THREE.Object3D(),
           ib_len = rnr_data.idxBuff.length,
-          fcol = JSROOT.Painter.root_colors[psp.fMainColor];
+          fcol = jsrp.getColor(psp.fMainColor);
 
       for (var ib_pos = 0; ib_pos < ib_len; )
       {
@@ -1104,7 +1150,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
             if (vBuf) {
                var body = new THREE.BufferGeometry();
-               body.addAttribute('position', new THREE.BufferAttribute( vBuf, 3 ));
+               body.setAttribute('position', new THREE.BufferAttribute( vBuf, 3 ));
                body.computeVertexNormals();
                var material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, depthWrite: false,
                                   color:fcol, transparent: true, opacity: 0.4 });
@@ -1130,7 +1176,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
             if (vBuf) {
                var body = new THREE.BufferGeometry();
-               body.addAttribute('position', new THREE.BufferAttribute( vBuf, 3 ));
+               body.setAttribute('position', new THREE.BufferAttribute( vBuf, 3 ));
                var line_mat = new THREE.LineBasicMaterial({color:fcol });
                psp_ro.add( new THREE.LineLoop(body, line_mat) );
             } else {
@@ -1186,7 +1232,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
    StraightLineSetControl.prototype.getTooltipText = function(intersect)
    {
-      var t = this.obj3d.eve_el.fTitle || this.obj3d.eve_el.fName || "";
+      var t = this.obj3d.eve_el.fName || this.obj3d.eve_el.fTitle || "";
       var idx = this.extractIndex(intersect);
       return t + " idx=" + idx;
    }
@@ -1215,7 +1261,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       var index = sec_idcs;
       var geom = new THREE.BufferGeometry();
 
-      geom.addAttribute( 'position', m.children[0].geometry.getAttribute("position") );
+      geom.setAttribute( 'position', m.children[0].geometry.getAttribute("position") );
       if (index.length == 1)
       {
          geom.setDrawRange(index[0]*2, 2);
@@ -1227,7 +1273,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
          geom.setIndex( idcs );
       }
 
-      var color =  JSROOT.Painter.root_colors[m.eve_el.fMainColor];
+      var color =  jsrp.getColor(m.eve_el.fMainColor);
       var lineMaterial = new THREE.LineBasicMaterial({ color: color, linewidth: 4 });
       var line         = new THREE.LineSegments(geom, lineMaterial);
       line.matrixAutoUpdate = false;
@@ -1252,16 +1298,16 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
       if (mindx.length > 0)
       {
-         var pnts = new JSROOT.Painter.PointsCreator(mindx.length, true, 5);
+         var pnts = new jsrp.PointsCreator(mindx.length, true, 5);
 
          var arr = m.children[1].geometry.getAttribute("position").array;
 
          for (var i = 0; i < mindx.length; ++i)
          {
             var p = mindx[i]*3;
-            pnts.AddPoint(arr[p], arr[p+1], arr[p+2] );
+            pnts.addPoint(arr[p], arr[p+1], arr[p+2] );
          }
-         var mark = pnts.CreatePoints(color);
+         var mark = pnts.createPoints(color);
          mark.material.size = m.children[1].material.size;
          mark.matrixAutoUpdate = false;
          mark.matrix.fromArray(m.matrix.toArray());
@@ -1275,7 +1321,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
         console.log("MAKE STRA ...");
       var obj3d = new THREE.Object3D();
 
-      var mainColor = JSROOT.Painter.root_colors[el.fMainColor];
+      var mainColor = jsrp.getColor(el.fMainColor);
 
       let buf = new Float32Array(el.fLinePlexSize * 6);
       for (let i = 0; i < el.fLinePlexSize * 6; ++i)
@@ -1283,19 +1329,19 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       var lineMaterial = new THREE.LineBasicMaterial({ color: mainColor, linewidth: el.fLineWidth });
 
       var geom = new THREE.BufferGeometry();
-      geom.addAttribute( 'position', new THREE.BufferAttribute( buf, 3 ) );
+      geom.setAttribute( 'position', new THREE.BufferAttribute( buf, 3 ) );
       var line = new THREE.LineSegments(geom, lineMaterial);
       obj3d.add(line);
 
       let msize = el.fMarkerPlexSize;
-      let pnts  = new JSROOT.Painter.PointsCreator(msize, true, 3);
+      let pnts  = new jsrp.PointsCreator(msize, true, 3);
 
       let startIdx = el.fLinePlexSize * 6;
       let endIdx   = startIdx + msize * 3;
       for (let i = startIdx; i < endIdx; i+=3) {
-         pnts.AddPoint(rnr_data.vtxBuff[i], rnr_data.vtxBuff[i+1], rnr_data.vtxBuff[i+2] );
+         pnts.addPoint(rnr_data.vtxBuff[i], rnr_data.vtxBuff[i+1], rnr_data.vtxBuff[i+2] );
       }
-      var marker = pnts.CreatePoints(mainColor);
+      var marker = pnts.createPoints(mainColor);
 
       marker.material.sizeAttenuation = false;
 
