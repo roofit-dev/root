@@ -30,6 +30,19 @@ std::unique_ptr<RLevelIter> RElement::GetChildsIter()
 }
 
 /////////////////////////////////////////////////////////////////////
+/// Returns number of childs
+/// By default creates iterator and iterates over all items
+
+int RElement::GetNumChilds()
+{
+   auto iter = GetChildsIter();
+   if (!iter) return 0;
+   int cnt = 0;
+   while (iter->Next()) cnt++;
+   return cnt;
+}
+
+/////////////////////////////////////////////////////////////////////
 /// Find item with specified name
 /// Default implementation, should work for all
 
@@ -80,5 +93,64 @@ std::string RElement::GetContent(const std::string &kind)
    }
 
    return ""s;
+}
+
+/////////////////////////////////////////////////////////////////////
+/// Parse string path to produce RElementPath_t
+/// One should avoid to use string pathes as much as possible
+
+RElementPath_t RElement::ParsePath(const std::string &strpath)
+{
+   RElementPath_t arr;
+   if (strpath.empty())
+      return arr;
+
+   std::string slash = "/";
+
+   std::string::size_type previous = 0;
+   if (strpath[0] == slash[0]) previous++;
+
+   auto current = strpath.find(slash, previous);
+   while (current != std::string::npos) {
+      if (current > previous)
+         arr.emplace_back(strpath.substr(previous, current - previous));
+      previous = current + 1;
+      current = strpath.find(slash, previous);
+   }
+
+   if (previous < strpath.length())
+      arr.emplace_back(strpath.substr(previous));
+
+   return arr;
+}
+
+/////////////////////////////////////////////////////////////////////
+/// Compare two paths,
+/// Returns number of elements matches in both paths
+
+int RElement::ComparePaths(const RElementPath_t &path1, const RElementPath_t &path2)
+{
+   int sz = path1.size();
+   if (sz > (int) path2.size()) sz = path2.size();
+
+   for (int n = 0; n < sz; ++n)
+      if (path1[n] != path2[n])
+         return n;
+
+   return sz;
+}
+
+/////////////////////////////////////////////////////////////////////
+/// Converts element path back to string
+
+std::string RElement::GetPathAsString(const RElementPath_t &path)
+{
+   std::string res;
+   for (auto &elem : path) {
+      res.append("/");
+      res.append(elem);
+   }
+
+   return res;
 }
 

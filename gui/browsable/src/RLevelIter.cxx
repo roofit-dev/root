@@ -19,22 +19,21 @@ using namespace ROOT::Experimental::Browsable;
 
 bool RLevelIter::Find(const std::string &name)
 {
-   if (!Reset()) return false;
-
    while (Next()) {
-      if (GetName() == name)
+      if (GetItemName() == name)
          return true;
    }
 
    return false;
 }
 
-
 /////////////////////////////////////////////////////////////////////
 /// Create generic description item for RBrowser
 
 std::unique_ptr<RItem> RLevelIter::CreateItem()
 {
-   return HasItem() ? std::make_unique<RItem>(GetName(), CanHaveChilds(), CanHaveChilds() > 0 ? "sap-icon://folder-blank" : "sap-icon://document") : nullptr;
+   auto have_childs = CanItemHaveChilds();
+
+   return std::make_unique<RItem>(GetItemName(), have_childs ? -1 : 0, have_childs ? "sap-icon://folder-blank" : "sap-icon://document");
 }
 
