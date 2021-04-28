@@ -182,6 +182,7 @@
 #include "TObjString.h"
 #include "TRootHelpDialog.h"
 #include "HelpText.h"
+#include "TVirtualX.h"
 #ifdef WIN32
 #include "TWin32SplashThread.h"
 #endif
@@ -584,7 +585,7 @@ Bool_t TGTextEditor::SaveFileAs()
    static Bool_t overwr = kFALSE;
    TGFileInfo fi;
    fi.fFileTypes = ed_filetypes;
-   fi.fIniDir    = StrDup(dir);
+   fi.SetIniDir(dir);
    fi.fOverwrite = overwr;
    new TGFileDialog(fClient->GetDefaultRoot(), this, kFDSave, &fi);
    gSystem->ChangeDirectory(workdir.Data());
@@ -823,7 +824,7 @@ void TGTextEditor::ExecuteMacro()
    TString savdir = gSystem->WorkingDirectory();
    TString tmpfile = gSystem->BaseName(fFilename.Data());
    tmpfile += "_exec";
-   gSystem->ChangeDirectory(gSystem->DirName(fFilename.Data()));
+   gSystem->ChangeDirectory(gSystem->GetDirName(fFilename.Data()).Data());
    fTextEdit->SaveFile(tmpfile.Data(), kFALSE);
    gROOT->SetExecutingMacro(kTRUE);
    gROOT->Macro(tmpfile.Data());

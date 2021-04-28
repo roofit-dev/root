@@ -55,10 +55,7 @@ private:
 
 public:
    // TDirectory status bits
-   enum EStatusBits {
-      kCloseDirectory = BIT(7),
-      kCustomBrowse   = BIT(9)
-   };
+   enum EStatusBits { kCloseDirectory = BIT(7) };
 
    TDirectoryFile();
    TDirectoryFile(const char *name, const char *title, Option_t *option="", TDirectory* motherDir = nullptr);
@@ -103,9 +100,9 @@ public:
            Bool_t      IsModified() const override { return fModified; }
            Bool_t      IsWritable() const override { return fWritable; }
            void        ls(Option_t *option="") const override;
-           TDirectory *mkdir(const char *name, const char *title="") override;
+           TDirectory *mkdir(const char *name, const char *title="", Bool_t returnExistingDirectory = kFALSE) override;
            TFile      *OpenFile(const char *name, Option_t *option= "",
-                            const char *ftitle = "", Int_t compress = ROOT::RCompressionSetting::EDefaults::kUseGeneralPurpose,
+                            const char *ftitle = "", Int_t compress = ROOT::RCompressionSetting::EDefaults::kUseCompiledDefault,
                             Int_t netopt = 0) override;
            void        Purge(Short_t nkeep=1) override;
            void        ReadAll(Option_t *option="") override;

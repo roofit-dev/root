@@ -1,4 +1,4 @@
-# C++ Modules in ROOT. Technology Preview
+# C++ Modules in ROOT. Technology Overview
 
 *Vassil Vassilev, Oksana Shadura, Yuka Takahashi and Raphael Isemann*
 
@@ -192,7 +192,7 @@ namespace {
   void TriggerDictionaryInitialization_libFoo_Impl() {
     static const char* headers[] = {"Foo.h"}
     // More scaffolding
-    extern int __Cling_Autoloading_Map;
+    extern int __Cling_AutoLoading_Map;
     namespace foo{struct __attribute__((annotate("$clingAutoload$Foo.h"))) bar;}
     struct __attribute__((annotate("$clingAutoload$Foo.h"))) S;
     // More initialization scaffolding.
@@ -245,7 +245,7 @@ root [] namespace foo { };struct S;
 root [] foo::bar/*store parsing state*/
         gSystem->Load("Foo");
         // More scaffolding.
-        extern int __Cling_Autoloading_Map;
+        extern int __Cling_AutoLoading_Map;
         namespace foo{struct __attribute__((annotate("$clingAutoload$Foo.h"))) bar;}
         struct __attribute__((annotate("$clingAutoload$Foo.h"))) S;
         // More initialization scaffolding.
@@ -262,7 +262,7 @@ root [] namespace foo { };struct S;
 root [] foo::bar/*store parsing state*/
         gSystem->Load("Foo");
         // More scaffolding.
-        extern int __Cling_Autoloading_Map;
+        extern int __Cling_AutoLoading_Map;
         namespace foo{struct __attribute__((annotate("$clingAutoload$Foo.h"))) bar;}
         struct __attribute__((annotate("$clingAutoload$Foo.h"))) S;
         // More initialization scaffolding.
@@ -333,7 +333,9 @@ different. There are several differences which can be noticed:
 
 ## Changes required by the users
   * Self-contained header files -- every header file should be able to compile
-  on its own. For instance, `gcc -fsyntax-only -xc++ header.h`
+  on its own. For instance, `cat header.h header.h | gcc -fsyntax-only -xc++ -`.
+  This command concatenates `header.h` twice before compiling it to make sure
+  it has proper include protectors.
   * Enable it in `rootcling` -- rootcling can produce a C++ Modules-aware
   dictionary when it is invoked with `-cxxmodule` flag.
   * Modularization of external dependencies -- if a header file is not explicitly
@@ -375,10 +377,6 @@ overhead which we go in details bellow.
 
 
 ### Current limitations
-  * Relocatability issues -- we have fixed a few of the relocatability issues we
-  found. We are aware of an obscure relocatability issue when ROOT is copied in
-  another folder and we are rebuild. ROOT picks up both modulemap files in
-  seemingly distinct locations.
   * Building pcms with rootcling -- in rare cases there might be issues when
   building pcm files with rootcling. The easiest will be to open a bug report
   to clang, however, reproducing a failure outside of rootcling is very difficult

@@ -21,8 +21,6 @@
 #include "RooRealProxy.h"
 #include "RooMsgService.h"
 #include <string>
-#include <map>
-#include <vector>
 #include "Math/IFunction.h"
 
 

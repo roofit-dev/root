@@ -798,10 +798,11 @@ INPUT                  = . \
                          ../../core/dictgen/ \
                          ../../core/cont/ \
                          ../../core/foundation/ \
+                         ../../core/gui/ \
                          ../../core/macosx/ \
                          ../../core/meta/ \
                          ../../core/metacling/ \
-                         ../../core/metautils/ \
+                         ../../core/clingutils/ \
                          ../../core/multiproc/ \
                          ../../core/rint/ \
                          ../../core/thread/ \
@@ -823,6 +824,7 @@ INPUT                  = . \
                          ../../graf2d/x11/ \
                          ../../graf2d/x11ttf/ \
                          ../../graf3d/eve/ \
+                         ../../graf3d/eve7/ \
                          ../../graf3d/g3d/ \
                          ../../graf3d/gl/ \
                          ../../graf3d/gviz3d/ \
@@ -1575,7 +1577,7 @@ ECLIPSE_DOC_ID         = org.doxygen.Project
 # The default value is: NO.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-DISABLE_INDEX          = NO
+DISABLE_INDEX          = YES
 
 # The GENERATE_TREEVIEW tag is used to specify whether a tree-like index
 # structure should be generated to display hierarchical information. If the tag
@@ -1592,7 +1594,7 @@ DISABLE_INDEX          = NO
 # The default value is: NO.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-GENERATE_TREEVIEW      = NO
+GENERATE_TREEVIEW      = YES
 
 # The ENUM_VALUES_PER_LINE tag can be used to set the number of enum values that
 # doxygen will group on one line in the generated HTML documentation.
@@ -2325,7 +2327,7 @@ DIA_PATH               =
 # and usage relations if the target is undocumented or is not a class.
 # The default value is: YES.
 
-HIDE_UNDOC_RELATIONS   = YES
+HIDE_UNDOC_RELATIONS   = NO
 
 # If you set the HAVE_DOT tag to YES then doxygen will assume the dot tool is
 # available from the path. This tool is part of Graphviz (see:

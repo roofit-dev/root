@@ -12,6 +12,7 @@
 #include "ROOT/RStringView.hxx"
 #include "TString.h"
 
+
 namespace CPyCppyy {
 
 namespace {
@@ -44,7 +45,7 @@ public:                                                                      \
     virtual PyObject* FromMemory(void*);                                     \
 }
 
-#define CPPYY_DECLARE_REF_CONVERTER(name)                                    \
+#define CPPYY_DECLARE_REFCONVERTER(name)                                     \
 class name##RefConverter : public Converter {                                \
 public:                                                                      \
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);      \
@@ -61,15 +62,17 @@ public:                                                                      \
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);      \
     virtual PyObject* FromMemory(void*);                                     \
     virtual bool ToMemory(PyObject*, void*);                                 \
-private:                                                                     \
+    virtual bool HasState() { return true; }                                 \
+protected:                                                                   \
     Py_ssize_t* fShape;                                                      \
 };                                                                           \
                                                                              \
-class name##ArrayRefConverter : public name##ArrayConverter {                \
+class name##ArrayPtrConverter : public name##ArrayConverter {                \
 public:                                                                      \
     using name##ArrayConverter::name##ArrayConverter;                        \
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);      \
-}
+};
+
 
 // converters for built-ins
 CPPYY_DECLARE_BASIC_CONVERTER(Long);
@@ -82,6 +85,8 @@ public:
     virtual PyObject* FromMemory(void*);
 };
 CPPYY_DECLARE_BASIC_CONVERTER(WChar);
+CPPYY_DECLARE_BASIC_CONVERTER(Char16);
+CPPYY_DECLARE_BASIC_CONVERTER(Char32);
 CPPYY_DECLARE_BASIC_CONVERTER(Int8);
 CPPYY_DECLARE_BASIC_CONVERTER(UInt8);
 CPPYY_DECLARE_BASIC_CONVERTER(Short);
@@ -89,15 +94,32 @@ CPPYY_DECLARE_BASIC_CONVERTER(UShort);
 CPPYY_DECLARE_BASIC_CONVERTER(Int);
 CPPYY_DECLARE_BASIC_CONVERTER(ULong);
 CPPYY_DECLARE_BASIC_CONVERTER2(UInt, ULong);
-CPPYY_DECLARE_BASIC_CONVERTER(LongLong);
-CPPYY_DECLARE_BASIC_CONVERTER(ULongLong);
+CPPYY_DECLARE_BASIC_CONVERTER(LLong);
+CPPYY_DECLARE_BASIC_CONVERTER(ULLong);
 CPPYY_DECLARE_BASIC_CONVERTER(Double);
 CPPYY_DECLARE_BASIC_CONVERTER(Float);
-CPPYY_DECLARE_BASIC_CONVERTER(LongDouble);
+CPPYY_DECLARE_BASIC_CONVERTER(LDouble);
 
-CPPYY_DECLARE_REF_CONVERTER(Int);
-CPPYY_DECLARE_REF_CONVERTER(Long);
-CPPYY_DECLARE_REF_CONVERTER(Double);
+CPPYY_DECLARE_REFCONVERTER(Bool);
+CPPYY_DECLARE_REFCONVERTER(Char);
+CPPYY_DECLARE_REFCONVERTER(WChar);
+CPPYY_DECLARE_REFCONVERTER(Char16);
+CPPYY_DECLARE_REFCONVERTER(Char32);
+CPPYY_DECLARE_REFCONVERTER(SChar);
+CPPYY_DECLARE_REFCONVERTER(UChar);
+CPPYY_DECLARE_REFCONVERTER(Int8);
+CPPYY_DECLARE_REFCONVERTER(UInt8);
+CPPYY_DECLARE_REFCONVERTER(Short);
+CPPYY_DECLARE_REFCONVERTER(UShort);
+CPPYY_DECLARE_REFCONVERTER(UInt);
+CPPYY_DECLARE_REFCONVERTER(Int);
+CPPYY_DECLARE_REFCONVERTER(Long);
+CPPYY_DECLARE_REFCONVERTER(ULong);
+CPPYY_DECLARE_REFCONVERTER(LLong);
+CPPYY_DECLARE_REFCONVERTER(ULLong);
+CPPYY_DECLARE_REFCONVERTER(Float);
+CPPYY_DECLARE_REFCONVERTER(Double);
+CPPYY_DECLARE_REFCONVERTER(LDouble);
 
 class VoidConverter : public Converter {
 public:
@@ -112,6 +134,7 @@ public:
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
     virtual PyObject* FromMemory(void* address);
     virtual bool ToMemory(PyObject* value, void* address);
+    virtual bool HasState() { return true; }
 
 protected:
     std::string fBuffer;
@@ -138,16 +161,56 @@ public:
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
     virtual PyObject* FromMemory(void* address);
     virtual bool ToMemory(PyObject* value, void* address);
+    virtual bool HasState() { return true; }
 
 protected:
     wchar_t* fBuffer;
     long fMaxSize;
 };
 
+class CString16Converter : public Converter {
+public:
+    CString16Converter(long maxSize = -1) : fBuffer(nullptr), fMaxSize(maxSize) {}
+    CString16Converter(const CString16Converter&) = delete;
+    CString16Converter& operator=(const CString16Converter&) = delete;
+    virtual ~CString16Converter() { free(fBuffer); }
+ 
+public:
+    virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
+    virtual PyObject* FromMemory(void* address);
+    virtual bool ToMemory(PyObject* value, void* address);
+    virtual bool HasState() { return true; }
+ 
+protected:
+    char16_t* fBuffer;
+    long fMaxSize;
+};
+
+class CString32Converter : public Converter {
+public:
+    CString32Converter(long maxSize = -1) : fBuffer(nullptr), fMaxSize(maxSize) {}
+    CString32Converter(const CString32Converter&) = delete;
+    CString32Converter& operator=(const CString32Converter&) = delete;
+    virtual ~CString32Converter() { free(fBuffer); }
+
+public:
+    virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
+    virtual PyObject* FromMemory(void* address);
+    virtual bool ToMemory(PyObject* value, void* address);
+    virtual bool HasState() { return true; }
+
+protected:
+    char32_t* fBuffer;
+    long fMaxSize;
+};
 
 // pointer/array conversions
 CPPYY_DECLARE_ARRAY_CONVERTER(Bool);
+CPPYY_DECLARE_ARRAY_CONVERTER(SChar);
 CPPYY_DECLARE_ARRAY_CONVERTER(UChar);
+#if __cplusplus > 201402L
+CPPYY_DECLARE_ARRAY_CONVERTER(Byte);
+#endif
 CPPYY_DECLARE_ARRAY_CONVERTER(Short);
 CPPYY_DECLARE_ARRAY_CONVERTER(UShort);
 CPPYY_DECLARE_ARRAY_CONVERTER(Int);
@@ -158,12 +221,15 @@ CPPYY_DECLARE_ARRAY_CONVERTER(LLong);
 CPPYY_DECLARE_ARRAY_CONVERTER(ULLong);
 CPPYY_DECLARE_ARRAY_CONVERTER(Float);
 CPPYY_DECLARE_ARRAY_CONVERTER(Double);
+CPPYY_DECLARE_ARRAY_CONVERTER(LDouble);
 CPPYY_DECLARE_ARRAY_CONVERTER(ComplexD);
 
-class LongLongArrayConverter : public VoidArrayConverter {
+class CStringArrayConverter : public SCharArrayPtrConverter {
 public:
-    virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
+    using SCharArrayPtrConverter::SCharArrayPtrConverter;
+    virtual PyObject* FromMemory(void* address);
 };
+
 
 // converters for special cases
 class NullptrConverter : public Converter {
@@ -175,6 +241,8 @@ class InstanceConverter : public StrictInstancePtrConverter {
 public:
     using StrictInstancePtrConverter::StrictInstancePtrConverter;
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
+    virtual PyObject* FromMemory(void*);
+    virtual bool ToMemory(PyObject*, void*);
 };
 
 class InstanceRefConverter : public Converter  {
@@ -185,6 +253,7 @@ public:
 public:
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
     virtual PyObject* FromMemory(void* address);
+    virtual bool HasState() { return true; }
 
 protected:
     Cppyy::TCppType_t fClass;
@@ -207,9 +276,6 @@ public:
     virtual PyObject* FromMemory(void* address);
     virtual bool ToMemory(PyObject* value, void* address);
 };
-
-extern template class InstancePtrPtrConverter<true>;
-extern template class InstancePtrPtrConverter<false>;
 
 class InstanceArrayConverter : public InstancePtrConverter {
 public:
@@ -267,8 +333,13 @@ public:
 
 class VoidPtrPtrConverter : public Converter {
 public:
+    VoidPtrPtrConverter(size_t size) { fSize = size; }
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
     virtual PyObject* FromMemory(void* address);
+    virtual bool HasState() { return true; }
+
+protected:
+    size_t fSize;
 };
 
 CPPYY_DECLARE_BASIC_CONVERTER(PyObject);
@@ -313,6 +384,8 @@ public:
 public:
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
     virtual PyObject* FromMemory(void* address);
+    virtual bool ToMemory(PyObject*, void*);
+    virtual bool HasState() { return true; }
 
 protected:
     std::string fRetType;
@@ -330,8 +403,8 @@ public:
 
 public:
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
-    virtual PyObject* FromMemory(void* address);                             \
-    virtual bool ToMemory(PyObject* value, void* address);                   \
+    virtual PyObject* FromMemory(void* address);
+    virtual bool ToMemory(PyObject* value, void* address);
 
 protected:
     Converter* fConverter;
@@ -353,6 +426,7 @@ public:
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
     virtual PyObject* FromMemory(void* address);
     //virtual bool ToMemory(PyObject* value, void* address);
+    virtual bool HasState() { return true; }
 
 protected:
     virtual bool GetAddressSpecialCase(PyObject*, void*&) { return false; }
@@ -371,10 +445,11 @@ public:
         fConverter(cnv), fValueSize(sz) {}
     InitializerListConverter(const InitializerListConverter&) = delete;
     InitializerListConverter& operator=(const InitializerListConverter&) = delete;
-    virtual ~InitializerListConverter() { delete fConverter; }
+    virtual ~InitializerListConverter();
 
 public:
     virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr);
+    virtual bool HasState() { return true; }
 
 protected:
     Converter* fConverter;

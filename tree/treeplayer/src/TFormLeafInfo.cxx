@@ -2197,7 +2197,7 @@ TClass *TFormLeafInfoMethod::ReturnTClass(TMethodCall *mc)
    R__WRITE_LOCKGUARD(ROOT::gCoreMutex);
 
    {
-      TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
+      TInterpreter::SuspendAutoLoadingRAII autoloadOff(gInterpreter);
       TClassEdit::GetNormalizedName(return_type, mc->GetMethod()->GetReturnTypeName());
    }
    // Beyhond this point we no longer 'need' the lock.
@@ -2411,7 +2411,7 @@ TFormLeafInfoMultiVarDim::TFormLeafInfoMultiVarDim() :
 TFormLeafInfoMultiVarDim::TFormLeafInfoMultiVarDim(const TFormLeafInfoMultiVarDim& orig) : TFormLeafInfo(orig)
 {
    fNsize = orig.fNsize;
-   fSizes.Copy(fSizes);
+   orig.fSizes.Copy(fSizes);
    fCounter2 = orig.fCounter2?orig.fCounter2->DeepCopy():0;
    fSumOfSizes = orig.fSumOfSizes;
    fDim = orig.fDim;

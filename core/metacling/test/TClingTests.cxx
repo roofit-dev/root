@@ -191,6 +191,7 @@ static std::string MakeDepLibsPlatformIndependent(llvm::StringRef libs) {
    return llvm::StringRef(result).rtrim();
 }
 
+#if !defined(_MSC_VER) || defined(R__ENABLE_BROKEN_WIN_TESTS)
 // Check the interface computing the dependencies of a given library.
 TEST_F(TClingTests, GetSharedLibDeps)
 {
@@ -202,24 +203,37 @@ TEST_F(TClingTests, GetSharedLibDeps)
    std::string SeenDeps
       = MakeDepLibsPlatformIndependent(GetLibDeps("libGenVector.so"));
 #ifdef R__MACOSX
-   ASSERT_TRUE(llvm::StringRef(SeenDeps).startswith("GenVector New"));
+   // It may depend on tbb
+   ASSERT_TRUE(llvm::StringRef(SeenDeps).startswith("GenVector"));
 #else
-   // Depends only on libCore.so but libCore.so is loaded and thus missing.
-   ASSERT_STREQ("GenVector", SeenDeps.c_str());
+    // Depends only on libCore.so but libCore.so is loaded and thus missing.
+    ASSERT_STREQ("GenVector", SeenDeps.c_str());
 #endif
 
    SeenDeps = MakeDepLibsPlatformIndependent(GetLibDeps("libTreePlayer.so"));
    llvm::StringRef SeenDepsRef = SeenDeps;
 
    // Depending on the configuration we expect:
-   // TreePlayer Gpad Graf Graf3d Hist [Imt] [MathCore] MultiProc Net [New] Tree [tbb]..
+   // TreePlayer Gpad Graf Graf3d Hist [Imt] [MathCore] MultiProc Net Tree [tbb]..
    // FIXME: We should add a generic gtest regex matcher and use a regex here.
    ASSERT_TRUE(SeenDepsRef.startswith("TreePlayer Gpad Graf Graf3d Hist"));
-   ASSERT_TRUE(SeenDepsRef.contains("MultiProc Net"));
-   ASSERT_TRUE(SeenDepsRef.contains("Tree"));
+   ASSERT_TRUE(SeenDepsRef.contains("MultiProc Net Tree"));
 
    EXPECT_ROOT_ERROR(ASSERT_TRUE(nullptr == GetLibDeps("")),
                      "Error in <TCling__GetSharedLibImmediateDepsSlow>: Cannot find library ''\n");
    EXPECT_ROOT_ERROR(ASSERT_TRUE(nullptr == GetLibDeps("   ")),
                      "Error in <TCling__GetSharedLibImmediateDepsSlow>: Cannot find library '   '\n");
+}
+#endif
+
+// Check the interface which interacts with the cling::LookupHelper.
+TEST_F(TClingTests, ClingLookupHelper) {
+  // Exception spec evaluation.
+  // Emulate the LookupHelper sequence:
+  // auto S = LookupHelper::findScope("ROOT::Internal::RDF", diag)
+  // LookupHelper::findAnyFunction(S, "RDataFrameTake<float>", diag)
+  // LookupHelper::findAnyFunction(S, "RDataFrameTake<std::vector<float>>", diag)
+  auto *cl = gCling->ClassInfo_Factory("ROOT::Internal::RDF");
+  gCling->GetFunction(cl, "RDataFrameTake<float>");
+  gCling->GetFunction(cl, "RDataFrameTake<std::vector<float>>");
 }

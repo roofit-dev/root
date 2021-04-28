@@ -86,7 +86,17 @@ else()
   set(ROOT_CLING_TARGET "all")
 endif()
 
+if(NOT "${ROOT_CLING_TARGET}" STREQUAL "all")
+  string(APPEND ROOT_CLING_TARGET ";NVPTX")
+endif()
+
 if(MSVC)
+  if(NOT win_broken_tests)
+    # FIXME: since Visual Studio v16.4.0 the /O2 optimization flag make many (25%) of the tests failing
+    # Try to re-enable /O2 after the upgrade of llvm & clang
+    string(REPLACE "-O2" "-O1" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+    string(REPLACE "-O2" "-O1" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+  endif()
   # replace dashes in the -EH* and -GR* flags with slashes (/EH* /GR*)
   string(REPLACE " -EH" " /EH" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   string(REPLACE " -GR" " /GR" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -110,7 +120,8 @@ if(clingtest)
                                        ENVIRONMENT ${CLINGTEST_EXECUTABLE})
 else()
   #---Build LLVM/Clang with symbol visibility=hidden--------------------------------------------------
-  ROOT_ADD_CXX_FLAG(CMAKE_CXX_FLAGS -fvisibility=hidden)
+  set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+  set(CMAKE_C_VISIBILITY_PRESET hidden)
 endif()
 
 #--- Build LLVM/Clang with modules -----------------------------------------------------------------
@@ -155,7 +166,7 @@ if(builtin_llvm)
   # in that case we set the flags for all configurations to the
   # flags of the build type assigned to LLVM_BUILD_TYPE.
 
-  if(GENERATOR_IS_MULTI_CONFIG)
+  if(MSVC OR XCODE)
     string(TOUPPER ${LLVM_BUILD_TYPE} LLVM_BUILD_TYPE)
     set(LLVM_C_FLAGS ${CMAKE_C_FLAGS_${LLVM_BUILD_TYPE}})
     set(LLVM_CXX_FLAGS ${CMAKE_CXX_FLAGS_${LLVM_BUILD_TYPE}})

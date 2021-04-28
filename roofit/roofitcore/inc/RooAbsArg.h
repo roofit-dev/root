@@ -16,7 +16,6 @@
 #ifndef ROO_ABS_ARG
 #define ROO_ABS_ARG
 
-#include <assert.h>
 #include "TNamed.h"
 #include "THashList.h"
 #include "TRefArray.h"
@@ -49,7 +48,6 @@ class RooSetProxy ;
 class RooListProxy ;
 class RooExpensiveObjectCache ;
 class RooWorkspace ;
-class RooRealProxy ;
 
 class RooRefArray : public TObjArray {
  public:
@@ -57,6 +55,7 @@ class RooRefArray : public TObjArray {
   } ;
   RooRefArray(const RooRefArray& other) : TObjArray(other) {
   }
+  RooRefArray& operator=(const RooRefArray& other) = default;
   virtual ~RooRefArray() {} ;
  protected:
   ClassDef(RooRefArray,1) // Helper class for proxy lists
@@ -78,6 +77,7 @@ public:
   virtual ~RooAbsArg();
   RooAbsArg(const char *name, const char *title);
   RooAbsArg(const RooAbsArg& other, const char* name=0) ;
+  RooAbsArg& operator=(const RooAbsArg& other);
   virtual TObject* clone(const char* newname=0) const = 0 ;
   virtual TObject* Clone(const char* newname = 0) const {
     return clone(newname && newname[0] != '\0' ? newname : nullptr);
@@ -335,8 +335,8 @@ public:
 
   static void setDirtyInhibit(Bool_t flag) ;
 
-  virtual Bool_t operator==(const RooAbsArg& other) = 0 ;
-  virtual Bool_t isIdentical(const RooAbsArg& other, Bool_t assumeSameType=kFALSE) = 0 ;
+  virtual bool operator==(const RooAbsArg& other) const = 0 ;
+  virtual bool isIdentical(const RooAbsArg& other, Bool_t assumeSameType=kFALSE) const = 0 ;
 
   // Range management
   virtual Bool_t inRange(const char*) const {
@@ -452,17 +452,6 @@ public:
   inline OperMode operMode() const { return _operMode  ; }
   void setOperMode(OperMode mode, Bool_t recurseADirty=kTRUE) ;
 
-  static UInt_t crc32(const char* data);
-  static UInt_t crc32(const char* data, ULong_t sz, UInt_t crc = 0);
-
-  static const UInt_t fnv1a32start = 2166136261u;
-  static UInt_t fnv1a32(const char* data);
-  static UInt_t fnv1a32(const char* data, ULong_t sz, UInt_t hash = fnv1a32start);
-
-  static const ULong64_t fnv1a64start = (ULong64_t(3421674724u) << 32) | ULong64_t(2216829733u);
-  static ULong64_t fnv1a64(const char* data);
-  static ULong64_t fnv1a64(const char* data, ULong_t sz, ULong64_t hash = fnv1a64start);
-
   Bool_t addOwnedComponents(const RooArgSet& comps) ;
   const RooArgSet* ownedComponents() const { return _ownedComponents ; }
 
@@ -557,7 +546,7 @@ private:
 
  protected:
 
-  // Client-Server relatation and Proxy management
+  // Client-Server relation and Proxy management
   friend class RooArgSet ;
   friend class RooAbsCollection ;
   friend class RooCustomizer ;
@@ -642,7 +631,6 @@ private:
   mutable Bool_t _shapeDirty ;  // Flag set if value needs recalculating because input shapes modified
   mutable bool _allBatchesDirty{true}; //! Mark batches as dirty (only meaningful for RooAbsReal).
 
-  friend class RooRealProxy ;
   mutable OperMode _operMode ; // Dirty state propagation mode
   mutable Bool_t _fast ; // Allow fast access mode in getVal() and proxies
 

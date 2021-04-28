@@ -59,25 +59,25 @@ public:
 
   /// Construct from a range. Data held by foreign object.
   template < class InputIterator>
-  constexpr RooSpan(InputIterator begin, InputIterator end) :
+  constexpr RooSpan(InputIterator beginIn, InputIterator endIn) :
   _auxStorage{},
-  _span{begin, end}
+  _span{beginIn, endIn}
   { }
 
 
   /// Construct from start and end pointers.
-  constexpr RooSpan(typename std::span<T>::pointer begin,
-      typename std::span<T>::pointer end) :
+  constexpr RooSpan(typename std::span<T>::pointer beginIn,
+      typename std::span<T>::pointer endIn) :
     _auxStorage{},
-    _span{begin, end}
+    _span{beginIn, endIn}
   { }
 
 
   /// Construct from start pointer and size.
-  constexpr RooSpan(typename std::span<T>::pointer begin,
-      typename std::span<T>::index_type size) :
+  constexpr RooSpan(typename std::span<T>::pointer beginIn,
+      typename std::span<T>::index_type sizeIn) :
   _auxStorage{},
-  _span{begin, size}
+  _span{beginIn, sizeIn}
   { }
 
 
@@ -112,12 +112,12 @@ public:
     return _span.end();
   }
 
-  constexpr typename std::span<T>::pointer __restrict__ data() const {
+  constexpr typename std::span<T>::pointer data() const {
     return _span.data();
   }
 
   constexpr typename std::span<T>::reference operator[](typename std::span<T>::index_type i) const noexcept {
-    return *(static_cast<typename std::span<T>::pointer __restrict__>(_span.data())+i);
+    return _span[i];
   }
 
   constexpr typename std::span<T>::index_type size() const noexcept {
@@ -127,6 +127,11 @@ public:
   constexpr bool empty() const noexcept {
     return _span.empty();
   }
+  
+  constexpr bool isBatch() const noexcept {
+    return true;
+  }
+
 
   ///Test if the span overlaps with `other`.
   template <class Span_t>

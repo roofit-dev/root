@@ -20,10 +20,7 @@
 #include <string>
 
 namespace ROOT {
-namespace Experimental {
-namespace Detail {
-
-class RRawFile;
+namespace Internal {
 
 /**
  * \class RRawFile RRawFile.hxx
@@ -64,6 +61,19 @@ public:
       ROptions() : fLineBreak(ELineBreaks::kAuto), fBlockSize(-1) {}
    };
 
+   /// Used for vector reads from multiple offsets into multiple buffers. This is unlike readv(), which scatters a
+   /// single byte range from disk into multiple buffers.
+   struct RIOVec {
+      /// The destination for reading
+      void *fBuffer = nullptr;
+      /// The file offset
+      std::uint64_t fOffset = 0;
+      /// The number of desired bytes
+      std::size_t fSize = 0;
+      /// The number of actually read bytes, set by ReadV()
+      std::size_t fOutBytes = 0;
+   };
+
 private:
    /// Don't change without adapting ReadAt()
    static constexpr unsigned int kNumBlockBuffers = 2;
@@ -101,24 +111,27 @@ protected:
    std::uint64_t fFilePos;
 
    /**
-    * DoOpen() is called at most once and before any call to either DoReadAt or DoGetSize. If fOptions.fBlocksize
-    * is negative, derived classes are responsible to set a sensible value. After a call to DoOpen(),
+    * OpenImpl() is called at most once and before any call to either DoReadAt or DoGetSize. If fOptions.fBlocksize
+    * is negative, derived classes are responsible to set a sensible value. After a call to OpenImpl(),
     * fOptions.fBlocksize must be larger or equal to zero.
     */
-   virtual void DoOpen() = 0;
+   virtual void OpenImpl() = 0;
    /**
     * Derived classes should implement low-level reading without buffering. Short reads indicate the end of the file,
     * therefore derived classes should return nbytes bytes if available.
     */
-   virtual size_t DoReadAt(void *buffer, size_t nbytes, std::uint64_t offset) = 0;
+   virtual size_t ReadAtImpl(void *buffer, size_t nbytes, std::uint64_t offset) = 0;
    /// Derived classes should return the file size or kUnknownFileSize
-   virtual std::uint64_t DoGetSize() = 0;
+   virtual std::uint64_t GetSizeImpl() = 0;
 
-   /// If a derived class supports mmap, the DoMap and DoUnmap calls are supposed to be implemented, too
+   /// If a derived class supports mmap, the MapImpl and UnmapImpl calls are supposed to be implemented, too
    /// The default implementation throws an error
-   virtual void *DoMap(size_t nbytes, std::uint64_t offset, std::uint64_t &mapdOffset);
+   virtual void *MapImpl(size_t nbytes, std::uint64_t offset, std::uint64_t &mapdOffset);
    /// Derived classes with mmap support must be able to unmap the memory area handed out by Map()
-   virtual void DoUnmap(void *region, size_t nbytes);
+   virtual void UnmapImpl(void *region, size_t nbytes);
+
+   /// By default implemented as a loop of ReadAt calls but can be overwritten, e.g. XRootD or DAVIX implementations
+   virtual void ReadVImpl(RIOVec *ioVec, unsigned int nReq);
 
 public:
    RRawFile(std::string_view url, ROptions options);
@@ -130,7 +143,7 @@ public:
    virtual std::unique_ptr<RRawFile> Clone() const = 0;
 
    /// Factory method that returns a suitable concrete implementation according to the transport in the url
-   static RRawFile *Create(std::string_view url, ROptions options = ROptions());
+   static std::unique_ptr<RRawFile> Create(std::string_view url, ROptions options = ROptions());
    /// Returns only the file location, e.g. "server/file" for http://server/file
    static std::string GetLocation(std::string_view url);
    /// Returns only the transport protocol in lower case, e.g. "http" for HTTP://server/file
@@ -148,6 +161,9 @@ public:
    /// Returns the size of the file
    std::uint64_t GetSize();
 
+   /// Opens the file if necessary and calls ReadVImpl
+   void ReadV(RIOVec *ioVec, unsigned int nReq);
+
    /// Memory mapping according to POSIX standard; in particular, new mappings of the same range replace older ones.
    /// Mappings need to be aligned at page boundaries, therefore the real offset can be smaller than the desired value.
    /// Users become owner of the address returned by Map() and are responsible for calling Unmap() with the full length.
@@ -161,10 +177,9 @@ public:
 
    /// Read the next line starting from the current value of fFilePos. Returns false if the end of the file is reached.
    bool Readln(std::string &line);
-};
+}; // class RRawFile
 
-} // namespace Detail
-} // namespace Experimental
+} // namespace Internal
 } // namespace ROOT
 
 #endif
