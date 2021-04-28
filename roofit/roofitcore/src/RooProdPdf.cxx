@@ -58,6 +58,7 @@ have to appear in any specific place in the list.
 #include "RooCustomizer.h"
 #include "RooRealIntegral.h"
 #include "RooTrace.h"
+#include "strtok.h"
 
 #include <cstring>
 #include <sstream>
@@ -67,14 +68,9 @@ have to appear in any specific place in the list.
 #include <strings.h>
 #endif
 
-
-#include "TSystem.h"
-
 using namespace std;
 
 ClassImp(RooProdPdf);
-;
-
 
 
 ////////////////////////////////////////////////////////////////////////////////

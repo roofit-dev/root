@@ -174,3 +174,41 @@ TEST(RDFDisplayTests, DisplayPrintString)
    // Testing the string returned
    EXPECT_EQ(dd->AsString(), DisplayAsStringString);
 }
+
+TEST(RDFDisplayTests, CharArray)
+{
+   {
+      TFile f("chararray.root", "recreate");
+      TTree t("t", "t");
+      char str[4] = "asd";
+      t.Branch("str", str, "str[4]/C");
+      t.Fill();
+      char otherstr[4] = "bar";
+      std::copy(otherstr, otherstr + 4, str);
+      t.Fill();
+      f.Write();
+   }
+
+   const auto str = ROOT::RDataFrame("t", "chararray.root").Display()->AsString();
+   EXPECT_EQ(str, "str | \nasd | \nbar | \n    | \n");
+}
+
+TEST(RDFDisplayTests, BoolArray)
+{
+   auto r = ROOT::RDataFrame(3)
+      .Define("v", [] { return ROOT::RVec<bool>{true,false}; })
+      .Display<ROOT::RVec<bool>>({"v"});
+   const auto expected = "v     | \ntrue  | \nfalse | \ntrue  | \nfalse | \ntrue  | \nfalse | \ntrue  | \nfalse | "
+                         "\ntrue  | \nfalse | \ntrue  | \nfalse | \n      | \n";
+   EXPECT_EQ(r->AsString(), expected);
+}
+
+TEST(RDFDisplayTests, UniquePtr)
+{
+   auto r = ROOT::RDataFrame(1)
+               .Define("uptr", []() -> std::unique_ptr<int> { return nullptr; })
+               .Display<std::unique_ptr<int>>({"uptr"});
+   const auto expected =
+      "uptr                       | \nstd::unique_ptr -> nullptr | \n                           | \n";
+   EXPECT_EQ(r->AsString(), expected);
+}

@@ -1,4 +1,4 @@
-# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# Copyright (C) 1995-2020, Rene Brun and Fons Rademakers.
 # All rights reserved.
 #
 # For the licensing terms see $ROOTSYS/LICENSE.
@@ -9,7 +9,7 @@ include(ExternalProject)
 include(FindPackageHandleStandardArgs)
 
 set(lcgpackages http://lcgpackages.web.cern.ch/lcgpackages/tarFiles/sources)
-string(REPLACE "-Werror" "" ROOT_EXTERNAL_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+string(REPLACE "-Werror " "" ROOT_EXTERNAL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ")
 
 macro(find_package)
   if(NOT "${ARGV0}" IN_LIST ROOT_BUILTINS)
@@ -190,15 +190,13 @@ if(builtin_lzma)
     ExternalProject_Add(
       LZMA
       URL ${CMAKE_SOURCE_DIR}/core/lzma/src/xz-${lzma_version}-win32.tar.gz
-      URL_HASH SHA256=c5910475aa8c7b4ed322f3e043c9cc9214e997f2a85b6b32f7702ac6d47364f8
+      URL_HASH SHA256=a923ee68d836de5492d8de0fec467b9536f2543c8579ca11f4b5e6f46a8cda8c
       PREFIX LZMA
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       CONFIGURE_COMMAND ""
-      BUILD_COMMAND ${CMAKE_COMMAND} -E copy lib/liblzma.lib <INSTALL_DIR>/lib
-      INSTALL_COMMAND ${CMAKE_COMMAND} -E copy lib/liblzma.dll <INSTALL_DIR>/bin
-      LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1 BUILD_IN_SOURCE 1
-      BUILD_BYPRODUCTS ${LIBLZMA_LIBRARIES})
-    install(FILES ${CMAKE_BINARY_DIR}/bin/liblzma.dll DESTINATION ${CMAKE_INSTALL_BINDIR})
+      BUILD_COMMAND ""
+      INSTALL_COMMAND ""
+      LOG_DOWNLOAD 1)
     set(LIBLZMA_INCLUDE_DIR ${CMAKE_BINARY_DIR}/LZMA/src/LZMA/include)
   else()
     if(CMAKE_CXX_COMPILER_ID MATCHES Clang)
@@ -211,6 +209,7 @@ if(builtin_lzma)
       set(LIBLZMA_CFLAGS "${LIBLZMA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
     endif()
     set(LIBLZMA_LIBRARIES ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}lzma${CMAKE_STATIC_LIBRARY_SUFFIX})
+    set(LIBLZMA_CFLAGS "${LIBLZMA_CFLAGS} -O3")
     ExternalProject_Add(
       LZMA
       URL ${CMAKE_SOURCE_DIR}/core/lzma/src/xz-${lzma_version}.tar.gz
@@ -356,6 +355,9 @@ if(asimage)
   find_Package(PNG)
   if(PNG_FOUND)
     set(ASEXTRA_LIBRARIES ${ASEXTRA_LIBRARIES} ${PNG_LIBRARIES})
+    # Some missing variables needed for external PNG build
+    set(PNG_LIBRARY_RELEASE ${PNG_LIBRARY})
+    # apparently there will be two set of includes here (needs to be selected only last that was passed: PNG_INCLUDE_DIR)
     list(GET PNG_INCLUDE_DIRS 0 PNG_INCLUDE_DIR)
   endif()
   find_Package(JPEG)
@@ -406,7 +408,7 @@ if(builtin_afterimage)
       set(_jpeginclude --with-builtin-jpeg)
     endif()
     if(PNG_FOUND)
-      set(_pnginclude  --with-png-includes=${PNG_PNG_INCLUDE_DIR})
+      set(_pnginclude  --with-png-includes=${PNG_INCLUDE_DIR})
     else()
        set(_pnginclude  --with-builtin-png)
     endif()
@@ -470,6 +472,7 @@ if(mathmore OR builtin_gsl)
     foreach(l gsl gslcblas)
       list(APPEND GSL_LIBRARIES ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}${l}${CMAKE_STATIC_LIBRARY_SUFFIX})
     endforeach()
+    set(GSL_CBLAS_LIBRARY ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gslcblas${CMAKE_STATIC_LIBRARY_SUFFIX})
     if(CMAKE_OSX_SYSROOT)
       set(_gsl_cppflags "-isysroot ${CMAKE_OSX_SYSROOT}")
     endif()
@@ -868,16 +871,12 @@ if(xrootd AND NOT builtin_xrootd)
 endif()
 
 if(builtin_xrootd)
-  set(XROOTD_VERSION 4.10.0)
-  set(XROOTD_VERSIONNUM 400100000)
+  set(XROOTD_VERSION 4.12.3)
+  set(XROOTD_VERSIONNUM 400120003)
   set(XROOTD_SRC_URI ${lcgpackages}/xrootd-${XROOTD_VERSION}.tar.gz)
   set(XROOTD_DESTDIR ${CMAKE_BINARY_DIR})
   set(XROOTD_ROOTDIR ${XROOTD_DESTDIR})
   message(STATUS "Downloading and building XROOTD version ${xrootd_version}")
-  string(REPLACE "-Wall " "" __cxxflags "${ROOT_EXTERNAL_CXX_FLAGS}")  # Otherwise it produces many warnings
-  string(REPLACE "-W " "" __cxxflags "${__cxxflags}")          # Otherwise it produces many warnings
-  string(REPLACE "-Wshadow" "" __cxxflags "${__cxxflags}")          # Otherwise it produces many warnings
-  string(REPLACE "-Woverloaded-virtual" "" __cxxflags "${__cxxflags}")  # Otherwise it produces manywarnings
 
   # Guess under which directory XRootD will install its libraires
   set(XROOTD_LIBDIR "lib")
@@ -892,17 +891,19 @@ if(builtin_xrootd)
   ExternalProject_Add(
     XROOTD
     URL ${XROOTD_SRC_URI}
-    URL_HASH SHA256=f07f85e27d72e9e8ff124173c7b53619aed8fcd36f9d6234c33f8f7fd511995b
+    URL_HASH SHA256=6f2ca1accc8d49d605706bb556777c753860bf46d845b1ee11393a5cb5987f15
     INSTALL_DIR ${XROOTD_ROOTDIR}
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+               -DCMAKE_BUILD_TYPE=Release
                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
                -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
                -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-               -DCMAKE_CXX_FLAGS=${__cxxflags}\ -w
+               -DCMAKE_CXX_FLAGS=${ROOT_EXTERNAL_CXX_FLAGS}
                -DCMAKE_OSX_SYSROOT=${CMAKE_OSX_SYSROOT}
                -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
                -DENABLE_PYTHON=OFF
                -DENABLE_CEPH=OFF
+               -DCMAKE_INSTALL_RPATH:STRING=${XROOTD_ROOTDIR}/${XROOTD_LIBDIR}
     INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install
             COMMAND ${CMAKE_COMMAND} -E copy_directory <INSTALL_DIR>/include/xrootd <INSTALL_DIR>/include
     LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1
@@ -915,6 +916,16 @@ if(builtin_xrootd)
   set(XROOTD_CFLAGS "-DROOTXRDVERS=${XROOTD_VERSIONNUM}")
   install(DIRECTORY ${XROOTD_ROOTDIR}/${XROOTD_LIBDIR}/ DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries FILES_MATCHING PATTERN "libXrd*")
   install(DIRECTORY ${XROOTD_ROOTDIR}/include/xrootd/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
+  if(APPLE)
+    # XRootD libraries on mac need the LC_RPATH variable set. The build process already takes care of setting
+    #   * BUILD_RPATH = build/XROOTD-prefix/../src
+    #   * INSTALL_RPATH = build/lib
+    # Since the install directory for the builtin_xrootd target corresponds to the build directory of the main project.
+    # Use a post install script to change the LC_RPATH variable of the libraries in the ROOT install folder.
+    install(SCRIPT ${CMAKE_CURRENT_LIST_DIR}/XROOTDApplePostInstall.cmake
+            CODE "xrootd_libs_change_rpath(${XROOTD_ROOTDIR}/${XROOTD_LIBDIR} ${CMAKE_INSTALL_FULL_LIBDIR})"
+    )
+  endif()
   set(XROOTD_TARGET XROOTD)
   set(xrootd ON CACHE BOOL "Enabled because builtin_xrootd requested (${xrootd_description})" FORCE)
 endif()
@@ -922,6 +933,21 @@ if(xrootd AND XROOTD_VERSIONNUM VERSION_GREATER 300030005)
   set(netxng ON)
 else()
   set(netxng OFF)
+endif()
+if(xrootd AND XROOTD_VERSIONNUM VERSION_LESS 500000000)
+  set(netx ON)
+else()
+  set(netx OFF)
+endif()
+if(xrootd AND XROOTD_VERSIONNUM VERSION_GREATER_EQUAL 500000000)
+  if(xproofd)
+    if(fail-on-missing)
+      message(FATAL_ERROR "XROOTD is version 5 or greater. The legacy xproofd servers can not be built with this version. Use -Dxproofd:BOOL=OFF to disable.")
+    else()
+      message(STATUS "XROOTD is version 5 or greater. The legacy xproofd servers can not be built with this version. Disabling 'xproofd' option.")
+      set(xproofd OFF CACHE BOOL "Disabled because xrootd version is 5 or greater" FORCE)
+    endif()
+  endif()
 endif()
 
 #---Alien support----------------------------------------------------------------
@@ -1110,6 +1136,25 @@ if (jemalloc)
   find_package(jemalloc)
   if(NOT JEMALLOC_FOUND)
     message(STATUS "JEMalloc not found.")
+  endif()
+endif()
+
+#---Check for liburing----------------------------------------------------------------
+if (uring)
+  if(NOT CMAKE_SYSTEM_NAME MATCHES Linux)
+    set(uring OFF CACHE BOOL "Disabled because liburing is only available on Linux" FORCE)
+    message(STATUS "liburing was disabled because it is only available on Linux")
+  else()
+    message(STATUS "Looking for liburing")
+    find_package(liburing)
+    if(NOT LIBURING_FOUND)
+      if(fail-on-missing)
+        message(FATAL_ERROR "liburing not found and uring option required")
+      else()
+        message(STATUS "liburing not found. Switching off uring option")
+        set(uring OFF CACHE BOOL "Disabled because liburing was not found (${uring_description})" FORCE)
+      endif()
+    endif()
   endif()
 endif()
 
@@ -1460,6 +1505,30 @@ if(cuda OR tmva-gpu)
     endif()
     enable_language(CUDA)
     set(cuda ON CACHE BOOL "Found Cuda for TMVA GPU" FORCE)
+    # CUDA_NVCC_EXECUTABLE
+    if(DEFINED ENV{CUDA_NVCC_EXECUTABLE})
+      set(CUDA_NVCC_EXECUTABLE "$ENV{CUDA_NVCC_EXECUTABLE}" CACHE FILEPATH "The CUDA compiler")
+    else()
+      find_program(CUDA_NVCC_EXECUTABLE
+        NAMES nvcc nvcc.exe
+        PATHS "${CUDA_TOOLKIT_ROOT_DIR}"
+          ENV CUDA_TOOKIT_ROOT
+          ENV CUDA_PATH
+          ENV CUDA_BIN_PATH
+        PATH_SUFFIXES bin bin64
+        DOC "The CUDA compiler"
+        NO_DEFAULT_PATH
+      )
+      find_program(CUDA_NVCC_EXECUTABLE
+        NAMES nvcc nvcc.exe
+        PATHS /opt/cuda/bin
+        PATH_SUFFIXES cuda/bin
+        DOC "The CUDA compiler"
+      )
+      # Search default search paths, after we search our own set of paths.
+      find_program(CUDA_NVCC_EXECUTABLE nvcc)
+    endif()
+    mark_as_advanced(CUDA_NVCC_EXECUTABLE)
     ###
     ### look for package CuDNN
     if (cudnn)
@@ -1511,13 +1580,17 @@ if(tmva)
     set(tmva-gpu OFF CACHE BOOL "Disabled because cuda not found" FORCE)
   endif()
   if(tmva-pymva)
-    if(fail-on-missing AND (NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND)))
+    if(fail-on-missing AND (NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND)))
       message(FATAL_ERROR "TMVA: numpy python package or Python development package not found and tmva-pymva component required"
                           " (python executable: ${PYTHON_EXECUTABLE})")
-    elseif(NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND))
+    elseif(NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND))
       message(STATUS "TMVA: Numpy or Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off tmva-pymva option")
       set(tmva-pymva OFF CACHE BOOL "Disabled because Numpy or Python development package were not found (${tmva-pymva_description})" FORCE)
     endif()
+  endif()
+  if (R_FOUND)
+    #Rmva is enable when r is found and tmva is on 
+    set(tmva-rmva ON)
   endif()
   if(tmva-rmva AND NOT R_FOUND)
     set(tmva-rmva  OFF CACHE BOOL "Disabled because R was not found (${tmva-rmva_description})"  FORCE)
@@ -1529,35 +1602,45 @@ else()
   set(tmva-rmva  OFF CACHE BOOL "Disabled because 'tmva' is disabled (${tmva-rmva_description})"  FORCE)
 endif()
 
-#---Check for Pyroot---------------------------------------------------------------------
+#---Check for PyROOT---------------------------------------------------------------------
 if(pyroot)
-  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND))
+  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND))
     message(FATAL_ERROR "PyROOT: Python development package not found and pyroot component required"
                         " (python executable: ${PYTHON_EXECUTABLE})")
-  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND)
+  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND)
     message(STATUS "PyROOT: Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off pyroot option")
     set(pyroot OFF CACHE BOOL "Disabled because Python development package was not found" FORCE)
   endif()
   mark_as_advanced(FORCE pyroot2 pyroot3)
-  if(fail-on-missing AND pyroot2 AND NOT Python2_Development_FOUND)
+  if(fail-on-missing AND pyroot2 AND NOT Python2_Interpreter_Development_FOUND)
     message(FATAL_ERROR "PyROOT2: Python2 development package not found and pyroot2 component required"
                         " (python2 executable: ${Python2_EXECUTABLE})")
   endif()
-  if(fail-on-missing AND pyroot3 AND NOT Python3_Development_FOUND)
+  if(fail-on-missing AND pyroot3 AND NOT Python3_Interpreter_Development_FOUND)
     message(FATAL_ERROR "PyROOT3: Python3 development package not found and pyroot3 component required"
                         " (python3 executable: ${Python3_EXECUTABLE})")
   endif()
 endif()
 
-#---Check for Pyroot Exp---------------------------------------------------------------------
-if(pyroot_experimental)
-  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND))
-    message(FATAL_ERROR "PyROOT: Python development package not found and pyroot component required"
-                        " (python executable: ${PYTHON_EXECUTABLE})")
-  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND)
-    message(STATUS "PyROOT: Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off pyroot_experimental option")
-    set(pyroot_experimental OFF CACHE BOOL "Disabled because Python development package was not found" FORCE)
+#---Check for PyROOT legacy---------------------------------------------------------------
+if(pyroot_legacy)
+  if(NOT pyroot)
+    message(FATAL_ERROR "pyroot_legacy is ON but pyroot is OFF. Please reconfigure with -Dpyroot=ON")
   endif()
+
+  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND))
+    message(FATAL_ERROR "PyROOT: Python development package not found and pyroot legacy component required"
+                        " (python executable: ${PYTHON_EXECUTABLE})")
+  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND)
+    message(STATUS "PyROOT: Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off pyroot_legacy option")
+    set(pyroot_legacy OFF CACHE BOOL "Disabled because Python development package was not found" FORCE)
+  endif()
+endif()
+
+#---Check for deprecated PyROOT experimental ---------------------------------------------
+if(pyroot_experimental)
+  message(WARNING "pyroot_experimental is a deprecated flag from 6.22.00."
+                  "To build the new PyROOT, just configure with -Dpyroot=ON -Dpyroot_experimental=OFF.")
 endif()
 
 #---Check for MPI---------------------------------------------------------------------

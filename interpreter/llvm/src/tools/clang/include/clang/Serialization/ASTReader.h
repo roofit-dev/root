@@ -505,8 +505,7 @@ private:
     FunctionProtoType::ExceptionSpecInfo m_ESI;
     PendingExceptionSpecUpdateInfo(FunctionDecl *FD,
                                   FunctionProtoType::ExceptionSpecInfo ESI)
-      : m_FD(FD), m_ESI(ESI), ShouldUpdateESI(true) { }
-    PendingExceptionSpecUpdateInfo(FunctionDecl *FD) : m_FD(FD) { }
+      : m_FD(FD), m_ESI(ESI) { }
   };
   /// \brief Exception specification updates that have been loaded but not yet
   /// propagated across the relevant redeclaration chain. The map key is the
@@ -865,8 +864,9 @@ private:
   /// \brief Delete expressions to analyze at the end of translation unit.
   SmallVector<uint64_t, 8> DelayedDeleteExprs;
 
-  // \brief A list of late parsed template function data.
-  SmallVector<uint64_t, 1> LateParsedTemplates;
+  // A list of late parsed template function data with their module files.
+  SmallVector<std::pair<ModuleFile *, SmallVector<uint64_t, 1>>, 4>
+      LateParsedTemplates;
 
 public:
   struct ImportedSubmodule {

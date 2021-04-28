@@ -50,9 +50,15 @@ ROOT_STANDARD_LIBRARY_PACKAGE(Event
                               SOURCES Event.cxx LINKDEF EventLinkDef.h
                               DEPENDENCIES Hist MathCore)
 if(MSVC)
-  add_custom_command(TARGET Event POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libEvent_rdict.pcm
-                                     ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/libEvent_rdict.pcm)
+  if(NOT runtime_cxxmodules)
+    add_custom_command(TARGET Event POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libEvent_rdict.pcm
+                                       ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/libEvent_rdict.pcm)
+  else()
+    add_custom_command(TARGET Event POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/Event.pcm
+                                     ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/Event.pcm)
+  endif()                                                           
 endif()
 ROOT_EXECUTABLE(eventexe MainEvent.cxx LIBRARIES Event RIO Tree TreePlayer Hist Net)
 ROOT_ADD_TEST(test-event COMMAND eventexe)
@@ -228,11 +234,11 @@ ROOT_ADD_TEST(test-stressmathcore-interpreted COMMAND ${ROOT_root_CMD} -b -q -l 
 
 #--stressRooFit----------------------------------------------------------------------------------
 if(ROOT_roofit_FOUND)
-if(ROOT_mathmore_FOUND)
-  ROOT_EXECUTABLE(stressRooFit stressRooFit.cxx LIBRARIES RooFit RooFitMore)
-else()
-  ROOT_EXECUTABLE(stressRooFit stressRooFit.cxx LIBRARIES RooFit )
-endif()  
+  if(ROOT_mathmore_FOUND)
+    ROOT_EXECUTABLE(stressRooFit stressRooFit.cxx LIBRARIES RooFit RooFitMore)
+  else()
+    ROOT_EXECUTABLE(stressRooFit stressRooFit.cxx LIBRARIES RooFit )
+  endif()  
   configure_file(stressRooFit_ref.root stressRooFit_ref.root COPYONLY)
   ROOT_ADD_TEST(test-stressroofit COMMAND stressRooFit FAILREGEX "FAILED|Error in" LABELS longtest)
   ROOT_ADD_TEST(test-stressroofit-interpreted COMMAND ${ROOT_root_CMD} -b -q -l ${CMAKE_CURRENT_SOURCE_DIR}/stressRooFit.cxx
@@ -248,17 +254,20 @@ if(ROOT_roofit_FOUND)
   ROOT_ADD_TEST(test-stressroostats COMMAND stressRooStats FAILREGEX "FAILED|Error in" LABELS longtest)
   ROOT_ADD_TEST(test-stressroostats-interpreted COMMAND ${ROOT_root_CMD} -b -q -l ${CMAKE_CURRENT_SOURCE_DIR}/stressRooStats.cxx
                 FAILREGEX "FAILED|Error in" DEPENDS test-stressroostats )
+  if (ROOT_minuit2_FOUND)
+    ROOT_ADD_TEST(test-stressroostats-minuit2 COMMAND stressRooStats -minim Minuit2  FAILREGEX "FAILED|Error in" LABELS longtest)
+  endif()
 endif()
 
 #--stressHistFactory--------------------------------------------------------------------------------
 if(ROOT_roofit_FOUND AND GSL_FOUND AND ROOT_xml_FOUND)
   ROOT_EXECUTABLE(stressHistFactory stressHistFactory.cxx LIBRARIES RooStats HistFactory XMLParser)
-if(NOT MSVC)
-  configure_file(HistFactoryTest.tar HistFactoryTest.tar COPYONLY)
-  configure_file(stressHistFactory_ref.root stressHistFactory_ref.root COPYONLY)
-  ROOT_ADD_TEST(test-stressHistFactory ENVIRONMENT ROOTSYS=${CMAKE_BINARY_DIR} COMMAND stressHistFactory FAILREGEX "FAILED|Error in" LABELS longtest)
-  ROOT_ADD_TEST(test-stressHistFactory-interpreted COMMAND ${ROOT_root_CMD} -b -q -l ${CMAKE_CURRENT_SOURCE_DIR}/stressHistFactory.cxx FAILREGEX "FAILED|Error in" DEPENDS test-stressHistFactory)
-endif()
+  if(NOT MSVC)
+    configure_file(HistFactoryTest.tar HistFactoryTest.tar COPYONLY)
+    configure_file(stressHistFactory_ref.root stressHistFactory_ref.root COPYONLY)
+    ROOT_ADD_TEST(test-stressHistFactory ENVIRONMENT ROOTSYS=${CMAKE_BINARY_DIR} COMMAND stressHistFactory FAILREGEX "FAILED|Error in" LABELS longtest)
+    ROOT_ADD_TEST(test-stressHistFactory-interpreted COMMAND ${ROOT_root_CMD} -b -q -l ${CMAKE_CURRENT_SOURCE_DIR}/stressHistFactory.cxx FAILREGEX "FAILED|Error in" DEPENDS test-stressHistFactory)
+  endif()
 endif()
 
 #--stressFit---------------------------------------------------------------------------------
@@ -352,7 +361,7 @@ ROOT_ADD_TEST(test-TFormulaTests COMMAND TFormulaTests FAILREGEX "FAILED|Error i
 
 #--TBB basic test----------------------------------------------------------------------------------
 if(ROOT_imt_FOUND)
-  include_directories(${TBB_INCLUDE_DIRS})
+  include_directories(SYSTEM ${TBB_INCLUDE_DIRS})
   ROOT_EXECUTABLE(testTBB testTBB.cxx LIBRARIES ${TBB_LIBRARIES} BUILTINS TBB)
   set_target_properties(testTBB PROPERTIES COMPILE_FLAGS "${TBB_CXXFLAGS}")
   ROOT_ADD_TEST(test-TBB COMMAND testTBB FAILREGEX "FAILED|Error in")

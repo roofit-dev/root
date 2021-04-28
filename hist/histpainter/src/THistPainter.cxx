@@ -9,12 +9,12 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <ctype.h>
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
+#include <cctype>
+#include <iostream>
 
-#include "Riostream.h"
 #include "TROOT.h"
 #include "TSystem.h"
 #include "THistPainter.h"
@@ -36,7 +36,6 @@
 #include "TPaveStats.h"
 #include "TFrame.h"
 #include "TLatex.h"
-#include "TLine.h"
 #include "TPolyLine.h"
 #include "TPoints.h"
 #include "TStyle.h"
@@ -64,6 +63,7 @@
 #include "TPoint.h"
 #include "TImage.h"
 #include "TCandle.h"
+#include "strlcpy.h"
 
 /*! \class THistPainter
 \ingroup Histpainter
@@ -418,7 +418,7 @@ some combinations must be use with care.
 - It does not work when combined with the `LEGO` and `SURF` options unless the
   histogram plotted with the option `SAME` has exactly the same
   ranges on the X, Y and Z axis as the currently drawn histogram. To superimpose
-  lego plots [histograms' stacks](#HP26) should be used.</li>
+  lego plots [histograms' stacks](#HP26) should be used.
 
 
 ### <a name="HP061"></a> Colors automatically picked in palette

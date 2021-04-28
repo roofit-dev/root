@@ -449,7 +449,7 @@ void CodeGenFunction::EmitStartEHSpec(const Decl *D) {
 
   // Might need to deserialize
   if (EST == EST_Uninstantiated || EST == EST_Unevaluated) {
-    FD = FD->getMostRecentDecl();
+    FD->getMostRecentDecl();
     Proto = FD->getType()->getAs<FunctionProtoType>();
     EST = Proto->getExceptionSpecType();
   }

@@ -43,27 +43,27 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTDataFrame
     ROOT/RSnapshotOptions.hxx
     ROOT/RTrivialDS.hxx
     ROOT/RDF/ActionHelpers.hxx
+    ROOT/RDF/ColumnReaders.hxx
     ROOT/RDF/GraphNode.hxx
     ROOT/RDF/GraphUtils.hxx
     ROOT/RDF/HistoModels.hxx
     ROOT/RDF/InterfaceUtils.hxx
-    ROOT/RDF/NodesUtils.hxx
     ROOT/RDF/RActionBase.hxx
     ROOT/RDF/RAction.hxx
-    ROOT/RDF/RBookedCustomColumns.hxx
-    ROOT/RDF/RColumnValue.hxx
-    ROOT/RDF/RCustomColumnBase.hxx
-    ROOT/RDF/RCustomColumn.hxx
+    ROOT/RDF/RBookedDefines.hxx
+    ROOT/RDF/RDefineBase.hxx
+    ROOT/RDF/RDefine.hxx
     ROOT/RDF/RCutFlowReport.hxx
     ROOT/RDF/RDisplay.hxx
     ROOT/RDF/RFilterBase.hxx
     ROOT/RDF/RFilter.hxx
     ROOT/RDF/RInterface.hxx
     ROOT/RDF/RJittedAction.hxx
-    ROOT/RDF/RJittedCustomColumn.hxx
+    ROOT/RDF/RJittedDefine.hxx
     ROOT/RDF/RJittedFilter.hxx
     ROOT/RDF/RLazyDSImpl.hxx
     ROOT/RDF/RLoopManager.hxx
+    ROOT/RDF/RMergeableValue.hxx
     ROOT/RDF/RNodeBase.hxx
     ROOT/RDF/RRangeBase.hxx
     ROOT/RDF/RRange.hxx
@@ -73,13 +73,13 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTDataFrame
     ${RDATAFRAME_EXTRA_HEADERS}
   SOURCES
     src/RActionBase.cxx
-    src/RColumnValue.cxx
     src/RCsvDS.cxx
-    src/RCustomColumnBase.cxx
+    src/RDefineBase.cxx
     src/RCutFlowReport.cxx
     src/RDataFrame.cxx
     src/RDFActionHelpers.cxx
-    src/RDFBookedCustomColumns.cxx
+    src/RDFBookedDefines.cxx
+    src/RDFColumnReaders.cxx
     src/RDFDisplay.cxx
     src/RDFGraphUtils.cxx
     src/RDFHistoModels.cxx
@@ -87,7 +87,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTDataFrame
     src/RDFUtils.cxx
     src/RFilterBase.cxx
     src/RJittedAction.cxx
-    src/RJittedCustomColumn.cxx
+    src/RJittedDefine.cxx
     src/RJittedFilter.cxx
     src/RLoopManager.cxx
     src/RRangeBase.cxx

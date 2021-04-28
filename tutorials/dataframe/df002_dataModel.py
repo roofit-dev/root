@@ -1,6 +1,8 @@
 ## \file
 ## \ingroup tutorial_dataframe
 ## \notebook -draw
+## \brief Show how to work with non-flat data models, e.g. vectors of tracks.
+##
 ## This tutorial shows the possibility to use data models which are more
 ## complex than flat ntuples with RDataFrame
 ##
@@ -65,7 +67,7 @@ d = ROOT.RDataFrame(treeName, fileName)
 n_cut = 'tracks.size() > 8'
 nentries = d.Filter(n_cut).Count();
 
-print("%s passed all filters" %nentries.GetValue())
+print("%s events passed all filters" % nentries.GetValue())
 
 # Another possibility consists in creating a new column containing the
 # quantity we are interested in.
@@ -105,9 +107,14 @@ trWPts = augmented_d.Histo1D("tracks_pts", "tracks_pts_weights")
 
 c1 = ROOT.TCanvas()
 trN.Draw()
+c1.SaveAs("df002_trN.png")
 
 c2 = ROOT.TCanvas()
 trPts.Draw()
+c2.SaveAs("df002_trPts.png")
 
 c3 = ROOT.TCanvas()
 trWPts.Draw()
+c2.SaveAs("df002_trWPts.png")
+
+print("Saved figures to df002_*.png")

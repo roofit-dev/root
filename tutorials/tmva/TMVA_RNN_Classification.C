@@ -184,15 +184,26 @@ void TMVA_RNN_Classification(int use_type = 1)
 
    const char *rnn_type = "RNN";
 
+#ifdef R__HAS_PYMVA
    TMVA::PyMethodBase::PyInitialize();
+#else
+   useKeras = false;
+#endif
 
-   ROOT::EnableImplicitMT();
+   int num_threads = 0;   // use by default all threads 
+   // do enable MT running
+   if (num_threads >= 0) {
+      ROOT::EnableImplicitMT(num_threads);
+      if (num_threads > 0) gSystem->Setenv("OMP_NUM_THREADS", TString::Format("%d",num_threads));
+   }
+   else
+      gSystem->Setenv("OMP_NUM_THREADS", "1");
+
    TMVA::Config::Instance();
 
-   std::cout << "nthreads  = " << ROOT::GetThreadPoolSize() << std::endl;
+   std::cout << "Running with nthreads  = " << ROOT::GetThreadPoolSize() << std::endl;
 
    TString inputFileName = "time_data_t10_d30.root";
-   // TString inputFileName = "/home/moneta/data/sample_images_32x32.gsoc.root";
 
    bool fileExist = !gSystem->AccessPathName(inputFileName);
 
@@ -296,11 +307,9 @@ the option string
 
          /// define the inputlayout string for RNN
          /// the input data should be organize as   following:
-         //// input layout for RNN:    time x 1 x ndim
-         ///  batch layout for RNN     batchsize x time x ndim
+         //// input layout for RNN:    time x ndim
 
-         TString inputLayoutString = TString::Format("InputLayout=%d|1|%d", ntime, ninput);
-         TString batchLayoutString = TString::Format("BatchLayout=%d|%d|%d", batchSize, ntime, ninput);
+         TString inputLayoutString = TString::Format("InputLayout=%d|%d", ntime, ninput);
 
          /// Define RNN layer layout
          ///  it should be   LayerType (RNN or LSTM or GRU) |  number of units | number of inputs | time steps | remember output (typically no=0 | return full sequence
@@ -327,8 +336,6 @@ the option string
          rnnOptions.Append(":");
          rnnOptions.Append(inputLayoutString);
          rnnOptions.Append(":");
-         rnnOptions.Append(batchLayoutString);
-         rnnOptions.Append(":");
          rnnOptions.Append(layoutString);
          rnnOptions.Append(":");
          rnnOptions.Append(trainingStrategyString);
@@ -349,7 +356,6 @@ the option string
    if (useTMVA_DNN) {
       // Method DL with Dense Layer
       TString inputLayoutString = TString::Format("InputLayout=1|1|%d", ntime * ninput);
-      TString batchLayoutString = TString::Format("BatchLayout=1|256|%d", ntime * ninput);
 
       TString layoutString("Layout=DENSE|64|TANH,DENSE|TANH|64,DENSE|TANH|64,LINEAR");
       // Training strategies.
@@ -366,8 +372,6 @@ the option string
 
       dnnOptions.Append(":");
       dnnOptions.Append(inputLayoutString);
-      dnnOptions.Append(":");
-      dnnOptions.Append(batchLayoutString);
       dnnOptions.Append(":");
       dnnOptions.Append(layoutString);
       dnnOptions.Append(":");

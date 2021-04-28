@@ -34,6 +34,7 @@ points for its contents and provides an iterator over its elements
 #include "TClass.h"
 #include "TMath.h"
 #include "TTree.h"
+#include "strlcpy.h"
 
 #include "RooFormulaVar.h"
 #include "RooCmdConfig.h"
@@ -1557,10 +1558,13 @@ TList* RooAbsData::split(const RooAbsCategory& splitCat, Bool_t createEmptyDataS
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Plot dataset on specified frame. By default an unbinned dataset will use the default binning of
-/// the target frame. A binned dataset will by default retain its intrinsic binning.
+/// Plot dataset on specified frame.
 ///
-/// The following optional named arguments can be used to modify the default behavior
+/// By default:
+/// - An unbinned dataset will use the default binning of the target frame.
+/// - A binned dataset will retain its intrinsic binning.
+///
+/// The following optional named arguments can be used to modify the behaviour:
 ///
 /// <table>
 /// <tr><th> <th> Data representation options
@@ -1570,7 +1574,7 @@ TList* RooAbsData::split(const RooAbsCategory& splitCat, Bool_t createEmptyDataS
 /// <tr><td> `DataError(RooAbsData::EType)`   <td> Select the type of error drawn:
 ///    - `Auto(default)` results in Poisson for unweighted data and SumW2 for weighted data
 ///    - `Poisson` draws asymmetric Poisson confidence intervals.
-///    - `SumW2` draws symmetric sum-of-weights error ( sum(w)^2/sum(w^2) )
+///    - `SumW2` draws symmetric sum-of-weights error ( \f$ \left( \sum w \right)^2 / \sum\left(w^2\right) \f$ )
 ///    - `None` draws no error bars
 /// <tr><td> `Binning(int nbins, double xlo, double xhi)`   <td> Use specified binning to draw dataset
 /// <tr><td> `Binning(const RooAbsBinning&)`   <td>  Use specified binning to draw dataset
@@ -1579,8 +1583,14 @@ TList* RooAbsData::split(const RooAbsCategory& splitCat, Bool_t createEmptyDataS
 ///     If set, any subsequent PDF will normalize to this dataset, even if it is
 ///     not the first one added to the frame. By default only the 1st dataset
 ///     added to a frame will update the normalization information
-/// <tr><td> `Rescale(Double_t f)`   <td> Rescale drawn histogram by given factor
-/// <tr><td> `CutRange(const char*)` <td> Apply cuts to dataset.
+/// <tr><td> `Rescale(Double_t f)`   <td> Rescale drawn histogram by given factor.
+/// <tr><td> `Cut(const char*)`      <td> Only plot entries that pass the given cut.
+///                                       Apart from cutting in continuous variables `Cut("x>5")`, this can also be used to plot a specific
+///                                       category state. Use something like `Cut("myCategory == myCategory::stateA")`, where
+///                                       `myCategory` resolves to the state number for a given entry and
+///                                       `myCategory::stateA` resolves to the state number of the state named "stateA".
+///
+/// <tr><td> `CutRange(const char*)` <td> Only plot data from given range. Separate multiple ranges with ",".
 /// \note This often requires passing the normalisation when plotting the PDF because RooFit does not save
 /// how many events were being plotted (it will only work for cutting slices out of uniformly distributed variables).
 /// ```
@@ -1735,13 +1745,13 @@ RooPlot* RooAbsData::plotOn(RooPlot* frame, const RooLinkedList& argList) const
 /// The frame variable must be one of the data sets dimensions.
 ///
 /// The plot range and the number of plot bins is determined by the parameters
-/// of the plot variable of the frame (RooAbsReal::setPlotRange(), RooAbsReal::setPlotBins())
+/// of the plot variable of the frame (RooAbsReal::setPlotRange(), RooAbsReal::setPlotBins()).
 ///
 /// The optional cut string expression can be used to select the events to be plotted.
-/// The cut specification may refer to any variable contained in the data set
+/// The cut specification may refer to any variable contained in the data set.
 ///
-/// The drawOptions are passed to the TH1::Draw() method
-
+/// The drawOptions are passed to the TH1::Draw() method.
+/// \see RooAbsData::plotOn(RooPlot*,const RooLinkedList&) const
 RooPlot *RooAbsData::plotOn(RooPlot *frame, PlotOpt o) const
 {
   if(0 == frame) {

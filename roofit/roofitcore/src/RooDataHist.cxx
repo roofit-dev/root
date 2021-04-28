@@ -51,16 +51,13 @@ or RooStringVar objects, thus data can be binned in real and/or discrete dimensi
 
 #include "TH1.h"
 #include "TTree.h"
-#include "TDirectory.h"
 #include "TBuffer.h"
 #include "TMath.h"
 #include "Math/Util.h"
 
-using namespace std ;
+using namespace std;
 
-ClassImp(RooDataHist); 
-;
-
+ClassImp(RooDataHist);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -635,8 +632,8 @@ void RooDataHist::_adjustBinning(RooRealVar &theirVar, const TAxis &axis,
 /// observable to binning in given reference TH1. Used by constructors
 /// that import data from an external TH1.
 /// Both the variables in vars and in this RooDataHist are adjusted.
-/// @param List with variables that are supposed to have their binning adjusted.
-/// @param Reference histogram that dictates the binning
+/// @param vars List with variables that are supposed to have their binning adjusted.
+/// @param href Reference histogram that dictates the binning
 /// @param offset If not nullptr, a possible bin count offset for the axes x,y,z is saved here as Int_t[3]
 
 void RooDataHist::adjustBinning(const RooArgList& vars, const TH1& href, Int_t* offset)
@@ -956,7 +953,12 @@ RooDataHist::~RooDataHist()
 
 
 ////////////////////////////////////////////////////////////////////////////////
-
+/// Calculate bin number of the given coordinates. If only a subset of the internal
+/// coordinates are passed, the missing coordinates are taken at their current value.
+/// \param[in] coord Variables that are representing the coordinates.
+/// \param[in] fast If the variables in `coord` and the ones of the data hist have the
+/// same size and layout, see RooAbsCollection::hasSameLayout(), fast can be set to skip
+/// checking that all variables are present in `coord`.
 Int_t RooDataHist::getIndex(const RooArgSet& coord, Bool_t fast)
 {
   checkInit() ;
@@ -1007,7 +1009,7 @@ void RooDataHist::dump2()
 /// frame in mode specified by plot options 'o'. The main purpose of
 /// this function is to match the specified binning on 'o' to the
 /// internal binning of the plot observable in this RooDataHist.
-
+/// \see RooAbsData::plotOn() for plotting options.
 RooPlot *RooDataHist::plotOn(RooPlot *frame, PlotOpt o) const 
 {
   checkInit() ;
@@ -1307,10 +1309,8 @@ void RooDataHist::add(const RooArgSet& row, Double_t wgt, Double_t sumw2)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Increment the weight of the bin enclosing the coordinates
-/// given by 'row' by the specified amount. Associate errors
-/// [wgtErrLo,wgtErrHi] with the event weight on this bin.
-
+/// Set the weight and errors of the bin enclosing the coordinates
+/// given by `row`. Associate errors [wgtErrLo,wgtErrHi] with the event weight on this bin.
 void RooDataHist::set(const RooArgSet& row, Double_t wgt, Double_t wgtErrLo, Double_t wgtErrHi) 
 {
   checkInit() ;
@@ -1327,10 +1327,8 @@ void RooDataHist::set(const RooArgSet& row, Double_t wgt, Double_t wgtErrLo, Dou
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Increment the weight of the bin enclosing the coordinates
-/// given by 'row' by the specified amount. Associate errors
-/// [wgtErrLo,wgtErrHi] with the event weight on this bin.
-
+/// Set the weight and weight error of the bin enclosing the current (i.e. last-used)
+/// coordinates.
 void RooDataHist::set(Double_t wgt, Double_t wgtErr) 
 {
   checkInit() ;
@@ -1350,10 +1348,8 @@ void RooDataHist::set(Double_t wgt, Double_t wgtErr)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Increment the weight of the bin enclosing the coordinates
-/// given by 'row' by the specified amount. Associate errors
-/// [wgtErrLo,wgtErrHi] with the event weight on this bin.
-
+/// Set the weight and weight error of the bin enclosing the coordinates
+/// given by `row`.
 void RooDataHist::set(const RooArgSet& row, Double_t wgt, Double_t wgtErr) 
 {
   checkInit() ;

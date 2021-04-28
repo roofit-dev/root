@@ -39,6 +39,10 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include <vector>
+#include <map>
+#include <string>
+#include <sstream>
+
 #include "TString.h"
 #include "TTree.h"
 #include "TRandom3.h"
