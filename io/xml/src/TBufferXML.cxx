@@ -2532,7 +2532,7 @@ void TBufferXML::ReadCharP(Char_t *c)
    BeforeIOoperation();
    const char *buf;
    if ((buf = XmlReadValue(xmlio::CharStar)))
-      strcpy(c, buf);
+      strcpy(c, buf);  // NOLINT unfortunately, size of target buffer cannot be controlled here
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2554,7 +2554,7 @@ void TBufferXML::ReadTString(TString &s)
          else
             nbig = nwh;
 
-         char *data = new char[nbig];
+         char *data = new char[nbig+1];
          data[nbig] = 0;
          ReadFastArray(data, nbig);
          s = data;

@@ -635,37 +635,33 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             this.websocket.send("WIDGET_SELECTED:" + item.getKey());
       },
 
+      doCloseTabItem: function(item) {
+         let oTabContainer = this.byId("tabContainer");
+         if (item.getKey())
+            this.websocket.send("CLOSE_TAB:" + item.getKey());
+         oTabContainer.removeItem(item);
+      },
+
       /** @brief Close Tab event handler */
       handleTabClose: function(oEvent) {
          // prevent the tab being closed by default
          oEvent.preventDefault();
 
-         let oTabContainer = this.byId("tabContainer");
-         let oItemToClose = oEvent.getParameter('item');
-         let oModel = oItemToClose.getModel();
-
-         let closeItem = () => {
-            if (oItemToClose.getKey())
-               this.websocket.send("CLOSE_TAB:" + oItemToClose.getKey());
-            oTabContainer.removeItem(oItemToClose);
-         }
+         let oItemToClose = oEvent.getParameter('item'),
+             oModel = oItemToClose.getModel();
 
          if (oModel && oModel.getProperty("/can_close"))
-            return closeItem();
+            return this.doCloseTabItem(oItemToClose);
 
-         MessageBox.confirm('Do you really want to close the "' + oItemToClose.getName() + '" tab?', {
+         MessageBox.confirm('Do you really want to close the "' + oItemToClose.getAdditionalText() + '" tab?', {
             onClose: oAction => {
                if (oAction === MessageBox.Action.OK) {
-                   closeItem();
+                   this.doCloseTabItem(oItemToClose);
                    MessageToast.show('Closed the "' + oItemToClose.getName() + '" tab', { duration: 1500 });
                 }
             }
          });
       },
-
-      /* ============================================ */
-      /* =============== TabContainer =============== */
-      /* ============================================ */
 
       /* ======================================== */
       /* =============== Terminal =============== */
@@ -746,10 +742,9 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /** @summary Double-click event handler */
       onRowDblClick: function (row) {
          let ctxt = row.getBindingContext(),
-            prop = ctxt ? ctxt.getProperty(ctxt.getPath()) : null,
-            fullpath = (prop && prop.fullpath) ? prop.fullpath.substr(1, prop.fullpath.length - 2) : "";
+            prop = ctxt ? ctxt.getProperty(ctxt.getPath()) : null;
 
-         if (!fullpath) return;
+         if (!prop || !prop.path) return;
 
          let className = this.getBaseClass(prop.className),
              opt = className ? this.drawingOptions[className] : "",
@@ -758,7 +753,10 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          if (this._oSettingsModel.getProperty("/DBLCLKRun")) exec = "exec";
          if (!opt) opt = "";
 
-         this.websocket.send(`DBLCLK:["${fullpath}","${opt}","${exec}"]`);
+         let args = prop.path.slice(); // make copy of array
+         args.push(opt, exec);
+
+         this.websocket.send("DBLCLK:" + JSON.stringify(args));
       },
 
       getBaseClass: function(className) {
@@ -846,7 +844,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                let bresp = JSON.parse(msg);
                this.model.processResponse(bresp);
 
-               if (bresp.path === '/') {
+               if (bresp.path.length == 0) {
                   let tt = this.getView().byId("treeTable");
                   tt.autoResizeColumn(2);
                   tt.autoResizeColumn(1);
@@ -989,13 +987,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          })).then(oView => item.addContent(oView));
       },
 
-      createCanvas: async function(kind, url, name) {
+      createCanvas: async function(kind, url, name, title) {
          if (!url || !name || (kind != "tcanvas" && kind != "rcanvas")) return;
 
          let item = new TabContainerItem({
-            name: "ROOT Canvas",
+            name: (kind == "rcanvas") ? "RCanvas" : "TCanvas",
             key: name,
-            additionalText: name,
+            additionalText: title || name,
             icon: "sap-icon://column-chart-dual-axis"
          });
 
@@ -1021,7 +1019,10 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          });
 
          item.addContent(oView);
-      },
+
+         let ctrl = oView.getController();
+         ctrl.onCloseCanvasPress = this.doCloseTabItem.bind(this, item);
+      }
 
    });
 

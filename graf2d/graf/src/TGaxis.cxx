@@ -966,7 +966,7 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
    Double_t atick[3];
    Double_t tick_side;
    Double_t charheight;
-   Double_t phil, phi, sinphi, cosphi, asinphi, acosphi;
+   Double_t phil, phi, sinphi, cosphi;
    Double_t binLow = 0.,  binLow2 = 0.,  binLow3 = 0.;
    Double_t binHigh = 0., binHigh2 = 0., binHigh3 = 0.;
    Double_t binWidth = 0., binWidth2 = 0., binWidth3 = 0.;
@@ -1361,10 +1361,10 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
    }
    cosphi  = TMath::Cos(phi);
    sinphi  = TMath::Sin(phi);
-   acosphi = TMath::Abs(cosphi);
-   asinphi = TMath::Abs(sinphi);
-   if (acosphi <= epsilon) { acosphi = 0;  cosphi  = 0; }
-   if (asinphi <= epsilon) { asinphi = 0;  sinphi  = 0; }
+   if (TMath::Abs(cosphi) <= epsilon)
+      cosphi  = 0;
+   if (TMath::Abs(sinphi) <= epsilon)
+      sinphi  = 0;
 
 // mside positive, tick marks on positive side
 // mside negative, tick marks on negative side
@@ -1492,17 +1492,23 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
                   double scale=gPad->GetWw()*gPad->GetWNDC();
                   if (scale>0.0) toffset = TMath::Max(toffset,(double)w/scale);
                }
+               strncpy(chtemp, fAxis->GetBinLabel(i), 255);
+               if (fNModLabs) ChangeLabelAttributes(i, fAxis->GetLabels()->GetSize()-1, textaxis, chtemp);
                textaxis->PaintLatex(xmin + s*fAxis->GetLabelOffset()*(gPad->GetUxmax()-gPad->GetUxmin()),
                                     fAxis->GetBinCenter(i),
                                     0,
                                     textaxis->GetTextSize(),
-                                    fAxis->GetBinLabel(i));
+                                    chtemp);
+               if (fNModLabs) ResetLabelAttributes(textaxis);
             } else {
+               strncpy(chtemp, fAxis->GetBinLabel(i), 255);
+               if (fNModLabs) ChangeLabelAttributes(i, fAxis->GetLabels()->GetSize()-1, textaxis, chtemp);
                textaxis->PaintLatex(xmin - 3*fAxis->GetLabelOffset()*(gPad->GetUxmax()-gPad->GetUxmin()),
                                     ymin +(i-0.5)*(ymax-ymin)/nl,
                                     0,
                                     textaxis->GetTextSize(),
-                                    fAxis->GetBinLabel(i));
+                                    chtemp);
+               if (fNModLabs) ResetLabelAttributes(textaxis);
             }
          }
       }
@@ -1989,11 +1995,14 @@ L110:
                            typolabel.Data());
                      if (fNModLabs) ResetLabelAttributes(textaxis);
                   } else  {
+                     strncpy(chtemp, fAxis->GetBinLabel(k+fAxis->GetFirst()), 255);
+                     if (fNModLabs) ChangeLabelAttributes(k+fAxis->GetFirst(), fAxis->GetLabels()->GetSize()-1, textaxis, chtemp);
                      if (optionText == 1) textaxis->PaintLatex(gPad->GetX1() + xx*(gPad->GetX2() - gPad->GetX1()),
                                                    gPad->GetY1() + yy*(gPad->GetY2() - gPad->GetY1()),
                                                    0,
                                                    textaxis->GetTextSize(),
-                                                   fAxis->GetBinLabel(k+fAxis->GetFirst()));
+                                                   chtemp);
+                     if (fNModLabs) ResetLabelAttributes(textaxis);
                   }
                } else {
 
