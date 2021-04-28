@@ -1,4 +1,5 @@
 #include "ROOT/RTaskArena.hxx"
+#include "ROpaqueTaskArena.hxx"
 #include "TError.h"
 #include "TROOT.h"
 #include "TThread.h"
@@ -6,6 +7,8 @@
 #include <mutex>
 #include <thread>
 #include "tbb/task_arena.h"
+#define TBB_PREVIEW_GLOBAL_CONTROL 1 // required for TBB versions preceding 2019_U4
+#include "tbb/global_control.h"
 
 //////////////////////////////////////////////////////////////////////////
 ///
@@ -66,7 +69,7 @@ int LogicalCPUBandwithControl()
 /// * If no BC in place and maxConcurrency<1, defaults to the default tbb number of threads,
 /// which is CPU affinity aware
 ////////////////////////////////////////////////////////////////////////////////
-RTaskArenaWrapper::RTaskArenaWrapper(unsigned maxConcurrency) : fTBBArena(new tbb::task_arena{})
+RTaskArenaWrapper::RTaskArenaWrapper(unsigned maxConcurrency) : fTBBArena(new ROpaqueTaskArena{})
 {
    const unsigned tbbDefaultNumberThreads = fTBBArena->max_concurrency(); // not initialized, automatic state
    maxConcurrency = maxConcurrency > 0 ? std::min(maxConcurrency, tbbDefaultNumberThreads) : tbbDefaultNumberThreads;
@@ -74,6 +77,10 @@ RTaskArenaWrapper::RTaskArenaWrapper(unsigned maxConcurrency) : fTBBArena(new tb
    if (maxConcurrency > bcCpus) {
       Warning("RTaskArenaWrapper", "CPU Bandwith Control Active. Proceeding with %d threads accordingly", bcCpus);
       maxConcurrency = bcCpus;
+   }
+   if (maxConcurrency > tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism)) {
+      Warning("RTaskArenaWrapper", "tbb::global_control is active, limiting the number of parallel workers"
+                                   "from this task arena available for execution.");
    }
    fTBBArena->initialize(maxConcurrency);
    fNWorkers = maxConcurrency;
@@ -94,7 +101,7 @@ unsigned RTaskArenaWrapper::TaskArenaSize()
 ////////////////////////////////////////////////////////////////////////////////
 /// Provides access to the wrapped tbb::task_arena.
 ////////////////////////////////////////////////////////////////////////////////
-tbb::task_arena &RTaskArenaWrapper::Access()
+ROOT::ROpaqueTaskArena &RTaskArenaWrapper::Access()
 {
    return *fTBBArena;
 }

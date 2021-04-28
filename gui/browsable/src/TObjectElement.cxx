@@ -1,5 +1,5 @@
 /*************************************************************************
- * Copyright (C) 1995-2020, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2021, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -39,10 +39,8 @@ class TObjectLevelIter : public RLevelIter {
 
    int fCounter{-1};
 
-   int fCanHaveChilds{-1};
-
 public:
-   explicit TObjectLevelIter(int canHaveChilds = -1) { fCanHaveChilds = canHaveChilds; }
+   explicit TObjectLevelIter() {}
 
    virtual ~TObjectLevelIter() = default;
 
@@ -53,25 +51,40 @@ public:
 
    auto NumElements() const { return fElements.size(); }
 
-   bool Reset() override { fCounter = -1; return true; }
-
    bool Next() override { return ++fCounter < (int) fElements.size(); }
 
    // use default implementation for now
    // bool Find(const std::string &name) override { return FindDirEntry(name); }
 
-   bool HasItem() const override { return (fCounter >=0) && (fCounter < (int) fElements.size()); }
+   std::string GetItemName() const override { return fElements[fCounter]->GetName(); }
 
-   std::string GetName() const override { return fElements[fCounter]->GetName(); }
-
-   int CanHaveChilds() const override
+   bool CanItemHaveChilds() const override
    {
       std::shared_ptr<TObjectElement> telem = std::dynamic_pointer_cast<TObjectElement>(fElements[fCounter]);
-      return telem && telem->IsFolder() ? 1 : 0;
+      return telem ? telem->IsFolder() : false;
    }
 
    /** Create element for the browser */
-   std::unique_ptr<RItem> CreateItem() override;
+   std::unique_ptr<RItem> CreateItem() override
+   {
+      std::shared_ptr<TObjectElement> elem = std::dynamic_pointer_cast<TObjectElement>(fElements[fCounter]);
+      // should never happen
+      if (!elem) return nullptr;
+
+      auto cl = elem->GetClass();
+
+      auto nchilds = elem->GetNumChilds();
+
+      auto item = std::make_unique<TObjectItem>(elem->GetName(), nchilds);
+
+      item->SetClassName(cl ? cl->GetName() : "");
+
+      item->SetIcon(RProvider::GetClassIcon(cl, nchilds > 0));
+
+      item->SetTitle(elem->GetTitle());
+
+      return item;
+   }
 
    /** Returns full information for current element */
    std::shared_ptr<RElement> GetElement() override
@@ -84,18 +97,162 @@ public:
 // ===============================================================================================================
 
 class TMyBrowserImp : public TBrowserImp {
-   TObjectLevelIter &fIter;   ///<!  back-reference on iterator
+   TObjectLevelIter *fIter{nullptr};   ///<!  back-reference on iterator
+   const TObject *fBrowseObj{nullptr}; ///<!  object which wil be browsed
+   bool fDuplicated{false};            ///<! is object was duplicated?
 
 public:
 
-   TMyBrowserImp(TObjectLevelIter &iter) : TBrowserImp(nullptr), fIter(iter) {}
+   TMyBrowserImp(TObjectLevelIter *iter, TObject *obj) : TBrowserImp(nullptr), fIter(iter), fBrowseObj(obj) {}
    virtual ~TMyBrowserImp() = default;
 
-   void Add(TObject* obj, const char* name, Int_t) override;
+   bool IsDuplicated() const { return fDuplicated; }
+
+   void Add(TObject* obj, const char* name, Int_t) override
+   {
+      // prevent duplication of object itself - ignore such browsing
+      if (fBrowseObj == obj) fDuplicated = true;
+      if (fDuplicated) return;
+
+      std::unique_ptr<RHolder> holder = std::make_unique<TObjectHolder>(obj);
+
+      std::shared_ptr<RElement> elem = RProvider::Browse(holder);
+
+      if (name && *name) {
+         std::shared_ptr<TObjectElement> telem = std::dynamic_pointer_cast<TObjectElement>(elem);
+         if (telem) telem->SetName(name);
+      }
+
+      fIter->AddElement(std::move(elem));
+
+   }
+
 };
 
 // ===============================================================================================================
 
+/** \class TCollectionIter
+\ingroup rbrowser
+
+Iterator over elements in TCollection
+*/
+
+class TCollectionIter : public RLevelIter {
+
+   TIter  fIter;
+
+public:
+   explicit TCollectionIter(const TFolder *f) : RLevelIter(), fIter(f->GetListOfFolders()) {};
+
+   explicit TCollectionIter(const TCollection *coll) : RLevelIter(), fIter(coll) {};
+
+   virtual ~TCollectionIter() = default;
+
+   bool Next() override { return fIter.Next() != nullptr; }
+
+   // use default implementation for now
+   // bool Find(const std::string &name) override { return FindDirEntry(name); }
+
+   std::string GetItemName() const override { return (*fIter)->GetName(); }
+
+   bool CanItemHaveChilds() const override
+   {
+      TObject *obj = *fIter;
+      return obj ? obj->IsFolder() : false;
+   }
+
+   /** Create item for current TObject */
+   std::unique_ptr<RItem> CreateItem() override
+   {
+      TObject *obj = *fIter;
+      if (!obj) return nullptr;
+
+      auto item = std::make_unique<TObjectItem>(obj->GetName(), obj->IsFolder() ? -1 : 0);
+
+      item->SetClassName(obj->ClassName());
+
+      item->SetIcon(RProvider::GetClassIcon(obj->IsA(), obj->IsFolder()));
+
+      item->SetTitle(obj->GetTitle());
+
+      return item;
+   }
+
+   /** Returns full information for current element */
+   std::shared_ptr<RElement> GetElement() override
+   {
+      std::unique_ptr<RHolder> holder = std::make_unique<TObjectHolder>(*fIter, kFALSE);
+
+      return RProvider::Browse(holder);
+   }
+};
+
+
+// ==============================================================================================
+
+/** \class TFolderElement
+\ingroup rbrowser
+
+Browsable element for TFolder
+*/
+
+
+class TFolderElement : public TObjectElement {
+
+public:
+
+   TFolderElement(std::unique_ptr<RHolder> &obj) : TObjectElement(obj) {}
+
+   std::unique_ptr<RLevelIter> GetChildsIter() override
+   {
+      auto folder = fObject->Get<TFolder>();
+      if (folder)
+         return std::make_unique<TCollectionIter>(folder->GetListOfFolders());
+
+      return TObjectElement::GetChildsIter();
+   }
+
+   int GetNumChilds() override
+   {
+      auto folder = fObject->Get<TFolder>();
+      return folder && folder->GetListOfFolders() ? folder->GetListOfFolders()->GetEntries() : 0;
+   }
+};
+
+// ==============================================================================================
+
+/** \class TCollectionElement
+\ingroup rbrowser
+
+Browsable element for TCollection
+*/
+
+
+class TCollectionElement : public TObjectElement {
+public:
+
+   TCollectionElement(std::unique_ptr<RHolder> &obj) : TObjectElement(obj) {}
+
+   std::unique_ptr<RLevelIter> GetChildsIter() override
+   {
+      auto coll = fObject->Get<TCollection>();
+      if (coll && (coll->GetSize() > 0))
+         return std::make_unique<TCollectionIter>(coll);
+
+      return TObjectElement::GetChildsIter();
+   }
+
+   int GetNumChilds() override
+   {
+      auto coll = fObject->Get<TCollection>();
+      return coll ? coll->GetSize() : 0;
+   }
+};
+
+// =================================================================================
+
+////////////////////////////////////////////////////////////////////////////////
+/// Constructor with plain TObject* as argument - ownership is not defined
 
 TObjectElement::TObjectElement(TObject *obj, const std::string &name) : fObj(obj), fName(name)
 {
@@ -103,6 +260,9 @@ TObjectElement::TObjectElement(TObject *obj, const std::string &name) : fObj(obj
    if (fName.empty())
       fName = fObj->GetName();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// Constructor with std::unique_ptr<RHolder> as argument
 
 TObjectElement::TObjectElement(std::unique_ptr<RHolder> &obj, const std::string &name)
 {
@@ -116,55 +276,59 @@ TObjectElement::TObjectElement(std::unique_ptr<RHolder> &obj, const std::string 
       fName = fObj->GetName();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Returns name of the TObject
+
 std::string TObjectElement::GetName() const
 {
    if (!fName.empty()) return fName;
    return fObj ? fObj->GetName() : "";
 }
 
-/** Title of TObject */
+////////////////////////////////////////////////////////////////////////////////
+/// Returns title of the TObject
+
 std::string TObjectElement::GetTitle() const
 {
    return fObj ? fObj->GetTitle() : "";
 }
 
-/** Returns IsFolder of contained object */
+////////////////////////////////////////////////////////////////////////////////
+/// Returns IsFolder of contained TObject
+
 bool TObjectElement::IsFolder()
 {
    return fObj ? fObj->IsFolder() : false;
 }
 
-/** Create iterator for childs elements if any */
+////////////////////////////////////////////////////////////////////////////////
+/// Create iterator for childs elements if any
+
 std::unique_ptr<RLevelIter> TObjectElement::GetChildsIter()
 {
    if (!IsFolder()) return nullptr;
 
    auto iter = std::make_unique<TObjectLevelIter>();
 
-   TMyBrowserImp *imp = new TMyBrowserImp(*(iter.get()));
+   TMyBrowserImp *imp = new TMyBrowserImp(iter.get(), fObj);
 
    // must be new, otherwise TBrowser constructor ignores imp
    TBrowser *br = new TBrowser("name", "title", imp);
 
    fObj->Browse(br);
 
-   delete br;
+   auto dupl = imp->IsDuplicated();
 
-   if (iter->NumElements() == 0) return nullptr;
+   delete br; // also will destroy implementaion
 
-   // check if it is object itself - should not happen after IsFolder() false
-   if (iter->NumElements() == 1) {
-      iter->Reset(); iter->Next();
-      auto elem0 = std::dynamic_pointer_cast<TObjectElement>(iter->GetElement());
-      if (elem0 && elem0->IsSame(fObj))
-         return nullptr;
-      iter->Reset();
-   }
+   if (dupl || (iter->NumElements() == 0)) return nullptr;
 
    return iter;
 }
 
-/** Return copy of TObject holder - if possible */
+////////////////////////////////////////////////////////////////////////////////
+/// Returns copy of TObject holder - if possible
+
 std::unique_ptr<RHolder> TObjectElement::GetObject()
 {
    if (!fObject)
@@ -173,144 +337,103 @@ std::unique_ptr<RHolder> TObjectElement::GetObject()
    return fObject->Copy();
 }
 
-std::string TObjectElement::ClassName() const
+////////////////////////////////////////////////////////////////////////////////
+/// Returns class for contained object
+
+const TClass *TObjectElement::GetClass() const
 {
-   return fObj ? fObj->ClassName() : "";
+   return fObj ? fObj->IsA() : nullptr;
 }
 
-// ==============================================================================================
 
+////////////////////////////////////////////////////////////////////////////////
+/// Provides default action which can be performed with the object
 
-void TMyBrowserImp::Add(TObject *obj, const char *name, Int_t)
+RElement::EActionKind TObjectElement::GetDefaultAction() const
 {
-   std::unique_ptr<RHolder> holder = std::make_unique<TObjectHolder>(obj);
+   auto cl = GetClass();
+   if (!cl) return kActNone;
+   if (("TGeoManager"s == cl->GetName()) || ("TGeoVolume"s == cl->GetName())) return kActGeom;
+   if (RProvider::CanDraw6(cl)) return kActDraw6;
+   if (RProvider::CanDraw7(cl)) return kActDraw7;
+   if (RProvider::CanHaveChilds(cl)) return kActBrowse;
+   return kActNone;
+}
 
-   std::shared_ptr<RElement> elem = RProvider::Browse(holder);
+////////////////////////////////////////////////////////////////////////////////
+/// Check object capability
 
-   if (name && *name) {
-      std::shared_ptr<TObjectElement> telem = std::dynamic_pointer_cast<TObjectElement>(elem);
-      if (telem) telem->SetName(name);
+bool TObjectElement::IsCapable(RElement::EActionKind action) const
+{
+   auto cl = GetClass();
+   if (!cl) return false;
+
+   switch(action) {
+      case kActBrowse: return RProvider::CanHaveChilds(cl);
+      case kActEdit: return true;
+      case kActImage:
+      case kActDraw6: return RProvider::CanDraw6(cl); // if can draw in TCanvas, can produce image
+      case kActDraw7: return RProvider::CanDraw7(cl);
+      case kActGeom: return ("TGeoManager"s == cl->GetName()) || ("TGeoVolume"s == cl->GetName());
+      default: return false;
    }
 
-   fIter.AddElement(std::move(elem));
+   return false;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Creates iterator for TCollection object
+
+std::unique_ptr<RLevelIter> TObjectElement::GetCollectionIter(const TCollection *coll)
+{
+   return std::make_unique<TCollectionIter>(coll);
+}
 
 // ==============================================================================================
 
+/** \class RTObjectProvider
+\ingroup rbrowser
 
-///////////////////////////////////////////////////////////////
-/// Create element for the browser
-
-std::unique_ptr<RItem> TObjectLevelIter::CreateItem()
-{
-   std::shared_ptr<TObjectElement> elem = std::dynamic_pointer_cast<TObjectElement>(fElements[fCounter]);
-   // should never happen
-   if (!elem) return nullptr;
-
-   bool can_have_childs = false;
-   if (CanHaveChilds() != 0) {
-      // TODO: make via RProvider methods
-      std::string clname = elem->ClassName();
-      can_have_childs = (clname.find("TDirectory") == 0) || (clname.find("TTree") == 0) ||
-                        (clname.find("TNtuple") == 0) || (clname.find("TBranchElement") == 0);
-   }
-
-   auto item = std::make_unique<TObjectItem>(elem->GetName(), can_have_childs ? 1 : 0);
-
-   item->SetClassName(elem->ClassName());
-
-   item->SetIcon(RProvider::GetClassIcon(elem->ClassName()));
-
-   return item;
-}
-
-
-// ==============================================================================================
-
-class TFolderElement : public TObjectElement {
-
-public:
-
-   TFolderElement(std::unique_ptr<RHolder> &obj) : TObjectElement(obj) {}
-
-   std::unique_ptr<RLevelIter> GetChildsIter() override;
-};
-
-class TCollectionElement : public TObjectElement {
-public:
-
-   TCollectionElement(std::unique_ptr<RHolder> &obj) : TObjectElement(obj) {}
-
-   std::unique_ptr<RLevelIter> GetChildsIter() override;
-};
-
-
-
-class TCollectionIter : public RLevelIter {
-
-   TIter  fIter;
-
-public:
-   explicit TCollectionIter(const TFolder *f) : RLevelIter(), fIter(f->GetListOfFolders()) {};
-
-   explicit TCollectionIter(const TCollection *coll) : RLevelIter(), fIter(coll) {};
-
-   virtual ~TCollectionIter() = default;
-
-   bool Reset() override { fIter.Reset(); return true; }
-
-   bool Next() override { return fIter.Next() != nullptr; }
-
-   // use default implementation for now
-   // bool Find(const std::string &name) override { return FindDirEntry(name); }
-
-   bool HasItem() const override { return *fIter != nullptr; }
-
-   std::string GetName() const override { return (*fIter)->GetName(); }
-
-   int CanHaveChilds() const override { return -1; }
-
-   /** Returns full information for current element */
-   std::shared_ptr<RElement> GetElement() override
-   {
-      std::unique_ptr<RHolder> holder = std::make_unique<TObjectHolder>(*fIter, kFALSE);
-
-      return RProvider::Browse(holder);
-   }
-};
-
-//////////////////////////////////////////////////////////////////////////////////////
-/// Provides iterator for TFolder
-
-std::unique_ptr<RLevelIter> TFolderElement::GetChildsIter()
-{
-  auto folder = fObject->Get<TFolder>();
-  if (folder)
-     return std::make_unique<TCollectionIter>(folder->GetListOfFolders());
-
-  return TObjectElement::GetChildsIter();
-}
-
-//////////////////////////////////////////////////////////////////////////////////////
-/// Provides iterator for generic TCollecion
-
-std::unique_ptr<RLevelIter> TCollectionElement::GetChildsIter()
-{
-   auto coll = fObject->Get<TCollection>();
-   if (coll)
-      return std::make_unique<TCollectionIter>(coll);
-
-   return TObjectElement::GetChildsIter();
-}
-
-// ==============================================================================================
+Provider for all known TObject-based classes
+*/
 
 class RTObjectProvider : public RProvider {
 
 public:
+   //////////////////////////////////////////////////////////////////////////////////
+   // Register TObject-based class with standard browsing/drawing libs
+
+   void RegisterTObject(const std::string &clname, const std::string &iconname, bool can_browse = false, int can_draw = 3)
+   {
+      RegisterClass(clname, iconname, can_browse ? "dflt"s : ""s,
+                                      can_draw & 1 ? "libROOTObjectDraw6Provider"s : ""s,
+                                      can_draw & 2 ? "libROOTObjectDraw7Provider"s : ""s);
+   }
+
    RTObjectProvider()
    {
+      RegisterTObject("TTree", "sap-icon://tree", true, 0);
+      RegisterTObject("TNtuple", "sap-icon://tree", true, 0);
+      RegisterClass("TBranchElement", "sap-icon://e-care", "libROOTBranchBrowseProvider", "libROOTLeafDraw6Provider", "libROOTLeafDraw7Provider");
+      RegisterClass("TLeaf", "sap-icon://e-care", ""s, "libROOTLeafDraw6Provider", "libROOTLeafDraw7Provider");
+      RegisterClass("TVirtualBranchBrowsable", "sap-icon://e-care", ""s, "libROOTLeafDraw6Provider", "libROOTLeafDraw7Provider");
+
+      RegisterTObject("TDirectory", "sap-icon://folder-blank", true, 0);
+      RegisterTObject("TH1", "sap-icon://bar-chart");
+      RegisterTObject("TH2", "sap-icon://pixelate");
+      RegisterTObject("TH3", "sap-icon://product");
+      RegisterTObject("TProfile", "sap-icon://vertical-bar-chart");
+      RegisterTObject("TGraph", "sap-icon://line-chart");
+      RegisterTObject("TCanvas", "sap-icon://business-objects-experience", false, 1); // only can use TWebCanvas
+
+      RegisterTObject("THStack", "sap-icon://multiple-bar-chart");
+      RegisterTObject("TMultiGraph", "sap-icon://multiple-line-chart");
+
+      RegisterTObject("TCollection", "sap-icon://list", true, 0);
+      RegisterTObject("TGeoManager", "sap-icon://overview-chart", true, 0);
+      RegisterTObject("TGeoVolume", "sap-icon://product", true, 0);
+      RegisterTObject("TGeoNode", "sap-icon://product", true, 0);
+
       RegisterBrowse(TFolder::Class(), [](std::unique_ptr<RHolder> &object) -> std::shared_ptr<RElement> {
          return std::make_shared<TFolderElement>(object);
       });

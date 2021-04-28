@@ -36,9 +36,9 @@ ROOT::Experimental::REveGeomViewer::REveGeomViewer(TGeoManager *mgr, const std::
    fWebWindow->SetDefaultPage("file:rootui5sys/eve7/geom.html");
 
    // this is call-back, invoked when message received via websocket
-   fWebWindow->SetDataCallBack([this](unsigned connid, const std::string &arg) { this->WebWindowCallback(connid, arg); });
+   fWebWindow->SetDataCallBack([this](unsigned connid, const std::string &arg) { WebWindowCallback(connid, arg); });
    fWebWindow->SetGeometry(900, 700); // configure predefined window geometry
-   fWebWindow->SetConnLimit(1); // the only connection is allowed
+   fWebWindow->SetConnLimit(0); // allow any connections numbers at the same time
    fWebWindow->SetMaxQueueLength(30); // number of allowed entries in the window queue
 
    fDesc.SetPreferredOffline(gEnv->GetValue("WebGui.PreferredOffline",0) != 0);
@@ -94,6 +94,15 @@ void ROOT::Experimental::REveGeomViewer::Show(const RWebDisplayArgs &args, bool 
       fWebWindow->Show(args);
    else
       Update();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+/// Return URL address of web window used for geometry viewer
+
+std::string ROOT::Experimental::REveGeomViewer::GetWindowAddr() const
+{
+   if (!fWebWindow) return "";
+   return fWebWindow->GetAddr();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
