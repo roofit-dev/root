@@ -50,11 +50,11 @@ namespace RDFInternal = ROOT::Internal::RDF;
 class RCustomColumnBase;
 class RFilterBase;
 class RRangeBase;
+using ROOT::RDF::RDataSource;
 
 /// The head node of a RDF computation graph.
 /// This class is responsible of running the event loop.
 class RLoopManager : public RNodeBase {
-   using RDataSource = ROOT::RDF::RDataSource;
    enum class ELoopType { kROOTFiles, kROOTFilesMT, kNoFiles, kNoFilesMT, kDataSource, kDataSourceMT };
    using Callback_t = std::function<void(unsigned int)>;
    class TCallback {
@@ -115,9 +115,6 @@ class RLoopManager : public RNodeBase {
    std::map<std::string, std::string> fAliasColumnNameMap; ///< ColumnNameAlias-columnName pairs
    std::vector<TCallback> fCallbacks;                      ///< Registered callbacks
    std::vector<TOneTimeCallback> fCallbacksOnce; ///< Registered callbacks to invoke just once before running the loop
-   /// A unique ID that identifies the computation graph that starts with this RLoopManager.
-   /// Used, for example, to jit objects in a namespace reserved for this computation graph
-   const unsigned int fID = GetNextID();
    unsigned int fNRuns{0}; ///< Number of event loops run
 
    std::vector<RCustomColumnBase *> fCustomColumns; ///< Non-owning container of all custom columns created so far.
@@ -137,7 +134,6 @@ class RLoopManager : public RNodeBase {
    void CleanUpNodes();
    void CleanUpTask(unsigned int slot);
    void EvalChildrenCounts();
-   static unsigned int GetNextID();
 
 public:
    RLoopManager(TTree *tree, const ColumnNames_t &defaultBranches);
@@ -174,7 +170,6 @@ public:
    void AddColumnAlias(const std::string &alias, const std::string &colName) { fAliasColumnNameMap[alias] = colName; }
    const std::map<std::string, std::string> &GetAliasMap() const { return fAliasColumnNameMap; }
    void RegisterCallback(ULong64_t everyNEvents, std::function<void(unsigned int)> &&f);
-   unsigned int GetID() const { return fID; }
    unsigned int GetNRuns() const { return fNRuns; }
 
    /// End of recursive chain of calls, does nothing

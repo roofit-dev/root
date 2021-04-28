@@ -31,7 +31,6 @@ const char *shortHelp =
 #include <errno.h>
 #include <string>
 #include <list>
-#include <vector>
 #include <sstream>
 #include <map>
 #include <fstream>
@@ -134,12 +133,23 @@ using HeadersDeclsMap_t = std::map<std::string, std::list<std::string>>;
 using namespace ROOT;
 using namespace TClassEdit;
 
-namespace std {}
 using namespace std;
 
 namespace genreflex {
    bool verbose = false;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+static llvm::cl::OptionCategory gRootclingOptions("rootcling common options");
+
+ // FIXME: We should remove after removal of r flag.
+static llvm::cl::opt<bool>
+gOptIgnoreExistingDict("r",
+               llvm::cl::desc("Deprecated. Similar to -f but it ignores the dictionary generation. \
+When -r is present rootcling becomes a tool to generate rootmaps (and capability files)."),
+               llvm::cl::Hidden,
+               llvm::cl::cat(gRootclingOptions));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -2692,7 +2702,9 @@ int GenerateFullDict(std::ostream &dictStream,
 
    // SELECTION LOOP
    for (auto const & ns : scan.fSelectedNamespaces) {
-      WriteNamespaceInit(ns, interp, dictStream);
+      if (!gOptIgnoreExistingDict) {
+         WriteNamespaceInit(ns, interp, dictStream);
+      }
       auto nsName = ns.GetNamespaceDecl()->getQualifiedNameAsString();
       if (nsName.find("(anonymous)") == std::string::npos)
          EmitStreamerInfo(nsName.c_str());
@@ -2725,7 +2737,10 @@ int GenerateFullDict(std::ostream &dictStream,
             // coverity[fun_call_w_exception] - that's just fine.
             Internal::RStl::Instance().GenerateTClassFor(selClass.GetNormalizedName(), CRD, interp, normCtxt);
          } else {
-            ROOT::TMetaUtils::WriteClassInit(dictStream, selClass, CRD, interp, normCtxt, ctorTypes, needsCollectionProxy);
+            if (!gOptIgnoreExistingDict) {
+               ROOT::TMetaUtils::WriteClassInit(dictStream, selClass, CRD, interp, normCtxt, ctorTypes,
+                                                needsCollectionProxy);
+            }
             EmitStreamerInfo(selClass.GetNormalizedName());
          }
       }
@@ -2744,7 +2759,7 @@ int GenerateFullDict(std::ostream &dictStream,
          continue;
       }
       const clang::CXXRecordDecl *cxxdecl = llvm::dyn_cast<clang::CXXRecordDecl>(selClass.GetRecordDecl());
-      if (cxxdecl && ROOT::TMetaUtils::ClassInfo__HasMethod(selClass, "Class_Name", interp)) {
+      if (cxxdecl && ROOT::TMetaUtils::ClassInfo__HasMethod(selClass, "Class_Name", interp) && !gOptIgnoreExistingDict) {
          WriteClassFunctions(cxxdecl, dictStream, isSplit);
       }
    }
@@ -2762,24 +2777,30 @@ int GenerateFullDict(std::ostream &dictStream,
       const clang::CXXRecordDecl *CRD = llvm::dyn_cast<clang::CXXRecordDecl>(selClass.GetRecordDecl());
 
       if (!ROOT::TMetaUtils::IsSTLContainer(selClass)) {
-         ROOT::TMetaUtils::WriteClassInit(dictStream, selClass, CRD, interp, normCtxt, ctorTypes, needsCollectionProxy);
+         if (!gOptIgnoreExistingDict) {
+            ROOT::TMetaUtils::WriteClassInit(dictStream, selClass, CRD, interp, normCtxt, ctorTypes,
+                                             needsCollectionProxy);
+         }
          EmitStreamerInfo(selClass.GetNormalizedName());
       }
    }
    // Loop to write all the ClassCode
-   for (auto const & selClass : scan.fSelectedClasses) {
-      ROOT::TMetaUtils::WriteClassCode(&CallWriteStreamer,
-                                       selClass,
-                                       interp,
-                                       normCtxt,
-                                       dictStream,
-                                       ctorTypes,
-                                       isGenreflex);
-   }
+   if (!gOptIgnoreExistingDict) {
+      for (auto const &selClass : scan.fSelectedClasses) {
+          ROOT::TMetaUtils::WriteClassCode(&CallWriteStreamer,
+                                           selClass,
+                                           interp,
+                                           normCtxt,
+                                           dictStream,
+                                           ctorTypes,
+                                           isGenreflex);
+      }
 
-   // Loop on the registered collections internally
-   // coverity[fun_call_w_exception] - that's just fine.
-   ROOT::Internal::RStl::Instance().WriteClassInit(dictStream, interp, normCtxt, ctorTypes, needsCollectionProxy, EmitStreamerInfo);
+      // Loop on the registered collections internally
+      // coverity[fun_call_w_exception] - that's just fine.
+      ROOT::Internal::RStl::Instance().WriteClassInit(dictStream, interp, normCtxt, ctorTypes, needsCollectionProxy,
+                                                      EmitStreamerInfo);
+   }
 
    if (!gDriverConfig->fBuildingROOTStage1) {
       EmitTypedefs(scan.fSelectedTypedefs);
@@ -2833,10 +2854,14 @@ void CreateDictHeader(std::ostream &dictStream, const std::string &main_dictname
                << "#include \"TCollectionProxyInfo.h\"\n"
                << "/*******************************************************************/\n\n"
                << "#include \"TDataMember.h\"\n\n"; // To set their transiency
-#ifndef R__SOLARIS
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void AddNamespaceSTDdeclaration(std::ostream &dictStream)
+{
    dictStream  << "// The generated code does not explicitly qualifies STL entities\n"
                << "namespace std {} using namespace std;\n\n";
-#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3633,7 +3658,6 @@ static void MaybeSuppressWin32CrashDialogs() {
 #endif
 }
 
-static llvm::cl::OptionCategory gRootclingOptions("rootcling common options");
 static llvm::cl::opt<bool> gOptForce("f", llvm::cl::desc("Overwrite <file>s."),
                                     llvm::cl::cat(gRootclingOptions));
 static llvm::cl::opt<bool> gOptRootBuild("rootbuild", llvm::cl::desc("If we are building ROOT."),
@@ -3680,12 +3704,6 @@ gOptGeneratePCH("generate-pch",
                llvm::cl::desc("Generates a pch file from a predefined set of headers. See makepch.py."),
                llvm::cl::Hidden,
                llvm::cl::cat(gRootclingOptions));
- // FIXME: We should remove the IgnoreExistingDict option as it is not used.
-static llvm::cl::opt<bool>
-gOptIgnoreExistingDict("r",
-               llvm::cl::desc("Deprecated, legacy flag which is ignored."),
-               llvm::cl::Hidden,
-               llvm::cl::cat(gRootclingOptions));
 static llvm::cl::opt<std::string>
 gOptDictionaryFileName(llvm::cl::Positional, llvm::cl::Required,
                       llvm::cl::desc("<output dictionary file>"),
@@ -3720,6 +3738,10 @@ gOptUmbrellaInput("umbrellaHeader",
 static llvm::cl::opt<bool>
 gOptMultiDict("multiDict",
              llvm::cl::desc("If this library has multiple separate LinkDef files."),
+             llvm::cl::cat(gRootclingOptions));
+static llvm::cl::opt<bool>
+gOptNoGlobalUsingStd("noGlobalUsingStd",
+             llvm::cl::desc("Do not declare {using namespace std} in dictionary global scope."),
              llvm::cl::cat(gRootclingOptions));
 static llvm::cl::opt<bool>
 gOptInterpreterOnly("interpreteronly",
@@ -3912,6 +3934,15 @@ static bool CheckModuleValid(TModuleGenerator &modGen, const std::string &resour
    return true;
 }
 
+static llvm::StringRef GetModuleNameFromRdictName(llvm::StringRef rdictName)
+{
+   // Try to get the module name in the modulemap based on the filepath.
+   llvm::StringRef moduleName = llvm::sys::path::filename(rdictName);
+   moduleName.consume_front("lib");
+   moduleName.consume_back(".pcm");
+   moduleName.consume_back("_rdict");
+   return moduleName;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -4188,9 +4219,7 @@ int RootClingMain(int argc,
       // Specify the module name that we can lookup the module in the modulemap.
       outputFile = llvm::sys::path::stem(gOptSharedLibFileName).str();
       // Try to get the module name in the modulemap based on the filepath.
-      moduleName = llvm::sys::path::filename(outputFile);
-      moduleName.consume_front("lib");
-      moduleName.consume_back("_rdict.pcm");
+      moduleName = GetModuleNameFromRdictName(outputFile);
 
       clingArgsInterpreter.push_back("-fmodule-name");
       clingArgsInterpreter.push_back(moduleName.str());
@@ -4274,8 +4303,21 @@ int RootClingMain(int argc,
       // RuntimeUniverse.h (via <new>).
       // FIXME: This should really go in the build system as for the rest of the
       // implicitly created modules.
-      if (gOptCxxModule)
+      if (gOptCxxModule) {
          interpPtr->loadModule("_Builtin_intrinsics", /*Complain*/ true);
+         for (llvm::StringRef DepMod : gOptModuleDependencies) {
+            if (DepMod.endswith("_rdict.pcm")) {
+               ROOT::TMetaUtils::Warning(0, "'%s' value is deprecated. Please use [<fullpat>]%s.pcm\n",
+                                         DepMod.data(),
+                                         GetModuleNameFromRdictName(DepMod).str().data());
+            }
+            DepMod = GetModuleNameFromRdictName(DepMod);
+            if (!interpPtr->loadModule(DepMod, /*complain*/false)) {
+               ROOT::TMetaUtils::Error(0, "Module '%s' failed to load.\n",
+                                       DepMod.data());
+            }
+         }
+      }
    }
    cling::Interpreter &interp = *interpPtr;
    clang::CompilerInstance *CI = interp.getCI();
@@ -4506,50 +4548,52 @@ int RootClingMain(int argc,
    // Check if code goes to stdout or rootcling file
    std::ofstream fileout;
    string main_dictname(gOptDictionaryFileName.getValue());
-   std::ostream *dictStreamPtr = NULL;
+   std::ostream *splitDictStream = nullptr;
+   std::unique_ptr<std::ostream> splitDeleter(nullptr);
    // Store the temp files
    tempFileNamesCatalog tmpCatalog;
    if (!gOptIgnoreExistingDict) {
       if (!gOptDictionaryFileName.empty()) {
          tmpCatalog.addFileName(gOptDictionaryFileName.getValue());
          fileout.open(gOptDictionaryFileName.c_str());
-         dictStreamPtr = &fileout;
-         if (!(*dictStreamPtr)) {
+         if (!fileout) {
             ROOT::TMetaUtils::Error(0, "rootcling: failed to open %s in main\n",
                                     gOptDictionaryFileName.c_str());
             return 1;
          }
-      } else {
-         dictStreamPtr = &std::cout;
       }
-   } else {
-      fileout.open("/dev/null");
-      dictStreamPtr = &fileout;
    }
 
-   // Now generate a second stream for the split dictionary if it is necessary
-   std::ostream *splitDictStreamPtr;
-   std::unique_ptr<std::ostream> splitDeleter(nullptr);
-   if (gOptSplit) {
-      splitDictStreamPtr = CreateStreamPtrForSplitDict(gOptDictionaryFileName.getValue(), tmpCatalog);
-      splitDeleter.reset(splitDictStreamPtr);
-   } else {
-      splitDictStreamPtr = dictStreamPtr;
-   }
-   std::ostream &dictStream = *dictStreamPtr;
-   std::ostream &splitDictStream = *splitDictStreamPtr;
+   std::ostream &dictStream = (!gOptIgnoreExistingDict && !gOptDictionaryFileName.empty()) ? fileout : std::cout;
 
-   size_t dh = main_dictname.rfind('.');
-   if (dh != std::string::npos) {
-      main_dictname.erase(dh);
-   }
-   // Need to replace all the characters not allowed in a symbol ...
-   std::string main_dictname_copy(main_dictname);
-   TMetaUtils::GetCppName(main_dictname, main_dictname_copy.c_str());
+   if (!gOptIgnoreExistingDict) {
+      // Now generate a second stream for the split dictionary if it is necessary
+      if (gOptSplit) {
+         splitDictStream = CreateStreamPtrForSplitDict(gOptDictionaryFileName.getValue(), tmpCatalog);
+         splitDeleter.reset(splitDictStream);
+      } else {
+         splitDictStream = &dictStream;
+      }
 
-   CreateDictHeader(dictStream, main_dictname);
-   if (gOptSplit)
-      CreateDictHeader(splitDictStream, main_dictname);
+      size_t dh = main_dictname.rfind('.');
+      if (dh != std::string::npos) {
+         main_dictname.erase(dh);
+      }
+      // Need to replace all the characters not allowed in a symbol ...
+      std::string main_dictname_copy(main_dictname);
+      TMetaUtils::GetCppName(main_dictname, main_dictname_copy.c_str());
+
+      CreateDictHeader(dictStream, main_dictname);
+      if (gOptSplit)
+         CreateDictHeader(*splitDictStream, main_dictname);
+
+      if (!gOptNoGlobalUsingStd) {
+         AddNamespaceSTDdeclaration(dictStream);
+         if (gOptSplit) {
+            AddNamespaceSTDdeclaration(*splitDictStream);
+         }
+      }
+   }
 
    //---------------------------------------------------------------------------
    // Parse the linkdef or selection.xml file.
@@ -4682,7 +4726,7 @@ int RootClingMain(int argc,
    // Write schema evolution related headers and declarations
    /////////////////////////////////////////////////////////////////////////////
 
-   if (!ROOT::gReadRules.empty() || !ROOT::gReadRawRules.empty()) {
+   if ((!ROOT::gReadRules.empty() || !ROOT::gReadRawRules.empty()) && !gOptIgnoreExistingDict) {
       dictStream << "#include \"TBuffer.h\"\n"
                  << "#include \"TVirtualObject.h\"\n"
                  << "#include <vector>\n"
@@ -4777,9 +4821,11 @@ int RootClingMain(int argc,
    }
 
    if (!gOptGeneratePCH) {
-      GenerateNecessaryIncludes(dictStream, includeForSource, extraIncludes);
-      if (gOptSplit) {
-         GenerateNecessaryIncludes(splitDictStream, includeForSource, extraIncludes);
+      if (!gOptIgnoreExistingDict) {
+         GenerateNecessaryIncludes(dictStream, includeForSource, extraIncludes);
+         if (gOptSplit) {
+            GenerateNecessaryIncludes(*splitDictStream, includeForSource, extraIncludes);
+         }
       }
       if (gDriverConfig->fInitializeStreamerInfoROOTFile) {
          gDriverConfig->fInitializeStreamerInfoROOTFile(modGen.GetModuleFileName().c_str());
@@ -4794,6 +4840,13 @@ int RootClingMain(int argc,
          constructorTypes.emplace_back("", interp);
       }
    }
+   if (!gOptIgnoreExistingDict && gOptNoGlobalUsingStd) {
+      AddNamespaceSTDdeclaration(dictStream);
+
+      if (gOptSplit && splitDictStream) {
+         AddNamespaceSTDdeclaration(*splitDictStream);
+      }
+   }
 
    if (gOptGeneratePCH) {
       AnnotateAllDeclsForPCH(interp, scan);
@@ -4805,7 +4858,7 @@ int RootClingMain(int argc,
          rootclingRetCode +=  FinalizeStreamerInfoWriting(interp);
       }
    } else {
-      rootclingRetCode += GenerateFullDict(splitDictStream,
+      rootclingRetCode += GenerateFullDict(*splitDictStream,
                                  interp,
                                  scan,
                                  constructorTypes,
@@ -5148,6 +5201,7 @@ namespace genreflex {
                        bool writeEmptyRootPCM,
                        bool selSyntaxOnly,
                        bool noIncludePaths,
+                       bool noGlobalUsingStd,
                        const std::vector<std::string> &headersNames,
                        bool failOnWarnings,
                        const std::string &ofilename)
@@ -5220,6 +5274,10 @@ namespace genreflex {
       // Multidict support
       if (multiDict)
          argvVector.push_back(string2charptr("-multiDict"));
+
+      // Don't declare "using namespace std"
+      if (noGlobalUsingStd)
+         argvVector.push_back(string2charptr("-noGlobalUsingStd"));
 
 
       AddToArgVectorSplit(argvVector, pcmsNames, "-m");
@@ -5297,6 +5355,7 @@ namespace genreflex {
                            bool writeEmptyRootPCM,
                            bool selSyntaxOnly,
                            bool noIncludePaths,
+                           bool noGlobalUsingStd,
                            const std::vector<std::string> &headersNames,
                            bool failOnWarnings,
                            const std::string &outputDirName_const = "")
@@ -5333,6 +5392,7 @@ namespace genreflex {
                                           writeEmptyRootPCM,
                                           selSyntaxOnly,
                                           noIncludePaths,
+                                          noGlobalUsingStd,
                                           namesSingleton,
                                           failOnWarnings,
                                           ofilenameFullPath);
@@ -5439,6 +5499,7 @@ int GenReflexMain(int argc, char **argv)
                        OFILENAME,
                        TARGETLIB,
                        MULTIDICT,
+                       NOGLOBALUSINGSTD,
                        SELECTIONFILENAME,
                        ROOTMAP,
                        ROOTMAPLIB,
@@ -5597,6 +5658,16 @@ int GenReflexMain(int argc, char **argv)
          "--multiDict\tSupport for many dictionaries in one library\n"
          "      Form correct pcm names if multiple dictionaries will be in the same\n"
          "      library (needs target library switch. See its documentation).\n"
+      },
+
+      
+      {
+         NOGLOBALUSINGSTD,
+         NOTYPE ,
+         "" , "noGlobalUsingStd" ,
+         ROOT::option::FullArg::None,
+         "--no-using-std\tDo not declare {using namespace std} in the dictionary global scope\n"
+         "      All header files must have sumbols from std:: namespace fully qualified\n"
       },
 
       {
@@ -5877,6 +5948,9 @@ int GenReflexMain(int argc, char **argv)
    bool multidict = false;
    if (options[MULTIDICT]) multidict = true;
 
+   bool noGlobalUsingStd = false;
+   if (options[NOGLOBALUSINGSTD]) noGlobalUsingStd = true;
+
    if (multidict && targetLibName.empty()) {
       ROOT::TMetaUtils::Error("",
                               "Multilib support is requested but no target lib is specified. A sane pcm name cannot be formed.\n");
@@ -5966,6 +6040,7 @@ int GenReflexMain(int argc, char **argv)
                                     writeEmptyRootPCM,
                                     selSyntaxOnly,
                                     noIncludePaths,
+                                    noGlobalUsingStd,
                                     headersNames,
                                     failOnWarnings,
                                     ofileName);
@@ -5988,6 +6063,7 @@ int GenReflexMain(int argc, char **argv)
                                         writeEmptyRootPCM,
                                         selSyntaxOnly,
                                         noIncludePaths,
+                                        noGlobalUsingStd,
                                         headersNames,
                                         failOnWarnings,
                                         ofileName);

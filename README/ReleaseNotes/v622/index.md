@@ -29,6 +29,7 @@ The following people have contributed to this new version:
  Axel Naumann, CERN/SFT,\
  Vincenzo Eduardo Padulano, Bicocca/SFT,\
  Danilo Piparo, CERN/SFT,\
+ Timur Pocheptsoff, Qt Company,\
  Fons Rademakers, CERN/SFT,\
  Oksana Shadura, Nebraska,\
  Enric Tejedor Saavedra, CERN/SFT,\
@@ -39,14 +40,22 @@ The following people have contributed to this new version:
 
 ## Deprecation and Removal
 
+- `ROOT::GetImplicitMTPoolSize` has been deprecated in favor of the newly added `ROOT::GetThreadPoolSize` and
+  will be removed in v6.24.
 
 ## Core Libraries
 
+- The `ACLiC` can be configured to pass options to the `rootcling` invocation by enabling in the `.rootrc` the `ACLiC.ExtraRootclingFlags [-opts]` line.
 
 ## I/O Libraries
 
 
 ## TTree Libraries
+
+- A new status bit was added to `TTree`: `kEntriesReshuffled`, which indicates a `TTree` that is the output of the
+  processing of another tree during which its entry order has been changed (this can happen, for instance, when
+  processing a tree in a multi-thread application). To avoid silent entry number mismatches, trees with this bit set
+  cannot add friend trees nor can be added as friends, unless the friend `TTree` has an appropriate `TTreeIndex`.
 
 
 ## Histogram Libraries
@@ -57,7 +66,15 @@ The following people have contributed to this new version:
 
 ## RooFit Libraries
 
-### Type safe proxies to RooFit objects
+### RooWorkspace::Import() for Python
+`RooWorkspace.import()` cannot be used in Python, since it is a reserved keyword. Users therefore had to resort
+to
+    getattr(workspace, 'import')(...)
+Now,
+    workspace.Import(...)
+has been defined for the new PyROOT, which makes calling the function easier.
+
+### Type-safe proxies for RooFit objects
 RooFit's proxy classes have been modernised. The new class `RooProxy` allows for access to other RooFit objects
 similarly to a smart pointer. In older versions of RooFit, the objects held by *e.g.* `RooRealProxy` had to be
 accessed like this:
@@ -65,7 +82,7 @@ accessed like this:
     RooAbsPdf* pdf = dynamic_cast<RooAbsPdf*>(absArg);
     assert(pdf); // This should work, but the proxy doesn't have a way to check
     pdf->fitTo(...);
-That is, a `RooRealProxy` stores a pointer to a RooAbsArg, and this pointer has to be casted. There was no type
+That is, a `RooRealProxy` stores a pointer to a RooAbsArg, and this pointer has to be cast. There was no type
 safety, *i.e.* any object deriving from RooAbsArg could be stored in that proxy, and the user had to take care
 of ensuring the correct types.
 Now, if the class uses
@@ -101,7 +118,10 @@ into RooFit's message stream number 2. The verbosity can therefore be adjusted u
 
 ## 2D Graphics Libraries
 
- * Universal time (correct time zone and daylight saving time) in PDF file.
+  - Universal time (correct time zone and daylight saving time) in PDF file. Implemented by
+    Jan Musinsky.
+  - The crosshair type cursor type did not work on MacOS Catalina. This has been fixed by
+    Timur Pocheptsoff.
 
 ## 3D Graphics Libraries
 
@@ -144,4 +164,24 @@ Not all features of TGeoPainter are supported - only plain drawing of selected T
 
 ## Build, Configuration and Testing Infrastructure
 
+By default, ROOT now falls back to the built-in version of xrootd if it can't find it in the system.
+This means that passing `-Dbuiltin_xrootd=ON` is not necessary anymore to build ROOT with xrootd support.
+Note that built-in xrootd requires a working network connection.
 
+### Experimental address sanitizer build configuration
+Added a build flag `asan` that switches on address sanitizer. It's experimental, so expect problems. For example, when building with gcc,
+manipulations in global variables in llvm will abort the build. Such checks can be disabled using environment variables. Check the address
+sanitizer documentation or the link below for details. In clang, which allows to blacklist functions, the build will continue.
+
+See [core/sanitizer](https://github.com/root-project/root/tree/master/core/sanitizer) for information.
+
+## RDataFrame
+
+- Starting from this version, when `RSnapshotOptions.fMode` is `"UPDATE"` (i.e. the output file is opened in "UPDATE"
+  mode), Snapshot will refuse to write out a TTree if one with the same name is already present in the output file.
+  Users can set the new flag `RSnapshotOption::fOverwriteIfExists` to `true` to force the deletion of the TTree that is
+  already present and the writing of a new TTree with the same name. See
+  [ROOT-10573](https://sft.its.cern.ch/jira/browse/ROOT-10573) for more details.
+- RDataFrame changed its error handling strategy in case of unreadable input files. Instead of simply logging an error
+  and skipping the file, it now throws an exception if any of the input files is unreadable (this could also happen in
+  the middle of an event loop). See [ROOT-10549](https://sft.its.cern.ch/jira/browse/ROOT-10549) for more details.

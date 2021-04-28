@@ -429,8 +429,6 @@ End_Macro
 #ifdef R__USE_IMT
 #include "ROOT/TThreadExecutor.hxx"
 #include <thread>
-#include <string>
-#include <sstream>
 #endif
 
 constexpr Int_t   kNEntriesResort    = 100;
@@ -1494,7 +1492,7 @@ Long64_t TTree::AutoSave(Option_t* option)
       nbytes = fDirectory->WriteTObject(this,"","overwrite");
    } else {
       nbytes = fDirectory->WriteTObject(this); //nbytes will be 0 if Write failed (disk space exceeded)
-      if (nbytes && key) {
+      if (nbytes && key && strcmp(ClassName(), key->GetClassName()) == 0) {
          key->Delete();
          delete key;
       }
