@@ -76,7 +76,6 @@
 #include "TFile.h"
 #include "THashList.h"
 #include "TKey.h"
-#include "TObjString.h"
 #include "Riostream.h"
 #include "TClass.h"
 #include "TSystem.h"
@@ -265,22 +264,22 @@ int main( int argc, char **argv )
 //         if (a+1 >= argc) {
 //            std::cerr << "Error: no verbosity level was provided after -v.\n";
          } else {
-            Long_t request = -1;
+            Bool_t hasFollowupNumber = kTRUE;
             for (char *c = argv[a+1]; *c != '\0'; ++c) {
                if (!isdigit(*c)) {
                   // Verbosity level was not specified use the default:
-                  request = 99;
+                  hasFollowupNumber = kFALSE;
                   break;
                }
             }
-            if (request == 1) {
-               request = strtol(argv[a+1], 0, 10);
+            if (hasFollowupNumber) {
+               Long_t request = strtol(argv[a+1], 0, 10);
                if (request < kMaxLong && request >= 0) {
                   verbosity = (Int_t)request;
                   ++a;
                   ++ffirst;
-                  std::cerr << "Error: from " << argv[a+1] << " guess verbosity level : " << verbosity << "\n";
                } else {
+                  verbosity = 99;
                   std::cerr << "Error: could not parse the verbosity level passed after -v: " << argv[a+1] << ". We will use the default value (99).\n";
                }
             }
@@ -310,7 +309,7 @@ int main( int argc, char **argv )
             }
          }
          char ft[7];
-         for (int alg = 0; !useFirstInputCompression && alg <= 4; ++alg) {
+         for (int alg = 0; !useFirstInputCompression && alg <= 5; ++alg) {
             for( int j=0; j<=9; ++j ) {
                const int comp = (alg*100)+j;
                snprintf(ft,7,"-f%s%d",prefix,comp);
@@ -374,9 +373,9 @@ int main( int argc, char **argv )
          if (firstInput && !firstInput->IsZombie())
             newcomp = firstInput->GetCompressionSettings();
          else
-            newcomp = ROOT::RCompressionSetting::EDefaults::kUseGeneralPurpose % 100;
+            newcomp = ROOT::RCompressionSetting::EDefaults::kUseCompiledDefault % 100;
          delete firstInput;
-      } else newcomp = ROOT::RCompressionSetting::EDefaults::kUseGeneralPurpose % 100; // default compression level.
+      } else newcomp = ROOT::RCompressionSetting::EDefaults::kUseCompiledDefault % 100; // default compression level.
    }
    if (verbosity > 1) {
       if (keepCompressionAsIs && !reoptimize)
@@ -404,6 +403,9 @@ int main( int argc, char **argv )
       std::cout << "Each process should handle at least 3 files for efficiency.";
       std::cout << " Setting the number of processes to: " << nProcesses << std::endl;
    }
+   if (nProcesses == 1)
+      multiproc = kFALSE;
+
    std::vector<std::string> partialFiles;
 
    if (multiproc) {
