@@ -30,7 +30,7 @@
 
 #include "TVirtualRWMutex.h"
 
-#include <assert.h>
+#include <cassert>
 
 class TClass;
 class TObjectTable;
@@ -57,7 +57,7 @@ R__EXTERN TVirtualMutex *gCollectionMutex;
 #ifdef R__CHECK_COLLECTION_MULTI_ACCESS
 #include <atomic>
 #include <thread>
-#include <unordered_set>
+#include <unordered_multiset>
 #endif
 
 class TCollection : public TObject {
@@ -260,6 +260,13 @@ public:
    }
    Bool_t             operator!=(const TIter &aIter) const {
       return !(*this == aIter);
+   }
+   TIter &operator=(TIterator *iter)
+   {
+      if (fIterator)
+         delete fIterator;
+      fIterator = iter;
+      return *this;
    }
    TObject           *operator*() const { return fIterator ? *(*fIterator): nullptr; }
    TIter             &Begin();

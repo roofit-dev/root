@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT rootfit/histfactory package
 # @author Pere Mato, CERN
@@ -72,6 +78,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(HistFactory
     XMLParser
 )
 
+# For recent clang, this can facilitate auto-vectorisation.
+# In RooFit, the errno side effect is not needed, anyway:
+if(NOT MSVC)
+  target_compile_options(HistFactory PUBLIC -fno-math-errno)
+endif()
+
 ROOT_EXECUTABLE(hist2workspace
   MakeModelAndMeasurements.cxx
   hist2workspace.cxx
@@ -84,7 +96,10 @@ ROOT_EXECUTABLE(hist2workspace
 )
 
 #---Createhist2workspaceCommandLineOptions------------------------------------------------------------------
-generateHeaders(${CMAKE_CURRENT_SOURCE_DIR}/src/hist2workspace-argparse.py ${CMAKE_BINARY_DIR}/include/hist2workspaceCommandLineOptionsHelp.h hist2workspace)
+generateHeader(hist2workspace
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/hist2workspace-argparse.py
+  ${CMAKE_BINARY_DIR}/ginclude/hist2workspaceCommandLineOptionsHelp.h
+)
 
 file(COPY config/prepareHistFactory DESTINATION  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/prepareHistFactory
@@ -94,4 +109,3 @@ install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/prepareHistFactory
                 DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)
-

@@ -16,9 +16,9 @@
 #include "TXMLEngine.h"
 #include "TGeoMatrix.h"
 #include "TGeoVolume.h"
+#include "TGeoElement.h"
 
 #include <map>
-#include <vector>
 #include <iostream>
 
 class TGDMLMatrix;
@@ -34,7 +34,7 @@ public:
 
       fNameS = "";
       fSolid = "";
-      fMatrix = 0;
+      fMatrix = nullptr;
    }
 
    virtual ~TGDMLRefl() {}
@@ -162,7 +162,8 @@ private:
    XMLNodePointer_t  Orb(TXMLEngine* gdml, XMLNodePointer_t node, XMLAttrPointer_t attr);
    XMLNodePointer_t  Xtru(TXMLEngine* gdml, XMLNodePointer_t node, XMLAttrPointer_t attr);
    XMLNodePointer_t  Reflection(TXMLEngine* gdml, XMLNodePointer_t node, XMLAttrPointer_t attr);
-   XMLNodePointer_t  Ellipsoid(TXMLEngine* gdml, XMLNodePointer_t node, XMLAttrPointer_t attr); //not really implemented: just approximation to a TGeoBBox
+   XMLNodePointer_t  Ellipsoid(TXMLEngine* gdml, XMLNodePointer_t node, XMLAttrPointer_t attr);
+   XMLNodePointer_t  Tessellated(TXMLEngine* gdml, XMLNodePointer_t node, XMLAttrPointer_t attr);
 
    //'structure' section
    XMLNodePointer_t  VolProcess(TXMLEngine* gdml, XMLNodePointer_t node);

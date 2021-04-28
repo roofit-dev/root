@@ -25,8 +25,6 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #endif
-#include <stdio.h>
-#include <errno.h>
 #include <stdlib.h>
 #include <sys/types.h>
 
@@ -36,6 +34,7 @@
 #include "TInterpreter.h"
 #include "TROOT.h"
 #include "TSystem.h"
+#include "strlcpy.h"
 
 
 static Int_t gLogLevel = 0;
@@ -68,8 +67,8 @@ static void ReadPutEnvs(const char *envfile)
       if (!strchr(ln, '=')) continue;
       // Good line
       char *ev = new char[l+1];
-      strcpy(ev, ln);
-      putenv(ev);
+      strlcpy(ev, ln, l+1);
+      putenv(ev); // NOLINT: do not release memory in ev, will be used by environment variable
    }
 
    // Close the file
@@ -215,9 +214,6 @@ int main(int argc, char **argv)
 
    gROOT->SetBatch();
    TApplication *theApp = 0;
-
-   // Enable autoloading
-   gInterpreter->EnableAutoLoading();
 
    TString getter("GetTXProofServ");
    TString prooflib = "libProofx";

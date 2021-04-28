@@ -35,7 +35,6 @@ the serverRedirect changes.
 
 #include "Riostream.h"
 #include "RooSetProxy.h"
-#include "RooSetProxy.h"
 #include "RooArgSet.h"
 #include "RooAbsArg.h"
 
@@ -45,7 +44,7 @@ ClassImp(RooSetProxy);
 ;
 
 
-#ifdef USEMEMPOOL
+#ifdef USEMEMPOOLFORARGSET
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Overload new operator must be implemented because it is overloaded

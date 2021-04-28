@@ -79,14 +79,12 @@ TFile, TSQLServer, TGrid, etc. functionality.
 */
 
 #include "TPluginManager.h"
-#include "Varargs.h"
 #include "TEnv.h"
 #include "TRegexp.h"
 #include "TROOT.h"
 #include "TSortedList.h"
 #include "THashList.h"
 #include "THashTable.h"
-#include "Varargs.h"
 #include "TClass.h"
 #include "TInterpreter.h"
 #include "TMethod.h"
@@ -96,6 +94,7 @@ TFile, TSQLServer, TGrid, etc. functionality.
 #include "TVirtualMutex.h"
 #include "TSystem.h"
 #include "TObjString.h"
+#include "TObjArray.h"
 #include "ThreadLocalStorage.h"
 
 #include <memory>
@@ -413,7 +412,7 @@ void TPluginManager::LoadHandlerMacros(const char *path)
       while ((s = (TObjString*)next())) {
          if (gDebug > 1)
             Info("LoadHandlerMacros", "   plugin macro: %s", s->String().Data());
-         Long_t res;
+         Longptr_t res;
          if ((res = gROOT->Macro(s->String(), 0, kFALSE)) < 0) {
             Error("LoadHandlerMacros", "pluging macro %s returned %ld",
                   s->String().Data(), res);
