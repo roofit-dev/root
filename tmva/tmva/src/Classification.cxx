@@ -43,7 +43,6 @@
 #include <TPaletteAxis.h>
 #include <TPrincipal.h>
 #include <TMath.h>
-#include <TObjString.h>
 #include <TSystem.h>
 #include <TCanvas.h>
 #include <iostream>
@@ -261,7 +260,9 @@ void TMVA::Experimental::Classification::Evaluate()
       for (auto &meth : fMethods) {
          GetMethod(meth.GetValue<TString>("MethodName"), meth.GetValue<TString>("MethodTitle"));
       }
+#ifndef _MSC_VER
       fWorkers.SetNWorkers(fJobs);
+#endif
       auto executor = [=](UInt_t workerID) -> ClassificationResult {
          TMVA::MsgLogger::InhibitOutput();
          TMVA::gConfig().SetSilent(kTRUE);
@@ -285,7 +286,9 @@ void TMVA::Experimental::Classification::Evaluate()
          return GetResults(methodname, methodtitle);
       };
 
+#ifndef _MSC_VER
       fResults = fWorkers.Map(executor, ROOT::TSeqI(fMethods.size()));
+#endif
       if (!IsSilentFile())
          MergeFiles();
    }
