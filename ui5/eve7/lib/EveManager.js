@@ -55,19 +55,36 @@ sap.ui.define([], function() {
    {
       this.handle = handle;
 
-      handle.SetReceiver(this);
-      handle.Connect();
+      handle.setReceiver(this);
+      handle.connect();
    }
 
-   EveManager.prototype.OnWebsocketClosed = function() {
-      for (var i = 0; i < this.controllers.length; ++i) {
-         if (typeof this.controllers[i].onDisconnect !== "undefined") {
-            this.controllers[i].onDisconnect();
-         }
-      }
+   EveManager.prototype.onWebsocketClosed = function() {
+      this.controllers.forEach(ctrl => {
+         if (typeof ctrl.onDisconnect === "function")
+             ctrl.onDisconnect();
+      });
    }
 
-   EveManager.prototype.OnWebsocketOpened = function() {
+   /** Checks if number of credits on the connection below threshold */
+   EveManager.prototype.CheckSendThreshold = function() {
+      if (!this.handle) return false;
+      let value = this.handle.getRelCanSend();
+      let below = (value <= 0.2);
+      if (this.credits_below_threshold === undefined)
+         this.credits_below_threshold = false;
+      if (this.credits_below_threshold === below)
+         return below;
+
+      this.credits_below_threshold = below;
+      this.controllers.forEach(ctrl => {
+         if (typeof ctrl.onSendThresholdChanged === "function")
+             ctrl.onSendThresholdChanged(below, value);
+      });
+   }
+
+
+   EveManager.prototype.onWebsocketOpened = function() {
       // console.log("opened!!!");
    },
 
@@ -87,7 +104,7 @@ sap.ui.define([], function() {
    }
 
    /** Called when data comes via the websocket */
-   EveManager.prototype.OnWebsocketMsg = function(handle, msg, offset)
+   EveManager.prototype.onWebsocketMsg = function(handle, msg, offset)
    {
       // if (this.ignore_all) return;
 
@@ -101,13 +118,13 @@ sap.ui.define([], function() {
       }
 
       if (JSROOT.EVE.gDebug)
-         console.log("OnWebsocketMsg msg len=", msg.length, "txt:", (msg.length < 1000) ? msg : (msg.substr(0,1000) + "..."));
+         console.log("onWebsocketMsg msg len=", msg.length, "txt:", (msg.length < 1000) ? msg : (msg.substr(0,1000) + "..."));
 
       let resp = JSON.parse(msg);
 
       if (resp === undefined)
       {
-         console.log("OnWebsocketMsg can't parse json: msg len=", msg.length, " txt:", msg.substr(0,120), "...");
+         console.log("onWebsocketMsg can't parse json: msg len=", msg.length, " txt:", msg.substr(0,120), "...");
          return;
       }
 
@@ -131,7 +148,7 @@ sap.ui.define([], function() {
       else if (resp.content == "BrowseElement") {
          this.BrowseElement(resp.id);
       } else {
-         console.log("OnWebsocketMsg Unhandled message type: msg len=", msg.length, " txt:", msg.substr(0,120), "...");
+         console.log("onWebsocketMsg Unhandled message type: msg len=", msg.length, " txt:", msg.substr(0,120), "...");
       }
    }
 
@@ -157,7 +174,7 @@ sap.ui.define([], function() {
             "class" : element_class
          }
 
-         this.handle.Send(JSON.stringify(req));
+         this.handle.send(JSON.stringify(req));
       }
    }
 
@@ -523,7 +540,7 @@ sap.ui.define([], function() {
       var oldMap = new Map();
       sel.prev_sel_list.forEach(function(rec) {
          let iset = new Set(rec.sec_idcs);
-         let x    = { "valid": true, "implied": rec.implied, "set": iset };
+         let x    = { "valid": true, "implied": rec.implied, "set": iset, "extra": rec.extra };
          oldMap.set(rec.primary, x);
       });
 
@@ -535,7 +552,7 @@ sap.ui.define([], function() {
       var newMap = new Map();
       sel.sel_list.forEach(function(rec) {
          let iset = new Set(rec.sec_idcs);
-         let x    = { "valid": true, "implied": rec.implied, "set": iset };
+         let x    = { "valid": true, "implied": rec.implied, "set": iset, "extra": rec.extra };
          newMap.set(rec.primary, x);
       });
 
@@ -597,14 +614,14 @@ sap.ui.define([], function() {
             continue;
          }
          changedSet.add(iel.fSceneId);
-         this.SelectElement(sel, id, secIdcs);
+         this.SelectElement(sel, id, secIdcs, value.extra);
 
          for (var imp of value.implied)
          {
             if (JSROOT.EVE.DebugSelection)
                console.log("Sel impl", imp, this.GetElement(imp), this.GetElement(imp).fSceneId);
 
-            this.SelectElement(sel, imp, secIdcs);
+            this.SelectElement(sel, imp, secIdcs, value.extra);
             changedSet.add(this.GetElement(imp).fSceneId);
          }
       }
@@ -638,7 +655,7 @@ sap.ui.define([], function() {
       // So, we need something like reapply selections after new scenes arrive.
    }
 
-   EveManager.prototype.SelectElement = function(selection_obj, element_id, sec_idcs)
+   EveManager.prototype.SelectElement = function(selection_obj, element_id, sec_idcs, extra)
    {
       let element = this.GetElement(element_id);
       if ( ! element) return;
@@ -647,7 +664,7 @@ sap.ui.define([], function() {
       if (scene.$receivers) {
          for (let r of scene.$receivers)
          {
-            r.SelectElement(selection_obj, element_id, sec_idcs);
+            r.SelectElement(selection_obj, element_id, sec_idcs, extra);
          }
       }
 
@@ -754,7 +771,7 @@ sap.ui.define([], function() {
 
       msg2.arr[0].prev_sel_list = undefined;
 
-      this.handle.Inject([msg1, msg2, msg3]);
+      this.handle.inject([msg1, msg2, msg3]);
    }
 
    /** used to intercept BrowseElement call @private */
@@ -763,10 +780,11 @@ sap.ui.define([], function() {
           msg2 = { content: "BeginChanges" },
           msg3 = { content: "EndChanges" };
 
-      this.handle.Inject([msg1, msg2, msg3]);
+      this.handle.inject([msg1, msg2, msg3]);
    }
 
-   /** used to intercept SetRnrSelf call @private */
+   /** @summary used to intercept SetRnrSelf call
+     * @private */
    EveManager.prototype._intercept_SetRnrSelf = function(flag) {
       var messages = [{ content: "BeginChanges" }];
 
@@ -783,15 +801,15 @@ sap.ui.define([], function() {
       });
       messages.push({ content: "EndChanges" });
 
-      this.handle.Inject(messages);
+      this.handle.inject(messages);
    }
 
-   /** used to intercept SetMainColorRGB @private */
+   /** @summary used to intercept SetMainColorRGB
+     * @private */
    EveManager.prototype._intercept_SetMainColorRGB = function(colr, colg, colb) {
       var messages = [{ content: "BeginChanges" }];
 
-      var newColor = JSROOT.Painter.root_colors.length;
-      JSROOT.Painter.root_colors.push("rgb(" + colr + "," + colg + "," + colb + ")");
+      var newColor = JSROOT.Painter.addColor("rgb(" + colr + "," + colg + "," + colb + ")");
 
       var mirElem = this.GetElement(this._intercept_id);
       var msg = { arr: [ JSROOT.extend({changeBit:1}, mirElem) ],
@@ -811,7 +829,7 @@ sap.ui.define([], function() {
       });
       messages.push({ content: "EndChanges" });
 
-      this.handle.Inject(messages);
+      this.handle.inject(messages);
    }
 
    /** Handling of MIR calls without sending data to the server.

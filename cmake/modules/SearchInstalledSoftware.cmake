@@ -65,6 +65,25 @@ if(builtin_zlib)
   add_subdirectory(builtins/zlib)
 endif()
 
+#---Check for nlohmann/json.hpp---------------------------------------------------------
+if(NOT builtin_nlohmannjson)
+  message(STATUS "Looking for nlohmann/json.hpp")
+  if(fail-on-missing)
+    find_package(nlohmann_json REQUIRED)
+  else()
+    find_package(nlohmann_json)
+    if(NOT nlohmann_json_FOUND)
+      message(STATUS "nlohmann/json.hpp not found. Switching on builtin_nlohmannjson option")
+      set(builtin_nlohmannjson ON CACHE BOOL "Enabled because nlohmann/json.hpp not found" FORCE)
+    endif()
+  endif()
+endif()
+
+if(builtin_nlohmannjson)
+  add_subdirectory(builtins/nlohmann)
+endif()
+
+
 #---Check for Unuran ------------------------------------------------------------------
 if(unuran AND NOT builtin_unuran)
   message(STATUS "Looking for Unuran")
@@ -475,12 +494,14 @@ if(mathmore OR builtin_gsl)
     set(GSL_CBLAS_LIBRARY ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gslcblas${CMAKE_STATIC_LIBRARY_SUFFIX})
     if(CMAKE_OSX_SYSROOT)
       set(_gsl_cppflags "-isysroot ${CMAKE_OSX_SYSROOT}")
+      set(_gsl_ldflags  "-isysroot ${CMAKE_OSX_SYSROOT}")
     endif()
     ExternalProject_Add(
       GSL
       # http://mirror.switch.ch/ftp/mirror/gnu/gsl/gsl-${gsl_version}.tar.gz
       URL ${lcgpackages}/gsl-${gsl_version}.tar.gz
       URL_HASH SHA256=0460ad7c2542caaddc6729762952d345374784100223995eb14d614861f2258d
+      SOURCE_DIR GSL-src # prevent "<gsl/...>" vs GSL/ macOS warning
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
                         --libdir=<INSTALL_DIR>/lib
@@ -488,6 +509,7 @@ if(mathmore OR builtin_gsl)
                         CC=${CMAKE_C_COMPILER}
                         CFLAGS=${CMAKE_C_FLAGS}
                         CPPFLAGS=${_gsl_cppflags}
+                        LDFLAGS=${_gsl_ldflags}
       LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1
       BUILD_BYPRODUCTS ${GSL_LIBRARIES}
     )
@@ -1192,6 +1214,11 @@ if(builtin_tbb)
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
     set(_tbb_compiler compiler=gcc)
   endif()
+  if(${ROOT_ARCHITECTURE} MATCHES "macosxarm64")
+    set(tbb_command patch -p1 -i ${CMAKE_SOURCE_DIR}/builtins/tbb/patches/apple-m1.patch)
+  else()
+    set(tbb_command "")
+  endif()
   if(MSVC)
     set(vsdir "vs2013")
     set(TBB_LIBRARIES ${CMAKE_BINARY_DIR}/lib/tbb.lib)
@@ -1225,6 +1252,7 @@ if(builtin_tbb)
     # it can happen that a "-isysroot" switch is added without an argument.
     if(APPLE AND CMAKE_OSX_SYSROOT)
       set(_tbb_cxxflags "${_tbb_cxxflags} -isysroot ${CMAKE_OSX_SYSROOT}")
+      set(_tbb_ldflags "${_tbb_ldflags} -isysroot ${CMAKE_OSX_SYSROOT}")
     endif()
     set(TBB_LIBRARIES ${CMAKE_BINARY_DIR}/lib/libtbb${CMAKE_SHARED_LIBRARY_SUFFIX})
     ExternalProject_Add(
@@ -1233,8 +1261,9 @@ if(builtin_tbb)
       URL_HASH SHA256=${tbb_sha256}
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       PATCH_COMMAND sed -i -e "/clang -v/s@-v@--version@" build/macos.inc
+      COMMAND ${tbb_command}
       CONFIGURE_COMMAND ""
-      BUILD_COMMAND make ${_tbb_compiler} cpp0x=1 "CXXFLAGS=${_tbb_cxxflags}" CPLUS=${CMAKE_CXX_COMPILER} CONLY=${CMAKE_C_COMPILER}
+      BUILD_COMMAND make ${_tbb_compiler} cpp0x=1 "CXXFLAGS=${_tbb_cxxflags}" CPLUS=${CMAKE_CXX_COMPILER} CONLY=${CMAKE_C_COMPILER} "LDFLAGS=${_tbb_ldflags}"
       INSTALL_COMMAND ${CMAKE_COMMAND} -Dinstall_dir=<INSTALL_DIR> -Dsource_dir=<SOURCE_DIR>
                                        -P ${CMAKE_SOURCE_DIR}/cmake/scripts/InstallTBB.cmake
       INSTALL_COMMAND ""
@@ -1285,7 +1314,7 @@ if(vc AND NOT Vc_FOUND)
   set(Vc_LIBRARY "${Vc_ROOTDIR}/lib/${Vc_LIBNAME}")
 
   if(UNIX)
-    set(VC_PATCH_COMMAND patch -p1 < ${CMAKE_SOURCE_DIR}/cmake/patches/vc-bit-scan-forward.patch)
+    set(VC_PATCH_COMMAND patch -p1 < ${CMAKE_SOURCE_DIR}/cmake/patches/vc-deprecated-and-bit-scan-forward.patch)
   endif()
 
   ExternalProject_Add(VC
@@ -1769,15 +1798,36 @@ endif()
 
 #------------------------------------------------------------------------------------
 if(webgui)
-  ExternalProject_Add(
-     OPENUI5
-     URL ${CMAKE_SOURCE_DIR}/gui/webdisplay/res/openui5.tar.gz
-     URL_HASH SHA256=b264661fb397906714b8253fc3a32ecb6ac0da575cc01ce61636354e6bfccf3c
-     CONFIGURE_COMMAND ""
-     BUILD_COMMAND ""
-     INSTALL_COMMAND ""
-     SOURCE_DIR ${CMAKE_BINARY_DIR}/ui5/distribution)
-  install(DIRECTORY ${CMAKE_BINARY_DIR}/ui5/distribution/ DESTINATION ${CMAKE_INSTALL_OPENUI5DIR}/distribution/ COMPONENT libraries FILES_MATCHING PATTERN "*")
+  if(NOT "$ENV{OPENUI5DIR}" STREQUAL "" AND EXISTS "$ENV{OPENUI5DIR}/resources/sap-ui-core-nojQuery.js")
+     # create symbolic link on existing openui5 installation
+     # should be used only for debug purposes to be able try different openui5 version
+     # cannot be used for installation purposes
+     message(STATUS "openui5 - use from $ENV{OPENUI5DIR}, only for debug purposes")
+     file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/ui5)
+     execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+        $ENV{OPENUI5DIR} ${CMAKE_BINARY_DIR}/ui5/distribution)
+  else()
+    if(builtin_openui5)
+      ExternalProject_Add(
+        OPENUI5
+        URL ${CMAKE_SOURCE_DIR}/builtins/openui5/openui5.tar.gz
+        URL_HASH SHA256=0cde25387047163fe2ed5f32eb7224628be10c3b6afa07d0b2a42002543909c2
+        CONFIGURE_COMMAND ""
+        BUILD_COMMAND ""
+        INSTALL_COMMAND ""
+        SOURCE_DIR ${CMAKE_BINARY_DIR}/ui5/distribution)
+    else()
+      ExternalProject_Add(
+        OPENUI5
+        URL https://github.com/SAP/openui5/releases/download/1.82.2/openui5-runtime-1.82.2.zip
+        URL_HASH SHA256=b405fa6a3a3621879e8efe80eb193c1071f2bdf37a8ecc8c057194a09635eaff
+        CONFIGURE_COMMAND ""
+        BUILD_COMMAND ""
+        INSTALL_COMMAND ""
+        SOURCE_DIR ${CMAKE_BINARY_DIR}/ui5/distribution)
+    endif()
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/ui5/distribution/ DESTINATION ${CMAKE_INSTALL_OPENUI5DIR}/distribution/ COMPONENT libraries FILES_MATCHING PATTERN "*")
+  endif()
 endif()
 
 #------------------------------------------------------------------------------------

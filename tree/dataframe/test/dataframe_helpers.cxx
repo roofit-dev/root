@@ -135,9 +135,9 @@ public:
              "\", shape=\"box\"];\n"
              "\t17 [label=\"Filter\", style=\"filled\", fillcolor=\"#c4cfd4\", shape=\"diamond\"];\n"
              "\t18 [label=\"Define\n"
-             "Branch_2_1_def\", style=\"filled\", fillcolor=\"#60aef3\", shape=\"oval\"];\n"
-             "\t19 [label=\"Define\n"
              "Branch_2_2_def\", style=\"filled\", fillcolor=\"#60aef3\", shape=\"oval\"];\n"
+             "\t19 [label=\"Define\n"
+             "Branch_2_1_def\", style=\"filled\", fillcolor=\"#60aef3\", shape=\"oval\"];\n"
              "\t15 [label=\"Filter\", style=\"filled\", fillcolor=\"#c4cfd4\", shape=\"diamond\"];\n"
              "\t16 [label=\"Define\n"
              "Branch_2_def\", style=\"filled\", fillcolor=\"#60aef3\", shape=\"oval\"];\n"
@@ -279,6 +279,36 @@ TEST(RDFHelpers, SaveGraphToFile)
    EXPECT_EQ(expectedGraph, outString.str());
 
    gSystem->Unlink(outFileName);
+}
+
+// ROOT-9977
+TEST(RDFHelpers, SaveGraphNoActions)
+{
+   auto df = ROOT::RDataFrame(1);
+   auto df2 = df.Filter([] { return true; });
+   const auto res = ROOT::RDF::SaveGraph(df);
+   const std::string expected =
+      "digraph {\n\t2 [label=\"Filter\", style=\"filled\", fillcolor=\"#c4cfd4\", shape=\"diamond\"];\n\t0 "
+      "[label=\"1\", style=\"filled\", fillcolor=\"#e8f8fc\", shape=\"oval\"];\n\t0 -> 2;\n}";
+   EXPECT_EQ(res, expected);
+}
+
+TEST(RDFHelpers, SaveGraphSharedDefines)
+{
+   auto One = [] { return 1; };
+   ROOT::RDataFrame df(1);
+   auto df2 = df.Define("shared", One);
+   auto c1 = df2.Define("one", One).Count();
+   auto c2 = df2.Define("two", One).Count();
+   std::string graph = ROOT::RDF::SaveGraph(df);
+   const std::string expected =
+      "digraph {\n\t2 [label=\"Count\", style=\"filled\", fillcolor=\"#9cbbe5\", shape=\"box\"];\n\t3 "
+      "[label=\"Define\none\", style=\"filled\", fillcolor=\"#60aef3\", shape=\"oval\"];\n\t4 "
+      "[label=\"Define\nshared\", style=\"filled\", fillcolor=\"#60aef3\", shape=\"oval\"];\n\t0 [label=\"1\", "
+      "style=\"filled\", fillcolor=\"#e8f8fc\", shape=\"oval\"];\n\t6 [label=\"Count\", style=\"filled\", "
+      "fillcolor=\"#9cbbe5\", shape=\"box\"];\n\t7 [label=\"Define\ntwo\", style=\"filled\", fillcolor=\"#60aef3\", "
+      "shape=\"oval\"];\n\t3 -> 2;\n\t4 -> 3;\n\t0 -> 4;\n\t7 -> 6;\n\t4 -> 7;\n}";
+   EXPECT_EQ(graph, expected);
 }
 
 TEST(RunGraphs, RunGraphs)

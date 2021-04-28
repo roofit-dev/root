@@ -126,11 +126,11 @@ the proxy holds a function, and will trigger an assert.
 ### Batched function evaluations (Advanced usage)
 
 To speed up computations with large numbers of data events in unbinned fits,
-it is beneficial to override `evaluateBatch()`. Like this, large batches of
+it is beneficial to override `evaluateSpan()`. Like this, large spans of
 computations can be done, without having to call `evaluate()` for each single data event.
-`evaluateBatch()` should execute the same computation as `evaluate()`, but it
+`evaluateSpan()` should execute the same computation as `evaluate()`, but it
 may choose an implementation that is capable of SIMD computations.
-If evaluateBatch is not implemented, the classic and slower `evaluate()` will be
+If evaluateSpan is not implemented, the classic and slower `evaluate()` will be
 called for each data event.
 */
 
@@ -170,9 +170,9 @@ called for each data event.
 #include "RooMinimizer.h"
 #include "RooRealIntegral.h"
 #include "RooWorkspace.h"
-
+#include "RooNaNPacker.h"
 #include "RooHelpers.h"
-#include "RooVDTHeaders.h"
+#include "RooBatchCompute.h"
 
 #include "TClass.h"
 #include "TMath.h"
@@ -185,6 +185,7 @@ called for each data event.
 
 #include <iostream>
 #include <string>
+#include <cmath>
 
 using namespace std;
 
@@ -284,12 +285,8 @@ Double_t RooAbsPdf::getValV(const RooArgSet* nset) const
     _normSet = 0 ;
     Double_t val = evaluate() ;
     _normSet = tmp ;
-    Bool_t error = traceEvalPdf(val) ;
 
-    if (error) {
-      return 0 ;
-    }
-    return val ;
+    return TMath::IsNaN(val) ? 0. : val;
   }
 
 
@@ -303,26 +300,32 @@ Double_t RooAbsPdf::getValV(const RooArgSet* nset) const
   if (isValueDirty() || nsetChanged || _norm->isValueDirty()) {
 
     // Evaluate numerator
-    Double_t rawVal = evaluate() ;
-    Bool_t error = traceEvalPdf(rawVal) ; // Error checking and printing
+    const double rawVal = evaluate();
 
     // Evaluate denominator
-    Double_t normVal(_norm->getVal()) ;
+    const double normVal = _norm->getVal();
 
     if (normVal < 0. || (normVal == 0. && rawVal != 0)) {
-      //Unreasonable normalisations. A zero integral can be tolerated if the function vanishes.
-      error=kTRUE ;
-      std::stringstream msg;
-      msg << "p.d.f normalization integral is zero or negative: " << normVal;
-      logEvalError(msg.str().c_str());
+      //Unreasonable normalisations. A zero integral can be tolerated if the function vanishes, though.
+      const std::string msg = "p.d.f normalization integral is zero or negative: " + std::to_string(normVal);
+      logEvalError(msg.c_str());
+      clearValueAndShapeDirty();
+      return _value = RooNaNPacker::packFloatIntoNaN(-normVal + (rawVal < 0. ? -rawVal : 0.));
     }
 
-    // Raise global error flag if problems occur
-    if (error || (rawVal == 0. && normVal == 0.)) {
-      _value = 0 ;
-    } else {
-      _value = rawVal / normVal ;
+    if (rawVal < 0.) {
+      logEvalError(Form("p.d.f value is less than zero (%f), trying to recover", rawVal));
+      clearValueAndShapeDirty();
+      return _value = RooNaNPacker::packFloatIntoNaN(-rawVal);
     }
+
+    if (TMath::IsNaN(rawVal)) {
+      logEvalError("p.d.f value is Not-a-Number");
+      clearValueAndShapeDirty();
+      return _value = rawVal;
+    }
+
+    _value = (rawVal == 0. && normVal == 0.) ? 0. : rawVal / normVal;
 
     clearValueAndShapeDirty();
   }
@@ -332,48 +335,32 @@ Double_t RooAbsPdf::getValV(const RooArgSet* nset) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Compute batch of values for given range, and normalise by integrating over
-/// the observables in `nset`. If `nset` is `nullptr`, unnormalized values
-/// are returned. All elements of `nset` must be lvalues.
+/// Compute batch of values for given input data, and normalise by integrating over
+/// the observables in `normSet`. Store result in `evalData`, and return a span pointing to
+/// it.
+/// This uses evaluateSpan() to perform an (unnormalised) computation of data points. This computation
+/// is finalised by normalising the bare values, and by checking for computation errors.
+/// Derived classes should override evaluateSpan() to reach maximal performance.
 ///
-/// \param[in] begin Begin of the batch.
-/// \param[in] maxSize Size of the requested range. May come out smaller.
-/// \param[in] normSet   If not nullptr, normalise results by integrating over
+/// \param[in/out] evalData Object holding data that should be used in computations. Results are also stored here.
+/// \param[in] normSet      If not nullptr, normalise results by integrating over
 /// the variables in this set. The normalisation is only computed once, and applied
 /// to the full batch.
-///
-RooSpan<const double> RooAbsPdf::getValBatch(std::size_t begin, std::size_t maxSize,
-    const RooArgSet* normSet) const
-{
-  // Some PDFs do preprocessing here, e.g. of the norm
-  getValV(normSet);
-
-  if (_allBatchesDirty || _operMode == ADirty) {
-    _batchData.markDirty();
-    _allBatchesDirty = false;
+/// \return RooSpan with probabilities. The memory of this span is owned by `evalData`.
+/// \see RooAbsReal::getValues().
+RooSpan<const double> RooAbsPdf::getValues(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const {
+  auto item = evalData.spans.find(this);
+  if (item != evalData.spans.end()) {
+    return item->second;
   }
 
-  // Special handling of case without normalization set (used in numeric integration of pdfs)
-  if (!normSet) {
-    RooArgSet* tmp = _normSet ;
-    _normSet = nullptr;
-    auto outputs = evaluateBatch(begin, maxSize);
-    maxSize = outputs.size();
-    _normSet = tmp;
+  auto outputs = evaluateSpan(evalData, normSet);
+  assert(evalData.spans.count(this) > 0);
 
-    _batchData.setStatus(begin, maxSize, BatchHelpers::BatchData::kReady);
-
-    return outputs;
-  }
-
-
-  // TODO wait if batch is computing?
-  if (_batchData.status(begin, normSet, BatchHelpers::BatchData::kgetVal) <= BatchHelpers::BatchData::kDirty
-      || _norm->isValueDirty()) {
-
-    auto outputs = evaluateBatch(begin, maxSize);
-    maxSize = outputs.size();
-
+  if (normSet != nullptr) {
+    if (normSet != _normSet || _norm == nullptr) {
+      syncNormalization(normSet);
+    }
     // Evaluate denominator
     const double normVal = _norm->getVal();
 
@@ -389,13 +376,9 @@ RooSpan<const double> RooAbsPdf::getValBatch(std::size_t begin, std::size_t maxS
         val *= invNorm;
       }
     }
-
-    _batchData.setStatus(begin, maxSize, BatchHelpers::BatchData::kReady);
   }
 
-  const auto ret = _batchData.getBatch(begin, maxSize);
-
-  return ret;
+  return outputs;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -666,8 +649,7 @@ Double_t RooAbsPdf::getLogVal(const RooArgSet* nset) const
 
   if(prob < 0) {
     logEvalError("getLogVal() top-level p.d.f evaluates to a negative number") ;
-
-    return std::numeric_limits<double>::quiet_NaN();
+    return RooNaNPacker::packFloatIntoNaN(-prob);
   }
 
   if(prob == 0) {
@@ -679,7 +661,7 @@ Double_t RooAbsPdf::getLogVal(const RooArgSet* nset) const
   if (TMath::IsNaN(prob)) {
     logEvalError("getLogVal() top-level p.d.f evaluates to NaN") ;
 
-    return -std::numeric_limits<double>::infinity();
+    return prob;
   }
 
   return log(prob);
@@ -730,29 +712,28 @@ void RooAbsPdf::logBatchComputationErrors(RooSpan<const double>& outputs, std::s
   }
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Compute the log-likelihoods for all events in the requested batch.
-/// The arguments are passed over to getValBatch().
-/// \param[in] begin Start of the batch.
-/// \param[in] maxSize  Maximum size of the batch. Depending on data layout and memory, the batch
-/// may come back smaller.
+/// The arguments are passed over to getValues().
+/// \param[in] evalData Struct with data that should be used for evaluation.
+/// \param[in] normSet Optional normalisation set to be used during computations.
 /// \return    Returns a batch of doubles that contains the log probabilities.
-RooSpan<const double> RooAbsPdf::getLogValBatch(std::size_t begin, std::size_t maxSize,
-    const RooArgSet* normSet) const
+RooSpan<const double> RooAbsPdf::getLogProbabilities(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const
 {
-  auto pdfValues = getValBatch(begin, maxSize, normSet);
+  auto pdfValues = getValues(evalData, normSet);
 
   if (checkInfNaNNeg(pdfValues)) {
-    logBatchComputationErrors(pdfValues, begin);
+    logBatchComputationErrors(pdfValues, 0);
   }
 
-  auto output = _batchData.makeWritableBatchUnInit(begin, pdfValues.size(),
-      normSet, BatchHelpers::BatchData::kgetLogVal);
+  evalData.logProbabilities.resize(pdfValues.size());
+  RooSpan<double> output( evalData.logProbabilities );
 
   for (std::size_t i = 0; i < pdfValues.size(); ++i) { //CHECK_VECTORISE
     const double prob = pdfValues[i];
 
-    double theLog = _rf_fast_log(prob);
+    double theLog = RooBatchCompute::fast_log(prob);
 
     if (prob < 0) {
       theLog = std::numeric_limits<double>::quiet_NaN();
@@ -888,6 +869,15 @@ Double_t RooAbsPdf::extendedTerm(Double_t observed, const RooArgSet* nset) const
 /// <tr><td> `CloneData(Bool flag)`           <td> Use clone of dataset in NLL (default is true)
 /// <tr><td> `Offset(Bool_t)`                 <td> Offset likelihood by initial value (so that starting value of FCN in minuit is zero).
 ///                                              This can improve numeric stability in simultaneous fits with components with large likelihood values
+/// <tr><td> `IntegrateBins(double precision)` <td> In binned fits, integrate the PDF over the bins instead of using the probability density at the bin centre.
+///                                                 This can reduce the bias observed when fitting functions with high curvature to binned data.
+///                                                 - precision > 0: Activate bin integration everywhere. Use precision between 0.01 and 1.E-6, depending on binning.
+///                                                   Note that a low precision such as 0.01 might yield identical results to 1.E-4, since the integrator might reach 1.E-4 already in its first
+///                                                   integration step. If lower precision is desired (more speed), a RooBinSamplingPdf has to be created manually, and its integrator
+///                                                   has to be manipulated directly.
+///                                                 - precision = 0: Activate bin integration only for continuous PDFs fit to a RooDataHist.
+///                                                 - precision < 0: Deactivate.
+///                                                 \see RooBinSamplingPdf
 /// </table>
 ///
 ///
@@ -940,6 +930,7 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
   pc.defineInt("doOffset","OffsetLikelihood",0,0) ;
   pc.defineSet("extCons","ExternalConstraints",0,0) ;
   pc.defineInt("BatchMode", "BatchMode", 0, 0);
+  pc.defineDouble("IntegrateBins", "IntegrateBins", 0, -1.);
   pc.defineMutex("Range","RangeWithName") ;
 //  pc.defineMutex("Constrain","Constrained") ;
   pc.defineMutex("GlobalObservables","GlobalObservablesTag") ;
@@ -1053,7 +1044,7 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
 
     auto theNLL = new RooNLLVar(baseName.c_str(),"-log(likelihood)",
         *this,data,projDeps,ext,rangeName,addCoefRangeName,numcpu,interl,
-        cpuAffinity,verbose,splitr,cloneData);
+        cpuAffinity,verbose,splitr,cloneData,/*binnedL=*/false, pc.getDouble("IntegrateBins"));
     theNLL->batchMode(pc.getInt("BatchMode"));
     nll = theNLL;
   } else {
@@ -1063,7 +1054,7 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
     for (const auto& token : tokens) {
       auto nllComp = new RooNLLVar(Form("%s_%s",baseName.c_str(),token.c_str()),"-log(likelihood)",
           *this,data,projDeps,ext,token.c_str(),addCoefRangeName,numcpu,interl,
-          cpuAffinity,verbose,splitr,cloneData);
+          cpuAffinity,verbose,splitr,cloneData, /*binnedL=*/false, pc.getDouble("IntegrateBins"));
       nllComp->batchMode(pc.getInt("BatchMode"));
       nllList.add(*nllComp) ;
     }
@@ -1079,7 +1070,7 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
      // retrieve from cache
      const RooArgSet *constr =
         _myws->set(Form("CACHE_CONSTR_OF_PDF_%s_FOR_OBS_%s", GetName(), RooNameSet(*data.get()).content()));
-     coutI(Minimization) << "createNLL picked up cached consraints from workspace with " << constr->getSize()
+     coutI(Minimization) << "createNLL picked up cached constraints from workspace with " << constr->getSize()
                          << " entries" << endl;
      allConstraints.add(*constr);
 
@@ -1195,6 +1186,15 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
 ///                                                          implemented for the PDFs of the model, likelihood computations are 2x to 10x faster.
 ///                                                          The relative difference of the single log-likelihoods w.r.t. the legacy mode is usually better than 1.E-12,
 ///                                                          and fit parameters usually agree to better than 1.E-6.
+/// <tr><td> `IntegrateBins(double precision)` <td> In binned fits, integrate the PDF over the bins instead of using the probability density at the bin centre.
+///                                                 This can reduce the bias observed when fitting functions with high curvature to binned data.
+///                                                 - precision > 0: Activate bin integration everywhere. Use precision between 0.01 and 1.E-6, depending on binning.
+///                                                   Note that a low precision such as 0.01 might yield identical results to 1.E-4, since the integrator might reach 1.E-4 already in its first
+///                                                   integration step. If lower precision is desired (more speed), a RooBinSamplingPdf has to be created manually, and its integrator
+///                                                   has to be manipulated directly.
+///                                                 - precision = 0: Activate bin integration only for continuous PDFs fit to a RooDataHist.
+///                                                 - precision < 0: Deactivate.
+///                                                 \see RooBinSamplingPdf
 ///
 /// <tr><th><th> Options to control flow of fit procedure
 /// <tr><td> `Minimizer(type,algo)`   <td>  Choose minimization package and algorithm to use. Default is MINUIT/MIGRAD through the RooMinimizer interface,
@@ -1218,6 +1218,8 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
 /// <tr><td> `EvalErrorWall(bool flag=true)`    <td>  When parameters are in disallowed regions (e.g. PDF is negative), return very high value to fitter
 ///                                                  to force it out of that region. This can, however, mean that the fitter gets lost in this region. If
 ///                                                  this happens, try switching it off.
+/// <tr><td> `RecoverFromUndefinedRegions(double strength)` <td> When PDF is invalid (e.g. parameter in undefined region), try to direct minimiser away from that region.
+///                                                              `strength` controls the magnitude of the penalty term. Leaving out this argument defaults to 10. Switch off with `strength = 0.`.
 /// <tr><td> `FitOptions(const char* optStr)`  <td>  \deprecated Steer fit with classic options string (for backward compatibility).
 ///                                                \attention Use of this option excludes use of any of the new style steering options.
 ///
@@ -1290,9 +1292,10 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
   RooLinkedList fitCmdList(cmdList) ;
   RooLinkedList nllCmdList = pc.filterCmdList(fitCmdList,"ProjectedObservables,Extended,Range,"
       "RangeWithName,SumCoefRange,NumCPU,CPUAffinity,SplitRange,Constrained,Constrain,ExternalConstraints,"
-      "CloneData,GlobalObservables,GlobalObservablesTag,OffsetLikelihood,BatchMode");
+      "CloneData,GlobalObservables,GlobalObservablesTag,OffsetLikelihood,BatchMode,IntegrateBins");
 
   pc.defineDouble("prefit", "Prefit",0,0);
+  pc.defineDouble("RecoverFromUndefinedRegions", "RecoverFromUndefinedRegions",0,10.);
   pc.defineString("fitOpt","FitOptions",0,"") ;
   pc.defineInt("optConst","Optimize",0,2) ;
   pc.defineInt("verbose","Verbose",0,0) ;
@@ -1335,6 +1338,7 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 
   // Decode command line arguments
   Double_t prefit = pc.getDouble("prefit");
+  const double recoverFromNaN = pc.getDouble("RecoverFromUndefinedRegions");
   const char* fitOpt = pc.getString("fitOpt",0,kTRUE) ;
   Int_t optConst = pc.getInt("optConst") ;
   Int_t verbose  = pc.getInt("verbose") ;
@@ -1453,6 +1457,7 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
     m.setMinimizerType(minType) ;
 
     m.setEvalErrorWall(doEEWall) ;
+    m.setRecoverFromNaNStrength(recoverFromNaN);
     if (doWarn==0) {
       // m.setNoWarn() ; WVE FIX THIS
     }
@@ -1833,7 +1838,7 @@ RooFitResult* RooAbsPdf::chi2FitTo(RooDataHist& data, const RooLinkedList& cmdLi
 
   // Pull arguments to be passed to chi2 construction from list
   RooLinkedList fitCmdList(cmdList) ;
-  RooLinkedList chi2CmdList = pc.filterCmdList(fitCmdList,"Range,RangeWithName,NumCPU,CPUAffinity,Optimize,ProjectedObservables,AddCoefRange,SplitRange,DataError,Extended") ;
+  RooLinkedList chi2CmdList = pc.filterCmdList(fitCmdList,"Range,RangeWithName,NumCPU,CPUAffinity,Optimize,ProjectedObservables,AddCoefRange,SplitRange,DataError,Extended,IntegrateBins") ;
 
   RooAbsReal* chi2 = createChi2(data,chi2CmdList) ;
   RooFitResult* ret = chi2FitDriver(*chi2,fitCmdList) ;
@@ -2499,7 +2504,8 @@ Bool_t RooAbsPdf::isDirectGenSafe(const RooAbsArg& arg) const
 /// | `Name(const char* name)`  | Name of the output dataset
 /// | `Verbose(Bool_t flag)`    | Print informational messages during event generation
 /// | `NumEvent(int nevt)`      | Generate specified number of events
-/// | `Extended()`              | The actual number of events generated will be sampled from a Poisson distribution with mu=nevt. For use with extended maximum likelihood fits
+/// | `Extended()`              | The actual number of events generated will be sampled from a Poisson distribution with mu=nevt.
+/// This can be *much* faster for peaked PDFs, but the number of events is not exactly what was requested.
 /// | `ExpectedData()`          | Return a binned dataset _without_ statistical fluctuations (also aliased as Asimov())
 ///
 
@@ -2562,17 +2568,29 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet& whatVars, const RooCmdAr
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Generate a new dataset containing the specified variables with
-/// events sampled from our distribution. Generate the specified
-/// number of events or else try to use expectedEvents() if nEvents <= 0.
+/// events sampled from our distribution.
 ///
-/// If expectedData is kTRUE (it is kFALSE by default), the returned histogram returns the 'expected'
+/// \param[in] whatVars Variables that values should be generated for.
+/// \param[in] nEvents  How many events to generate. If `nEvents <=0`, use the value returned by expectedEvents() as target.
+/// \param[in] expectedData If set to true (false by default), the returned histogram returns the 'expected'
 /// data sample, i.e. no statistical fluctuations are present.
+/// \param[in] extended For each bin, generate Poisson(x, mu) events, where `mu` is chosen such that *on average*,
+/// one would obtain `nEvents` events. This means that the true number of events will fluctuate around the desired value,
+/// but the generation happens a lot faster.
+/// Especially if the PDF is sharply peaked, the multinomial event generation necessary to generate *exactly* `nEvents` events can
+/// be very slow.
 ///
-/// Any variables of this PDF that are not in whatVars will use their
-/// current values and be treated as fixed parameters. Returns zero
-/// in case of an error. The caller takes ownership of the returned
-/// dataset.
-
+/// The binning used for generation of events is the currently set binning for the variables.
+/// It can e.g. be changed using
+/// ```
+/// x.setBins(15);
+/// x.setRange(-5., 5.);
+/// pdf.generateBinned(RooArgSet(x), 1000);
+/// ```
+///
+/// Any variables of this PDF that are not in `whatVars` will use their
+/// current values and be treated as fixed parameters.
+/// \return RooDataHist* owned by the caller. Returns `nullptr` in case of an error.
 RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEvents, Bool_t expectedData, Bool_t extended) const
 {
   // Create empty RooDataHist
@@ -2588,9 +2606,9 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEven
 
       // Don't round in expectedData or extended mode
       if (expectedData || extended) {
-	nEvents = expectedEvents(&whatVars) ;
+        nEvents = expectedEvents(&whatVars) ;
       } else {
-	nEvents = Int_t(expectedEvents(&whatVars)+0.5) ;
+        nEvents = std::round(expectedEvents(&whatVars));
       }
     }
   }
@@ -2620,7 +2638,7 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEven
       // Regular mode, fill array of weights with Poisson(pdf*nEvents), but to not fill
       // histogram yet.
       if (hist->weight()>histMax) {
-	histMax = hist->weight() ;
+        histMax = hist->weight() ;
       }
       histOut[i] = RooRandom::randomGenerator()->Poisson(hist->weight()*nEvents) ;
       histOutSum += histOut[i] ;
@@ -2637,6 +2655,8 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEven
     Int_t wgt = (histOutSum>nEvents) ? -1 : 1 ;
 
     // Perform simple binned accept/reject procedure to get to exact event count
+    std::size_t counter = 0;
+    bool havePrintedInfo = false;
     while(nEvtExtra>0) {
 
       Int_t ibinRand = RooRandom::randomGenerator()->Integer(hist->numEntries()) ;
@@ -2644,17 +2664,23 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEven
       Double_t ranY = RooRandom::randomGenerator()->Uniform(histMax) ;
 
       if (ranY<hist->weight()) {
-	if (wgt==1) {
-	  histOut[ibinRand]++ ;
-	} else {
-	  // If weight is negative, prior bin content must be at least 1
-	  if (histOut[ibinRand]>0) {
-	    histOut[ibinRand]-- ;
-	  } else {
-	    continue ;
-	  }
-	}
-	nEvtExtra-- ;
+        if (wgt==1) {
+          histOut[ibinRand]++ ;
+        } else {
+          // If weight is negative, prior bin content must be at least 1
+          if (histOut[ibinRand]>0) {
+            histOut[ibinRand]-- ;
+          } else {
+            continue ;
+          }
+        }
+        nEvtExtra-- ;
+      }
+
+      if ((counter++ > 10*nEvents || nEvents > 1.E7) && !havePrintedInfo) {
+        havePrintedInfo = true;
+        coutP(Generation) << "RooAbsPdf::generateBinned(" << GetName() << ") Performing costly accept/reject sampling. If this takes too long, use "
+            << "extended mode to speed up the process." << std::endl;
       }
     }
 

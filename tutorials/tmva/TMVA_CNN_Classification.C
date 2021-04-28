@@ -107,14 +107,14 @@ void MakeImagesTree(int n, int nh, int nw)
    f.Close();
 }
 
-void TMVA_CNN_Classification(std::vector<bool> opt = {1, 1, 1, 1})
+void TMVA_CNN_Classification(std::vector<bool> opt = {1, 1, 1, 1, 1})
 {
 
    bool useTMVACNN = (opt.size() > 0) ? opt[0] : false;
    bool useKerasCNN = (opt.size() > 1) ? opt[1] : false;
    bool useTMVADNN = (opt.size() > 2) ? opt[2] : false;
    bool useTMVABDT = (opt.size() > 3) ? opt[3] : false;
-
+   bool usePyTorchCNN = (opt.size() > 4) ? opt[4] : false;
 #ifndef R__HAS_TMVACPU
 #ifndef R__HAS_TMVAGPU
    Warning("TMVA_CNN_Classification",
@@ -202,7 +202,6 @@ void TMVA_CNN_Classification(std::vector<bool> opt = {1, 1, 1, 1})
 
    int imgSize = 16 * 16;
    TString inputFileName = "images_data_16x16.root";
-   // TString inputFileName = "/home/moneta/data/sample_images_32x32.gsoc.root";
 
    bool fileExist = !gSystem->AccessPathName(inputFileName);
 
@@ -422,13 +421,13 @@ void TMVA_CNN_Classification(std::vector<bool> opt = {1, 1, 1, 1})
       // create python script which can be executed
       // crceate 2 conv2d layer + maxpool + dense
       TMacro m;
-      m.AddLine("import keras");
-      m.AddLine("from keras.models import Sequential");
-      m.AddLine("from keras.optimizers import Adam");
+      m.AddLine("import tensorflow");
+      m.AddLine("from tensorflow.keras.models import Sequential");
+      m.AddLine("from tensorflow.keras.optimizers import Adam");
       m.AddLine(
-         "from keras.layers import Input, Dense, Dropout, Flatten, Conv2D, MaxPooling2D, Reshape, BatchNormalization");
+         "from tensorflow.keras.layers import Input, Dense, Dropout, Flatten, Conv2D, MaxPooling2D, Reshape, BatchNormalization");
       m.AddLine("");
-      m.AddLine("model = keras.models.Sequential() ");
+      m.AddLine("model = Sequential() ");
       m.AddLine("model.add(Reshape((16, 16, 1), input_shape = (256, )))");
       m.AddLine("model.add(Conv2D(10, kernel_size = (3, 3), kernel_initializer = 'glorot_normal',activation = "
                 "'relu', padding = 'same'))");
@@ -452,14 +451,33 @@ void TMVA_CNN_Classification(std::vector<bool> opt = {1, 1, 1, 1})
          Warning("TMVA_CNN_Classification", "Error creating Keras model file - skip using Keras");
       } else {
          // book PyKeras method only if Keras model could be created
-         Info("TMVA_CNN_Classification", "Booking Keras CNN model");
+         Info("TMVA_CNN_Classification", "Booking tf.Keras CNN model");
          factory.BookMethod(
             loader, TMVA::Types::kPyKeras, "PyKeras",
-            "H:!V:VarTransform=None:FilenameModel=model_cnn.h5:"
+            "H:!V:VarTransform=None:FilenameModel=model_cnn.h5:tf.keras:"
             "FilenameTrainedModel=trained_model_cnn.h5:NumEpochs=20:BatchSize=100:"
             "GpuOptions=allow_growth=True"); // needed for RTX NVidia card and to avoid TF allocates all GPU memory
       }
    }
+
+   if (usePyTorchCNN) {
+
+      Info("TMVA_CNN_Classification", "Using Convolutional PyTorch Model");
+      TString pyTorchFileName = gROOT->GetTutorialDir() + TString("/tmva/pytorch/PyTorch_Generate_CNN_Model.py");
+      // check that PyTorch file defining model and used later when booking the methos is existing
+      if (gSystem->AccessPathName(pyTorchFileName)) {
+         Warning("TMVA_CNN_Classification", "PyTorch model building file is not existing - skip using PyTorch");
+      }
+      else {
+         // book PyTorch method only if PyTorch model could be created
+         Info("TMVA_CNN_Classification", "Booking PyTorch CNN model");
+         TString methodOpt = "H:!V:VarTransform=None:FilenameModel=PyTorchModelCNN.pt:"
+                             "FilenameTrainedModel=PyTorchTrainedModelCNN.pt:NumEpochs=20:BatchSize=100";
+         methodOpt += TString(":UserCode=") + pyTorchFileName;
+         factory.BookMethod(loader, TMVA::Types::kPyTorch, "PyTorch", methodOpt);
+      }
+   }
+
 
    ////  ## Train Methods
 

@@ -3,7 +3,6 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                'sap/ui/core/Fragment',
                'rootui5/browser/model/BrowserModel',
                'sap/ui/model/json/JSONModel',
-               'sap/ui/core/util/File',
                'sap/ui/table/Column',
                'sap/ui/layout/HorizontalLayout',
                'sap/m/TabContainerItem',
@@ -12,25 +11,18 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                'sap/m/Text',
                'sap/ui/core/mvc/XMLView',
                'sap/ui/core/Icon',
-               'sap/ui/layout/Splitter',
-               'sap/m/Toolbar',
-               'sap/ui/unified/FileUploader',
                'sap/m/Button',
-               'sap/ui/layout/SplitterLayoutData',
                'sap/ui/codeeditor/CodeEditor',
-               'sap/m/HBox',
                'sap/m/Image',
                'sap/tnt/ToolHeader',
                'sap/m/ToolbarSpacer',
                'sap/m/OverflowToolbarLayoutData',
-               'sap/m/Dialog',
                'rootui5/browser/controller/FileDialog.controller'
 ],function(Controller,
            Link,
            Fragment,
            BrowserModel,
            JSONModel,
-           File,
            tableColumn,
            HorizontalLayout,
            TabContainerItem,
@@ -39,20 +31,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
            mText,
            XMLView,
            CoreIcon,
-           Splitter,
-           Toolbar,
-           FileUploader,
            Button,
-           SplitterLayoutData,
            CodeEditor,
-           HBox,
            Image,
            ToolHeader,
            ToolbarSpacer,
            OverflowToolbarLayoutData,
-           Dialog,
            FileDialogController) {
-
 
    "use strict";
 
@@ -90,15 +75,95 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
         this.globalId = 1;
         this.nextElem = "";
-        this.DBLCLKRun = false;
 
-         this.websocket = this.getView().getViewData().conn_handle;
+        this._oSettingsModel = new JSONModel({
+            SortMethods: [
+               { name: "name", value: "name" },
+               { name: "size", value: "size" },
+               { name: "none", value: "" }
+            ],
+            SortMethod: "name",
+            ReverseOrder: false,
+            ShowHiddenFiles: false,
+            DBLCLKRun: false,
+            TH1: [
+               {name: "hist"},
+               {name: "P"},
+               {name: "P0"},
+               {name: "E"},
+               {name: "E1"},
+               {name: "E2"},
+               {name: "E3"},
+               {name: "E4"},
+               {name: "E1X0"},
+               {name: "L"},
+               {name: "LF2"},
+               {name: "B"},
+               {name: "B1"},
+               {name: "A"},
+               {name: "TEXT"},
+               {name: "LEGO"},
+               {name: "same"}
+            ],
+            TH2: [
+               {name: "COL"},
+               {name: "COLZ"},
+               {name: "COL0"},
+               {name: "COL1"},
+               {name: "COL0Z"},
+               {name: "COL1Z"},
+               {name: "COLA"},
+               {name: "BOX"},
+               {name: "BOX1"},
+               {name: "PROJ"},
+               {name: "PROJX1"},
+               {name: "PROJX2"},
+               {name: "PROJX3"},
+               {name: "PROJY1"},
+               {name: "PROJY2"},
+               {name: "PROJY3"},
+               {name: "SCAT"},
+               {name: "TEXT"},
+               {name: "TEXTE"},
+               {name: "TEXTE0"},
+               {name: "CONT"},
+               {name: "CONT1"},
+               {name: "CONT2"},
+               {name: "CONT3"},
+               {name: "CONT4"},
+               {name: "ARR"},
+               {name: "SURF"},
+               {name: "SURF1"},
+               {name: "SURF2"},
+               {name: "SURF4"},
+               {name: "SURF6"},
+               {name: "E"},
+               {name: "A"},
+               {name: "LEGO"},
+               {name: "LEGO0"},
+               {name: "LEGO1"},
+               {name: "LEGO2"},
+               {name: "LEGO3"},
+               {name: "LEGO4"},
+               {name: "same"}
+            ],
+            TProfile: [
+               {name: "E0"},
+               {name: "E1"},
+               {name: "E2"},
+               {name: "p"},
+               {name: "AH"},
+               {name: "hist"}
+            ]
+         });
+
+        this.websocket = this.getView().getViewData().conn_handle;
 
          // this is code for the Components.js
          // this.websocket = Component.getOwnerComponentFor(this.getView()).getComponentData().conn_handle;
 
-         this.websocket.SetReceiver(this);
-         this.websocket.Connect();
+         this.websocket.setReceiver(this);
+         this.websocket.connect();
 
          // if true, most operations are performed locally without involving server
          this.standalone = this.websocket.kind == "file";
@@ -305,7 +370,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                this.setFileNameType(oEditor, fname);
                const sText = oEditor.getModel().getProperty("/code");
                oEditor.getModel().setProperty("/modified", false);
-               this.websocket.Send("SAVEFILE:" + JSON.stringify([fname, sText]));
+               this.websocket.send("SAVEFILE:" + JSON.stringify([fname, sText]));
             }.bind(this),
             onCancel: function() { },
             onFailure: function() { }
@@ -321,7 +386,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          if (!fullpath)
             return onSaveAs();
          oModel.setProperty("/modified", false);
-         return this.websocket.Send("SAVEFILE:" + JSON.stringify([fullpath, sText]));
+         return this.websocket.send("SAVEFILE:" + JSON.stringify([fullpath, sText]));
       },
 
       reallyRunMacro: function () {
@@ -330,7 +395,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          const fullpath = oModel.getProperty("/fullpath");
          if (fullpath === undefined)
             return this.onSaveAs();
-         return this.websocket.Send("RUNMACRO:" + fullpath);
+         return this.websocket.send("RUNMACRO:" + fullpath);
       },
 
       /** @brief Handle the "Run" button press event */
@@ -370,7 +435,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          }
       },
 
-      /** @brief Extract the file name and extension
+      /** @summary Extract the file name and extension
        * @desc Used to set the editor's model properties and display the file name on the tab element  */
       setFileNameType: function (oEditor, fullname) {
          let oModel = oEditor.getModel();
@@ -455,7 +520,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          return true;
       },
 
-      /** @brief Handle the "Browse..." button press event */
+      /** @summary Handle the "Browse..." button press event */
       onChangeFile: function (oEvent) {
          let oEditor = this.getSelectedCodeEditor();
          if (!oEditor) return;
@@ -527,84 +592,14 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /* ============================================= */
 
       _getSettingsMenu: async function () {
+
          if (!this._oSettingsMenu) {
             let fragment;
             await Fragment.load({name: "rootui5.browser.view.settingsmenu", controller: this}).then(function (oSettingsMenu) {
                fragment = oSettingsMenu;
             });
             if (fragment) {
-               let oModel = new JSONModel({
-                  "TH1": [
-                     {"name": "hist"},
-                     {"name": "P"},
-                     {"name": "P0"},
-                     {"name": "E"},
-                     {"name": "E1"},
-                     {"name": "E2"},
-                     {"name": "E3"},
-                     {"name": "E4"},
-                     {"name": "E1X0"},
-                     {"name": "L"},
-                     {"name": "LF2"},
-                     {"name": "B"},
-                     {"name": "B1"},
-                     {"name": "A"},
-                     {"name": "TEXT"},
-                     {"name": "LEGO"},
-                     {"name": "same"}
-                  ],
-                  "TH2": [
-                     {"name": "COL"},
-                     {"name": "COLZ"},
-                     {"name": "COL0"},
-                     {"name": "COL1"},
-                     {"name": "COL0Z"},
-                     {"name": "COL1Z"},
-                     {"name": "COLA"},
-                     {"name": "BOX"},
-                     {"name": "BOX1"},
-                     {"name": "PROJ"},
-                     {"name": "PROJX1"},
-                     {"name": "PROJX2"},
-                     {"name": "PROJX3"},
-                     {"name": "PROJY1"},
-                     {"name": "PROJY2"},
-                     {"name": "PROJY3"},
-                     {"name": "SCAT"},
-                     {"name": "TEXT"},
-                     {"name": "TEXTE"},
-                     {"name": "TEXTE0"},
-                     {"name": "CONT"},
-                     {"name": "CONT1"},
-                     {"name": "CONT2"},
-                     {"name": "CONT3"},
-                     {"name": "CONT4"},
-                     {"name": "ARR"},
-                     {"name": "SURF"},
-                     {"name": "SURF1"},
-                     {"name": "SURF2"},
-                     {"name": "SURF4"},
-                     {"name": "SURF6"},
-                     {"name": "E"},
-                     {"name": "A"},
-                     {"name": "LEGO"},
-                     {"name": "LEGO0"},
-                     {"name": "LEGO1"},
-                     {"name": "LEGO2"},
-                     {"name": "LEGO3"},
-                     {"name": "LEGO4"},
-                     {"name": "same"}
-                  ],
-                  "TProfile": [
-                     {"name": "E0"},
-                     {"name": "E1"},
-                     {"name": "E2"},
-                     {"name": "p"},
-                     {"name": "AH"},
-                     {"name": "hist"}
-                  ]
-               });
-               fragment.setModel(oModel);
+               fragment.setModel(this._oSettingsModel);
                this.getView().addDependent(fragment);
                this._oSettingsMenu = fragment;
             }
@@ -613,8 +608,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       },
 
       onSettingPress: async function () {
-         await this._getSettingsMenu();
-         this._oSettingsMenu.open();
+         let menu = await this._getSettingsMenu();
+
+         this._oSettingsModel.setProperty("/ShowHiddenFiles", this.model.isShowHidden());
+         this._oSettingsModel.setProperty("/SortMethod", this.model.getSortMethod());
+         this._oSettingsModel.setProperty("/ReverseOrder", this.model.isReverseOrder());
+
+         menu.open();
       },
 
       handleSettingsChange: function (oEvent) {
@@ -622,8 +622,31 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          this.drawingOptions[graphType] = oEvent.getSource().mProperties.value;
       },
 
-      settingsDBLCLKRun: function(oEvent) {
-         this.DBLCLKRun = oEvent.getSource().getSelected();
+      handleSeetingsConfirm: function() {
+         let hidden = this._oSettingsModel.getProperty("/ShowHiddenFiles"),
+             sort = this._oSettingsModel.getProperty("/SortMethod"),
+             reverse = this._oSettingsModel.getProperty("/ReverseOrder"),
+             changed = false;
+
+         if (hidden != this.model.isShowHidden()) {
+            changed = true;
+            this.model.setShowHidden(hiden);
+         }
+
+         if (reverse != this.model.isReverseOrder()) {
+            changed = true;
+            this.model.setReverseOrder(reverse);
+         }
+
+         if (sort != this.model.getSortMethod()) {
+            changed = true;
+            this.model.setSortMethod(sort);
+         }
+
+         if (changed) {
+            console.log('Settings changes - reload MODEL!!!');
+            this.doReload(true);
+         }
       },
 
       /* ============================================= */
@@ -634,7 +657,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /* =============== Tabs menu =============== */
       /* ========================================= */
 
-      /** @brief Add Tab event handler */
+      /** @summary Add Tab event handler */
       addNewButtonPressHandler: async function (oEvent) {
          //TODO: Change to some UI5 function (unknown for now)
          let oButton = oEvent.getSource().mAggregations._tabStrip.mAggregations.addButton;
@@ -661,7 +684,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             msg = "NEWRCANVAS";
          }
          if (this.isConnected) {
-            this.websocket.Send(msg);
+            this.websocket.send(msg);
          }
       },
 
@@ -698,7 +721,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             if (i>0) path.push(oLinks[i].getText());
             if (oLinks[i].getId() === sId ) break;
          }
-         this.websocket.Send('CHPATH:' + JSON.stringify(path));
+         this.websocket.send('CHPATH:' + JSON.stringify(path));
          this.doReload(true);
       },
 
@@ -717,7 +740,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
          console.log("Canvas selected:", oItemSelected.getAdditionalText());
 
-         this.websocket.Send("SELECT_CANVAS:" + oItemSelected.getAdditionalText());
+         this.websocket.send("SELECT_CANVAS:" + oItemSelected.getAdditionalText());
 
       },
 
@@ -742,15 +765,14 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             if (count <= 1) {
                MessageToast.show("Sorry, you cannot close the Code Editor", {duration: 1500});
             } else {
-               this.saveCheck(function ()  {oTabContainer.removeItem(oItemToClose);});
+               this.saveCheck(() => oTabContainer.removeItem(oItemToClose));
             }
          } else {
-            let pthis = this;
             MessageBox.confirm('Do you really want to close the "' + oItemToClose.getName() + '" tab?', {
-               onClose: function (oAction) {
+               onClose: oAction => {
                   if (oAction === MessageBox.Action.OK) {
                      if (oItemToClose.getName() === "ROOT Canvas")
-                        pthis.websocket.Send("CLOSE_CANVAS:" + oItemToClose.getAdditionalText());
+                        this.websocket.send("CLOSE_CANVAS:" + oItemToClose.getAdditionalText());
 
                      oTabContainer.removeItem(oItemToClose);
 
@@ -772,14 +794,14 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
       onTerminalSubmit: function(oEvent) {
          let command = oEvent.getSource().getValue();
-         this.websocket.Send("CMD:" + command);
+         this.websocket.send("CMD:" + command);
          oEvent.getSource().setValue("");
          this.requestRootHist();
          this.requestLogs();
       },
 
       requestRootHist: function() {
-         return this.websocket.Send("ROOTHIST:");
+         return this.websocket.send("ROOTHIST:");
       },
 
       updateRootHist: function (hist) {
@@ -796,7 +818,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       },
 
       requestLogs: function() {
-         return this.websocket.Send("LOGS:");
+         return this.websocket.send("LOGS:");
       },
 
       updateLogs: function(logs) {
@@ -846,7 +868,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /* =============== ToolHeader =============== */
       /* ========================================== */
 
-      /** @brief Assign the "double click" event handler to each row */
+      /** @summary Assign the "double click" event handler to each row */
       assignRowHandlers: function () {
          var rows = this.byId("treeTable").getRows();
          for (var k = 0; k < rows.length; ++k) {
@@ -855,16 +877,16 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       },
 
       sendDblClick: function (fullpath, opt) {
-         if(this.DBLCLKRun) {
+         if(this._oSettingsModel.getProperty("/DBLCLKRun")) {
             if(opt !== '$$$editor$$$') {
                opt = '$$$execute$$$';
                console.log(fullpath);
             }
          }
-         this.websocket.Send('DBLCLK: ["' + fullpath + '","' + (opt || "") + '"]');
+         this.websocket.send('DBLCLK: ["' + fullpath + '","' + (opt || "") + '"]');
       },
 
-      /** @brief Double-click event handler */
+      /** @summary Double-click event handler */
       onRowDblClick: function (row) {
          let ctxt = row.getBindingContext(),
             prop = ctxt ? ctxt.getProperty(ctxt.getPath()) : null,
@@ -891,7 +913,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                }
 
                // TODO: use plain array also here to avoid any possible confusion
-               this.websocket.Send('CHDIR:' + path);
+               this.websocket.send('CHDIR:' + path);
                return this.doReload(true);
             }
          }
@@ -927,7 +949,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          return className;
       },
 
-      OnWebsocketOpened: function(handle) {
+      onWebsocketOpened: function(handle) {
          this.isConnected = true;
 
          if (this.model)
@@ -935,7 +957,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
       },
 
-      OnWebsocketClosed: function() {
+      onWebsocketClosed: function() {
          // when connection closed, close panel as well
          console.log('CLOSE WINDOW WHEN CONNECTION CLOSED');
 
@@ -944,8 +966,8 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          this.isConnected = false;
       },
 
-     /** Entry point for all data from server */
-     OnWebsocketMsg: function(handle, msg, offset) {
+     /** @summary Entry point for all data from server */
+     onWebsocketMsg: function(handle, msg, offset) {
 
          if (typeof msg != "string")
             return console.error("Browser do not uses binary messages len = " + mgs.byteLength);
@@ -957,19 +979,28 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          case "INMSG":
             this.processInitMsg(msg);
             break;
-         case "FREAD":  // text file read
-            var oEditor = this.getSelectedCodeEditor();
+         case "FREAD": { // text file read
+            let oEditor = this.getSelectedCodeEditor();
 
             if (oEditor) {
-               var arr = JSON.parse(msg);
-
+               let arr = JSON.parse(msg);
                this.setFileNameType(oEditor, arr[0]);
-
                oEditor.getModel().setProperty("/code", arr[1]);
-
                this.getElementFromCurrentTab("Save").setEnabled(true);
             }
             break;
+         }
+         case "JSON": { // json file read
+            let oEditor = this.getSelectedCodeEditor();
+            if (oEditor) {
+               let p = msg.indexOf("$$$"); // name and json separated by $$$
+               this.setFileNameType(oEditor, msg.substr(0, p) + ".json");
+               oEditor.getModel().setProperty("/code", msg.substr(p+3));
+               this.getElementFromCurrentTab("Save").setEnabled(true);
+            }
+            break;
+         }
+
          case "FIMG":  // image file read
             const oViewer = this.getSelectedImageViewer(true);
             if(oViewer) {
@@ -1024,13 +1055,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          }
       },
 
-      /** Get the ID of the currently selected tab of given tab container */
+      /** @summary Get the ID of the currently selected tab of given tab container */
       getSelectedtabFromtabContainer: function(divid) {
-         var  tabContainer = this.getView().byId('myTabContainer').getSelectedItem();
+         let tabContainer = this.getView().byId('myTabContainer').getSelectedItem();
          return tabContainer.slice(6, tabContainer.length);
       },
 
-      /** Show special message instead of nodes hierarchy */
+      /** @summary Show special message instead of nodes hierarchy */
       showTextInBrowser: function(text) {
          var br = this.byId("treeTable");
          br.collapseAll();
@@ -1061,7 +1092,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          // oSplitApp.getAggregation("_navMaster").$().css("width", "400px");
       },
 
-      /** Reload (refresh) file tree browser */
+      /** @summary Reload (refresh) file tree browser */
       onRealoadPress: function (oEvent) {
          this.doReload(true);
       },
@@ -1076,16 +1107,16 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          }
       },
 
-      /** Quit ROOT session */
+      /** @summary Quit ROOT session */
       onQuitRootPress: function(oEvent) {
-         this.websocket.Send("QUIT_ROOT");
+         this.websocket.send("QUIT_ROOT");
       },
 
       onSearch : function(oEvt) {
          this.changeItemsFilter(oEvt.getSource().getValue());
       },
 
-      /** Submit node search query to server, ignore in offline case */
+      /** @summary Submit node search query to server, ignore in offline case */
       changeItemsFilter: function(query, from_handler) {
 
          if (!from_handler) {
@@ -1118,8 +1149,8 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          console.log("Create canvas ", url, name);
          if (!url || !name) return;
 
-         var oTabContainer = this.byId("myTabContainer");
-         var oTabContainerItem = new TabContainerItem({
+         let oTabContainer = this.byId("myTabContainer");
+         let oTabContainerItem = new TabContainerItem({
             name: "ROOT Canvas",
             icon: "sap-icon://column-chart-dual-axis"
          });
@@ -1130,13 +1161,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
          // Change the selected tabs, only if it is new one, not the basic one
          if(name !== "rcanv1") {
-           oTabContainer.setSelectedItem(oTabContainerItem);
+            oTabContainer.setSelectedItem(oTabContainerItem);
          }
 
-         var conn = new JSROOT.WebWindowHandle(this.websocket.kind);
+         let conn = new JSROOT.WebWindowHandle(this.websocket.kind);
 
          // this is producing
-         var addr = this.websocket.href, relative_path = url;
+         let addr = this.websocket.href, relative_path = url;
          if (relative_path.indexOf("../")==0) {
             var ddd = addr.lastIndexOf("/",addr.length-2);
             addr = addr.substr(0,ddd) + relative_path.substr(2);
@@ -1147,12 +1178,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          var painter = null;
 
          if (kind == "root7") {
-            painter = new JSROOT.v7.TCanvasPainter(null);
+            painter = new JSROOT.v7.RCanvasPainter(null, null);
          } else {
-            painter = new JSROOT.TCanvasPainter(null);
+            painter = new JSROOT.TCanvasPainter(null, null);
          }
 
-         painter.online_canvas = true;
+         painter.online_canvas = true; // indicates that canvas gets data from running server
+         painter.embed_canvas = true;  // use to indicate that canvas ui should not close complete window when closing
          painter.use_openui = true;
          painter.batch_mode = false;
          painter._window_handle = conn;
@@ -1162,10 +1194,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             viewName: "rootui5.canv.view.Canvas",
             viewData: { canvas_painter: painter },
             height: "100%"
-         }).then(function(oView) {
-            oTabContainerItem.addContent(oView);
-            // JSROOT.CallBack(call_back, true);
-         });
+         }).then(oView => oTabContainerItem.addContent(oView));
       },
 
    });

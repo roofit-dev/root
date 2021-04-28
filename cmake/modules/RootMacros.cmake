@@ -656,6 +656,9 @@ function(ROOT_GENERATE_DICTIONARY dictionary)
     target_compile_definitions(${dictionary} PRIVATE
       ${definitions} $<TARGET_PROPERTY:${ARG_MODULE},COMPILE_DEFINITIONS>)
 
+    target_compile_features(${dictionary} PRIVATE
+      $<TARGET_PROPERTY:${ARG_MODULE},COMPILE_FEATURES>)
+
     target_include_directories(${dictionary} PRIVATE
       ${incdirs} $<TARGET_PROPERTY:${ARG_MODULE},INCLUDE_DIRECTORIES>)
   else()
@@ -895,7 +898,6 @@ function(ROOT_LINKER_LIBRARY library)
         endif()
       endforeach()
     endif()
-
     if(dep_list)
       list(REMOVE_DUPLICATES dep_list)
     endif()
@@ -904,7 +906,28 @@ function(ROOT_LINKER_LIBRARY library)
     endforeach()
   endif()
 
-
+  if(PROJECT_NAME STREQUAL "ROOT")
+    set(dep_inc_list)
+    if(ARG_LIBRARIES)
+      foreach(lib ${ARG_LIBRARIES})
+        if(TARGET ${lib})
+          get_target_property(lib_incdirs ${lib} INCLUDE_DIRECTORIES)
+          if(lib_incdirs)
+            foreach(dir ${lib_incdirs})
+              string(REGEX REPLACE "^[$]<BUILD_INTERFACE:(.+)>" "\\1" dir ${dir})
+              list(APPEND dep_inc_list ${dir})
+            endforeach()
+          endif()
+        endif()
+      endforeach()
+    endif()
+    if(dep_inc_list)
+      list(REMOVE_DUPLICATES dep_inc_list)
+      foreach(incl ${dep_inc_list})
+         target_include_directories(${library} PRIVATE ${incl})
+      endforeach()
+    endif()
+  endif()
 
   if(TARGET G__${library})
     add_dependencies(${library} G__${library})

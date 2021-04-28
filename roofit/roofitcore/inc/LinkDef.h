@@ -84,6 +84,7 @@
 #pragma link C++ class RooCmdArg+ ;
 #pragma link C++ class RooCmdConfig+ ;
 #pragma link C++ class RooConstVar+ ;
+#pragma read sourceClass="RooConstVar" targetClass="RooConstVar" version="[1]" source="Double_t _value" target="" code="{ newObj->changeVal(onfile._value); }"
 #pragma link C++ class RooConvCoefVar+ ;
 #pragma link C++ class RooConvGenContext+ ;
 #pragma link C++ class RooConvIntegrandBinding+ ;
@@ -355,4 +356,4 @@
 #pragma link C++ options=nomap class std::map<string,TH1*>+ ;
 #pragma link off class RooErrorHandler+ ;
 #endif 
- 
+#pragma link C++ class RooBinSamplingPdf+; 

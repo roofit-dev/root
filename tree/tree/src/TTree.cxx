@@ -98,6 +98,8 @@ It is strongly recommended to persistify those as objects rather than lists of l
    - `d` : a 24 bit truncated floating point (`Double32_t`)
    - `L` : a 64 bit signed integer (`Long64_t`)
    - `l` : a 64 bit unsigned integer (`ULong64_t`)
+   - `G` : a long signed integer, stored as 64 bit (`Long_t`)
+   - `g` : a long unsigned integer, stored as 64 bit (`ULong_t`)
    - `O` : [the letter `o`, not a zero] a boolean (`Bool_t`)
 
   Examples:
@@ -392,6 +394,7 @@ End_Macro
 #include "TLeafS.h"
 #include "TList.h"
 #include "TMath.h"
+#include "TMemFile.h"
 #include "TROOT.h"
 #include "TRealData.h"
 #include "TRegexp.h"
@@ -464,8 +467,8 @@ static char DataTypeToChar(EDataType datatype)
    case kDouble32_t: return 'd';
    case kFloat_t:    return 'F';
    case kFloat16_t:  return 'f';
-   case kLong_t:     return 0; // unsupported
-   case kULong_t:    return 0; // unsupported?
+   case kLong_t:     return 'G';
+   case kULong_t:    return 'g';
    case kchar:       return 0; // unsupported
    case kLong64_t:   return 'L';
    case kULong64_t:  return 'l';
@@ -1930,6 +1933,8 @@ Int_t TTree::Branch(const char* foldername, Int_t bufsize /* = 32000 */, Int_t s
 ///         - `d` : a 24 bit truncated floating point (`Double32_t`)
 ///         - `L` : a 64 bit signed integer (`Long64_t`)
 ///         - `l` : a 64 bit unsigned integer (`ULong64_t`)
+///         - `G` : a long signed integer, stored as 64 bit (`Long_t`)
+///         - `g` : a long unsigned integer, stored as 64 bit (`ULong_t`)
 ///         - `O` : [the letter `o`, not a zero] a boolean (`Bool_t`)
 ///
 ///      Arrays of values are supported with the following syntax:
@@ -2678,27 +2683,26 @@ TStreamerInfo* TTree::BuildStreamerInfo(TClass* cl, void* pointer /* = 0 */, Boo
 /// If the current file contains other objects like TH1 and TTree,
 /// these objects are automatically moved to the new file.
 ///
-/// IMPORTANT NOTE:
-///
-/// Be careful when writing the final Tree header to the file!
-///
-/// Don't do:
+/// \warning Be careful when writing the final Tree header to the file!
+///      Don't do:
 /// ~~~ {.cpp}
 ///     TFile *file = new TFile("myfile.root","recreate");
 ///     TTree *T = new TTree("T","title");
-///     T->Fill(); //loop
+///     T->Fill(); // Loop
 ///     file->Write();
 ///     file->Close();
 /// ~~~
-/// but do the following:
+/// \warning but do the following:
 /// ~~~ {.cpp}
 ///     TFile *file = new TFile("myfile.root","recreate");
 ///     TTree *T = new TTree("T","title");
-///     T->Fill(); //loop
-///     file = T->GetCurrentFile(); //to get the pointer to the current file
+///     T->Fill(); // Loop
+///     file = T->GetCurrentFile(); // To get the pointer to the current file
 ///     file->Write();
 ///     file->Close();
 /// ~~~
+///
+/// \note This method is never called if the input file is a `TMemFile` or derivate.
 
 TFile* TTree::ChangeFile(TFile* file)
 {
@@ -3824,7 +3828,7 @@ Long64_t TTree::Draw(const char* varexp, const TCut& selection, Option_t* option
 ///   arguments. For example:
 ///   ~~~ {.cpp}
 ///       TMath::BreitWigner(fPx,3,2)
-///       event.GetHistogram().GetXaxis().GetXmax()
+///       event.GetHistogram()->GetXaxis()->GetXmax()
 ///   ~~~
 ///   Note: You can only pass expression that depend on the TTree's data
 ///   to static functions and you can only call non-static member function
@@ -4009,10 +4013,10 @@ Long64_t TTree::Draw(const char* varexp, const TCut& selection, Option_t* option
 /// a scatter plot is produced (with stars in that case) but the axis creation is
 /// delegated to TGraph and `htemp` is not created.
 ///
-/// ### Saving the result of Draw to an histogram
+/// ### Saving the result of Draw to a histogram
 ///
-/// If varexp0 contains >>hnew (following the variable(s) name(s),
-/// the new histogram created is called hnew and it is kept in the current
+/// If `varexp` contains `>>hnew` (following the variable(s) name(s)),
+/// the new histogram called `hnew` is created and it is kept in the current
 /// directory (and also the current pad). This works for all dimensions.
 ///
 /// Example:
@@ -4521,9 +4525,14 @@ void TTree::DropBuffers(Int_t)
 /// Note that the user can decide to call FlushBaskets and AutoSave in her event loop
 /// base on the number of events written instead of the number of bytes written.
 ///
-/// Note that calling FlushBaskets too often increases the IO time.
+/// \note Calling `TTree::FlushBaskets` too often increases the IO time. 
+/// 
+/// \note Calling `TTree::AutoSave` too often increases the IO time and also the
+///       file size.
 ///
-/// Note that calling AutoSave too often increases the IO time and also the file size.
+/// \note This method calls `TTree::ChangeFile` when the tree reaches a size
+///       greater than `TTree::fgMaxTreeSize`. This doesn't happen if the tree is
+///       attached to a `TMemFile` or derivate.
 
 Int_t TTree::Fill()
 {
@@ -4703,8 +4712,10 @@ Int_t TTree::Fill()
    // to the case where the tree is in the top level directory.
    if (fDirectory)
       if (TFile *file = fDirectory->GetFile())
-         if ((TDirectory *)file == fDirectory && (file->GetEND() > fgMaxTreeSize))
-            ChangeFile(file);
+         if (static_cast<TDirectory *>(file) == fDirectory && (file->GetEND() > fgMaxTreeSize))
+            // Changing file clashes with the design of TMemFile and derivates, see #6523.
+            if (!(dynamic_cast<TMemFile *>(file)))
+               ChangeFile(file);
 
    return nerror == 0 ? nbytes : -1;
 }
@@ -6010,13 +6021,15 @@ TLeaf* TTree::GetLeafImpl(const char* branchname, const char *leafname)
    }
    TIter nextl(GetListOfLeaves());
    while ((leaf = (TLeaf*)nextl())) {
-      if (!strcmp(leaf->GetFullName(),leafname))
-         return leaf;
-      if (strcmp(leaf->GetName(),leafname))
-         continue;
+      if (strcmp(leaf->GetFullName(), leafname) != 0 && strcmp(leaf->GetName(), leafname) != 0)
+         continue; // leafname does not match GetName() nor GetFullName(), this is not the right leaf
       if (branchname) {
-         UInt_t nbch = strlen(branchname);
+         // check the branchname is also a match
          TBranch *br = leaf->GetBranch();
+         // if a quick comparison with the branch full name is a match, we are done
+         if (!strcmp(br->GetFullName(), branchname))
+            return leaf;
+         UInt_t nbch = strlen(branchname);
          const char* brname = br->GetName();
          TBranch *mother = br->GetMother();
          if (strncmp(brname,branchname,nbch)) {
@@ -6056,7 +6069,7 @@ TLeaf* TTree::GetLeafImpl(const char* branchname, const char *leafname)
    while ((fe = (TFriendElement*)next())) {
       TTree *t = fe->GetTree();
       if (t) {
-         leaf = t->GetLeaf(leafname);
+         leaf = t->GetLeaf(branchname, leafname);
          if (leaf) return leaf;
       }
    }
