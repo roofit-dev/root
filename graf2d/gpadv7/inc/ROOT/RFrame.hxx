@@ -27,8 +27,9 @@ namespace Experimental {
 
 /** \class RFrame
 \ingroup GpadROOT7
-\brief Holds a user coordinate system with a palette.
+\brief Holds an area where drawing on user coordinate-system can be performed.
 \author Axel Naumann <axel@cern.ch>
+\author Sergey Linev <s.linev@gsi.de>
 \date 2017-09-26
 \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 */
@@ -37,6 +38,11 @@ class RFrame : public RDrawable  {
 
    friend class RPadBase;
 
+   class RFrameAttrs : public RAttrBase {
+      friend class RFrame;
+      R__ATTR_CLASS(RFrameAttrs, "", AddBool("gridx", false).AddBool("gridy",false));
+   };
+
 private:
    RAttrMargins fMargins{this, "margin_"};     ///<!
    RAttrLine fAttrBorder{this, "border_"};     ///<!
@@ -44,6 +50,8 @@ private:
    RAttrAxis fAttrX{this, "x_"};               ///<!
    RAttrAxis fAttrY{this, "y_"};               ///<!
    RAttrAxis fAttrZ{this, "z_"};               ///<!
+   RFrameAttrs fAttr{this,""};                 ///<! own frame attributes
+
 
    /// Mapping of user coordinates to normal coordinates, one entry per dimension.
    std::vector<std::unique_ptr<RPadUserAxisBase>> fUserCoord;
@@ -59,6 +67,10 @@ private:
 
    /// Constructor taking user coordinate system, position and extent.
    explicit RFrame(std::vector<std::unique_ptr<RPadUserAxisBase>> &&coords);
+
+protected:
+
+   void PopulateMenu(RMenuItems &) override;
 
 public:
 
@@ -88,7 +100,11 @@ public:
    RFrame &SetAttrZ(const RAttrAxis &axis) { fAttrZ = axis; return *this; }
    RAttrAxis &AttrZ() { return fAttrZ; }
 
-   void PopulateMenu(RMenuItems &) override;
+   RFrame &SetGridX(bool on = true) { fAttr.SetValue("gridx", on); return *this; }
+   bool GetGridX() const { return fAttr.GetValue<bool>("gridx"); }
+
+   RFrame &SetGridY(bool on = true) { fAttr.SetValue("gridy", on); return *this; }
+   bool GetGridY() const { return fAttr.GetValue<bool>("gridy"); }
 
    void Execute(const std::string &) override;
 

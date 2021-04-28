@@ -148,33 +148,10 @@ bool ROOT::Experimental::RCanvas::SaveAs(const std::string &filename)
    if (!fPainter)
       return false;
 
-   if (fModified == 0)
-      fModified = 1;
-
-   // ensure that snapshot is created
-   fPainter->CanvasUpdated(fModified, false, nullptr);
-
    auto width = fSize[0].fVal;
    auto height = fSize[1].fVal;
 
    return fPainter->ProduceBatchOutput(filename, width > 1 ? (int) width : 800, height > 1 ? (int) height : 600);
-/*
-
-   if (fModified == 0)
-      fModified = 1;
-
-   // TODO: for the future one have to ensure only batch connection is updated
-   Update(); // ensure that snapshot is created
-
-   if (filename.find(".json") != std::string::npos) {
-      fPainter->DoWhenReady("JSON", filename, async, callback);
-   } else if (filename.find(".svg") != std::string::npos)
-      fPainter->DoWhenReady("SVG", filename, async, callback);
-   else if (filename.find(".png") != std::string::npos)
-      fPainter->DoWhenReady("PNG", filename, async, callback);
-   else if ((filename.find(".jpg") != std::string::npos) || (filename.find(".jpeg") != std::string::npos))
-      fPainter->DoWhenReady("JPEG", filename, async, callback);
-*/
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -266,4 +243,41 @@ void ROOT::Experimental::RCanvas::ResolveSharedPtrs()
       }
 
    }
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/// Apply attributes changes to the drawable
+/// Return mask with actions which were really applied
+
+std::unique_ptr<ROOT::Experimental::RDrawableReply> ROOT::Experimental::RChangeAttrRequest::Process()
+{
+   auto canv = const_cast<ROOT::Experimental::RCanvas *>(GetCanvas());
+   if (!canv) return nullptr;
+
+   if ((ids.size() != names.size()) || (ids.size() != values.size())) {
+      R__ERROR_HERE("Gpadv7") << "Mismatch of arrays size in RChangeAttrRequest";
+      return nullptr;
+   }
+
+   Version_t vers = 0;
+
+   for(int indx = 0; indx < (int) ids.size(); indx++) {
+      if (ids[indx] == "canvas") {
+         if (canv->GetAttrMap().Change(names[indx], values[indx].get())) {
+            if (!vers) vers = canv->IncModified();
+            canv->SetDrawableVersion(vers);
+         }
+      } else {
+         auto drawable = canv->FindPrimitiveByDisplayId(ids[indx]);
+         if (drawable && drawable->GetAttrMap().Change(names[indx], values[indx].get())) {
+            if (!vers) vers = canv->IncModified();
+            drawable->SetDrawableVersion(vers);
+         }
+      }
+   }
+
+   fNeedUpdate = (vers > 0);
+
+   return nullptr; // no need for any reply
 }

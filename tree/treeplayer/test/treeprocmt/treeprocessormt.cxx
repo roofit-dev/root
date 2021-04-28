@@ -193,8 +193,6 @@ TEST(TreeProcessorMT, TreeInSubDirectory)
       t.Write();
    }
 
-   ROOT::EnableThreadSafety();
-
    auto fullPath = "dir0/dir1/tree";
 
    // With a TTree
@@ -235,7 +233,6 @@ TEST(TreeProcessorMT, LimitNTasks_CheckEntries)
       }
    };
 
-   ROOT::DisableImplicitMT();
    ROOT::EnableImplicitMT(4);
 
    ROOT::TTreeProcessorMT p(filename, treename);
@@ -278,7 +275,6 @@ TEST(TreeProcessorMT, LimitNTasks_CheckClusters)
    };
 
    for (auto nThreads = 0; nThreads <= 4; ++nThreads) {
-      ROOT::DisableImplicitMT();
       ROOT::EnableImplicitMT(nThreads);
 
       ROOT::TTreeProcessorMT p(filename, treename);
@@ -286,10 +282,10 @@ TEST(TreeProcessorMT, LimitNTasks_CheckClusters)
 
       CheckClusters(clusters, nEvents);
       clusters.clear();
+      ROOT::DisableImplicitMT();
    }
 
    gSystem->Unlink(filename);
-   ROOT::DisableImplicitMT();
 }
 
 #if !defined(_MSC_VER) || defined(R__ENABLE_BROKEN_WIN_TESTS)
@@ -337,7 +333,9 @@ TEST(TreeProcessorMT, TreeWithFriendTree)
    ROOT::TTreeProcessorMT tp(*t1);
    tp.Process(procLambda);
 
+   // Clean-up
    DeleteFiles(fileNames);
+   ROOT::DisableImplicitMT();
 }
 
 TEST(TreeProcessorMT, ChainWithFriendChain)
@@ -386,4 +384,44 @@ TEST(TreeProcessorMT, ChainWithFriendChain)
 
    // Clean-up
    DeleteFiles(fileNames);
+   ROOT::DisableImplicitMT();
+}
+
+TEST(TreeProcessorMT, SetNThreads)
+{
+   EXPECT_EQ(ROOT::GetThreadPoolSize(), 0u);
+   {
+      ROOT::TTreeProcessorMT p("somefile", "sometree", 1u);
+      EXPECT_EQ(ROOT::GetThreadPoolSize(), 1u);
+   }
+   EXPECT_EQ(ROOT::GetThreadPoolSize(), 0u);
+
+   {
+      ROOT::TTreeProcessorMT p({"somefile", "some_other"}, "sometree", 1u);
+      EXPECT_EQ(ROOT::GetThreadPoolSize(), 1u);
+   }
+
+   {
+      // we need a file because in-memory trees are not supported
+      // (and are detected at TTreeProcessorMT construction time)
+      TFile f("treeprocmt_setnthreads.root", "recreate");
+      TTree t("t", "t");
+      t.Write();
+      TEntryList l;
+      ROOT::TTreeProcessorMT p(t, l, 1u);
+      EXPECT_EQ(ROOT::GetThreadPoolSize(), 1u);
+      f.Close();
+      gSystem->Unlink("treeprocmt_setnthreads.root");
+   }
+
+   {
+      // we need a file because in-memory trees are not supported
+      // (and are detected at TTreeProcessorMT construction time)
+      TFile f("treeprocmt_setnthreads.root", "recreate");
+      TTree t("t", "t");
+      t.Write();
+      ROOT::TTreeProcessorMT p(t, 1u);
+      EXPECT_EQ(ROOT::GetThreadPoolSize(), 1u);
+      gSystem->Unlink("treeprocmt_setnthreads.root");
+   }
 }
