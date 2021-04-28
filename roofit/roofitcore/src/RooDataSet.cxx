@@ -75,6 +75,7 @@ For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 #include "TDirectory.h"
 #include "TROOT.h"
 #include "TFile.h"
+#include "TBuffer.h"
 #include "ROOT/RMakeUnique.hxx"
 
 #include <fstream>
@@ -305,7 +306,7 @@ RooDataSet::RooDataSet(const char* name, const char* title, const RooArgSet& var
         icat->defineType(hiter->first.c_str()) ;
       }
       icat->setLabel(hiter->first.c_str()) ;
-      storeMap[icat->getLabel()]=hiter->second->store() ;
+      storeMap[icat->getCurrentLabel()]=hiter->second->store() ;
 
       // Take ownership of slice if requested
       if (ownLinked) {
@@ -1859,8 +1860,8 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
   if (indexCat) {
     // Copy dynamically defined types from new data set to indexCat in original list
     RooCategory* origIndexCat = (RooCategory*) variables.find(indexCatName) ;
-    for (const auto type : *indexCat) {
-      origIndexCat->defineType(type->GetName(), type->getVal());
+    for (const auto& type : *indexCat) {
+      origIndexCat->defineType(type.first, type.second);
     }
   }
   oocoutI(data.get(),DataHandling) << "RooDataSet::read: read " << data->numEntries()

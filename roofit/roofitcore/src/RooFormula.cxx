@@ -61,6 +61,8 @@ Check the tutorial rf506_msgservice.C for details.
 #include "RooArgList.h"
 #include "RooMsgService.h"
 #include "ROOT/RMakeUnique.hxx"
+#include "TObjString.h"
+
 
 #include <sstream>
 #include <regex>
@@ -351,7 +353,7 @@ Double_t RooFormula::eval(const RooArgSet* nset) const
   for (unsigned int i = 0; i < _origList.size(); ++i) {
     if (_isCategory[i]) {
       const auto& cat = static_cast<RooAbsCategory&>(_origList[i]);
-      pars.push_back(cat.getIndex());
+      pars.push_back(cat.getCurrentIndex());
     } else {
       const auto& real = static_cast<RooAbsReal&>(_origList[i]);
       pars.push_back(real.getVal(nset));

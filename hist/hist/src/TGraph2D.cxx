@@ -11,6 +11,7 @@
 
 #include "Riostream.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TMath.h"
 #include "TH2.h"
 #include "TF2.h"
@@ -20,6 +21,7 @@
 #include "TGraphDelaunay2D.h"
 #include "TVirtualPad.h"
 #include "TVirtualFitter.h"
+#include "TVirtualHistPainter.h"
 #include "TPluginManager.h"
 #include "TSystem.h"
 #include <stdlib.h>
@@ -1168,12 +1170,12 @@ TH2D *TGraph2D::GetHistogram(Option_t *option)
       if (fMinimum != -1111) {
          hzmin = fMinimum;
       } else {
-         hzmin = GetZmin();
+         hzmin = GetZminE();
       }
       if (fMaximum != -1111) {
          hzmax = fMaximum;
       } else {
-         hzmax = GetZmax();
+         hzmax = GetZmaxE();
       }
       if (hzmin == hzmax) {
          Double_t hz = hzmin;

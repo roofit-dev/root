@@ -18,6 +18,7 @@
 
 #include "Riostream.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TEnv.h"
 #include "TClass.h"
 #include "TMath.h"
@@ -5266,6 +5267,10 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
       labold->Add(obj);
    }
    labels->Clear();
+
+   // delete buffer if it is there since bins will be reordered.
+   if (fBuffer) BufferEmpty(1);
+
    if (sort > 0) {
       //---sort by values of bins
       if (GetDimension() == 1) {

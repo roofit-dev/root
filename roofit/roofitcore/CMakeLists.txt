@@ -80,8 +80,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooCacheManager.h
     RooCategory.h
     RooCategoryProxy.h
-    RooCategorySharedProperties.h
-    RooCatType.h
     RooChangeTracker.h
     RooChi2Var.h
     RooClassFactory.h
@@ -161,7 +159,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooMPSentinel.h
     RooMsgService.h
     RooMultiCategory.h
-    RooMultiCatIter.h
     RooMultiGenFunction.h
     RooMultiVarGaussian.h
     RooNameReg.h
@@ -200,7 +197,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooRealConstant.h
     RooRealIntegral.h
     RooRealMPFE.h
-    RooProxy.h
+    RooTemplateProxy.h
     RooRealProxy.h
     RooRealSumFunc.h
     RooRealSumPdf.h
@@ -270,6 +267,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     BatchHelpers.h
     RooVDTHeaders.h
     RooWrapperPdf.h
+    RooFitLegacy/RooCatTypeLegacy.h
+    RooFitLegacy/RooCategorySharedProperties.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -322,8 +321,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooCachedReal.cxx
     src/RooCacheManager.cxx
     src/RooCategory.cxx
-    src/RooCategorySharedProperties.cxx
-    src/RooCatType.cxx
     src/RooChangeTracker.cxx
     src/RooChi2Var.cxx
     src/RooClassFactory.cxx
@@ -400,7 +397,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooMPSentinel.cxx
     src/RooMsgService.cxx
     src/RooMultiCategory.cxx
-    src/RooMultiCatIter.cxx
     src/RooMultiGenFunction.cxx
     src/RooMultiVarGaussian.cxx
     src/RooNameReg.cxx
@@ -500,6 +496,9 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/BatchData.cxx
     src/BatchHelpers.cxx
     src/RooWrapperPdf.cxx
+    src/RooFitLegacy/RooCatTypeLegacy.cxx
+    src/RooFitLegacy/RooCategorySharedProperties.cxx
+    src/RooFitLegacy/RooMultiCatIter.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
     -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
@@ -514,8 +513,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RIO
     MathCore
     Foam
-        RooFitZMQ
-#        ZeroMQ # as noted above, this doesn't work here, so we instead list it as a library below
+    Smatrix
   LIBRARIES
     ${RT_LIBRARY}
   LINKDEF
@@ -535,6 +533,6 @@ if(vdt OR builtin_vdt)
    list(APPEND fitcore_incl ${VDT_INCLUDE_DIRS})
 endif()
 
-foreach(inlc ${fitcore_incl})
+foreach(incl ${fitcore_incl})
    target_include_directories(RooFitCore PUBLIC $<BUILD_INTERFACE:${incl}>)
 endforeach()

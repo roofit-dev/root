@@ -109,8 +109,6 @@ class RLoopManager : public RNodeBase {
    const unsigned int fNSlots{1};
    bool fMustRunNamedFilters{true};
    const ELoopType fLoopType; ///< The kind of event loop that is going to be run (e.g. on ROOT files, on no files)
-   std::string fToJitDeclare; ///< Code that should be just-in-time declared right before the event loop
-   std::string fToJitExec;    ///< Code that should be just-in-time executed right before the event loop
    const std::unique_ptr<RDataSource> fDataSource; ///< Owning pointer to a data-source object. Null if no data-source
    std::map<std::string, std::string> fAliasColumnNameMap; ///< ColumnNameAlias-columnName pairs
    std::vector<TCallback> fCallbacks;                      ///< Registered callbacks
@@ -165,8 +163,7 @@ public:
    void SetTree(const std::shared_ptr<TTree> &tree) { fTree = tree; }
    void IncrChildrenCount() final { ++fNChildren; }
    void StopProcessing() final { ++fNStopsReceived; }
-   void ToJitDeclare(const std::string &s) { fToJitDeclare.append(s); }
-   void ToJitExec(const std::string &s) { fToJitExec.append(s); }
+   void ToJitExec(const std::string &) const;
    void AddColumnAlias(const std::string &alias, const std::string &colName) { fAliasColumnNameMap[alias] = colName; }
    const std::map<std::string, std::string> &GetAliasMap() const { return fAliasColumnNameMap; }
    void RegisterCallback(ULong64_t everyNEvents, std::function<void(unsigned int)> &&f);
