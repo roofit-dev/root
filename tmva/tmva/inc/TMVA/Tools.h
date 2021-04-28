@@ -38,9 +38,9 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include <vector>
+#include <string>
 #include <sstream>
 #include <iostream>
-#include <iomanip>
 #if __cplusplus > 199711L
 #include <atomic>
 #endif

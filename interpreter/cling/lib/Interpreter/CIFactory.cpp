@@ -526,7 +526,7 @@ namespace {
   static SmallVector<StringRef, 4> getPathsFromEnv(const char* EnvVar) {
     if (!EnvVar) return {};
     SmallVector<StringRef, 4> Paths;
-    StringRef(EnvVar).split(Paths, ':', -1, false);
+    StringRef(EnvVar).split(Paths, llvm::sys::EnvPathSeparator, -1, false);
     return Paths;
   }
 
@@ -560,6 +560,7 @@ namespace {
     // We can't use "assert.h" because it is defined in the resource dir, too.
 #ifdef LLVM_ON_WIN32
     llvm::SmallString<256> vcIncLoc(getIncludePathForHeader(HS, "vcruntime.h"));
+    llvm::SmallString<256> servIncLoc(getIncludePathForHeader(HS, "windows.h"));
 #endif
     llvm::SmallString<128> cIncLoc(getIncludePathForHeader(HS, "time.h"));
 
@@ -578,7 +579,10 @@ namespace {
        = [&HSOpts, &ModuleMapFiles](llvm::StringRef SystemDir,
                                     const std::string& Filename,
                                     const std::string& Location,
-                                    std::string& overlay) -> void {
+                                    std::string& overlay,
+                                    bool RegisterModuleMap,
+                                    bool AllowModulemapOverride)
+       -> void {
 
       assert(llvm::sys::fs::exists(SystemDir) && "Must exist!");
 
@@ -587,7 +591,7 @@ namespace {
       llvm::sys::path::append(systemLoc, modulemapFilename);
       // Check if we need to mount a custom modulemap. We may have it, for
       // instance when we are on osx or using libc++.
-      if (llvm::sys::fs::exists(systemLoc.str())) {
+      if (AllowModulemapOverride &&llvm::sys::fs::exists(systemLoc.str())) {
         if (HSOpts.Verbose)
           cling::log() << "Loading '" << systemLoc.str() << "'\n";
 
@@ -624,9 +628,9 @@ namespace {
       overlay += "}\n ]\n }";
 
       if (HSOpts.ImplicitModuleMaps)
-         return;
-
-      ModuleMapFiles.push_back(systemLoc.str().str());
+        return;
+      if (RegisterModuleMap)
+        ModuleMapFiles.push_back(systemLoc.str().str());
     };
 
     if (!HSOpts.ImplicitModuleMaps) {
@@ -650,27 +654,48 @@ namespace {
     std::string MOverlay;
 #ifdef LLVM_ON_WIN32
     maybeAppendOverlayEntry(vcIncLoc.str(), "vcruntime.modulemap",
-                            clingIncLoc.str(), MOverlay);
+                            clingIncLoc.str(), MOverlay,
+                            /*RegisterModuleMap=*/ true,
+                            /*AllowModulemapOverride=*/ false);
+    maybeAppendOverlayEntry(servIncLoc.str(), "services_msvc.modulemap",
+                            clingIncLoc.str(), MOverlay,
+                            /*RegisterModuleMap=*/ true,
+                            /*AllowModulemapOverride=*/ false);
     maybeAppendOverlayEntry(cIncLoc.str(), "libc_msvc.modulemap",
-                            clingIncLoc.str(), MOverlay);
+                            clingIncLoc.str(), MOverlay,
+                            /*RegisterModuleMap=*/ true,
+                            /*AllowModulemapOverride=*/ false);
     maybeAppendOverlayEntry(stdIncLoc.str(), "std_msvc.modulemap",
-                            clingIncLoc.str(), MOverlay);
+                            clingIncLoc.str(), MOverlay,
+                            /*RegisterModuleMap=*/ true,
+                            /*AllowModulemapOverride=*/ false);
 #else
     maybeAppendOverlayEntry(cIncLoc.str(), "libc.modulemap", clingIncLoc.str(),
-                            MOverlay);
+                            MOverlay, /*RegisterModuleMap=*/ true,
+                            /*AllowModulemapOverride=*/true);
     maybeAppendOverlayEntry(stdIncLoc.str(), "std.modulemap", clingIncLoc.str(),
-                            MOverlay);
+                            MOverlay, /*RegisterModuleMap=*/ true,
+                            /*AllowModulemapOverride=*/true);
 #endif // LLVM_ON_WIN32
 
     if (!tinyxml2IncLoc.empty())
       maybeAppendOverlayEntry(tinyxml2IncLoc.str(), "tinyxml2.modulemap",
-                              clingIncLoc.str(), MOverlay);
+                              clingIncLoc.str(), MOverlay,
+                              /*RegisterModuleMap=*/ false,
+                              /*AllowModulemapOverride=*/ false);
     if (!cudaIncLoc.empty())
       maybeAppendOverlayEntry(cudaIncLoc.str(), "cuda.modulemap",
-                              clingIncLoc.str(), MOverlay);
-    if (!boostIncLoc.empty())
+                              clingIncLoc.str(), MOverlay,
+                              /*RegisterModuleMap=*/ true,
+                              /*AllowModulemapOverride=*/ false);
+    if (!boostIncLoc.empty()) {
+      // Add the modulemap in the include/boost folder not in include.
+      llvm::sys::path::append(boostIncLoc, "boost");
       maybeAppendOverlayEntry(boostIncLoc.str(), "boost.modulemap",
-                              clingIncLoc.str(), MOverlay);
+                              clingIncLoc.str(), MOverlay,
+                              /*RegisterModuleMap=*/ false,
+                              /*AllowModulemapOverride=*/ false);
+    }
 
     if (/*needsOverlay*/!MOverlay.empty()) {
       // Virtual modulemap overlay file
@@ -763,6 +788,12 @@ static void stringifyPreprocSetting(PreprocessorOptions& PPOpts,
     PPOpts.addMacroDef("__CLING__GNUC_MINOR__=" ClingStringify(__GNUC_MINOR__));
 #elif defined(_MSC_VER)
     PPOpts.addMacroDef("__CLING__MSVC__=" ClingStringify(_MSC_VER));
+#if (_MSC_VER >= 1926)
+    // FIXME: Silly workaround for cling not being able to parse the STL
+    //        headers anymore after the update of Visual Studio v16.7.0
+    //        To be checked/removed after the upgrade of LLVM & Clang
+    PPOpts.addMacroDef("__CUDACC__");
+#endif
 #endif
 
 // https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html
@@ -1185,7 +1216,12 @@ static void stringifyPreprocSetting(PreprocessorOptions& PPOpts,
     const size_t argc = COpts.Remaining.size();
     const char* const* argv = &COpts.Remaining[0];
     std::vector<const char*> argvCompile(argv, argv+1);
-    argvCompile.reserve(argc+5);
+    argvCompile.reserve(argc+32);
+
+#if __APPLE__ && __arm64__
+    argvCompile.push_back("-Xclang");
+    argvCompile.push_back("-triple=arm64-apple-macosx11.0.0");
+#endif
 
     // Variables for storing the memory of the C-string arguments.
     // FIXME: We shouldn't use C-strings in the first place, but just use

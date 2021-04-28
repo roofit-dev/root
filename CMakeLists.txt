@@ -4,7 +4,15 @@
 # For the licensing terms see $ROOTSYS/LICENSE.
 # For the list of contributors see $ROOTSYS/README/CREDITS.
 
-cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
+if(MSVC)
+  # required for the following feature & bug fix:
+  # 3.15: Added $<REMOVE_DUPLICATES:list> generator expression
+  # 3.16: Bug fix with CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS: the auto-generated exports
+  #       are now updated only when the object files providing the symbols are updated
+  cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
+else()
+  cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
+endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   message(FATAL_ERROR
@@ -141,6 +149,27 @@ if(ccache)
   endif()
 endif()
 
+#---Enable distcc ------------------------------------------------------------------------------
+if(distcc)
+  find_program(DISTCC_COMMAND NAMES distcc)
+  mark_as_advanced(DISTCC_COMMAND ${DISTCC_COMMAND})
+  if(EXISTS ${DISTCC_COMMAND})
+    message(STATUS "Found distcc: ${DISTCC_COMMAND}")
+    if (ccache)
+        # If ccache is enabled, use distcc as CCACHE_PREFIX
+        message(STATUS "Because ccache is enabled, CCACHE_PREFIX is set to ${DISTCC_COMMAND}")
+        set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "CCACHE_PREFIX=${DISTCC_COMMAND} ${CCACHE_COMMAND}")
+    else()
+        set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${DISTCC_COMMAND})
+    endif()
+    execute_process(COMMAND ${DISTCC_COMMAND} "--version" OUTPUT_VARIABLE DISTCC_VERSION)
+    string(REGEX REPLACE "distcc ([0-9\\.]+).*" "\\1" DISTCC_VERSION ${DISTCC_VERSION})
+  else()
+    message(STATUS "Could NOT find distcc")
+    set(distcc OFF CACHE BOOL "Use distcc (disabled since distcc was not found)" FORCE)
+  endif()
+endif()
+
 #---Enable test coverage -----------------------------------------------------------------------
 if(coverage)
   set(GCC_COVERAGE_COMPILE_FLAGS "-fprofile-arcs -ftest-coverage")
@@ -165,7 +194,7 @@ if(asan)
     message(WARNING "Address sanitizer builds only tested with gcc and Clang")
   endif()
 
-  set(ASAN_EXTRA_LD_PRELOAD "${ASAN_RUNTIME_LIBRARY}:${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ROOTSanitizerConfig${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(ASAN_EXTRA_LD_PRELOAD "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ROOTSanitizerConfig${CMAKE_SHARED_LIBRARY_SUFFIX}:${ASAN_RUNTIME_LIBRARY}")
 
   foreach(item IN LISTS ASAN_EXTRA_CXX_FLAGS)
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:${item}>)
@@ -415,7 +444,7 @@ else()
       etc/dictpch/allLinkDefs.h
     COMMAND
       ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/build/unix/makepchinput.py
-      ${CMAKE_SOURCE_DIR} . ${pyroot_experimental} ${__cling_pch}
+      ${CMAKE_SOURCE_DIR} . ${pyroot_legacy} ${__cling_pch}
     COMMAND
       ${CMAKE_COMMAND} -E env ROOTIGNOREPREFIX=1 ${PYTHON_EXECUTABLE}
       ${CMAKE_SOURCE_DIR}/etc/dictpch/makepch.py etc/allDict.cxx.pch
@@ -499,7 +528,12 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_INSTALL_PREFIX)
   if(webgui)
      install(DIRECTORY ui5/    DESTINATION ${CMAKE_INSTALL_OPENUI5DIR})
   endif()
-  install(DIRECTORY man/    DESTINATION ${CMAKE_INSTALL_MANDIR})
+  if(xproofd AND xrootd AND ssl)
+     set(MAN_PATT_EXCL)
+  else()
+     set(MAN_PATT_EXCL PATTERN xproofd.1 EXCLUDE)
+  endif()
+  install(DIRECTORY man/    DESTINATION ${CMAKE_INSTALL_MANDIR} ${MAN_PATT_EXCL})
   install(DIRECTORY tutorials/ DESTINATION ${CMAKE_INSTALL_TUTDIR} COMPONENT tests)
   install(FILES
     cmake/modules/RootMacros.cmake
@@ -507,8 +541,14 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_INSTALL_PREFIX)
     DESTINATION ${CMAKE_INSTALL_CMAKEDIR})
 endif()
 
-#---Make sure the Jupyter ROOT C++ kernel runs with the same Python version as ROOT-----
-set(root_kernel_dir  notebook/kernels/root)
+#---Add configuration files for kernel and jupyter----------------------------------------------
+# Make sure the Jupyter ROOT C++ kernel runs with the same Python version as ROOT
+set(root_jupyter_dir notebook)
+set(root_jupyter_config jupyter_notebook_config.py)
+configure_file(etc/${root_jupyter_dir}/${root_jupyter_config}.in etc/${root_jupyter_dir}/${root_jupyter_config})
+install(FILES ${CMAKE_BINARY_DIR}/etc/${root_jupyter_dir}/${root_jupyter_config} DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/${root_jupyter_dir})
+
+set(root_kernel_dir  ${root_jupyter_dir}/kernels/root)
 set(root_kernel_file kernel.json)
 configure_file(etc/${root_kernel_dir}/${root_kernel_file}.in etc/${root_kernel_dir}/${root_kernel_file})
 install(FILES ${CMAKE_BINARY_DIR}/etc/${root_kernel_dir}/${root_kernel_file} DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/${root_kernel_dir})
@@ -519,8 +559,8 @@ if(clad)
       DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/cling/plugins)
 endif()
 
-#---Set flag for PyROOT tests that are expected to fail in experimental
-if(pyroot_experimental)
+#---Set flag for PyROOT tests that are expected to fail
+if(pyroot)
   set(PYTESTS_WILLFAIL WILLFAIL)
 endif()
 

@@ -17,6 +17,8 @@
 #include <ROOT/RPageStorageFile.hxx>
 #include <ROOT/RColumn.hxx>
 #include <ROOT/RField.hxx>
+#include <ROOT/RNTupleDescriptor.hxx>
+#include <ROOT/RNTupleMetrics.hxx>
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RPagePool.hxx>
 #include <ROOT/RPageStorageFile.hxx>
@@ -35,6 +37,12 @@ ROOT::Experimental::Detail::RPageStorage::RPageStorage(std::string_view name) : 
 
 ROOT::Experimental::Detail::RPageStorage::~RPageStorage()
 {
+}
+
+ROOT::Experimental::Detail::RNTupleMetrics &ROOT::Experimental::Detail::RPageStorage::GetMetrics()
+{
+   static RNTupleMetrics metrics("");
+   return metrics;
 }
 
 
@@ -62,7 +70,13 @@ ROOT::Experimental::Detail::RPageSource::AddColumn(DescriptorId_t fieldId, const
    R__ASSERT(fieldId != kInvalidDescriptorId);
    auto columnId = fDescriptor.FindColumnId(fieldId, column.GetIndex());
    R__ASSERT(columnId != kInvalidDescriptorId);
-   return ColumnHandle_t(columnId, &column);
+   fActiveColumns.emplace(columnId);
+   return ColumnHandle_t{columnId, &column};
+}
+
+void ROOT::Experimental::Detail::RPageSource::DropColumn(ColumnHandle_t columnHandle)
+{
+   fActiveColumns.erase(columnHandle.fId);
 }
 
 ROOT::Experimental::NTupleSize_t ROOT::Experimental::Detail::RPageSource::GetNEntries()
@@ -105,7 +119,7 @@ ROOT::Experimental::Detail::RPageSink::AddColumn(DescriptorId_t fieldId, const R
 {
    auto columnId = fLastColumnId++;
    fDescriptorBuilder.AddColumn(columnId, fieldId, column.GetVersion(), column.GetModel(), column.GetIndex());
-   return ColumnHandle_t(columnId, &column);
+   return ColumnHandle_t{columnId, &column};
 }
 
 
@@ -115,15 +129,22 @@ void ROOT::Experimental::Detail::RPageSink::Create(RNTupleModel &model)
                                 model.GetVersion(), model.GetUuid());
 
    std::unordered_map<const RFieldBase *, DescriptorId_t> fieldPtr2Id; // necessary to find parent field ids
-   const auto &rootField = *model.GetRootField();
-   fDescriptorBuilder.AddField(fLastFieldId, rootField.GetFieldVersion(), rootField.GetTypeVersion(),
-      rootField.GetName(), rootField.GetType(), rootField.GetNRepetitions(), rootField.GetStructure());
-   fieldPtr2Id[&rootField] = fLastFieldId++;
-   for (auto& f : *model.GetRootField()) {
-      fDescriptorBuilder.AddField(fLastFieldId, f.GetFieldVersion(), f.GetTypeVersion(), f.GetName(), f.GetType(),
-                                  f.GetNRepetitions(), f.GetStructure());
+   const auto &fieldZero = *model.GetFieldZero();
+   fDescriptorBuilder.AddField(
+      RDanglingFieldDescriptor::FromField(fieldZero)
+         .FieldId(fLastFieldId)
+         .MakeDescriptor()
+         .Unwrap()
+   );
+   fieldPtr2Id[&fieldZero] = fLastFieldId++;
+   for (auto& f : *model.GetFieldZero()) {
+      fDescriptorBuilder.AddField(
+         RDanglingFieldDescriptor::FromField(f)
+            .FieldId(fLastFieldId)
+            .MakeDescriptor()
+            .Unwrap()
+      );
       fDescriptorBuilder.AddFieldLink(fieldPtr2Id[f.GetParent()], fLastFieldId);
-
       Detail::RFieldFuse::Connect(fLastFieldId, *this, f); // issues in turn one or several calls to AddColumn()
       fieldPtr2Id[&f] = fLastFieldId++;
    }

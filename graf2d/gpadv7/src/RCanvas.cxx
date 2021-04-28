@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "TList.h"
 #include "TROOT.h"
 
 namespace {
@@ -48,6 +49,21 @@ const std::vector<std::shared_ptr<ROOT::Experimental::RCanvas>> ROOT::Experiment
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
+/// Release list of held canvases pointers
+/// If no other shared pointers exists on the canvas, object will be destroyed
+
+void ROOT::Experimental::RCanvas::ReleaseHeldCanvases()
+{
+   std::vector<std::shared_ptr<ROOT::Experimental::RCanvas>> vect;
+
+   {
+      std::lock_guard<std::mutex> grd(GetHeldCanvasesMutex());
+
+      std::swap(vect, GetHeldCanvases());
+   }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
 /// Returns true is canvas was modified since last painting
 
 bool ROOT::Experimental::RCanvas::IsModified() const
@@ -64,6 +80,23 @@ void ROOT::Experimental::RCanvas::Update(bool async, CanvasCallback_t callback)
       fPainter->CanvasUpdated(fModified, async, callback);
 }
 
+class RCanvasCleanup : public TObject {
+public:
+
+   static RCanvasCleanup *gInstance;
+
+   RCanvasCleanup() : TObject() { gInstance = this; }
+
+   virtual ~RCanvasCleanup()
+   {
+      gInstance = nullptr;
+      ROOT::Experimental::RCanvas::ReleaseHeldCanvases();
+   }
+};
+
+RCanvasCleanup *RCanvasCleanup::gInstance = nullptr;
+
+
 ///////////////////////////////////////////////////////////////////////////////////////
 /// Create new canvas instance
 
@@ -75,6 +108,14 @@ std::shared_ptr<ROOT::Experimental::RCanvas> ROOT::Experimental::RCanvas::Create
       std::lock_guard<std::mutex> grd(GetHeldCanvasesMutex());
       GetHeldCanvases().emplace_back(pCanvas);
    }
+
+   if (!RCanvasCleanup::gInstance) {
+      auto cleanup = new RCanvasCleanup();
+      TDirectory *dummydir = new TDirectory("rcanvas_cleanup_dummydir","title");
+      dummydir->GetList()->Add(cleanup);
+      gROOT->GetListOfClosedObjects()->Add(dummydir);
+   }
+
    return pCanvas;
 }
 
@@ -252,6 +293,10 @@ void ROOT::Experimental::RCanvas::ResolveSharedPtrs()
 
 std::unique_ptr<ROOT::Experimental::RDrawableReply> ROOT::Experimental::RChangeAttrRequest::Process()
 {
+   // suppress all changes coming from non-main connection
+   if (!GetContext().IsMainConn())
+      return nullptr;
+
    auto canv = const_cast<ROOT::Experimental::RCanvas *>(GetContext().GetCanvas());
    if (!canv) return nullptr;
 
@@ -277,7 +322,7 @@ std::unique_ptr<ROOT::Experimental::RDrawableReply> ROOT::Experimental::RChangeA
       }
    }
 
-   fNeedUpdate = (vers > 0);
+   fNeedUpdate = (vers > 0) && update;
 
    return nullptr; // no need for any reply
 }

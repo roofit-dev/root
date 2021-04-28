@@ -1,8 +1,10 @@
+#include "ROOTUnitTestSupport.h"
 #include "ROOT/RDataFrame.hxx"
 #include "ROOT/TSeq.hxx"
 #include "TFile.h"
 #include "TROOT.h"
 #include "TSystem.h"
+#include <TInterpreter.h>
 #include "TTree.h"
 #include "gtest/gtest.h"
 #include <limits>
@@ -31,15 +33,14 @@ protected:
 };
 
 #ifdef R__USE_IMT
+struct TIMTEnabler {
+   TIMTEnabler(unsigned int nSlots) { ROOT::EnableImplicitMT(nSlots); }
+   ~TIMTEnabler() { ROOT::DisableImplicitMT(); }
+};
+
 // fixture that enables implicit MT and provides a RDF with no data-source and a single column "x" containing
 // normal-distributed doubles
 class RDFSnapshotMT : public ::testing::Test {
-   class TIMTEnabler {
-   public:
-      TIMTEnabler(unsigned int nSlots) { ROOT::EnableImplicitMT(nSlots); }
-      ~TIMTEnabler() { ROOT::DisableImplicitMT(); }
-   };
-
 protected:
    const ULong64_t kNEvents = 100ull; // must be initialized before fLoopManager
    const unsigned int kNSlots = 4u;
@@ -587,13 +588,14 @@ TEST(RDFSnapshotMore, ReadWriteNestedLeaves)
    WriteTreeWithLeaves(treename, fname);
    RDataFrame d(treename, fname);
    const auto outfname = "out_readwritenestedleaves.root";
-   auto d2 = d.Snapshot<int, int>(treename, outfname, {"v.a", "v.b"});
-   EXPECT_EQ(d2->GetColumnNames(), std::vector<std::string>({"v_a", "v_b"}));
+   ROOT::RDF::RNode d2(d);
+   ROOT_EXPECT_INFO((d2 = *d.Snapshot<int, int>(treename, outfname, {"v.a", "v.b"})), "Snapshot", "Column v.a will be saved as v_a\nInfo in <Snapshot>: Column v.b will be saved as v_b");
+   EXPECT_EQ(d2.GetColumnNames(), std::vector<std::string>({"v_a", "v_b"}));
    auto check_a_b = [](int a, int b) {
       EXPECT_EQ(a, 1);
       EXPECT_EQ(b, 2);
    };
-   d2->Foreach(check_a_b, {"v_a", "v_b"});
+   d2.Foreach(check_a_b, {"v_a", "v_b"});
    gSystem->Unlink(fname);
    gSystem->Unlink(outfname);
 
@@ -641,6 +643,119 @@ TEST(RDFSnapshotMore, LazyNotTriggered)
    }
 }
 
+void CheckTClonesArrayOutput(const RVec<TH1D> &hvec)
+{
+   ASSERT_EQ(hvec.size(), 3);
+   for (int i = 0; i < 3; ++i) {
+      EXPECT_EQ(hvec[i].GetEntries(), 1);
+      EXPECT_DOUBLE_EQ(hvec[i].GetMean(), i);
+   }
+}
+
+void ReadWriteTClonesArray()
+{
+   {
+      TClonesArray arr("TH1D", 3);
+      for (int i = 0; i < 3; ++i) {
+         auto *h = static_cast<TH1D *>(arr.ConstructedAt(i));
+         h->SetBins(25, 0, 10);
+         h->Fill(i);
+      }
+      TFile f("df_readwritetclonesarray.root", "recreate");
+      TTree t("t", "t");
+      t.Branch("arr", &arr);
+      t.Fill();
+      t.Write();
+      f.Close();
+   }
+
+   {
+      // write as TClonesArray
+      auto out_df = ROOT::RDataFrame("t", "df_readwritetclonesarray.root")
+                       .Snapshot<TClonesArray>("t", "df_readwriteclonesarray1.root", {"arr"});
+      RVec<TH1D> hvec;
+
+#ifndef NDEBUG
+      ROOT_EXPECT_WARNING(
+         hvec = out_df->Take<RVec<TH1D>>("arr")->at(0), "RTreeColumnReader::Get",
+         "Branch arr hangs from a non-split branch. A copy is being performed in order to properly read the content.");
+#else
+      ROOT_EXPECT_NODIAG(hvec = out_df->Take<RVec<TH1D>>("arr")->at(0));
+#endif
+      CheckTClonesArrayOutput(hvec);
+   }
+
+   // FIXME uncomment when ROOT-10801 is solved
+   //{
+   //   gInterpreter->GenerateDictionary("vector<TH1D,ROOT::Detail::VecOps::RAdoptAllocator<TH1D>>",
+   //                                    "vector;TH1D.h;ROOT/RVec.hxx");
+   //   // write as RVecs
+   //   auto out_df = ROOT::RDataFrame("t", "df_readwritetclonesarray.root")
+   //                    .Snapshot<RVec<TH1D>>("t", "df_readwriteclonesarray2.root", {"arr"});
+   //   const auto hvec = out_df->Take<RVec<TH1D>>("arr")->at(0);
+   //   CheckTClonesArrayOutput(hvec);
+   //}
+
+   {
+      // write as Snapshot wants
+      auto out_df =
+         ROOT::RDataFrame("t", "df_readwritetclonesarray.root").Snapshot("t", "df_readwriteclonesarray3.root", {"arr"});
+      RVec<TH1D> hvec;
+#ifndef NDEBUG
+      ROOT_EXPECT_WARNING(
+         hvec = out_df->Take<RVec<TH1D>>("arr")->at(0), "RTreeColumnReader::Get",
+         "Branch arr hangs from a non-split branch. A copy is being performed in order to properly read the content.");
+#else
+      ROOT_EXPECT_NODIAG(hvec = out_df->Take<RVec<TH1D>>("arr")->at(0));
+#endif
+      CheckTClonesArrayOutput(hvec);
+   }
+
+   gSystem->Unlink("df_readwritetclonesarray.root");
+   gSystem->Unlink("df_readwriteclonesarray1.root");
+   gSystem->Unlink("df_readwriteclonesarray2.root");
+   gSystem->Unlink("df_readwriteclonesarray3.root");
+}
+
+TEST(RDFSnapshotMore, TClonesArray)
+{
+   ReadWriteTClonesArray();
+}
+
+// ROOT-10702
+TEST(RDFSnapshotMore, CompositeTypeWithNameClash)
+{
+   const auto fname = "snap_compositetypewithnameclash.root";
+   gInterpreter->Declare("struct Int { int x; };");
+   ROOT::RDataFrame df(3);
+   auto snap_df = df.Define("i", "Int{-1};").Define("x", [] { return 1; }).Snapshot("t", fname);
+   EXPECT_EQ(snap_df->Sum<int>("x").GetValue(), 3); // prints -3 if the wrong "x" is written out
+   EXPECT_EQ(snap_df->Sum<int>("i.x").GetValue(), -3);
+
+   gSystem->Unlink(fname);
+}
+
+// Test that we error out gracefully in case the output file specified for a Snapshot cannot be opened
+TEST(RDFSnapshotMore, ForbiddenOutputFilename)
+{
+   ROOT::RDataFrame df(4);
+   const auto out_fname = "/definitely/not/a/valid/path/f.root";
+
+   // Compiled
+   try {
+      ROOT_EXPECT_SYSERROR(df.Snapshot<unsigned int>("t", out_fname, {"rdfslot_"}), "TFile::TFile",
+                        "file /definitely/not/a/valid/path/f.root can not be opened No such file or directory")
+   } catch (const std::runtime_error &e) {
+      EXPECT_STREQ(e.what(), "Snapshot: could not create output file /definitely/not/a/valid/path/f.root");
+   }
+
+   // Jitted
+   // If some other test case called EnableThreadSafety, the error printed here is of the form
+   // "SysError in <TFile::TFile>: file /definitely/not/a/valid/path/f.root can not be opened No such file or directory\nError in <TReentrantRWLock::WriteUnLock>: Write lock already released for 0x55f179989378\n"
+   // but the address printed changes every time
+   EXPECT_THROW(df.Snapshot("t", out_fname, {"rdfslot_"}), std::runtime_error);
+}
+
 /********* MULTI THREAD TESTS ***********/
 #ifdef R__USE_IMT
 TEST_F(RDFSnapshotMT, Snapshot_update_diff_treename)
@@ -683,30 +798,24 @@ TEST_F(RDFSnapshotMT, Reshuffled_friends)
 
    {
       // add reshuffled tree as friend
-      testing::internal::CaptureStderr();
       TFile f(fname);
       TTree *t = f.Get<TTree>("t");
       TTree t2("t2", "t2");
-      t2.AddFriend(t);
-      const std::string err = testing::internal::GetCapturedStderr();
-      const auto expected = "Error in <AddFriend>: Tree 't' has the kEntriesReshuffled bit set, and cannot be used as "
+      const auto expected = "Tree 't' has the kEntriesReshuffled bit set, and cannot be used as "
                             "friend nor can be added as a friend unless the main tree has a TTreeIndex on the friend "
-                            "tree 't'. You can also unset the bit manually if you know what you are doing.\n";
-      EXPECT_EQ(err, expected);
+                            "tree 't'. You can also unset the bit manually if you know what you are doing.";
+      ROOT_EXPECT_ERROR(t2.AddFriend(t), "AddFriend", expected);
    }
 
    {
       // add friend to reshuffled tree
-      testing::internal::CaptureStderr();
       TFile f(fname);
       TTree *t = f.Get<TTree>("t");
       TTree t2("t2", "t2");
-      t->AddFriend(&t2); // should throw
-      const std::string err = testing::internal::GetCapturedStderr();
-      const auto expected = "Error in <AddFriend>: Tree 't' has the kEntriesReshuffled bit set, and cannot be used as "
+      const auto expected = "Tree 't' has the kEntriesReshuffled bit set, and cannot be used as "
                             "friend nor can be added as a friend unless the main tree has a TTreeIndex on the friend "
-                            "tree 't2'. You can also unset the bit manually if you know what you are doing.\n";
-      EXPECT_EQ(err, expected);
+                            "tree 't2'. You can also unset the bit manually if you know what you are doing.";
+      ROOT_EXPECT_ERROR(t->AddFriend(&t2);, "AddFriend", expected);
    }
 }
 
@@ -897,6 +1006,34 @@ TEST(RDFSnapshotMore, ReadWriteCarrayMT)
    ROOT::EnableImplicitMT(4);
    ReadWriteCarray("ReadWriteCarrayMT");
    ROOT::DisableImplicitMT();
+}
+
+TEST(RDFSnapshotMore, TClonesArrayMT)
+{
+   TIMTEnabler _(4);
+   ReadWriteTClonesArray();
+}
+
+// Test that we error out gracefully in case the output file specified for a Snapshot cannot be opened
+TEST(RDFSnapshotMore, ForbiddenOutputFilenameMT)
+{
+   TIMTEnabler _(4);
+   ROOT::RDataFrame df(4);
+   const auto out_fname = "/definitely/not/a/valid/path/f.root";
+
+   // Compiled
+   try {
+      const auto expected = "file /definitely/not/a/valid/path/f.root can not be opened No such file or directory";
+      ROOT_EXPECT_SYSERROR(df.Snapshot<unsigned int>("t", out_fname, {"rdfslot_"}), "TFile::TFile", expected);
+   } catch (const std::runtime_error &e) {
+      EXPECT_STREQ(e.what(), "Snapshot: could not create output file /definitely/not/a/valid/path/f.root");
+   }
+
+   // Jitted
+   // the error printed here is
+   // "SysError in <TFile::TFile>: file /definitely/not/a/valid/path/f.root can not be opened No such file or directory\nError in <TReentrantRWLock::WriteUnLock>: Write lock already released for 0x55f179989378\n"
+   // but the address printed changes every time
+   EXPECT_THROW(df.Snapshot("t", out_fname, {"rdfslot_"}), std::runtime_error);
 }
 
 #endif // R__USE_IMT

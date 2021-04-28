@@ -55,7 +55,6 @@ the following replacements should be used:
 
 #include "Compression.h"
 #include "TString.h"
-#include "TH1.h"
 #include "TTree.h"
 #include "TLeaf.h"
 #include "ROOT/RMakeUnique.hxx"
@@ -65,8 +64,12 @@ using namespace std;
 
 ClassImp(RooAbsCategory);
 
-
-const std::map<std::string, RooAbsCategory::value_type>::value_type RooAbsCategory::_invalidCategory {"", std::numeric_limits<RooAbsCategory::value_type>::min()};
+/// A category state to signify an invalid category. The category name is empty,
+/// the index is the minimal int.
+const decltype(RooAbsCategory::_stateNames)::value_type& RooAbsCategory::invalidCategory() {
+  static const decltype(RooAbsCategory::_stateNames)::value_type invalid{"", std::numeric_limits<value_type>::min()};
+  return invalid;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor
@@ -122,12 +125,13 @@ RooAbsCategory::value_type RooAbsCategory::getCurrentIndex() const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return label string of current state
+/// Return label string of current state.
 
 const char* RooAbsCategory::getCurrentLabel() const
 {
+  const auto index = getCurrentIndex();
   for (const auto& item : stateNames()) {
-    if (item.second == _currentIndex)
+    if (item.second == index)
       return item.first.c_str();
   }
 
@@ -200,7 +204,7 @@ const std::string& RooAbsCategory::lookupName(value_type index) const {
       return item.first;
   }
 
-  return _invalidCategory.first;
+  return invalidCategory().first;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -238,13 +242,13 @@ const std::map<std::string, RooAbsCategory::value_type>::value_type& RooAbsCateg
   if (hasIndex(index)) {
     coutE(InputArguments) << "RooAbsCategory::" << __func__ << "(" << GetName() << "): index "
 			  << index << " already assigned" << endl ;
-    return _invalidCategory;
+    return invalidCategory();
   }
 
   if (hasLabel(label)) {
     coutE(InputArguments) << "RooAbsCategory::" << __func__ << "(" << GetName() << "): label "
 			  << label << " already assigned or not allowed" << endl ;
-    return _invalidCategory;
+    return invalidCategory();
   }
 
   const auto result = theStateNames.emplace(label, index);
@@ -267,7 +271,7 @@ void RooAbsCategory::clearTypes()
 {
   _stateNames.clear();
   _insertionOrder.clear();
-  _currentIndex = _invalidCategory.second;
+  _currentIndex = invalidCategory().second;
   setShapeDirty() ;
 }
 
@@ -282,7 +286,7 @@ RooAbsCategory::value_type RooAbsCategory::lookupIndex(const std::string& stateN
     return item->second;
   }
 
-  return _invalidCategory.second;
+  return invalidCategory().second;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -571,7 +575,7 @@ const std::map<std::string, RooAbsCategory::value_type>::value_type& RooAbsCateg
   auto& theStateNames = stateNames();
 
   if (n >= theStateNames.size())
-    return _invalidCategory;
+    return invalidCategory();
 
   if (theStateNames.size() != _insertionOrder.size())
     return *std::next(theStateNames.begin(), n);
@@ -580,7 +584,7 @@ const std::map<std::string, RooAbsCategory::value_type>::value_type& RooAbsCateg
   if (item != theStateNames.end())
     return *item;
 
-  return _invalidCategory;
+  return invalidCategory();
 }
 
 
@@ -590,10 +594,9 @@ unsigned int RooAbsCategory::getCurrentOrdinalNumber() const {
   // Retrieve state names, trigger possible recomputation
   auto& theStateNames = stateNames();
 
-  const auto currentIndex = getCurrentIndex();
-
-  // If we don't have the full history if inserted state names, have to go by map ordering:
+  // If we don't have the full history of inserted state names, have to go by map ordering:
   if (theStateNames.size() != _insertionOrder.size()) {
+    const auto currentIndex = getCurrentIndex();
     for (auto it = theStateNames.begin(); it != theStateNames.end(); ++it) {
       if (it->second == currentIndex)
         return std::distance(theStateNames.begin(), it);

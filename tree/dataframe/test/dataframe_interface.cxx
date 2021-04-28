@@ -386,7 +386,7 @@ TEST(RDataFrameInterface, UnusedJittedNodes)
 
 // ROOT-10458
 #ifdef _WIN32
-const std::string symbol = "struct `private: virtual void __thiscall RDataFrameInterface_TypeUnknownToInterpreter_Test::TestBody(void)'::`2'::SimpleType";
+const std::string symbol = "`private: virtual void __thiscall RDataFrameInterface_TypeUnknownToInterpreter_Test::TestBody(void)'::`2'::SimpleType";
 #else
 const std::string symbol = "RDataFrameInterface_TypeUnknownToInterpreter_Test::TestBody()::SimpleType";
 #endif
@@ -422,4 +422,24 @@ TEST(RDataFrameInterface, TypeUnknownToInterpreter)
    EXPECT_RUNTIME_ERROR_WITH_MSG(
       df.Filter("res; return true;"),
       ss.str().c_str());
+}
+
+// ROOT-10942
+TEST(RDataFrameInterface, ColumnWithSimpleStruct)
+{
+   gInterpreter->Declare("struct S { int a; int b; };");
+   S c;
+   c.a = 42;
+   c.b = 2;
+   TTree t("t", "t");
+   t.Branch("c", &c);
+   t.Fill();
+
+   ROOT::RDataFrame df(t);
+   const std::vector<std::string> expected({ "c.a", "a", "c.b", "b", "c" });
+   EXPECT_EQ(df.GetColumnNames(), expected);
+   for (const std::string &col : {"c.a", "a"}) {
+      EXPECT_DOUBLE_EQ(df.Mean<int>(col).GetValue(), 42.); // compiled
+      EXPECT_DOUBLE_EQ(df.Mean(col).GetValue(), 42.); // jitted
+   }
 }
