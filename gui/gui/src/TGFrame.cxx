@@ -73,7 +73,6 @@
 #include "TClass.h"
 
 #include "TObjString.h"
-#include "TObjArray.h"
 #include "TBits.h"
 #include "TColor.h"
 #include "TROOT.h"
@@ -89,6 +88,8 @@
 #include "TGDNDManager.h"
 #include "TImage.h"
 #include "TObjectSpy.h"
+#include "TVirtualX.h"
+
 
 
 Bool_t      TGFrame::fgInit = kFALSE;
@@ -1512,7 +1513,7 @@ Bool_t TGMainFrame::SaveFrameAsCodeOrImage()
       TGFileInfo fi;
       TGMainFrame *main = (TGMainFrame*)GetMainFrame();
       fi.fFileTypes = gSaveMacroTypes;
-      fi.fIniDir    = StrDup(dir);
+      fi.SetIniDir(dir);
       fi.fOverwrite = overwr;
       new TGFileDialog(fClient->GetDefaultRoot(), this, kFDSave, &fi);
       if (!fi.fFilename) return kFALSE;
@@ -1961,15 +1962,17 @@ void TGTransientFrame::CenterOnParent(Bool_t croot, EPlacement pos)
 
       gVirtualX->TranslateCoordinates(fMain->GetId(), GetParent()->GetId(),
                                       x, y, ax, ay, wdummy);
-      if (ax < 10)
-         ax = 10;
-      else if (ax + fWidth + 10 > dw)
-         ax = dw - fWidth - 10;
+      if (!gVirtualX->InheritsFrom("TGWin32")) {
+         if (ax < 10)
+            ax = 10;
+         else if (ax + fWidth + 10 > dw)
+            ax = dw - fWidth - 10;
 
-      if (ay < 20)
-         ay = 20;
-      else if (ay + fHeight + 50 > dh)
-         ay = dh - fHeight - 50;
+         if (ay < 20)
+            ay = 20;
+         else if (ay + fHeight + 50 > dh)
+            ay = dh - fHeight - 50;
+      }
 
    } else if (croot) {
 

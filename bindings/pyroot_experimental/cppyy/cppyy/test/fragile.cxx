@@ -1,4 +1,6 @@
 #include "fragile.h"
+#include <assert.h>
+
 
 fragile::H::HH* fragile::H::HH::copy() {
     return (HH*)0;
@@ -37,3 +39,26 @@ fragile::K* fragile::K::GimeL() {
 }
 
 fragile::L::~L() {}
+
+
+int fragile::create_handle(OpaqueHandle_t* handle) {
+    *handle = (OpaqueHandle_t)0x01;
+    return 0x01;
+}
+
+int fragile::destroy_handle(OpaqueHandle_t handle, intptr_t addr) {
+    if ((intptr_t)handle == addr)
+        return 1;
+    return 0;
+}
+
+
+// for signal -> exception testing
+void fragile::segfault() {
+    int* i = 0; *i = 42;
+}
+
+void fragile::sigabort() {
+    assert(0);
+}
+

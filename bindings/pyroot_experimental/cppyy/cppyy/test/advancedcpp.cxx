@@ -90,6 +90,7 @@ double my_global_array[500];
 static double sd = 1234.;
 double* my_global_ptr = &sd;
 const char my_global_string2[] = "zus jet teun";
+const char* my_global_string3[3] = {"aap", "noot", "mies"};
 some_int_holder my_global_int_holders[5] = {
     some_int_holder(13), some_int_holder(42), some_int_holder(88),
     some_int_holder(-1), some_int_holder(17) };
@@ -161,4 +162,22 @@ std::ostream& operator<<(std::ostream& os, const Cpp2PyPrinting::Printable3&) {
 std::ostream& operator<<(std::ostream& os, const Printable4&) {
      os << "::operator<<(4)";
      return os;
+}
+
+Printable6& Printable6::operator<<(int) { return *this; }
+
+std::ostream& operator<<(std::ostream& os, const Printable6& y) { return os << "Printable6"; }
+
+
+// for using directives testing
+int UsedSpace1::foo1() {
+    return 13;
+}
+
+int UsedSpace2::bar() {
+    return 42;
+}
+
+int UsedSpace1::inner::foo2() {
+    return 27;
 }

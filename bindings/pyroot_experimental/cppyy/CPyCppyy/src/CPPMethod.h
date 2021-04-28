@@ -5,6 +5,7 @@
 #include "PyCallable.h"
 
 // Standard
+#include <map>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@ public:
     virtual PyObject* GetSignature(bool show_formalargs = true);
     virtual PyObject* GetPrototype(bool show_formalargs = true);
     virtual int       GetPriority();
+    virtual bool IsGreedy();
 
     virtual int       GetMaxArgs();
     virtual PyObject* GetCoVarNames();
@@ -38,12 +40,14 @@ public:
     virtual PyObject* Call(
         CPPInstance*& self, PyObject* args, PyObject* kwds, CallContext* ctxt = nullptr);
 
-    virtual bool      Initialize(CallContext* ctxt = nullptr);
-    virtual PyObject* PreProcessArgs(CPPInstance*& self, PyObject* args, PyObject* kwds);
-    virtual bool      ConvertAndSetArgs(PyObject* args, CallContext* ctxt = nullptr);
-    virtual PyObject* Execute(void* self, ptrdiff_t offset, CallContext* ctxt = nullptr);
-
 protected:
+    virtual PyObject* PreProcessArgs(CPPInstance*& self, PyObject* args, PyObject* kwds);
+
+    bool      Initialize(CallContext* ctxt = nullptr);
+    PyObject* ProcessKeywords(PyObject* self, PyObject* args, PyObject* kwds);
+    bool      ConvertAndSetArgs(PyObject* args, CallContext* ctxt = nullptr);
+    PyObject* Execute(void* self, ptrdiff_t offset, CallContext* ctxt = nullptr);
+
     Cppyy::TCppMethod_t GetMethod()   { return fMethod; }
 // TODO: the following is a special case to allow shimming of the
 // constructor; there's probably a better way ...
@@ -59,8 +63,8 @@ private:
     void Copy_(const CPPMethod&);
     void Destroy_() const;
 
-    PyObject* CallFast(void*, ptrdiff_t, CallContext*);
-    PyObject* CallSafe(void*, ptrdiff_t, CallContext*);
+    PyObject* ExecuteFast(void*, ptrdiff_t, CallContext*);
+    PyObject* ExecuteProtected(void*, ptrdiff_t, CallContext*);
 
     bool InitConverters_();
 
@@ -73,13 +77,12 @@ private:
     Executor*           fExecutor;
 
 // call dispatch buffers
-    std::vector<Converter*> fConverters;
+    std::vector<Converter*>     fConverters;
+    std::map<std::string, int>* fArgIndices;
 
-// cached values
-    Py_ssize_t fArgsRequired;
-
-// admin
-    bool fIsInitialized;
+protected:
+// cached value that doubles as initialized flag (uninitialized if -1)
+    int fArgsRequired;
 };
 
 } // namespace CPyCppyy

@@ -3,10 +3,10 @@ from pytest import raises
 from .support import setup_make, pylong
 
 currpath = py.path.local(__file__).dirpath()
-test_dct = str(currpath.join("pythonizablesDict.so"))
+test_dct = str(currpath.join("pythonizablesDict"))
 
 def setup_module(mod):
-    setup_make("pythonizablesDict.so")
+    setup_make("pythonizables")
 
 
 class TestClassPYTHONIZATION:
@@ -219,7 +219,42 @@ class TestClassPYTHONIZATION:
 
         assert d[0]  == 42
         assert d[-1] == 42
-        raises(IndexError, d.__getitem__, 1)
+        # skip the IndexErorr test: pythonization for __getitem__[index] < size()
+        # can not be applied strict enough (instead of an index, this could be an
+        # associative  container, with 'index' a key, not a counter
+        #raises(IndexError, d.__getitem__, 1)
+
+    def test09_cpp_side_pythonization(self):
+        """Use of C++ side pythonizations"""
+
+        import cppyy
+
+      # explicit pythonization
+        for kls in [cppyy.gbl.pyzables.WithCallback1, cppyy.gbl.pyzables.WithCallback2]:
+            w = kls(42)
+            assert hasattr(w, 'GetInt')
+            assert not hasattr(w, 'get_int')
+            assert w.GetInt() == 42
+
+            assert hasattr(w, 'SetInt')
+            assert not hasattr(w, 'set_int')
+            w.SetInt(17)
+            assert w.GetInt() == 17
+
+            assert kls.klass_name == kls.__cpp_name__
+
+      # up-the-hierarchy pythonization
+        w = cppyy.gbl.pyzables.WithCallback3(42)
+        assert hasattr(w, 'GetInt')
+        assert not hasattr(w, 'get_int')
+        assert w.GetInt() == 2*42
+
+        assert hasattr(w, 'SetInt')
+        assert not hasattr(w, 'set_int')
+        w.SetInt(17)
+        assert w.GetInt() == 4*17
+
+        assert cppyy.gbl.pyzables.WithCallback2.klass_name == 'pyzables::WithCallback3'
 
 
 ## actual test run

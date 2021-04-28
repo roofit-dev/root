@@ -213,7 +213,7 @@ TGridCollection *TAlienCollection::OpenQuery(TGridResult * queryresult,
       if (!filemap->GetValue("lfn"))
          continue;
       TString dname =
-          gSystem->DirName(filemap->GetValue("lfn")->GetName());
+          gSystem->GetDirName(filemap->GetValue("lfn")->GetName());
       TString bname =
           gSystem->BaseName(filemap->GetValue("lfn")->GetName());
       filemap->Add(new TObjString("name"), new TObjString(bname.Data()));
@@ -1200,8 +1200,10 @@ Bool_t TAlienCollection::CheckIfOnline(Bool_t bulk)
          }
 
          TList *onlinelist = fFileStager->GetStaged(lookuplist);
-         if (!onlinelist)
+         if (!onlinelist) {
+            SafeDelete(lookuplist);
             return kFALSE;
+         }
 
          Reset();
          fc=0;
@@ -1526,9 +1528,9 @@ const char *TAlienCollection::GetOutputFileName(const char *infile,
 
    Reset();
    while (Next()) {
-      TString s1(gSystem->DirName(GetLFN("")));
+      TString s1 = gSystem->GetDirName(GetLFN(""));
       TString s2(gSystem->BaseName(s1.Data()));
-      TString s3(gSystem->DirName(s1.Data()));
+      TString s3 = gSystem->GetDirName(s1.Data());
       TString s4(gSystem->BaseName(s3.Data()));
       nevents++;
       if (first) {
@@ -1549,7 +1551,7 @@ const char *TAlienCollection::GetOutputFileName(const char *infile,
       char rootfile[4096];
       Int_t item;
       while ((item = fscanf(fp, "%4095s", rootfile)) == 1) {
-         TString rootdir(gSystem->DirName(rootfile));
+         TString rootdir = gSystem->GetDirName(rootfile);
          TString rootbase(gSystem->BaseName(rootfile));
          TString rootbasenosuffix;
          rootbasenosuffix = rootbase(0, rootbase.First('.'));;

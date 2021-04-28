@@ -30,6 +30,8 @@
 #include "RConfigure.h"
 
 #include <atomic>
+#include <string>
+#include <vector>
 
 class TClass;
 class TCanvas;
@@ -349,12 +351,14 @@ public:
    static void        SetMacroPath(const char *newpath);
    static Int_t       IncreaseDirLevel();
    static void        IndentLevel();
+   static void        Initialize();
    static Bool_t      Initialized();
    static Bool_t      MemCheck();
    static void        SetDirLevel(Int_t level = 0);
    static Int_t       ConvertVersionCode2Int(Int_t code);
    static Int_t       ConvertVersionInt2Code(Int_t v);
    static Int_t       RootVersionCode();
+   static const std::vector<std::string> &AddExtraInterpreterArgs(const std::vector<std::string> &args);
    static const char**&GetExtraInterpreterArgs();
 
    static const TString& GetRootSys();
@@ -372,6 +376,7 @@ public:
 
    // Backward compatibility function - do not use for new code
    static const char *GetTutorialsDir();
+   static void ShutDown();
 
    ClassDef(TROOT,0)  //Top level (or root) structure for all classes
 };

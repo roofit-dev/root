@@ -95,6 +95,7 @@ robust Streamer mechanism I opted for 3).
 #include "TString.h"
 #include "TSystem.h"
 #include "TClass.h"
+#include "TROOT.h"
 #include "TBufferFile.h"
 #include "TVirtualMutex.h"
 #include "mmprivate.h"
@@ -200,21 +201,21 @@ TMapFile::TMapFile()
 {
    fFd          = -1;
    fVersion     = 0;
-   fName        = 0;
-   fTitle       = 0;
-   fOption      = 0;
-   fMmallocDesc = 0;
+   fName        = nullptr;
+   fTitle       = nullptr;
+   fOption      = nullptr;
+   fMmallocDesc = nullptr;
    fBaseAddr    = 0;
    fSize        = 0;
-   fFirst       = 0;
-   fLast        = 0;
+   fFirst       = nullptr;
+   fLast        = nullptr;
    fOffset      = 0;
-   fDirectory   = 0;
-   fBrowseList  = 0;
+   fDirectory   = nullptr;
+   fBrowseList  = nullptr;
    fWritable    = kFALSE;
    fSemaphore   = -1;
    fhSemaphore  = 0;
-   fGetting     = 0;
+   fGetting     = nullptr;
    fWritten     = 0;
    fSumBuffer   = 0;
    fSum2Buffer  = 0;
@@ -241,21 +242,21 @@ TMapFile::TMapFile(const char *name, const char *title, Option_t *option,
    fFd          = (Int_t) INVALID_HANDLE_VALUE;
    fSemaphore   = (Int_t) INVALID_HANDLE_VALUE;
 #endif
-   fMmallocDesc = 0;
+   fMmallocDesc = nullptr;
    fSize        = size;
    fFirst       = 0;
    fOffset      = 0;
    fVersion     = gROOT->GetVersionInt();
    fTitle       = StrDup(title);
    fOption      = StrDup(option);
-   fDirectory   = 0;
-   fBrowseList  = 0;
-   fGetting     = 0;
+   fDirectory   = nullptr;
+   fBrowseList  = nullptr;
+   fGetting     = nullptr;
    fWritten     = 0;
    fSumBuffer   = 0;
    fSum2Buffer  = 0;
 
-   char  *cleanup = 0;
+   char  *cleanup = nullptr;
    Bool_t create  = kFALSE;
    Bool_t recreate, update, read;
 
@@ -279,12 +280,10 @@ TMapFile::TMapFile(const char *name, const char *title, Option_t *option,
    }
 
    const char *fname;
-   if ((fname = gSystem->ExpandPathName(name))) {
-      fName = StrDup(fname);
-      delete [] (char*)fname;
+   if ((fName = gSystem->ExpandPathName(name))) {
       fname = fName;
    } else {
-      Error("TMapFile", "error expanding path %s", fname);
+      Error("TMapFile", "error expanding path %s", name);
       goto zombie;
    }
 
@@ -528,9 +527,9 @@ TMapFile::TMapFile(const TMapFile &f, Long_t offset) : TObject(f)
    fWritable    = f.fWritable;
    fSemaphore   = f.fSemaphore;
    fOffset      = offset;
-   fDirectory   = 0;
-   fBrowseList  = 0;
-   fGetting     = 0;
+   fDirectory   = nullptr;
+   fBrowseList  = nullptr;
+   fGetting     = nullptr;
    fWritten     = f.fWritten;
    fSumBuffer   = f.fSumBuffer;
    fSum2Buffer  = f.fSum2Buffer;
@@ -550,9 +549,13 @@ TMapFile::TMapFile(const TMapFile &f, Long_t offset) : TObject(f)
 TMapFile::~TMapFile()
 {
    if (fDirectory == gDirectory) gDirectory = gROOT;
-   delete fDirectory; fDirectory = 0;
-   if (fBrowseList) fBrowseList->Delete();
-   delete fBrowseList; fBrowseList = 0;
+   delete fDirectory; fDirectory = nullptr;
+   if (fBrowseList) {
+      fBrowseList->Delete();
+      delete fBrowseList;
+      fBrowseList = nullptr;
+   }
+
 
    // if shadow map file we are done here
    if (fVersion == -1)
@@ -567,6 +570,10 @@ TMapFile::~TMapFile()
    Close("dtor");
 
    fgMmallocDesc = fMmallocDesc;
+
+   delete [] fName; fName = nullptr;
+   delete [] fOption; fOption = nullptr;
+   delete [] fTitle; fTitle = nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -574,7 +581,7 @@ TMapFile::~TMapFile()
 
 void TMapFile::InitDirectory()
 {
-   gDirectory = 0;
+   gDirectory = nullptr;
    fDirectory = new TDirectoryFile();
    fDirectory->SetName(GetName());
    fDirectory->SetTitle(GetTitle());
@@ -617,7 +624,7 @@ void TMapFile::Add(const TObject *obj, const char *name)
       fLast        = mr;
    }
 
-   ROOT::Internal::gMmallocDesc = 0;
+   ROOT::Internal::gMmallocDesc = nullptr;
 
    if (lock)
       ReleaseSemaphore();
@@ -656,7 +663,7 @@ void TMapFile::Update(TObject *obj)
       mr = mr->fNext;
    }
 
-   ROOT::Internal::gMmallocDesc = 0;
+   ROOT::Internal::gMmallocDesc = nullptr;
 
    ReleaseSemaphore();
 }
