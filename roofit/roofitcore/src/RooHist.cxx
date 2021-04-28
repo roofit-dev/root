@@ -28,7 +28,6 @@ a RooPlot.
 #include "RooFit.h"
 
 #include "RooHist.h"
-#include "RooHist.h"
 #include "RooHistError.h"
 #include "RooCurve.h"
 #include "RooScaledFunc.h"
@@ -98,6 +97,10 @@ RooHist::RooHist(const TH1 &data, Double_t nominalBinWidth, Double_t nSigma, Roo
     if(axis->GetNbins() > 0) _nominalBinWidth= (axis->GetXmax() - axis->GetXmin())/axis->GetNbins();
   }
   setYAxisLabel(data.GetYaxis()->GetTitle());
+
+  if (correctForBinWidth && etype == RooAbsData::Poisson) {
+    coutW(Plotting) << "Cannot apply a bin width correction and use Poisson errors. Not correcting for bin width." << std::endl;
+  }
 
   // initialize our contents from the input histogram's contents
   Int_t nbin= data.GetNbinsX();

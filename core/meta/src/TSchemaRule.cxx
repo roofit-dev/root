@@ -9,7 +9,8 @@
 #include "TSchemaType.h"
 #include "TObjArray.h"
 #include "TObjString.h"
-#include "TNamed.h"
+#include "TROOT.h"
+
 #include <utility>
 #include <iostream>
 #include <vector>
@@ -17,8 +18,6 @@
 #include <string>
 #include <cstdlib>
 #include <sstream>
-#include "TROOT.h"
-#include "Riostream.h"
 
 ClassImp(TSchemaRule);
 
@@ -402,7 +401,7 @@ const char *TSchemaRule::GetVersion() const
 
 Bool_t TSchemaRule::TestVersion( Int_t version ) const
 {
-   if( fVersion == "" )
+   if( fVersion.IsNull() )
       return kFALSE;
 
    if( !fVersionVect )
@@ -412,11 +411,11 @@ Bool_t TSchemaRule::TestVersion( Int_t version ) const
       version = 1;
    }
 
-   std::vector<std::pair<Int_t, Int_t> >::iterator it;
-   for( it = fVersionVect->begin(); it != fVersionVect->end(); ++it ) {
-      if( version >= it->first && version <= it->second )
-         return kTRUE;
-   }
+   if (fVersionVect)
+      for (auto &it : *fVersionVect)
+         if( version >= it.first && version <= it.second )
+            return kTRUE;
+
    return kFALSE;
 }
 
@@ -437,17 +436,17 @@ Bool_t TSchemaRule::SetChecksum( const TString& checksum )
 
 Bool_t TSchemaRule::TestChecksum( UInt_t checksum ) const
 {
-   if( fChecksum == "" )
+   if( fChecksum.IsNull() )
       return kFALSE;
 
    if( !fChecksumVect )
       ProcessChecksum( fChecksum ); // At this point the checksum string should always be correct
 
-   std::vector<UInt_t>::iterator it;
-   for( it = fChecksumVect->begin(); it != fChecksumVect->end(); ++it ) {
-      if( checksum == *it )
-         return kTRUE;
-   }
+   if (fChecksumVect)
+      for (auto &it : *fChecksumVect)
+         if( checksum == it )
+            return kTRUE;
+
    return kFALSE;
 }
 
@@ -856,7 +855,7 @@ Bool_t TSchemaRule::ProcessVersion( const TString& version ) const
    if( versions.empty() )
    {
       delete fVersionVect;
-      fVersionVect = 0;
+      fVersionVect = nullptr;
       return kFALSE;
    }
 

@@ -1,3 +1,11 @@
+/*************************************************************************
+ * Copyright (C) 1995-2021, Rene Brun and Fons Rademakers.               *
+ * All rights reserved.                                                  *
+ *                                                                       *
+ * For the licensing terms see $ROOTSYS/LICENSE.                         *
+ * For the list of contributors see $ROOTSYS/README/CREDITS.             *
+ *************************************************************************/
+
 #include "ROOT/RDF/RDisplay.hxx"
 #include "TInterpreter.h"
 
@@ -198,6 +206,10 @@ void RDisplay::Print() const
    std::vector<bool> hasPrintedNext(fNColumns,
                                     false); // Keeps track if the collection as already been shortened, allowing to skip
                                             // all elements until the next printable element.
+
+   if (columnsToPrint < fNColumns)
+      Info("Print", "Only showing %lu columns out of %lu\n", columnsToPrint, fNColumns);
+
    auto nrRows = fTable.size();
    for (size_t rowIndex = 0; rowIndex < nrRows; ++rowIndex) {
       auto &row = fTable[rowIndex];

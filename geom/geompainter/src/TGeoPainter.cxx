@@ -25,6 +25,7 @@ using TBuffer3D mechanism.
 #include "TAttFill.h"
 #include "TVirtualPad.h"
 #include "TCanvas.h"
+#include "TCanvasImp.h"
 #include "TH2F.h"
 #include "TF1.h"
 #include "TGraph.h"
@@ -37,6 +38,7 @@ using TBuffer3D mechanism.
 #include "TGeoAtt.h"
 #include "TGeoVolume.h"
 #include "TGeoNode.h"
+#include "TGeoElement.h"
 #include "TGeoManager.h"
 #include "TGeoTrack.h"
 #include "TGeoOverlap.h"
@@ -1614,7 +1616,7 @@ void TGeoPainter::Raytrace(Option_t *)
    if (!view->IsPerspective()) view->SetPerspective();
    gVirtualX->SetMarkerSize(1);
    gVirtualX->SetMarkerStyle(1);
-   Bool_t inclipst=kFALSE, inclip=kFALSE;
+   Bool_t inclipst=kFALSE;
    Double_t krad = TMath::DegToRad();
    Double_t lat = view->GetLatitude();
    Double_t longit = view->GetLongitude();
@@ -1652,7 +1654,7 @@ void TGeoPainter::Raytrace(Option_t *)
    fGeoManager->InitTrack(cop, dir);
    Bool_t outside = fGeoManager->IsOutside();
    fGeoManager->DoBackupState();
-   if (fClippingShape) inclipst = inclip = fClippingShape->Contains(cop);
+   if (fClippingShape) inclipst = fClippingShape->Contains(cop);
    Int_t px, py;
    Double_t xloc, yloc, modloc;
    Int_t pxmin,pxmax, pymin,pymax;
@@ -1691,7 +1693,7 @@ void TGeoPainter::Raytrace(Option_t *)
          nrays++;
          base_color = 1;
          steptot = 0;
-         inclip = inclipst;
+         Bool_t inclip = inclipst;
          xloc = gPad->AbsPixeltoX(pxmin+pxmax-px);
          xloc = xloc*du-u0;
          yloc = gPad->AbsPixeltoY(pymin+pymax-py);
