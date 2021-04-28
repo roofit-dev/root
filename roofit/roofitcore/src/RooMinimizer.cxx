@@ -99,8 +99,7 @@ void RooMinimizer::setOffsetting(Bool_t flag)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Choose the minimzer algorithm.
-
+/// Choose the minimiser algorithm.
 void RooMinimizer::setMinimizerType(const char* type)
 {
   _minimizerType = type;
@@ -164,12 +163,16 @@ RooFitResult* RooMinimizer::fit(const char* options)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-
+/// Minimise the function passed in the constructor.
+/// \param[in] type Type of fitter to use, e.g. "Minuit" "Minuit2".
+/// \attention This overrides the default fitter of this RooMinimizer.
+/// \param[in] alg  Fit algorithm to use. (Optional)
 Int_t RooMinimizer::minimize(const char* type, const char* alg)
 {
   _fcn->Synchronize(_theFitter->Config().ParamsSettings(),
 		    _optConst,_verbose) ;
 
+  _minimizerType = type;
   _theFitter->Config().SetMinimizer(type,alg);
 
   profileStart() ;
@@ -194,7 +197,7 @@ Int_t RooMinimizer::minimize(const char* type, const char* alg)
 /// Execute MIGRAD. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::migrad()
 {
@@ -223,7 +226,7 @@ Int_t RooMinimizer::migrad()
 /// Execute HESSE. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::hesse()
 {
@@ -260,7 +263,7 @@ Int_t RooMinimizer::hesse()
 /// Execute MINOS. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::minos()
 {
@@ -298,7 +301,7 @@ Int_t RooMinimizer::minos()
 /// Execute MINOS for given list of parameters. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::minos(const RooArgSet& minosParamList)
 {
@@ -357,7 +360,7 @@ Int_t RooMinimizer::minos(const RooArgSet& minosParamList)
 /// Execute SEEK. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::seek()
 {
@@ -386,7 +389,7 @@ Int_t RooMinimizer::seek()
 /// Execute SIMPLEX. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::simplex()
 {
@@ -415,7 +418,7 @@ Int_t RooMinimizer::simplex()
 /// Execute IMPROVE. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::improve()
 {
