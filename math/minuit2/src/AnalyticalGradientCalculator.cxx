@@ -39,10 +39,10 @@ namespace ROOT {
           v(i) = grad[ext];
         }
       }
+   }
 
-#ifdef DEBUG
-      std::cout << "User given gradient in Minuit2" << v << std::endl;
-#endif
+   MnPrint print("AnalyticalGradientCalculator");
+   print.Debug("User given gradient in Minuit2", v);
 
       // check for 2nd derivative and step-size from the external gradient
       // function and use them if present
