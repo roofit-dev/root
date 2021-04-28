@@ -16,7 +16,7 @@
 #include "ROOT/RAttrFill.hxx"
 #include "ROOT/RAttrMargins.hxx"
 #include "ROOT/RAttrAxis.hxx"
-
+#include "ROOT/RAttrValue.hxx"
 #include "ROOT/RPadUserAxis.hxx"
 
 #include <memory>
@@ -31,8 +31,7 @@ namespace Experimental {
 /** \class RFrame
 \ingroup GpadROOT7
 \brief Holds an area where drawing on user coordinate-system can be performed.
-\author Axel Naumann <axel@cern.ch>
-\author Sergey Linev <s.linev@gsi.de>
+\authors Axel Naumann <axel@cern.ch> Sergey Linev <s.linev@gsi.de>
 \date 2017-09-26
 \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 */
@@ -46,6 +45,19 @@ public:
    class RUserRanges {
       std::vector<double> values;  ///< min/max values for all dimensions
       std::vector<bool> flags;     ///< flag if values available
+
+      void UpdateDim(unsigned ndim, const RUserRanges &src)
+      {
+         if (src.IsUnzoom(ndim)) {
+            ClearMinMax(ndim);
+         } else {
+            if (src.HasMin(ndim))
+               AssignMin(ndim, src.GetMin(ndim));
+            if (src.HasMax(ndim))
+               AssignMax(ndim, src.GetMax(ndim));
+         }
+      }
+
    public:
       // Default constructor - for I/O
       RUserRanges() = default;
@@ -79,26 +91,31 @@ public:
       double GetMin(unsigned ndim) const { return (ndim*2 < values.size()) ? values[ndim*2] : 0.; }
 
       // Assign minimum for specified dimension
-      void AssignMin(unsigned ndim, double value, bool force = false)
+      void AssignMin(unsigned ndim, double value)
       {
-         if (!HasMin(ndim) || force) {
-            Extend(ndim+1);
-            values[ndim*2] = value;
-            flags[ndim*2] = true;
-         }
+          Extend(ndim+1);
+          values[ndim*2] = value;
+          flags[ndim*2] = true;
       }
 
       bool HasMax(unsigned ndim) const { return (ndim*2+1 < flags.size()) && flags[ndim*2+1]; }
       double GetMax(unsigned ndim) const { return (ndim*2+1 < values.size()) ? values[ndim*2+1] : 0.; }
 
       // Assign maximum for specified dimension
-      void AssignMax(unsigned ndim, double value, bool force = false)
+      void AssignMax(unsigned ndim, double value)
       {
-         if (!HasMax(ndim) || force) {
-            Extend(ndim+1);
-            values[ndim*2+1] = value;
-            flags[ndim*2+1] = true;
-         }
+          Extend(ndim+1);
+          values[ndim*2+1] = value;
+          flags[ndim*2+1] = true;
+      }
+
+      void ClearMinMax(unsigned ndim)
+      {
+         if (ndim*2+1 < flags.size())
+            flags[ndim*2] = flags[ndim*2+1] = false;
+
+         if (ndim*2+1 < values.size())
+            values[ndim*2] = values[ndim*2+1] = 0.;
       }
 
       /** Returns true if axis configured as unzoomed, can be specified from client */
@@ -116,23 +133,27 @@ public:
             if (fl) return true;
          return false;
       }
+
+      void Update(const RUserRanges &src)
+      {
+         UpdateDim(0, src);
+         UpdateDim(1, src);
+         UpdateDim(2, src);
+      }
+
    };
 
 private:
 
-   class RFrameAttrs : public RAttrBase {
-      friend class RFrame;
-      R__ATTR_CLASS(RFrameAttrs, "", AddBool("gridx", false).AddBool("gridy",false));
-   };
-
-   RAttrMargins fMargins{this, "margin_"};     ///<!
-   RAttrLine fAttrBorder{this, "border_"};     ///<!
-   RAttrFill fAttrFill{this, "fill_"};         ///<!
-   RAttrAxis fAttrX{this, "x_"};               ///<!
-   RAttrAxis fAttrY{this, "y_"};               ///<!
-   RAttrAxis fAttrZ{this, "z_"};               ///<!
-   RFrameAttrs fAttr{this,""};                 ///<! own frame attributes
-   std::map<unsigned, RUserRanges> fClientRanges; ///<! individual client ranges
+   RAttrMargins                     fMargins{this, "margin_"};        ///<!
+   RAttrLine                        fAttrBorder{this, "border_"};     ///<!
+   RAttrFill                        fAttrFill{this, "fill_"};         ///<!
+   RAttrAxis                        fAttrX{this, "x_"};               ///<!
+   RAttrAxis                        fAttrY{this, "y_"};               ///<!
+   RAttrAxis                        fAttrZ{this, "z_"};               ///<!
+   RAttrValue<bool>                 fGridX{this, "gridx", false};     ///<!
+   RAttrValue<bool>                 fGridY{this, "gridy", false};     ///<!
+   std::map<unsigned, RUserRanges>  fClientRanges;                    ///<! individual client ranges
 
    /// Mapping of user coordinates to normal coordinates, one entry per dimension.
    std::vector<std::unique_ptr<RPadUserAxisBase>> fUserCoord;
@@ -199,11 +220,11 @@ public:
    RFrame &SetAttrZ(const RAttrAxis &axis) { fAttrZ = axis; return *this; }
    RAttrAxis &AttrZ() { return fAttrZ; }
 
-   RFrame &SetGridX(bool on = true) { fAttr.SetValue("gridx", on); return *this; }
-   bool GetGridX() const { return fAttr.GetValue<bool>("gridx"); }
+   RFrame &SetGridX(bool on = true) { fGridX = on; return *this; }
+   bool GetGridX() const { return fGridX; }
 
-   RFrame &SetGridY(bool on = true) { fAttr.SetValue("gridy", on); return *this; }
-   bool GetGridY() const { return fAttr.GetValue<bool>("gridy"); }
+   RFrame &SetGridY(bool on = true) { fGridY = on; return *this; }
+   bool GetGridY() const { return fGridY; }
 
    void GetClientRanges(unsigned connid, RUserRanges &ranges);
 

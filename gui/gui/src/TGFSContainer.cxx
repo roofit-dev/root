@@ -37,13 +37,14 @@
 #include "TSystem.h"
 #include "TVirtualX.h"
 #include "TGDNDManager.h"
-#include "Riostream.h"
 #include "TRemoteObject.h"
 #include "TBufferFile.h"
 #include "TImage.h"
+#include "snprintf.h"
 
-#include <time.h>
-#include <stdlib.h>
+#include <ctime>
+#include <cstdlib>
+#include <iostream>
 
 ClassImp(TGFileItem);
 ClassImp(TGFileContainer);

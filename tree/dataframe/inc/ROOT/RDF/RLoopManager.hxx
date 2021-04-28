@@ -12,7 +12,6 @@
 #define ROOT_RLOOPMANAGER
 
 #include "ROOT/RDF/RNodeBase.hxx"
-#include "ROOT/RDF/NodesUtils.hxx"
 
 #include <functional>
 #include <map>
@@ -21,7 +20,9 @@
 #include <vector>
 
 // forward declarations
+class TTree;
 class TTreeReader;
+class TDirectory;
 
 namespace ROOT {
 namespace RDF {
@@ -31,7 +32,7 @@ class RDataSource;
 
 namespace Internal {
 namespace RDF {
-ColumnNames_t GetBranchNames(TTree &t, bool allowDuplicates = true);
+std::vector<std::string> GetBranchNames(TTree &t, bool allowDuplicates = true);
 
 class RActionBase;
 class GraphNode;
@@ -44,12 +45,12 @@ class GraphCreatorHelper;
 
 namespace Detail {
 namespace RDF {
-using namespace ROOT::TypeTraits;
 namespace RDFInternal = ROOT::Internal::RDF;
 
 class RFilterBase;
 class RRangeBase;
 using ROOT::RDF::RDataSource;
+using ColumnNames_t = std::vector<std::string>;
 
 /// The head node of a RDF computation graph.
 /// This class is responsible of running the event loop.
@@ -114,6 +115,9 @@ class RLoopManager : public RNodeBase {
    std::vector<TOneTimeCallback> fCallbacksOnce; ///< Registered callbacks to invoke just once before running the loop
    unsigned int fNRuns{0}; ///< Number of event loops run
 
+   /// Registry of per-slot value pointers for booked data-source columns
+   std::map<std::string, std::vector<void *>> fDSValuePtrMap;
+
    /// Cache of the tree/chain branch names. Never access directy, always use GetBranchNames().
    ColumnNames_t fValidBranchNames;
 
@@ -166,6 +170,9 @@ public:
    const std::map<std::string, std::string> &GetAliasMap() const { return fAliasColumnNameMap; }
    void RegisterCallback(ULong64_t everyNEvents, std::function<void(unsigned int)> &&f);
    unsigned int GetNRuns() const { return fNRuns; }
+   bool HasDSValuePtrs(const std::string &col) const;
+   const std::map<std::string, std::vector<void *>> &GetDSValuePtrs() const { return fDSValuePtrMap; }
+   void AddDSValuePtrs(const std::string &col, const std::vector<void *> ptrs);
 
    /// End of recursive chain of calls, does nothing
    void AddFilterName(std::vector<std::string> &) {}

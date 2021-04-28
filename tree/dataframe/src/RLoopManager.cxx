@@ -97,12 +97,11 @@ static void ExploreBranch(TTree &t, std::set<std::string> &bNamesReg, ColumnName
 
       ExploreBranch(t, bNamesReg, bNames, subBranch, newPrefix, friendName);
 
-      if (t.GetBranch(fullName.c_str())) {
+      if (t.GetBranch(fullName.c_str()) || t.FindBranch(fullName.c_str()))
          UpdateList(bNamesReg, bNames, fullName, friendName);
 
-      } else if (t.GetBranch(subBranchName.c_str())) {
+      if (t.GetBranch(subBranchName.c_str()))
          UpdateList(bNamesReg, bNames, subBranchName, friendName);
-      }
    }
 }
 
@@ -291,7 +290,7 @@ void RLoopManager::RunEmptySourceMT()
       } catch (...) {
          CleanUpTask(slot);
          // Error might throw in experiment frameworks like CMSSW
-         std::cerr << "RDataFrame::Run: event was loop interrupted\n";
+         std::cerr << "RDataFrame::Run: event loop was interrupted\n";
          throw;
       }
       CleanUpTask(slot);
@@ -314,7 +313,7 @@ void RLoopManager::RunEmptySource()
       }
    } catch (...) {
       CleanUpTask(0u);
-      std::cerr << "RDataFrame::Run: event was loop interrupted\n";
+      std::cerr << "RDataFrame::Run: event loop was interrupted\n";
       throw;
    }
    CleanUpTask(0u);
@@ -344,7 +343,7 @@ void RLoopManager::RunTreeProcessorMT()
          }
       } catch (...) {
          CleanUpTask(slot);
-         std::cerr << "RDataFrame::Run: event was loop interrupted\n";
+         std::cerr << "RDataFrame::Run: event loop was interrupted\n";
          throw;
       }
       CleanUpTask(slot);
@@ -370,7 +369,7 @@ void RLoopManager::RunTreeReader()
       }
    } catch (...) {
       CleanUpTask(0u);
-      std::cerr << "RDataFrame::Run: event was loop interrupted\n";
+      std::cerr << "RDataFrame::Run: event loop was interrupted\n";
       throw;
    }
    if (r.GetEntryStatus() != TTreeReader::kEntryNotFound && fNStopsReceived < fNChildren) {
@@ -401,7 +400,7 @@ void RLoopManager::RunDataSource()
          }
       } catch (...) {
          CleanUpTask(0u);
-         std::cerr << "RDataFrame::Run: event was loop interrupted\n";
+         std::cerr << "RDataFrame::Run: event loop was interrupted\n";
          throw;
       }
       CleanUpTask(0u);
@@ -433,7 +432,7 @@ void RLoopManager::RunDataSourceMT()
          }
       } catch (...) {
          CleanUpTask(slot);
-         std::cerr << "RDataFrame::Run: event was loop interrupted\n";
+         std::cerr << "RDataFrame::Run: event loop was interrupted\n";
          throw;
       }
       CleanUpTask(slot);
@@ -465,9 +464,7 @@ void RLoopManager::RunAndCheckFilters(unsigned int slot, Long64_t entry)
 
 /// Build TTreeReaderValues for all nodes
 /// This method loops over all filters, actions and other booked objects and
-/// calls their `InitRDFValues` methods. It is called once per node per slot, before
-/// running the event loop. It also informs each node of the TTreeReader that
-/// a particular slot will be using.
+/// calls their `InitSlot` method, to get them ready for running a task.
 void RLoopManager::InitNodeSlots(TTreeReader *r, unsigned int slot)
 {
    for (auto &ptr : fBookedActions)
@@ -523,7 +520,7 @@ void RLoopManager::CleanUpTask(unsigned int slot)
    for (auto &ptr : fBookedActions)
       ptr->FinalizeSlot(slot);
    for (auto &ptr : fBookedFilters)
-      ptr->ClearTask(slot);
+      ptr->FinaliseSlot(slot);
 }
 
 /// Add RDF nodes that require just-in-time compilation to the computation graph.
@@ -692,4 +689,14 @@ const ColumnNames_t &RLoopManager::GetBranchNames()
       fValidBranchNames = RDFInternal::GetBranchNames(*fTree, /*allowRepetitions=*/true);
    }
    return fValidBranchNames;
+}
+
+bool RLoopManager::HasDSValuePtrs(const std::string &col) const
+{
+   return fDSValuePtrMap.find(col) != fDSValuePtrMap.end();
+}
+
+void RLoopManager::AddDSValuePtrs(const std::string &col, const std::vector<void *> ptrs)
+{
+   fDSValuePtrMap[col] = ptrs;
 }

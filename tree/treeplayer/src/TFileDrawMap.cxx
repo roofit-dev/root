@@ -66,12 +66,12 @@ then all keys with names = "uv*" in a second pass, etc.
 #include "TMath.h"
 #include "TVirtualPad.h"
 #include "TVirtualX.h"
-#include "TStyle.h"
 #include "TH1.h"
 #include "TBox.h"
 #include "TKey.h"
 #include "TRegexp.h"
 #include "TSystem.h"
+#include "strlcpy.h"
 
 ClassImp(TFileDrawMap);
 

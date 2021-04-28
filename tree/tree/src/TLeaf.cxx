@@ -22,9 +22,8 @@ See TBranch structure in TTree.
 #include "TTree.h"
 #include "TVirtualPad.h"
 #include "TBrowser.h"
-#include "TClass.h"
 
-#include <ctype.h>
+#include <cctype>
 
 ClassImp(TLeaf);
 
@@ -193,6 +192,19 @@ Int_t *TLeaf::GenerateOffsetArrayBase(Int_t base, Int_t events) const
    }
 
    return retval;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return the full name (including the parent's branch names) of the leaf.
+
+TString TLeaf::GetFullName() const
+{
+   TString branchname = GetBranch()->GetFullName();
+   if (branchname.Length() && (branchname[branchname.Length()-1] == '.'))
+      return branchname + GetName();
+   else
+      return branchname + "." + GetName();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

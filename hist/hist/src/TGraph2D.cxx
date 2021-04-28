@@ -9,7 +9,6 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include "Riostream.h"
 #include "TROOT.h"
 #include "TBuffer.h"
 #include "TMath.h"
@@ -24,8 +23,13 @@
 #include "TVirtualHistPainter.h"
 #include "TPluginManager.h"
 #include "TSystem.h"
-#include <stdlib.h>
+#include "strtok.h"
+#include "snprintf.h"
+
+#include <cstdlib>
 #include <cassert>
+#include <iostream>
+#include <fstream>
 
 #include "HFitInterface.h"
 #include "Fit/DataRange.h"

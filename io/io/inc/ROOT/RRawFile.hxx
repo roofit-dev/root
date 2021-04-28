@@ -49,6 +49,8 @@ public:
    static constexpr int kFeatureHasSize = 0x01;
    /// Map() and Unmap() are implemented
    static constexpr int kFeatureHasMmap = 0x02;
+   /// File supports async IO
+   static constexpr int kFeatureHasAsyncIo = 0x04;
 
    /// On construction, an ROptions parameter can customize the RRawFile behavior
    struct ROptions {
@@ -160,6 +162,8 @@ public:
    void Seek(std::uint64_t offset);
    /// Returns the size of the file
    std::uint64_t GetSize();
+   /// Returns the url of the file
+   std::string GetUrl() const;
 
    /// Opens the file if necessary and calls ReadVImpl
    void ReadV(RIOVec *ioVec, unsigned int nReq);

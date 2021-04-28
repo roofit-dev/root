@@ -67,13 +67,14 @@ of a main program creating an interactive version is shown below:
 */
 
 #include <ROOT/RConfig.hxx>
+#include <ROOT/TErrorDefaultHandler.hxx>
 #include "RConfigure.h"
 #include "RConfigOptions.h"
 #include "RVersion.h"
 #include "RGitCommit.h"
 #include <string>
 #include <map>
-#include <stdlib.h>
+#include <cstdlib>
 #ifdef WIN32
 #include <io.h>
 #include "Windows4Root.h"
@@ -112,14 +113,13 @@ FARPROC dlsym(void *library, const char *function_name)
 #include <dlfcn.h>
 #endif
 
-#include "Riostream.h"
+#include <iostream>
 #include "ROOT/FoundationUtils.hxx"
 #include "TROOT.h"
 #include "TClass.h"
 #include "TClassEdit.h"
 #include "TClassGenerator.h"
 #include "TDataType.h"
-#include "TDatime.h"
 #include "TStyle.h"
 #include "TObjectTable.h"
 #include "TClassTable.h"
@@ -142,7 +142,6 @@ FARPROC dlsym(void *library, const char *function_name)
 #include "TQObject.h"
 #include "TProcessUUID.h"
 #include "TPluginManager.h"
-#include "TMap.h"
 #include "TVirtualMutex.h"
 #include "TListOfTypes.h"
 #include "TListOfDataMembers.h"
@@ -167,11 +166,11 @@ FARPROC dlsym(void *library, const char *function_name)
 
 extern "C" void R__SetZipMode(int);
 
-static DestroyInterpreter_t *gDestroyInterpreter = 0;
-static void *gInterpreterLib = 0;
+static DestroyInterpreter_t *gDestroyInterpreter = nullptr;
+static void *gInterpreterLib = nullptr;
 
 // Mutex for protection of concurrent gROOT access
-TVirtualMutex* gROOTMutex = 0;
+TVirtualMutex* gROOTMutex = nullptr;
 ROOT::TVirtualRWMutex *ROOT::gCoreMutex = nullptr;
 
 // For accessing TThread::Tsd indirectly.
@@ -327,11 +326,13 @@ namespace Internal {
       // and we can still allocate the TROOT object's memory
       // statically.
       //
-      char fHolder[sizeof(TROOT)];
+      union {
+         TROOT fObj;
+         char fHolder[sizeof(TROOT)];
+      };
    public:
-      TROOTAllocator() {
-         new(&(fHolder[0])) TROOT("root", "The ROOT of EVERYTHING");
-      }
+      TROOTAllocator(): fObj("root", "The ROOT of EVERYTHING")
+      {}
 
       ~TROOTAllocator() {
          if (gROOTLocal) {
@@ -599,7 +600,7 @@ TROOT::TROOT() : TDirectory(),
      fVersionDate(0), fVersionTime(0), fBuiltDate(0), fBuiltTime(0),
      fTimer(0), fApplication(0), fInterpreter(0), fBatch(kTRUE),
      fIsWebDisplay(kFALSE), fIsWebDisplayBatch(kFALSE), fEditHistograms(kTRUE),
-     fFromPopUp(kTRUE),fMustClean(kTRUE),fReadingObject(kFALSE),fForceStyle(kFALSE),
+     fFromPopUp(kTRUE),fMustClean(kTRUE),fForceStyle(kFALSE),
      fInterrupt(kFALSE),fEscape(kFALSE),fExecutingMacro(kFALSE),fEditorMode(0),
      fPrimitive(0),fSelectPad(0),fClasses(0),fTypes(0),fGlobals(0),fGlobalFunctions(0),
      fClosedObjects(0),fFiles(0),fMappedFiles(0),fSockets(0),fCanvases(0),fStyles(0),fFunctions(0),
@@ -633,7 +634,7 @@ TROOT::TROOT(const char *name, const char *title, VoidFuncPtr_t *initfunc)
      fVersionDate(0), fVersionTime(0), fBuiltDate(0), fBuiltTime(0),
      fTimer(0), fApplication(0), fInterpreter(0), fBatch(kTRUE),
      fIsWebDisplay(kFALSE), fIsWebDisplayBatch(kFALSE), fEditHistograms(kTRUE),
-     fFromPopUp(kTRUE),fMustClean(kTRUE),fReadingObject(kFALSE),fForceStyle(kFALSE),
+     fFromPopUp(kTRUE),fMustClean(kTRUE),fForceStyle(kFALSE),
      fInterrupt(kFALSE),fEscape(kFALSE),fExecutingMacro(kFALSE),fEditorMode(0),
      fPrimitive(0),fSelectPad(0),fClasses(0),fTypes(0),fGlobals(0),fGlobalFunctions(0),
      fClosedObjects(0),fFiles(0),fMappedFiles(0),fSockets(0),fCanvases(0),fStyles(0),fFunctions(0),
@@ -786,7 +787,6 @@ TROOT::TROOT(const char *name, const char *title, VoidFuncPtr_t *initfunc)
    fExecutingMacro= kFALSE;
    fForceStyle    = kFALSE;
    fFromPopUp     = kFALSE;
-   fReadingObject = kFALSE;
    fInterrupt     = kFALSE;
    fEscape        = kFALSE;
    fMustClean     = kTRUE;
@@ -943,6 +943,9 @@ TROOT::~TROOT()
       gSystem->CleanCompiledMacros();
 
       // Cleanup system class
+      ROOT::Internal::SetErrorSystemMsgHandler(ROOT::Internal::ErrorSystemMsgHandlerFunc_t());
+      SetErrorHandler(ROOT::Internal::MinimalErrorHandler);
+      ROOT::Internal::ReleaseDefaultErrorHandler();
       delete gSystem;
 
       // ROOT-6022:
@@ -972,7 +975,13 @@ TROOT::~TROOT()
       SafeDelete(fCleanups);
 #endif
 
-#ifndef _MSC_VER
+#ifdef _MSC_VER
+      // usedToIdentifyRootClingByDlSym is available when TROOT is part of rootcling.
+      if (dlsym(RTLD_DEFAULT, "usedToIdentifyRootClingByDlSym")) {
+         // deleting the interpreter makes things crash at exit in some cases
+         delete fInterpreter;
+      }
+#else
       // deleting the interpreter makes things crash at exit in some cases
       delete fInterpreter;
 #endif
@@ -1802,6 +1811,21 @@ TCollection *TROOT::GetListOfTypes(Bool_t /* load */)
    return fTypes;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Get number of classes.
+
+Int_t TROOT::GetNclasses() const
+{
+   return fClasses->GetSize();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get number of types.
+
+Int_t TROOT::GetNtypes() const
+{
+   return fTypes->GetSize();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Execute command when system has been idle for idleTimeInSec seconds.
@@ -1917,6 +1941,9 @@ void TROOT::InitSystem()
 
       // read default files
       gEnv = new TEnv(".rootrc");
+
+      ROOT::Internal::SetErrorSystemMsgHandler([](){ return gSystem->GetError(); });
+      SetErrorHandler(DefaultErrorHandler);
 
       gDebug = gEnv->GetValue("Root.Debug", 0);
 

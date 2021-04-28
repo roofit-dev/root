@@ -448,42 +448,18 @@ void RooTreeDataStore::createTree(const char* name, const char* title)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Load values from tree 't' into this data collection, optionally
-/// selecting events using 'select' RooFormulaVar.
+/// selecting events using the RooFormulaVar 'select'.
 ///
-/// The source tree 't' is first clone as not disturb its branch
+/// The source tree 't' is cloned to not disturb its branch
 /// structure when retrieving information from it.
-
 void RooTreeDataStore::loadValues(const TTree *t, const RooFormulaVar* select, const char* /*rangeName*/, Int_t /*nStart*/, Int_t /*nStop*/) 
 {
-  // Clone source tree
-  // WVE Clone() crashes on trees, CloneTree() crashes on tchains :-(
+  // Make our local copy of the tree, so we can safely loop through it.
+  std::unique_ptr<TTree> tClone( static_cast<TTree*>(t->Clone()) );
+  tClone->SetDirectory(t->GetDirectory());
 
-  // Change directory to memory dir before cloning tree to avoid ROOT errors
-  TString pwd(gDirectory->GetPath()) ;
-  TString memDir(gROOT->GetName()) ;
-  memDir.Append(":/") ;
-  Bool_t notInMemNow= (pwd!=memDir) ;
-
-  if (notInMemNow) {
-    gDirectory->cd(memDir) ;
-  }
-
-  TTree* tClone ;
-  if (dynamic_cast<const TChain*>(t)) {
-    tClone = (TTree*) t->Clone() ; 
-  } else {
-    tClone = ((TTree*)t)->CloneTree() ;
-  }
-
-  // Change directory back to original directory
-  tClone->SetDirectory(0) ;
-
-  if (notInMemNow) {
-    gDirectory->cd(pwd) ;
-  }
-    
   // Clone list of variables  
-  RooArgSet *sourceArgSet = (RooArgSet*) _varsww.snapshot(kFALSE) ;
+  std::unique_ptr<RooArgSet> sourceArgSet( _varsww.snapshot(kFALSE) );
   
   // Check that we have the branches:
   for (const auto var : *sourceArgSet) {
@@ -500,18 +476,18 @@ void RooTreeDataStore::loadValues(const TTree *t, const RooFormulaVar* select, c
   }
 
   // Redirect formula servers to sourceArgSet
-  RooFormulaVar* selectClone(0) ;
+  std::unique_ptr<RooFormulaVar> selectClone;
   if (select) {
-    selectClone = (RooFormulaVar*) select->cloneTree() ;
+    selectClone.reset( static_cast<RooFormulaVar*>(select->cloneTree()) );
     selectClone->recursiveRedirectServers(*sourceArgSet) ;
     selectClone->setOperMode(RooAbsArg::ADirty,kTRUE) ;
   }
 
   // Loop over events in source tree   
   Int_t numInvalid(0) ;
-  Int_t nevent= (Int_t)tClone->GetEntries();
-  for(Int_t i=0; i < nevent; ++i) {
-    Int_t entryNumber=tClone->GetEntryNumber(i);
+  const Long64_t nevent = tClone->GetEntries();
+  for(Long64_t i=0; i < nevent; ++i) {
+    const auto entryNumber = tClone->GetEntryNumber(i);
     if (entryNumber<0) break;
     tClone->GetEntry(entryNumber,1);
 
@@ -549,10 +525,6 @@ void RooTreeDataStore::loadValues(const TTree *t, const RooFormulaVar* select, c
   }
 
   SetTitle(t->GetTitle());
-
-  delete sourceArgSet ;
-  delete selectClone ;
-  delete tClone ;
 }
 
 
@@ -742,7 +714,7 @@ Double_t RooTreeDataStore::weightError(RooAbsData::ErrorType etype) const
     // We have a weight array, use that info
 
     // Return symmetric error on current bin calculated either from Poisson statistics or from SumOfWeights
-    Double_t lo,hi ;
+    Double_t lo = 0, hi =0;
     weightError(lo,hi,etype) ;
     return (lo+hi)/2 ;
 
@@ -752,7 +724,7 @@ Double_t RooTreeDataStore::weightError(RooAbsData::ErrorType etype) const
     if (_wgtVar->hasAsymError()) {
       return ( _wgtVar->getAsymErrorHi() - _wgtVar->getAsymErrorLo() ) / 2 ;
     } else {
-      return _wgtVar->getError() ;    
+      return _wgtVar->getError() ;
     }
 
   } else {
@@ -785,9 +757,9 @@ void RooTreeDataStore::weightError(Double_t& lo, Double_t& hi, RooAbsData::Error
     case RooAbsData::Poisson:
       // Weight may be preset or precalculated    
       if (_curWgtErrLo>=0) {
-	lo = _curWgtErrLo ;
-	hi = _curWgtErrHi ;
-	return ;
+         lo = _curWgtErrLo ;
+         hi = _curWgtErrHi ;
+         return ;
       }
       
       // Otherwise Calculate poisson errors
@@ -1380,13 +1352,12 @@ void RooTreeDataStore::Streamer(TBuffer &R__b)
   } else {
 
     TTree* tmpTree = _tree;
-    if (_tree) {
+    auto parent = dynamic_cast<TDirectory*>(R__b.GetParent());
+    if (_tree && parent) {
       // Large trees cannot be written because of the 1Gb I/O limitation.
       // Here, we take the tree away from our instance, write it, and continue
       // to write the rest of the class normally
       auto tmpDir = _tree->GetDirectory();
-      TFile* parent = dynamic_cast<TFile*>(R__b.GetParent());
-      assert(parent);
 
       _tree->SetDirectory(parent);
       _tree->FlushBaskets(false);

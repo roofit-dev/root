@@ -14,7 +14,6 @@
 #include "TObjArray.h"
 #include "TPRegexp.h"
 #include "TROOT.h"
-#include "TStyle.h"
 #include "TSystem.h"
 #include "TVirtualPad.h"
 #include "TVirtualMutex.h"
@@ -22,7 +21,7 @@
 #include <typeinfo>
 #include <fstream>
 #include <sstream>
-#include <stdlib.h>
+#include <cstdlib>
 
 //______________________________________________________________________________
 //
@@ -216,7 +215,7 @@ void TDocHtmlDirective::AddLine(const TSubString& line)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Set result to the HTML code that was passed in via AddLine().
-/// Prepend a closing </pre>, append an opening <pre>
+/// Prepend a closing \</pre\>, append an opening \<pre\>
 
 Bool_t TDocHtmlDirective::GetResult(TString& result)
 {

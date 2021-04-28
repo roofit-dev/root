@@ -8,10 +8,10 @@
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
-#include <stdlib.h>
+#include <cstdlib>
 
-#include "Riostream.h"
 #include "Strlen.h"
+#include "strlcpy.h"
 #include "TDirectory.h"
 #include "TBuffer.h"
 #include "TClassTable.h"
@@ -1302,7 +1302,7 @@ void TDirectory::RegisterContext(TContext *ctxt) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// See TDirectoryFile::WriteTObject for details
+/// \copydoc TDirectory::WriteTObject().
 
 Int_t TDirectory::WriteTObject(const TObject *obj, const char *name, Option_t * /*option*/, Int_t /*bufsize*/)
 {

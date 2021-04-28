@@ -276,8 +276,13 @@ set(gvizcflags)
 
 set(buildpython ${value${pyroot}})
 set(pythonlibdir ${PYTHON_LIBRARY_DIR})
-set(pythonlib ${PYTHON_LIBRARY})
-set(pythonincdir ${PYTHON_INCLUDE_DIR})
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.14)
+  set(pythonlib ${PYTHON_LIBRARIES})
+  set(pythonincdir ${PYTHON_INCLUDE_DIRS})
+else()
+  set(pythonlib ${PYTHON_LIBRARY})
+  set(pythonincdir ${PYTHON_INCLUDE_DIR})
+endif()
 set(pythonlibflags)
 
 set(buildxml ${value${xml}})
@@ -338,6 +343,9 @@ set(dicttype ${ROOT_DICTTYPE})
 
 find_program(PERL_EXECUTABLE perl)
 set(perl ${PERL_EXECUTABLE})
+
+# --- workaround for Ubuntu 20.04, where snap chrome has problem with arguments translation, to be remove once problem fixed
+find_program(CHROME_EXECUTABLE NAMES chrome PATHS "/snap/chromium/current/usr/lib/chromium-browser/" NO_DEFAULT_PATH)
 
 find_program(CHROME_EXECUTABLE NAMES chrome.exe chromium chromium-browser chrome chrome-browser Google\ Chrome
              PATH_SUFFIXES "Google/Chrome/Application")
@@ -486,6 +494,21 @@ if (tmva-cudnn)
 else()
    set(hastmvacudnn undef)
 endif()
+if (tmva-pymva)
+  set(haspymva define)
+else()
+  set(haspymva undef)
+endif()
+if (tmva-rmva)
+  set(hasrmva define)
+else()
+  set(hasrmva undef)
+endif()
+if (uring)
+  set(hasuring define)
+else()
+  set(hasuring undef)
+endif()
 
 # clear cache to allow reconfiguring
 # with a different CMAKE_CXX_STANDARD
@@ -497,10 +520,29 @@ unset(found_stdexpstringview CACHE)
 unset(found_stod_stringview CACHE)
 
 set(hasstdexpstringview undef)
+set(cudahasstdstringview undef)
 CHECK_CXX_SOURCE_COMPILES("#include <string_view>
   int main() { char arr[3] = {'B', 'a', 'r'}; std::string_view strv(arr, sizeof(arr)); return 0;}" found_stdstringview)
 if(found_stdstringview)
   set(hasstdstringview define)
+  if(cuda)
+    if(CUDA_NVCC_EXECUTABLE)
+      if (WIN32)
+        set(PLATFORM_NULL_FILE "nul")
+      else()
+        set(PLATFORM_NULL_FILE "/dev/null")
+      endif()
+      execute_process(
+        COMMAND "echo"
+          "-e" "#include <string_view>\nint main() { char arr[3] = {'B', 'a', 'r'}; std::string_view strv(arr, sizeof(arr)); return 0;}"
+        COMMAND "${CUDA_NVCC_EXECUTABLE}" "-std=c++${CMAKE_CUDA_STANDARD}" "-o" "${PLATFORM_NULL_FILE}" "-x" "c++" "-"
+        RESULT_VARIABLE nvcc_compiled_string_view)
+      unset(PLATFORM_NULL_FILE CACHE)
+      if (nvcc_compiled_string_view EQUAL "0")
+        set(cudahasstdstringview define)
+      endif()
+    endif()
+  endif()
 else()
   set(hasstdstringview undef)
 
@@ -605,7 +647,11 @@ get_filename_component(altcxx ${CMAKE_CXX_COMPILER} NAME)
 get_filename_component(altf77 "${CMAKE_Fortran_COMPILER}" NAME)
 get_filename_component(altld ${CMAKE_CXX_COMPILER} NAME)
 
-set(pythonvers ${PYTHON_VERSION_STRING})
+set(pythonvers ${PYTHON_VERSION_STRING_Development_Main})
+set(python${PYTHON_VERSION_MAJOR_Development_Main}vers ${PYTHON_VERSION_STRING_Development_Main})
+if(PYTHON_VERSION_STRING_Development_Other)
+   set(python${PYTHON_VERSION_MAJOR_Development_Other}vers ${PYTHON_VERSION_STRING_Development_Other})
+endif()
 
 #---RConfigure.h---------------------------------------------------------------------------------------------
 configure_file(${PROJECT_SOURCE_DIR}/config/RConfigure.in ginclude/RConfigure.h NEWLINE_STYLE UNIX)
@@ -773,7 +819,7 @@ configure_file(${CMAKE_SOURCE_DIR}/config/setxrd.sh ${CMAKE_RUNTIME_OUTPUT_DIREC
 configure_file(${CMAKE_SOURCE_DIR}/config/proofserv.in ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/proofserv @ONLY NEWLINE_STYLE UNIX)
 configure_file(${CMAKE_SOURCE_DIR}/config/roots.in ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/roots @ONLY NEWLINE_STYLE UNIX)
 configure_file(${CMAKE_SOURCE_DIR}/config/root-help.el.in root-help.el @ONLY NEWLINE_STYLE UNIX)
-if (XROOTD_FOUND AND XROOTD_NOMAIN)
+if(xproofd AND xrootd AND ssl AND XROOTD_NOMAIN)
   configure_file(${CMAKE_SOURCE_DIR}/config/xproofd.in ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/xproofd @ONLY NEWLINE_STYLE UNIX)
 endif()
 if(WIN32)
@@ -811,7 +857,7 @@ install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/memprobe
                           WORLD_EXECUTE WORLD_READ
               DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-if (XROOTD_FOUND AND XROOTD_NOMAIN)
+if(xproofd AND xrootd AND ssl AND XROOTD_NOMAIN)
    install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/xproofd
                  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
                              GROUP_EXECUTE GROUP_READ

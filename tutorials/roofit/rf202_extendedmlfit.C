@@ -2,7 +2,8 @@
 /// \ingroup tutorial_roofit
 /// \notebook -js
 ///
-/// Addition and convolution: setting up an extended maximum likelihood fit
+///
+/// \brief Setting up an extended maximum likelihood fit.
 ///
 /// \macro_image
 /// \macro_output

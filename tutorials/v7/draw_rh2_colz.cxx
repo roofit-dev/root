@@ -50,17 +50,25 @@ void draw_rh2_colz()
    // should we made special style for frame with palette?
    frame->Margins().SetRight(0.2_normal);
 
-   frame->SetGridX(true).SetGridY(false);
+   frame->SetGridX(false).SetGridY(false);
 
    frame->AttrX().SetZoomMinMax(2.,8.);
 
    frame->AttrY().SetZoomMinMax(2.,8.);
 
-   canvas->Draw<RFrameTitle>("2D histogram with color palette");
+   canvas->Draw<RFrameTitle>("2D histogram with color palette")->SetMargin(0.01_normal).SetHeight(0.09_normal);
 
    canvas->Draw<RPaletteDrawable>(RPalette::GetPalette(), true);
 
-   canvas->Draw(pHist);
+   auto draw = canvas->Draw(pHist);
+   // draw->AttrLine().SetColor(RColor::kLime);
+   // draw->Surf(2); // configure surf4 draw option
+   // draw->Lego(2); // configure lego2 draw option
+   // draw->Contour(); // configure cont draw option
+   // draw->Scatter(); // configure color draw option (default)
+   // draw->Arrow(); // configure arrow draw option
+   draw->Color(); // configure color draw option (default)
+   draw->Text(true); // configure text drawing (can be enabled with most 2d options)
 
    auto stat = canvas->Draw<RHist2StatBox>(pHist, "hist2");
    stat->AttrFill().SetColor(RColor::kRed);

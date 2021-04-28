@@ -22,7 +22,6 @@
 #include "TClass.h"
 #include "TClassEdit.h"
 #include "TVirtualX.h"
-#include "TStyle.h"
 #include "TObjectTable.h"
 #include "TClassTable.h"
 #include "TStopwatch.h"
@@ -40,10 +39,12 @@
 #include "TStorage.h" // ROOT::Internal::gMmallocDesc
 #include "ThreadLocalStorage.h"
 #include "TTabCom.h"
-#include <stdlib.h>
+#include <cstdlib>
 #include <algorithm>
 
 #include "Getline.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 #ifdef R__UNIX
 #include <signal.h>
@@ -500,6 +501,8 @@ void TRint::PrintLogo(Bool_t lite)
                                             gROOT->GetGitBranch(),
                                             gROOT->GetGitCommit()));
       }
+      lines.emplace_back(TString::Format("With %s %%s",
+                                         gSystem->GetBuildCompilerVersionStr()));
       lines.emplace_back(TString("Try '.help', '.demo', '.license', '.credits', '.quit'/'.q'%s"));
 
       // Find the longest line and its length:

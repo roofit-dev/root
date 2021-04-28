@@ -1,7 +1,10 @@
 ## \file
 ## \ingroup tutorial_dataframe
 ## \notebook -draw
+## \brief Write ROOT data with RDataFrame.
+##
 ## This tutorial shows how to write out datasets in ROOT formatusing the RDataFrame
+## \macro_image
 ## \macro_code
 ##
 ## \date April 2017
@@ -11,6 +14,7 @@ import ROOT
 
 # A simple helper function to fill a test tree: this makes the example stand-alone.
 def fill_tree(treeName, fileName):
+    df = ROOT.RDataFrame(10000)
     df.Define("b1", "(int) rdfentry_")\
       .Define("b2", "(float) rdfentry_ * rdfentry_").Snapshot(treeName, fileName)
 
@@ -84,6 +88,9 @@ branchList.clear()
 branchList.push_back("b1_square")
 snapshot_df = d2.Snapshot(treeName, outFileName, branchList);
 h = snapshot_df.Histo1D("b1_square")
+
 c = ROOT.TCanvas()
 h.Draw()
+c.SaveAs("df007_snapshot.png")
 
+print("Saved figure to df007_snapshot.png")

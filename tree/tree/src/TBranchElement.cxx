@@ -4853,6 +4853,14 @@ void TBranchElement::ResetInitInfo(Bool_t recurse)
 
 void TBranchElement::SetAddress(void* addr)
 {
+   SetAddressImpl(addr, (addr == nullptr));
+}
+
+/// See TBranchElement::SetAddress.
+/// If implied is true, we do not over-ride existing address for
+/// sub-branches.
+void TBranchElement::SetAddressImpl(void* addr, bool implied)
+{
    //
    //  Don't bother if we are disabled.
    //
@@ -4879,6 +4887,7 @@ void TBranchElement::SetAddress(void* addr)
       fAddress = (char*) -1;
       fObject = (char*) -1;
       ResetBit(kDeleteObject);
+      ResetBit(kAddressSet);
       return;
    }
 
@@ -4921,6 +4930,7 @@ void TBranchElement::SetAddress(void* addr)
       fObject = 0;
    }
    ResetBit(kDeleteObject);
+   SetBit(kAddressSet);
 
    //
    //  Do special stuff if we got called from a MakeClass class.
@@ -4995,6 +5005,7 @@ void TBranchElement::SetAddress(void* addr)
          } else {
             // FIXME: Must maintain fObject here as well.
             fAddress = 0;
+            ResetBit(kAddressSet);
          }
       }
    } else if (fType == 4) {
@@ -5074,6 +5085,7 @@ void TBranchElement::SetAddress(void* addr)
                      GetName(),oldProxy->GetCollectionClass()->GetName(),newType->GetName());
                fAddress = 0;
                fObject = 0;
+               ResetBit(kAddressSet);
                return;
             }
          }
@@ -5125,6 +5137,7 @@ void TBranchElement::SetAddress(void* addr)
             // FIXME: We must maintain fObject here as well.
             Error("SetAddress","For %s can not convert %s into %s\n",GetName(),GetCurrentClass()->GetName(),newType->GetName());
             fAddress = 0;
+            ResetBit(kAddressSet);
             return;
          }
       } else {
@@ -5257,6 +5270,7 @@ void TBranchElement::SetAddress(void* addr)
                      //        fAddress to be zero if no fObject, but is
                      //        that a good thing?
                      fAddress = 0;
+                     ResetBit(kAddressSet);
                   }
                }
                fObject = (char*) *pp;
@@ -5274,6 +5288,7 @@ void TBranchElement::SetAddress(void* addr)
                      //        fAddress to be zero if no fObject, but is
                      //        that a good thing?
                      fAddress = 0;
+                     ResetBit(kAddressSet);
                   }
                }
                fObject = (char*) *pp;
@@ -5308,6 +5323,7 @@ void TBranchElement::SetAddress(void* addr)
                   //        fAddress to be zero if no fObject, but is
                   //        that a good thing?
                   fAddress = 0;
+                  ResetBit(kAddressSet);
                }
             } else {
                // -- We are a sub-branch which is a pointer to an STL container.
@@ -5369,11 +5385,12 @@ void TBranchElement::SetAddress(void* addr)
    // FIXME: This is a tail recursion, we burn stack.
    Int_t nbranches = fBranches.GetEntriesFast();
    for (Int_t i = 0; i < nbranches; ++i) {
-      TBranch* abranch = (TBranch*) fBranches.UncheckedAt(i);
+      TBranch *abranch = (TBranch*) fBranches.UncheckedAt(i);
       // FIXME: This is a tail recursion!
-      if (fBranchOffset[i] != TStreamerInfo::kMissing) {
-         abranch->SetAddress(fObject + fBranchOffset[i]);
+      if (fBranchOffset[i] != TStreamerInfo::kMissing && !(implied && abranch->TestBit(kAddressSet))) {
+         abranch->SetAddressImpl(fObject + fBranchOffset[i], implied);
          abranch->SetBit(kAddressSet);
+         abranch->SetMakeClass(TestBit(kDecomposedObj));
       } else {
          // When the member is missing, just leave the address alone
          // (since setting explicitly to 0 would trigger error/warning
@@ -5606,7 +5623,7 @@ void TBranchElement::SetReadLeavesPtr()
       fReadLeaves = (ReadLeaves_t)&TBranchElement::ReadLeavesCustomStreamer;
    } else if (fType == 0 && fID == -1) {
       // top-level branch.
-      Bool_t hasCustomStreamer = !fBranchClass.GetClass()->GetCollectionProxy() && (fBranchClass.GetClass()->GetStreamer() != 0 || fBranchClass.GetClass()->TestBit(TClass::kHasCustomStreamerMember));
+      Bool_t hasCustomStreamer = fBranchClass.GetClass() && !fBranchClass.GetClass()->GetCollectionProxy() && (fBranchClass.GetClass()->GetStreamer() != 0 || fBranchClass.GetClass()->TestBit(TClass::kHasCustomStreamerMember));
       if (hasCustomStreamer) {
          // We are in the case where the object did *not* have a custom
          // Streamer when the TTree was written but now *does* have a custom
