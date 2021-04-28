@@ -49,7 +49,7 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.14)
   if(DEFINED Python2_VERSION AND "${Python2_VERSION}" VERSION_LESS "2.7")
     message(WARNING "Ignoring Python2 installation: unsupported version ${Python2_VERSION} (version>=2.7 required)")
   endif()
-  if(Python2_Development_FOUND AND ${Python2_VERSION} VERSION_GREATER_EQUAL "2.7")
+  if(Python2_Development_FOUND AND "${Python2_VERSION}" VERSION_GREATER_EQUAL "2.7")
     if(NOT Python3_Development_FOUND)
       # Only Python2 was found, set as main
       set(PYTHON_EXECUTABLE "${Python2_EXECUTABLE}" CACHE INTERNAL "" FORCE)
@@ -75,8 +75,8 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.14)
     endif()
   endif()
 
-  if(NOT Python3_Development_FOUND AND (NOT Python2_Development_FOUND OR ${Python2_VERSION} VERSION_LESS "2.7"))
-    message(FATAL_ERROR "No supported Python 2 or 3 were found")
+  if(NOT Python3_Development_FOUND AND (NOT Python2_Development_FOUND OR "${Python2_VERSION}" VERSION_LESS "2.7"))
+    message(WARNING "No supported Python 2 or 3 development packages were found; PyROOT will not be built.")
   endif()
 
   # Print message saying with which versions of Python are used to build
@@ -92,12 +92,16 @@ else()
 
   find_package(PythonInterp ${python_version} REQUIRED)
 
-  find_package(PythonLibs ${python_version} REQUIRED)
+  find_package(PythonLibs ${python_version})
 
-  if(NOT "${PYTHONLIBS_VERSION_STRING}" MATCHES "${PYTHON_VERSION_STRING}")
-    message(FATAL_ERROR "Version mismatch between Python interpreter (${PYTHON_VERSION_STRING})"
-    " and libraries (${PYTHONLIBS_VERSION_STRING}).\nROOT cannot work with this configuration. "
-    "Please specify only PYTHON_EXECUTABLE to CMake with an absolute path to ensure matching versions are found.")
+  if(PYTHONLIBS_FOUND)
+    if(NOT "${PYTHONLIBS_VERSION_STRING}" MATCHES "${PYTHON_VERSION_STRING}")
+      message(FATAL_ERROR "Version mismatch between Python interpreter (${PYTHON_VERSION_STRING})"
+      " and libraries (${PYTHONLIBS_VERSION_STRING}).\nROOT cannot work with this configuration. "
+      "Please specify only PYTHON_EXECUTABLE to CMake with an absolute path to ensure matching versions are found.")
+    endif()
+  else()
+    message(WARNING "No supported Python development package was found; PyROOT will not be built.")
   endif()
 
   find_package(NumPy)

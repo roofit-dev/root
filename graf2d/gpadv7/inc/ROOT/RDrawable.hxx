@@ -1,5 +1,5 @@
 /*************************************************************************
- * Copyright (C) 1995-2015, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2020, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -24,8 +24,12 @@ class RMenuItems;
 class RPadBase;
 class RAttrBase;
 class RDisplayItem;
+class RIndirectDisplayItem;
 class RLegend;
-
+class RCanvas;
+class RChangeAttrRequest;
+class RDrawableMenuRequest;
+class RDrawableExecRequest;
 
 namespace Internal {
 
@@ -85,7 +89,8 @@ public:
    void reset() { fShared.reset(); fIO = nullptr; }
 };
 
-}
+} // namespace Internal
+
 
 /** \class RDrawable
 \ingroup GpadROOT7
@@ -102,6 +107,14 @@ friend class RPadBase; // to access Display method and IsFrameRequired
 friend class RAttrBase;
 friend class RStyle;
 friend class RLegend; // to access CollectShared method
+friend class RIndirectDisplayItem;  // to access attributes and other members
+friend class RChangeAttrRequest; // access SetDrawableVersion and AttrMap
+friend class RDrawableMenuRequest; // access PopulateMenu method
+friend class RDrawableExecRequest; // access Execute() method
+
+public:
+
+using Version_t = uint64_t;
 
 private:
    RAttrMap fAttr;               ///< attributes values
@@ -109,6 +122,7 @@ private:
    std::string fCssType;         ///<! drawable type, not stored in the root file, must be initialized in constructor
    std::string fCssClass;        ///< user defined drawable class, can later go inside map
    std::string fId;              ///< optional object identifier, may be used in CSS as well
+   Version_t fVersion{1};        ///<! drawable version, changed from the canvas
 
 protected:
 
@@ -121,20 +135,23 @@ protected:
 
    bool MatchSelector(const std::string &selector) const;
 
-   virtual std::unique_ptr<RDisplayItem> Display() const;
+   virtual std::unique_ptr<RDisplayItem> Display(const RPadBase &, Version_t) const;
+
+   virtual void SetDrawableVersion(Version_t vers) { fVersion = vers; }
+   Version_t GetVersion() const { return fVersion; }
+
+   virtual void PopulateMenu(RMenuItems &);
+
+   virtual void Execute(const std::string &);
+
+   RDrawable(const RDrawable &) = delete;
+   RDrawable &operator=(const RDrawable &) = delete;
 
 public:
 
    explicit RDrawable(const std::string &type) : fCssType(type) {}
 
    virtual ~RDrawable();
-
-   // copy constructor and assign operator !!!
-
-   /** Method can be used to provide menu items for the drawn object */
-   virtual void PopulateMenu(RMenuItems &) {}
-
-   virtual void Execute(const std::string &);
 
    virtual void UseStyle(const std::shared_ptr<RStyle> &style) { fStyle = style; }
    void ClearStyle() { UseStyle(nullptr); }
@@ -146,11 +163,11 @@ public:
 
    const std::string &GetId() const { return fId; }
    void SetId(const std::string &id) { fId = id; }
-
 };
 
 /// Central method to insert drawable in list of pad primitives
 /// By default drawable placed as is.
+
 template <class DRAWABLE, std::enable_if_t<std::is_base_of<RDrawable, DRAWABLE>{}>* = nullptr>
 inline auto GetDrawable(const std::shared_ptr<DRAWABLE> &drawable)
 {

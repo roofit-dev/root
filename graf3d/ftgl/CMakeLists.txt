@@ -8,10 +8,12 @@
 # CMakeLists.txt file for building ROOT graf3d/ftgl package
 ############################################################################
 
-include_directories(${FREETYPE_INCLUDE_DIRS})
-
 if(MACOSX_GLU_DEPRECATED)
   add_definitions(-Wno-deprecated-declarations)
+endif()
+
+if(builtin_glew)
+   set(glew_dep GLEW)
 endif()
 
 ROOT_LINKER_LIBRARY(FTGL
@@ -44,6 +46,18 @@ ROOT_LINKER_LIBRARY(FTGL
     ZLIB::ZLIB
   BUILTINS
     FREETYPE
+  DEPENDENCIES
+    ${glew_dep}
 )
+
+target_include_directories(FTGL PRIVATE
+      ${FREETYPE_INCLUDE_DIRS}
+      ${OPENGL_INCLUDE_DIR}
+      ${CMAKE_SOURCE_DIR}/graf3d/gl/inc
+)
+
+if(builtin_glew)
+   target_include_directories(FTGL PRIVATE ${CMAKE_SOURCE_DIR}/graf3d/glew/inc)
+endif()
 
 ROOT_INSTALL_HEADERS()

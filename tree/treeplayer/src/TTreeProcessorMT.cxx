@@ -96,7 +96,7 @@ MakeClusters(const std::vector<std::string> &treeNames, const std::vector<std::s
    // 16 * 2 * TTreeProcessorMT::GetMaxTasksPerFilePerWorker() clusters will be created, at most
    // 16 * TTreeProcessorMT::GetMaxTasksPerFilePerWorker() per file.
 
-   const auto maxTasksPerFile = TTreeProcessorMT::GetMaxTasksPerFilePerWorker() * ROOT::GetImplicitMTPoolSize();
+   const auto maxTasksPerFile = TTreeProcessorMT::GetMaxTasksPerFilePerWorker() * ROOT::GetThreadPoolSize();
    std::vector<std::vector<EntryCluster>> eventRangesPerFile(clustersPerFile.size());
    auto clustersPerFileIt = clustersPerFile.begin();
    auto eventRangesPerFileIt = eventRangesPerFile.begin();
@@ -416,10 +416,14 @@ std::vector<std::string> TTreeProcessorMT::FindTreeNames()
 /// \param[in] filename Name of the file containing the tree to process.
 /// \param[in] treename Name of the tree to process. If not provided, the implementation will search
 ///            for a TTree key in the file and will use the first one it finds.
-TTreeProcessorMT::TTreeProcessorMT(std::string_view filename, std::string_view treename)
+/// \param[in] nThreads Number of threads to create in the underlying thread-pool. The semantics of this argument are
+///                     the same as for TThreadExecutor.
+TTreeProcessorMT::TTreeProcessorMT(std::string_view filename, std::string_view treename, UInt_t nThreads)
    : fFileNames({std::string(filename)}),
-     fTreeNames(treename.empty() ? FindTreeNames() : std::vector<std::string>{std::string(treename)}), fFriendInfo()
+     fTreeNames(treename.empty() ? FindTreeNames() : std::vector<std::string>{std::string(treename)}), fFriendInfo(),
+     fPool(nThreads)
 {
+   ROOT::EnableThreadSafety();
 }
 
 std::vector<std::string> CheckAndConvert(const std::vector<std::string_view> &views)
@@ -439,16 +443,20 @@ std::vector<std::string> CheckAndConvert(const std::vector<std::string_view> &vi
 /// \param[in] filenames Collection of the names of the files containing the tree to process.
 /// \param[in] treename Name of the tree to process. If not provided, the implementation will
 ///                     search filenames for a TTree key and will use the first one it finds in each file.
+/// \param[in] nThreads Number of threads to create in the underlying thread-pool. The semantics of this argument are
+///                     the same as for TThreadExecutor.
 ///
 /// If different files contain TTrees with different names and automatic TTree name detection is not an option
 /// (for example, because some of the files contain multiple TTrees) please manually create a TChain and pass
 /// it to the appropriate TTreeProcessorMT constructor.
-TTreeProcessorMT::TTreeProcessorMT(const std::vector<std::string_view> &filenames, std::string_view treename)
+TTreeProcessorMT::TTreeProcessorMT(const std::vector<std::string_view> &filenames, std::string_view treename,
+                                   UInt_t nThreads)
    : fFileNames(CheckAndConvert(filenames)),
      fTreeNames(treename.empty() ? FindTreeNames()
                                  : std::vector<std::string>(fFileNames.size(), std::string(treename))),
-     fFriendInfo()
+     fFriendInfo(), fPool(nThreads)
 {
+   ROOT::EnableThreadSafety();
 }
 
 std::vector<std::string> GetFilesFromTree(TTree &tree)
@@ -481,16 +489,23 @@ std::vector<std::string> GetFilesFromTree(TTree &tree)
 /// Constructor based on a TTree and a TEntryList.
 /// \param[in] tree Tree or chain of files containing the tree to process.
 /// \param[in] entries List of entry numbers to process.
-TTreeProcessorMT::TTreeProcessorMT(TTree &tree, const TEntryList &entries)
+/// \param[in] nThreads Number of threads to create in the underlying thread-pool. The semantics of this argument are
+///                     the same as for TThreadExecutor.
+TTreeProcessorMT::TTreeProcessorMT(TTree &tree, const TEntryList &entries, UInt_t nThreads)
    : fFileNames(GetFilesFromTree(tree)), fTreeNames(GetTreeFullPaths(tree)), fEntryList(entries),
-     fFriendInfo(GetFriendInfo(tree))
+     fFriendInfo(GetFriendInfo(tree)), fPool(nThreads)
 {
+   ROOT::EnableThreadSafety();
 }
 
 ////////////////////////////////////////////////////////////////////////
 /// Constructor based on a TTree.
 /// \param[in] tree Tree or chain of files containing the tree to process.
-TTreeProcessorMT::TTreeProcessorMT(TTree &tree) : TTreeProcessorMT(tree, TEntryList()) {}
+/// \param[in] nThreads Number of threads to create in the underlying thread-pool. The semantics of this argument are
+///                     the same as for TThreadExecutor.
+TTreeProcessorMT::TTreeProcessorMT(TTree &tree, UInt_t nThreads) : TTreeProcessorMT(tree, TEntryList(), nThreads)
+{
+}
 
 //////////////////////////////////////////////////////////////////////////////
 /// Process the entries of a TTree in parallel. The user-provided function
@@ -558,9 +573,6 @@ void TTreeProcessorMT::Process(std::function<void(TTreeReader &)> func)
 
    std::vector<std::size_t> fileIdxs(fFileNames.size());
    std::iota(fileIdxs.begin(), fileIdxs.end(), 0u);
-
-   // Enable this IMT use case (activate its locks)
-   Internal::TParTreeProcessingRAII ptpRAII;
 
    fPool.Foreach(processFile, fileIdxs);
 }
