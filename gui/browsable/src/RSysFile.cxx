@@ -237,31 +237,27 @@ public:
 
    virtual ~RSysDirLevelIter() { CloseDir(); }
 
-   bool Reset() override { return OpenDir(); }
-
    bool Next() override { return NextDirEntry(); }
 
    bool Find(const std::string &name) override { return FindDirEntry(name); }
 
-   bool HasItem() const override { return !fItemName.empty(); }
+   std::string GetItemName() const override { return fItemName; }
 
-   std::string GetName() const override { return fItemName; }
-
-   /** Returns true if item can have childs and one should try to create iterator (optional) */
-   int CanHaveChilds() const override
+   /** Returns true if directory or is file format supported */
+   bool CanItemHaveChilds() const override
    {
       if (R_ISDIR(fCurrentStat.fMode))
-         return 1;
+         return true;
 
       if (RProvider::IsFileFormatSupported(GetFileExtension(fCurrentName)))
-         return 1;
+         return true;
 
-      return 0;
+      return false;
    }
 
    std::unique_ptr<RItem> CreateItem() override
    {
-      auto item = std::make_unique<RSysFileItem>(GetName(), CanHaveChilds());
+      auto item = std::make_unique<RSysFileItem>(GetItemName(), CanItemHaveChilds() ? -1 : 0);
 
       // this is construction of current item
       char tmp[256];
@@ -277,7 +273,7 @@ public:
       if (item->isdir)
          item->SetIcon("sap-icon://folder-blank"s);
       else
-         item->SetIcon(RSysFile::GetFileIcon(GetName()));
+         item->SetIcon(RSysFile::GetFileIcon(GetItemName()));
 
       // file size
       Long64_t _fsize = item->size, bsize = item->size;
@@ -418,8 +414,6 @@ std::string RSysFile::GetFileIcon(const std::string &fname)
 }
 
 
-
-
 /////////////////////////////////////////////////////////////////////////////////
 /// Create file element
 
@@ -479,6 +473,21 @@ bool RSysFile::MatchName(const std::string &name) const
 }
 
 /////////////////////////////////////////////////////////////////////////////////
+/// Get default action for the file
+/// Either start text editor or image viewer or just do file browsing
+
+RElement::EActionKind RSysFile::GetDefaultAction() const
+{
+   if (R_ISDIR(fStat.fMode)) return kActBrowse;
+
+   auto icon = GetFileIcon(GetName());
+   if (icon == "sap-icon://document-text"s) return kActEdit;
+   if (icon == "sap-icon://picture"s) return kActImage;
+   if (icon == "sap-icon://org-chart"s) return kActBrowse;
+   return kActNone;
+}
+
+/////////////////////////////////////////////////////////////////////////////////
 /// Returns full file name - including fully qualified path
 
 std::string RSysFile::GetFullName() const
@@ -530,7 +539,7 @@ std::string RSysFile::GetContent(const std::string &kind)
 /// Provide top entries for file system
 /// On windows it is list of existing drivers, on Linux it is "Files system" and "Home"
 
-std::string RSysFile::ProvideTopEntries(std::shared_ptr<RGroup> &comp, const std::string &workdir)
+RElementPath_t RSysFile::ProvideTopEntries(std::shared_ptr<RGroup> &comp, const std::string &workdir)
 {
    std::string seldir = workdir;
 
@@ -559,8 +568,8 @@ std::string RSysFile::ProvideTopEntries(std::shared_ptr<RGroup> &comp, const std
       std::string homedir = gSystem->UnixPathName(gSystem->HomeDirectory());
 
       if (!homedir.empty())
-         comp->Add(std::make_shared<Browsable::RWrapper>("Home",std::make_unique<RSysFile>(homedir)));
+         comp->Add(std::make_shared<Browsable::RWrapper>("Home", std::make_unique<RSysFile>(homedir)));
    }
 
-   return seldir;
+   return RElement::ParsePath(seldir);
 }
