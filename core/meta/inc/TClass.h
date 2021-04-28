@@ -374,7 +374,11 @@ public:
    TMethod           *GetClassMethodWithPrototype(const char *name, const char *proto,
                                                   Bool_t objectIsConst = kFALSE,
                                                   ROOT::EFunctionMatchMode mode = ROOT::kConversionMatch);
-   Version_t          GetClassVersion() const { fVersionUsed = kTRUE; return fClassVersion; }
+   Version_t          GetClassVersion() const {
+      if (!fVersionUsed.load(std::memory_order_relaxed))
+         fVersionUsed = kTRUE;
+      return fClassVersion;
+   }
    Int_t              GetClassSize() const { return Size(); }
    TDataMember       *GetDataMember(const char *datamember) const;
    Long_t             GetDataMemberOffset(const char *membername) const;
@@ -390,7 +394,8 @@ public:
    }
    const char        *GetContextMenuTitle() const { return fContextMenuTitle; }
    TVirtualStreamerInfo     *GetCurrentStreamerInfo() {
-      if (fCurrentInfo.load()) return fCurrentInfo;
+      auto current = fCurrentInfo.load(std::memory_order_relaxed);
+      if (current) return current;
       else return DetermineCurrentStreamerInfo();
    }
    TVirtualStreamerInfo     *GetLastReadInfo() const { return fLastReadInfo; }

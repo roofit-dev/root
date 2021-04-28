@@ -33,6 +33,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <string>
+#include <utility>
 
 #ifndef WIN32
 #define TWin32SendClass char
@@ -49,6 +51,7 @@ namespace clang {
    class DeclContext;
    class EnumDecl;
    class FunctionDecl;
+   class IdentifierIterator;
    class NamedDecl;
    class NamespaceDecl;
    class TagDecl;
@@ -166,6 +169,9 @@ private: // Data Members
 
    DeclId_t GetDeclId(const llvm::GlobalValue *gv) const;
 
+   static Int_t DeepAutoLoadImpl(const char *cls);
+   static Int_t ShallowAutoLoadImpl(const char *cls);
+
    Bool_t fHeaderParsingOnDemand;
    Bool_t fIsAutoParsingSuspended;
 
@@ -240,6 +246,7 @@ public: // Public Interface
                           const char** classesHeaders,
                           Bool_t lateRegistration = false,
                           Bool_t hasCxxModule = false);
+   virtual void AddAvailableIndentifiers(TSeqCollection& Idents);
    void    RegisterTClassUpdate(TClass *oldcl,DictFuncPtr_t dict);
    void    UnRegisterTClassUpdate(const TClass *oldcl);
 

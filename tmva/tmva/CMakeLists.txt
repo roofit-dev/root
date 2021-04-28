@@ -19,6 +19,11 @@ endif()
 if(tmva-gpu)
   set(dictoptions -I${CUDA_TOOLKIT_INCLUDE})
 
+  if (runtime_cxxmodules)
+    # We build the cuda.pcm in the context of TMVA
+    list(APPEND dictoptions "-mByproduct" "cuda")
+  endif(runtime_cxxmodules)
+
   set(TMVA_GPU_HEADERS
        TMVA/DNN/Architectures/Cuda.h
        #  TMVA/DNN/Architectures/Cuda/CudaBuffers.h
@@ -438,7 +443,7 @@ if(vdt OR builtin_vdt)
 endif()
 
 if(tmva-cpu)
-  target_include_directories(TMVA PRIVATE ${TBB_INCLUDE_DIRS})
+  target_include_directories(TMVA SYSTEM PRIVATE ${TBB_INCLUDE_DIRS})
   target_link_libraries(TMVA PRIVATE ${TBB_LIBRARIES})
   set_target_properties(TMVA PROPERTIES COMPILE_FLAGS "${TBB_CXXFLAGS}")
 
@@ -448,6 +453,9 @@ if(tmva-cpu)
     target_compile_definitions(TMVA PRIVATE -DDNN_USE_CBLAS)
     target_include_directories(TMVA SYSTEM PRIVATE ${GSL_INCLUDE_DIR})
     target_link_libraries(TMVA PRIVATE ${GSL_CBLAS_LIBRARY})
+    if(builtin_gsl)
+      add_dependencies(TMVA GSL)
+    endif()
   else()
     message(FATAL_ERROR "tmva-cpu enabled but neither BLAS nor GSL BLAS were found")
   endif()

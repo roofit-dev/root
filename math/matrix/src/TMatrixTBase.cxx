@@ -26,9 +26,9 @@
 #include "TVectorT.h"
 #include "TBuffer.h"
 #include "TROOT.h"
-#include "TClass.h"
 #include "TMath.h"
-#include <limits.h>
+#include "snprintf.h"
+#include <climits>
 
 Int_t gMatrixCheck = 1;
 

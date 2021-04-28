@@ -21,6 +21,7 @@
 #include <ROOT/RLogger.hxx>
 
 #include "TGeoManager.h"
+#include "TGeoMatrix.h"
 #include "TObjString.h"
 #include "TROOT.h"
 #include "TFile.h"
@@ -249,8 +250,8 @@ void REveManager::DoRedraw3D()
    fWebWindow->Send(0, jobj.dump());
 
    // Process changes in scenes.
-   fWorld ->ProcessChanges();
    fScenes->ProcessSceneChanges();
+   fWorld ->ProcessChanges();
 
    jobj["content"] = "EndChanges";
    fWebWindow->Send(0, jobj.dump());

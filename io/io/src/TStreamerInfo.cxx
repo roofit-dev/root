@@ -56,6 +56,7 @@ element type.
 #include "TProcessID.h"
 #include "TSystem.h"
 #include "TObjString.h"
+#include "snprintf.h"
 
 #include "TStreamer.h"
 #include "TContainerConverters.h"
@@ -3528,7 +3529,8 @@ static void R__WriteDestructorBody(FILE *file, TIter &next)
                   std::vector<std::string> inside;
                   int nestedLoc;
                   TClassEdit::GetSplit(enamebasic, inside, nestedLoc, TClassEdit::kLong64);
-                  if (inside[1][inside[1].size()-1]=='*' || inside[2][inside[2].size()-1]=='*') {
+                  if ((!inside[1].empty() && inside[1][inside[1].size()-1]=='*')
+                     || (!inside[2].empty() && inside[2][inside[2].size()-1]=='*')) {
                      fprintf(file,"   std::for_each( (%s %s).rbegin(), (%s %s).rend(), DeleteObjectFunctor() );\n",prefix,ename,prefix,ename);
                   }
                }

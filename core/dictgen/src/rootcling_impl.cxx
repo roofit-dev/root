@@ -8,25 +8,20 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-const char *shortHelp =
-   "Usage: rootcling [-v][-v0-4] [-f] [out.cxx] [opts] "
-   "file1.h[+][-][!] file2.h[+][-][!] ...[LinkDef.h]\n";
-
-
-
 #include "rootcling_impl.h"
 #include "rootclingCommandLineOptionsHelp.h"
 
 #include "RConfigure.h"
 #include <ROOT/RConfig.hxx>
 #include <ROOT/FoundationUtils.hxx>
+#include "snprintf.h"
 
 #include <iostream>
 #include <iomanip>
 #include <memory>
 #include <vector>
 #include <algorithm>
-#include <stdio.h>
+#include <cstdio>
 
 #include <errno.h>
 #include <string>
@@ -70,7 +65,6 @@ const char *shortHelp =
 #include "cling/Interpreter/LookupHelper.h"
 #include "cling/Interpreter/Value.h"
 #include "clang/AST/CXXInheritance.h"
-#include "clang/AST/Mangle.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/MemoryBufferCache.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -2520,65 +2514,23 @@ int  ExtractClassesListAndDeclLines(RScanner &scan,
             classesListForRootmap.push_back(outerMostClassName);
          } else {
             classesListForRootmap.push_back(normalizedName);
-            if (reqName != nullptr && 0 != strcmp(reqName, "") && reqName != normalizedName) {
+            if (reqName && reqName[0] && reqName != normalizedName) {
                classesListForRootmap.push_back(reqName);
             }
 
-            // Also register typeinfo::name(), unless we have pseudo-strong typedefs:
-            if (normalizedName.find("Double32_t") == std::string::npos
-                && normalizedName.find("Float16_t") == std::string::npos) {
-               std::unique_ptr<clang::MangleContext> mangleCtx(rDecl->getASTContext().createMangleContext());
-               std::string mangledName;
-               {
-                  llvm::raw_string_ostream sstr(mangledName);
-                  if (const clang::TypeDecl* TD = llvm::dyn_cast<clang::TypeDecl>(rDecl)) {
-                     mangleCtx->mangleCXXRTTI(clang::QualType(TD->getTypeForDecl(), 0), sstr);
-                  }
-               }
-               if (!mangledName.empty()) {
-                  int errDemangle = 0;
-#ifdef WIN32
-                  if (mangledName[0] == '\01')
-                     mangledName.erase(0, 1);
-                  char *demangledTIName = TClassEdit::DemangleName(mangledName.c_str(), errDemangle);
-                  if (!errDemangle && demangledTIName) {
-                     static const char typeinfoNameFor[] = " `RTTI Type Descriptor'";
-                     if (strstr(demangledTIName, typeinfoNameFor)) {
-                        std::string demangledName = demangledTIName;
-                        demangledName.erase(demangledName.end() - strlen(typeinfoNameFor), demangledName.end());
-                        if (demangledName.compare(0, 6, "class ") == 0)
-                           demangledName.erase(0, 6);
-                        else if (demangledName.compare(0, 7, "struct ") == 0)
-                           demangledName.erase(0, 7);
-#else
-                  char* demangledTIName = TClassEdit::DemangleName(mangledName.c_str(), errDemangle);
-                  if (!errDemangle && demangledTIName) {
-                     static const char typeinfoNameFor[] = "typeinfo for ";
-                     if (!strncmp(demangledTIName, typeinfoNameFor, strlen(typeinfoNameFor))) {
-                        std::string demangledName = demangledTIName + strlen(typeinfoNameFor);
-#endif
-                        // See the operations in TCling::AutoLoad(type_info)
-                        TClassEdit::TSplitType splitname( demangledName.c_str(), (TClassEdit::EModType)(TClassEdit::kLong64 | TClassEdit::kDropStd) );
-                        splitname.ShortType(demangledName, TClassEdit::kDropStlDefault | TClassEdit::kDropStd);
+            // Also register typeinfo::name(), unless we have pseudo-strong typedefs.
+            // GetDemangledTypeInfo() checks for Double32_t etc already and returns an empty string.
+            std::string demangledName = selClass.GetDemangledTypeInfo();
+            if (!demangledName.empty()) {
+               // See the operations in TCling::AutoLoad(type_info)
+               TClassEdit::TSplitType splitname( demangledName.c_str(), (TClassEdit::EModType)(TClassEdit::kLong64 | TClassEdit::kDropStd) );
+               splitname.ShortType(demangledName, TClassEdit::kDropStlDefault | TClassEdit::kDropStd);
 
-                        if (demangledName != normalizedName && (!reqName || demangledName != reqName)) {
-                           classesListForRootmap.push_back(demangledName);
-                        } // if demangledName != other name
-                     } else {
-#ifdef WIN32
-                        ROOT::TMetaUtils::Error("ExtractClassesListAndDeclLines",
-                                                "Demangled typeinfo name '%s' does not contain `RTTI Type Descriptor'\n",
-                                                demangledTIName);
-#else
-                        ROOT::TMetaUtils::Error("ExtractClassesListAndDeclLines",
-                                                "Demangled typeinfo name '%s' does not start with 'typeinfo for'\n",
-                                                demangledTIName);
-#endif
-                     } // if demangled type_info starts with "typeinfo for "
-                  } // if demangling worked
-                  free(demangledTIName);
-               } // if mangling worked
-            } // if no pseudo-strong typedef involved
+               if (demangledName != normalizedName && (!reqName || demangledName != reqName)) {
+                  // if demangledName != other name
+                  classesListForRootmap.push_back(demangledName);
+               }
+            }
          }
       }
    }
@@ -3540,6 +3492,16 @@ public:
    }
 };
 
+static llvm::cl::list<std::string>
+gOptModuleByproducts("mByproduct", llvm::cl::ZeroOrMore,
+                     llvm::cl::Hidden,
+                     llvm::cl::desc("The list of the expected implicit modules build as part of building the current module."),
+                     llvm::cl::cat(gRootclingOptions));
+static llvm::cl::opt<std::string>
+gOptDictionaryFileName(llvm::cl::Positional, llvm::cl::Required,
+                      llvm::cl::desc("<output dictionary file>"),
+                      llvm::cl::cat(gRootclingOptions));
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Custom diag client for clang that verifies that each implicitly build module
 /// is a system module. If not, it will let the current rootcling invocation
@@ -3594,21 +3556,27 @@ public:
          }
       }
 
-      // Skip the diag only if we build a ROOT system module or a system module. We still print the diag
-      // when building a non-system module as we will print an error below and the
-      // user should see the detailed default clang diagnostic.
-      bool isROOTSystemModuleDiag = module && llvm::StringRef(moduleName).startswith("ROOT_");
-      bool isSystemModuleDiag = module && module->IsSystem;
-      if (!isROOTSystemModuleDiag && !isSystemModuleDiag)
+      // A dictionary module could build implicitly a set of implicit modules.
+      // For example, the Core module builds libc.pcm and std.pcm implicitly.
+      // Those modules do not require I/O information and it is okay to build
+      // them as part of another module.
+      // However, we can build a module which requires I/O implictly which is
+      // an error because rootcling is not able to generate the corresponding
+      // dictionary.
+      // If we build a I/O requiring module implicitly we should display
+      // an error unless the -mByproduct was specified.
+      bool isByproductModule
+         = module && std::find(gOptModuleByproducts.begin(), gOptModuleByproducts.end(), moduleName) != gOptModuleByproducts.end();
+      if (!isByproductModule)
          fChild->HandleDiagnostic(DiagLevel, Info);
 
-      if (ID == remark_module_build && !isROOTSystemModuleDiag && !isSystemModuleDiag) {
+      if (ID == remark_module_build && !isByproductModule) {
          ROOT::TMetaUtils::Error(0,
-                                 "Had to build non-system module %s implicitly. You first need to\n"
-                                 "generate the dictionary for %s or mark the C++ module as a system\n"
-                                 "module if you provided your own system modulemap file:\n"
-                                 "%s [system] { ... }\n",
-                                 moduleName.c_str(), moduleName.c_str(), moduleName.c_str());
+                                 "Building module '%s' implicitly. If '%s' requires a \n"
+                                 "dictionary please specify build dependency: '%s' depends on '%s'.\n"
+                                 "Otherwise, specify '-mByproduct %s' to disable this diagnostic.\n",
+                                 moduleName.c_str(), moduleName.c_str(), gOptDictionaryFileName.c_str(),
+                                 moduleName.c_str(), moduleName.c_str());
       }
    }
 
@@ -3704,10 +3672,6 @@ gOptGeneratePCH("generate-pch",
                llvm::cl::desc("Generates a pch file from a predefined set of headers. See makepch.py."),
                llvm::cl::Hidden,
                llvm::cl::cat(gRootclingOptions));
-static llvm::cl::opt<std::string>
-gOptDictionaryFileName(llvm::cl::Positional, llvm::cl::Required,
-                      llvm::cl::desc("<output dictionary file>"),
-                      llvm::cl::cat(gRootclingOptions));
 static llvm::cl::opt<bool>
 gOptC("c", llvm::cl::desc("Deprecated, legacy flag which is ignored."),
      llvm::cl::cat(gRootclingOptions));
@@ -4072,7 +4036,7 @@ int RootClingMain(int argc,
 
    if (gOptForce && dictname.empty()) {
       ROOT::TMetaUtils::Error(0, "Inconsistent set of arguments detected: overwrite of dictionary file forced but no filename specified.\n");
-      fprintf(stderr, "%s\n", shortHelp);
+      llvm::cl::PrintHelpMessage();
       return 1;
    }
 
@@ -4240,6 +4204,7 @@ int RootClingMain(int argc,
          remove((moduleCachePath + llvm::sys::path::get_separator() + "Cling_Runtime_Extra.pcm").str().c_str());
 #ifdef R__WIN32
          remove((moduleCachePath + llvm::sys::path::get_separator() + "vcruntime.pcm").str().c_str());
+         remove((moduleCachePath + llvm::sys::path::get_separator() + "services.pcm").str().c_str());
 #endif
          
 #ifdef R__MACOSX
@@ -4281,7 +4246,16 @@ int RootClingMain(int argc,
    cling::Interpreter* interpPtr = nullptr;
 
    std::list<std::string> filesIncludedByLinkdef;
-   if (!gDriverConfig->fBuildingROOTStage1) {
+   if (gDriverConfig->fBuildingROOTStage1) {
+#ifdef R__FAST_MATH
+      // Same setting as in TCling.cxx.
+      clingArgsC.push_back("-ffast-math");
+#endif
+
+      owningInterpPtr.reset(new cling::Interpreter(clingArgsC.size(), &clingArgsC[0],
+                                                   llvmResourceDir.c_str()));
+      interpPtr = owningInterpPtr.get();
+   } else {
       // Pass the interpreter arguments to TCling's interpreter:
       clingArgsC.push_back("-resource-dir");
       clingArgsC.push_back(llvmResourceDir.c_str());
@@ -4293,22 +4267,6 @@ int RootClingMain(int argc,
          std::unique_ptr<TRootClingCallbacks> callBacks (new TRootClingCallbacks(interpPtr, filesIncludedByLinkdef));
          interpPtr->setCallbacks(std::move(callBacks));
       }
-   } else {
-#ifdef R__FAST_MATH
-      // Same setting as in TCling.cxx.
-      clingArgsC.push_back("-ffast-math");
-#endif
-
-      owningInterpPtr.reset(new cling::Interpreter(clingArgsC.size(), &clingArgsC[0],
-                                                   llvmResourceDir.c_str()));
-      interpPtr = owningInterpPtr.get();
-      // Force generation of _Builtin_intrinsics by rootcling_stage1.
-      // The rest of the modules are implicitly generated by cling when including
-      // RuntimeUniverse.h (via <new>).
-      // FIXME: This should really go in the build system as for the rest of the
-      // implicitly created modules.
-      if (gOptCxxModule)
-         interpPtr->loadModule("_Builtin_intrinsics", /*Complain*/ true);
    }
    cling::Interpreter &interp = *interpPtr;
    clang::CompilerInstance *CI = interp.getCI();
@@ -4362,11 +4320,13 @@ int RootClingMain(int argc,
    if (gOptCxxModule) {
       for (llvm::StringRef DepMod : gOptModuleDependencies) {
          if (DepMod.endswith("_rdict.pcm")) {
-            ROOT::TMetaUtils::Warning(0, "'%s' value is deprecated. Please use [<fullpat>]%s.pcm\n",
+            ROOT::TMetaUtils::Warning(0, "'%s' value is deprecated. Please use [<fullpath>]%s.pcm\n",
                                       DepMod.data(),
                                       GetModuleNameFromRdictName(DepMod).str().data());
          }
          DepMod = GetModuleNameFromRdictName(DepMod);
+         // We might deserialize.
+         cling::Interpreter::PushTransactionRAII RAII(&interp);
          if (!interp.loadModule(DepMod, /*complain*/false)) {
             ROOT::TMetaUtils::Error(0, "Module '%s' failed to load.\n",
                                     DepMod.data());

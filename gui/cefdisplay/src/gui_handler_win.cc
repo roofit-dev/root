@@ -23,10 +23,15 @@
 #include <string>
 
 #include "include/cef_browser.h"
+#include "include/cef_config.h"
 
-void GuiHandler::PlatformInit()
+bool GuiHandler::PlatformInit()
 {
-   // do nothing
+#ifdef CEF_X11
+   return false; // compiled without ozone support
+#else
+   return true; // compiled with ozone support
+#endif
 }
 
 void GuiHandler::PlatformTitleChange(CefRefPtr<CefBrowser> browser, const CefString &title)
