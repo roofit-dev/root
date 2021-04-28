@@ -20,6 +20,12 @@
 using namespace ROOT::Experimental;
 using namespace std::string_literals;
 
+ROOT::Experimental::RLogChannel &ROOT::Experimental::BrowserLog() {
+   static RLogChannel sLog("ROOT.Browser");
+   return sLog;
+}
+
+
 /////////////////////////////////////////////////////////////////////
 /// set top element for browsing
 
@@ -134,7 +140,9 @@ bool RBrowserData::ProcessBrowserRequest(const RBrowserRequest &request, RBrowse
    }
 
    // create sorted array
-   if ((fLastSortedItems.size() != fLastItems.size()) || (fLastSortMethod != request.sort)) {
+   if ((fLastSortedItems.size() != fLastItems.size()) ||
+       (fLastSortMethod != request.sort) ||
+       (fLastSortReverse != request.reverse)) {
       fLastSortedItems.resize(fLastItems.size(), nullptr);
       int id = 0;
       if (request.sort.empty()) {
@@ -154,13 +162,22 @@ bool RBrowserData::ProcessBrowserRequest(const RBrowserRequest &request, RBrowse
             std::sort(fLastSortedItems.begin(), fLastSortedItems.end(),
                       [request](const Browsable::RItem *a, const Browsable::RItem *b) { return a->Compare(b, request.sort); });
       }
+
+      if (request.reverse)
+         std::reverse(fLastSortedItems.begin(), fLastSortedItems.end());
+
       fLastSortMethod = request.sort;
+      fLastSortReverse = request.reverse;
    }
 
    const std::regex expr(request.regex);
 
    int id = 0;
    for (auto &item : fLastSortedItems) {
+
+      // check if element is hidden
+      if (!request.hidden && item->IsHidden())
+         continue;
 
       if (!request.regex.empty() && !item->IsFolder() && !std::regex_match(item->GetName(), expr))
          continue;

@@ -12,6 +12,8 @@
 #include "ROOT/RDataSource.hxx"
 #include "ROOT/RDF/RDefineBase.hxx"
 #include "ROOT/RDF/RLoopManager.hxx"
+#include "ROOT/RDF/Utils.hxx"
+#include "ROOT/RLogger.hxx"
 #include "RtypesCore.h"
 #include "TBranch.h"
 #include "TBranchElement.h"
@@ -31,6 +33,12 @@
 
 using namespace ROOT::Detail::RDF;
 using namespace ROOT::RDF;
+
+ROOT::Experimental::RLogChannel &ROOT::Detail::RDF::RDFLogChannel()
+{
+   static ROOT::Experimental::RLogChannel c("ROOT.RDF");
+   return c;
+}
 
 namespace ROOT {
 namespace Internal {
@@ -157,7 +165,10 @@ std::string GetBranchOrLeafTypeName(TTree &t, const std::string &colName)
 {
    // look for TLeaf either with GetLeaf(colName) or with GetLeaf(branchName, leafName) (splitting on last dot)
    auto leaf = t.GetLeaf(colName.c_str());
+   if (!leaf)
+      leaf = t.FindLeaf(colName.c_str()); // try harder
    if (!leaf) {
+      // try splitting branchname and leafname
       const auto dotPos = colName.find_last_of('.');
       const auto hasDot = dotPos != std::string::npos;
       if (hasDot) {
@@ -171,6 +182,8 @@ std::string GetBranchOrLeafTypeName(TTree &t, const std::string &colName)
 
    // we could not find a leaf named colName, so we look for a TBranchElement
    auto branch = t.GetBranch(colName.c_str());
+   if (!branch)
+      branch = t.FindBranch(colName.c_str()); // try harder
    if (branch) {
       static const TClassRef tbranchelement("TBranchElement");
       if (branch->InheritsFrom(tbranchelement)) {
@@ -252,10 +265,14 @@ char TypeName2ROOTTypeName(const std::string &b)
       return 'F';
    if (b == "Double_t" || b == "double")
       return 'D';
-   if (b == "Long64_t" || b == "long" || b == "long int")
+   if (b == "Long64_t" || b == "long long" || b == "long long int")
       return 'L';
-   if (b == "ULong64_t" || b == "unsigned long" || b == "unsigned long int")
+   if (b == "ULong64_t" || b == "unsigned long long" || b == "unsigned long long int")
       return 'l';
+   if (b == "Long_t" || b == "long" || b == "long int")
+      return 'G';
+   if (b == "ULong_t" || b == "unsigned long" || b == "unsigned long int")
+      return 'g';
    if (b == "Bool_t" || b == "bool")
       return 'O';
    return ' ';
@@ -295,6 +312,8 @@ std::vector<std::string> ReplaceDotWithUnderscore(const std::vector<std::string>
 
 void InterpreterDeclare(const std::string &code)
 {
+   R__LOG_DEBUG(10, RDFLogChannel()) << "Declaring the following code to cling:\n\n" << code << '\n';
+
    if (!gInterpreter->Declare(code.c_str())) {
       const auto msg =
          "\nRDataFrame: An error occurred during just-in-time compilation. The lines above might indicate the cause of "
@@ -305,6 +324,8 @@ void InterpreterDeclare(const std::string &code)
 
 Long64_t InterpreterCalc(const std::string &code, const std::string &context)
 {
+   R__LOG_DEBUG(10, RDFLogChannel()) << "Jitting and executing the following code:\n\n" << code << '\n';
+
    TInterpreter::EErrorCode errorCode(TInterpreter::kNoError);
    auto res = gInterpreter->Calc(code.c_str(), &errorCode);
    if (errorCode != TInterpreter::EErrorCode::kNoError) {

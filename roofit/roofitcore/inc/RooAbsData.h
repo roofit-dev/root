@@ -41,6 +41,9 @@ class RooAbsDataStore ;
 template<typename T> class TMatrixTSym;
 using TMatrixDSym = TMatrixTSym<Double_t>;
 class RooFormulaVar;
+namespace RooBatchCompute{
+struct RunContext;
+}
 
 
 class RooAbsData : public TNamed, public RooPrintable {
@@ -97,6 +100,14 @@ public:
   virtual Double_t weightError(ErrorType etype=Poisson) const ;
   virtual void weightError(Double_t& lo, Double_t& hi, ErrorType etype=Poisson) const ; 
   virtual const RooArgSet* get(Int_t index) const ;
+
+  /// Retrieve batches of data for each real-valued variable in this dataset.
+  /// \param[out]  evalData Store references to all data batches in this struct.
+  /// \param first Index of first event that ends up in the batch.
+  /// \param len   Number of events in each batch.
+  /// Needs to be overridden by derived classes. This implementation returns an empty RunContext.
+  virtual void getBatches(RooBatchCompute::RunContext& evalData,
+      std::size_t first = 0, std::size_t len = std::numeric_limits<std::size_t>::max()) const = 0;
 
   ////////////////////////////////////////////////////////////////////////////////
   /// Return event weights of all events in range [first, first+len).

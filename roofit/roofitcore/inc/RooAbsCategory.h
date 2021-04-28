@@ -17,7 +17,6 @@
 #define ROO_ABS_CATEGORY
 
 #include "RooAbsArg.h"
-#include "RooSpan.h"
 
 #include <string>
 #include <map>
@@ -48,10 +47,6 @@ public:
   
   // Value accessors
   virtual value_type getCurrentIndex() const ;
-  /// Retrieve a batch of category values for events in the range [begin, begin+batchSize).
-  virtual RooSpan<const value_type> getValBatch(std::size_t /*begin*/, std::size_t /*batchSize*/) const {
-    throw std::logic_error("Batch values are not implemented for RooAbsCategory.");
-  }
   virtual const char* getCurrentLabel() const ;
 
   const std::map<std::string, value_type>::value_type& getOrdinal(unsigned int n) const;

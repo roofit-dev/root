@@ -9,9 +9,16 @@
 #include <ROOT/Browsable/RElement.hxx>
 
 #include <ROOT/Browsable/RLevelIter.hxx>
+#include <ROOT/RLogger.hxx>
+#include "TBufferJSON.h"
 
 using namespace ROOT::Experimental::Browsable;
 using namespace std::string_literals;
+
+ROOT::Experimental::RLogChannel &ROOT::Experimental::BrowsableLog() {
+   static RLogChannel sLog("ROOT.Browsable");
+   return sLog;
+}
 
 
 /////////////////////////////////////////////////////////////////////
@@ -35,6 +42,7 @@ RElement::EContentKind RElement::GetContentKind(const std::string &kind)
    if ((lkind == "image") || (lkind == "image64")) return kImage;
    if (lkind == "png") return kPng;
    if ((lkind == "jpg") || (lkind == "jpeg")) return kJpeg;
+   if (lkind == "json") return kJson;
    if (lkind == "filename") return kFileName;
    return kNone;
 }
@@ -59,3 +67,18 @@ std::shared_ptr<RElement> RElement::GetSubElement(std::shared_ptr<RElement> &ele
 
    return curr;
 }
+
+/////////////////////////////////////////////////////////////////////
+/// Returns string content like text file content or json representation
+
+std::string RElement::GetContent(const std::string &kind)
+{
+   if (GetContentKind(kind) == kJson) {
+      auto obj = GetObject();
+      if (obj)
+         return TBufferJSON::ConvertToJSON(obj->GetObject(), obj->GetClass()).Data();
+   }
+
+   return ""s;
+}
+
