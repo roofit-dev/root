@@ -28,13 +28,11 @@ The actual analytical integrations (if any) are done in the PDF themselves, the 
 integration is performed in the various implementations of the RooAbsIntegrator base class.
 **/
 
+#include "RooRealIntegral.h"
+
 #include "RooFit.h"
 
-#include "TClass.h"
 #include "RooMsgService.h"
-#include "Riostream.h"
-#include "TH1.h"
-#include "RooRealIntegral.h"
 #include "RooArgSet.h"
 #include "RooAbsRealLValue.h"
 #include "RooAbsCategoryLValue.h"
@@ -55,9 +53,13 @@ integration is performed in the various implementations of the RooAbsIntegrator 
 
 #include "ROOT/RMakeUnique.hxx"
 
+#include "TClass.h"
+
+#include <iostream>
+
 using namespace std;
 
-ClassImp(RooRealIntegral); 
+ClassImp(RooRealIntegral);
 
 
 Int_t RooRealIntegral::_cacheAllNDim(2) ;
@@ -70,7 +72,6 @@ RooRealIntegral::RooRealIntegral() :
   _respectCompSelect(true),
   _funcNormSet(0),
   _iconfig(0),
-  _sumCatIter(0),
   _mode(0),
   _intOperMode(Hybrid),
   _restartNumIntEngine(kFALSE),
@@ -111,7 +112,6 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
 	    const_cast<RooAbsReal&>(function),kFALSE,kFALSE), 
   _iconfig((RooNumIntConfig*)config),
   _sumCat("!sumCat","SuperCategory for summation",this,kFALSE,kFALSE),
-  _sumCatIter(0),
   _mode(0),
   _intOperMode(Hybrid), 
   _restartNumIntEngine(kFALSE),
@@ -555,7 +555,6 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
   
   if (_sumList.getSize()>0) {
     RooSuperCategory *sumCat = new RooSuperCategory(Form("%s_sumCat",GetName()),"sumCat",_sumList) ;
-    _sumCatIter = sumCat->typeIterator() ;    
     _sumCat.addOwned(*sumCat) ;
   }
 
@@ -735,7 +734,6 @@ RooRealIntegral::RooRealIntegral(const RooRealIntegral& other, const char* name)
   _function("!func",this,other._function), 
   _iconfig(other._iconfig),
   _sumCat("!sumCat",this,other._sumCat),
-  _sumCatIter(0),
   _mode(other._mode),
   _intOperMode(other._intOperMode), 
   _restartNumIntEngine(kFALSE),
@@ -774,7 +772,6 @@ RooRealIntegral::~RooRealIntegral()
   if (_numIntEngine) delete _numIntEngine ;
   if (_numIntegrand) delete _numIntegrand ;
   if (_funcNormSet) delete _funcNormSet ;
-  if (_sumCatIter)  delete _sumCatIter ;
   if (_params) delete _params ;
 
   TRACE_DESTROY
@@ -995,13 +992,11 @@ Double_t RooRealIntegral::sum() const
     // Add integrals for all permutations of categories summed over
     Double_t total(0) ;
 
-    _sumCatIter->Reset() ;
-    RooCatType* type ;
     RooSuperCategory* sumCat = (RooSuperCategory*) _sumCat.first() ;
-    while((type=(RooCatType*)_sumCatIter->Next())) {
-      sumCat->setIndex(type->getVal()) ;
+    for (const auto& nameIdx : *sumCat) {
+      sumCat->setIndex(nameIdx);
       if (!_rangeName || sumCat->inRange(RooNameReg::str(_rangeName))) {
-	total += integrate() / jacobianProduct() ;
+        total += integrate() / jacobianProduct() ;
       }
     }
 

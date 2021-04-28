@@ -13,104 +13,100 @@
 using namespace ROOT::Experimental;
 using namespace std::string_literals;
 
-std::unique_ptr<RDrawableReply> RHistStatRequest::Process()
-{
-   auto stat = dynamic_cast<RHistStatBoxBase *>(GetDrawable());
-
-   auto reply = std::make_unique<RHistStatReply>();
-
-   if (stat) {
-      stat->fShowMask = GetMask();
-
-      if (GetMask() & RHistStatBoxBase::kShowTitle)
-         reply->AddLine(stat->GetTitle());
-
-      stat->FillStatistic(*this, *reply);
-   }
-
-   return reply;
-}
-
-
 const std::vector<std::string> &RHistStatBoxBase::GetEntriesNames() const
 {
    static const std::vector<std::string> sEntries = {"Title","Entries", "Mean","Deviation", "Ranges"};
    return sEntries;
 }
 
+std::unique_ptr<RDisplayItem> RHistStatBoxBase::Display(const RDisplayContext &ctxt)
+{
+   RFrame::RUserRanges ranges;
 
-void RHist1StatBox::FillStatistic(const RHistStatRequest &req, RHistStatReply &reply) const
+   auto frame = ctxt.GetPad()->GetFrame();
+   if (frame) frame->GetClientRanges(ctxt.GetConnId(), ranges);
+
+   std::vector<std::string> lines;
+
+   if (fShowMask & RHistStatBoxBase::kShowTitle)
+      lines.emplace_back(GetTitle());
+
+   FillStatistic(fShowMask, ranges, lines);
+
+   // do not send stat box itself while it includes histogram which is not required on client side
+   return std::make_unique<RDisplayHistStat>(*this, fShowMask, GetEntriesNames(), lines);
+}
+
+void RHist1StatBox::FillStatistic(unsigned mask, const RFrame::RUserRanges &ranges, std::vector<std::string> &lines) const
 {
    // TODO: need to implement statistic fill for RHist1
 
-   if (req.GetMask() & kShowEntries)
-      reply.AddLine("Entries = 1");
+   if (mask & kShowEntries)
+      lines.emplace_back("Entries = 1");
 
-   if (req.GetMask() & kShowMean)
-      reply.AddLine("Mean = 2");
+   if (mask & kShowMean)
+      lines.emplace_back("Mean = 2");
 
-   if (req.GetMask() & kShowDev)
-      reply.AddLine("Std dev = 3");
+   if (mask & kShowDev)
+      lines.emplace_back("Std dev = 3");
 
-   if (req.GetMask() & kShowRange) {
-      reply.AddLine("X min = "s + std::to_string(req.GetMin(0)));
-      reply.AddLine("X max = "s + std::to_string(req.GetMax(0)));
+   if (mask & kShowRange) {
+      lines.emplace_back("X min = "s + std::to_string(ranges.GetMin(0)));
+      lines.emplace_back("X max = "s + std::to_string(ranges.GetMax(0)));
    }
 }
 
 
-void RHist2StatBox::FillStatistic(const RHistStatRequest &req, RHistStatReply &reply) const
+void RHist2StatBox::FillStatistic(unsigned mask, const RFrame::RUserRanges &ranges, std::vector<std::string> &lines) const
 {
    // TODO: need to implement statistic fill for RHist2
 
-   if (req.GetMask() & kShowEntries)
-      reply.AddLine("Entries = 1");
+   if (mask & kShowEntries)
+      lines.emplace_back("Entries = 1");
 
-   if (req.GetMask() & kShowMean) {
-      reply.AddLine("Mean x = 2");
-      reply.AddLine("Mean y = 3");
+   if (mask & kShowMean) {
+      lines.emplace_back("Mean x = 2");
+      lines.emplace_back("Mean y = 3");
    }
 
-   if (req.GetMask() & kShowDev) {
-      reply.AddLine("Std dev x = 5");
-      reply.AddLine("Std dev y = 6");
+   if (mask & kShowDev) {
+      lines.emplace_back("Std dev x = 5");
+      lines.emplace_back("Std dev y = 6");
    }
 
-   if (req.GetMask() & kShowRange) {
-      reply.AddLine("X min = "s + std::to_string(req.GetMin(0)));
-      reply.AddLine("X max = "s + std::to_string(req.GetMax(0)));
-      reply.AddLine("Y min = "s + std::to_string(req.GetMin(1)));
-      reply.AddLine("Y max = "s + std::to_string(req.GetMax(1)));
+   if (mask & kShowRange) {
+      lines.emplace_back("X min = "s + std::to_string(ranges.GetMin(0)));
+      lines.emplace_back("X max = "s + std::to_string(ranges.GetMax(0)));
+      lines.emplace_back("Y min = "s + std::to_string(ranges.GetMin(1)));
+      lines.emplace_back("Y max = "s + std::to_string(ranges.GetMax(1)));
    }
 }
 
-void RHist3StatBox::FillStatistic(const RHistStatRequest &req, RHistStatReply &reply) const
+void RHist3StatBox::FillStatistic(unsigned mask, const RFrame::RUserRanges &ranges, std::vector<std::string> &lines) const
 {
    // TODO: need to implement statistic fill for RHist3
 
-   if (req.GetMask() & kShowEntries)
-      reply.AddLine("Entries = 1");
+   if (mask & kShowEntries)
+      lines.emplace_back("Entries = 1");
 
-   if (req.GetMask() & kShowMean) {
-      reply.AddLine("Mean x = 2");
-      reply.AddLine("Mean y = 3");
-      reply.AddLine("Mean z = 4");
+   if (mask & kShowMean) {
+      lines.emplace_back("Mean x = 2");
+      lines.emplace_back("Mean y = 3");
+      lines.emplace_back("Mean z = 4");
    }
 
-   if (req.GetMask() & kShowDev) {
-      reply.AddLine("Std dev x = 5");
-      reply.AddLine("Std dev y = 6");
-      reply.AddLine("Std dev z = 7");
+   if (mask & kShowDev) {
+      lines.emplace_back("Std dev x = 5");
+      lines.emplace_back("Std dev y = 6");
+      lines.emplace_back("Std dev z = 7");
    }
 
-   if (req.GetMask() & kShowRange) {
-      reply.AddLine("X min = "s + std::to_string(req.GetMin(0)));
-      reply.AddLine("X max = "s + std::to_string(req.GetMax(0)));
-      reply.AddLine("Y min = "s + std::to_string(req.GetMin(1)));
-      reply.AddLine("Y max = "s + std::to_string(req.GetMax(1)));
-      reply.AddLine("Z min = "s + std::to_string(req.GetMin(2)));
-      reply.AddLine("Z max = "s + std::to_string(req.GetMax(2)));
+   if (mask & kShowRange) {
+      lines.emplace_back("X min = "s + std::to_string(ranges.GetMin(0)));
+      lines.emplace_back("X max = "s + std::to_string(ranges.GetMax(0)));
+      lines.emplace_back("Y min = "s + std::to_string(ranges.GetMin(1)));
+      lines.emplace_back("Y max = "s + std::to_string(ranges.GetMax(1)));
+      lines.emplace_back("Z min = "s + std::to_string(ranges.GetMin(2)));
+      lines.emplace_back("Z max = "s + std::to_string(ranges.GetMax(2)));
    }
-
 }
-

@@ -292,22 +292,23 @@ std::shared_ptr<RNodeBase> UpcastNode(std::shared_ptr<RNodeBase> ptr);
 ColumnNames_t GetValidatedColumnNames(RLoopManager &lm, const unsigned int nColumns, const ColumnNames_t &columns,
                                       const ColumnNames_t &validCustomColumns, RDataSource *ds);
 
+std::vector<std::string> GetValidatedArgTypes(const ColumnNames_t &colNames, const RBookedCustomColumns &customColumns,
+                                              TTree *tree, RDataSource *ds, const std::string &context,
+                                              bool vector2rvec);
+
 std::vector<bool> FindUndefinedDSColumns(const ColumnNames_t &requestedCols, const ColumnNames_t &definedDSCols);
 
 using ROOT::Detail::RDF::ColumnNames_t;
 
 template <typename T>
-void AddDSColumnsHelper(RLoopManager &lm, std::string_view name, RDFInternal::RBookedCustomColumns &currentCols,
-                        RDataSource &ds, unsigned int nSlots)
+void AddDSColumnsHelper(std::string_view name, RBookedCustomColumns &currentCols, RDataSource &ds, unsigned int nSlots)
 {
    auto readers = ds.GetColumnReaders<T>(name);
    auto getValue = [readers](unsigned int slot) { return *readers[slot]; };
    using NewCol_t = RCustomColumn<decltype(getValue), CustomColExtraArgs::Slot>;
 
-   auto newCol = std::make_shared<NewCol_t>(&lm, name, ds.GetTypeName(name), std::move(getValue), ColumnNames_t{},
-                                            nSlots, currentCols, /*isDSColumn=*/true);
-
-   lm.RegisterCustomColumn(newCol.get());
+   auto newCol = std::make_shared<NewCol_t>(name, ds.GetTypeName(name), std::move(getValue), ColumnNames_t{}, nSlots,
+                                            currentCols, /*isDSColumn=*/true);
    currentCols.AddName(name);
    currentCols.AddColumn(newCol, name);
 }
@@ -316,9 +317,8 @@ void AddDSColumnsHelper(RLoopManager &lm, std::string_view name, RDFInternal::RB
 /// and return a new map of custom columns (with the new datasource columns added to it)
 template <typename... ColumnTypes, std::size_t... S>
 RDFInternal::RBookedCustomColumns
-AddDSColumns(RLoopManager &lm, const std::vector<std::string> &requiredCols,
-             const RDFInternal::RBookedCustomColumns &currentCols, RDataSource &ds, unsigned int nSlots,
-             std::index_sequence<S...>, TTraits::TypeList<ColumnTypes...>)
+AddDSColumns(const std::vector<std::string> &requiredCols, const RDFInternal::RBookedCustomColumns &currentCols,
+             RDataSource &ds, unsigned int nSlots, std::index_sequence<S...>, TTraits::TypeList<ColumnTypes...>)
 {
 
    const auto mustBeDefined = FindUndefinedDSColumns(requiredCols, currentCols.GetNames());
@@ -329,7 +329,7 @@ AddDSColumns(RLoopManager &lm, const std::vector<std::string> &requiredCols,
       auto newColumns(currentCols);
 
       // hack to expand a template parameter pack without c++17 fold expressions.
-      int expander[] = {(mustBeDefined[S] ? AddDSColumnsHelper<ColumnTypes>(lm, requiredCols[S], newColumns, ds, nSlots)
+      int expander[] = {(mustBeDefined[S] ? AddDSColumnsHelper<ColumnTypes>(requiredCols[S], newColumns, ds, nSlots)
                                           : /*no-op*/ ((void)0),
                          0)...,
                         0};
@@ -368,7 +368,7 @@ void JitFilterHelper(F &&f, const ColumnNames_t &cols, std::string_view name,
    auto &lm = *jittedFilter->GetLoopManagerUnchecked(); // RLoopManager must exist at this time
    auto ds = lm.GetDataSource();
 
-   auto newColumns = ds ? RDFInternal::AddDSColumns(lm, cols, *customColumns, *ds, lm.GetNSlots(),
+   auto newColumns = ds ? RDFInternal::AddDSColumns(cols, *customColumns, *ds, lm.GetNSlots(),
                                                     std::make_index_sequence<nColumns>(), ColTypes_t())
                         : *customColumns;
 
@@ -405,7 +405,7 @@ void JitDefineHelper(F &&f, const ColumnNames_t &cols, std::string_view name, RL
    constexpr auto nColumns = ColTypes_t::list_size;
 
    auto ds = lm->GetDataSource();
-   auto newColumns = ds ? RDFInternal::AddDSColumns(*lm, cols, *customColumns, *ds, lm->GetNSlots(),
+   auto newColumns = ds ? RDFInternal::AddDSColumns(cols, *customColumns, *ds, lm->GetNSlots(),
                                                     std::make_index_sequence<nColumns>(), ColTypes_t())
                         : *customColumns;
 
@@ -421,7 +421,7 @@ void JitDefineHelper(F &&f, const ColumnNames_t &cols, std::string_view name, RL
    const auto dummyType = "jittedCol_t";
    // use unique_ptr<RCustomColumnBase> instead of make_unique<NewCol_t> to reduce jit/compile-times
    jittedCustomCol->SetCustomColumn(std::unique_ptr<RCustomColumnBase>(
-      new NewCol_t(lm, name, dummyType, std::forward<F>(f), cols, lm->GetNSlots(), newColumns)));
+      new NewCol_t(name, dummyType, std::forward<F>(f), cols, lm->GetNSlots(), newColumns)));
 
    delete wkJittedCustomCol;
 }
@@ -451,7 +451,7 @@ void CallBuildAction(std::shared_ptr<PrevNodeType> *prevNodeOnHeap, const Column
    using ColTypes_t = TypeList<BranchTypes...>;
    constexpr auto nColumns = ColTypes_t::list_size;
    auto ds = loopManager.GetDataSource();
-   auto newColumns = ds ? RDFInternal::AddDSColumns(loopManager, bl, *customColumns, *ds, loopManager.GetNSlots(),
+   auto newColumns = ds ? RDFInternal::AddDSColumns(bl, *customColumns, *ds, loopManager.GetNSlots(),
                                                     std::make_index_sequence<nColumns>(), ColTypes_t())
                         : *customColumns;
 

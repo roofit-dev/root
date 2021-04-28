@@ -34,13 +34,13 @@
   code="{for (const auto* obj : onfile._types) { \
            auto catType = dynamic_cast<const RooCatType*>(obj); assert(catType); \
            _stateNames[catType->GetName()] = catType->getVal(); \
-           _insertionOrder.push_back(catType->getVal()); \
+           _insertionOrder.push_back(catType->GetName()); \
          }}";
 #pragma read sourceClass="RooAbsCategory" targetClass="RooAbsCategory" version="[2]" \
   include="RooFitLegacy/RooCatTypeLegacy.h" \
   source="std::vector<RooCatType*> _types" target="_stateNames,_insertionOrder" \
   code="{for (const auto catType : onfile._types) { _stateNames[catType->GetName()] = catType->getVal();\
-                                                    _insertionOrder.push_back(catType->getVal());\
+                                                    _insertionOrder.push_back(catType->GetName());\
                                                   } }";
 #pragma read sourceClass="RooAbsCategory" targetClass="RooAbsCategory" version="[1-2]" include="RooFitLegacy/RooCatTypeLegacy.h" \
   source="RooCatType _value" target="_currentIndex" code="{ _currentIndex = onfile._value.getVal(); }"
@@ -135,7 +135,6 @@
 #pragma link C++ class RooLinTransBinning+ ;
 #pragma link C++ class RooList+ ;
 #pragma link C++ class RooListProxy+ ;
-#pragma link C++ class RooMapCatEntry+ ;
 #pragma link C++ class RooMappedCategory+ ;
 #pragma read sourceClass="RooMappedCategory" targetClass="RooMappedCategory" version="[1]" include="RooFitLegacy/RooCatTypeLegacy.h" source="RooCatType* _defCat" target="_defCat" code="{ _defCat = onfile._defCat->getVal(); }"
 #pragma link C++ class RooMappedCategory::Entry+;
@@ -181,7 +180,8 @@
 #pragma link C++ class RooRealConstant+ ;
 #pragma link C++ class RooRealIntegral+ ;
 #pragma link C++ class RooRealMPFE+ ;
-#pragma link C++ class RooTemplateProxy<RooAbsReal>+;
+#pragma link C++ class RooRealProxy+;
+#pragma read sourceClass="RooRealProxy" targetClass="RooTemplateProxy<RooAbsReal>";
 #pragma link C++ class RooTemplateProxy<RooAbsPdf>+;
 #pragma read sourceClass="RooRealProxy" targetClass="RooTemplateProxy<RooAbsPdf>";
 #pragma link C++ class RooTemplateProxy<RooAbsRealLValue>+;
@@ -202,7 +202,6 @@
 #pragma link C++ class RooSetPair+ ;
 #pragma link C++ class RooSetProxy+ ;
 #pragma link C++ class RooSharedProperties+ ;
-#pragma link C++ class RooSharedPropertiesList+ ;
 #pragma link C++ class RooSimGenContext+ ;
 #pragma link C++ class RooSimSplitGenContext+ ;
 #pragma link C++ class RooStreamParser+ ;
