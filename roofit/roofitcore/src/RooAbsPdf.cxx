@@ -1050,8 +1050,8 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
     //cout<<"FK: Data test 1: "<<data.sumEntries()<<endl;
 
     RooAbsTestStatistic::Configuration cfg;
-    cfg.rangeName = rangeName;
-    cfg.addCoefRangeName = addCoefRangeName;
+    cfg.rangeName = rangeName ? rangeName : "";
+    cfg.addCoefRangeName = addCoefRangeName ? addCoefRangeName : "";
     cfg.nCPU = numcpu;
     cfg.interleave = interl;
     cfg.CPUAffinity = cpuAffinity;
@@ -1069,8 +1069,8 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
     auto tokens = RooHelpers::tokenise(rangeName, ",");
     for (const auto& token : tokens) {
       RooAbsTestStatistic::Configuration cfg;
-      cfg.rangeName = token.c_str();
-      cfg.addCoefRangeName = addCoefRangeName;
+      cfg.rangeName = token;
+      cfg.addCoefRangeName = addCoefRangeName ? addCoefRangeName : "";
       cfg.nCPU = numcpu;
       cfg.interleave = interl;
       cfg.CPUAffinity = cpuAffinity;
