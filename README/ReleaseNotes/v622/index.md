@@ -43,10 +43,19 @@ The following people have contributed to this new version:
 
 - `ROOT::GetImplicitMTPoolSize` has been deprecated in favor of the newly added `ROOT::GetThreadPoolSize` and
   will be removed in v6.24.
+- Manually setting `TThreadedObject::fgMaxSlots` is deprecated: TThreadedObject now increases the number of slots
+  on-demand rather than running out and throwing an exception
+
 
 ## Core Libraries
 
+- ROOT comes with C++ Modules enabled. More details about the technology found [here](../../README.CXXMODULES.md).
 - The `ACLiC` can be configured to pass options to the `rootcling` invocation by enabling in the `.rootrc` the `ACLiC.ExtraRootclingFlags [-opts]` line.
+- A call to `ROOT::EnableThreadSafety` is not required before using `TThreadExecutor` or `TTreeProcessorMT` anymore
+- `TTreeProcessorMT` does not silently activate implicit multi-threading features anymore. An explicit call to
+  `ROOT::EnableImplicitMT` is required instead
+- `TTreeProcessorMT` now has a constructor argument to set the number of threads for its thread-pool
+
 
 ## I/O Libraries
 
@@ -74,6 +83,22 @@ to
 Now,
     workspace.Import(...)
 has been defined for the new PyROOT, which makes calling the function easier.
+
+### Modernised category classes
+RooFit's categories were modernised. Previously, the class RooCatType was used to store category states. It stores
+two members, an integer for the category index, and up to 256 characters for a category name. Now, such states are
+stored only using an integer, and category names can have arbitrary length. This will use 4 instead of 288 bytes
+per category entry in a dataset, and make computations that rely on category states faster.
+
+The interface to define or manipulate category states was also updated. Since categories are mappings from state names
+to state index, this is now reflected in the interface. Among others, this is now possible:
+| ROOT 6.22                                      | Before (still supported)                                       |
+|------------------------------------------------|----------------------------------------------------------------|
+| `RooCategory cat("cat", "Lepton flavour");`    | `RooCategory cat("cat", "Lepton flavour");`                    |
+| `cat["electron"] = 1;`                         | `cat.defineType("electron", 1);`                               |
+| `cat["muon"] = 2;`                             | `cat.defineType("muon", 2);`                                   |
+
+See also [Category reference guide](https://root.cern.ch/doc/master/classRooCategory.html).
 
 ### Type-safe proxies for RooFit objects
 RooFit's proxy classes have been modernised. The class `RooTemplateProxy` allows for access to other RooFit objects
@@ -124,6 +149,11 @@ into RooFit's message stream number 2. The verbosity can therefore be adjusted u
   - The crosshair type cursor type did not work on MacOS Catalina. This has been fixed by
     Timur Pocheptsoff.
   - Take into account the Z errors when defining the frame to paint a TGraph2DErrors.
+  - Implement the of "F" in `TPad::RedrawAxis` to allow the plot's frame redrawing when
+    erased.
+  - Implement `TCanvas::SetRealAspectRatio` to resize a canvas so that the plot inside is
+    shown in real aspect.
+  - New graphics style "BELLE2" from Martin Ritter.
 
 ## 3D Graphics Libraries
 
@@ -177,6 +207,21 @@ sanitizer documentation or the link below for details. In clang, which allows to
 
 See [core/sanitizer](https://github.com/root-project/root/tree/master/core/sanitizer) for information.
 
+
+### Optimization of ROOT header files
+
+Many (but intentionally not all) unused includes were removed from ROOT header files. For instance, `#include "TObjString.h"` and
+`#include "ThreadLocalStorage.h"` were removed from `TClass.h`. Or `#include "TDatime.h"` was removed from
+`TDirectory.h` header file . Or `#include "TDatime.h"` was removed from `TFile.h`.
+This change may cause errors during compilation of ROOT-based code. To fix it, provide missing the includes
+where they are really required.
+This improves compile times and reduces code inter-dependency; see https://github.com/include-what-you-use/include-what-you-use/blob/master/docs/WhyIWYU.md for a good overview of the motivation.
+
+Even more includes will be "hidden" when ROOT configured with `-Ddev=ON` build option.
+In that case ROOT uses `#ifdef R__LESS_INCLUDES` to replace unused includes by class forward declarations.
+Such `dev` builds can be used to verify that ROOT-based code really includes all necessary ROOT headers.
+
+
 ## RDataFrame
 
 - Starting from this version, when `RSnapshotOptions.fMode` is `"UPDATE"` (i.e. the output file is opened in "UPDATE"
@@ -188,6 +233,9 @@ See [core/sanitizer](https://github.com/root-project/root/tree/master/core/sanit
   and skipping the file, it now throws an exception if any of the input files is unreadable (this could also happen in
   the middle of an event loop). See [ROOT-10549](https://sft.its.cern.ch/jira/browse/ROOT-10549) for more details.
 - New analysis examples based on the recent ATLAS Open Data release ([`Higgs to two photons`](https://root.cern/doc/master/df104__HiggsToTwoPhotons_8py.html), [`W boson analysis`](https://root.cern/doc/master/df105__WBosonAnalysis_8py.html), [`Higgs to four leptons`](https://root.cern/doc/master/df106__HiggsToFourLeptons_8py.html))
+- An exception is now thrown in case the size of ROOT's thread-pool changes between RDataFrame construction time and the time the event loop begins.
+- Just-in-time compilation of large portions of the computation graph has been optimized, and it is now much faster. Please report any regressions you might encounter on [our issue tracker](https://sft.its.cern.ch/jira/projects/ROOT).
+- `MakeRootDataFrame` is now a safe way to construct RDFs. It used to return RDFs with more limited functionality.
 
 
 ## PyROOT

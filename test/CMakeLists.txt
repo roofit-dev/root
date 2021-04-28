@@ -9,9 +9,12 @@
 # using the ROOT libraries on all supported platforms.
 #
 # Author: Pere Mato, 25/10/2010
-cmake_minimum_required(VERSION 2.6 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
 
 project(test)
+
+# Sergey: make no sence while CMakeLists.txt file cannot be used separately from ROOT
+# but variables like ROOT_asimage_FOUND used here and produced in ROOTConfig.cmake
 find_package(ROOT REQUIRED)
 
 #---Copy the CTestCustom.cmake file into the build directory---------------------------------
@@ -23,12 +26,12 @@ if(CMAKE_SYSTEM_NAME MATCHES Darwin)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath,@loader_path/.")
 endif()
 
-include_directories(${ROOT_INCLUDE_DIRS})
-if(DEFINED ROOT_SOURCE_DIR)  # Testing using the binary tree
-  include_directories(${ROOT_SOURCE_DIR}/tutorials)
-  include_directories(${ROOT_SOURCE_DIR}/tmva/inc)
+if(DEFINED ROOT_SOURCE_DIR)
+  # Testing using the binary tree
   set(ROOT_root_CMD ${ROOT_BINDIR}/root.exe)
-else()                       # Testing using an installation (assuming access to ROOT CMake modules)
+else()
+  # Testing using an installation (assuming access to ROOT CMake modules)
+  include_directories(${ROOT_INCLUDE_DIRS})
   include_directories(${ROOT_INCLUDE_DIRS}/../tutorials)
   add_definitions(${ROOT_DEFINITIONS})
   include(RootMacros)

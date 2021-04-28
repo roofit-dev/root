@@ -838,7 +838,8 @@ def check_ubuntu(pkg):
             return True
     elif pkg == "cmake":
         CMAKE = os.environ.get('CMAKE', 'cmake')
-        if not check_version_string_ge(exec_subprocess_check_output('{cmake} --version'.format(cmake=CMAKE), '/').strip().split('\n')[0].split()[-1], '3.4.3'):
+        output = exec_subprocess_check_output('{cmake} --version'.format(cmake=CMAKE), '/').strip().split('\n')[0].split()
+        if (output == []) or (not check_version_string_ge(output[-1], '3.4.3')):
             print(pkg.ljust(20) + '[OUTDATED VERSION (<3.4.3)]'.ljust(30))
             return False
         else:
@@ -878,7 +879,14 @@ def check_ubuntu(pkg):
         else:
             print(pkg.ljust(20) + '[NOT INSTALLED]'.ljust(30))
             return False
-    elif pkg == "svn":
+    elif pkg == "python3-pip":
+        if exec_subprocess_check_output('pip --version', workdir) != '':
+            print(pkg.ljust(20) + '[OK]'.ljust(30))
+            return True
+        else:
+            print(pkg.ljust(20) + '[NOT INSTALLED]'.ljust(30))
+            return False
+    elif pkg == "subversion":
         if exec_subprocess_check_output('which svn', workdir) != '':
             print(pkg.ljust(20) + '[OK]'.ljust(30))
             return True
@@ -1923,6 +1931,16 @@ def custom_input(prompt, always_yes=False):
         return input(prompt)
 
 ###############################################################################
+#                           Directory Initialization                          #
+###############################################################################
+
+workdir = os.path.abspath(os.path.expanduser(args['with_workdir']))
+srcdir = os.path.join(workdir, 'cling-src')
+CLING_SRC_DIR = os.path.join(srcdir, 'tools', 'cling')
+CPT_SRC_DIR = os.path.join(CLING_SRC_DIR, 'tools', 'packaging')
+LLVM_OBJ_ROOT = os.path.join(workdir, 'builddir')
+
+###############################################################################
 #                           Platform initialization                           #
 ###############################################################################
 
@@ -1940,8 +1958,33 @@ if OS == 'Windows':
     TMP_PREFIX = 'C:\\Windows\\Temp\\cling-obj\\'
 
 elif OS == 'Linux':
-    subprocess.call("sudo pip install distro", shell=True)
-    import distro
+    try:
+        import distro
+    except:
+        yes = {'yes', 'y', 'ye', ''}
+        choice = custom_input('''
+            CPT will now attempt to install the distro (and pip) package automatically.
+            Do you want to continue? [yes/no]: ''', args['y']).lower()
+        if choice in yes:
+            if sys.version_info[0] == 3:
+                pipver = 'python3-pip'
+            else:
+                pipver = 'python2-pip'
+            if check_ubuntu(pipver) is False:
+                subprocess.Popen(['sudo apt-get install {0}'.format(pipver)],
+                                shell=True,
+                                stdin=subprocess.PIPE,
+                                stdout=None,
+                                stderr=subprocess.STDOUT).communicate('yes'.encode('utf-8'))
+            if sys.version_info[0] == 3:
+                subprocess.call("sudo pip3 install distro", shell=True)
+            else:
+                subprocess.call("sudo pip install distro", shell=True)
+            import distro
+        else:
+            print('Install/update the distro package from pip')
+            import distro
+
     DIST = distro.linux_distribution()[0]
     RELEASE = distro.linux_distribution()[2]
     REV = distro.linux_distribution()[1]
@@ -1973,11 +2016,6 @@ else:
 #                               Global variables                              #
 ###############################################################################
 
-workdir = os.path.abspath(os.path.expanduser(args['with_workdir']))
-srcdir = os.path.join(workdir, 'cling-src')
-CLING_SRC_DIR = os.path.join(srcdir, 'tools', 'cling')
-CPT_SRC_DIR = os.path.join(CLING_SRC_DIR, 'tools', 'packaging')
-LLVM_OBJ_ROOT = os.path.join(workdir, 'builddir')
 prefix = ''
 tar_required = False
 llvm_revision = urlopen(
@@ -2054,6 +2092,9 @@ elif args['with_binary_llvm'] is False and args['with_llvm_url']:
 else:
     LLVM_GIT_URL = "http://root.cern.ch/git/llvm.git"
 
+if args['with_llvm_tar']:
+    tar_required = True
+
 if args['check_requirements']:
     llvm_binary_name = ""
     box_draw('Check availability of required softwares')
@@ -2061,7 +2102,7 @@ if args['check_requirements']:
         install_line = ""
         prerequisite = ['git', 'cmake', 'gcc', 'g++', 'debhelper', 'devscripts', 'gnupg', 'python', 'SSL']
         if is_llvm_binary_compatible():
-            prerequisite.extend(['svn', 'zlib*'])
+            prerequisite.extend(['subversion', 'zlib*'])
             if check_ubuntu('lit') is False:
                 prerequisite.extend(['python-pip'])
             if check_ubuntu('llvm-'+llvm_vers+'-dev') is False:
@@ -2102,18 +2143,15 @@ if args['check_requirements']:
                 else:
                     choice = custom_input("Please respond with 'yes' or 'no': ", args['y'])
                     continue
-        if no_install is False and llvm_binary_name != "":
-            if args["with_llvm_tar"]:
+        if no_install is False and llvm_binary_name != "" and tar_required is False:
+            try:
+                subprocess.Popen(['sudo apt-get install llvm-{0}-dev'.format(llvm_vers)],
+                                 shell=True,
+                                 stdin=subprocess.PIPE,
+                                 stdout=None,
+                                 stderr=subprocess.STDOUT).communicate('yes'.encode('utf-8'))
+            except:
                 tar_required = True
-            else:
-                try:
-                    subprocess.Popen(['sudo apt-get install llvm-{0}-dev'.format(llvm_vers)],
-                                     shell=True,
-                                     stdin=subprocess.PIPE,
-                                     stdout=None,
-                                     stderr=subprocess.STDOUT).communicate('yes'.encode('utf-8'))
-                except:
-                    tar_required = True
 
     elif OS == 'Windows':
         check_win('git')

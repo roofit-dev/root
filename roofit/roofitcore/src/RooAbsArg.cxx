@@ -903,7 +903,7 @@ void RooAbsArg::setShapeDirty(const RooAbsArg* source)
 ////////////////////////////////////////////////////////////////////////////////
 /// Substitute our servers with those listed in newSet. If nameChange is false, servers and
 /// and substitutes are matched by name. If nameChange is true, servers are matched to args
-/// in newSet that have the 'ORIGNAME:<servername>' attribute set. If mustReplaceAll is set,
+/// in newSet that have the `ORIGNAME:<servername>` attribute set. If mustReplaceAll is set,
 /// a warning is printed and error status is returned if not all servers could be successfully
 /// substituted.
 
@@ -996,19 +996,20 @@ Bool_t RooAbsArg::redirectServers(const RooAbsCollection& newSetOrig, Bool_t mus
   setShapeDirty() ;
 
   // Process the proxies
-  Bool_t allReplaced=kTRUE ;
   for (int i=0 ; i<numProxies() ; i++) {
     RooAbsProxy* p = getProxy(i) ;
     if (!p) continue ;
     Bool_t ret2 = p->changePointer(*newSet,nameChange,kFALSE) ;
-    allReplaced &= ret2 ;
+
+    if (mustReplaceAll && !ret2) {
+      auto ap = dynamic_cast<const RooArgProxy*>(p);
+      coutE(LinkStateMgmt) << "RooAbsArg::redirectServers(" << GetName()
+          << "): ERROR, proxy '" << p->name()
+          << "' with arg '" << (ap ? ap->absArg()->GetName() : "<could not cast>") << "' could not be adjusted" << endl;
+      ret = kTRUE ;
+    }
   }
 
-  if (mustReplaceAll && !allReplaced) {
-    coutE(LinkStateMgmt) << "RooAbsArg::redirectServers(" << GetName()
-			 << "): ERROR, some proxies could not be adjusted" << endl ;
-    ret = kTRUE ;
-  }
 
   // Optional subclass post-processing
   for (Int_t i=0 ;i<numCaches() ; i++) {
