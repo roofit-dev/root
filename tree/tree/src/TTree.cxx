@@ -1209,6 +1209,30 @@ void TTree::AddClone(TTree* clone)
    }
 }
 
+// Check whether mainTree and friendTree can be friends w.r.t. the kEntriesReshuffled bit.
+// In particular, if any has the bit set, then friendTree must have a TTreeIndex and the
+// branches used for indexing must be present in mainTree.
+// Return true if the trees can be friends, false otherwise.
+bool CheckReshuffling(TTree &mainTree, TTree &friendTree)
+{
+   const auto isMainReshuffled = mainTree.TestBit(TTree::kEntriesReshuffled);
+   const auto isFriendReshuffled = friendTree.TestBit(TTree::kEntriesReshuffled);
+   const auto friendHasValidIndex = [&] {
+      auto idx = friendTree.GetTreeIndex();
+      return idx ? idx->IsValidFor(&mainTree) : kFALSE;
+   }();
+
+   if ((isMainReshuffled || isFriendReshuffled) && !friendHasValidIndex) {
+      const auto reshuffledTreeName = isMainReshuffled ? mainTree.GetName() : friendTree.GetName();
+      const auto msg = "Tree '%s' has the kEntriesReshuffled bit set, and cannot be used as friend nor can be added as "
+                       "a friend unless the main tree has a TTreeIndex on the friend tree '%s'. You can also unset the "
+                       "bit manually if you know what you are doing.";
+      Error("AddFriend", msg, reshuffledTreeName, friendTree.GetName());
+      return false;
+   }
+   return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Add a TFriendElement to the list of friends.
 ///
@@ -1280,22 +1304,28 @@ void TTree::AddClone(TTree* clone)
 ///     tree.Draw("var:ft1.var:ft2.var")
 /// ~~~
 
-TFriendElement* TTree::AddFriend(const char* treename, const char* filename)
+TFriendElement *TTree::AddFriend(const char *treename, const char *filename)
 {
    if (!fFriends) {
       fFriends = new TList();
    }
-   TFriendElement* fe = new TFriendElement(this, treename, filename);
+   TFriendElement *fe = new TFriendElement(this, treename, filename);
 
-   fFriends->Add(fe);
-   TTree* t = fe->GetTree();
+   TTree *t = fe->GetTree();
+   bool canAddFriend = true;
    if (t) {
+      canAddFriend = CheckReshuffling(*this, *t);
       if (!t->GetTreeIndex() && (t->GetEntries() < fEntries)) {
-         Warning("AddFriend", "FriendElement %s in file %s has less entries %lld than its parent Tree: %lld", treename, filename, t->GetEntries(), fEntries);
+         Warning("AddFriend", "FriendElement %s in file %s has less entries %lld than its parent Tree: %lld", treename,
+                 filename, t->GetEntries(), fEntries);
       }
    } else {
-      Warning("AddFriend", "Cannot add FriendElement %s in file %s", treename, filename);
+      Error("AddFriend", "Cannot find tree '%s' in file '%s', friend not added", treename, filename);
+      canAddFriend = false;
    }
+
+   if (canAddFriend)
+      fFriends->Add(fe);
    return fe;
 }
 
@@ -1308,22 +1338,28 @@ TFriendElement* TTree::AddFriend(const char* treename, const char* filename)
 /// - reads a Tree with name treename from the file
 /// - adds the Tree to the list of friends
 
-TFriendElement* TTree::AddFriend(const char* treename, TFile* file)
+TFriendElement *TTree::AddFriend(const char *treename, TFile *file)
 {
    if (!fFriends) {
       fFriends = new TList();
    }
    TFriendElement *fe = new TFriendElement(this, treename, file);
    R__ASSERT(fe);
-   fFriends->Add(fe);
    TTree *t = fe->GetTree();
+   bool canAddFriend = true;
    if (t) {
+      canAddFriend = CheckReshuffling(*this, *t);
       if (!t->GetTreeIndex() && (t->GetEntries() < fEntries)) {
-         Warning("AddFriend", "FriendElement %s in file %s has less entries %lld than its parent tree: %lld", treename, file->GetName(), t->GetEntries(), fEntries);
+         Warning("AddFriend", "FriendElement %s in file %s has less entries %lld than its parent tree: %lld", treename,
+                 file->GetName(), t->GetEntries(), fEntries);
       }
-  } else {
-      Warning("AddFriend", "unknown tree '%s' in file '%s'", treename, file->GetName());
+   } else {
+      Error("AddFriend", "Cannot find tree '%s' in file '%s', friend not added", treename, file->GetName());
+      canAddFriend = false;
    }
+
+   if (canAddFriend)
+      fFriends->Add(fe);
    return fe;
 }
 
@@ -1333,7 +1369,7 @@ TFriendElement* TTree::AddFriend(const char* treename, TFile* file)
 /// The TTree is managed by the user (e.g., the user must delete the file).
 /// For a complete description see AddFriend(const char *, const char *).
 
-TFriendElement* TTree::AddFriend(TTree* tree, const char* alias, Bool_t warn)
+TFriendElement *TTree::AddFriend(TTree *tree, const char *alias, Bool_t warn)
 {
    if (!tree) {
       return 0;
@@ -1341,15 +1377,18 @@ TFriendElement* TTree::AddFriend(TTree* tree, const char* alias, Bool_t warn)
    if (!fFriends) {
       fFriends = new TList();
    }
-   TFriendElement* fe = new TFriendElement(this, tree, alias);
+   TFriendElement *fe = new TFriendElement(this, tree, alias);
    R__ASSERT(fe); // this assert is for historical reasons. Don't remove it unless you understand all the consequences.
-   fFriends->Add(fe);
-   TTree* t = fe->GetTree();
+   TTree *t = fe->GetTree();
    if (warn && (t->GetEntries() < fEntries)) {
       Warning("AddFriend", "FriendElement '%s' in file '%s' has less entries %lld than its parent tree: %lld",
-              tree->GetName(), fe->GetFile() ? fe->GetFile()->GetName() : "(memory resident)", t->GetEntries(), fEntries);
+              tree->GetName(), fe->GetFile() ? fe->GetFile()->GetName() : "(memory resident)", t->GetEntries(),
+              fEntries);
    }
-   tree->RegisterExternalFriend(fe);
+   if (CheckReshuffling(*this, *t)) {
+      fFriends->Add(fe);
+      tree->RegisterExternalFriend(fe);
+   }
    return fe;
 }
 
