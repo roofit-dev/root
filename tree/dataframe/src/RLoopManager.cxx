@@ -20,18 +20,32 @@
 #endif
 
 #include <atomic>
-#include <functional>
-#include <memory>
 #include <exception>
+#include <functional>
+#include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
-#include <iostream>
+#include <set>
 
 using namespace ROOT::Detail::RDF;
 using namespace ROOT::Internal::RDF;
 
-bool ContainsLeaf(const std::set<TLeaf *> &leaves, TLeaf *leaf)
+namespace {
+/// A helper function that returns all RDF code that is currently scheduled for just-in-time compilation.
+/// This allows different RLoopManager instances to share these data.
+/// We want RLoopManagers to be able to add their code to a global "code to execute via cling",
+/// so that, lazily, we can jit everything that's needed by all RDFs in one go, which is potentially
+/// much faster than jitting each RLoopManager's code separately.
+static std::string &GetCodeToJit()
+{
+   static std::string code;
+   return code;
+}
+
+static bool ContainsLeaf(const std::set<TLeaf *> &leaves, TLeaf *leaf)
 {
    return (leaves.find(leaf) != leaves.end());
 }
@@ -39,8 +53,8 @@ bool ContainsLeaf(const std::set<TLeaf *> &leaves, TLeaf *leaf)
 ///////////////////////////////////////////////////////////////////////////////
 /// This overload does not perform any check on the duplicates.
 /// It is used for TBranch objects.
-void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, const std::string &branchName,
-                const std::string &friendName)
+static void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, const std::string &branchName,
+                       const std::string &friendName)
 {
 
    if (!friendName.empty()) {
@@ -56,8 +70,8 @@ void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, const s
 
 ///////////////////////////////////////////////////////////////////////////////
 /// This overloads makes sure that the TLeaf has not been already inserted.
-void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, const std::string &branchName,
-                const std::string &friendName, std::set<TLeaf *> &foundLeaves, TLeaf *leaf, bool allowDuplicates)
+static void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, const std::string &branchName,
+                       const std::string &friendName, std::set<TLeaf *> &foundLeaves, TLeaf *leaf, bool allowDuplicates)
 {
    const bool canAdd = allowDuplicates ? true : !ContainsLeaf(foundLeaves, leaf);
    if (!canAdd) {
@@ -69,8 +83,8 @@ void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, const s
    foundLeaves.insert(leaf);
 }
 
-void ExploreBranch(TTree &t, std::set<std::string> &bNamesReg, ColumnNames_t &bNames, TBranch *b, std::string prefix,
-                   std::string &friendName)
+static void ExploreBranch(TTree &t, std::set<std::string> &bNamesReg, ColumnNames_t &bNames, TBranch *b,
+                          std::string prefix, std::string &friendName)
 {
    for (auto sb : *b->GetListOfBranches()) {
       TBranch *subBranch = static_cast<TBranch *>(sb);
@@ -92,8 +106,8 @@ void ExploreBranch(TTree &t, std::set<std::string> &bNamesReg, ColumnNames_t &bN
    }
 }
 
-void GetBranchNamesImpl(TTree &t, std::set<std::string> &bNamesReg, ColumnNames_t &bNames,
-                        std::set<TTree *> &analysedTrees, std::string &friendName, bool allowDuplicates)
+static void GetBranchNamesImpl(TTree &t, std::set<std::string> &bNamesReg, ColumnNames_t &bNames,
+                               std::set<TTree *> &analysedTrees, std::string &friendName, bool allowDuplicates)
 {
    std::set<TLeaf *> foundLeaves;
    if (!analysedTrees.insert(&t).second) {
@@ -175,6 +189,24 @@ void GetBranchNamesImpl(TTree &t, std::set<std::string> &bNamesReg, ColumnNames_
    }
 }
 
+static void ThrowIfPoolSizeChanged(unsigned int nSlots)
+{
+   const auto poolSize = ROOT::GetThreadPoolSize();
+   const bool isSingleThreadRun = (poolSize == 0 && nSlots == 1);
+   if (!isSingleThreadRun && poolSize != nSlots) {
+      std::string msg = "RLoopManager::Run: when the RDataFrame was constructed the size of the thread pool was " +
+                        std::to_string(nSlots) + ", but when starting the event loop it was " +
+                        std::to_string(poolSize) + ".";
+      if (poolSize > nSlots)
+         msg += " Maybe EnableImplicitMT() was called after the RDataFrame was constructed?";
+      else
+         msg += " Maybe DisableImplicitMT() was called after the RDataFrame was constructed?";
+      throw std::runtime_error(msg);
+   }
+}
+
+} // anonymous namespace
+
 ///////////////////////////////////////////////////////////////////////////////
 /// Get all the branches names, including the ones of the friend trees
 ColumnNames_t ROOT::Internal::RDF::GetBranchNames(TTree &t, bool allowDuplicates)
@@ -186,7 +218,6 @@ ColumnNames_t ROOT::Internal::RDF::GetBranchNames(TTree &t, bool allowDuplicates
    GetBranchNamesImpl(t, bNamesSet, bNames, analysedTrees, emptyFrName, allowDuplicates);
    return bNames;
 }
-
 
 RLoopManager::RLoopManager(TTree *tree, const ColumnNames_t &defaultBranches)
    : fTree(std::shared_ptr<TTree>(tree, [](TTree *) {})), fDefaultColumns(defaultBranches),
@@ -497,27 +528,15 @@ void RLoopManager::CleanUpTask(unsigned int slot)
       ptr->ClearTask(slot);
 }
 
-/// Declare to the interpreter type aliases and other entities required by RDF jitted nodes.
-/// This method clears the `fToJitDeclare` member variable.
-void RLoopManager::JitDeclarations()
-{
-   if (fToJitDeclare.empty())
-      return;
-
-   RDFInternal::InterpreterDeclare(fToJitDeclare);
-   fToJitDeclare.clear();
-}
-
 /// Add RDF nodes that require just-in-time compilation to the computation graph.
-/// This method also invokes JitDeclarations() if needed, and clears the `fToJitExec` member variable.
+/// This method also clears the contents of GetCodeToJit().
 void RLoopManager::Jit()
 {
-   if (fToJitExec.empty())
+   const std::string code = std::move(GetCodeToJit());
+   if (code.empty())
       return;
 
-   JitDeclarations();
-   RDFInternal::InterpreterCalc(fToJitExec, "RLoopManager::Run");
-   fToJitExec.clear();
+   RDFInternal::InterpreterCalc(code, "RLoopManager::Run");
 }
 
 /// Trigger counting of number of children nodes for each node of the functional graph.
@@ -533,24 +552,6 @@ void RLoopManager::EvalChildrenCounts()
    for (auto &namedFilterPtr : fBookedNamedFilters)
       namedFilterPtr->TriggerChildrenCount();
 }
-
-namespace {
-static void ThrowIfPoolSizeChanged(unsigned int nSlots)
-{
-   const auto poolSize = ROOT::GetThreadPoolSize();
-   const bool isSingleThreadRun = (poolSize == 0 && nSlots == 1);
-   if (!isSingleThreadRun && poolSize != nSlots) {
-      std::string msg = "RLoopManager::Run: when the RDataFrame was constructed the size of the thread pool was " +
-                        std::to_string(nSlots) + ", but when starting the event loop it was " +
-                        std::to_string(poolSize) + ".";
-      if (poolSize > nSlots)
-         msg += " Maybe EnableImplicitMT() was called after the RDataFrame was constructed?";
-      else
-         msg += " Maybe DisableImplicitMT() was called after the RDataFrame was constructed?";
-      throw std::runtime_error(msg);
-   }
-}
-} // namespace
 
 /// Start the event loop with a different mechanism depending on IMT/no IMT, data source/no data source.
 /// Also perform a few setup and clean-up operations (jit actions if necessary, clear booked actions after the loop...).
@@ -634,6 +635,11 @@ void RLoopManager::Report(ROOT::RDF::RCutFlowReport &rep) const
 {
    for (const auto &fPtr : fBookedNamedFilters)
       fPtr->FillReport(rep);
+}
+
+void RLoopManager::ToJitExec(const std::string &code) const
+{
+   GetCodeToJit().append(code);
 }
 
 void RLoopManager::RegisterCallback(ULong64_t everyNEvents, std::function<void(unsigned int)> &&f)

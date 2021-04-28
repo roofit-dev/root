@@ -548,14 +548,10 @@ Double_t TMath::Normalize(Double_t v[3])
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Compute the Poisson distribution function for (x,par)
+/// Compute the Poisson distribution function for (x,par).
 /// The Poisson PDF is implemented by means of Euler's Gamma-function
-/// (for the factorial), so for any x integer argument it is correct.
-/// BUT for non-integer x values, it IS NOT equal to the Poisson distribution.
-/// see TMath::PoissonI to get a non-smooth function.
-/// Note that for large values of par, it is better to call
-///
-///     TMath::Gaus(x,par,sqrt(par),kTRUE)
+/// (for the factorial), so for any x integer argument it is the correct Poisson distribution.
+/// BUT for non-integer x values, it IS NOT equal to the Poisson distribution !
 ///
 /// Begin_Macro
 /// {
@@ -567,24 +563,21 @@ Double_t TMath::Normalize(Double_t v[3])
 
 Double_t TMath::Poisson(Double_t x, Double_t par)
 {
-   if (x<0)
+   if (par < 0)
+      return TMath::QuietNaN();
+   if (x < 0)
       return 0;
-   else if (x == 0.0)
-      return 1./Exp(par);
-   else {
-      Double_t lnpoisson = x*log(par)-par-LnGamma(x+1.);
-      return Exp(lnpoisson);
+   else if (x == 0.0 )
+      return Exp(-par);
+   else
+   {
+      return Exp( x * log(par) - LnGamma(x + 1.) - par);
    }
-   // An alternative strategy is to transition to a Gaussian approximation for
-   // large values of par ...
-   //   else {
-   //     return Gaus(x,par,Sqrt(par),kTRUE);
-   //   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Compute the Poisson distribution function for (x,par)
-/// This is a non-smooth function.
+/// Compute the Discrete Poisson distribution function for (x,par).
+/// This is a discrete and a non-smooth function.
 /// This function is equivalent to ROOT::Math::poisson_pdf
 ///
 /// Begin_Macro

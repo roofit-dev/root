@@ -8,8 +8,6 @@
 # CMakeLists.txt file for building ROOT core/base package
 ############################################################################
 
-include_directories(res ../foundation/res)
-
 if(MSVC AND MSVC_VERSION GREATER_EQUAL 1925)
   # FIXME: since Visual Studio v16.5.0 the /O2 optimization flag makes most of the roofit/roostats tests failing
   # Try to re-enable /O2 after the upgrade of llvm & clang, or when upgrading Visual Studio
@@ -208,7 +206,11 @@ endif()
 if(root7)
   list(APPEND BASE_HEADERS
       ROOT/RDirectoryEntry.hxx
+      ROOT/RError.hxx
       ROOT/RIndexIter.hxx)
+  list(APPEND BASE_SOURCES
+       v7/src/RError.cxx)
+  ROOT_ADD_TEST_SUBDIRECTORY(v7/test)
 endif()
 
 

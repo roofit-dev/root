@@ -6154,8 +6154,8 @@ TVirtualTreePlayer* TTree::GetPlayer()
 
 TTreeCache *TTree::GetReadCache(TFile *file) const
 {
-   TTreeCache *pe = dynamic_cast<TTreeCache*>(file->GetCacheRead(this));
-   if (pe && pe->GetTree() != this)
+   TTreeCache *pe = dynamic_cast<TTreeCache*>(file->GetCacheRead(GetTree()));
+   if (pe && pe->GetTree() != GetTree())
       pe = nullptr;
    return pe;
 }
@@ -6171,8 +6171,8 @@ TTreeCache *TTree::GetReadCache(TFile *file, Bool_t create)
    if (create && !pe) {
       if (fCacheDoAutoInit)
          SetCacheSizeAux(kTRUE, -1);
-      pe = dynamic_cast<TTreeCache*>(file->GetCacheRead(this));
-      if (pe && pe->GetTree() != this) pe = 0;
+      pe = dynamic_cast<TTreeCache*>(file->GetCacheRead(GetTree()));
+      if (pe && pe->GetTree() != GetTree()) pe = 0;
    }
    return pe;
 }
@@ -7766,6 +7766,16 @@ void TTree::RegisterExternalFriend(TFriendElement *fe)
       fExternalFriends = new TList();
    fExternalFriends->Add(fe);
 }
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Removes external friend
+
+void TTree::RemoveExternalFriend(TFriendElement *fe)
+{
+   if (fExternalFriends) fExternalFriends->Remove((TObject*)fe);
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Remove a friend from the list of friends.

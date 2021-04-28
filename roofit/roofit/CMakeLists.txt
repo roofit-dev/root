@@ -9,6 +9,7 @@
 # @author Pere Mato, CERN
 ############################################################################
 
+
 ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
   HEADERS
     Roo2DKeysPdf.h
@@ -46,7 +47,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
     RooLandau.h
     RooLognormal.h
     RooMathCoreReg.h
-    RooMathMoreReg.h
     RooMomentMorphFunc.h
     RooMomentMorphFuncND.h
     RooMomentMorph.h
@@ -106,7 +106,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
     src/RooLandau.cxx
     src/RooLognormal.cxx
     src/RooMathCoreReg.cxx
-    src/RooMathMoreReg.cxx
     src/RooMomentMorph.cxx
     src/RooMomentMorphFunc.cxx
     src/RooMomentMorphFuncND.cxx
