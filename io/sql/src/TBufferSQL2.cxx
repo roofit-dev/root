@@ -1868,7 +1868,7 @@ void TBufferSQL2::ReadCharP(Char_t *c)
 {
    const char *buf = SqlReadCharStarValue();
    if (buf)
-      strcpy(c, buf);
+      strcpy(c, buf);  // NOLINT unfortunately, we do not know size of target buffer
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1890,7 +1890,7 @@ void TBufferSQL2::ReadTString(TString &s)
          else
             nbig = nwh;
 
-         char *data = new char[nbig];
+         char *data = new char[nbig+1];
          data[nbig] = 0;
          ReadFastArray(data, nbig);
          s = data;
