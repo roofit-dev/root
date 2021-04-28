@@ -20,6 +20,7 @@
 #include "Minuit2/SqrtUpParameterTransformation.h"
 
 #include <vector>
+#include <string>
 #include <cassert>
 
 namespace ROOT {
