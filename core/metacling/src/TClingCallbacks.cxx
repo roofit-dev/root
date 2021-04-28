@@ -11,6 +11,8 @@
 
 #include "TClingCallbacks.h"
 
+#include <ROOT/FoundationUtils.hxx>
+
 #include "cling/Interpreter/DynamicLibraryManager.h"
 #include "cling/Interpreter/Interpreter.h"
 #include "cling/Interpreter/InterpreterCallbacks.h"
@@ -38,6 +40,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/Process.h"
 
 #include "TClingUtils.h"
 #include "ClingRAII.h"
@@ -288,6 +291,11 @@ bool TClingCallbacks::LookupObject(LookupResult &R, Scope *S) {
 
 bool TClingCallbacks::findInGlobalModuleIndex(DeclarationName Name, bool loadFirstMatchOnly /*=true*/)
 {
+   llvm::Optional<std::string> envUseGMI = llvm::sys::Process::GetEnv("ROOT_USE_GMI");
+   if (envUseGMI.hasValue())
+      if (!envUseGMI->empty() && !ROOT::FoundationUtils::ConvertEnvValueToBool(*envUseGMI))
+         return false;
+
    const CompilerInstance *CI = m_Interpreter->getCI();
    const LangOptions &LangOpts = CI->getPreprocessor().getLangOpts();
 
@@ -312,11 +320,25 @@ bool TClingCallbacks::findInGlobalModuleIndex(DeclarationName Name, bool loadFir
    // Find the modules that reference the identifier.
    // Note that this only finds top-level modules.
    if (Index->lookupIdentifier(Name.getAsString(), FoundModules)) {
-      for (auto FileName : FoundModules) {
-         StringRef ModuleName = llvm::sys::path::stem(*FileName);
+      for (llvm::StringRef FileName : FoundModules) {
+         StringRef ModuleName = llvm::sys::path::stem(FileName);
+
+         // Skip to the first not-yet-loaded module.
+         if (m_LoadedModuleFiles.count(FileName)) {
+            if (gDebug > 2)
+               llvm::errs() << "Module '" << ModuleName << "' already loaded"
+                            << " for '" << Name.getAsString() << "'\n";
+            continue;
+         }
+
          fIsLoadingModule = true;
+         if (gDebug > 2)
+            llvm::errs() << "Loading '" << ModuleName << "' on demand"
+                         << " for '" << Name.getAsString() << "'\n";
+
          m_Interpreter->loadModule(ModuleName);
          fIsLoadingModule = false;
+         m_LoadedModuleFiles[FileName] = Name;
          if (loadFirstMatchOnly)
             break;
       }
@@ -334,7 +356,8 @@ bool TClingCallbacks::LookupObject(const DeclContext* DC, DeclarationName Name) 
    if (fIsLoadingModule)
       return false;
 
-   if (!IsAutoLoadingEnabled() || fIsAutoLoadingRecursively) return false;
+   if (fIsAutoParsingSuspended || fIsAutoLoadingRecursively)
+      return false;
 
    if (findInGlobalModuleIndex(Name, /*loadFirstMatchOnly*/ false))
       return true;

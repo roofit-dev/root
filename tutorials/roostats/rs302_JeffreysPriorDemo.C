@@ -1,7 +1,7 @@
 /// \file
 /// \ingroup tutorial_roostats
 /// \notebook -js
-/// tutorial demonstrating and validates the RooJeffreysPrior class
+/// \brief tutorial demonstrating and validates the RooJeffreysPrior class
 ///
 /// Jeffreys's prior is an 'objective prior' based on formal rules.
 /// It is calculated from the Fisher information matrix.
@@ -49,7 +49,7 @@
 
 using namespace RooFit;
 
-void JeffreysPriorDemo()
+void rs302_JeffreysPriorDemo()
 {
    RooWorkspace w("w");
    w.factory("Uniform::u(x[0,1])");

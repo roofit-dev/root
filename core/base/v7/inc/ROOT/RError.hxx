@@ -1,4 +1,4 @@
-/// \file ROOT/RError.h
+/// \file ROOT/RError.hxx
 /// \ingroup Base ROOT7
 /// \author Jakob Blomer <jblomer@cern.ch>
 /// \date 2019-12-11
@@ -6,7 +6,7 @@
 /// is welcome!
 
 /*************************************************************************
- * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2020, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -49,7 +49,7 @@
 //     if (!result) {
 //        /* custom error handling or result.Throw() */
 //     }
-//     switch (result.Get()) {
+//     switch (result.Inspect()) {
 //        ...
 //     }
 //
@@ -159,6 +159,16 @@ public:
    /// Throws an RException with fError
    void Throw();
 
+   /// Used by R__FORWARD_ERROR in order to keep track of the stack trace.
+   static RError ForwardError(RResultBase &&result, RError::RLocation &&sourceLocation) {
+      if (!result.fError) {
+         return RError("internal error: attempt to forward error of successful operation",
+                       std::move(sourceLocation));
+      }
+      result.fError->AddFrame(std::move(sourceLocation));
+      return *result.fError;
+   }
+
    // Help to prevent heap construction of RResult objects. Unchecked RResult objects in failure state should throw
    // an exception close to the error location. For stack allocated RResult objects, an exception is thrown
    // the latest when leaving the scope. Heap allocated RResult objects in failure state can live much longer making it
@@ -187,6 +197,20 @@ private:
    /// The result value in case of successful execution
    T fValue;
 
+   // Ensure accessor methods throw in case of errors
+   inline void ThrowOnError() {
+      if (R__unlikely(fError)) {
+         // Accessors can be wrapped in a try-catch block, so throwing the
+         // exception here is akin to checking the error.
+         //
+         // Setting fIsChecked to true also avoids a spurious warning in the RResult destructor
+         fIsChecked = true;
+
+         fError->AppendToMessage(" (unchecked RResult access!)");
+         throw RException(*fError);
+      }
+   }
+
 public:
    RResult(const T &value) : fValue(value) {}
    RResult(T &&value) : fValue(std::move(value)) {}
@@ -200,28 +224,35 @@ public:
    ~RResult() = default;
 
    /// Used by R__FORWARD_RESULT in order to keep track of the stack trace in case of errors
-   static RResult &Forward(RResult &result, RError::RLocation &&sourceLocation) {
-      if (result.fError)
-         result.fError->AddFrame(std::move(sourceLocation));
-      return result;
+   RResult &Forward(RError::RLocation &&sourceLocation) {
+      if (fError)
+         fError->AddFrame(std::move(sourceLocation));
+      return *this;
    }
 
-   const T &Get() {
-      if (R__unlikely(fError)) {
-         // Get() can be wrapped in a try-catch block, so throwing the exception here is akin to checking the error.
-         // Setting fIsChecked to true also avoids a spurious warning in the RResult destructor
-         fIsChecked = true;
-
-         fError->AppendToMessage(" (unchecked RResult access!)");
-         throw RException(*fError);
-      }
+   /// If the operation was successful, returns a const reference to the inner type.
+   /// If there was an error, Inspect() instead throws an exception.
+   const T &Inspect() {
+      ThrowOnError();
       return fValue;
+   }
+
+   /// If the operation was successful, returns the inner type by value.
+   ///
+   /// For move-only types, Unwrap can only be called once, as it yields ownership of
+   /// the inner value to the caller using std::move, potentially leaving the
+   /// RResult in an unspecified state.
+   ///
+   /// If there was an error, Unwrap() instead throws an exception.
+   T Unwrap() {
+      ThrowOnError();
+      return std::move(fValue);
    }
 
    explicit operator bool() { return Check(); }
 };
 
-/// RResult<void> has no data member and no Get() method but instead a Success() factory method
+/// RResult<void> has no data member and no Inspect() method but instead a Success() factory method
 template<>
 class RResult<void> : public Internal::RResultBase {
 private:
@@ -240,10 +271,17 @@ public:
    ~RResult() = default;
 
    /// Used by R__FORWARD_RESULT in order to keep track of the stack trace in case of errors
-   static RResult &Forward(RResult &result, RError::RLocation &&sourceLocation) {
-      if (result.fError)
-         result.fError->AddFrame(std::move(sourceLocation));
-      return result;
+   RResult &Forward(RError::RLocation &&sourceLocation) {
+      if (fError)
+         fError->AddFrame(std::move(sourceLocation));
+      return *this;
+   }
+
+   /// Short-hand method to throw an exception in the case of errors. Does nothing for
+   /// successful RResults.
+   void ThrowOnError() {
+      if (!Check())
+         Throw();
    }
 
    explicit operator bool() { return Check(); }
@@ -252,7 +290,9 @@ public:
 /// Short-hand to return an RResult<T> in an error state; the RError is implicitly converted into RResult<T>
 #define R__FAIL(msg) ROOT::Experimental::RError(msg, {R__LOG_PRETTY_FUNCTION, __FILE__, __LINE__})
 /// Short-hand to return an RResult<T> value from a subroutine to the calling stack frame
-#define R__FORWARD_RESULT(res) std::move(res.Forward(res, {R__LOG_PRETTY_FUNCTION, __FILE__, __LINE__}))
+#define R__FORWARD_RESULT(res) std::move(res.Forward({R__LOG_PRETTY_FUNCTION, __FILE__, __LINE__}))
+/// Short-hand to return an RResult<T> in an error state (i.e. after checking)
+#define R__FORWARD_ERROR(res) res.ForwardError(std::move(res), {R__LOG_PRETTY_FUNCTION, __FILE__, __LINE__})
 } // namespace Experimental
 } // namespace ROOT
 

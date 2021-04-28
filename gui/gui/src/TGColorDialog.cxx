@@ -43,7 +43,7 @@
 //                                                                      //
 //////////////////////////////////////////////////////////////////////////
 
-#include <stdlib.h>
+#include <cstdlib>
 
 #include "TGLabel.h"
 #include "TGMsgBox.h"         // for ID_OK, ID_CANCEL
@@ -63,6 +63,7 @@
 #include "TROOT.h"
 #include "TMath.h"
 #include "TVirtualX.h"
+#include "snprintf.h"
 
 ClassImp(TGColorPalette);
 ClassImp(TGColorPick);

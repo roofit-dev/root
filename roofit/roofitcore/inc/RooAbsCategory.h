@@ -22,6 +22,7 @@
 #include <string>
 #include <map>
 #include <functional>
+#include <vector>
 
 #ifdef R__LESS_INCLUDES
 class RooCatType;
@@ -38,8 +39,6 @@ class RooAbsCategory : public RooAbsArg {
 public:
   /// The type used to denote a specific category state.
   using value_type = int;
-  /// A category state to signify an invalid category. The `first` member is std::numeric_limits<int>::min(), the name is empty.
-  static const std::map<std::string, RooAbsCategory::value_type>::value_type _invalidCategory;
 
   // Constructors, assignment etc.
   RooAbsCategory() { };
@@ -198,7 +197,7 @@ protected:
     return hasIndex(_currentIndex);
   }
 
-  /// If a category depends on the shape of others, *i.e.*, its state numbers or names depend
+  /// If a category depends on the shape of others, i.e.\ its state numbers or names depend
   /// on the states of other categories, this function has to be implemented to recompute
   /// _stateNames and _insertionOrder.
   /// If one of these two changes, setShapeDirty() has to be called to propagate this information
@@ -223,6 +222,8 @@ protected:
   mutable UChar_t _byteValue{0}; //! Transient cache for byte values from tree branches
   mutable std::map<value_type, std::unique_ptr<RooCatType, std::function<void(RooCatType*)>> > _legacyStates; //! Map holding pointers to RooCatType instances. Only for legacy interface. Don't use if possible.
   bool _treeVar{false}; /// Is this category attached to a tree?
+
+  static const decltype(_stateNames)::value_type& invalidCategory();
 
   ClassDef(RooAbsCategory, 3) // Abstract discrete variable
 };

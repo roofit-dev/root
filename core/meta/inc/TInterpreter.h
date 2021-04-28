@@ -31,6 +31,8 @@
 #include <map>
 #include <typeinfo>
 #include <vector>
+#include <string>
+#include <utility>
 
 class TClass;
 class TEnv;
@@ -39,6 +41,7 @@ class TMethod;
 class TObjArray;
 class TEnum;
 class TListOfEnums;
+class TSeqCollection;
 
 R__EXTERN TVirtualMutex *gInterpreterMutex;
 
@@ -189,6 +192,7 @@ public:
                                    const char** classesHeaders,
                                    Bool_t lateRegistration = false,
                                    Bool_t hasCxxModule = false) = 0;
+   virtual void     AddAvailableIndentifiers(TSeqCollection&) = 0;
    virtual void     RegisterTClassUpdate(TClass *oldcl,DictFuncPtr_t dict) = 0;
    virtual void     UnRegisterTClassUpdate(const TClass *oldcl) = 0;
    virtual Int_t    SetClassSharedLibs(const char *cls, const char *libs) = 0;

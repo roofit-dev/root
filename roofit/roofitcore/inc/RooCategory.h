@@ -18,6 +18,10 @@
 
 #include "RooAbsCategoryLValue.h"
 
+#include <vector>
+#include <map>
+#include <string>
+
 class RooCategorySharedProperties;
 
 class RooCategory final : public RooAbsCategoryLValue {
@@ -33,7 +37,7 @@ public:
 
   /// Return current index.
   virtual value_type getCurrentIndex() const override final {
-    return _currentIndex;
+    return RooCategory::evaluate();
   }
 
   virtual Bool_t setIndex(Int_t index, bool printError = true) override;
@@ -93,7 +97,7 @@ public:
   /// Check if the currently defined category state is in the range with the given name.
   /// If no ranges are defined, the state counts as being in range.
   virtual Bool_t inRange(const char* rangeName) const override {
-    return isStateInRange(rangeName, _currentIndex);
+    return isStateInRange(rangeName, RooCategory::evaluate());
   }
   /// Returns true if category has a range with given name defined.
   virtual bool hasRange(const char* rangeName) const override {
@@ -104,9 +108,19 @@ public:
 
 protected:
   /// \copydoc RooAbsCategory::evaluate() const
-  /// Simply returns the currently set state index.
+  /// Returns the currently set state index. If this is invalid,
+  /// returns the first-set index.
   virtual value_type evaluate() const override {
-    return _currentIndex;
+    if (hasIndex(_currentIndex))
+      return _currentIndex;
+
+    if (_insertionOrder.empty()) {
+      return invalidCategory().second;
+    } else {
+      auto item = stateNames().find(_insertionOrder.front());
+      assert(item != stateNames().end());
+      return item->second;
+    }
   }
 
   /// This category's shape does not depend on others, and does not need recomputing.

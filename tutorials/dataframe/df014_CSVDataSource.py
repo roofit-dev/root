@@ -1,6 +1,8 @@
 ## \file
 ## \ingroup tutorial_dataframe
 ## \notebook -draw
+## \brief Process a CSV file with RDataFrame and the CSV data source.
+##
 ## This tutorial illustrates how use the RDataFrame in combination with a
 ## RDataSource. In this case we use a TCsvDS. This data source allows to read
 ## a CSV file from a RDataFrame.
@@ -44,6 +46,7 @@ c = ROOT.TCanvas()
 c.SetLogx()
 c.SetLogy()
 invMass.Draw()
+c.SaveAs("df014_invMass.png")
 
 # We will now produce a plot also for the J/Psi particle. We will plot
 # on the same canvas the full spectrum and the zoom in the J/psi particle.
@@ -68,3 +71,6 @@ leftPad.SetLogy()
 fullSpectrum.Draw("Hist")
 dualCanvas.cd(2)
 jpsi.Draw("HistP")
+dualCanvas.SaveAs("df014_jpsi.png")
+
+print("Saved figures to df014_*.png")

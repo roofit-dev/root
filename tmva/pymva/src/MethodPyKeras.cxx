@@ -87,15 +87,13 @@ void MethodPyKeras::DeclareOptions() {
    DeclareOptionRef(fLearningRateSchedule, "LearningRateSchedule", "Set new learning rate during training at specific epochs, e.g., \"50,0.01;70,0.005\"");
    DeclareOptionRef(fTensorBoard, "TensorBoard",
                     "Write a log during training to visualize and monitor the training performance with TensorBoard");
-   DeclareOptionRef(fTensorBoard, "TensorBoard",
-                    "Write a log during training to visualize and monitor the training performance with TensorBoard");
 
    DeclareOptionRef(fNumValidationString = "20%", "ValidationSize", "Part of the training data to use for validation. "
                     "Specify as 0.2 or 20% to use a fifth of the data set as validation set. "
                     "Specify as 100 to use exactly 100 events. (Default: 20%)");
-
+   DeclareOptionRef(fUserCodeName = "", "UserCode",
+                    "Optional python code provided by the user to be executed before loading the Keras model");
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Validation of the ValidationSize option. Allowed formats are 20%, 0.2 and
@@ -169,12 +167,14 @@ void MethodPyKeras::ProcessOptions() {
    // check first if using tensorflow backend
    if (GetKerasBackend() == kTensorFlow) {
       Log() << kINFO << "Using TensorFlow backend - setting special configuration options "  << Endl;
-      PyRunString("import tensorflow as tf");
+      PyRunString("import tensorflow as tf","Error importing tensorflow");
       PyRunString("from keras.backend import tensorflow_backend as K");
+      // run these above lines also in global namespace to make them visible overall
+      PyRun_String("import tensorflow as tf", Py_single_input, fGlobalNS, fGlobalNS);
+      PyRun_String("from keras.backend import tensorflow_backend as K", Py_single_input, fGlobalNS, fGlobalNS);
 
       // check tensorflow version
       PyRunString("tf_major_version = int(tf.__version__.split('.')[0])");
-      //PyRunString("print(tf.__version__,'major is ',tf_major_version)");
       PyObject *pyTfVersion = PyDict_GetItemString(fLocalNS, "tf_major_version");
       int tfVersion = PyLong_AsLong(pyTfVersion);
       Log() << kINFO << "Using Tensorflow version " << tfVersion << Endl;
@@ -231,6 +231,28 @@ void MethodPyKeras::SetupKerasModel(bool loadTrainedModel) {
     * Load Keras model from file
     */
 
+   Log() << kINFO << " Setup Keras Model " << Endl;
+
+   PyRunString("load_model_custom_objects=None");
+
+
+
+
+   if (!fUserCodeName.IsNull()) {
+      Log() << kINFO << " Executing user initialization code from  " << fUserCodeName << Endl;
+
+
+      // run some python code provided by user for model initialization if needed
+      TString cmd = "exec(open('" + fUserCodeName + "').read())";
+      TString errmsg = "Error executing the provided user code";
+      PyRunString(cmd, errmsg);
+
+      PyRunString("print('custom objects for loading model : ',load_model_custom_objects)");
+   }
+
+
+
+
    // Load initial model or already trained model
    TString filenameLoadModel;
    if (loadTrainedModel) {
@@ -239,9 +261,12 @@ void MethodPyKeras::SetupKerasModel(bool loadTrainedModel) {
    else {
       filenameLoadModel = fFilenameModel;
    }
-   PyRunString("model = keras.models.load_model('"+filenameLoadModel+"')",
+
+   Log() << kINFO << " Loading Keras Model " << Endl;
+
+   PyRunString("model = keras.models.load_model('"+filenameLoadModel+"', custom_objects=load_model_custom_objects)",
                "Failed to load Keras model from file: "+filenameLoadModel);
-   Log() << kINFO << "Load model from file: " << filenameLoadModel << Endl;
+   Log() << kINFO << "Loaded model from file: " << filenameLoadModel << Endl;
 
 
    /*
@@ -282,6 +307,10 @@ void MethodPyKeras::Init() {
    // NOTE: sys.argv has to be cleared because otherwise TensorFlow breaks
    PyRunString("import sys; sys.argv = ['']", "Set sys.argv failed");
    PyRunString("import keras", "Import Keras failed");
+   // do import also in global namespace
+   auto ret = PyRun_String("import keras", Py_single_input, fGlobalNS, fGlobalNS);
+   if (!ret)
+      Log() << kFATAL << "Import Keras in global namespace failed " << Endl;
 
    // Set flag that model is not setup
    fModelIsSetup = false;
@@ -469,7 +498,6 @@ void MethodPyKeras::Train() {
    for (iHis=0; iHis<nkeys; iHis++) {
 
       PyRunString(TString::Format("copy_string=str(list(history.history.keys())[%d])",iHis));
-      //PyRunString("print (copy_string)");
       PyObject* stra=PyDict_GetItemString(fLocalNS, "copy_string");
       if(!stra) break;
 #if PY_MAJOR_VERSION < 3   // for Python2

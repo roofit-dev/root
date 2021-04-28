@@ -84,8 +84,6 @@
 #include "RooCachedReal.h"
 #include "RooHelpers.h"
 
-#include "Riostream.h"
-
 #include "Compression.h"
 #include "Math/IFunction.h"
 #include "TMath.h"
@@ -103,8 +101,11 @@
 #include "TMatrixD.h"
 #include "TVector.h"
 #include "ROOT/RMakeUnique.hxx"
+#include "strlcpy.h"
 
 #include <sstream>
+#include <iostream>
+#include <iomanip>
 
 using namespace std ;
 
@@ -1605,13 +1606,13 @@ void RooAbsReal::plotOnCompSelect(RooArgSet* selNodes) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Plot (project) PDF on specified frame. If a PDF is plotted in an empty frame, it
 /// will show a unit normalized curve in the frame variable, taken at the present value
-/// of other observables defined for this PDF
+/// of other observables defined for this PDF.
 ///
 /// If a PDF is plotted in a frame in which a dataset has already been plotted, it will
 /// show a projected curve integrated over all variables that were present in the shown
 /// dataset except for the one on the x-axis. The normalization of the curve will also
 /// be adjusted to the event count of the plotted dataset. An informational message
-/// will be printed for each projection step that is performed
+/// will be printed for each projection step that is performed.
 ///
 /// This function takes the following named arguments
 /// <table>
@@ -1627,7 +1628,7 @@ void RooAbsReal::plotOnCompSelect(RooArgSet* selNodes) const
 ///                                    in multiple observables
 ///
 /// <tr><td> `Project(const RooArgSet& set)`   <td> Override default projection behaviour by projecting over observables
-///                                    given in set and complete ignoring the default projection behavior. Advanced use only.
+///                                    given in the set, ignoring the default projection behavior. Advanced use only.
 ///
 /// <tr><td> `ProjWData(const RooAbsData& d)`  <td> Override default projection _technique_ (integration). For observables present in given dataset
 ///                                    projection of PDF is achieved by constructing an average over all observable values in given set.
@@ -1648,7 +1649,7 @@ void RooAbsReal::plotOnCompSelect(RooArgSet* selNodes) const
 ///                                    value suppress output completely, a zero value will only print the error count per p.d.f component,
 ///                                    a positive value is will print details of each error up to numErr messages per p.d.f component.
 ///
-/// <tr><td> `EvalErrorValue(Double_t value)`  <td> Set curve points at which (pdf) evaluation error occur to specified value. By default the
+/// <tr><td> `EvalErrorValue(Double_t value)`  <td> Set curve points at which (pdf) evaluation errors occur to specified value. By default the
 ///                                    function value is plotted.
 ///
 /// <tr><td> `Normalization(Double_t scale, ScaleType code)`   <td> Adjust normalization by given scale factor. Interpretation of number depends on code:
@@ -4297,7 +4298,7 @@ RooAbsMoment* RooAbsReal::moment(RooRealVar& obs, Int_t order, Bool_t central, B
 /// \param[in] order Order of the moment
 /// \param[in] central If true, the central moment is given by \f$ \langle (x- \langle x \rangle )^2 \rangle \f$
 /// \param[in] takeRoot Calculate the square root
-/// \param[in] intNormOb If true, the moment of the function integrated over all normalization observables is returned.
+/// \param[in] intNormObs If true, the moment of the function integrated over all normalization observables is returned.
 
 RooAbsMoment* RooAbsReal::moment(RooRealVar& obs, const RooArgSet& normObs, Int_t order, Bool_t central, Bool_t takeRoot, Bool_t intNormObs)
 {
@@ -4881,12 +4882,11 @@ RooSpan<double> RooAbsReal::evaluateBatch(std::size_t begin, std::size_t maxSize
   leafNodeServerList(&allLeafs);
 
   if (RooMsgService::instance().isActive(this, RooFit::Optimization, RooFit::INFO)) {
-    coutI(Optimization) << "The class " << IsA()->GetName() << " does not have the faster batch evaluation interface."
-          << " Consider requesting this feature on ROOT's JIRA tracker." << std::endl;
+    coutI(Optimization) << "The class " << IsA()->GetName() << " could benefit from implementing the faster batch evaluation interface."
+        << " If it is part of ROOT, consider requesting this on https://root.cern." << std::endl;
   }
 
 
-  // TODO Make faster by using batch computation results also on intermediate nodes?
   std::vector<std::tuple<RooRealVar*, RooSpan<const double>, double>> batchLeafs;
   for (auto leaf : allLeafs) {
     auto leafRRV = dynamic_cast<RooRealVar*>(leaf);
@@ -4907,6 +4907,13 @@ RooSpan<double> RooAbsReal::evaluateBatch(std::size_t begin, std::size_t maxSize
 
   auto output = _batchData.makeWritableBatchUnInit(begin, maxSize);
 
+  // Side track all caching that RooFit might think is necessary.
+  // This yields wrong results when used with batch computations,
+  // since data are not loaded globally here, and the caches of
+  // objects are therefore not updated.
+  const bool oldInhibitState = inhibitDirty();
+  setDirtyInhibit(true);
+
   for (std::size_t i = 0; i < output.size(); ++i) {
     for (auto& tup : batchLeafs) {
       RooRealVar* leaf = std::get<0>(tup);
@@ -4917,6 +4924,8 @@ RooSpan<double> RooAbsReal::evaluateBatch(std::size_t begin, std::size_t maxSize
 
     output[i] = evaluate();
   }
+
+  setDirtyInhibit(oldInhibitState);
 
   // Reset values
   for (auto& tup : batchLeafs) {
