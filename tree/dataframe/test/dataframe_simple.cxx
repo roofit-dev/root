@@ -185,8 +185,7 @@ TEST_P(RDFSimpleTests, Define_jitted_type_unknown_to_interpreter)
    auto d = tdf.Define("foo", [](){return RFoo();});
    auto d2 = tdf.Define("foo2", [](){return std::array<RFoo, 2>();});
 
-   // We check that the if nothing is done with RFoo in jitted strings
-   // everything works fine
+   // We check that if nothing is done with RFoo in jitted strings everything works fine
    EXPECT_EQ(10U, *d.Count());
 
    EXPECT_ANY_THROW(d.Define("foo3", "foo*2"));
@@ -624,7 +623,7 @@ public:
 TEST_P(RDFSimpleTests, BookCustomAction)
 {
    RDataFrame d(1);
-   const auto nWorkers = std::max(1u, ROOT::GetImplicitMTPoolSize());
+   const auto nWorkers = std::max(1u, ROOT::GetThreadPoolSize());
    const auto expected = nWorkers-1;
 
    auto maxSlot0 = d.Book<unsigned int>(MaxSlotHelper(nWorkers), {"tdfslot_"});

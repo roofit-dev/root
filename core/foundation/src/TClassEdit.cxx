@@ -18,7 +18,6 @@
 #include <assert.h>
 #include <string.h>
 #include "TClassEdit.h"
-#include <ctype.h>
 #include <cctype>
 #include "Rstrstream.h"
 #include <set>
@@ -27,6 +26,8 @@
 #include <memory>
 #include "ROOT/RStringView.hxx"
 #include <algorithm>
+
+using namespace std;
 
 namespace {
    static TClassEdit::TInterpreterLookupHelper *gInterpreterHelper = 0;
@@ -42,8 +43,6 @@ namespace {
       }
    };
 }
-
-namespace std {} using namespace std;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Return the length, if any, taken by std:: and any

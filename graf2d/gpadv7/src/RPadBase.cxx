@@ -80,6 +80,29 @@ std::shared_ptr<ROOT::Experimental::RDrawable> ROOT::Experimental::RPadBase::Fin
 }
 
 ///////////////////////////////////////////////////////////////////////////
+/// Find subpad which contains primitive with given display id
+
+const ROOT::Experimental::RPadBase *ROOT::Experimental::RPadBase::FindPadForPrimitiveWithDisplayId(const std::string &id) const
+{
+   auto p = id.find("_");
+   if (p == std::string::npos)
+      return nullptr;
+
+   auto prim = GetPrimitive(std::stoul(id.substr(0,p)));
+   if (!prim)
+      return nullptr;
+
+   auto subid = id.substr(p+1);
+
+   if (RDisplayItem::ObjectIDFromPtr(prim.get()) == subid)
+      return this;
+
+   auto subpad = std::dynamic_pointer_cast<RPadBase>(prim);
+
+   return subpad ? subpad->FindPadForPrimitiveWithDisplayId(subid) : nullptr;
+}
+
+///////////////////////////////////////////////////////////////////////////
 /// Method collect existing colors and assign new values if required
 
 void ROOT::Experimental::RPadBase::AssignAutoColors()
@@ -108,8 +131,9 @@ void ROOT::Experimental::RPadBase::AssignAutoColors()
 ///////////////////////////////////////////////////////////////////////////
 /// Create display items for all primitives in the pad
 /// Each display item gets its special id, which used later for client-server communication
+/// Second parameter is version id which already delivered to the client
 
-void ROOT::Experimental::RPadBase::DisplayPrimitives(RPadBaseDisplayItem &paditem) const
+void ROOT::Experimental::RPadBase::DisplayPrimitives(RPadBaseDisplayItem &paditem, Version_t vers) const
 {
    paditem.SetAttributes(&GetAttrMap());
    paditem.SetPadStyle(fStyle.lock());
@@ -117,14 +141,15 @@ void ROOT::Experimental::RPadBase::DisplayPrimitives(RPadBaseDisplayItem &padite
    unsigned indx = 0;
 
    for (auto &drawable : fPrimitives) {
-      auto item = drawable->Display();
-      if (item) {
-         item->SetObjectIDAsPtr(drawable.get());
-         item->SetIndex(indx);
-         // add object with the style
-         paditem.Add(std::move(item), drawable->fStyle.lock());
-      }
-      ++indx;
+      auto item = drawable->Display(*this, vers);
+
+      if (!item)
+         item = std::make_unique<RDisplayItem>(true);
+
+      item->SetObjectIDAsPtr(drawable.get());
+      item->SetIndex(indx++);
+      // add object with the style
+      paditem.Add(std::move(item), drawable->fStyle.lock());
    }
 }
 
@@ -321,7 +346,9 @@ void ROOT::Experimental::RPadBase::SetAllAxisAutoBounds()
       frame->GetUserAxis(i).SetAutoBounds();
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////
 /// Convert user coordinates to normal coordinates.
+
 std::array<ROOT::Experimental::RPadLength::Normal, 2> ROOT::Experimental::RPadBase::UserToNormal(const std::array<RPadLength::User, 2> &pos) const
 {
    auto frame = GetFrame();
@@ -330,3 +357,13 @@ std::array<ROOT::Experimental::RPadLength::Normal, 2> ROOT::Experimental::RPadBa
    return frame->UserToNormal(pos);
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/// Assign drawable version - for pad itself and all primitives
+
+void ROOT::Experimental::RPadBase::SetDrawableVersion(Version_t vers)
+{
+   RDrawable::SetDrawableVersion(vers);
+
+   for (auto &drawable : fPrimitives)
+      drawable->SetDrawableVersion(vers);
+}
