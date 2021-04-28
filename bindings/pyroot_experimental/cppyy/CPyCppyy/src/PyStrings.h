@@ -10,15 +10,16 @@ namespace PyStrings {
     extern PyObject* gAssign;
     extern PyObject* gBases;
     extern PyObject* gBase;
-    extern PyObject* gCppEq;
-    extern PyObject* gCppNe;
     extern PyObject* gCppName;
     extern PyObject* gDeref;
+    extern PyObject* gPreInc;
+    extern PyObject* gPostInc;
     extern PyObject* gDict;
     extern PyObject* gEmptyString;
     extern PyObject* gEq;
     extern PyObject* gFollow;
     extern PyObject* gGetItem;
+    extern PyObject* gGetNoCheck;
     extern PyObject* gInit;
     extern PyObject* gIter;
     extern PyObject* gLen;
@@ -28,6 +29,9 @@ namespace PyStrings {
     extern PyObject* gName;
     extern PyObject* gNe;
     extern PyObject* gTypeCode;
+    extern PyObject* gCTypesType;
+
+    extern PyObject* gUnderlying;
 
     extern PyObject* gAdd;
     extern PyObject* gSub;
@@ -46,7 +50,15 @@ namespace PyStrings {
     extern PyObject* gTemplate;
     extern PyObject* gVectorAt;
 
+    extern PyObject* gCppReal;
+    extern PyObject* gCppImag;
+
     extern PyObject* gThisModule;
+
+    extern PyObject* gNoImplicit;
+
+    extern PyObject* gExPythonize;
+    extern PyObject* gPythonize;
 
 } // namespace PyStrings
 

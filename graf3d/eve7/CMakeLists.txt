@@ -1,16 +1,32 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ROOT_STANDARD_LIBRARY_PACKAGE(ROOTEve
   HEADERS
+    ROOT/REveChunkManager.hxx
     ROOT/REveClient.hxx
     ROOT/REveCompound.hxx
+    ROOT/REveBox.hxx
+    ROOT/REveBoxSet.hxx
     ROOT/REveDataClasses.hxx
+    ROOT/REveDataProxyBuilderBase.hxx
+    ROOT/REveDataSimpleProxyBuilder.hxx
+    ROOT/REveDataSimpleProxyBuilderTemplate.hxx
+    ROOT/REveDigitSet.hxx
     ROOT/REveElement.hxx
+    ROOT/REveFrameBox.hxx
     ROOT/REveGeoPolyShape.hxx
     ROOT/REveGeoShapeExtract.hxx
     ROOT/REveGeoShape.hxx
     ROOT/REveGeomData.hxx
     ROOT/REveGeomViewer.hxx
+    ROOT/REveGeoPainter.hxx
     ROOT/REveGluTess.hxx
     ROOT/REveJetCone.hxx
+    ROOT/REveEllipsoid.hxx
     ROOT/REveLine.hxx
     ROOT/REveManager.hxx
     ROOT/REvePathMark.hxx
@@ -20,19 +36,26 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTEve
     ROOT/REveProjectionManager.hxx
     ROOT/REveProjections.hxx
     ROOT/REveRenderData.hxx
+    ROOT/REveRGBAPalette.hxx
+    ROOT/REveScalableStraightLineSet.hxx
     ROOT/REveScene.hxx
     ROOT/REveSceneInfo.hxx
     ROOT/REveSecondarySelectable.hxx
     ROOT/REveSelection.hxx
     ROOT/REveShape.hxx
+    ROOT/REveStraightLineSet.hxx
+    ROOT/REveTableInfo.hxx
+    ROOT/REveTableProxyBuilder.hxx
     ROOT/REveTrack.hxx
     ROOT/REveTrackProjected.hxx
     ROOT/REveTrackPropagator.hxx
     ROOT/REveTrans.hxx
     ROOT/REveTreeTools.hxx
+    ROOT/REveTypes.hxx
     ROOT/REveUtil.hxx
     ROOT/REveVector.hxx
     ROOT/REveViewer.hxx
+    ROOT/REveViewContext.hxx
     ROOT/REveVSD.hxx
     ROOT/REveVSDStructs.hxx
   SOURCES
@@ -46,16 +69,25 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTEve
     glu/sweep.c
     glu/tess.c
     glu/tessmono.c
+    src/REveChunkManager.cxx
+    src/REveBox.cxx
+    src/REveBoxSet.cxx
     src/REveCompound.cxx
     src/REveDataClasses.cxx
+    src/REveDataProxyBuilderBase.cxx
+    src/REveDataSimpleProxyBuilder.cxx
+    src/REveDigitSet.cxx
+    src/REveFrameBox.cxx
     src/REveElement.cxx
     src/REveGeoPolyShape.cxx
     src/REveGeoShape.cxx
     src/REveGeoShapeExtract.cxx
     src/REveGeomData.cxx
     src/REveGeomViewer.cxx
+    src/REveGeoPainter.cxx
     src/REveGluTess.cxx
     src/REveJetCone.cxx
+    src/REveEllipsoid.cxx
     src/REveLine.cxx
     src/REveManager.cxx
     src/REvePathMark.cxx
@@ -65,29 +97,36 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTEve
     src/REveProjectionManager.cxx
     src/REveProjections.cxx
     src/REveRenderData.cxx
+    src/REveRGBAPalette.cxx
+    src/REveScalableStraightLineSet.cxx
     src/REveScene.cxx
     src/REveSceneInfo.cxx
     src/REveSecondarySelectable.cxx
     src/REveSelection.cxx
     src/REveShape.cxx
+    src/REveStraightLineSet.cxx
+    src/REveTableInfo.cxx
+    src/REveTableProxyBuilder.cxx
     src/REveTrack.cxx
     src/REveTrackProjected.cxx
     src/REveTrackPropagator.cxx
     src/REveTrans.cxx
     src/REveTreeTools.cxx
+    src/REveTypes.cxx
     src/REveUtil.cxx
     src/REveVector.cxx
     src/REveViewer.cxx
     src/REveVSD.cxx
     src/REveVSDStructs.cxx
-  DEPENDENCIES 
-    Core 
-    Geom 
-    Physics 
-    EG 
+  DEPENDENCIES
+    Core
+    Geom
+    Physics
+    EG
     TreePlayer
-    RCsg 
+    RCsg
     ROOTWebDisplay
+    ROOTBrowserv7
 )
 
 target_include_directories(ROOTEve
@@ -95,3 +134,5 @@ target_include_directories(ROOTEve
     ${CMAKE_SOURCE_DIR}/io/io/res
     ${CMAKE_SOURCE_DIR}/graf3d/eve7
 )
+
+ROOT_ADD_TEST_SUBDIRECTORY(test)

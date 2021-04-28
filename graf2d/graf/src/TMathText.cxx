@@ -11,7 +11,6 @@
 
 #include "Riostream.h"
 #include "TROOT.h"
-#include "TClass.h"
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
@@ -20,6 +19,7 @@
 #include "TMath.h"
 #include "TVirtualPad.h"
 #include "TVirtualPS.h"
+#include "TVirtualX.h"
 #include "TText.h"
 
 #include "../../../graf2d/mathtext/inc/mathtext.h"
@@ -227,9 +227,9 @@ public:
       const bool cyrillic_or_cjk = is_cyrillic_or_cjk(character);
 
       if (cyrillic_or_cjk) {
-         TTF::SetTextFont(root_cjk_face_number());
+         TTF::SetTextFont((Font_t) root_cjk_face_number());
       } else {
-         TTF::SetTextFont(root_face_number(family));
+         TTF::SetTextFont((Font_t) root_face_number(family));
       }
       FT_Load_Glyph(
          TTF::fgFace[TTF::fgCurFontIdx],
@@ -294,7 +294,7 @@ public:
           const std::wstring string,
           const unsigned int family = FAMILY_PLAIN)
    {
-      SetTextFont(root_face_number(family));
+      SetTextFont((Font_t) root_face_number(family));
       SetTextSize(_current_font_size[family]);
       TAttText::Modify();
 
@@ -307,7 +307,7 @@ public:
          const bool cyrillic_or_cjk = is_cyrillic_or_cjk(buf[0]);
 
          if (cyrillic_or_cjk) {
-            SetTextFont(root_cjk_face_number());
+            SetTextFont((Font_t) root_cjk_face_number());
             TAttText::Modify();
          }
 
@@ -320,7 +320,7 @@ public:
          gPad->PaintText(xt, yt, buf);
          advance += b.advance();
          if (cyrillic_or_cjk) {
-            SetTextFont(root_face_number(family));
+            SetTextFont((Font_t) root_face_number(family));
             TAttText::Modify();
          }
       }
