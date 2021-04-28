@@ -9,18 +9,24 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTEve
     ROOT/REveChunkManager.hxx
     ROOT/REveClient.hxx
     ROOT/REveCompound.hxx
+    ROOT/REveBox.hxx
+    ROOT/REveBoxSet.hxx
     ROOT/REveDataClasses.hxx
     ROOT/REveDataProxyBuilderBase.hxx
     ROOT/REveDataSimpleProxyBuilder.hxx
     ROOT/REveDataSimpleProxyBuilderTemplate.hxx
+    ROOT/REveDigitSet.hxx
     ROOT/REveElement.hxx
+    ROOT/REveFrameBox.hxx
     ROOT/REveGeoPolyShape.hxx
     ROOT/REveGeoShapeExtract.hxx
     ROOT/REveGeoShape.hxx
     ROOT/REveGeomData.hxx
     ROOT/REveGeomViewer.hxx
+    ROOT/REveGeoPainter.hxx
     ROOT/REveGluTess.hxx
     ROOT/REveJetCone.hxx
+    ROOT/REveEllipsoid.hxx
     ROOT/REveLine.hxx
     ROOT/REveManager.hxx
     ROOT/REvePathMark.hxx
@@ -30,6 +36,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTEve
     ROOT/REveProjectionManager.hxx
     ROOT/REveProjections.hxx
     ROOT/REveRenderData.hxx
+    ROOT/REveRGBAPalette.hxx
     ROOT/REveScalableStraightLineSet.hxx
     ROOT/REveScene.hxx
     ROOT/REveSceneInfo.hxx
@@ -63,18 +70,24 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTEve
     glu/tess.c
     glu/tessmono.c
     src/REveChunkManager.cxx
+    src/REveBox.cxx
+    src/REveBoxSet.cxx
     src/REveCompound.cxx
     src/REveDataClasses.cxx
     src/REveDataProxyBuilderBase.cxx
     src/REveDataSimpleProxyBuilder.cxx
+    src/REveDigitSet.cxx
+    src/REveFrameBox.cxx
     src/REveElement.cxx
     src/REveGeoPolyShape.cxx
     src/REveGeoShape.cxx
     src/REveGeoShapeExtract.cxx
     src/REveGeomData.cxx
     src/REveGeomViewer.cxx
+    src/REveGeoPainter.cxx
     src/REveGluTess.cxx
     src/REveJetCone.cxx
+    src/REveEllipsoid.cxx
     src/REveLine.cxx
     src/REveManager.cxx
     src/REvePathMark.cxx
@@ -84,6 +97,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTEve
     src/REveProjectionManager.cxx
     src/REveProjections.cxx
     src/REveRenderData.cxx
+    src/REveRGBAPalette.cxx
     src/REveScalableStraightLineSet.cxx
     src/REveScene.cxx
     src/REveSceneInfo.cxx

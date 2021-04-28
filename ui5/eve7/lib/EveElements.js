@@ -1,4 +1,4 @@
-/** @file EveElements.js 
+/** @file EveElements.js
  * used only together with OpenUI5 */
 
 // TODO: add dependency from JSROOT components
@@ -7,52 +7,51 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
    "use strict";
 
-   function EveElemControl(mesh) {
+   // See also EveScene.js makeGLRepresentation(), there several members are
+   // set for the top-level Object3D.
+
+   //==============================================================================
+   // EveElemControl
+   //==============================================================================
+
+   function EveElemControl(o3d)
+   {
       // JSROOT.Painter.GeoDrawingControl.call(this);
-      this.mesh = mesh;
+      this.obj3d = o3d;
    }
 
    EveElemControl.prototype = Object.create(JSROOT.Painter.GeoDrawingControl.prototype);
 
-   EveElemControl.prototype.invokeSceneMethod = function(fname, arg1, arg2)
+   EveElemControl.prototype.invokeSceneMethod = function(fname, arg)
    {
-      if (!this.mesh) return false;
+      if (!this.obj3d) return false;
 
-      var s = this.mesh.scene;
+      var s = this.obj3d.scene;
       if (s && (typeof s[fname] == "function"))
-         return s[fname](this.mesh, arg1, arg2, this.evnt);
+         return s[fname](this.obj3d, arg, this.event);
       return false;
    }
 
    EveElemControl.prototype.separateDraw = false;
 
-   EveElemControl.prototype.setHighlight = function(col, indx)
+   EveElemControl.prototype.elementHighlighted = function(indx)
    {
-      // special hook here
-      if (this.invokeSceneMethod("processElementHighlighted", col, indx))
-         return true;
-      // should not be used, keep as fallback
-      return this.drawSpecial(col || this.mesh.select_col, indx);
+      // default is simple selection, we ignore the indx
+      this.invokeSceneMethod("processElementHighlighted"); // , indx);
    }
 
-   EveElemControl.prototype.setSelected = function(col, indx)
+   EveElemControl.prototype.elementSelected = function(indx)
    {
-      if (this.invokeSceneMethod("processElementSelected", col, indx))
-         return true;
-      // should not be used, keep as fallback
-      var m = this.mesh;
-      if ((m.select_col == col) && (m.select_indx == indx)) { col = null; indx = undefined; }
-      m.select_col  = col;
-      m.select_indx = indx;
-      // special hook here
-      return this.drawSpecial(col, indx);
+      // default is simple selection, we ignore the indx
+      this.invokeSceneMethod("processElementSelected"); //, indx);
    }
 
-   ////////////////////////////////////////////////
 
+   //==============================================================================
+   // EveElements
+   //==============================================================================
 
    var GL = { POINTS: 0, LINES: 1, LINE_LOOP: 2, LINE_STRIP: 3, TRIANGLES: 4 };
-
 
    function EveElements()
    {
@@ -90,10 +89,6 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       mesh.get_ctrl = function() { return new EveElemControl(this); }
 
       mesh.highlightScale = 2;
-
-      mesh.object = hit;
-      mesh.geo_name = hit.fName;
-      mesh.geo_object = hit.fMasterId || hit.fElementId;
 
       mesh.material.sizeAttenuation = false;
       mesh.material.size = hit.fMarkerSize;
@@ -135,25 +130,26 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
             buf[pos+5] = rnrData.vtxBuff[k*3+5];
          }
 
-         // console.log(" vertex ", buf[pos],buf[pos+1], buf[pos+2],buf[pos+3], buf[pos+4],  buf[pos+5]);
          pos+=6;
       }
 
-      var lineMaterial;
-      if (track.fLineStyle == 1) {
-         lineMaterial = new THREE.LineBasicMaterial({ color: track_color, linewidth: track_width });
+      var style = (track.fLineStyle > 1) ? JSROOT.Painter.root_line_styles[track.fLineStyle] : "",
+          dash = style ? style.split(",") : [], lineMaterial;
+
+      if (dash && (dash.length > 1)) {
+         lineMaterial = new THREE.LineDashedMaterial({ color: track_color, linewidth: track_width, dashSize: parseInt(dash[0]), gapSize: parseInt(dash[1]) });
       } else {
-         //lineMaterial = new THREE.LineDashedMaterial({ color: track_color, linewidth: track_width, gapSize: parseInt(track.fLineStyle) });
-         lineMaterial = new THREE.LineDashedMaterial({ color: track_color, linewidth: track_width, dashSize:3, gapSize: 1 });
+         lineMaterial = new THREE.LineBasicMaterial({ color: track_color, linewidth: track_width });
       }
 
       var geom = new THREE.BufferGeometry();
       geom.addAttribute( 'position', new THREE.BufferAttribute( buf, 3 )  );
       var line = new THREE.LineSegments(geom, lineMaterial);
 
-      line.object = track;
-      line.geo_name = track.fName;
-      line.geo_object = track.fMasterId || track.fElementId;
+      // required for the dashed material
+      if (dash && (dash.length > 1))
+         line.computeLineDistances();
+
       line.hightlightWidthScale = 2;
 
       line.get_ctrl = function() { return new EveElemControl(this); }
@@ -195,16 +191,12 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       var lcol = JSROOT.Painter.root_colors[jet.fLineColor];
 
       var mesh = new THREE.Mesh(geo_body, new THREE.MeshPhongMaterial({ depthWrite: false, color: mcol, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
-      var line1 = new THREE.LineLoop(geo_rim,  new THREE.LineBasicMaterial({ linewidth: 2,   color: lcol, transparent: true, opacity: 0.5 }))
+      var line1 = new THREE.LineLoop(geo_rim,  new THREE.LineBasicMaterial({ linewidth: 2,   color: lcol, transparent: true, opacity: 0.5 }));
       var line2 = new THREE.LineSegments(geo_rays, new THREE.LineBasicMaterial({ linewidth: 0.5, color: lcol, transparent: true, opacity: 0.5 }));
 
       // jet_ro.add( mesh  );
       mesh.add( line1 );
       mesh.add( line2 );
-
-      mesh.object = jet;
-      mesh.geo_name = jet.fName;
-      mesh.geo_object = jet.fMasterId || jet.fElementId;
 
       mesh.get_ctrl = function() { return new EveElemControl(this); }
 
@@ -257,15 +249,210 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       mesh.add( line1 );
       mesh.add( line2 );
 
-      mesh.object = jet;
-      mesh.geo_name = jet.fName;
-      mesh.geo_object = jet.fMasterId || jet.fElementId;
-
       mesh.get_ctrl = function() { return new EveElemControl(this); }
 
       return mesh;
    }
 
+   
+   EveElements.prototype.makeFlatBox = function(ebox, rnrData, idxBegin, idxEnd )
+   {   
+      var fcol = JSROOT.Painter.root_colors[ebox.fMainColor];
+      var boxMaterial = new THREE.MeshPhongMaterial({color: fcol,  flatShading: true}); 
+      var fcol = JSROOT.Painter.root_colors[ebox.fMainColor];
+      
+      // console.log("EveElements.prototype.makeFlatBox triangulate", idxBegin, idxEnd);
+      let nTriang = (idxEnd - idxBegin) -2;
+      let idxBuff =  new Uint16Array(nTriang * 3);
+      let nt = 0;
+      for (var i = idxBegin; i < (idxEnd-2 ); ++i)
+      {
+         idxBuff[nt*3] = idxBegin;
+         idxBuff[nt*3+1] = i + 1 ;
+         idxBuff[nt*3+2] = i + 2;
+         console.log("set index ", nt,":", idxBuff[nt*3], idxBuff[nt*3+1],idxBuff[nt*3+2]);
+         nt++;
+      }
+      var idcs = new THREE.BufferAttribute(idxBuff,1);
+
+      var body = new THREE.BufferGeometry();
+      body.addAttribute('position', new THREE.BufferAttribute( rnrData.vtxBuff, 3 ));
+      body.setIndex(new THREE.BufferAttribute(idxBuff,1));
+      body.computeVertexNormals();
+      var mesh = new THREE.Mesh(body, boxMaterial);
+      return mesh;
+   }
+
+   
+
+   EveElements.prototype.makeBoxProjected = function(ebox, rnrData)
+   {
+      var nPnts    = parseInt(rnrData.vtxBuff.length/3);
+      var breakIdx = parseInt(ebox.fBreakIdx);
+      if ( ebox.fBreakIdx == 0 )
+         breakIdx = nPnts;
+
+      let mesh1 = this.makeFlatBox(ebox, rnrData, 0, breakIdx);
+      let testBreak = breakIdx + 2;
+      if ( testBreak < nPnts)
+      {
+         var mesh2 = this.makeFlatBox(ebox, rnrData, breakIdx, nPnts);
+         mesh1.add(mesh2);        
+      }      
+
+      return mesh1;
+   }
+   
+   EveElements.prototype.makeBox = function(ebox, rnr_data)
+   {
+      var idxBuff = [0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0, 1, 2, 3, 1, 3, 0, 4, 7, 6, 4, 6, 5];
+      var vBuff = rnr_data.vtxBuff;
+      
+      var body = new THREE.BufferGeometry();
+      body.addAttribute('position', new THREE.BufferAttribute( vBuff, 3 ));
+      body.setIndex( idxBuff );
+      
+      var fcol = JSROOT.Painter.root_colors[ebox.fMainColor];
+      var boxMaterial = new THREE.MeshPhongMaterial({color: fcol,  flatShading: true});
+      if (ebox.fMainTransparency) {
+         boxMaterial.transparent = true;
+         boxMaterial.opacity = (100 - ebox.fMainTransparency)/100.0;
+         boxMaterial.depthWrite = false;
+      }
+      
+      var mesh = new THREE.Mesh(body, boxMaterial);      
+      var geo_rim = new THREE.BufferGeometry();
+
+      geo_rim.addAttribute('position', vBuff);
+
+      let nTrigs      = 6 * 2;
+      let nSegs       = 6 * 2 * 3;
+      let nIdcsTrings = 6 * 2 * 3 * 2;
+      var idcs = new Uint16Array(nIdcsTrings);
+      for (var i = 0; i < nTrigs; ++i)
+      {
+         let ibo = i * 3;
+         let sbo = i * 6;
+         idcs[sbo]     = idxBuff[ibo];
+         idcs[sbo + 1] = idxBuff[ibo + 1];
+         idcs[sbo + 2] = idxBuff[ibo + 1];
+         idcs[sbo + 3] = idxBuff[ibo + 2];
+         idcs[sbo + 4] = idxBuff[ibo + 2];
+         idcs[sbo + 5] = idxBuff[ibo];
+      }
+      geo_rim.setIndex(new THREE.BufferAttribute( idcs, 1 ));
+      var lcol = JSROOT.Painter.root_colors[ebox.fLineColor];
+      var line = new THREE.LineSegments(geo_rim,  new THREE.LineBasicMaterial({ linewidth: 2, color: lcol, transparent: true, opacity: 0.5 }));
+      mesh.add(line);
+      
+      return mesh;
+   }
+
+   
+   EveElements.prototype.makeBoxSet = function(boxset, rnr_data)
+   {
+      var vBuff;
+      if (boxset.boxType == 1) // free box
+      {
+         vBuff = rnr_data.vtxBuff;
+      }
+      else if (boxset.boxType == 2) // axis aligned
+      {
+         let N = rnr_data.vtxBuff.length/6;
+         vBuff = new Float32Array(N*8*3);
+         
+         var off = 0;
+         for (let i = 0; i < N; ++i)
+         {
+            let rdoff = i*6;
+            let x  =  rnr_data.vtxBuff[rdoff];
+            let y  =  rnr_data.vtxBuff[rdoff + 1];
+            let z  =  rnr_data.vtxBuff[rdoff + 2];
+            let dx =  rnr_data.vtxBuff[rdoff + 3];
+            let dy =  rnr_data.vtxBuff[rdoff + 4];
+            let dz =  rnr_data.vtxBuff[rdoff + 5];
+
+            // top
+            vBuff[off  ] = x;      vBuff[off + 1] = y + dy; vBuff[off + 2] = z;
+            off += 3;
+            vBuff[off  ] = x + dx; vBuff[off + 1] = y + dy; vBuff[off + 2] = z;
+            off += 3;
+            vBuff[off  ] = x + dx; vBuff[off + 1] = y;      vBuff[off + 2] = z;
+            off += 3;
+            vBuff[off  ] = x;      vBuff[off + 1] = y;      vBuff[off + 2] = z;
+            off += 3;
+            // bottom
+            vBuff[off  ] = x;      vBuff[off + 1] = y + dy; vBuff[off + 2] = z + dz;
+            off += 3;
+            vBuff[off  ] = x + dx; vBuff[off + 1] = y + dy; vBuff[off + 2] = z + dz;
+            off += 3;
+            vBuff[off  ] = x + dx; vBuff[off + 1] = y;      vBuff[off + 2] = z + dz;
+            off += 3;
+            vBuff[off  ] = x;      vBuff[off + 1] = y;      vBuff[off + 2] = z + dz;
+            off += 3;
+         }            
+      }
+
+      
+      let protoSize = 6 * 2 * 3;
+      let protoIdcs = [0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0, 1, 2, 3, 1, 3, 0, 4, 7, 6, 4, 6, 5];        
+      var nBox = vBuff.length / 24;
+      var idxBuff = [];
+      for (let i = 0; i < nBox; ++i)
+      {
+         for (let c = 0; c < protoSize; c++) {
+            let off = i * 8;
+            idxBuff.push(protoIdcs[c] + off);
+         }
+      }
+      
+      var body = new THREE.BufferGeometry();
+      body.addAttribute('position', new THREE.BufferAttribute( vBuff, 3 ));
+      body.setIndex( idxBuff );
+
+      //
+      // set colors
+      var material = 0;
+      if (boxset.fSingleColor == false)
+      {
+         var ci = rnr_data.idxBuff;
+         let off = 0
+         var colBuff = new Float32Array( nBox * 8 *3 );      
+         for (let x = 0; x < ci.length; ++x)
+         {
+            let r = (ci[x] & 0x000000FF) >>  0;
+            let g = (ci[x] & 0x0000FF00) >>  8;
+            let b = (ci[x] & 0x00FF0000) >> 16;                
+            for (var i = 0; i < 8; ++i)
+            {
+               colBuff[off    ] = r/256;
+               colBuff[off + 1] = g/256;
+               colBuff[off + 2] = b/256;
+               off += 3;
+            }
+         }
+         body.addAttribute( 'color', new THREE.BufferAttribute( colBuff, 3 ) );
+         material = new THREE.MeshPhongMaterial( {
+	    color: 0xffffff,
+	    flatShading: true,
+	    vertexColors: THREE.VertexColors,
+	    shininess: 0
+         } );
+      }
+      else {
+         var fcol = JSROOT.Painter.root_colors[boxset.fMainColor];    
+         material = new THREE.MeshPhongMaterial({color:fcol, flatShading: true});
+         if (boxset.fMainTransparency) {
+            material.transparent = true;
+            material.opacity = (100 - boxset.fMainTransparency)/100.0;
+            material.depthWrite = false;
+         }
+      }
+      
+      var mesh = new THREE.Mesh(body, material);
+      return mesh;
+   }
+   
    EveElements.prototype.makeEveGeometry = function(rnr_data, force)
    {
       var nVert = rnr_data.idxBuff[1]*3;
@@ -490,10 +677,10 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
    StraightLineSetControl.prototype.cleanup = function()
    {
-      if (!this.mesh) return;
+      if ( ! this.obj3d) return;
       this.drawSpecial(null, undefined, "h");
       this.drawSpecial(null, undefined, "s");
-      delete this.mesh;
+      delete this.obj3d;
    }
 
    StraightLineSetControl.prototype.extractIndex = function(intersect)
@@ -502,49 +689,19 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       return intersect.index/2; // return segment id - not a point
    }
 
-   StraightLineSetControl.prototype.setSelected = function(col, indx)
+   StraightLineSetControl.prototype.elementSelected = function(indx)
    {
-      if (this.invokeSceneMethod("processElementSelected", col, indx))
-         return true;
-
-      // old code - should not be used now
-
-      console.error("never come here");
-
-      var m = this.mesh;
-      if (!non_recurive) {
-         if (this.evnt && this.evnt.ctrlKey) {
-            var curr = m.select_indx;
-            if (typeof curr === "number") curr = [curr]; else if (!curr) curr = [];
-            var pos = curr.indexOf(indx);
-            if (col && (pos < 0)) curr.push(indx); else
-            if (!col && (pos >= 0)) curr.splice(pos, 1);
-            indx = curr.length ? curr : undefined;
-            if (!indx) col = null;
-         } else if ((m.select_col == col) && (m.select_indx == indx)) {
-            col = null;
-            indx = undefined;
-         }
-      }
-
-      m.select_col = col;
-      m.select_indx = indx;
-
-      return this.drawSpecial(col, indx, "s");
+      this.invokeSceneMethod("processElementSelected", indx);
    }
 
-   StraightLineSetControl.prototype.setHighlight = function(col, indx)
+   StraightLineSetControl.prototype.elementHighlighted = function(indx)
    {
-      if (this.invokeSceneMethod("processElementHighlighted", col, indx))
-         return true;
-
-      this.mesh.h_index = indx;
-      return this.drawSpecial(col, indx, "h");
+      this.invokeSceneMethod("processElementHighlighted", indx);
    }
 
    StraightLineSetControl.prototype.checkHighlightIndex = function(indx)
    {
-      if (this.mesh && this.mesh.scene)
+      if (this.obj3d && this.obj3d.scene)
          return this.invokeSceneMethod("processCheckHighlight", indx);
 
       return true; // means index is different
@@ -552,8 +709,8 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
    StraightLineSetControl.prototype.DrawForSelection = function(sec_idcs, dest)
    {
-      console.log("traightLineSetControl.prototype.DrawForSelection");
-      var m     = this.mesh;
+      console.log("StraightLineSetControl.prototype.DrawForSelection");
+      var m     = this.obj3d;
       var index = sec_idcs;
 
       var geom = new THREE.BufferGeometry();
@@ -570,7 +727,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
          geom.setIndex( idcs );
       }
 
-      var color = JSROOT.Painter.root_colors[m.eve_el.fMainColor];
+      var color = JSROOT.Painter.root_colors[m.object.fMainColor];
       var lineMaterial = new THREE.LineBasicMaterial({ color: color, linewidth: 4 });
       var line         = new THREE.LineSegments(geom, lineMaterial);
       dest.push(line);
@@ -581,7 +738,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
       {
          if (index[i] < el.fLinePlexSize)
          {
-            var lineid = m.eve_indx[index[i]];
+            var lineid = m.eve_idx_buf[index[i]];
 
             for (var k = 0; k < el.fMarkerPlexSize; ++k )
             {
@@ -614,7 +771,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
       var did_change = false;
 
-      var m  = this.mesh;
+      var m  = this.obj3d;
       var ll = prefix + "l_special";
       var mm = prefix + "m_special";
 
@@ -698,41 +855,53 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
       var mainColor = JSROOT.Painter.root_colors[el.fMainColor];
 
-     // mainColor = "lightgreen";
+      // mainColor = "lightgreen";
 
-      var buf = new Float32Array(el.fLinePlexSize * 6);
-      for (var i = 0; i < el.fLinePlexSize * 6; ++i)
+      let buf = new Float32Array(el.fLinePlexSize * 6);
+      for (let i = 0; i < el.fLinePlexSize * 6; ++i)
          buf[i] = rnr_data.vtxBuff[i];
-      var lineMaterial = new THREE.LineBasicMaterial({ color: mainColor, linewidth: 1 });
+      var lineMaterial = new THREE.LineBasicMaterial({ color: mainColor, linewidth: el.fLineWidth });
 
       var geom = new THREE.BufferGeometry();
       geom.addAttribute( 'position', new THREE.BufferAttribute( buf, 3 ) );
       var line = new THREE.LineSegments(geom, lineMaterial);
       obj3d.add(line);
 
-      line.get_ctrl = function() { return new StraightLineSetControl(this.parent, true); }
+      if (el.fSecondarySelect)
+         line.get_ctrl = function() { return new StraightLineSetControl(this.parent, true); }
+      else
+         line.get_ctrl = function() { return new EveElemControl(this.parent); }
 
-      line.geo_object = el.fElementId;
-      line.geo_name = el.fName || "linesset";
+      // AMT temporary workaround for deselect problems
+      if ( ! el.fMarkerPlexSize &&  ! el.fSecondarySelect)
+         return obj3d;
 
-      var msize = el.fMarkerPlexSize;
-      var pnts = new JSROOT.Painter.PointsCreator(msize, true, 3);
+      let msize = el.fMarkerPlexSize;
+      let pnts  = new JSROOT.Painter.PointsCreator(msize, true, 3);
 
-      var startIdx =el.fLinePlexSize * 6;
-      var endIdx = startIdx + msize * 3;
-      for (var i = startIdx; i < endIdx; i+=3) {
+      let startIdx = el.fLinePlexSize * 6;
+      let endIdx   = startIdx + msize * 3;
+      for (let i = startIdx; i < endIdx; i+=3) {
          pnts.AddPoint(rnr_data.vtxBuff[i], rnr_data.vtxBuff[i+1], rnr_data.vtxBuff[i+2] );
       }
-      var marker_mesh = pnts.CreatePoints(mainColor);
+      var marker = pnts.CreatePoints(mainColor);
 
       // marker_mesh.material.size = Math.random()*20;
-      marker_mesh.material.sizeAttenuation = false;
+      marker.material.sizeAttenuation = false;
 
-      obj3d.add(marker_mesh);
+      obj3d.add(marker);
 
-      obj3d.eve_el = el;
-      obj3d.eve_indx = rnr_data.idxBuff;
-      obj3d.get_ctrl = function() { return new StraightLineSetControl(this); }
+      obj3d.eve_idx_buf = rnr_data.idxBuff;
+
+      if (el.fSecondarySelect)
+         marker.get_ctrl = function() { return new StraightLineSetControl(this.parent); }
+      else
+         marker.get_ctrl = function() { return new EveElemControl(this.parent); }
+
+      if (el.fSecondarySelect)
+         obj3d.get_ctrl = function() { return new StraightLineSetControl(this); }
+      else
+         obj3d.get_ctrl = function() { return new EveElemControl(this); }
 
       return obj3d;
    }

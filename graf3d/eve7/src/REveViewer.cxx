@@ -18,7 +18,6 @@
 #include <ROOT/REveSelection.hxx>
 
 #include "TApplication.h"
-#include "TEnv.h"
 #include "TSystem.h"
 
 using namespace ROOT::Experimental;
@@ -95,25 +94,6 @@ void REveViewer::RemoveElementsLocal()
    // fGLViewer->RemoveAllScenes();
 
    // XXXXX Notify clients !!! Or will this be automatic?
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Receive a pasted object. REveViewer only accepts objects of
-/// class REveScene.
-/// Virtual from REveElement.
-
-Bool_t REveViewer::HandleElementPaste(REveElement* el)
-{
-   static const REveException eh("REveViewer::HandleElementPaste");
-
-   REveScene* scene = dynamic_cast<REveScene*>(el);
-   if (scene) {
-      AddScene(scene);
-      return kTRUE;
-   } else {
-      Warning("REveViewer::HandleElementPaste", "class REveViewer only accepts REveScene paste argument.");
-      return kFALSE;
-   }
 }
 
 

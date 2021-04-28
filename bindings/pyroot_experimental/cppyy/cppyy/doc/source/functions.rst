@@ -210,13 +210,13 @@ Most return types are readily amenable to automatic memory management: builtin
 returns, by-value returns, (const-)reference returns to internal data, smart
 pointers, etc.
 The important exception is pointer returns.
-  
+ 
 A function that returns a pointer to an object over which Python should claim
 ownership, should have its ``__creates__`` flag set through its
 :doc:`pythonization <pythonizations>`.
 Well-written APIs will have clear clues in their naming convention about the
 ownership rules.
-For example, functions called ``New...``, ``Clone...``, etc.  can be expected 
+For example, functions called ``New...``, ``Clone...``, etc.  can be expected
 to return freshly allocated objects.
 A simple name-matching in the pythonization then makes it simple to mark all
 these functions as creators.
@@ -227,11 +227,15 @@ The return values are :ref:`auto-casted <sec-auto-casting-label>`.
 `\*args and \*\*kwds`
 ---------------------
 
-C++ default arguments work as expected, but python keywords are not (yet)
-supported.
-It is technically possible to support keywords, but for the C++ interface,
-the formal argument names have no meaning and are not considered part of the
-API, hence it is not a good idea to use keywords.
+C++ default arguments work as expected.
+Keywords, however, are a Python language feature that does not exist in C++.
+Many C++ function declarations do have formal arguments, but these are not
+part of the C++ interface (the argument names are repeated in the definition,
+making the names in the declaration irrelevant: they do not even need to be
+provided).
+Thus, although ``cppyy`` will map keyword argument names to formal argument
+names from the C++ declaration, use of this feature is not recommended unless
+you have a guarantee that the names in C++ the interface are maintained.
 Example:
 
   .. code-block:: python
@@ -247,6 +251,13 @@ Example:
     >>> c = Concrete(*args)  # argument pack
     >>> c.m_int
     27
+    >>> c = Concrete(n=17)
+    >>> c.m_int
+    17
+    >>> kwds = {'n' : 18}
+    >>> c = Concrete(**kwds)
+    >>> c.m_int
+    18
     >>>
 
 

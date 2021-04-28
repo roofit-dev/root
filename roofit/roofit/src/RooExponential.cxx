@@ -25,19 +25,13 @@ where \f$ \mathcal{N} \f$ is a normalisation constant that depends on the
 range and values of the arguments.
 **/
 
-#include "RooFit.h"
-
-#include "Riostream.h"
-#include "Riostream.h"
-#include <math.h>
-
 #include "RooExponential.h"
+
 #include "RooRealVar.h"
 #include "BatchHelpers.h"
+#include "RooVDTHeaders.h"
 
-#ifdef USE_VDT
-#include "vdt/exp.h"
-#endif
+#include <cmath>
 
 using namespace std;
 
@@ -97,16 +91,10 @@ Double_t RooExponential::analyticalIntegral(Int_t code, const char* rangeName) c
 namespace {
 
 template<class Tx, class Tc>
-void compute(RooSpan<double> output, Tx x, Tc c) {
-  const int n = output.size();
+void compute(size_t n, double* __restrict output, Tx x, Tc c) {
 
-  #pragma omp simd
-  for (int i = 0; i < n; ++i) { //CHECK_VECTORISE
-#ifdef USE_VDT
-    output[i] = vdt::fast_exp(x[i]*c[i]);
-#else
-    output[i] = exp(x[i]*c[i]);
-#endif
+  for (size_t i = 0; i < n; ++i) { //CHECK_VECTORISE
+    output[i] = _rf_fast_exp(x[i]*c[i]);
   }
 }
 
@@ -119,26 +107,26 @@ void compute(RooSpan<double> output, Tx x, Tc c) {
 /// \return A span with the computed values.
 
 RooSpan<double> RooExponential::evaluateBatch(std::size_t begin, std::size_t batchSize) const {
-  auto output = _batchData.makeWritableBatchUnInit(begin, batchSize);
-
-  //Now explicitly write down all possible template instantiations of compute() above:
+  using namespace BatchHelpers;
   auto xData = x.getValBatch(begin, batchSize);
   auto cData = c.getValBatch(begin, batchSize);
-
   const bool batchX = !xData.empty();
   const bool batchC = !cData.empty();
 
-  if (batchX && !batchC) {
-    compute(output, xData, BatchHelpers::BracketAdapter<RooRealProxy>(c));
-  } else if (!batchX && batchC) {
-    compute(output, BatchHelpers::BracketAdapter<RooRealProxy>(x), cData);
-  } else if (!batchX && !batchC) {
-    compute(output,
-        BatchHelpers::BracketAdapter<RooRealProxy>(x),
-        BatchHelpers::BracketAdapter<RooRealProxy>(c));
-  } else {
-    compute(output, xData, cData);
+  if (!batchX && !batchC) {
+    return {};
   }
+  batchSize = findSize({ xData, cData });
+  auto output = _batchData.makeWritableBatchUnInit(begin, batchSize);
 
+  if (batchX && !batchC ) {
+    compute(batchSize, output.data(), xData, BracketAdapter<double>(c));
+  }
+  else if (!batchX && batchC ) {
+    compute(batchSize, output.data(), BracketAdapter<double>(x), cData);
+  }
+  else if (batchX && batchC ) {
+    compute(batchSize, output.data(), xData, cData);
+  }
   return output;
 }

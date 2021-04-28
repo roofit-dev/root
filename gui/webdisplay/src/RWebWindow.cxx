@@ -77,6 +77,9 @@ ROOT::Experimental::RWebWindow::RWebWindow() = default;
 
 ROOT::Experimental::RWebWindow::~RWebWindow()
 {
+   if (fMaster)
+      fMaster->RemoveEmbedWindow(fMasterConnId, fMasterChannel);
+
    if (fWSHandler)
       fWSHandler->SetDisabled();
 
@@ -92,8 +95,11 @@ ROOT::Experimental::RWebWindow::~RWebWindow()
          fPendingConn.clear();
       }
 
-      for (auto &conn : lst)
+      for (auto &conn : lst) {
          conn->fActive = false;
+         for (auto &elem: conn->fEmbed)
+            elem.second->fMaster.reset();
+      }
 
       fMgr->Unregister(*this);
    }
@@ -176,7 +182,6 @@ unsigned ROOT::Experimental::RWebWindow::MakeBatch(bool create_new, const RWebDi
       connid = fMgr->ShowWindow(*this, true, args);
    return connid;
 }
-
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Returns connection id of batch job
@@ -276,17 +281,26 @@ std::shared_ptr<ROOT::Experimental::RWebWindow::WebConn> ROOT::Experimental::RWe
 
 std::shared_ptr<ROOT::Experimental::RWebWindow::WebConn> ROOT::Experimental::RWebWindow::RemoveConnection(unsigned wsid)
 {
-   std::lock_guard<std::mutex> grd(fConnMutex);
 
-   for (size_t n=0; n<fConn.size();++n)
-      if (fConn[n]->fWSId == wsid) {
-         std::shared_ptr<WebConn> res = std::move(fConn[n]);
-         fConn.erase(fConn.begin() + n);
-         res->fActive = false;
-         return res;
-      }
+   std::shared_ptr<WebConn> res;
 
-   return nullptr;
+   {
+      std::lock_guard<std::mutex> grd(fConnMutex);
+
+      for (size_t n = 0; n < fConn.size(); ++n)
+         if (fConn[n]->fWSId == wsid) {
+            res = std::move(fConn[n]);
+            fConn.erase(fConn.begin() + n);
+            res->fActive = false;
+            break;
+         }
+   }
+
+   if (res)
+      for (auto &elem: res->fEmbed)
+         elem.second->fMaster.reset();
+
+   return res;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -447,7 +461,7 @@ void ROOT::Experimental::RWebWindow::CheckPendingConnections()
 
    float tmout = fMgr->GetLaunchTmout();
 
-   ConnectionsList selected;
+   ConnectionsList_t selected;
 
    {
       std::lock_guard<std::mutex> grd(fConnMutex);
@@ -646,6 +660,13 @@ bool ROOT::Experimental::RWebWindow::ProcessWS(THttpCallArg &arg)
             ProvideQueueEntry(conn->fConnId, kind_Connect, ""s);
             conn->fReady = 10;
          }
+      } else if (cdata.compare(0,8,"CLOSECH=") == 0) {
+         int channel = std::stoi(cdata.substr(8));
+         auto iter = conn->fEmbed.find(channel);
+         if (iter != conn->fEmbed.end()) {
+            iter->second->ProvideQueueEntry(conn->fConnId, kind_Disconnect, ""s);
+            conn->fEmbed.erase(iter);
+         }
       }
    } else if (fPanelName.length() && (conn->fReady < 10)) {
       if (cdata == "PANEL_READY") {
@@ -659,8 +680,10 @@ bool ROOT::Experimental::RWebWindow::ProcessWS(THttpCallArg &arg)
    } else if (nchannel == 1) {
       ProvideQueueEntry(conn->fConnId, kind_Data, std::move(cdata));
    } else if (nchannel > 1) {
-      // add processing of extra channels later
-      // conn->fCallBack(conn->fConnId, cdata);
+      // process embed window
+      auto embed_window = conn->fEmbed[nchannel];
+      if (embed_window)
+         embed_window->ProvideQueueEntry(conn->fConnId, kind_Data, std::move(cdata));
    }
 
    CheckDataToSend();
@@ -814,11 +837,19 @@ void ROOT::Experimental::RWebWindow::Sync()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
+/// Returns window address which is used in URL
+
+std::string ROOT::Experimental::RWebWindow::GetAddr() const
+{
+    return fWSHandler->GetName();
+}
+
+///////////////////////////////////////////////////////////////////////////////////
 /// Returns relative URL address for the specified window
 /// Address can be required if one needs to access data from one window into another window
 /// Used for instance when inserting panel into canvas
 
-std::string ROOT::Experimental::RWebWindow::RelativeAddr(std::shared_ptr<RWebWindow> &win) const
+std::string ROOT::Experimental::RWebWindow::GetRelativeAddr(const std::shared_ptr<RWebWindow> &win) const
 {
    if (fMgr != win->fMgr) {
       R__ERROR_HERE("WebDisplay") << "Same web window manager should be used";
@@ -826,7 +857,7 @@ std::string ROOT::Experimental::RWebWindow::RelativeAddr(std::shared_ptr<RWebWin
    }
 
    std::string res("../");
-   res.append(win->fWSHandler->GetName());
+   res.append(win->GetAddr());
    res.append("/");
    return res;
 }
@@ -961,9 +992,9 @@ void ROOT::Experimental::RWebWindow::CloseConnection(unsigned connid)
 ///////////////////////////////////////////////////////////////////////////////////
 /// returns connection (or all active connections)
 
-ROOT::Experimental::RWebWindow::ConnectionsList ROOT::Experimental::RWebWindow::GetConnections(unsigned connid, bool only_active) const
+ROOT::Experimental::RWebWindow::ConnectionsList_t ROOT::Experimental::RWebWindow::GetConnections(unsigned connid, bool only_active) const
 {
-   ConnectionsList arr;
+   ConnectionsList_t arr;
 
    {
       std::lock_guard<std::mutex> grd(fConnMutex);
@@ -1033,6 +1064,9 @@ int ROOT::Experimental::RWebWindow::GetSendQueueLength(unsigned connid) const
 
 void ROOT::Experimental::RWebWindow::SubmitData(unsigned connid, bool txt, std::string &&data, int chid)
 {
+   if (fMaster)
+      return fMaster->SubmitData(fMasterConnId, txt, std::move(data), fMasterChannel);
+
    auto arr = GetConnections(connid);
    auto cnt = arr.size();
    auto maxqlen = GetMaxQueueLength();
@@ -1241,6 +1275,43 @@ void ROOT::Experimental::RWebWindow::Run(double tm)
    }
 }
 
+
+/////////////////////////////////////////////////////////////////////////////////
+/// Add embed window
+
+unsigned ROOT::Experimental::RWebWindow::AddEmbedWindow(std::shared_ptr<RWebWindow> window, int channel)
+{
+   if (channel < 2)
+      return 0;
+
+   auto arr = GetConnections(0, true);
+   if (arr.size() == 0)
+      return 0;
+
+   // check if channel already occupied
+   if (arr[0]->fEmbed.find(channel) != arr[0]->fEmbed.end())
+      return 0;
+
+   arr[0]->fEmbed[channel] = window;
+
+   return arr[0]->fConnId;
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+/// Remove RWebWindow associated with the channel
+
+void ROOT::Experimental::RWebWindow::RemoveEmbedWindow(unsigned connid, int channel)
+{
+   auto arr = GetConnections(connid);
+
+   for (auto &conn : arr) {
+      auto iter = conn->fEmbed.find(channel);
+      if (iter != conn->fEmbed.end())
+         conn->fEmbed.erase(iter);
+   }
+}
+
+
 /////////////////////////////////////////////////////////////////////////////////
 /// Create new RWebWindow
 /// Using default RWebWindowsManager
@@ -1258,5 +1329,36 @@ std::shared_ptr<ROOT::Experimental::RWebWindow> ROOT::Experimental::RWebWindow::
 void ROOT::Experimental::RWebWindow::TerminateROOT()
 {
    fMgr->Terminate();
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+/// Static method to show web window
+/// Has to be used instead of RWebWindow::Show() when window potentially can be embed into other windows
+/// Soon RWebWindow::Show() method will be done protected
+
+unsigned ROOT::Experimental::RWebWindow::ShowWindow(std::shared_ptr<RWebWindow> window, const RWebDisplayArgs &args)
+{
+   if (!window)
+      return 0;
+
+   if (args.GetBrowserKind() == RWebDisplayArgs::kEmbedded) {
+      unsigned connid = args.fMaster ? args.fMaster->AddEmbedWindow(window, args.fMasterChannel) : 0;
+
+      if (connid > 0) {
+         window->fMaster = args.fMaster;
+         window->fMasterConnId = connid;
+         window->fMasterChannel = args.fMasterChannel;
+
+         // inform client that connection is established and window initialized
+         args.fMaster->SubmitData(connid, true, "EMBED_DONE"s, args.fMasterChannel);
+
+         // provide call back for window itself that connection is ready
+         window->ProvideQueueEntry(connid, kind_Connect, ""s);
+      }
+
+      return connid;
+   }
+
+   return window->Show(args);
 }
 

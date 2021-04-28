@@ -118,7 +118,7 @@ std::set<std::string> GetPotentialColumnNames(const std::string &expr)
 // the one in the vector
 class RActionBase;
 
-HeadNode_t CreateSnaphotRDF(const ColumnNames_t &validCols,
+HeadNode_t CreateSnapshotRDF(const ColumnNames_t &validCols,
                             std::string_view treeName,
                             std::string_view fileName,
                             bool isLazy,
@@ -793,6 +793,7 @@ std::shared_ptr<RNodeBase> UpcastNode(std::shared_ptr<RNodeBase> ptr)
 /// Given the desired number of columns and the user-provided list of columns:
 /// * fallback to using the first nColumns default columns if needed (or throw if nColumns > nDefaultColumns)
 /// * check that selected column names refer to valid branches, custom columns or datasource columns (throw if not)
+/// * replace column names from aliases by the actual column name
 /// Return the list of selected column names.
 ColumnNames_t GetValidatedColumnNames(RLoopManager &lm, const unsigned int nColumns, const ColumnNames_t &columns,
                                       const ColumnNames_t &validCustomColumns, RDataSource *ds)

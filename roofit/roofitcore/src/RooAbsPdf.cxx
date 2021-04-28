@@ -134,20 +134,10 @@ If evaluateBatch is not implemented, the classic and slower `evaluate()` will be
 called for each data event.
 */
 
+#include "RooAbsPdf.h"
+
 #include "RooFit.h"
 #include "RooMsgService.h" 
-
-#include "TClass.h"
-#include "Riostream.h"
-#include "TMath.h"
-#include "TObjString.h"
-#include "TPaveText.h"
-#include "TList.h"
-#include "TH1.h"
-#include "TH2.h"
-#include "TMatrixD.h"
-#include "TMatrixDSym.h"
-#include "RooAbsPdf.h"
 #include "RooDataSet.h"
 #include "RooArgSet.h"
 #include "RooArgProxy.h"
@@ -180,25 +170,32 @@ called for each data event.
 #include "RooMinimizer.h"
 #include "RooRealIntegral.h"
 #include "RooWorkspace.h"
-#include "Math/CholeskyDecomp.h"
-#include "RooHelpers.h"
-#include <string>
-#include "RooHelpers.h"
 
-#define USE_VDT
-#ifdef USE_VDT
-  #include "vdt/log.h"
-#endif
+#include "RooHelpers.h"
+#include "RooVDTHeaders.h"
+
+#include "TClass.h"
+#include "Riostream.h"
+#include "TMath.h"
+#include "TPaveText.h"
+#include "TList.h"
+#include "TH1.h"
+#include "TH2.h"
+#include "TMatrixD.h"
+#include "TMatrixDSym.h"
+#include "Math/CholeskyDecomp.h"
+#include "RooDerivative.h"
+
+#include <string>
 
 using namespace std;
 
 ClassImp(RooAbsPdf); 
-;
+
 ClassImp(RooAbsPdf::GenSpec);
-;
+
 
 Int_t RooAbsPdf::_verboseEval = 0;
-Bool_t RooAbsPdf::_evalError = kFALSE ;
 TString RooAbsPdf::_normRangeOverride ;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -335,49 +332,6 @@ Double_t RooAbsPdf::getValV(const RooArgSet* nset) const
   return _value ;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// Check for infinity or NaN.
-/// \param[in] inputs Array to check
-/// \return True if either infinity or NaN were found.
-namespace {
-template<class T>
-bool checkInfNaN(const T& inputs)
-{
-  // check for a math error or negative value
-  bool nan = false;
-  bool neg = false;
-
-  for (double val : inputs) { //CHECK_VECTORISE
-    nan |= std::isnan(val);
-    neg |= val < 0;
-  }
-
-  return nan || neg;
-}
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Scan through outputs and fix+log all nans and negative values.
-/// \param[in/out] outputs Array to be scanned & fixed.
-/// \param[in] begin Begin of event range. Only needed to print the correct event number
-/// where the error occurred.
-void RooAbsPdf::fixOutputsAndLogErrors(RooSpan<double>& outputs, std::size_t begin) const {
-  for (unsigned int i=0; i<outputs.size(); ++i) {
-    const double value = outputs[i];
-    if (std::isnan(outputs[i])) {
-      logEvalError(Form("p.d.f value of (%s) is Not-a-Number (%f), forcing value to zero for entry %zu",
-          GetName(), value, begin+i));
-      outputs[i] = 0;
-    }
-    if (outputs[i] < 0.) {
-      logEvalError(Form("p.d.f value of (%s) is less than zero (%f), forcing value to zero for entry %zu",
-          GetName(), value, begin+i));
-      outputs[i] = 0;
-    }
-  }
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Compute batch of values for given range, and normalise by integrating over
@@ -393,6 +347,9 @@ void RooAbsPdf::fixOutputsAndLogErrors(RooSpan<double>& outputs, std::size_t beg
 RooSpan<const double> RooAbsPdf::getValBatch(std::size_t begin, std::size_t maxSize,
     const RooArgSet* normSet) const
 {
+  // Some PDFs do preprocessing here:
+  getValV(normSet);
+
   if (_allBatchesDirty || _operMode == ADirty) {
     _batchData.markDirty();
     _allBatchesDirty = false;
@@ -405,10 +362,6 @@ RooSpan<const double> RooAbsPdf::getValBatch(std::size_t begin, std::size_t maxS
     auto outputs = evaluateBatch(begin, maxSize);
     maxSize = outputs.size();
     _normSet = tmp;
-
-    if (checkInfNaN(outputs)) {
-      fixOutputsAndLogErrors(outputs, begin);
-    }
 
     _batchData.setStatus(begin, maxSize, BatchHelpers::BatchData::kReady);
 
@@ -428,9 +381,6 @@ RooSpan<const double> RooAbsPdf::getValBatch(std::size_t begin, std::size_t maxS
 
     auto outputs = evaluateBatch(begin, maxSize);
     maxSize = outputs.size();
-    if (checkInfNaN(outputs)) {
-      fixOutputsAndLogErrors(outputs, begin);
-    }
 
     // Evaluate denominator
     const double normVal = _norm->getVal();
@@ -606,7 +556,7 @@ Bool_t RooAbsPdf::syncNormalization(const RooArgSet* nset, Bool_t adjustProxies)
     ((RooAbsPdf*) this)->setProxyNormSet(nset) ;
   }
   
-  RooArgSet* depList = getObservables(nset) ;
+  std::unique_ptr<RooArgSet> depList(getObservables(nset));
 
   if (_verboseEval>0) {
     if (!selfNormalized()) {
@@ -666,42 +616,8 @@ Bool_t RooAbsPdf::syncNormalization(const RooArgSet* nset, Bool_t adjustProxies)
   
 //   cout << "making new object " << _norm->GetName() << endl ;
 
-  delete depList ;
   return kTRUE ;
 }
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// WVE 08/21/01 Probably obsolete now.
-
-Bool_t RooAbsPdf::traceEvalHook(Double_t value) const 
-{
-  // Floating point error checking and tracing for given float value
-
-  // check for a math error or negative value
-  Bool_t error= TMath::IsNaN(value) || (value < 0);
-
-  // do nothing if we are no longer tracing evaluations and there was no error
-  if(!error && _traceCount <= 0) return error ;
-
-  // otherwise, print out this evaluations input values and result
-  if(error && ++_errorCount <= 10) {
-    cxcoutD(Tracing) << "*** Evaluation Error " << _errorCount << " ";
-    if(_errorCount == 10) ccoutD(Tracing) << "(no more will be printed) ";
-  }
-  else if(_traceCount > 0) {
-    ccoutD(Tracing) << '[' << _traceCount-- << "] ";
-  }
-  else {
-    return error ;
-  }
-
-  Print() ;
-
-  return error ;
-}
-
 
 
 
@@ -758,7 +674,7 @@ Double_t RooAbsPdf::getLogVal(const RooArgSet* nset) const
   if(prob < 0) {
     logEvalError("getLogVal() top-level p.d.f evaluates to a negative number") ;
 
-    return 0;
+    return std::numeric_limits<double>::quiet_NaN();
   }
 
   if(prob == 0) {
@@ -778,54 +694,82 @@ Double_t RooAbsPdf::getLogVal(const RooArgSet* nset) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Check for infinity or NaN.
+/// \param[in] inputs Array to check
+/// \return True if either infinity or NaN were found.
+namespace {
+template<class T>
+bool checkInfNaNNeg(const T& inputs) {
+  // check for a math error or negative value
+  bool inf = false;
+  bool nan = false;
+  bool neg = false;
+
+  for (double val : inputs) { //CHECK_VECTORISE
+    inf |= !std::isfinite(val);
+    nan |= TMath::IsNaN(val); // Works also during fast math
+    neg |= val < 0;
+  }
+
+  return inf || nan || neg;
+}
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Scan through outputs and fix+log all nans and negative values.
+/// \param[in/out] outputs Array to be scanned & fixed.
+/// \param[in] begin Begin of event range. Only needed to print the correct event number
+/// where the error occurred.
+void RooAbsPdf::logBatchComputationErrors(RooSpan<const double>& outputs, std::size_t begin) const {
+  for (unsigned int i=0; i<outputs.size(); ++i) {
+    const double value = outputs[i];
+    if (TMath::IsNaN(outputs[i])) {
+      logEvalError(Form("p.d.f value of (%s) is Not-a-Number (%f) for entry %zu",
+          GetName(), value, begin+i));
+    } else if (!std::isfinite(outputs[i])){
+      logEvalError(Form("p.d.f value of (%s) is (%f) for entry %zu",
+          GetName(), value, begin+i));
+    } else if (outputs[i] < 0.) {
+      logEvalError(Form("p.d.f value of (%s) is less than zero (%f) for entry %zu",
+          GetName(), value, begin+i));
+    }
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Compute the log-likelihoods for all events in the requested batch.
 /// The arguments are passed over to getValBatch().
 /// \param[in] begin Start of the batch.
-/// \param[in] size  Maximum size of the batch.
+/// \param[in] size  Maximum size of the batch. Depending on data layout and memory, the batch
+/// may come back smaller.
 /// \return    Returns a batch of doubles that contains the log probabilities.
-RooSpan<double> RooAbsPdf::getLogValBatch(std::size_t begin, std::size_t batchSize,
+RooSpan<const double> RooAbsPdf::getLogValBatch(std::size_t begin, std::size_t maxSize,
     const RooArgSet* normSet) const
 {
-  auto pdfValues = getValBatch(begin, batchSize, normSet);
+  auto pdfValues = getValBatch(begin, maxSize, normSet);
 
-  //TODO avoid allocate&destroy?
-  std::vector<double> outputs(pdfValues.size());
-
-  /* TODO
-  if (fabs(prob)>1e6) {
-    coutW(Eval) << "RooAbsPdf::getLogVal(" << GetName() << ") WARNING: large likelihood value: " << prob << endl ;
+  if (checkInfNaNNeg(pdfValues)) {
+    logBatchComputationErrors(pdfValues, begin);
   }
 
-  if(prob < 0) {
+  auto output = _batchData.makeWritableBatchUnInit(begin, pdfValues.size());
 
-    logEvalError("getLogVal() top-level p.d.f evaluates to a negative number") ;
+  for (std::size_t i = 0; i < pdfValues.size(); ++i) { //CHECK_VECTORISE
+    const double prob = pdfValues[i];
 
-    return 0;
-  }
-  if(prob == 0) {
+    double theLog = _rf_fast_log(prob);
 
-    logEvalError("getLogVal() top-level p.d.f evaluates to zero") ;
+    if (prob < 0) {
+      theLog = std::numeric_limits<double>::quiet_NaN();
+    } else if (prob == 0 || TMath::IsNaN(prob)) {
+      theLog = -std::numeric_limits<double>::infinity();
+    }
 
-    return log((double)0);
-  }
-
-  if (TMath::IsNaN(prob)) {
-    logEvalError("getLogVal() top-level p.d.f evaluates to NaN") ;
-
-    return log((double)0);
-
-  }
-  */
-
-  for (unsigned int i = 0; i < pdfValues.size(); ++i) { //CHECK_VECTORISE
-#ifdef USE_VDT
-    outputs[i] = vdt::fast_log(pdfValues[i]);
-#else
-    outputs[i] = log(pdfValues[i]);
-#endif
+    output[i] = theLog;
   }
 
-  return RooSpan<double>(std::move(outputs));
+  return output;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -994,7 +938,7 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
   pc.defineInt("cpuAffinity","CPUAffinity",0,1);
   pc.defineInt("verbose","Verbose",0,0) ;
   pc.defineInt("optConst","Optimize",0,0) ;
-  pc.defineInt("cloneData","CloneData",2,0) ;
+  pc.defineInt("cloneData","CloneData", 0, 2);
   pc.defineSet("projDepSet","ProjectedObservables",0,0) ;
   pc.defineSet("cPars","Constrain",0,0) ;
   pc.defineSet("glObs","GlobalObservables",0,0) ;
@@ -1266,6 +1210,9 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
 /// <tr><td> `Minos(const RooArgSet& set)`     <td>  Only run MINOS on given subset of arguments
 /// <tr><td> `Save(Bool_t flag)`               <td>  Flag controls if RooFitResult object is produced and returned, off by default
 /// <tr><td> `Strategy(Int_t flag)`            <td>  Set Minuit strategy (0 to 2, default is 1)
+/// <tr><td> `EvalErrorWall(bool flag=true)    <td>  When parameters are in disallowed regions (e.g. PDF is negative), return very high value to fitter
+///                                                  to force it out of that region. This can, however, mean that the fitter gets lost in this region. If
+///                                                  this happens, try switching it off.
 /// <tr><td> `FitOptions(const char* optStr)`  <td>  \deprecated Steer fit with classic options string (for backward compatibility).
 ///                                                \attention Use of this option excludes use of any of the new style steering options.
 ///
@@ -1357,6 +1304,7 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
   pc.defineInt("doEEWall","EvalErrorWall",0,1) ;
   pc.defineInt("doWarn","Warnings",0,1) ;
   pc.defineInt("doSumW2","SumW2Error",0,-1) ;
+  pc.defineInt("doAsymptoticError","AsymptoticError",0,-1) ;
   pc.defineInt("doOffset","OffsetLikelihood",0,0) ;
   pc.defineString("mintype","Minimizer",0,"Minuit") ;
   pc.defineString("minalg","Minimizer",1,"minuit") ;
@@ -1395,6 +1343,7 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
   Int_t doEEWall = pc.getInt("doEEWall") ;
   Int_t doWarn   = pc.getInt("doWarn") ;
   Int_t doSumW2  = pc.getInt("doSumW2") ;
+  Int_t doAsymptotic = pc.getInt("doAsymptoticError");
   const RooArgSet* minosSet = static_cast<RooArgSet*>(pc.getObject("minosSet")) ;
 #ifdef __ROOFIT_NOROOMINIMIZER
   const char* minType =0 ;
@@ -1406,8 +1355,8 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
   // Determine if the dataset has weights  
   Bool_t weightedData = data.isNonPoissonWeighted() ;
 
-  // Warn user that a SumW2Error() argument should be provided if weighted data is offered
-  if (weightedData && doSumW2==-1) {
+  // Warn user that a method to determine parameter uncertainties should be provided if weighted data is offered
+  if (weightedData && doSumW2==-1 && doAsymptotic==-1) {
     coutW(InputArguments) << "RooAbsPdf::fitTo(" << GetName() << ") WARNING: a likelihood fit is requested of what appears to be weighted data.\n"
                           << "       While the estimated values of the parameters will always be calculated taking the weights into account,\n"
 			  << "       there are multiple ways to estimate the errors of the parameters. You are advised to make an'n"
@@ -1416,9 +1365,9 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 			  << "             (error will be proportional to the number of events in MC).\n"
 			  << "           - Or provide SumW2Error(false), to return errors from original HESSE error matrix\n"
 			  << "             (which will be proportional to the sum of the weights, i.e., a dataset with <sum of weights> events).\n"
-			  << "       If you want the errors to reflect the information contained in the provided simulation, choose true.\n"
-			  << "       If you want the errors to reflect the precision you would be able to obtain with an unweighted dataset\n"
-			  << "       with <sum of weights> events, choose false." << endl ;
+			  << "           - Or provide AsymptoticError(true), to use the asymptotically correct expression\n"      
+			  << "             (for details see https://arxiv.org/abs/1911.01303)."
+			  << endl ;
   }
 
 
@@ -1426,6 +1375,9 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
   if (doSumW2==1 && minos) {
     coutW(InputArguments) << "RooAbsPdf::fitTo(" << GetName() << ") WARNING: sum-of-weights correction does not apply to MINOS errors" << endl ;
   }
+  if (doAsymptotic==1 && minos) {
+      coutW(InputArguments) << "RooAbsPdf::fitTo(" << GetName() << ") WARNING: asymptotic correction does not apply to MINOS errors" << endl ;
+    }
     
   if (prefit != 0)  {
     size_t nEvents = static_cast<size_t>(prefit*data.numEntries());
@@ -1464,6 +1416,12 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
   
   RooAbsReal* nll = createNLL(data,nllCmdList) ;  
   RooFitResult *ret = 0 ;    
+
+  //avoid setting both SumW2 and Asymptotic for uncertainty correction
+  if (doSumW2==1 && doAsymptotic==1) {
+      coutE(InputArguments) << "RooAbsPdf::fitTo(" << GetName() << ") ERROR: Cannot compute both asymptotically correct and SumW2 errors." << endl ;
+      return ret;
+    }
 
   // Instantiate MINUIT
 
@@ -1522,7 +1480,61 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 	// Evaluate errors with Hesse
 	m.hesse() ;
       }
-      
+
+      //asymptotically correct approach
+      if (doAsymptotic==1 && m.getNPar()>0) {
+	//Calculated corrected errors for weighted likelihood fits
+	std::unique_ptr<RooFitResult> rw(m.save());
+	//Weighted inverse Hessian matrix
+	const TMatrixDSym& matV = rw->covarianceMatrix();
+	coutI(Fitting) << "RooAbsPdf::fitTo(" << GetName() << ") Calculating covariance matrix according to the asymptotically correct approach. If you find this method useful please consider citing https://arxiv.org/abs/1911.01303." << endl;
+
+	//Initialise matrix containing first derivatives
+	TMatrixDSym num(rw->floatParsFinal().getSize());
+	for (int k=0; k<rw->floatParsFinal().getSize(); k++)
+	   for (int l=0; l<rw->floatParsFinal().getSize(); l++)
+	      num(k,l) = 0.0;
+	RooArgSet* obs = getObservables(data);      
+	//Create derivative objects
+	std::vector<std::unique_ptr<RooDerivative> > derivatives;
+	const RooArgList& floated = rw->floatParsFinal();
+	std::unique_ptr<RooArgSet> floatingparams( (RooArgSet*)getParameters(data)->selectByAttrib("Constant", false) );
+	for (int k=0; k<floated.getSize(); k++) {	   
+	   RooRealVar* paramresult = (RooRealVar*)floated.at(k);
+	   RooRealVar* paraminternal = (RooRealVar*)floatingparams->find(paramresult->getTitle());
+	   std::unique_ptr<RooDerivative> deriv( derivative(*paraminternal, *obs, 1) );
+	   derivatives.push_back(std::move(deriv));
+	}
+	
+	//Loop over data
+	for (int j=0; j<data.numEntries(); j++) {
+	   //Sets obs to current data point, this is where the pdf will be evaluated
+	   *obs = *data.get(j);
+	   //Determine first derivatives
+	   std::vector<Double_t> diffs(floated.getSize(), 0.0);
+	   for (int k=0; k<floated.getSize(); k++) {
+	      RooRealVar* paramresult = (RooRealVar*)floated.at(k);
+	      RooRealVar* paraminternal = (RooRealVar*)floatingparams->find(paramresult->getTitle());
+	      //first derivative to parameter k at best estimate point for this measurement
+	      Double_t diff = derivatives.at(k)->getVal();
+	      //need to reset to best fit point after differentiation
+	      *paraminternal = paramresult->getVal();
+	      diffs.at(k) = diff;
+	   }
+	   //Fill numerator matrix
+	   Double_t prob = getVal(obs);
+	   for (int k=0; k<floated.getSize(); k++) {
+	      for (int l=0; l<floated.getSize(); l++) {
+	         num(k,l) += data.weight()*data.weight()*diffs.at(k)*diffs.at(l)/(prob*prob);
+	      }
+	   }
+	}	
+	num.Similarity(matV);
+
+	//Propagate corrected errors to parameters objects
+	m.applyCovarianceMatrix(num);
+      }
+
       if (doSumW2==1 && m.getNPar()>0) {
 	// Make list of RooNLLVar components of FCN
 	RooArgSet* comps = nll->getComponents();
@@ -1650,7 +1662,61 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 	// Evaluate errors with Hesse
 	m.hesse() ;
       }
-      
+
+      //asymptotically correct approach
+      if (doAsymptotic==1 && m.getNPar()>0) {
+	//Calculated corrected errors for weighted likelihood fits
+	std::unique_ptr<RooFitResult> rw(m.save());
+	//Weighted inverse Hessian matrix
+	const TMatrixDSym& matV = rw->covarianceMatrix();
+	coutI(Fitting) << "RooAbsPdf::fitTo(" << GetName() << ") Calculating covariance matrix according to the asymptotically correct approach. If you find this method useful please consider citing https://arxiv.org/abs/1911.01303." << endl;
+
+	//Initialise matrix containing first derivatives
+	TMatrixDSym num(rw->floatParsFinal().getSize());
+	for (int k=0; k<rw->floatParsFinal().getSize(); k++)
+	   for (int l=0; l<rw->floatParsFinal().getSize(); l++)
+	      num(k,l) = 0.0;
+	RooArgSet* obs = getObservables(data);      
+	//Create derivative objects
+	std::vector<std::unique_ptr<RooDerivative> > derivatives;
+	const RooArgList& floated = rw->floatParsFinal();
+	std::unique_ptr<RooArgSet> floatingparams( (RooArgSet*)getParameters(data)->selectByAttrib("Constant", false) );
+	for (int k=0; k<floated.getSize(); k++) {	   
+	   RooRealVar* paramresult = (RooRealVar*)floated.at(k);
+	   RooRealVar* paraminternal = (RooRealVar*)floatingparams->find(paramresult->getTitle());
+	   std::unique_ptr<RooDerivative> deriv( derivative(*paraminternal, *obs, 1) );
+	   derivatives.push_back(std::move(deriv));
+	}
+	
+	//Loop over data
+	for (int j=0; j<data.numEntries(); j++) {
+	   //Sets obs to current data point, this is where the pdf will be evaluated
+	   *obs = *data.get(j);
+	   //Determine first derivatives
+	   std::vector<Double_t> diffs(floated.getSize(), 0.0);
+	   for (int k=0; k<floated.getSize(); k++) {
+	      RooRealVar* paramresult = (RooRealVar*)floated.at(k);
+	      RooRealVar* paraminternal = (RooRealVar*)floatingparams->find(paramresult->getTitle());
+	      //First derivative to parameter k at best estimate point for this measurement
+	      Double_t diff = derivatives.at(k)->getVal();
+	      //Need to reset to best fit point after differentiation
+	      *paraminternal = paramresult->getVal();
+	      diffs.at(k) = diff;
+	   }
+	   //Fill numerator matrix
+	   Double_t prob = getVal(obs);
+	   for (int k=0; k<floated.getSize(); k++) {
+	      for (int l=0; l<floated.getSize(); l++) {
+	         num(k,l) += data.weight()*data.weight()*diffs.at(k)*diffs.at(l)/(prob*prob);
+	      }
+	   }
+	}	
+	num.Similarity(matV);
+
+	//Propagate corrected errors to parameters objects
+	m.applyCovarianceMatrix(num);
+      }
+
       if (doSumW2==1 && m.getNPar()>0) {
 	
 	// Make list of RooNLLVar components of FCN
@@ -2375,16 +2441,13 @@ Bool_t RooAbsPdf::isDirectGenSafe(const RooAbsArg& arg) const
   if (!findServer(arg.GetName())) return kFALSE ;
 
   // There must be no other dependency routes
-  TIterator* sIter = serverIterator() ;
-  const RooAbsArg *server = 0;
-  while((server=(const RooAbsArg*)sIter->Next())) {
+  for (const auto server : _serverList) {
     if(server == &arg) continue;
     if(server->dependsOn(arg)) {
-      delete sIter ;
       return kFALSE ;
     }
   }
-  delete sIter ;
+
   return kTRUE ;
 }
 
@@ -2414,7 +2477,7 @@ Bool_t RooAbsPdf::isDirectGenSafe(const RooAbsArg& arg) const
 ///
 
 RooDataHist *RooAbsPdf::generateBinned(const RooArgSet& whatVars, const RooCmdArg& arg1,const RooCmdArg& arg2,
-				       const RooCmdArg& arg3,const RooCmdArg& arg4, const RooCmdArg& arg5,const RooCmdArg& arg6) 
+				       const RooCmdArg& arg3,const RooCmdArg& arg4, const RooCmdArg& arg5,const RooCmdArg& arg6) const
 {
 
   // Select the pdf-specific commands 
@@ -2677,8 +2740,8 @@ void removeRangeOverlap(std::vector<std::pair<double, double>>& ranges) {
 ///               states with indices -1 and +1 or three states with indeces -1,0 and +1.
 /// <tr><td> `ShiftToZero(Bool_t flag)`         <td>  Shift entire curve such that lowest visible point is at exactly zero.
 ///               Mostly useful when plotting -log(L) or \f$ \chi^2 \f$ distributions
-/// <tr><td> `AddTo(const char* name, double_t wgtSelf, double_t wgtOther)`  <td>  Add constructed projection to
-///               already existing curve with given name and relative weight factors
+/// <tr><td> `AddTo(const char* name, double_t wgtSelf, double_t wgtOther)`  <td>  Create a projection of this PDF onto the x-axis, but
+///               instead of plotting it directly, add it to an existing curve with given name (and relative weight factors).
 /// <tr><td> `Components(const char* names)`  <td>  When plotting sums of PDFs, plot only the named components (*e.g.* only
 ///                                                 the signal of a signal+background model).
 /// <tr><td> `Components(const RooArgSet& compSet)` <td> As above, but pass a RooArgSet of the components themselves.
@@ -2824,7 +2887,7 @@ RooPlot* RooAbsPdf::plotOn(RooPlot* frame, RooLinkedList& cmdList) const
         nameSuffix.Append(Form("_Range[%f_%f]",rangeLo,rangeHi)) ;
 
       } else if (pc.hasProcessed("RangeWithName")) {    
-        for (const std::string& rangeNameToken : RooHelpers::tokenise(pc.getString("rangeName",0,true), ",")) {
+        for (const std::string& rangeNameToken : RooHelpers::tokenise(pc.getString("rangeName","",false), ",")) {
           if (!frame->getPlotVar()->hasRange(rangeNameToken.c_str())) {
             coutE(Plotting) << "Range '" << rangeNameToken << "' not defined for variable '"
                 << frame->getPlotVar()->GetName() << "'. Ignoring ..." << std::endl;
@@ -3047,7 +3110,8 @@ RooPlot* RooAbsPdf::plotOn(RooPlot *frame, PlotOpt o) const
 ///   | `AutoPrecision(int n)` |  Controls precision. Number of shown digits is calculated from error + n specified additional digits (1 is sensible default)
 /// <tr><td> `Label(const chat* label)`           <td>  Add header label to parameter box
 /// <tr><td> `Layout(Double_t xmin, Double_t xmax, Double_t ymax)` <td>  Specify relative position of left/right side of box and top of box.
-///                                                                    Position of bottom of box is calculated automatically from number lines in box
+///                                                                      Coordinates are given as position on the pad between 0 and 1.
+///                                                                      The lower end of the box is calculated automatically from the number of lines in the box.
 /// </table>
 ///
 ///
@@ -3149,7 +3213,7 @@ RooPlot* RooAbsPdf::paramOn(RooPlot* frame, const RooAbsData* data, const char *
 ///
 /// Optional label will be inserted as first line of the text box. Use 'sigDigits'
 /// to modify the default number of significant digits printed. The 'xmin,xmax,ymax'
-/// values specify the inital relative position of the text box in the plot frame  
+/// values specify the initial relative position of the text box in the plot frame
 
 RooPlot* RooAbsPdf::paramOn(RooPlot* frame, const RooArgSet& params, Bool_t showConstants, const char *label,
 			    Int_t sigDigits, Option_t *options, Double_t xmin,
@@ -3417,36 +3481,6 @@ RooArgSet* RooAbsPdf::getAllConstraints(const RooArgSet& observables, RooArgSet&
 
   return ret ;
 }
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Clear the evaluation error flag
-
-void RooAbsPdf::clearEvalError() 
-{ 
-  _evalError = kFALSE ; 
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Return the evaluation error flag
-
-Bool_t RooAbsPdf::evalError() 
-{ 
-  return _evalError ; 
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Raise the evaluation error flag
-
-void RooAbsPdf::raiseEvalError() 
-{ 
-  _evalError = kTRUE ; 
-}
-
 
 
 ////////////////////////////////////////////////////////////////////////////////

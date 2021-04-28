@@ -205,9 +205,25 @@
 #pragma link C++ class ROOT::Experimental::REveJetCone+;
 #pragma link C++ class ROOT::Experimental::REveJetConeProjected+;
 
+// Ellipse
+#pragma link C++ class ROOT::Experimental::REveEllipsoid+;
+#pragma link C++ class ROOT::Experimental::REveEllipsoidProjected+;
+
 // REveLineSet
 #pragma link C++ class ROOT::Experimental::REveStraightLineSet+;
 #pragma link C++ class ROOT::Experimental::REveStraightLineSetProjected+;
+
+// Digits
+
+// REveBox-es
+#pragma link C++ class ROOT::Experimental::REveFrameBox+;
+#pragma link C++ class ROOT::Experimental::REveBox+;
+#pragma link C++ class ROOT::Experimental::REveBoxProjected+;
+
+// Digits
+#pragma link C++ class ROOT::Experimental::REveRGBAPalette+;
+#pragma link C++ class ROOT::Experimental::REveDigitSet+;
+#pragma link C++ class ROOT::Experimental::REveBoxSet+;
 
 // REveChunkManager
 #pragma link C++ class ROOT::Experimental::REveChunkManager+;
@@ -228,5 +244,7 @@
 #pragma link C++ class ROOT::Experimental::REveGeomRequest+;
 #pragma link C++ class ROOT::Experimental::REveGeomNodeInfo+;
 #pragma link C++ class ROOT::Experimental::REveGeomConfig+;
+#pragma link C++ class ROOT::Experimental::REveGeomViewer+;
+#pragma link C++ class ROOT::Experimental::REveGeoPainter+;
 
 #endif

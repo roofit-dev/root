@@ -146,7 +146,7 @@ Example:
     >>> pc = PyConcrete()
     >>> call_abstract_method(pc)
     Hello, Python World!
-    >>> 
+    >>>
 
 Note that it is not necessary to provide a constructor (``__init__``), but
 if you do, you *must* call the base class constructor through the ``super``
@@ -252,6 +252,9 @@ C++                  Python
 ``operator--()``     ``__predec__``
 ``unary operator*``  ``__deref__``
 ``operator->``       ``__follow__``
+``operator&&``       ``__dand__``
+``operator||``       ``__dor__``
+``operator,``        ``__comma__``
 ===================  ===================
 
 Here is an example of operator usage, using STL iterators directly (note that
@@ -270,6 +273,9 @@ transparently in Python for-loops):
     1
     2
     >>>
+
+Overridden ``operator new`` and ``operator delete``, as well as their array
+equivalents, are not accessible but will be called as appropriate.
 
 
 `Templates`

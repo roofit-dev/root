@@ -60,13 +60,11 @@
 ///  Please see RooAbsPdf for additional details. Advertised analytical integrals must be
 ///  valid for all coefficients.
 
+#include "RooAbsAnaConvPdf.h"
 
 #include "RooFit.h"
 #include "RooMsgService.h"
-
 #include "Riostream.h"
-#include "Riostream.h"
-#include "RooAbsAnaConvPdf.h"
 #include "RooResolutionModel.h"
 #include "RooRealVar.h"
 #include "RooFormulaVar.h"
@@ -188,15 +186,12 @@ Int_t RooAbsAnaConvPdf::declareBasis(const char* expression, const RooArgList& p
   basisArgs.add(params) ;
 
   TString basisName(expression) ;
-  TIterator* iter = basisArgs.createIterator() ;
-  RooAbsArg* arg  ;
-  while(((arg=(RooAbsArg*)iter->Next()))) {
+  for (const auto arg : basisArgs) {
     basisName.Append("_") ;
     basisName.Append(arg->GetName()) ;
   }
-  delete iter ;  
 
-  RooFormulaVar* basisFunc = new RooFormulaVar(basisName,expression,basisArgs) ;
+  RooFormulaVar* basisFunc = new RooFormulaVar(basisName, expression, basisArgs);
   basisFunc->setAttribute("RooWorkspace::Recycle") ;
   basisFunc->setAttribute("NOCacheAndTrack") ;
   basisFunc->setOperMode(operMode()) ;
@@ -323,7 +318,7 @@ Bool_t RooAbsAnaConvPdf::isDirectGenSafe(const RooAbsArg& arg) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Return a pointer to the convolution variable instance used in the resolution model
 
-const RooRealVar* RooAbsAnaConvPdf::convVar() const
+RooAbsRealLValue* RooAbsAnaConvPdf::convVar()
 {
   RooResolutionModel* conv = (RooResolutionModel*) _convSet.at(0) ;
   if (!conv) return 0 ;  

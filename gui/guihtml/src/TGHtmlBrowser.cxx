@@ -30,6 +30,7 @@
 #include "TGHtmlBrowser.h"
 #include "TGText.h"
 #include "TError.h"
+#include "TVirtualX.h"
 #ifdef R__SSL
 #include "TSSLSocket.h"
 #endif
@@ -624,7 +625,7 @@ Bool_t TGHtmlBrowser::ProcessMessage(Long_t msg, Long_t parm1, Long_t)
                         static TString dir(".");
                         TGFileInfo fi;
                         fi.fFileTypes = gHtmlFTypes;
-                        fi.fIniDir    = StrDup(dir);
+                        fi.SetIniDir(dir);
                         new TGFileDialog(fClient->GetRoot(), this,
                                          kFDOpen, &fi);
                         dir = fi.fIniDir;
@@ -640,7 +641,7 @@ Bool_t TGHtmlBrowser::ProcessMessage(Long_t msg, Long_t parm1, Long_t)
                         static TString sdir(".");
                         TGFileInfo fi;
                         fi.fFileTypes = gHtmlFTypes;
-                        fi.fIniDir    = StrDup(sdir);
+                        fi.SetIniDir(sdir);
                         new TGFileDialog(fClient->GetRoot(), this,
                                          kFDSave, &fi);
                         sdir = fi.fIniDir;

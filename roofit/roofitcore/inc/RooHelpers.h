@@ -19,28 +19,33 @@
 
 #include "RooMsgService.h"
 #include "RooAbsArg.h"
+#include "RooAbsReal.h"
 
 #include <sstream>
 
 namespace RooHelpers {
 
 /// Switches the message service to verbose while the instance alive.
-class MakeVerbose {
+class LocalChangeMsgLevel {
   public:
-    MakeVerbose() {
+    /// Change message level (and topics) while this object is alive, reset when it goes out of scope.
+    /// \param[in] lvl The desired message level. Defaults to verbose.
+    /// \param[in] extraTopics Extra topics to be switched on.
+    LocalChangeMsgLevel(RooFit::MsgLevel lvl = RooFit::DEBUG,
+        RooFit::MsgTopic extraTopics = static_cast<RooFit::MsgTopic>(0u)) {
       auto& msg = RooMsgService::instance();
       fOldKillBelow = msg.globalKillBelow();
-      msg.setGlobalKillBelow(RooFit::DEBUG);
+      msg.setGlobalKillBelow(lvl);
       fOldConf = msg.getStream(0);
-      msg.getStream(0).minLevel= RooFit::DEBUG;
+      msg.getStream(0).minLevel = lvl;
+      msg.getStream(0).addTopic(extraTopics);
       msg.setStreamStatus(0, true);
     }
 
-    ~MakeVerbose() {
+    ~LocalChangeMsgLevel() {
       auto& msg = RooMsgService::instance();
       msg.setGlobalKillBelow(fOldKillBelow);
       msg.getStream(0) = fOldConf;
-      msg.setStreamStatus(0, true);
     }
 
   private:
@@ -50,7 +55,7 @@ class MakeVerbose {
 
 
 /// Hijacks all messages with given level and topic (and optionally object name) while alive.
-/// Use like ostringstream afterwards. Useful for unit tests and debugging.
+/// Use this like an ostringstream afterwards. Useful for unit tests and debugging.
 class HijackMessageStream : public std::ostringstream {
   public:
     HijackMessageStream(RooFit::MsgLevel level, RooFit::MsgTopic topics, const char* objectName = nullptr);
@@ -146,8 +151,25 @@ class FormatPdfTree {
 
 /// Check if the parameters have a range, and warn if the range extends below / above the set limits.
 void checkRangeOfParameters(const RooAbsReal* callingClass, std::initializer_list<const RooAbsReal*> pars,
-    double min = -std::numeric_limits<double>::max(), double max = std::numeric_limits<double>::max());
+    double min = -std::numeric_limits<double>::max(), double max = std::numeric_limits<double>::max(),
+    bool limitsInAllowedRange = false, std::string extraMessage = "");
+
+
+/// Helper class to access a batch-related part of RooAbsReal's interface, which should not leak to the outside world.
+class BatchInterfaceAccessor {
+  public:
+    static void clearBatchMemory(RooAbsReal& theReal) {
+      theReal.clearBatchMemory();
+    }
+
+    static void checkBatchComputation(const RooAbsReal& theReal, std::size_t evtNo,
+        const RooArgSet* normSet = nullptr, double relAccuracy = 1.E-13) {
+      theReal.checkBatchComputation(evtNo, normSet, relAccuracy);
+    }
+};
+
 
 }
+
 
 #endif /* ROOFIT_ROOFITCORE_INC_ROOHELPERS_H_ */

@@ -4,11 +4,14 @@
 # For the licensing terms see $ROOTSYS/LICENSE.
 # For the list of contributors see $ROOTSYS/README/CREDITS.
 
-if(python)
+if(pyroot)
   if(NOT pyroot_experimental)
     add_subdirectory(pyroot)
   else()
     add_subdirectory(pyroot_experimental)
+    add_subdirectory(tpython)
+    add_subdirectory(jupyroot)
+    add_subdirectory(jsmva)
   endif()
 endif()
 

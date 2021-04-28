@@ -20,7 +20,6 @@
 #include <map>
 #include <string>
 #include <cmath>
-#include <cassert>
 #include <memory>
 
 namespace ROOT {
@@ -95,7 +94,7 @@ public:
       Note that in this case MINOS is not re-run. If one wants to run also MINOS
       a new result must be created
     */
-   bool Update(const std::shared_ptr<ROOT::Math::Minimizer> & min, bool isValid, unsigned int ncalls = 0 );
+   bool Update(const std::shared_ptr<ROOT::Math::Minimizer> & min, const ROOT::Fit::FitConfig & fconfig, bool isValid, unsigned int ncalls = 0);
 
    /** minimization quantities **/
 
@@ -338,7 +337,6 @@ protected:
    /// used by Fitter class
    std::shared_ptr<IModelFunction> ModelFunction()  { return fFitFunc; }
    void SetModelFunction(const std::shared_ptr<IModelFunction> & func) { fFitFunc = func; }
-
 
    friend class Fitter;
 

@@ -83,6 +83,18 @@ namespace cling {
        }
      }
 
+     void TransactionCodeGenStarted(const Transaction& T) override {
+       for (auto&& cb : m_Callbacks) {
+         cb->TransactionCodeGenStarted(T);
+       }
+     }
+
+     void TransactionCodeGenFinished(const Transaction& T) override {
+       for (auto&& cb : m_Callbacks) {
+         cb->TransactionCodeGenFinished(T);
+       }
+     }
+
      bool LibraryLoadingFailed(const std::string& errmessage, const std::string& libStem, bool permanent,
          bool resolved) override {
        for (auto&& cb : m_Callbacks) {
@@ -102,6 +114,12 @@ namespace cling {
         for (auto&& cb : m_Callbacks) {
            cb->TransactionRollback(T);
         }
+     }
+
+     void DefinitionShadowed(const clang::NamedDecl* D) override {
+       for (auto&& cb : m_Callbacks) {
+         cb->DefinitionShadowed(D);
+       }
      }
 
      void DeclDeserialized(const clang::Decl* D) override {
