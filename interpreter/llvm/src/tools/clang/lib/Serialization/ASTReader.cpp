@@ -6322,7 +6322,7 @@ void ASTReader::readExceptionSpec(ModuleFile &ModuleFile,
     for (unsigned I = 0, N = Record[Idx++]; I != N; ++I)
       Exceptions.push_back(readType(ModuleFile, Record, Idx));
     ESI.Exceptions = Exceptions;
-  } else if (EST == EST_ComputedNoexcept) {
+  } else if (isComputedNoexcept(EST)) {
     ESI.NoexceptExpr = ReadExpr(ModuleFile);
   } else if (EST == EST_Uninstantiated) {
     ESI.SourceDecl = ReadDeclAs<FunctionDecl>(ModuleFile, Record, Idx);
@@ -7218,8 +7218,8 @@ Stmt *ASTReader::GetExternalDeclStmt(uint64_t Offset) {
   // Offset here is a global offset across the entire chain.
   RecordLocation Loc = getLocalBitOffset(Offset);
   Loc.F->DeclsCursor.JumpToBit(Loc.Offset);
-  assert(NumCurrentElementsDeserializing == 0 &&
-        "should not be called while already deserializing");
+  // assert(NumCurrentElementsDeserializing == 0 &&
+  //        "should not be called while already deserializing");
   Deserializing D(this);
   return ReadStmtFromStream(*Loc.F);
 }
@@ -10173,16 +10173,11 @@ void ASTReader::FinishedDeserializing() {
       PendingExceptionSpecUpdates.clear();
       for (auto Update : Updates) {
         ProcessingUpdatesRAIIObj ProcessingUpdates(*this);
-       const PendingExceptionSpecUpdateInfo &PESUInfo = Update.second;
-        auto *FPT = PESUInfo.m_FD->getType()->castAs<FunctionProtoType>();
-       if (PESUInfo.ShouldUpdateESI)
-         PESUInfo.m_FD->setType(getContext().getFunctionType(
-                        FPT->getReturnType(), FPT->getParamTypes(),
-                        FPT->getExtProtoInfo().withExceptionSpec(PESUInfo.m_ESI)));
+        auto *FPT = Update.second->getType()->castAs<FunctionProtoType>();
         auto ESI = FPT->getExtProtoInfo().ExceptionSpec;
         if (auto *Listener = getContext().getASTMutationListener())
-          Listener->ResolvedExceptionSpec(cast<FunctionDecl>(PESUInfo.m_FD));
-        for (auto *Redecl : PESUInfo.m_FD->redecls())
+          Listener->ResolvedExceptionSpec(cast<FunctionDecl>(Update.second));
+        for (auto *Redecl : Update.second->redecls())
           getContext().adjustExceptionSpec(cast<FunctionDecl>(Redecl), ESI);
       }
     }

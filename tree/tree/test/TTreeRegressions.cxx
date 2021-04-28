@@ -1,6 +1,8 @@
 #include "TMemFile.h"
+#include "TLeaf.h"
 #include "TTree.h"
 #include "TInterpreter.h"
+#include "TSystem.h"
 
 #include "gtest/gtest.h"
 
@@ -41,4 +43,50 @@ TEST(TTreeRegressions, CompositeTypeWithNameClash)
    gInterpreter->ProcessLine(toJit2.c_str());
    t.GetEntry(0);
    EXPECT_EQ(ix, -1);
+}
+
+// ROOT-10942
+struct SimpleStruct {
+   double a;
+   double b;
+};
+
+TEST(TTreeRegressions, GetLeafByFullName)
+{
+   gInterpreter->Declare("struct SimpleStruct { double a; double b; };");
+   SimpleStruct c;
+   TTree t("t1", "t1");
+   t.Branch("c", &c);
+   t.Fill();
+
+   EXPECT_TRUE(t.GetLeaf("a") != nullptr);
+   EXPECT_TRUE(t.GetLeaf("c.a") != nullptr);
+   EXPECT_TRUE(t.GetLeaf("c", "a") != nullptr);
+   EXPECT_TRUE(t.GetLeaf(t.GetLeaf("a")->GetFullName()) != nullptr);
+}
+
+// Issue #6527
+TEST(TTreeRegressions, ChangeFileWithTFileOnStack)
+{
+   TFile f("ChangeFileWithTFileOnStack.root", "recreate");
+   EXPECT_FALSE(f.IsOnHeap());
+   TTree t("t", "SetMaxTreeSize(1000)", 99, &f);
+   int x;
+   auto nentries = 20000;
+
+   t.Branch("x", &x, "x/I");
+   t.SetMaxTreeSize(1000);
+
+   for (auto i = 0; i < nentries; i++){
+      x = i;
+      t.Fill();
+   }
+
+   auto cf = t.GetCurrentFile();
+   cf->Write();
+   cf->Close();
+
+   gSystem->Unlink("ChangeFileWithTFileOnStack.root");
+   gSystem->Unlink("ChangeFileWithTFileOnStack_1.root");
+   gSystem->Unlink("ChangeFileWithTFileOnStack_2.root");
 }

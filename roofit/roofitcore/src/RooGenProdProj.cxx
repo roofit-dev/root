@@ -167,13 +167,14 @@ RooGenProdProj::~RooGenProdProj()
 /// \param[in] name Name of integral to be created.
 /// \param[in] compSet All components of the product.
 /// \param[in] intSet Observables to be integrated.
-/// \param[in] isetRangeName Integral range.
 /// \param[out] saveSet All component objects needed to represent the product integral are added as owned members to saveSet.
-/// The caller should take ownership of this set.
-/// \return A RooAbsReal object representing the requested integral.
+/// \note The set owns new components that are created for the integral.
+/// \param[in] isetRangeName Integral range.
+/// \param[in] doFactorize
+///
+/// \return A RooAbsReal object representing the requested integral. The object is owned by `saveSet`.
 ///
 /// The integration is factorized into components as much as possible and done analytically as far as possible.
-
 RooAbsReal* RooGenProdProj::makeIntegral(const char* name, const RooArgSet& compSet, const RooArgSet& intSet, 
 					 RooArgSet& saveSet, const char* isetRangeName, Bool_t doFactorize) 
 {
@@ -224,8 +225,6 @@ RooAbsReal* RooGenProdProj::makeIntegral(const char* name, const RooArgSet& comp
     }
   }
 
-  //cout << "RooGenProdProj::makeIntegral(" << GetName() << ") prodset = " << prodSet << endl ;
-
   // Create product of (partial) analytical integrals
   TString prodName ;
   if (isetRangeName) {
@@ -233,7 +232,19 @@ RooAbsReal* RooGenProdProj::makeIntegral(const char* name, const RooArgSet& comp
   } else {
     prodName = Form("%s_%s",GetName(),name) ;
   }
-  RooProduct* prod = new RooProduct(prodName,"product",prodSet) ;
+
+  // Create clones of the elements in prodSet. These need to be cloned
+  // because when caching optimisation lvl 2 is activated, pre-computed
+  // values are side-loaded into the elements.
+  // Those pre-cached values already contain normalisation constants, so
+  // the integral comes out wrongly. Therefore, we create here nodes that
+  // don't participate in any caching, which are used to compute integrals.
+  RooArgSet prodSetClone;
+  prodSet.snapshot(prodSetClone, false);
+  saveSet.addOwned(prodSetClone);
+  prodSetClone.releaseOwnership();
+
+  RooProduct* prod = new RooProduct(prodName, "product", prodSetClone);
   prod->setExpensiveObjectCache(expensiveObjectCache()) ;
   prod->setOperMode(_operMode) ;
 
@@ -242,8 +253,6 @@ RooAbsReal* RooGenProdProj::makeIntegral(const char* name, const RooArgSet& comp
 
   // Create integral performing remaining numeric integration over (partial) analytic product
   RooAbsReal* ret = prod->createIntegral(numIntSet,isetRangeName) ;
-//   cout << "verbose print of integral object" << endl ;
-//   ret->Print("v") ;
   ret->setOperMode(_operMode) ;
   saveSet.addOwned(*ret) ;
 

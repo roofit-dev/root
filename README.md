@@ -52,9 +52,9 @@ When citing ROOT, please use both the reference reported below and the DOI speci
 ## Screenshots
 These screenshots shows some of the plots (produced using ROOT) presented when the Higgs boson discovery was [announced at CERN](http://home.cern/topics/higgs-boson):
 
-![CMS Data MC Ratio Plot](https://d35c7d8c.web.cern.ch/sites/d35c7d8c.web.cern.ch/files/CMS04_1.png)
+![CMS Data MC Ratio Plot](https://root.cern/gallery/higgs_plots/CMS_Data_MC_Ratio_Plot.png)
 
-![Atlas P0 Trends](https://d35c7d8c.web.cern.ch/sites/d35c7d8c.web.cern.ch/files/Atlas06_0.png)
+![Atlas P0 Trends](https://root.cern/gallery/higgs_plots/Atlas_P0_Trends.png)
 
 See more screenshots on our [gallery](https://root.cern/gallery).
 
@@ -87,8 +87,8 @@ Setup and run ROOT
 
 ## Help and Support
 - [Forum](https://root.cern/forum/)
-- [Issue tracker](https://sft.its.cern.ch/jira/projects/ROOT/issues/ROOT-5820?filter=allopenissues)
-- [Report a bug](https://root.cern/bugs) (Requires a [CERN lightweight account](https://account.cern.ch/account/Externals/RegisterAccount.aspx))
+- [Issue tracker](https://github.com/root-project/root/issues)
+  * [Previous now read-only Jira issue tracker](https://sft.its.cern.ch/jira/projects/ROOT/issues/ROOT-5820?filter=allopenissues)
 - [Mailing lists](https://groups.cern.ch/group/root-dev/default.aspx)
 - [Documentation](https://root.cern/guides/reference-guide)
 - [Tutorials](https://root.cern/doc/master/group__Tutorials.html)

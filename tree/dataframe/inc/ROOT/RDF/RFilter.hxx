@@ -11,7 +11,8 @@
 #ifndef ROOT_RFILTER
 #define ROOT_RFILTER
 
-#include "ROOT/RDF/ColumnReaders.hxx"
+#include "ROOT/RDF/ColumnReaderUtils.hxx"
+#include "ROOT/RDF/RColumnReaderBase.hxx"
 #include "ROOT/RDF/RCutFlowReport.hxx"
 #include "ROOT/RDF/Utils.hxx"
 #include "ROOT/RDF/RFilterBase.hxx"
@@ -57,7 +58,7 @@ class RFilter final : public RFilterBase {
    const std::shared_ptr<PrevDataFrame> fPrevDataPtr;
    PrevDataFrame &fPrevData;
    /// Column readers per slot and per input column
-   std::vector<std::vector<std::unique_ptr<RDFInternal::RColumnReaderBase>>> fValues;
+   std::vector<std::array<std::unique_ptr<RColumnReaderBase>, ColumnTypes_t::list_size>> fValues;
    /// The nth flag signals whether the nth input column is a custom column or not.
    std::array<bool, ColumnTypes_t::list_size> fIsDefine;
 
@@ -109,7 +110,8 @@ public:
    {
       for (auto &bookedBranch : fDefines.GetColumns())
          bookedBranch.second->InitSlot(r, slot);
-      RDFInternal::RColumnReadersInfo info{fColumnNames, fDefines, fIsDefine.data(), fLoopManager->GetDSValuePtrs()};
+      RDFInternal::RColumnReadersInfo info{fColumnNames, fDefines, fIsDefine.data(), fLoopManager->GetDSValuePtrs(),
+                                           fLoopManager->GetDataSource()};
       fValues[slot] = RDFInternal::MakeColumnReaders(slot, r, ColumnTypes_t{}, info);
    }
 
@@ -156,7 +158,8 @@ public:
       for (auto &column : fDefines.GetColumns())
          column.second->FinaliseSlot(slot);
 
-      fValues[slot].clear();
+      for (auto &v : fValues[slot])
+         v.reset();
    }
 
    std::shared_ptr<RDFGraphDrawing::GraphNode> GetGraph()
