@@ -510,9 +510,14 @@ bool TClassEdit::TSplitType::IsTemplate()
 
 ROOT::ESTLType TClassEdit::STLKind(std::string_view type)
 {
+   if (type.length() == 0)
+      return ROOT::kNotSTL;
    size_t offset = 0;
    if (type.compare(0,6,"const ")==0) { offset += 6; }
    offset += StdLen(type.substr(offset));
+   const auto len = type.length() - offset;
+   if (len == 0)
+      return ROOT::kNotSTL;
 
    //container names
    static const char *stls[] =
@@ -535,16 +540,12 @@ ROOT::ESTLType TClassEdit::STLKind(std::string_view type)
       };
 
    // kind of stl container
-   auto len = type.length();
-   if (len) {
-      len -= offset;
-      for(int k=1;stls[k];k++) {
-         if (len == stllen[k]) {
-            if (type.compare(offset,len,stls[k])==0) return values[k];
-         }
+   // find the correct ESTLType, skipping std::any (because I/O for it is not implemented yet?)
+   for (int k = 1; stls[k]; ++k) {
+      if (len == stllen[k]) {
+         if (type.compare(offset, len, stls[k]) == 0)
+            return values[k];
       }
-   } else {
-      for(int k=1;stls[k];k++) {if (type.compare(offset,len,stls[k])==0) return values[k];}
    }
    return ROOT::kNotSTL;
 }
@@ -838,16 +839,24 @@ void TClassEdit::GetNormalizedName(std::string &norm_name, std::string_view name
    }
 
    norm_name = std::string(name); // NOTE: Is that the shortest version?
+
+   if (TClassEdit::IsArtificial(name)) {
+      // If there is a @ symbol (followed by a version number) then this is a synthetic class name created
+      // from an already normalized name for the purpose of supporting schema evolution.
+      return;
+   }
+
    // Remove the std:: and default template argument and insert the Long64_t and change basic_string to string.
    TClassEdit::TSplitType splitname(norm_name.c_str(),(TClassEdit::EModType)(TClassEdit::kLong64 | TClassEdit::kDropStd | TClassEdit::kDropStlDefault | TClassEdit::kKeepOuterConst));
    splitname.ShortType(norm_name, TClassEdit::kDropStd | TClassEdit::kDropStlDefault | TClassEdit::kResolveTypedef | TClassEdit::kKeepOuterConst);
 
-   if (splitname.fElements.size() == 3 && (splitname.fElements[0] == "std::pair" || splitname.fElements[0] == "pair")) {
+   // 4 elements expected: "pair", "first type name", "second type name", "trailing stars"
+   if (splitname.fElements.size() == 4 && (splitname.fElements[0] == "std::pair" || splitname.fElements[0] == "pair" || splitname.fElements[0] == "__pair_base")) {
       // We don't want to lookup the std::pair itself.
       std::string first, second;
       GetNormalizedName(first, splitname.fElements[1]);
       GetNormalizedName(second, splitname.fElements[2]);
-      norm_name = "pair<" + first + "," + second;
+      norm_name = splitname.fElements[0] + "<" + first + "," + second;
       if (!second.empty() && second.back() == '>')
          norm_name += " >";
       else
@@ -1391,7 +1400,7 @@ bool TClassEdit::IsStdClass(const char *classname)
    classname += StdLen( classname );
    if ( strcmp(classname,"string")==0 ) return true;
    if ( strncmp(classname,"bitset<",strlen("bitset<"))==0) return true;
-   if ( strncmp(classname,"pair<",strlen("pair<"))==0) return true;
+   if ( IsStdPair(classname) ) return true;
    if ( strcmp(classname,"allocator")==0) return true;
    if ( strncmp(classname,"allocator<",strlen("allocator<"))==0) return true;
    if ( strncmp(classname,"greater<",strlen("greater<"))==0) return true;

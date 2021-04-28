@@ -171,11 +171,11 @@ MakeClusters(const std::vector<std::string> &treeNames, const std::vector<std::s
       entriesPerFile.emplace_back(entries);
    }
 
-   // Here we "fuse" together clusters if the number of clusters is to big with respect to
-   // the number of slots, otherwise we can incurr in an overhead which is so big to make
-   // the parallelisation detrimental for performance.
-   // For example, this is the case when following a merging of many small files a file
-   // contains a tree with many entries and with clusters of just a few entries.
+   // Here we "fuse" together clusters if the number of clusters is too big with respect to
+   // the number of slots, otherwise we can incurr in an overhead which is big enough
+   // to make parallelisation detrimental to performance.
+   // For example, this is the case when, following a merging of many small files, a file
+   // contains a tree with many entries and with clusters of just a few entries each.
    // The criterion according to which we fuse clusters together is to have at most
    // TTreeProcessorMT::GetMaxTasksPerFilePerWorker() clusters per file per slot.
    // For example: given 2 files and 16 workers, at most
@@ -192,15 +192,13 @@ MakeClusters(const std::vector<std::string> &treeNames, const std::vector<std::s
       // If the number of clusters is less than maxTasksPerFile
       // we take the clusters as they are
       if (nFolds == 0) {
-         std::for_each(
-            clustersPerFileIt->begin(), clustersPerFileIt->end(),
-            [&eventRangesPerFileIt](const EntryCluster &clust) { eventRangesPerFileIt->emplace_back(clust); });
+         *eventRangesPerFileIt = std::move(*clustersPerFileIt);
          continue;
       }
       // Otherwise, we have to merge clusters, distributing the reminder evenly
       // onto the first clusters
       auto nReminderClusters = clustersInThisFileSize % maxTasksPerFile;
-      const auto clustersInThisFile = *clustersPerFileIt;
+      const auto &clustersInThisFile = *clustersPerFileIt;
       for (auto i = 0ULL; i < clustersInThisFileSize; ++i) {
          const auto start = clustersInThisFile[i].start;
          // We lump together at least nFolds clusters, therefore
@@ -370,6 +368,12 @@ Internal::FriendInfo TTreeProcessorMT::GetFriendInfo(TTree &tree)
    std::vector<Internal::NameAlias> friendNames;
    std::vector<std::vector<std::string>> friendFileNames;
 
+   // Typically, the correct way to call GetListOfFriends would be `tree.GetTree()->GetListOfFriends()`
+   // (see e.g. the discussion at https://github.com/root-project/root/issues/6741).
+   // However, in this case, in case we are dealing with a TChain we really only care about the TChain's
+   // list of friends (which will need to be rebuilt in each processing task) while friends of the TChain's
+   // internal TTree, if any, will be automatically loaded in each task just like they would be automatically
+   // loaded here if we used tree.GetTree()->GetListOfFriends().
    const auto friends = tree.GetListOfFriends();
    if (!friends)
       return Internal::FriendInfo();

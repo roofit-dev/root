@@ -1,8 +1,7 @@
 sap.ui.define([
     "sap/ui/model/json/JSONModel",
-    "rootui5/browser/model/BrowserListBinding",
-    "sap/base/Log"
-], function(JSONModel, BrowserListBinding, Log) {
+    "rootui5/browser/model/BrowserListBinding"
+], function(JSONModel, BrowserListBinding) {
    "use strict";
 
     var hRootModel = JSONModel.extend("rootui5.browser.model.BrowserModel", {
@@ -22,8 +21,10 @@ sap.ui.define([
 
             this.loadDataCounter = 0; // counter of number of nodes
 
-            this.sortOrder = "";
+            this.sortMethod = "name"; // "name", "size"
+            this.reverseOrder = false;
             this.itemsFilter = "";
+            this.showHidden = false;
 
             this.threshold = 100; // default threshold to prefetch items
         },
@@ -32,7 +33,26 @@ sap.ui.define([
            this.treeTable = t;
         },
 
-        /* Method can be used when complete hierarchy is ready and can be used directly */
+        /** @summary Set sort method */
+        setSortMethod: function(arg) { this.sortMethod = arg; },
+
+        /** @summary Get sort method */
+        getSortMethod: function() { return this.sortMethod; },
+
+        /** @summary Set show hidden flag */
+        setShowHidden: function(flag) { this.showHidden = flag; },
+
+        /** @summary Is show hidden flag set */
+        isShowHidden: function() { return this.showHidden; },
+
+        /** @summary Set reverse order */
+        setReverseOrder: function(on) { this.reverseOrder = on; },
+
+        /** @summary Is reverse order */
+        isReverseOrder: function() { return this.reverseOrder; },
+
+        /** @summary Set full model
+          * @desc Method can be used when complete hierarchy is ready and can be used directly */
         setFullModel: function(topnode) {
            this.fullModel = true;
            if (topnode.length) {
@@ -57,6 +77,7 @@ sap.ui.define([
               this.oBinding.checkUpdate(true);
         },
 
+        /** @summary Clear full model */
         clearFullModel: function() {
            if (!this.fullModel) return;
 
@@ -76,8 +97,6 @@ sap.ui.define([
         },
 
         bindTree: function(sPath, oContext, aFilters, mParameters, aSorters) {
-           Log.warning("root.model.hModel#bindTree() " + sPath);
-
            console.log('BINDING TREE!!!!!!!!!!!!! ' + sPath);
 
            this.oBinding = new BrowserListBinding(this, sPath, oContext, aFilters, mParameters, aSorters);
@@ -112,7 +131,8 @@ sap.ui.define([
            return curr;
         },
 
-        /** expand node by given path, when path not exists - try to send request */
+        /** @summary expand node by given path
+          * @desc When path not exists - try to send request */
         expandNodeByPath: function(path) {
            if (!path || (typeof path !== "string") || (path == "/")) return -1;
 
@@ -178,8 +198,8 @@ sap.ui.define([
 
         },
 
-        // submit next request to the server
-        // directly use web socket, later can be dedicated channel
+        /** @summary submit next request to the server
+          * @desc directly use web socket, later can be dedicated channel */
         submitRequest: function(elem, path, first, number) {
            if (first === "expanding") {
               first = 0;
@@ -187,20 +207,21 @@ sap.ui.define([
               delete this._expanding_path;
            }
 
-
            if (!this._websocket || elem._requested || this.fullModel) return;
            elem._requested = true;
 
            this.loadDataCounter++;
 
-           var request = {
+           let request = {
               path: path,
               first: first || 0,
               number: number || this.threshold || 100,
-              sort: this.sortOrder || "",
+              sort: this.sortMethod || "",
+              reverse: this.reverseOrder || false,
+              hidden: this.showHidden ? true : false,
               regex: this.itemsFilter ? "^(" + this.itemsFilter + ".*)$" : ""
            };
-           this._websocket.Send("BRREQ:" + JSON.stringify(request));
+           this._websocket.send("BRREQ:" + JSON.stringify(request));
         },
 
         // process reply from server
@@ -476,29 +497,6 @@ sap.ui.define([
 
               return true;
            }
-        },
-
-        // change sorting method, for now server supports default, "direct" and "reverse"
-        changeSortOrder: function(newValue) {
-           if (newValue === undefined)
-               newValue = this.getProperty("/sortOrder") || "";
-
-           if ((newValue !== "") && (newValue !=="direct") && (newValue !== "reverse")) {
-              console.error('WRONG sorting order ', newValue, 'use default');
-              newValue = "";
-           }
-
-           // ignore same value
-           if (newValue === this.sortOrder)
-              return;
-
-
-           this.sortOrder = newValue;
-
-           // now we should request values once again
-
-           this.submitRequest(this.h, "/");
-
         },
 
         changeItemsFilter: function(newValue) {

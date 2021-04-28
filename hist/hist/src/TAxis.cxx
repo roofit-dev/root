@@ -1131,7 +1131,10 @@ void TAxis::Streamer(TBuffer &R__b)
 
 void TAxis::UnZoom()
 {
-   if (!gPad) return;
+   if (!gPad) {
+      Warning("TAxis::UnZoom","Cannot UnZoom if gPad does not exist. Did you mean to draw the TAxis first?");
+      return;
+   }
    gPad->SetView();
 
    //unzoom object owning this axis

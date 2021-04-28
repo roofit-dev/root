@@ -21,6 +21,10 @@
 namespace ROOT {
 namespace Experimental {
 
+class RLogChannel;
+/// Log channel for Browser diagnostics.
+RLogChannel &BrowserLog();
+
 /** \class RBrowserData
 \ingroup rbrowser
 \brief Way to browse (hopefully) everything in ROOT
@@ -43,6 +47,7 @@ class RBrowserData {
    bool fLastAllChilds{false};                           ///<! if all chlds were extracted
    std::vector<const Browsable::RItem *> fLastSortedItems;   ///<! sorted child items, used in requests
    std::string fLastSortMethod;                          ///<! last sort method
+   bool fLastSortReverse{false};                         ///<! last request reverse order
 
    Browsable::RElementPath_t DecomposePath(const std::string &path);
 

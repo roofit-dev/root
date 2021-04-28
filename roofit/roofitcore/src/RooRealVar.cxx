@@ -39,6 +39,7 @@ or integrals to sub ranges. The range without any name is used as default range.
 #include "RooTrace.h"
 #include "RooRealVarSharedProperties.h"
 #include "RooUniformBinning.h"
+#include "RunContext.h"
 
 #include "TTree.h"
 #include "TBuffer.h"
@@ -52,9 +53,20 @@ ClassImp(RooRealVar);
 
 Bool_t RooRealVar::_printScientific(kFALSE) ;
 Int_t  RooRealVar::_printSigDigits(5) ;
-std::map<std::string,std::weak_ptr<RooRealVarSharedProperties>> RooRealVar::_sharedPropList;
-const std::unique_ptr<RooRealVarSharedProperties> RooRealVar::_nullProp(new RooRealVarSharedProperties("00000000-0000-0000-0000-000000000000"));
 
+/// Return a reference to a map of weak pointers to RooRealVarSharedProperties.
+std::map<std::string,std::weak_ptr<RooRealVarSharedProperties>>& RooRealVar::_sharedPropList() 
+{
+  static std::map<std::string,std::weak_ptr<RooRealVarSharedProperties>> sharedPropList;
+  return sharedPropList; 
+}
+
+/// Return a dummy object to use when properties are not initialised.
+RooRealVarSharedProperties& RooRealVar::_nullProp()
+{
+  static const std::unique_ptr<RooRealVarSharedProperties> nullProp(new RooRealVarSharedProperties("00000000-0000-0000-0000-000000000000"));
+  return *nullProp; 
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor.
@@ -207,6 +219,35 @@ Double_t RooRealVar::getValV(const RooArgSet*) const
   return _value ;
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// Retrieve data column of this variable.
+/// \param inputData Struct with data arrays.
+/// \param normSet Ignored.
+/// 1. Check if `inputData` has a column of data registered for this variable (checks the pointer).
+/// 2. If not, check if there's an object with the same name, and use this object's values.
+/// 3. If there is no such object, return a batch of size one with the current value of the variable.
+/// For cases 2. and 3., the data column in `inputData` is associated to this object, so the next call can return it immediately.
+RooSpan<const double> RooRealVar::getValues(RooBatchCompute::RunContext& inputData, const RooArgSet*) const {
+  auto item = inputData.spans.find(this);
+  if (item != inputData.spans.end()) {
+    return item->second;
+  }
+
+  for (const auto& var_span : inputData.spans) {
+    auto var = var_span.first;
+    if (strcmp(var->GetName(), GetName()) == 0) {
+      // A variable with the same name exists in the input data. Use their values as ours.
+      inputData.spans[this] = var_span.second;
+      return var_span.second;
+    }
+  }
+
+  auto output = inputData.makeBatch(this, 1);
+  output[0] = _value;
+
+  return output;
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1034,8 +1075,6 @@ void RooRealVar::attachToVStore(RooVectorDataStore& vstore)
     RooVectorDataStore::RealFullVector* rfv = vstore.addRealFull(this) ;
     rfv->setBuffer(this,&_value);
 
-    _batchData.attachForeignStorage(rfv->data());
-
     // Attach/create additional branch for error
     if (getAttribute("StoreError") || vstore.hasError(this) ) {
       rfv->setErrorBuffer(&_error) ;
@@ -1223,7 +1262,7 @@ void RooRealVar::Streamer(TBuffer &R__b)
     if (_sharedProp) {
       _sharedProp->Streamer(R__b) ;
     } else {
-      _nullProp->Streamer(R__b) ;
+      _nullProp().Streamer(R__b) ;
     }
     R__b.SetByteCount(R__c, kTRUE);
 
@@ -1247,13 +1286,13 @@ std::shared_ptr<RooRealVarSharedProperties> RooRealVar::sharedProp() const {
 /// and share the existing.
 /// `nullptr` and properties equal to the RooRealVar::_nullProp will not be installed.
 void RooRealVar::installSharedProp(std::shared_ptr<RooRealVarSharedProperties>&& prop) {
-  if (prop == nullptr || (*prop == *_nullProp)) {
+  if (prop == nullptr || (*prop == _nullProp())) {
     _sharedProp = nullptr;
     return;
   }
 
 
-  auto& weakPtr = _sharedPropList[prop->asString().Data()];
+  auto& weakPtr = _sharedPropList()[prop->asString().Data()];
   std::shared_ptr<RooRealVarSharedProperties> existingProp;
   if ( (existingProp = weakPtr.lock()) ) {
     // Property exists, discard incoming
@@ -1274,9 +1313,9 @@ void RooRealVar::deleteSharedProperties()
 {
   _sharedProp.reset();
 
-  for (auto it = _sharedPropList.begin(); it != _sharedPropList.end();) {
+  for (auto it = _sharedPropList().begin(); it != _sharedPropList().end();) {
     if (it->second.expired()) {
-      it = _sharedPropList.erase(it);
+      it = _sharedPropList().erase(it);
     } else {
       ++it;
     }

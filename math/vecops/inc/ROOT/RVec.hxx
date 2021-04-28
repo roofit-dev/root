@@ -16,6 +16,13 @@
 #define ROOT_RVEC
 
 #ifdef _WIN32
+   #ifndef M_PI
+      #ifndef _USE_MATH_DEFINES
+         #define _USE_MATH_DEFINES
+      #endif
+      #include <math.h>
+      #undef _USE_MATH_DEFINES
+   #endif
    #define _VECOPS_USE_EXTERN_TEMPLATES false
 #else
    #define _VECOPS_USE_EXTERN_TEMPLATES true
@@ -35,6 +42,7 @@
 #include <type_traits>
 #include <vector>
 #include <utility>
+#include <tuple>
 
 #ifdef R__HAS_VDT
 #include <vdt/vdtMath.h>

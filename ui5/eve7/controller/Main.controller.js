@@ -6,9 +6,8 @@ sap.ui.define(['sap/ui/core/Component',
                'sap/m/library',
                'sap/m/Button',
                'sap/m/MenuItem',
-               'sap/m/MessageStrip',
                'rootui5/eve7/lib/EveManager'
-              ], function(Component, UIComponent, Controller, Splitter, SplitterLayoutData, MobileLibrary, mButton, mMenuItem, mMessageStrip, EveManager) {
+], function(Component, UIComponent, Controller, Splitter, SplitterLayoutData, MobileLibrary, mButton, mMenuItem, EveManager) {
 
    "use strict";
 
@@ -35,6 +34,12 @@ sap.ui.define(['sap/ui/core/Component',
          t.setHtmlText("<strong style=\"color: red;\">Client Disconnected !</strong>");
       },
 
+      /** called when relative number of possible send operation below or over the threshold  */
+      onSendThresholdChanged: function(below, value) {
+         var t = this.byId("centerTitle");
+         t.$().css('color', below ? 'yellow' : '')
+      },
+
 
       UpdateCommandsButtons: function(cmds) {
          if (!cmds || this.commands) return;
@@ -45,7 +50,7 @@ sap.ui.define(['sap/ui/core/Component',
          for (var k = cmds.length-1; k>=0; --k) {
             var btn = new mButton({
                icon: cmds[k].icon,
-               tooltip: cmds[k].name,
+               text: cmds[k].name,
                press: this.executeCommand.bind(this, cmds[k])
             });
             toolbar.insertContentLeft(btn, 0);
@@ -141,7 +146,7 @@ sap.ui.define(['sap/ui/core/Component',
       /*
        * processWaitingMsg: function() { for ( var i = 0; i <
        * msgToWait.length; ++i ) {
-       * this.OnWebsocketMsg(handleToWait, msgToWait[i]); }
+       * this.onWebsocketMsg(handleToWait, msgToWait[i]); }
        * handleToWait = 0; msgToWait = []; },
        */
       event: function() {

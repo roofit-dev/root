@@ -24,7 +24,6 @@
 
 #include <ROOT/RLogger.hxx>
 #include <ROOT/RMakeUnique.hxx>
-#include <ROOT/RObjectDrawable.hxx>
 #include <ROOT/RFileDialog.hxx>
 #include <ROOT/RCanvas.hxx>
 
@@ -142,9 +141,9 @@ void RBrowser::ProcessSaveFile(const std::string &arg)
 {
    auto arr = TBufferJSON::FromJSON<std::vector<std::string>>(arg);
    if (!arr || (arr->size()!=2)) {
-      R__ERROR_HERE("rbrowser") << "SaveFile failure, json array should have two items " << arg;
+      R__LOG_ERROR(BrowserLog()) << "SaveFile failure, json array should have two items " << arg;
    } else {
-      R__DEBUG_HERE("rbrowser") << "SaveFile " << arr->at(0) << "  content length " << arr->at(1).length();
+      R__LOG_DEBUG(0, BrowserLog()) << "SaveFile " << arr->at(0) << "  content length " << arr->at(1).length();
       std::ofstream f(arr->at(0));
       f << arr->at(1);
    }
@@ -163,7 +162,7 @@ long RBrowser::ProcessRunCommand(const std::string &file_path)
 
 std::string RBrowser::ProcessDblClick(const std::string &item_path, const std::string &drawingOptions)
 {
-   R__DEBUG_HERE("rbrowser") << "DoubleClick " << item_path;
+   R__LOG_DEBUG(0, BrowserLog()) << "DoubleClick " << item_path;
 
    auto elem = fBrowsable.GetElement(item_path);
    if (!elem) return ""s;
@@ -186,16 +185,19 @@ std::string RBrowser::ProcessDblClick(const std::string &item_path, const std::s
 
    if (drawingOptions == "$$$editor$$$") {
       auto code = elem->GetContent("text");
-      if (code.empty())
-         return ""s;
+      if (!code.empty()) {
+         auto fname = elem->GetContent("filename");
+         if (fname.empty())
+            fname = elem->GetName();
+         std::vector<std::string> args = { fname, code };
 
-      auto fname = elem->GetContent("filename");
-      if (fname.empty())
-         fname = elem->GetName();
+         return "FREAD:"s + TBufferJSON::ToJSON(&args).Data();
+      }
+      auto json = elem->GetContent("json");
+      if (!json.empty())
+         return "JSON:"s + elem->GetName() + "$$$"s + json;
 
-      std::vector<std::string> args = { fname, code };
-
-      return "FREAD:"s + TBufferJSON::ToJSON(&args).Data();
+      return ""s;
    }
 
    if (drawingOptions == "$$$execute$$$") {
@@ -240,7 +242,7 @@ std::string RBrowser::ProcessDblClick(const std::string &item_path, const std::s
          }
    }
 
-   R__DEBUG_HERE("rbrowser") << "No active canvas to process dbl click";
+   R__LOG_DEBUG(0, BrowserLog()) << "No active canvas to process dbl click";
 
    return "";
 }
@@ -366,13 +368,20 @@ std::shared_ptr<RCanvas> RBrowser::GetActiveRCanvas() const
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 /// Close and delete specified canvas
+/// Check both list of TCanvas and list of RCanvas
 
 void RBrowser::CloseCanvas(const std::string &name)
 {
    auto iter = std::find_if(fCanvases.begin(), fCanvases.end(), [name](std::unique_ptr<TCanvas> &canv) { return name == canv->GetName(); });
-
-   if (iter != fCanvases.end())
+   if (iter != fCanvases.end()) {
       fCanvases.erase(iter);
+   } else {
+      auto iter2 = std::find_if(fRCanvases.begin(), fRCanvases.end(), [name](const std::shared_ptr<RCanvas> &canv) { return name == canv->GetTitle(); });
+      if (iter2 != fRCanvases.end()) {
+         (*iter2)->Remove();
+         fRCanvases.erase(iter2);
+      }
+   }
 
    if (fActiveCanvas == name)
       fActiveCanvas.clear();
@@ -420,7 +429,7 @@ std::string RBrowser::GetCurrentWorkingDirectory()
 
 void RBrowser::ProcessMsg(unsigned connid, const std::string &arg)
 {
-   R__DEBUG_HERE("rbrowser") << "ProcessMsg  len " << arg.length() << " substr(30) " << arg.substr(0, 30);
+   R__LOG_DEBUG(0, BrowserLog()) << "ProcessMsg  len " << arg.length() << " substr(30) " << arg.substr(0, 30);
 
    if (arg == "QUIT_ROOT") {
 

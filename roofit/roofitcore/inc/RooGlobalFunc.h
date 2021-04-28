@@ -199,6 +199,7 @@ RooCmdArg DataError(Int_t) ;
 RooCmdArg NumCPU(Int_t nCPU, Int_t interleave=0) ;
 RooCmdArg CPUAffinity(Bool_t flag=kTRUE);
 RooCmdArg BatchMode(bool flag=true);
+RooCmdArg IntegrateBins(double precision);
 
 // RooAbsPdf::fitTo arguments
 RooCmdArg PrefitDataFraction(Double_t data_ratio = 0.0) ;
@@ -231,7 +232,7 @@ RooCmdArg CloneData(Bool_t flag) ;
 RooCmdArg Integrate(Bool_t flag) ;
 RooCmdArg Minimizer(const char* type, const char* alg=0) ;
 RooCmdArg Offset(Bool_t flag=kTRUE) ;
-
+RooCmdArg RecoverFromUndefinedRegions(double strength);
 /** @} */
 
 // RooAbsPdf::paramOn arguments
