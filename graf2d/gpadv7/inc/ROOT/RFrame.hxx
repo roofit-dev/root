@@ -17,9 +17,10 @@
 #include "ROOT/RAttrAxis.hxx"
 
 #include "ROOT/RPadUserAxis.hxx"
-#include "ROOT/RPalette.hxx"
 
 #include <memory>
+
+class TRootIOCtor;
 
 namespace ROOT {
 namespace Experimental {
@@ -33,7 +34,8 @@ namespace Experimental {
 */
 
 class RFrame : public RDrawable  {
-public:
+
+   friend class RPadBase;
 
 private:
    RAttrMargins fMargins{this, "margin_"};     ///<!
@@ -46,10 +48,9 @@ private:
    /// Mapping of user coordinates to normal coordinates, one entry per dimension.
    std::vector<std::unique_ptr<RPadUserAxisBase>> fUserCoord;
 
-   /// Palette used to visualize user coordinates.
-   RPalette fPalette;
+   RFrame(const RFrame &) = delete;
+   RFrame &operator=(const RFrame &) = delete;
 
-public:
    // Default constructor
    RFrame() : RDrawable("frame")
    {
@@ -58,6 +59,10 @@ public:
 
    /// Constructor taking user coordinate system, position and extent.
    explicit RFrame(std::vector<std::unique_ptr<RPadUserAxisBase>> &&coords);
+
+public:
+
+   RFrame(TRootIOCtor*) : RFrame() {}
 
    const RAttrMargins &GetMargins() const { return fMargins; }
    RFrame &SetMargins(const RAttrMargins &margins) { fMargins = margins; return *this; }

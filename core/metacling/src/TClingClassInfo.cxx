@@ -663,7 +663,7 @@ std::vector<std::string> TClingClassInfo::GetUsingNamespaces()
    return res;
 }
 
-bool TClingClassInfo::HasDefaultConstructor() const
+ROOT::TMetaUtils::EIOCtorCategory TClingClassInfo::HasDefaultConstructor(bool checkio, std::string *type_name) const
 {
    // Return true if there a constructor taking no arguments (including
    // a constructor that has defaults for all of its arguments) which
@@ -673,17 +673,32 @@ bool TClingClassInfo::HasDefaultConstructor() const
    // Note: This is could enhanced to also know about the ROOT ioctor
    // but this was not the case in CINT.
    //
-   if (!IsLoaded()) {
-      return false;
+
+   using namespace ROOT::TMetaUtils;
+
+   if (!IsLoaded())
+      return EIOCtorCategory::kAbsent;
+
+   auto CRD = llvm::dyn_cast<CXXRecordDecl>(GetDecl());
+   // Namespaces do not have constructors.
+   if (!CRD)
+      return EIOCtorCategory::kAbsent;
+
+   if (checkio) {
+      auto kind = CheckIOConstructor(CRD, "TRootIOCtor", nullptr, *fInterp);
+      if ((kind == EIOCtorCategory::kIORefType) || (kind == EIOCtorCategory::kIOPtrType)) {
+         if (type_name) *type_name = "TRootIOCtor";
+         return kind;
+      }
+
+      kind = CheckIOConstructor(CRD, "__void__", nullptr, *fInterp);
+      if (kind == EIOCtorCategory::kIORefType) {
+         if (type_name) *type_name = "__void__";
+         return kind;
+      }
    }
-   const CXXRecordDecl* CRD = llvm::dyn_cast<CXXRecordDecl>(GetDecl());
-   if (!CRD) {
-      // Namespaces do not have constructors.
-      return false;
-   }
-   using namespace TMetaUtils;
-   const RConstructorType ioctortype("",*fInterp);
-   return EIOCtorCategory::kAbsent != CheckConstructor(CRD,ioctortype,*fInterp);
+
+   return CheckDefaultConstructor(CRD, *fInterp) ? EIOCtorCategory::kDefault : EIOCtorCategory::kAbsent;
 }
 
 bool TClingClassInfo::HasMethod(const char *name) const
@@ -1041,36 +1056,44 @@ void *TClingClassInfo::New(const ROOT::TMetaUtils::TNormalizedCtxt &normCtxt) co
    // that takes no arguments to create an object of this class type.
    if (!IsValid()) {
       Error("TClingClassInfo::New()", "Called while invalid!");
-      return 0;
+      return nullptr;
    }
    if (!IsLoaded()) {
       Error("TClingClassInfo::New()", "Class is not loaded: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
+
+   ROOT::TMetaUtils::EIOCtorCategory kind;
+   std::string type_name;
+
    {
       R__LOCKGUARD(gInterpreterMutex);
-      const CXXRecordDecl* RD = dyn_cast<CXXRecordDecl>(GetDecl());
+      auto RD = dyn_cast<CXXRecordDecl>(GetDecl());
       if (!RD) {
          Error("TClingClassInfo::New()", "This is a namespace!: %s",
                FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
-      if (!HasDefaultConstructor()) {
+
+      kind = HasDefaultConstructor(true, &type_name);
+
+      if (kind == ROOT::TMetaUtils::EIOCtorCategory::kAbsent) {
          // FIXME: We fail roottest root/io/newdelete if we issue this message!
-         //Error("TClingClassInfo::New()", "Class has no default constructor: %s",
-         //      FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         // Error("TClingClassInfo::New()", "Class has no default constructor: %s",
+         //       FullyQualifiedName(GetDecl()).c_str());
+         return nullptr;
       }
    } // End of Lock section.
-   void* obj = 0;
+   void* obj = nullptr;
    TClingCallFunc cf(fInterp,normCtxt);
-   obj = cf.ExecDefaultConstructor(this, /*address=*/0, /*nary=*/0);
+   obj = cf.ExecDefaultConstructor(this, kind, type_name,
+                                   /*address=*/nullptr, /*nary=*/0);
    if (!obj) {
       Error("TClingClassInfo::New()", "Call of default constructor "
             "failed to return an object for class: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
    return obj;
 }
@@ -1082,40 +1105,45 @@ void *TClingClassInfo::New(int n, const ROOT::TMetaUtils::TNormalizedCtxt &normC
    // of this class type.
    if (!IsValid()) {
       Error("TClingClassInfo::New(n)", "Called while invalid!");
-      return 0;
+      return nullptr;
    }
    if (!IsLoaded()) {
       Error("TClingClassInfo::New(n)", "Class is not loaded: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
+
+   ROOT::TMetaUtils::EIOCtorCategory kind;
+   std::string type_name;
 
    {
       R__LOCKGUARD(gInterpreterMutex);
 
-      const CXXRecordDecl* RD = dyn_cast<CXXRecordDecl>(GetDecl());
+      auto RD = dyn_cast<CXXRecordDecl>(GetDecl());
       if (!RD) {
          Error("TClingClassInfo::New(n)", "This is a namespace!: %s",
                FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
-      if (!HasDefaultConstructor()) {
+
+      kind = HasDefaultConstructor(true, &type_name);
+      if (kind == ROOT::TMetaUtils::EIOCtorCategory::kAbsent) {
          // FIXME: We fail roottest root/io/newdelete if we issue this message!
          //Error("TClingClassInfo::New(n)",
          //      "Class has no default constructor: %s",
          //      FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
    } // End of Lock section.
-   void* obj = 0;
+   void* obj = nullptr;
    TClingCallFunc cf(fInterp,normCtxt);
-   obj = cf.ExecDefaultConstructor(this, /*address=*/0,
-                                   /*nary=*/(unsigned long)n);
+   obj = cf.ExecDefaultConstructor(this, kind, type_name,
+                                   /*address=*/nullptr, /*nary=*/(unsigned long)n);
    if (!obj) {
       Error("TClingClassInfo::New(n)", "Call of default constructor "
             "failed to return an array of class: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
    return obj;
 }
@@ -1128,35 +1156,41 @@ void *TClingClassInfo::New(int n, void *arena, const ROOT::TMetaUtils::TNormaliz
    // memory arena.
    if (!IsValid()) {
       Error("TClingClassInfo::New(n, arena)", "Called while invalid!");
-      return 0;
+      return nullptr;
    }
    if (!IsLoaded()) {
       Error("TClingClassInfo::New(n, arena)", "Class is not loaded: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
+
+   ROOT::TMetaUtils::EIOCtorCategory kind;
+   std::string type_name;
+
    {
       R__LOCKGUARD(gInterpreterMutex);
 
-      const CXXRecordDecl* RD = dyn_cast<CXXRecordDecl>(GetDecl());
+      auto RD = dyn_cast<CXXRecordDecl>(GetDecl());
       if (!RD) {
          Error("TClingClassInfo::New(n, arena)", "This is a namespace!: %s",
                FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
-      if (!HasDefaultConstructor()) {
+
+      kind = HasDefaultConstructor(true, &type_name);
+      if (kind == ROOT::TMetaUtils::EIOCtorCategory::kAbsent) {
          // FIXME: We fail roottest root/io/newdelete if we issue this message!
          //Error("TClingClassInfo::New(n, arena)",
          //      "Class has no default constructor: %s",
          //      FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
    } // End of Lock section
-   void* obj = 0;
+   void* obj = nullptr;
    TClingCallFunc cf(fInterp,normCtxt);
    // Note: This will always return arena.
-   obj = cf.ExecDefaultConstructor(this, /*address=*/arena,
-                                   /*nary=*/(unsigned long)n);
+   obj = cf.ExecDefaultConstructor(this, kind, type_name,
+                                   /*address=*/arena, /*nary=*/(unsigned long)n);
    return obj;
 }
 
@@ -1167,34 +1201,41 @@ void *TClingClassInfo::New(void *arena, const ROOT::TMetaUtils::TNormalizedCtxt 
    // object of this class type in the given memory arena.
    if (!IsValid()) {
       Error("TClingClassInfo::New(arena)", "Called while invalid!");
-      return 0;
+      return nullptr;
    }
    if (!IsLoaded()) {
       Error("TClingClassInfo::New(arena)", "Class is not loaded: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
+
+   ROOT::TMetaUtils::EIOCtorCategory kind;
+   std::string type_name;
+
    {
       R__LOCKGUARD(gInterpreterMutex);
 
-      const CXXRecordDecl* RD = dyn_cast<CXXRecordDecl>(GetDecl());
+      auto RD = dyn_cast<CXXRecordDecl>(GetDecl());
       if (!RD) {
          Error("TClingClassInfo::New(arena)", "This is a namespace!: %s",
                FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
-      if (!HasDefaultConstructor()) {
+
+      kind = HasDefaultConstructor(true, &type_name);
+      if (kind == ROOT::TMetaUtils::EIOCtorCategory::kAbsent) {
          // FIXME: We fail roottest root/io/newdelete if we issue this message!
          //Error("TClingClassInfo::New(arena)",
          //      "Class has no default constructor: %s",
          //      FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
    } // End of Locked section.
-   void* obj = 0;
+   void* obj = nullptr;
    TClingCallFunc cf(fInterp,normCtxt);
    // Note: This will always return arena.
-   obj = cf.ExecDefaultConstructor(this, /*address=*/arena, /*nary=*/0);
+   obj = cf.ExecDefaultConstructor(this, kind, type_name,
+                                    /*address=*/arena, /*nary=*/0);
    return obj;
 }
 
