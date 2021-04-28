@@ -435,6 +435,11 @@ TEST(RDataFrameInterface, ColumnWithSimpleStruct)
    t.Branch("c", &c);
    t.Fill();
 
+   EXPECT_EQ(t.GetLeaf("a"),t.GetLeaf("c.a"));
+   EXPECT_EQ(t.GetLeaf("b"),t.GetLeaf("c.b"));
+   EXPECT_NE(t.GetLeaf("c.a"),t.GetLeaf("c.b"));
+   EXPECT_NE(t.GetLeaf("c.b"),nullptr);
+
    ROOT::RDataFrame df(t);
    const std::vector<std::string> expected({ "c.a", "a", "c.b", "b", "c" });
    EXPECT_EQ(df.GetColumnNames(), expected);
@@ -442,4 +447,82 @@ TEST(RDataFrameInterface, ColumnWithSimpleStruct)
       EXPECT_DOUBLE_EQ(df.Mean<int>(col).GetValue(), 42.); // compiled
       EXPECT_DOUBLE_EQ(df.Mean(col).GetValue(), 42.); // jitted
    }
+}
+
+// Issue #6435
+TEST(RDataFrameInterface, MinMaxSumMeanStdDevOfScalar)
+{
+   auto df = ROOT::RDataFrame(4).Range(1, 0).Define("x", [](ULong64_t e) { return int(e); }, {"rdfentry_"});
+   auto max = df.Max<int>("x");
+   auto jit_max = df.Max("x");
+   auto min = df.Min<int>("x");
+   auto jit_min = df.Min("x");
+   auto sum = df.Sum<int>("x");
+   auto jit_sum = df.Sum("x");
+   auto mean = df.Mean<int>("x");
+   auto jit_mean = df.Mean("x");
+   auto stddev = df.StdDev<int>("x");
+   auto jit_stddev = df.StdDev("x");
+
+   EXPECT_EQ(*max, 3);
+   EXPECT_DOUBLE_EQ(*jit_max, 3.f);
+   EXPECT_EQ(*min, 1);
+   EXPECT_DOUBLE_EQ(*jit_min, 1.f);
+   EXPECT_EQ(*sum, 6);
+   EXPECT_DOUBLE_EQ(*jit_sum, 6.f);
+   EXPECT_DOUBLE_EQ(*mean, 2);
+   EXPECT_DOUBLE_EQ(*jit_mean, 2);
+   EXPECT_DOUBLE_EQ(*stddev, 1.f);
+   EXPECT_DOUBLE_EQ(*jit_stddev, 1.f);
+}
+
+TEST(RDataFrameInterface, MinMaxSumMeanStdDevOfRVec)
+{
+   auto df = ROOT::RDataFrame(1).Define("x", [] { return ROOT::RVec<int>{1,2,3}; });
+   auto max = df.Max<ROOT::RVec<int>>("x");
+   auto jit_max = df.Max("x");
+   auto min = df.Min<ROOT::RVec<int>>("x");
+   auto jit_min = df.Min("x");
+   auto sum = df.Sum<ROOT::RVec<int>>("x");
+   auto jit_sum = df.Sum("x");
+   auto mean = df.Mean<ROOT::RVec<int>>("x");
+   auto jit_mean = df.Mean("x");
+   auto stddev = df.StdDev<ROOT::RVec<int>>("x");
+   auto jit_stddev = df.StdDev("x");
+
+   EXPECT_EQ(*max, 3);
+   EXPECT_DOUBLE_EQ(*jit_max, 3.f);
+   EXPECT_EQ(*min, 1);
+   EXPECT_DOUBLE_EQ(*jit_min, 1.f);
+   EXPECT_EQ(*sum, 6);
+   EXPECT_DOUBLE_EQ(*jit_sum, 6.f);
+   EXPECT_DOUBLE_EQ(*mean, 2);
+   EXPECT_DOUBLE_EQ(*jit_mean, 2);
+   EXPECT_DOUBLE_EQ(*stddev, 1.f);
+   EXPECT_DOUBLE_EQ(*jit_stddev, 1.f);
+}
+
+class Product {
+public:
+   Product() : _x(0), _y(0) {}
+   Product(double x, double y) : _x(x), _y(y) {}
+   ~Product() {}
+
+   double GetProduct() { return _x * _y; }
+
+private:
+   double _x, _y;
+};
+
+// ROOT-10273, using jitting when some non-jitted types are unknown to the intepreter
+TEST(RDataFrameInterface, JittingAndNonJittedTypes)
+{
+   auto df = ROOT::RDataFrame(10)
+                .Define("x", "1.")
+                .Define("y", "2.")
+                .Define("products", [](double x, double y) { return Product(x, y); }, {"x", "y"})
+                .Define("moreproducts", [](double x, double y) { return std::vector<Product>(10, Product(x, y)); },
+                        {"x", "y"});
+
+   df.Foreach([](Product &p) { EXPECT_EQ(p.GetProduct(), 2); }, {"products"});
 }

@@ -165,7 +165,14 @@ private: // Data Members
       operator bool() const { return (bool)fState; }
    };
 
-   std::vector<MutexStateAndRecurseCount> fInitialMutex{1};
+   struct MutexStateAndRecurseCountDelta {
+      using StateDelta = ROOT::TVirtualRWMutex::StateDelta;
+
+      MutexStateAndRecurseCount   fInitialState;
+      std::unique_ptr<StateDelta> fDelta;
+   };
+
+   MutexStateAndRecurseCount fInitialMutex;
 
    DeclId_t GetDeclId(const llvm::GlobalValue *gv) const;
 
@@ -362,7 +369,7 @@ public: // Public Interface
 
    // core/meta helper functions.
    virtual EReturnType MethodCallReturnType(TFunction *func) const;
-   virtual void GetFunctionName(const clang::FunctionDecl *decl, std::string &name) const;
+   virtual void GetFunctionName(const clang::Decl *decl, std::string &name) const;
    virtual bool DiagnoseIfInterpreterException(const std::exception &e) const;
 
    // CallFunc interface
@@ -460,7 +467,7 @@ public: // Public Interface
    virtual DeclId_t GetDeclId(DataMemberInfo_t *info) const;
    virtual int    DataMemberInfo_ArrayDim(DataMemberInfo_t* dminfo) const;
    virtual void   DataMemberInfo_Delete(DataMemberInfo_t* dminfo) const;
-   virtual DataMemberInfo_t*  DataMemberInfo_Factory(ClassInfo_t* clinfo = 0) const;
+   virtual DataMemberInfo_t*  DataMemberInfo_Factory(ClassInfo_t* clinfo, TDictionary::EMemberSelection selection) const;
    virtual DataMemberInfo_t  *DataMemberInfo_Factory(DeclId_t declid, ClassInfo_t* clinfo) const;
    virtual DataMemberInfo_t*  DataMemberInfo_FactoryCopy(DataMemberInfo_t* dminfo) const;
    virtual bool   DataMemberInfo_IsValid(DataMemberInfo_t* dminfo) const;

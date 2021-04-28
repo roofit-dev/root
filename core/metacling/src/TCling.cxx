@@ -3911,7 +3911,7 @@ void TCling::SetClassInfo(TClass* cl, Bool_t reload)
    }
 
    bool instantiateTemplate = !cl->TestBit(TClass::kUnloading);
-   // FIXME: Rather than adding an option to the TClingClassInfo, we should consider combining code 
+   // FIXME: Rather than adding an option to the TClingClassInfo, we should consider combining code
    // that is currently in the caller (like SetUnloaded) that disable AutoLoading and AutoParsing and
    // code is in the callee (disabling template instantiation) and end up with a more explicit class:
    //      TClingClassInfoReadOnly.
@@ -4102,7 +4102,7 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
                int lineNumber = 0;
                bool success = false;
                std::tie(success, lineNumber) =
-                  ROOT::TMetaUtils::GetTrivialIntegralReturnValue(implLineFunc.GetMethodDecl(), *fInterpreter);
+                  ROOT::TMetaUtils::GetTrivialIntegralReturnValue(implLineFunc.GetAsFunctionDecl(), *fInterpreter);
                hasClassDefInline = success && (lineNumber == -1);
             }
          }
@@ -4877,8 +4877,10 @@ void TCling::GetFunctionOverloads(ClassInfo_t *cl, const char *funcname,
       DName = &Ctx.Idents.get(funcname);
    }
 
+   // NotForRedeclaration: we want to find names in inline namespaces etc.
    clang::LookupResult R(S, DName, clang::SourceLocation(),
-                         Sema::LookupOrdinaryName, clang::Sema::ForRedeclaration);
+                         Sema::LookupOrdinaryName, clang::Sema::NotForRedeclaration);
+   R.suppressDiagnostics(); // else lookup with NotForRedeclaration will check access etc
    S.LookupQualifiedName(R, const_cast<DeclContext*>(DeclCtx));
    if (R.empty()) return;
    R.resolveKind();
@@ -4889,6 +4891,11 @@ void TCling::GetFunctionOverloads(ClassInfo_t *cl, const char *funcname,
           = llvm::dyn_cast<const clang::FunctionDecl>(*IR)) {
          if (!FD->getDescribedFunctionTemplate()) {
             res.push_back(FD);
+         }
+      } else if (const auto *USD = llvm::dyn_cast<const clang::UsingShadowDecl>(*IR)) {
+         // FIXME: multi-level using
+         if (llvm::isa<clang::FunctionDecl>(USD->getTargetDecl())) {
+            res.push_back(USD);
          }
       }
    }
@@ -5166,7 +5173,7 @@ void TCling::Execute(TObject* obj, TClass* cl, TMethod* method,
    func.SetArgs(listpar);
    // Now calculate the 'this' pointer offset for the method
    // when starting from the class described by cl.
-   const CXXMethodDecl * mdecl = dyn_cast<CXXMethodDecl>(minfo->GetMethodDecl());
+   const CXXMethodDecl * mdecl = dyn_cast<CXXMethodDecl>(minfo->GetTargetFunctionDecl());
    Long_t offset = ((TClingClassInfo*)cl->GetClassInfo())->GetOffset(mdecl);
    void* address = (void*)((Long_t)addr + offset);
    func.Exec(address);
@@ -5989,7 +5996,7 @@ Int_t TCling::DeepAutoLoadImpl(const char *cls)
       // Note that it is actually alright if another thread is populating this
       // set since we can then exclude both the infinite recursion (the main goal)
       // and duplicate work.
-      static std::set<std::string> gClassOnStack;  
+      static std::set<std::string> gClassOnStack;
       auto insertResult = gClassOnStack.insert(std::string(cls));
       if (insertResult.second) {
          // Now look through the TProtoClass to load the required library/dictionary
@@ -6012,7 +6019,7 @@ Int_t TCling::DeepAutoLoadImpl(const char *cls)
             if (classinfo && gInterpreter->ClassInfo_IsValid(classinfo)
                 && !(gInterpreter->ClassInfo_Property(classinfo) & kIsEnum))
             {
-               DataMemberInfo_t *memberinfo = gInterpreter->DataMemberInfo_Factory(classinfo);
+               DataMemberInfo_t *memberinfo = gInterpreter->DataMemberInfo_Factory(classinfo, TDictionary::EMemberSelection::kNoUsingDecls);
                while (gInterpreter->DataMemberInfo_Next(memberinfo)) {
                   auto membertypename = TClassEdit::GetLong64_Name(gInterpreter->TypeName(gInterpreter->DataMemberInfo_TypeTrueName(memberinfo)));
                   if (!(gInterpreter->DataMemberInfo_TypeProperty(memberinfo) & ::kIsFundamental)
@@ -7958,22 +7965,45 @@ std::string TCling::CallFunc_GetWrapperCode(CallFunc_t *func) const
 
 Bool_t TCling::ClassInfo_Contains(ClassInfo_t *info, DeclId_t declid) const
 {
-   if (!declid) return kFALSE;
+   if (!declid)
+      return kFALSE;
 
-   const clang::Decl *scope;
-   if (info) scope = ((TClingClassInfo*)info)->GetDecl();
-   else scope = fInterpreter->getCI()->getASTContext().getTranslationUnitDecl();
+   const clang::DeclContext *ctxt = nullptr;
+   if (info) {
+      ctxt = clang::Decl::castToDeclContext(((TClingClassInfo*)info)->GetDecl());
+   } else {
+      ctxt = fInterpreter->getCI()->getASTContext().getTranslationUnitDecl();
+   }
+   if (!ctxt)
+      return kFALSE;
 
    const clang::Decl *decl = reinterpret_cast<const clang::Decl*>(declid);
-   const clang::DeclContext *ctxt = clang::Decl::castToDeclContext(scope);
-   if (!decl || !ctxt) return kFALSE;
-   if (decl->getDeclContext()->Equals(ctxt))
-      return kTRUE;
-   else if ((decl->getDeclContext()->isTransparentContext()
-             || decl->getDeclContext()->isInlineNamespace())
-            && decl->getDeclContext()->getParent()->Equals(ctxt))
-      return kTRUE;
-   return kFALSE;
+   if (!decl)
+      return kFALSE;
+
+   const clang::DeclContext *declDC = decl->getDeclContext();
+   // ClassInfo_t-s are always "spellable" scopes, never unnamed or inline ones.
+   while (true) {
+      if (declDC->isTransparentContext()) {
+         declDC = declDC->getParent();
+         continue;
+      }
+      if (const auto *declRD = llvm::dyn_cast<clang::RecordDecl>(declDC)) {
+         if (declRD->isAnonymousStructOrUnion()) {
+            declDC = declRD->getParent();
+            continue;
+         }
+      }
+      if (const auto *declNS = llvm::dyn_cast<clang::NamespaceDecl>(declDC)) {
+         if (declNS->isAnonymousNamespace() || declNS->isInlineNamespace()) {
+            declDC = declNS->getParent();
+            continue;
+         }
+      }
+      break;
+   }
+
+   return declDC->Equals(ctxt);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -8401,11 +8431,11 @@ void TCling::DataMemberInfo_Delete(DataMemberInfo_t* dminfo) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DataMemberInfo_t* TCling::DataMemberInfo_Factory(ClassInfo_t* clinfo /*= 0*/) const
+DataMemberInfo_t* TCling::DataMemberInfo_Factory(ClassInfo_t* clinfo, TDictionary::EMemberSelection selection) const
 {
    R__LOCKGUARD(gInterpreterMutex);
    TClingClassInfo* TClingclass_info = (TClingClassInfo*) clinfo;
-   return (DataMemberInfo_t*) new TClingDataMemberInfo(GetInterpreterImpl(), TClingclass_info);
+   return (DataMemberInfo_t*) new TClingDataMemberInfo(GetInterpreterImpl(), TClingclass_info, selection);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -8542,7 +8572,7 @@ void TCling::SetDeclAttr(DeclId_t declId, const char* attribute)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static void ConstructorName(std::string &name, const clang::NamedDecl *decl,
+static void ConstructorName(std::string &name, const clang::Decl *decl,
                             cling::Interpreter &interp,
                             const ROOT::TMetaUtils::TNormalizedCtxt &normCtxt)
 {
@@ -8564,10 +8594,23 @@ static void ConstructorName(std::string &name, const clang::NamedDecl *decl,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCling::GetFunctionName(const clang::FunctionDecl *decl, std::string &output) const
+void TCling::GetFunctionName(const clang::Decl *decl, std::string &output) const
 {
    output.clear();
-   if (llvm::isa<clang::CXXConstructorDecl>(decl))
+
+   const auto *FD = llvm::dyn_cast<clang::FunctionDecl>(decl);
+   if (const auto *USD = llvm::dyn_cast<clang::UsingShadowDecl>(decl)) {
+      FD = llvm::dyn_cast<clang::FunctionDecl>(USD->getTargetDecl());
+   }
+   if (!FD) {
+      Error("GetFunctionName", "NULL Decl!");
+      return;
+   }
+
+   // For using-decls, show "Derived", not "Base", i.e. use the
+   // name of the decl context of the UsingShadowDecl (aka `decl`)
+   // not the name of FD's decl context.
+   if (llvm::isa<clang::CXXConstructorDecl>(FD))
    {
       ConstructorName(output, decl, *fInterpreter, *fNormalizedCtxt);
 
@@ -8580,7 +8623,7 @@ void TCling::GetFunctionName(const clang::FunctionDecl *decl, std::string &outpu
       auto printPolicy = decl->getASTContext().getPrintingPolicy();
       // Don't trigger fopen of the source file to count lines:
       printPolicy.AnonymousTagLocations = false;
-      decl->getNameForDiagnostic(stream, printPolicy, /*Qualified=*/false);
+      FD->getNameForDiagnostic(stream, printPolicy, /*Qualified=*/false);
    }
 }
 
@@ -8826,8 +8869,7 @@ MethodInfo_t* TCling::MethodInfo_Factory(DeclId_t declid) const
 {
    const clang::Decl* decl = reinterpret_cast<const clang::Decl*>(declid);
    R__LOCKGUARD(gInterpreterMutex);
-   const clang::FunctionDecl* fd = llvm::dyn_cast_or_null<clang::FunctionDecl>(decl);
-   return (MethodInfo_t*) new TClingMethodInfo(GetInterpreterImpl(), fd);
+   return (MethodInfo_t*) new TClingMethodInfo(GetInterpreterImpl(), decl);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -9303,29 +9345,29 @@ const char* TCling::TypedefInfo_Title(TypedefInfo_t* tinfo) const
 
 void TCling::SnapshotMutexState(ROOT::TVirtualRWMutex* mtx)
 {
-   if (!fInitialMutex.back()) {
-      if (fInitialMutex.back().fRecurseCount) {
+   if (!fInitialMutex) {
+      if (fInitialMutex.fRecurseCount) {
          Error("SnapshotMutexState", "fRecurseCount != 0 even though initial mutex state is unset!");
       }
-      fInitialMutex.back().fState = mtx->GetStateBefore();
+      fInitialMutex.fState = mtx->GetStateBefore();
    }
    // We will "forget" this lock once we backed out of all interpreter frames.
    // Here we are entering one, so ++.
-   ++fInitialMutex.back().fRecurseCount;
+   ++fInitialMutex.fRecurseCount;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCling::ForgetMutexState()
 {
-   if (!fInitialMutex.back())
+   if (!fInitialMutex)
       return;
-   if (fInitialMutex.back().fRecurseCount == 0) {
+   if (fInitialMutex.fRecurseCount == 0) {
       Error("ForgetMutexState", "mutex state's recurse count already 0!");
    }
-   else if (--fInitialMutex.back().fRecurseCount == 0) {
+   else if (--fInitialMutex.fRecurseCount == 0) {
       // We have returned from all interpreter frames. Reset the initial lock state.
-      fInitialMutex.back().fState.reset();
+      fInitialMutex.fState.reset();
    }
 }
 
@@ -9334,15 +9376,28 @@ void TCling::ForgetMutexState()
 
 void TCling::ApplyToInterpreterMutex(void *delta)
 {
-   R__ASSERT(!fInitialMutex.empty() && "Inconsistent state of fInitialMutex!");
    if (gInterpreterMutex) {
       if (delta) {
-         auto typedDelta = static_cast<TVirtualRWMutex::StateDelta *>(delta);
-         std::unique_ptr<TVirtualRWMutex::StateDelta> uniqueP{typedDelta};
-         gCoreMutex->Apply(std::move(uniqueP));
+         auto typedDelta = static_cast<MutexStateAndRecurseCountDelta *>(delta);
+         std::unique_ptr<MutexStateAndRecurseCountDelta> uniqueP{typedDelta};
+         gCoreMutex->Apply(std::move(typedDelta->fDelta));
+         // Now that we have the lock, update the global
+         R__ASSERT(fInitialMutex.fRecurseCount == 0 && "Inconsistent state of fInitialMutex!  Another thread within Interpreter critical section.");
+         std::swap(fInitialMutex, typedDelta->fInitialState);
+      } else {
+         // This case happens when EnableThreadSafety is first called from
+         // the interpreter function we just handled.
+         // Since thread safety was not enabled at the time we rewound, there was
+         // no lock taken and even-though we should be locking the rest of this
+         // interpreter handling/modifying code (since there might be threads in
+         // flight), we can't because there would not be any lock guard to release the
+         // locks
+         if (fInitialMutex || fInitialMutex.fRecurseCount !=0)
+            Error("ApplyToInterpreterMutex",
+                 "After returning from user code that turned on thread safety support, we notice that fInitialMutex is already used ... "
+                 "so the rest of this function/stack execution might have race condition (with the other thread that thinks it has exclusive access to the interpreter state.");
       }
    }
-   fInitialMutex.pop_back();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -9351,13 +9406,13 @@ void TCling::ApplyToInterpreterMutex(void *delta)
 
 void *TCling::RewindInterpreterMutex()
 {
-   if (fInitialMutex.back()) {
-      std::unique_ptr<TVirtualRWMutex::StateDelta> uniqueP = gCoreMutex->Rewind(*fInitialMutex.back().fState);
+   if (fInitialMutex) {
       // Need to start a new recurse count.
-      fInitialMutex.emplace_back();
+      std::unique_ptr<MutexStateAndRecurseCountDelta> uniqueP(new MutexStateAndRecurseCountDelta());
+      std::swap(uniqueP->fInitialState, fInitialMutex);
+      uniqueP->fDelta = gCoreMutex->Rewind(*uniqueP->fInitialState.fState);
       return uniqueP.release();
    }
-   // Need to start a new recurse count.
-   fInitialMutex.emplace_back();
+   R__ASSERT(fInitialMutex.fRecurseCount == 0);
    return nullptr;
 }

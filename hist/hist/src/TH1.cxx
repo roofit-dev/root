@@ -68,9 +68,17 @@
 */
 
 /** \class TH1
-The TH1 histogram class.
+TH1 is the base class of all histogramm classes in ROOT. It provides the common interface for
+operations such as binning, filling, drawing, which will be detailed below.
 
-### The Histogram classes
+-# [Creating histograms](\ref creating-histograms)
+-# [Binning](\ref binning)
+-# [Filling histograms](\ref filling-histograms)
+-# [Operations on histograms](\ref operations-on-histograms)
+-# [Drawing histograms](\ref drawing-histograms)
+-# [Saving/reading histograms to/from a ROOT file](\ref saving-histograms)
+-# [Miscellaneous operations](\ref misc)
+
 ROOT supports the following histogram types:
 
   - 1-D histograms:
@@ -100,9 +108,8 @@ ROOT supports the following histogram types:
       approximate function of X, this function is displayed by a profile
       histogram with much better precision than by a scatter-plot.
 
-
-All histogram classes are derived from the base class TH1
-~~~ {.cpp}
+The inheritance hierarchy looks as follows:
+~~~
                                 TH1
                                  ^
                                  |
@@ -137,7 +144,9 @@ All histogram classes are derived from the base class TH1
       The TH*D classes also inherit from the array class TArrayD.
 ~~~
 
-#### Creating histograms
+
+\anchor creating-histograms
+## Creating histograms
 
 Histograms are created by invoking one of the constructors, e.g.
 ~~~ {.cpp}
@@ -150,17 +159,46 @@ Histograms may also be created by:
   -  making a projection from a 2-D or 3-D histogram, see below
   -  reading an histogram from a file
 
-  When an histogram is created, a reference to it is automatically added
+ When a histogram is created, a reference to it is automatically added
  to the list of in-memory objects for the current file or directory.
  This default behaviour can be changed by:
 ~~~ {.cpp}
-       h->SetDirectory(0);          for the current histogram h
-       TH1::AddDirectory(kFALSE);   sets a global switch disabling the reference
+       h->SetDirectory(0);          // for the current histogram h
+       TH1::AddDirectory(kFALSE);   // sets a global switch disabling the referencing
 ~~~
-     When the histogram is deleted, the reference to it is removed from
-     the list of objects in memory.
-     When a file is closed, all histograms in memory associated with this file
-     are automatically deleted.
+ When the histogram is deleted, the reference to it is removed from
+ the list of objects in memory.
+ When a file is closed, all histograms in memory associated with this file
+ are automatically deleted.
+
+### Labelling axes
+
+ Axis titles can be specified in the title argument of the constructor.
+ They must be separated by ";":
+~~~ {.cpp}
+        TH1F* h=new TH1F("h", "Histogram title;X Axis;Y Axis", 100, 0, 1);
+~~~
+ The histogram title and the axis titles can be any TLatex string, and
+ are persisted if a histogram is written to a file.
+
+ Any title can be omitted:
+~~~ {.cpp}
+        TH1F* h=new TH1F("h", "Histogram title;;Y Axis", 100, 0, 1);
+        TH1F* h=new TH1F("h", ";;Y Axis", 100, 0, 1);
+~~~
+ The method SetTitle() has the same syntax:
+~~~ {.cpp}
+        h->SetTitle("Histogram title;Another X title Axis");
+~~~
+Alternatively, the title of each axis can be set directly:
+~~~ {.cpp}
+       h->GetXaxis()->SetTitle("X axis title");
+       h->GetYaxis()->SetTitle("Y axis title");
+~~~
+For bin labels see \ref binning.
+
+\anchor binning
+## Binning
 
 #### Fix or variable bin size
 
@@ -169,8 +207,8 @@ Histograms may also be created by:
  along Y or vice-versa. The functions to fill, manipulate, draw or access
  histograms are identical in both cases.
 
- Each histogram always contains 3 objects TAxis: fXaxis, fYaxis and fZaxis
- o access the axis parameters, do:
+ Each histogram always contains 3 axis objects of type TAxis: fXaxis, fYaxis and fZaxis.
+ To access the axis parameters, use:
 ~~~ {.cpp}
         TAxis *xaxis = h->GetXaxis(); etc.
         Double_t binCenter = xaxis->GetBinCenter(bin), etc.
@@ -267,7 +305,16 @@ When using the options 2 or 3 above, the labels are automatically
  The axis limits will be automatically computed when the buffer will
  be full or when the function BufferEmpty is called.
 
-#### Filling histograms
+#### Rebinning
+
+ At any time, an histogram can be rebinned via TH1::Rebin. This function
+ returns a new histogram with the rebinned contents.
+ If bin errors were stored, they are recomputed during the rebinning.
+
+
+
+\anchor filling-histograms
+## Filling histograms
 
  An histogram is typically filled with statements like:
 ~~~ {.cpp}
@@ -313,12 +360,7 @@ When using the options 2 or 3 above, the labels are automatically
  capacity (127 or 32767). Histograms of all types may have positive
  or/and negative bin contents.
 
-#### Rebinning
- At any time, an histogram can be rebinned via TH1::Rebin. This function
- returns a new histogram with the rebinned contents.
- If bin errors were stored, they are recomputed during the rebinning.
-
-#### Associated errors
+### Associated errors
  By default, for each bin, the sum of weights is computed at fill time.
  One can also call TH1::Sumw2 to force the storage and computation
  of the sum of the square of weights per bin.
@@ -330,7 +372,7 @@ When using the options 2 or 3 above, the labels are automatically
         Double_t error = h->GetBinError(bin);
 ~~~
 
-#### Associated functions
+### Associated functions
  One or more object (typically a TF1*) can be added to the list
  of functions (fFunctions) associated to each histogram.
  When TH1::Fit is invoked, the fitted function is added to this list.
@@ -340,7 +382,9 @@ When using the options 2 or 3 above, the labels are automatically
         TF1 *myfunc = h->GetFunction("myfunc");
 ~~~
 
-#### Operations on histograms
+
+\anchor operations-on-histograms
+## Operations on histograms
 
  Many types of operations are supported on histograms or between histograms
 
@@ -415,7 +459,9 @@ When using the options 2 or 3 above, the labels are automatically
  the normalization parameter via TH1::Scale(Double_t norm), where norm
  is the desired normalization divided by the integral of the histogram.
 
-#### Drawing histograms
+
+\anchor drawing-histograms
+## Drawing histograms
 
  Histograms are drawn via the THistPainter class. Each histogram has
  a pointer to its own painter (to be usable in a multithreaded program).
@@ -462,31 +508,16 @@ When using the options 2 or 3 above, the labels are automatically
  TAttLine, TAttFill, and TAttMarker.
  See the member functions of these classes for the list of options.
 
-#### Giving titles to the X, Y and Z axis
+#### Customising how axes are drawn
 
+ Use the functions of TAxis, such as
 ~~~ {.cpp}
-       h->GetXaxis()->SetTitle("X axis title");
-       h->GetYaxis()->SetTitle("Y axis title");
-~~~
- The histogram title and the axis titles can be any TLatex string.
- The titles are part of the persistent histogram.
- It is also possible to specify the histogram title and the axis
- titles at creation time. These titles can be given in the "title"
- parameter. They must be separated by ";":
-~~~ {.cpp}
-        TH1F* h=new TH1F("h", "Histogram title;X Axis;Y Axis;Z Axis", 100, 0, 1);
-~~~
- Any title can be omitted:
-~~~ {.cpp}
-        TH1F* h=new TH1F("h", "Histogram title;;Y Axis", 100, 0, 1);
-        TH1F* h=new TH1F("h", ";;Y Axis", 100, 0, 1);
-~~~
- The method SetTitle has the same syntax:
-~~~ {.cpp}
-        h->SetTitle("Histogram title;Another X title Axis");
+ histogram.GetXaxis()->SetTicks("+");
+ histogram.GetYaxis()->SetRangeUser(1., 5.);
 ~~~
 
-#### Saving/Reading histograms to/from a ROOT file
+\anchor saving-histograms
+## Saving/Reading histograms in ROOT files
 
  The following statements create a ROOT file and store an histogram
  on the file. Because TH1 derives from TNamed, the key identifier on
@@ -507,7 +538,9 @@ When using the options 2 or 3 above, the labels are automatically
         file->Write();
 ~~~
 
-#### Miscellaneous operations
+
+\anchor misc
+## Miscellaneous operations
 
 ~~~ {.cpp}
         TH1::KolmogorovTest(): statistical test of compatibility in shape
@@ -3374,8 +3407,8 @@ Int_t TH1::Fill(const char *namex, Double_t w)
    Double_t z= w;
    fTsumw   += z;
    fTsumw2  += z*z;
-   // this make sense if the histogram is not expanding (no axis can be extended)
-   if (!CanExtendAllAxes()) {
+   // this make sense if the histogram is not expanding (the x axis cannot be extended)
+   if (!fXaxis.CanExtend() || !fXaxis.IsAlphanumeric()) {
       Double_t x = fXaxis.GetBinCenter(bin);
       fTsumwx  += z*x;
       fTsumwx2 += z*x*x;
@@ -5240,7 +5273,7 @@ void TH1::LabelsInflate(Option_t *ax)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Set option(s) to draw axis with labels
+/// Sort bins with labels or set option(s) to draw axis with labels
 /// \param[in] option
 ///     - "a" sort by alphabetic order
 ///     - ">" sort by decreasing values
@@ -5249,6 +5282,11 @@ void TH1::LabelsInflate(Option_t *ax)
 ///     - "v" draw labels vertical
 ///     - "u" draw labels up (end of label right adjusted)
 ///     - "d" draw labels down (start of label left adjusted)
+///
+/// In case not all bins have labels sorting will work only in the case
+/// the first `n` consecutive bins have all labels and sorting will be performed on
+/// those label bins.
+///
 /// \param[in] ax axis
 
 void TH1::LabelsOption(Option_t *option, Option_t *ax)
@@ -5312,14 +5350,39 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
       return;
    }
 
-   Double_t entries = fEntries;
-   Int_t n = TMath::Min(axis->GetNbins(), labels->GetSize());
+   // Code works only if first n bins have labels if we uncomment following line
+   // but we don't want to support this special case
+   // Int_t n = TMath::Min(axis->GetNbins(), labels->GetSize());
+
+   // support only cases where each bin has a labels (should be when axis is alphanumeric)
+   Int_t n = labels->GetSize();
+   if (n != axis->GetNbins()) {
+      // check if labels are all consecutive and starts from the first bin
+      // in that case the current code will work fine
+      Int_t firstLabelBin = axis->GetNbins()+1;
+      Int_t lastLabelBin = -1;
+      for (Int_t i = 0; i < n; ++i) {
+         Int_t bin  = labels->At(i)->GetUniqueID();
+         if (bin < firstLabelBin) firstLabelBin = bin;
+         if (bin > lastLabelBin) lastLabelBin = bin;
+      }
+      if (firstLabelBin != 1 || lastLabelBin-firstLabelBin +1 != n) {
+         Error("LabelsOption", "%s of Histogram %s contains bins without labels. Sorting will not work correctly - return",
+            axis->GetName(), GetName());
+         return;
+      }
+      // case where label bins are consecutive starting from first bin will work
+      // calling before a TH1::LabelsDeflate() will avoid this error message
+      Warning("LabelsOption", "axis %s of Histogram %s has extra following bins without labels. Sorting will work only for first label bins",
+            axis->GetName(), GetName());
+   }
    std::vector<Int_t> a(n);
    std::vector<Int_t> b(n);
 
+
    Int_t i, j, k;
    std::vector<Double_t> cont;
-   std::vector<Double_t> errors;
+   std::vector<Double_t> errors2;
    THashList *labold = new THashList(labels->GetSize(), 1);
    TIter nextold(labels);
    TObject *obj = nullptr;
@@ -5335,11 +5398,11 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
       if (GetDimension() == 1) {
          cont.resize(n);
          if (fSumw2.fN)
-            errors.resize(n);
+            errors2.resize(n);
          for (i = 0; i < n; i++) {
-            cont[i] = GetBinContent(i + 1);
-            if (!errors.empty())
-               errors[i] = GetBinError(i + 1);
+            cont[i] = RetrieveBinContent(i + 1);
+            if (!errors2.empty())
+               errors2[i] = GetBinErrorSqUnchecked(i + 1);
             b[i] = labold->At(i)->GetUniqueID(); // this is the bin corresponding to the label
             a[i] = i;
          }
@@ -5348,12 +5411,13 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
          else
             TMath::Sort(n, cont.data(), a.data(), kFALSE); // sort by increasing values
          for (i = 0; i < n; i++) {
-            SetBinContent(i + 1, cont[b[a[i]] - 1]); // b[a[i]] returns bin number. .we need to subtract 1
+            // use UpdateBinCOntent to not screw up histogram entries
+            UpdateBinContent(i + 1, cont[b[a[i]] - 1]); // b[a[i]] returns bin number. .we need to subtract 1
             if (gDebug)
-               std::cout << "setting bin " << i + 1 << "value " << cont[b[a[i]] - 1] << " from bin " << b[a[i]]
-                         << "label " << labold->At(a[i])->GetName() << " a " << a[i] << std::endl;
-            if (!errors.empty())
-               SetBinError(i + 1, errors[b[a[i]] - 1]);
+               Info("LabelsOption","setting bin %d value %f from bin %d label %s at pos %d ",
+                         i+1,cont[b[a[i]] - 1],b[a[i]],labold->At(a[i])->GetName(),a[i]);
+            if (!errors2.empty())
+               fSumw2.fArray[i + 1] =  errors2[b[a[i]] - 1];
          }
          for (i = 0; i < n; i++) {
             obj = labold->At(a[i]);
@@ -5366,12 +5430,13 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
          Int_t ny = fYaxis.GetNbins() + 2;
          cont.resize((nx + 2) * (ny + 2));
          if (fSumw2.fN)
-            errors.resize((nx + 2) * (ny + 2));
+            errors2.resize((nx + 2) * (ny + 2));
          for (i = 0; i < nx; i++) {
             for (j = 0; j < ny; j++) {
-               cont[i + nx * j] = GetBinContent(i, j);
-               if (!errors.empty())
-                  errors[i + nx * j] = GetBinError(i, j);
+               Int_t bin = GetBin(i,j);
+               cont[i + nx * j] = RetrieveBinContent(bin);
+               if (!errors2.empty())
+                  errors2[i + nx * j] = GetBinErrorSqUnchecked(bin);
                if (axis == GetXaxis())
                   k = i - 1;
                else
@@ -5396,9 +5461,11 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
                else
                   obj = nullptr;
             }
-            if (!obj)
+            if (!obj) {
                // this should not really happen
                R__ASSERT("LabelsOption - No corresponding bin found when ordering labels");
+               return;
+            }
 
             labels->Add(obj);
             if (gDebug)
@@ -5415,9 +5482,10 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
             for (i = 0; i < n; i++) {
                Int_t ix = a[i] + 1;
                for (j = 0; j < ny; j++) {
-                  SetBinContent(i + 1, j, cont[ix + nx * j]);
-                  if (!errors.empty())
-                     SetBinError(i + 1, j, errors[ix + nx * j]);
+                  Int_t bin = GetBin(i + 1, j);
+                  UpdateBinContent(bin, cont[ix + nx * j]);
+                  if (!errors2.empty())
+                     fSumw2.fArray[bin] = errors2[ix + nx * j];
                }
             }
          } else {
@@ -5425,9 +5493,10 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
             for (i = 0; i < nx; i++) {
                for (j = 0; j < n; j++) {
                   Int_t iy = a[j] + 1;
-                  SetBinContent(i, j + 1, cont[i + nx * iy]);
-                  if (!errors.empty())
-                     SetBinError(i, j + 1, errors[i + nx * iy]);
+                  Int_t bin = GetBin(i, j + 1);
+                  UpdateBinContent(bin, cont[i + nx * iy]);
+                  if (!errors2.empty())
+                     fSumw2.fArray[bin] = errors2[i + nx * iy];
                }
             }
          }
@@ -5440,11 +5509,12 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
          Int_t l = 0;
          cont.resize((nx + 2) * (ny + 2) * (nz + 2));
          if (fSumw2.fN)
-            errors.resize((nx + 2) * (ny + 2) * (nz + 2));
+            errors2.resize((nx + 2) * (ny + 2) * (nz + 2));
          for (i = 0; i < nx; i++) {
             for (j = 0; j < ny; j++) {
                for (k = 0; k < nz; k++) {
-                  Double_t c  = GetBinContent(i, j, k);
+                  Int_t bin  = GetBin(i,j,k);
+                  Double_t c  = RetrieveBinContent(bin);
                   if (axis == GetXaxis())
                      l = i - 1;
                   else if (axis == GetYaxis())
@@ -5456,8 +5526,8 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
                      a[l] = l;
                   }
                   cont[i + nx * (j + ny * k)] = c;
-                  if (!errors.empty())
-                     errors[i + nx * (j + ny * k)] = GetBinError(i, j, k);
+                  if (!errors2.empty())
+                     errors2[i + nx * (j + ny * k)] = GetBinErrorSqUnchecked(bin);
                }
             }
          }
@@ -5477,8 +5547,10 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
                else
                   obj = nullptr;
             }
-            if (!obj)
+            if (!obj) {
                R__ASSERT("LabelsOption - No corresponding bin found when ordering labels");
+               return;
+            }
             labels->Add(obj);
             if (gDebug)
                std::cout << " set label " << obj->GetName() << " to bin " << i + 1 << " from bin " << a[i] << "content "
@@ -5496,9 +5568,10 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
                Int_t ix = a[i] + 1;
                for (j = 0; j < ny; j++) {
                   for (k = 0; k < nz; k++) {
-                     SetBinContent(i + 1, j, k, cont[ix + nx * (j + ny * k)]);
-                     if (!errors.empty())
-                        SetBinError(i + 1, j, k, errors[ix + nx * (j + ny * k)]);
+                     Int_t bin = GetBin(i + 1, j, k);
+                     UpdateBinContent(bin, cont[ix + nx * (j + ny * k)]);
+                     if (!errors2.empty())
+                        fSumw2.fArray[bin] = errors2[ix + nx * (j + ny * k)];
                   }
                }
             }
@@ -5508,9 +5581,10 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
                for (j = 0; j < n; j++) {
                   Int_t iy = a[j] + 1;
                   for (k = 0; k < nz; k++) {
-                     SetBinContent(i, j + 1, k, cont[i + nx * (iy + ny * k)]);
-                     if (!errors.empty())
-                        SetBinError(i, j + 1, k, errors[i + nx * (iy + ny * k)]);
+                     Int_t bin = GetBin(i, j + 1, k);
+                     UpdateBinContent(bin, cont[i + nx * (iy + ny * k)]);
+                     if (!errors2.empty())
+                       fSumw2.fArray[bin] = errors2[i + nx * (iy + ny * k)];
                   }
                }
             }
@@ -5520,9 +5594,10 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
                for (j = 0; j < ny; j++) {
                   for (k = 0; k < n; k++) {
                      Int_t iz = a[k] + 1;
-                     SetBinContent(i, j, k + 1, cont[i + nx * (j + ny * iz)]);
-                     if (!errors.empty())
-                        SetBinError(i, j, k + 1, errors[i + nx * (j + ny * iz)]);
+                     Int_t bin = GetBin(i, j , k +1);
+                     UpdateBinContent(bin, cont[i + nx * (j + ny * iz)]);
+                     if (!errors2.empty())
+                         fSumw2.fArray[bin] = errors2[i + nx * (j + ny * iz)];
                   }
                }
             }
@@ -5554,46 +5629,49 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
       if (GetDimension() == 1) {
          cont.resize(n + 2);
          if (fSumw2.fN)
-            errors.resize(n + 2);
+            errors2.resize(n + 2);
          for (i = 0; i < n; i++) {
-            cont[i] = GetBinContent(b[a[i]]);
-            if (!errors.empty())
-               errors[i] = GetBinError(b[a[i]]);
+            cont[i] = RetrieveBinContent(b[a[i]]);
+            if (!errors2.empty())
+               errors2[i] = GetBinErrorSqUnchecked(b[a[i]]);
          }
          for (i = 0; i < n; i++) {
-            SetBinContent(i + 1, cont[i]);
-            if (!errors.empty())
-               SetBinError(i + 1, errors[i]);
+            UpdateBinContent(i + 1, cont[i]);
+            if (!errors2.empty())
+               fSumw2.fArray[i+1] = errors2[i];
          }
       } else if (GetDimension() == 2) {
          Int_t nx = fXaxis.GetNbins() + 2;
          Int_t ny = fYaxis.GetNbins() + 2;
          cont.resize(nx * ny);
          if (fSumw2.fN)
-            errors.resize(nx * ny);
+            errors2.resize(nx * ny);
          // copy old bin contents and then set to new ordered bins
          // N.B. bin in histograms starts from 1, but in y we consider under/overflows
          for (i = 0; i < nx; i++) {
             for (j = 0; j < ny; j++) { // ny is nbins+2
-               cont[i + nx * j] = GetBinContent(i, j);
-               if (!errors.empty())
-                  errors[i + nx * j] = GetBinError(i, j);
+               Int_t bin = GetBin(i, j);
+               cont[i + nx * j] = RetrieveBinContent(bin);
+               if (!errors2.empty())
+                  errors2[i + nx * j] = GetBinErrorSqUnchecked(bin);
             }
          }
          if (axis == GetXaxis()) {
             for (i = 0; i < n; i++) {
                for (j = 0; j < ny; j++) {
-                  SetBinContent(i + 1, j, cont[b[a[i]] + nx * j]);
-                  if (!errors.empty())
-                     SetBinError(i + 1, j, errors[b[a[i]] + nx * j]);
+                  Int_t bin = GetBin(i + 1 , j);
+                  UpdateBinContent(bin, cont[b[a[i]] + nx * j]);
+                  if (!errors2.empty())
+                     fSumw2.fArray[bin] = errors2[b[a[i]] + nx * j];
                }
             }
          } else {
             for (i = 0; i < nx; i++) {
                for (j = 0; j < n; j++) {
-                  SetBinContent(i, j + 1, cont[i + nx * b[a[j]]]);
-                  if (!errors.empty())
-                     SetBinError(i, j + 1, errors[i + nx * b[a[j]]]);
+                  Int_t bin = GetBin(i, j + 1);
+                  UpdateBinContent(bin, cont[i + nx * b[a[j]]]);
+                  if (!errors2.empty())
+                     fSumw2.fArray[bin] = errors2[i + nx * b[a[j]]];
                }
             }
          }
@@ -5604,13 +5682,14 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
          Int_t nz = fZaxis.GetNbins() + 2;
          cont.resize(nx * ny * nz);
          if (fSumw2.fN)
-            errors.resize(nx * ny * nz);
+            errors2.resize(nx * ny * nz);
          for (i = 0; i < nx; i++) {
             for (j = 0; j < ny; j++) {
                for (k = 0; k < nz; k++) {
-                  cont[i + nx * (j + ny * k)] = GetBinContent(i, j, k);
-                  if (!errors.empty())
-                     errors[i + nx * (j + ny * k)] = GetBinError(i, j, k);
+                  Int_t bin = GetBin(i, j, k);
+                  cont[i + nx * (j + ny * k)] = RetrieveBinContent(bin);
+                  if (!errors2.empty())
+                     errors2[i + nx * (j + ny * k)] = GetBinErrorSqUnchecked(bin);
                }
             }
          }
@@ -5619,9 +5698,10 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
             for (i = 0; i < n; i++) { // for x we lool only on bins with the labels
                for (j = 0; j < ny; j++) {
                   for (k = 0; k < nz; k++) {
-                     SetBinContent(i + 1, j, k, cont[b[a[i]] + nx * (j + ny * k)]);
-                     if (!errors.empty())
-                        SetBinError(i + 1, j, k, errors[b[a[i]] + nx * (j + ny * k)]);
+                     Int_t bin = GetBin(i + 1, j, k);
+                     UpdateBinContent(bin, cont[b[a[i]] + nx * (j + ny * k)]);
+                     if (!errors2.empty())
+                        fSumw2.fArray[bin] = errors2[b[a[i]] + nx * (j + ny * k)];
                   }
                }
             }
@@ -5630,9 +5710,10 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
             for (i = 0; i < nx; i++) {
                for (j = 0; j < n; j++) {
                   for (k = 0; k < nz; k++) {
-                     SetBinContent(i, j + 1, k, cont[i + nx * (b[a[j]] + ny * k)]);
-                     if (!errors.empty())
-                        SetBinError(i, j + 1, k, errors[i + nx * (b[a[j]] + ny * k)]);
+                     Int_t bin = GetBin(i, j+1, k);
+                     UpdateBinContent(bin, cont[i + nx * (b[a[j]] + ny * k)]);
+                     if (!errors2.empty())
+                        fSumw2.fArray[bin] = errors2[i + nx * (b[a[j]] + ny * k)];
                   }
                }
             }
@@ -5641,18 +5722,46 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
             for (i = 0; i < nx; i++) {
                for (j = 0; j < ny; j++) {
                   for (k = 0; k < n; k++) {
-                     SetBinContent(i, j, k + 1, cont[i + nx * (j + ny * b[a[k]])]);
-                     if (!errors.empty())
-                        SetBinError(i, j, k + 1, errors[i + nx * (j + ny * b[a[k]])]);
+                     Int_t bin = GetBin(i, j, k+1);
+                     UpdateBinContent(bin, cont[i + nx * (j + ny * b[a[k]])]);
+                     if (!errors2.empty())
+                        fSumw2.fArray[bin] = errors2[i + nx * (j + ny * b[a[k]])];
                   }
                }
             }
          }
       }
    }
-   // need to reset statistics after sorting
-   ResetStats();
-   fEntries = entries;
+   // need to set to zero the statistics if axis has been sorted
+   // see for example TH3::PutStats for definition of s vector
+   bool labelsAreSorted = kFALSE;
+   for (i = 0; i < n; ++i) {
+      if (a[i] != i) {
+         labelsAreSorted = kTRUE;
+         break;
+      }
+   }
+   if (labelsAreSorted) {
+      double s[TH1::kNstat];
+      GetStats(s);
+      if (iaxis == 1) {
+         s[2] = 0; // fTsumwx
+         s[3] = 0; // fTsumwx2
+         s[6] = 0; // fTsumwxy
+         s[9] = 0; // fTsumwxz
+      } else if (iaxis == 2) {
+         s[4] = 0;  // fTsumwy
+         s[5] = 0;  // fTsumwy2
+         s[6] = 0;  // fTsumwxy
+         s[10] = 0; // fTsumwyz
+      } else if (iaxis == 3) {
+         s[7] = 0;  // fTsumwz
+         s[8] = 0;  // fTsumwz2
+         s[9] = 0;  // fTsumwxz
+         s[10] = 0; // fTsumwyz
+      }
+      PutStats(s);
+   }
    delete labold;
 }
 
@@ -6497,6 +6606,21 @@ UInt_t TH1::SetCanExtend(UInt_t extendBitMask)
    }
 
    return oldExtendBitMask;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// Internal function used in TH1::Fill to see which axis is full alphanumeric
+/// i.e. can be extended and is alphanumeric
+UInt_t TH1::GetAxisLabelStatus() const
+{
+   UInt_t bitMask = kNoAxis;
+   if (fXaxis.CanExtend() && fXaxis.IsAlphanumeric() ) bitMask |= kXaxis;
+   if (GetDimension() > 1 && fYaxis.CanExtend() && fYaxis.IsAlphanumeric())
+      bitMask |= kYaxis;
+   if (GetDimension() > 2 && fZaxis.CanExtend() && fZaxis.IsAlphanumeric())
+      bitMask |= kZaxis;
+
+   return bitMask;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -7542,7 +7666,7 @@ void TH1::GetStats(Double_t *stats) const
    // in this case the statistics in x does not make any sense
    Bool_t labelHist =  ((const_cast<TAxis&>(fXaxis)).GetLabels() && fXaxis.CanExtend() );
    // fTsumw == 0 && fEntries > 0 is a special case when uses SetBinContent or calls ResetStats before
-   if ((fTsumw == 0 && fEntries > 0) || ( fXaxis.TestBit(TAxis::kAxisRange) && !labelHist) ) {
+   if ( (fTsumw == 0 && fEntries > 0) || fXaxis.TestBit(TAxis::kAxisRange) ) {
       for (bin=0;bin<4;bin++) stats[bin] = 0;
 
       Int_t firstBinX = fXaxis.GetFirst();

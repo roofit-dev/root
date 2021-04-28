@@ -11,12 +11,14 @@
 #ifndef ROOT_RACTION
 #define ROOT_RACTION
 
-#include "ROOT/RDF/ColumnReaders.hxx"
+#include "ROOT/RDF/ColumnReaderUtils.hxx"
 #include "ROOT/RDF/GraphNode.hxx"
 #include "ROOT/RDF/RActionBase.hxx"
+#include "ROOT/RDF/RColumnReaderBase.hxx"
 #include "ROOT/RDF/Utils.hxx" // ColumnNames_t, IsInternalColumn
 #include "ROOT/RDF/RLoopManager.hxx"
 
+#include <array>
 #include <cstddef> // std::size_t
 #include <memory>
 #include <string>
@@ -52,7 +54,7 @@ class RAction : public RActionBase {
    const std::shared_ptr<PrevDataFrame> fPrevDataPtr;
    PrevDataFrame &fPrevData;
    /// Column readers per slot and per input column
-   std::vector<std::vector<std::unique_ptr<RColumnReaderBase>>> fValues;
+   std::vector<std::array<std::unique_ptr<RColumnReaderBase>, ColumnTypes_t::list_size>> fValues;
 
    /// The nth flag signals whether the nth input column is a custom column or not.
    std::array<bool, ColumnTypes_t::list_size> fIsDefine;
@@ -90,7 +92,7 @@ public:
       for (auto &bookedBranch : GetDefines().GetColumns())
          bookedBranch.second->InitSlot(r, slot);
       RDFInternal::RColumnReadersInfo info{RActionBase::GetColumnNames(), RActionBase::GetDefines(), fIsDefine.data(),
-                                           fLoopManager->GetDSValuePtrs()};
+                                           fLoopManager->GetDSValuePtrs(), fLoopManager->GetDataSource()};
       fValues[slot] = RDFInternal::MakeColumnReaders(slot, r, ColumnTypes_t{}, info);
       fHelper.InitTask(r, slot);
    }
@@ -116,7 +118,8 @@ public:
    {
       for (auto &column : GetDefines().GetColumns())
          column.second->FinaliseSlot(slot);
-      fValues[slot].clear();
+      for (auto &v : fValues[slot])
+         v.reset();
       fHelper.CallFinalizeTask(slot);
    }
 

@@ -128,7 +128,7 @@ set(objectlibs $<TARGET_OBJECTS:Base>
                ${winnt_objects})
 
 ROOT_OBJECT_LIBRARY(BaseTROOT ${CMAKE_SOURCE_DIR}/core/base/src/TROOT.cxx ${CMAKE_BINARY_DIR}/ginclude/RGitCommit.h)
-target_include_directories(BaseTROOT PRIVATE 
+target_include_directories(BaseTROOT PRIVATE
    ${CMAKE_SOURCE_DIR}/core/foundation/res
    ${CMAKE_SOURCE_DIR}/core/base/inc
    ${CMAKE_SOURCE_DIR}/core/clib/inc
@@ -166,6 +166,14 @@ if (libcxx AND NOT APPLE)
   target_compile_definitions(Core PRIVATE __CORRECT_ISO_CPP_WCHAR_H_PROTO)
 endif()
 
+if(MSVC)
+  # Definitions of MATH Macros (required in MathCore) like M_PI are only  
+  # exposed on Windows after defining the _USE_MATH_DEFINES macro. By   
+  # specifying it as a property for Core, we ensure that the macros are 
+  # properly exposed when using Modules on Windows.
+  target_compile_definitions(Core PRIVATE _USE_MATH_DEFINES)
+endif()
+
 #while basic libs do not depend on Core, we have to add includes directly
 
 target_include_directories(Core PUBLIC
@@ -186,6 +194,7 @@ target_include_directories(Core PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/co
 
 if(root7 OR CMAKE_CXX_STANDARD GREATER 11)
   target_include_directories(Core PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/core/base/v7/inc>)
+  target_include_directories(Core PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/core/foundation/v7/inc>)
 endif()
 
 
