@@ -20,6 +20,7 @@
 #include "RooLinkedList.h"
 
 #include <memory>
+#include <stdexcept>
 #include <assert.h>
 
 /// Interface for RooFIter-compatible iterators
@@ -68,7 +69,7 @@ class RooFIterForLinkedList final : public GenericRooFIter
     fPtr = fPtr->_next;
     return (RooAbsArg*) arg ;
   }
-    
+
  private:
     const RooLinkedListElem * fPtr{nullptr};  //! Next link element
 };
@@ -209,9 +210,18 @@ class RooLinkedListIter final : public TIterator {
   }
 
   RooLinkedListIter(const RooLinkedListIter &) = delete;
-  RooLinkedListIter(RooLinkedListIter &&) = default;
   RooLinkedListIter & operator=(const RooLinkedListIter &) = delete;
-  RooLinkedListIter & operator=(RooLinkedListIter &&) = default;
+
+  // Setting the move constructor and assignment operator to = default might
+  // seem to work, but it causes linker errors when using it because
+  // TIterator::operator= is not implemented.
+  RooLinkedListIter(RooLinkedListIter && other)
+    : fIterImpl{std::move(other.fIterImpl)}
+  {}
+  RooLinkedListIter & operator=(RooLinkedListIter && other) {
+    fIterImpl = std::move(other.fIterImpl);
+    return *this;
+  }
 
   TIterator &operator=(const TIterator & other) override {fIterImpl->operator=(other); return *this;}
   const TCollection *GetCollection() const override {return nullptr;}
@@ -248,9 +258,9 @@ public:
   {
     // Copy constructor
   }
-  
+
   virtual ~RooLinkedListIterImpl() { }
-  
+
   TIterator& operator=(const TIterator& other) {
 
     // Iterator assignment operator
@@ -264,30 +274,30 @@ public:
     }
     return *this ;
   }
-    
-  virtual const TCollection *GetCollection() const { 
+
+  virtual const TCollection *GetCollection() const {
     // Dummy
-    return 0 ; 
+    return 0 ;
   }
 
-  virtual TObject *Next() { 
+  virtual TObject *Next() {
     // Return next element in collection
     if (!_ptr) return 0 ;
-    TObject* arg = _ptr->_arg ;      
+    TObject* arg = _ptr->_arg ;
     _ptr = _forward ? _ptr->_next : _ptr->_prev ;
     return arg ;
   }
 
-  TObject *NextNV() { 
+  TObject *NextNV() {
     // Return next element in collection
     if (!_ptr) return 0 ;
-    TObject* arg = _ptr->_arg ;      
+    TObject* arg = _ptr->_arg ;
     _ptr = _forward ? _ptr->_next : _ptr->_prev ;
     return arg ;
   }
-  
 
-  virtual void Reset() { 
+
+  virtual void Reset() {
     // Return iterator to first element in collection
     _ptr = _forward ? _list->_first : _list->_last ;
   }

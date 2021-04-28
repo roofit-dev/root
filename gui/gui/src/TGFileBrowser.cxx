@@ -24,6 +24,8 @@
 #include "TGMimeTypes.h"
 #include "TClass.h"
 #include "TQClass.h"
+#include "TObjString.h"
+#include "TObjArray.h"
 #include "TInterpreter.h"
 #include "TRegexp.h"
 #include "TEnv.h"
@@ -34,9 +36,10 @@
 #include "TKeyMapFile.h"
 #include "TVirtualPad.h"
 #include "Getline.h"
-#include <time.h>
-#include <string.h>
-#include <stdlib.h>
+#include "snprintf.h"
+#include <ctime>
+#include <cstring>
+#include <cstdlib>
 
 #include "TGFileBrowser.h"
 #include "TRootBrowser.h"
@@ -63,13 +66,15 @@ const char *filters[] = {
    "*.txt"
 };
 
-//_____________________________________________________________________________
-//
-// TCursorSwitcher
-//
-// Helper class used to change the cursor in a method and restore the
-// original one when going out of the method scope.
-//_____________________________________________________________________________
+
+/** \class TCursorSwitcher
+    \ingroup guiwidgets
+
+Helper class used to change the cursor in a method and restore the
+original one when going out of the method scope.
+
+*/
+
 
 ///////////////////////////////////////////////////////////////////////////////
 class TCursorSwitcher {
@@ -87,13 +92,15 @@ public:
    }
 };
 
-//_____________________________________________________________________________
-//
-// TGFileBrowser
-//
-// System file browser, used as TRootBrowser plug-in.
-// This class is the real core of the ROOT browser.
-//_____________________________________________________________________________
+
+/** \class TGFileBrowser
+    \ingroup guiwidgets
+
+System file browser, used as TRootBrowser plug-in.
+This class is the real core of the ROOT browser.
+
+*/
+
 
 ClassImp(TGFileBrowser);
 
@@ -272,7 +279,7 @@ static Bool_t IsObjectEditable(TClass *cl)
       cl = base->GetClassPointer();
       if (cl && TClass::GetClass(Form("%sEditor", cl->GetName())))
          return kTRUE;
-      if (IsObjectEditable(cl))
+      if (cl && IsObjectEditable(cl))
          return kTRUE;
    }
    return kFALSE;
@@ -434,9 +441,6 @@ void TGFileBrowser::AddRemoteFile(TObject *obj)
    TGPicture *pic;
 
    FileStat_t sbuf;
-
-   type    = 0;
-   is_link = kFALSE;
 
    TRemoteObject *robj = (TRemoteObject *)obj;
 
@@ -731,7 +735,7 @@ void TGFileBrowser::AddFSDirectory(const char *entry, const char *path,
    TGListTreeItem *item = 0;
    if ((opt == 0) || (!opt[0])) {
       if (fRootDir == 0 && !fListTree->FindChildByName(0, rootdir))
-         item = fRootDir = fListTree->AddItem(0, rootdir);
+         fRootDir = fListTree->AddItem(0, rootdir);
       return;
    }
    if (strstr(opt, "SetRootDir")) {
@@ -1317,7 +1321,8 @@ void TGFileBrowser::DoubleClicked(TGListTreeItem *item, Int_t /*btn*/)
             // than a canvas already embedded in one of the browser's tab
             obj->DrawClone();
          }
-         else if (fBrowser && !obj->InheritsFrom("TFormula"))
+         else if (fBrowser && !obj->InheritsFrom("TFormula") &&
+                  !obj->InheritsFrom("TMethodBrowsable"))
             obj->Browse(fBrowser);
          fDblClick = kFALSE;
          fNKeys = 0;

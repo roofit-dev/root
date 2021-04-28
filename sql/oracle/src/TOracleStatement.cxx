@@ -21,11 +21,13 @@
 #include "TOracleStatement.h"
 #include "TOracleServer.h"
 #include "TDataType.h"
-#include <stdlib.h>
+#include "snprintf.h"
+#include <cstdlib>
+
+#include <occi.h>
 
 ClassImp(TOracleStatement);
 
-using namespace std;
 using namespace oracle::occi;
 
 

@@ -2,11 +2,10 @@ sap.ui.define([
    'sap/ui/core/Component',
    'sap/ui/core/UIComponent',
    'sap/ui/core/mvc/Controller',
-   'sap/ui/model/json/JSONModel',
    "sap/ui/core/ResizeHandler",
    'rootui5/eve7/lib/EveManager',
    'rootui5/eve7/lib/EveScene'
-], function (Component, UIComponent, Controller, JSONModel, ResizeHandler, EveManager, EveScene) {
+], function (Component, UIComponent, Controller, ResizeHandler, EveManager, EveScene) {
 
    "use strict";
 
@@ -36,7 +35,7 @@ sap.ui.define([
 
          ResizeHandler.register(this.getView(), this.onResize.bind(this));
 
-         JSROOT.AssertPrerequisites("geom", this.onLoadScripts.bind(this));
+         JSROOT.require("geom").then(() => this.onLoadScripts());
       },
 
       onLoadScripts: function()
@@ -50,11 +49,9 @@ sap.ui.define([
       {
          let args = oEvent.getParameter("arguments");
 
-         console.log('ON MATCHED', args.viewName);
-         
-         console.log('MORE DATA', JSROOT.$eve7tmp);
-
-         console.log('COMPONENT DATA', Component.getOwnerComponentFor(this.getView()).getComponentData());
+         // console.log('ON MATCHED', args.viewName);
+         // console.log('MORE DATA', JSROOT.$eve7tmp);
+         // console.log('COMPONENT DATA', Component.getOwnerComponentFor(this.getView()).getComponentData());
 
          this.setupManagerAndViewType(Component.getOwnerComponentFor(this.getView()).getComponentData(),
                                       args.viewName, JSROOT.$eve7tmp);
@@ -67,6 +64,13 @@ sap.ui.define([
       // Initialization that can be done immediately onInit or later through UI5 bootstrap callbacks.
       setupManagerAndViewType: function(data, viewName, moredata)
       {
+         delete this.standalone;
+         delete this.viewer_class;
+         if (this.viewer) {
+            this.viewer.cleanup();
+            delete this.viewer;
+         }
+
          if (viewName)
          {
             data.standalone = viewName;
@@ -81,7 +85,6 @@ sap.ui.define([
             this.eveViewerId  = moredata.eveViewerId;
             this.kind       = moredata.kind;
             this.standalone = viewName;
-
             this.checkViewReady();
          }
          else if (data.standalone && data.conn_handle)
@@ -112,7 +115,7 @@ sap.ui.define([
          this.checkViewReady();
       },
 
-      OnEveManagerInit: function()
+      onEveManagerInit: function()
       {
          // called when manager was updated, need only in standalone modes to detect own element id
          if (!this.standalone) return;
@@ -150,21 +153,27 @@ sap.ui.define([
       {
          if (!this.mgr || !this._load_scripts || !this._render_html || !this.eveViewerId || this.viewer_class) return;
 
-         this.viewer_class = this.mgr.handle.GetUserArgs("GLViewer");
+         this.viewer_class = this.mgr.handle.getUserArgs("GLViewer");
          if ((this.viewer_class != "JSRoot") && (this.viewer_class != "Three") && (this.viewer_class != "RCore"))
             this.viewer_class = "Three";
 
-         this.htimeout = this.mgr.handle.GetUserArgs("HTimeout");
+         this.htimeout = this.mgr.handle.getUserArgs("HTimeout");
          if (this.htimeout === undefined) this.htimeout = 250;
 
          // when "Reset" - reset camera position
-         this.dblclick_action = this.mgr.handle.GetUserArgs("DblClick");
+         this.dblclick_action = this.mgr.handle.getUserArgs("DblClick");
 
          sap.ui.require(['rootui5/eve7/lib/GlViewer' + this.viewer_class],
                function(GlViewer) {
                   this.viewer = new GlViewer(this.viewer_class);
                   this.viewer.init(this);
                }.bind(this));
+      },
+
+      // Callback from GlViewer class after initialization is complete
+      glViewerInitDone: function()
+      {
+         ResizeHandler.register(this.getView(), this.onResize.bind(this));
       },
 
       //==============================================================================
@@ -207,30 +216,36 @@ sap.ui.define([
 
       redrawScenes: function()
       {
+         if (!this.created_scenes) return;
+
          for (let s of this.created_scenes)
-         {
             s.redrawScene();
-         }
+      },
+
+      removeScenes: function() {
+         if (!this.created_scenes) return;
+
+         for (let s of this.created_scenes)
+            s.removeScene();
+         delete this.created_scenes;
       },
 
       /// invoked from ResizeHandler
       onResize: function(event)
       {
+         // TODO: should be specified somehow in XML file
+         this.getView().$().css("overflow", "hidden").css("width", "100%").css("height", "100%");
+
          if (this.resize_tmout) clearTimeout(this.resize_tmout);
-         this.resize_tmout = setTimeout(this.onResizeTimeout.bind(this), 250); // small latency
+
+         // MT 2020/09/09: On Chrome, delay up to 200ms gets executed immediately.
+         this.resize_tmout = setTimeout(this.onResizeTimeout.bind(this), 250);
       },
 
       onResizeTimeout: function()
       {
          delete this.resize_tmout;
-
-         // console.log("onResizeTimeout", this.camera);
-
-         // TODO: should be specified somehow in XML file
-         this.getView().$().css("overflow", "hidden").css("width", "100%").css("height", "100%");
-
-         if (this.viewer)
-            this.viewer.onResizeTimeout();
+         if (this.viewer) this.viewer.onResizeTimeout();
       },
 
       /** Called from JSROOT context menu when object selected for browsing */
