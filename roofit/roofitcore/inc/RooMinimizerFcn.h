@@ -49,6 +49,12 @@ class RooMinimizerFcn : public ROOT::Math::IBaseFunctionMultiDim {
   RooArgList* GetInitConstParamList() { return _initConstParamList; }
 
   void SetEvalErrorWall(Bool_t flag) { _doEvalErrorWall = flag ; }
+  /// Try to recover from invalid function values. When invalid function values are encountered,
+  /// a penalty term is returned to the minimiser to make it back off. This sets the strength of this penalty.
+  /// \note A strength of zero is equivalent to a constant penalty (= the gradient vanishes, ROOT < 6.24).
+  /// Positive values lead to a gradient pointing away from the undefined regions. Use ~10 to force the minimiser
+  /// away from invalid function values.
+  void SetRecoverFromNaNStrength(double strength) { _recoverFromNaNStrength = strength; }
   void SetPrintEvalErrors(Int_t numEvalErrors) { _printEvalErrors = numEvalErrors ; }
   Bool_t SetLogFile(const char* inLogfile);
   std::ofstream* GetLogFile() { return _logfile; }
@@ -64,7 +70,8 @@ class RooMinimizerFcn : public ROOT::Math::IBaseFunctionMultiDim {
 
   Int_t evalCounter() const { return _evalCounter ; }
   void zeroEvalCount() { _evalCounter = 0 ; }
-
+  /// Return a possible offset that's applied to the function to separate invalid function values from valid ones.
+  double getOffset() const { return _funcOffset; }
 
  private:
   void SetPdfParamErr(Int_t index, Double_t value);
@@ -85,6 +92,8 @@ class RooMinimizerFcn : public ROOT::Math::IBaseFunctionMultiDim {
 >>>>>>> c5b9e17323cc3d7f471ba93e7df324df22009587
 
   mutable double _maxFCN;
+  mutable double _funcOffset{0.};
+  double _recoverFromNaNStrength{10.};
   mutable int _numBadNLL;
   mutable int _printEvalErrors;
   mutable int _evalCounter{0};
@@ -96,7 +105,7 @@ class RooMinimizerFcn : public ROOT::Math::IBaseFunctionMultiDim {
   RooArgList* _initConstParamList;
 
   std::ofstream *_logfile;
-  bool _doEvalErrorWall;
+  bool _doEvalErrorWall{true};
   bool _verbose;
 
 };
