@@ -213,6 +213,10 @@ N: David Dagenhart
 E: wdd@fnal.gov
 D: Support for LZMA compression in ROOT files
 
+N: Pratyush Das
+E: reikdas@gmail.com
+D: ROOTUnitTestSupport, various rootcling improvements
+
 N: Bastien Dallapiazza
 E: bastien.dallapiazza@epfl.ch
 D: TSpider, TParallelCoord classes
@@ -369,7 +373,7 @@ E: luca.giommi2@studio.unibo.it
 D: rootdrawtree and TSimpleAnalysis
 
 N: Enrico Guiraud
-E: enrico.guiraud@gmail.com
+E: enrico.guiraud@cern.ch
 D: Multiproc runtime, RDataFrame
 
 N: Thorsten Glebe
@@ -764,6 +768,10 @@ E: opocenska@gmail.com
 D: author of the Event Recorder
 D: author of the sub-merging technology in PROOF
 
+N: Vincenzo Eduardo Padulano
+E: v.e.padulano@gmail.com
+D: Contributions to distributed execution of RDataFrame
+
 N: Juan Palacios
 E: Juan.Palacios@cern.ch
 D: Contribution to symmetric representation of SMatrix classes
@@ -927,6 +935,14 @@ D: OpenLDAP interface
 N: Tomasz Sosnicki
 E: tom.sosnicki@gmail.com
 D: contribution to gviz3d/TStructViewer
+
+N: Thibault Souquet
+E: contact@thibaultsouquet.fr
+D: Image viewer for the ROOT Browser (v7)
+D: Breadcrumbs display for the ROOT Browser (v7)
+D: ROOT Browser (v7) drawing options
+D: Improvements in JavaScript ROOT GUI
+D: Improvements in the ROOT website Jekyll theme
 
 N: Marcelo Sousa
 E: marcelo.sousa@cern.ch

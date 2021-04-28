@@ -105,6 +105,7 @@ ROOT_BUILD_OPTION(builtin_xxhash OFF "Build bundled copy of xxHash")
 ROOT_BUILD_OPTION(builtin_zlib OFF "Build bundled copy of zlib")
 ROOT_BUILD_OPTION(builtin_zstd OFF "Build included libzstd, or use system libzstd")
 ROOT_BUILD_OPTION(ccache OFF "Enable ccache usage for speeding up builds")
+ROOT_BUILD_OPTION(distcc OFF "Enable distcc usage for speeding up builds (ccache is called first if enabled)")
 ROOT_BUILD_OPTION(cefweb OFF "Enable support for CEF (Chromium Embedded Framework) web-based display")
 ROOT_BUILD_OPTION(clad ON "Build clad, the cling automatic differentiation plugin (requires network)")
 ROOT_BUILD_OPTION(cocoa OFF "Use native Cocoa/Quartz graphics backend (MacOS X only)")
@@ -144,7 +145,7 @@ ROOT_BUILD_OPTION(opengl ON "Enable support for OpenGL (requires libGL and libGL
 ROOT_BUILD_OPTION(oracle ON "Enable support for Oracle databases (requires Oracle Instant Client)")
 ROOT_BUILD_OPTION(pgsql ON "Enable support for PostgreSQL")
 ROOT_BUILD_OPTION(pyroot ON "Enable support for automatic Python bindings (PyROOT)")
-ROOT_BUILD_OPTION(pyroot_experimental ON "Use experimental Python bindings for ROOT")
+ROOT_BUILD_OPTION(pyroot_legacy OFF "Use legacy Python bindings for ROOT")
 ROOT_BUILD_OPTION(pythia6_nolink OFF "Delayed linking of Pythia6 library")
 ROOT_BUILD_OPTION(pythia6 ON "Enable support for Pythia 6.x")
 ROOT_BUILD_OPTION(pythia8 ON "Enable support for Pythia 8.x")
@@ -168,6 +169,7 @@ ROOT_BUILD_OPTION(tmva-pymva ON "Enable support for Python in TMVA (requires num
 ROOT_BUILD_OPTION(tmva-rmva OFF "Enable support for R in TMVA")
 ROOT_BUILD_OPTION(spectrum ON "Enable support for TSpectrum")
 ROOT_BUILD_OPTION(unuran OFF "Enable support for UNURAN (package for generating non-uniform random numbers)")
+ROOT_BUILD_OPTION(uring OFF "Enable support for io_uring (requires liburing and Linux kernel >= 5.1)")
 ROOT_BUILD_OPTION(vc OFF "Enable support for Vc (SIMD Vector Classes for C++)")
 ROOT_BUILD_OPTION(vmc OFF "Build VMC simulation library")
 ROOT_BUILD_OPTION(vdt ON "Enable support for VDT (fast and vectorisable mathematical functions)")
@@ -299,7 +301,7 @@ if(WIN32)
   set(davix_defvalue OFF)
   set(imt_defvalue OFF)
   set(memstat_defvalue OFF)
-  set(pyroot_experimental_defvalue OFF)
+  set(pyroot_legacy_defvalue ON)
   set(roofit_defvalue OFF)
   set(roottest_defvalue OFF)
   set(runtime_cxxmodules_defvalue OFF)
@@ -316,9 +318,9 @@ endif()
 
 # Pyroot requires python-dev package; force to OFF if it was not found
 # PYTHONLIBS_FOUND is used for cmake < 3.12
-if(NOT PYTHONLIBS_FOUND AND NOT Python3_Development_FOUND AND (NOT Python2_Development_FOUND OR "${Python2_VERSION}" VERSION_LESS "2.7"))
+if(NOT PYTHONLIBS_FOUND AND NOT Python3_Interpreter_Development_FOUND AND (NOT Python2_Interpreter_Development_FOUND OR "${Python2_VERSION}" VERSION_LESS "2.7"))
   set(pyroot_defvalue OFF)
-  set(pyroot_experimental_defvalue OFF)
+  set(pyroot_legacy_defvalue OFF)
   set(tmva-pymva_defvalue OFF)
 endif()
 
@@ -386,7 +388,7 @@ endif()
 
 #---Removed options------------------------------------------------------------
 foreach(opt afdsmgrd afs bonjour castor chirp geocad glite globus hdfs ios
-            krb5 ldap qt qtgsi rfio ruby sapdb srp table)
+            krb5 ldap qt qtgsi rfio ruby sapdb srp table python)
   if(${opt})
     message(FATAL_ERROR ">>> Option '${opt}' is no longer supported in ROOT ${ROOT_VERSION}.")
   endif()
@@ -401,8 +403,7 @@ endforeach()
 
 #---Replaced options--------------------------------------------------------------------------
 if(python)
-  message(DEPRECATION ">>> Please use the equivalent option 'pyroot' instead of 'python'; the latter will be removed in v6.22.")
-  set(pyroot ON CACHE BOOL "" FORCE)
+  message(STATUS ">>> INFO: 'python' option was removed. Instead, please check, that it was enabled a 'pyroot' option (by default it is ON).")
 endif()
 
 #---Avoid creating dependencies to 'non-standard' header files -------------------------------
@@ -441,19 +442,25 @@ if(macos_native)
     foreach(_prefix /sw /opt/local /usr/local) # Fink installs in /sw, and MacPort in /opt/local and Brew in /usr/local
       list(APPEND CMAKE_IGNORE_PATH ${_prefix}/bin ${_prefix}/include ${_prefix}/lib)
     endforeach()
+    if(CMAKE_VERSION VERSION_GREATER 3.15)
+      # Bug was reported on newer version of CMake on Mac OS X:
+      # https://gitlab.kitware.com/cmake/cmake/-/issues/19662
+      # https://github.com/microsoft/vcpkg/pull/7967
+      set(builtin_glew_defvalue ON)
+    endif()
   else()
     message(STATUS "Option 'macos_native' is only for MacOS systems. Ignoring it.")
   endif()
 endif()
 
 # Print message saying with which versions of Python are used to build
-if(NOT (Python3_Interpreter_FOUND AND Python3_Development_FOUND) OR NOT (Python2_Interpreter_FOUND AND Python2_Development_FOUND))
-  message(STATUS "PyROOT will be built for version ${PYTHON_VERSION_MAJOR}")
-elseif((Python3_Interpreter_FOUND AND Python3_Development_FOUND) AND (Python2_Interpreter_FOUND AND Python2_Development_FOUND))
-  if(pyroot_experimental)
-    # In PyROOT experimental, if we found two Python versions we build for both
-    message(STATUS "PyROOT will be built for versions ${PYTHON_VERSION_MAJOR} (Main) and ${OTHER_PYTHON_VERSION_MAJOR}")
+if(NOT Python3_Interpreter_Development_FOUND OR NOT Python2_Interpreter_Development_FOUND)
+  message(STATUS "PyROOT will be built for version ${PYTHON_VERSION_STRING_Development_Main}")
+elseif(Python3_Interpreter_Development_FOUND AND Python2_Interpreter_Development_FOUND)
+  if(NOT pyroot_legacy)
+    # In new PyROOT, if we found two Python versions we build for both
+    message(STATUS "PyROOT will be built for versions ${PYTHON_VERSION_STRING_Development_Main} (Main) and ${PYTHON_VERSION_STRING_Development_Other}")
   elseif(pyroot)
-    message(STATUS "PyROOT will be built for version ${PYTHON_VERSION_MAJOR}")
+    message(STATUS "PyROOT will be built for version ${PYTHON_VERSION_STRING_Development_Main}")
   endif()
 endif()

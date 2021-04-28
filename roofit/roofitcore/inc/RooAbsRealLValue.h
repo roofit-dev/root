@@ -17,7 +17,8 @@
 #define ROO_ABS_REAL_LVALUE
 
 #include <cmath>
-#include <float.h>
+#include <cfloat>
+#include <utility>
 #include "TString.h"
 
 #include "RooAbsReal.h"
@@ -37,7 +38,13 @@ public:
   virtual ~RooAbsRealLValue();
 
   // Parameter value and error accessors
+  /// Set the current value of the object. Needs to be overridden by implementations.
   virtual void setVal(Double_t value)=0;
+  /// Set the current value of the object. The rangeName is ignored.
+  /// Can be overridden by derived classes to e.g. check if the value fits in the given range.
+  virtual void setVal(Double_t value, const char* /*rangeName*/) {
+    return setVal(value) ;
+  }
   virtual RooAbsArg& operator=(const RooAbsReal& other) ;
   virtual RooAbsArg& operator=(Double_t newValue);
 
@@ -151,14 +158,8 @@ public:
 
 protected:
 
-  friend class RooRealBinding ;
-
   virtual void setValFast(Double_t value) { setVal(value) ; }
 
-  virtual void setVal(Double_t value, const char* /*rangeName*/) {
-    // Set object value to 'value'
-    return setVal(value) ;
-  }
   Bool_t fitRangeOKForPlotting() const ;
   void copyCache(const RooAbsArg* source, Bool_t valueOnly=kFALSE, Bool_t setValDirty=kTRUE) ;
 

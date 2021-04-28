@@ -23,7 +23,7 @@
 
    JSROOT.v7 = {}; // placeholder for v7-relevant code
 
-   /** Evalue attributes using fAttr storage and configured RStyle */
+   /** Evaluate attributes using fAttr storage and configured RStyle */
    JSROOT.TObjectPainter.prototype.v7EvalAttr = function(name, dflt) {
       var obj = this.GetObject();
       if (!obj) return dflt;
@@ -120,7 +120,7 @@
       return Math.round(norm*sizepx + px);
    }
 
-   /** Evalue RColor using attribute storage and configured RStyle */
+   /** Evaluate RColor using attribute storage and configured RStyle */
    JSROOT.TObjectPainter.prototype.v7EvalColor = function(name, dflt) {
       var rgb = this.v7EvalAttr(name + "_rgb", "");
 
@@ -134,11 +134,12 @@
    JSROOT.TObjectPainter.prototype.createv7AttFill = function(prefix) {
       if (!prefix || (typeof prefix != "string")) prefix = "fill_";
 
-      var fill_color = this.v7EvalColor(prefix + "color", "white");
+      var fill_color = this.v7EvalColor(prefix + "color", ""),
+          fill_style = this.v7EvalAttr(prefix + "style", 1001);
 
-      this.createAttFill({ pattern: 1001, color: 0 });
+      this.createAttFill({ pattern: fill_style, color: 0 });
 
-      this.fillatt.SetSolidColor(fill_color);
+      this.fillatt.SetSolidColor(fill_color || "none");
    }
 
    /** Create this.lineatt object based on v7 line attributes */
@@ -152,6 +153,16 @@
       this.createAttLine({ color: line_color, width: line_width, style: line_style });
    }
 
+   JSROOT.TObjectPainter.prototype.createv7AttMarker = function(prefix) {
+      if (!prefix || (typeof prefix != "string")) prefix = "marker_";
+
+      var marker_color = this.v7EvalColor(prefix + "color", "black"),
+          marker_size = this.v7EvalAttr(prefix + "size", 1),
+          marker_style = this.v7EvalAttr(prefix + "style", 1);
+
+      this.createAttMarker({ color: marker_color, size: marker_size, style: marker_style });
+   }
+
    /** Create RChangeAttr, which can be applied on the server side */
    JSROOT.TObjectPainter.prototype.v7AttrChange = function(req,name,value,kind) {
       if (!this.snapid)
@@ -162,6 +173,7 @@
          req.ids = [];
          req.names = [];
          req.values = [];
+         req.update = true;
       }
 
       req.ids.push(this.snapid);
@@ -188,26 +200,28 @@
    }
 
    /** Sends accumulated attribute changes to server */
-   JSROOT.TObjectPainter.prototype.v7SendAttrChanges = function(req) {
+   JSROOT.TObjectPainter.prototype.v7SendAttrChanges = function(req, do_update) {
       var canp = this.canv_painter();
-      if (canp && req && req._typename)
+      if (canp && req && req._typename) {
+         if (do_update !== undefined) req.update = do_update ? true : false;
          canp.v7SubmitRequest("", req);
+      }
    }
 
    /** @brief Submit request to server-side drawable
     * @param kind defines request kind, only single request a time can be submitted
     * @param req is object derived from DrawableRequest, including correct _typename
-    * @param method is method of painter object
+    * @param method is method of painter object which will be called when getting reply
     * @private */
    JSROOT.TObjectPainter.prototype.v7SubmitRequest = function(kind, req, method) {
       var canp = this.canv_painter();
-      if (!canp || !canp.SubmitDrawableRequest) return false;
+      if (!canp || !canp.SubmitDrawableRequest) return null;
 
       // special situation when snapid not yet assigned - just keep ref until snapid is there
       // maybe keep full list - for now not clear if really needed
       if (!this.snapid) {
-         this._pending_request = { _kind: kind, _req: req, _method: method};
-         return false;
+         this._pending_request = { _kind: kind, _req: req, _method: method };
+         return req;
       }
 
       return canp.SubmitDrawableRequest(kind, req, this, method);
@@ -1344,7 +1358,7 @@
 
    }
 
-   RFramePainter.prototype.DrawAxes = function(shrink_forbidden) {
+   RFramePainter.prototype.DrawAxes = function() {
       // axes can be drawn only for main histogram
 
       if (this.axes_drawn) return true;
@@ -1399,28 +1413,9 @@
          draw_vertical.DrawAxis(true, layer, w, h,
                                 draw_vertical.invert_side ? "translate(" + w + ",0)" : undefined,
                                 false, show_second_ticks ? w : 0, disable_axis_draw,
-                             draw_vertical.invert_side ? 0 : this.frame_x());
+                                draw_vertical.invert_side ? 0 : this.frame_x());
 
          this.DrawGrids();
-      }
-
-      if (!shrink_forbidden && JSROOT.gStyle.CanAdjustFrame && !disable_axis_draw) {
-
-         var shrink = 0., ypos = draw_vertical.position;
-
-         if ((-0.2*w < ypos) && (ypos < 0)) {
-            shrink = -ypos/w + 0.001;
-            this.shrink_frame_left += shrink;
-         } else if ((ypos>0) && (ypos<0.3*w) && (this.shrink_frame_left > 0) && (ypos/w > this.shrink_frame_left)) {
-            shrink = -this.shrink_frame_left;
-            this.shrink_frame_left = 0.;
-         }
-
-         if (shrink != 0) {
-            this.Shrink(shrink, 0);
-            this.Redraw();
-            this.DrawAxes(true);
-         }
       }
 
       this.axes_drawn = true;
@@ -1442,6 +1437,13 @@
          this.SetRootPadRange(pad);
       }
       */
+
+      var changes = {};
+      this.v7AttrChange(changes, "margin_left", this.fX1NDC);
+      this.v7AttrChange(changes, "margin_bottom", this.fY1NDC);
+      this.v7AttrChange(changes, "margin_right", 1 - this.fX2NDC);
+      this.v7AttrChange(changes, "margin_top", 1 - this.fY2NDC);
+      this.v7SendAttrChanges(changes, false); // do not invoke canvas update on the server
 
       this.RedrawPad();
    }
@@ -1535,8 +1537,6 @@
       var pp = this.pad_painter();
       if (pp) pp.frame_painter_ref = this;
 
-      if (this.mode3d) return;
-
       // first update all attributes from objects
       this.UpdateAttributes();
 
@@ -1546,12 +1546,26 @@
           w = Math.round(width * (this.fX2NDC - this.fX1NDC)),
           tm = Math.round(height * (1 - this.fY2NDC)),
           h = Math.round(height * (this.fY2NDC - this.fY1NDC)),
-          rotate = false, fixpos = false;
+          rotate = false, fixpos = false,
+          trans = "translate(" + lm + "," + tm + ")";
 
       if (pp && pp.options) {
          if (pp.options.RotateFrame) rotate = true;
          if (pp.options.FixFrame) fixpos = true;
       }
+
+      if (rotate) {
+         trans += " rotate(-90) " + "translate(" + -h + ",0)";
+         var d = w; w = h; h = d;
+      }
+
+      // update values here to let access even when frame is not really updated
+      this._frame_x = lm;
+      this._frame_y = tm;
+      this._frame_width = w;
+      this._frame_height = h;
+
+      if (this.mode3d) return; // no need for real draw in mode3d
 
       // this is svg:g object - container for every other items belonging to frame
       this.draw_g = this.svg_layer("primitives_layer").select(".root_frame");
@@ -1594,17 +1608,6 @@
       }
 
       this.axes_drawn = false;
-
-      var trans = "translate(" + lm + "," + tm + ")";
-      if (rotate) {
-         trans += " rotate(-90) " + "translate(" + -h + ",0)";
-         var d = w; w = h; h = d;
-      }
-
-      this._frame_x = lm;
-      this._frame_y = tm;
-      this._frame_width = w;
-      this._frame_height = h;
 
       this.draw_g.attr("transform", trans);
 
@@ -1786,9 +1789,9 @@
          unzoom_z = (zmin === zmax) && (zmin === 0);
       }
 
-      var changed = false, fp = this, changes = {};
-
-      var req = {
+      var changed = false, fp = this, changes = {},
+          r_x = "", r_y = "", r_z = "",
+         req = {
          _typename: "ROOT::Experimental::RFrame::RUserRanges",
          values: [0, 0, 0, 0, 0, 0],
          flags: [false, false, false, false, false, false]
@@ -1800,7 +1803,7 @@
             if (zoom_x && obj.CanZoomIn("x", xmin, xmax)) {
                fp.zoom_xmin = xmin;
                fp.zoom_xmax = xmax;
-               changed = true;
+               changed = true; r_x = "0";
                zoom_x = false;
                fp.v7AttrChange(changes, "x_zoommin", xmin);
                fp.v7AttrChange(changes, "x_zoommax", xmax);
@@ -1810,7 +1813,7 @@
             if (zoom_y && obj.CanZoomIn("y", ymin, ymax)) {
                fp.zoom_ymin = ymin;
                fp.zoom_ymax = ymax;
-               changed = true;
+               changed = true; r_y = "1";
                zoom_y = false;
                fp.v7AttrChange(changes, "y_zoommin", ymin);
                fp.v7AttrChange(changes, "y_zoommax", ymax);
@@ -1820,7 +1823,7 @@
             if (zoom_z && obj.CanZoomIn("z", zmin, zmax)) {
                fp.zoom_zmin = zmin;
                fp.zoom_zmax = zmax;
-               changed = true;
+               changed = true; r_z = "2";
                zoom_z = false;
                fp.v7AttrChange(changes, "z_zoommin", zmin);
                fp.v7AttrChange(changes, "z_zoommax", zmax);
@@ -1832,21 +1835,21 @@
       // and process unzoom, if any
       if (unzoom_x || unzoom_y || unzoom_z) {
          if (unzoom_x) {
-            if (this.zoom_xmin !== this.zoom_xmax) changed = true;
+            if (this.zoom_xmin !== this.zoom_xmax) { changed = true; r_x = "0"; }
             this.zoom_xmin = this.zoom_xmax = 0;
             fp.v7AttrChange(changes, "x_zoommin", null);
             fp.v7AttrChange(changes, "x_zoommax", null);
             req.values[0] = req.values[1] = -1;
          }
          if (unzoom_y) {
-            if (this.zoom_ymin !== this.zoom_ymax) changed = true;
+            if (this.zoom_ymin !== this.zoom_ymax) { changed = true; r_y = "1"; }
             this.zoom_ymin = this.zoom_ymax = 0;
             fp.v7AttrChange(changes, "y_zoommin", null);
             fp.v7AttrChange(changes, "y_zoommax", null);
             req.values[2] = req.values[3] = -1;
          }
          if (unzoom_z) {
-            if (this.zoom_zmin !== this.zoom_zmax) changed = true;
+            if (this.zoom_zmin !== this.zoom_zmax) { changed = true; r_z = "2"; }
             this.zoom_zmin = this.zoom_zmax = 0;
             fp.v7AttrChange(changes, "z_zoommin", null);
             fp.v7AttrChange(changes, "z_zoommax", null);
@@ -1854,14 +1857,13 @@
          }
       }
 
-      if (this.v7CommMode() == JSROOT.v7.CommMode.kNormal) {
+      if (this.v7CommMode() == JSROOT.v7.CommMode.kNormal)
          this.v7SubmitRequest("zoom", { _typename: "ROOT::Experimental::RFrame::RZoomRequest", ranges: req });
-      }
 
       // this.v7SendAttrChanges(changes);
 
       if (changed)
-         this.InteractiveRedraw("pad", "zoom");
+         this.InteractiveRedraw("pad", "zoom" + r_x + r_y + r_z);
 
       return changed;
    }
@@ -2036,8 +2038,7 @@
       } else {
          switch (kind) {
             case 1:
-               var fp = this.frame_painter();
-               if (fp) fp.ProcessFrameClick(pnt);
+               this.ProcessFrameClick(pnt);
                break;
             case 2:
                var pp = this.pad_painter();
@@ -2185,7 +2186,7 @@
 
          var diff = now.getTime() - this.last_touch.getTime();
 
-         if ((diff > 500) && (diff<2000) && !this.frame_painter().IsTooltipShown()) {
+         if ((diff > 500) && (diff<2000) && !this.IsTooltipShown()) {
             this.ShowContextMenu('main', { clientX: this.zoom_curr[0], clientY: this.zoom_curr[1] });
             this.last_touch = new Date(0);
          } else {
@@ -2550,9 +2551,8 @@
    }
 
    RFramePainter.prototype.ProcessKeyPress = function(evnt) {
-
       var main = this.select_main();
-      if (main.empty()) return;
+      if (!JSROOT.key_handling || main.empty()) return;
 
       var key = "";
       switch (evnt.keyCode) {
@@ -3549,17 +3549,27 @@
       }
    }
 
-   RPadPainter.prototype.FindSnap = function(snapid) {
+   /** Search painter with specified snapid, also sub-pads are checked */
+   RPadPainter.prototype.FindSnap = function(snapid, onlyid) {
 
-      if (this.snapid === snapid) return this;
+      function check(checkid) {
+         if (!checkid || (typeof checkid != 'string')) return false;
+         if (checkid == snapid) return true;
+         return onlyid && (checkid.length > snapid.length) &&
+                (checkid.indexOf(snapid) == (checkid.length - snapid.length));
+      }
+
+      if (check(this.snapid)) return this;
 
       if (!this.painters) return null;
 
       for (var k=0;k<this.painters.length;++k) {
          var sub = this.painters[k];
 
-         if (typeof sub.FindSnap === 'function') sub = sub.FindSnap(snapid);
-         else if (sub.snapid !== snapid) sub = null;
+         if (!onlyid && (typeof sub.FindSnap === 'function'))
+            sub = sub.FindSnap(snapid);
+         else if (!check(sub.snapid))
+            sub = null;
 
          if (sub) return sub;
       }
@@ -4522,7 +4532,8 @@
    /** Submit request to RDrawable object on server side */
    RCanvasPainter.prototype.SubmitDrawableRequest = function(kind, req, painter, method) {
 
-      if (!this._websocket || !req || !req._typename || !painter.snapid || (typeof painter.snapid != "string")) return false;
+      if (!this._websocket || !req || !req._typename ||
+          !painter.snapid || (typeof painter.snapid != "string")) return null;
 
       if (kind && method) {
          // if kind specified - check if such request already was submitted
@@ -4566,7 +4577,7 @@
       // console.log('Sending request ', msg.substr(0,60));
 
       this.SendWebsocket("REQ:" + msg);
-      return true;
+      return req;
    }
 
    RCanvasPainter.prototype.SubmitMenuRequest = function(painter, menukind, reqid, call_back) {
@@ -4607,7 +4618,7 @@
             delete req._painter._requests[req._kind];
 
       if (req._method)
-         req._method(reply);
+         req._method(reply, req);
 
       // resubmit last request of that kind
       if (req._nextreq && !req._painter._requests[req._kind])
@@ -4695,38 +4706,197 @@
       return painter;
    }
 
-   // =================================================================================
+   // ======================================================================================
 
-   function drawFrameTitle() {
+   function RPavePainter(pave, opt, csstype) {
+      JSROOT.TObjectPainter.call(this, pave, opt);
+      this.csstype = csstype || "pave";
+   }
+
+   RPavePainter.prototype = Object.create(JSROOT.TObjectPainter.prototype);
+
+   RPavePainter.prototype.DrawContent = function() {
+      // do nothing, will be reimplemented in derived classes
+   }
+
+   RPavePainter.prototype.DrawPave = function() {
+
+      //var framep = this.frame_painter();
+
+      // frame painter must  be there
+      //if (!framep)
+      //   return console.log('no frame painter - no RPave drawing');
+
+      var pw = this.pad_width(),
+          ph = this.pad_height(),
+          fx, fy, fw, fh;
+
+      if (this.frame_painter()) {
+         fx = this.frame_x();
+         fy = this.frame_y();
+         fw = this.frame_width();
+         fh = this.frame_height();
+      } else {
+         var st = JSROOT.gStyle;
+         fx = Math.round(st.fPadLeftMargin*pw);
+         fy = Math.round(st.fPadTopMargin*ph);
+         fw = Math.round((1-st.fPadLeftMargin-st.fPadRightMargin)*pw);
+         fh = Math.round((1-st.fPadTopMargin-st.fPadBottomMargin)*ph);
+      }
+
+      var visible       = this.v7EvalAttr("visible", true),
+          pave_cornerx = this.v7EvalLength("cornerx", pw, 0.02),
+          pave_cornery = this.v7EvalLength("cornery", ph, -0.02),
+          pave_width   = this.v7EvalLength("width", pw, 0.3),
+          pave_height  = this.v7EvalLength("height", ph, 0.3),
+          line_width    = this.v7EvalAttr("border_width", 1),
+          line_style    = this.v7EvalAttr("border_style", 1),
+          line_color    = this.v7EvalColor("border_color", "black"),
+          fill_color    = this.v7EvalColor("fill_color", "white"),
+          fill_style    = this.v7EvalAttr("fill_style", 1);
+
+      this.CreateG(false);
+
+      this.draw_g.classed("most_upper_primitives", true); // this primitive will remain on top of list
+
+      if (!visible) return;
+
+      if (fill_style == 0) fill_color = "none";
+
+      var pave_x = Math.round(fx + fw + pave_cornerx - pave_width),
+          pave_y = Math.round(fy + pave_cornery);
+
+      // x,y,width,height attributes used for drag functionality
+      this.draw_g.attr("transform", "translate(" + pave_x + "," + pave_y + ")")
+                 .attr("x", pave_x).attr("y", pave_y)
+                 .attr("width", pave_width).attr("height", pave_height);
+
+      this.draw_g.append("svg:rect")
+                 .attr("x", 0)
+                 .attr("width", pave_width)
+                 .attr("y", 0)
+                 .attr("height", pave_height)
+                 .style("stroke", line_color)
+                 .attr("stroke-width", line_width)
+                 .style("stroke-dasharray", JSROOT.Painter.root_line_styles[line_style])
+                 .attr("fill", fill_color);
+
+      this.pave_width = pave_width;
+      this.pave_height = pave_height;
+
+      // here should be fill and draw of text
+
+      this.DrawContent();
+
+      if (JSROOT.BatchMode) return;
+
+      if (JSROOT.gStyle.ContextMenu && this.ShowContextMenu)
+         this.draw_g.on("contextmenu", this.ShowContextMenu.bind(this));
+
+      this.AddDrag({ minwidth: 20, minheight: 20, redraw: this.SizeChanged.bind(this) });
+   }
+
+   /** Process interactive moving of the stats box */
+   RPavePainter.prototype.SizeChanged = function() {
+      this.pave_width = parseInt(this.draw_g.attr("width"));
+      this.pave_height = parseInt(this.draw_g.attr("height"));
+
+      var pave_x = parseInt(this.draw_g.attr("x")),
+          pave_y = parseInt(this.draw_g.attr("y")),
+          pw     = this.pad_width(),
+          ph     = this.pad_height(),
+          fx, fy, fw, fh;
+
+      if (this.frame_painter()) {
+         fx = this.frame_x();
+         fy = this.frame_y();
+         fw = this.frame_width();
+         fh = this.frame_height();
+      } else {
+         var st = JSROOT.gStyle;
+         fx = Math.round(st.fPadLeftMargin*pw);
+         fy = Math.round(st.fPadTopMargin*ph);
+         fw = Math.round((1-st.fPadLeftMargin-st.fPadRightMargin)*pw);
+         fh = Math.round((1-st.fPadTopMargin-st.fPadBottomMargin)*ph);
+      }
+
+      var changes = {};
+      this.v7AttrChange(changes, "cornerx", (pave_x + this.pave_width - fx - fw) / pw);
+      this.v7AttrChange(changes, "cornery", (pave_y - fy) / ph);
+      this.v7AttrChange(changes, "width", this.pave_width / pw);
+      this.v7AttrChange(changes, "height", this.pave_height / ph);
+      this.v7SendAttrChanges(changes, false); // do not invoke canvas update on the server
+
+      this.draw_g.select("rect")
+                 .attr("width", this.pave_width)
+                 .attr("height", this.pave_height);
+
+      this.DrawContent();
+   }
+
+   RPavePainter.prototype.Redraw = function(reason) {
+      this.DrawPave();
+   }
+
+   function drawPave(divid, pave, opt) {
+      var painter = new RPavePainter(pave, opt);
+
+      painter.SetDivId(divid);
+
+      painter.DrawPave();
+
+      return painter.DrawingReady();
+   }
+
+   // =======================================================================================
+
+
+   function drawFrameTitle(reason) {
       var fp = this.frame_painter();
       if (!fp)
          return console.log('no frame painter - no title');
 
-      var fx = this.frame_x(),
-          fy = this.frame_y(),
-          fw = this.frame_width(),
-          fh = this.frame_height(),
-          ph = this.pad_height(),
+      var fx           = this.frame_x(),
+          fy           = this.frame_y(),
+          fw           = this.frame_width(),
+          fh           = this.frame_height(),
+          ph           = this.pad_height(),
           title        = this.GetObject(),
           pp           = this.pad_painter(),
-          use_frame    = false,
-          title_margin = this.v7EvalLength( "margin", ph, 0.02),
-          title_height = this.v7EvalLength( "height", ph, 0.05),
-          text_size    = this.v7EvalAttr( "text_size", 16),
-          text_angle   = -1 * this.v7EvalAttr( "text_angle", 0),
-          text_align   = this.v7EvalAttr( "text_align", 22),
-          text_color   = this.v7EvalColor( "text_color", "black"),
-          text_font    = this.v7EvalAttr( "text_font", 41);
+          title_margin = this.v7EvalLength("margin", ph, 0.02),
+          title_width  = fw,
+          title_height = this.v7EvalLength("height", ph, 0.05),
+          text_size    = this.v7EvalAttr("text_size", 20),
+          text_angle   = -1 * this.v7EvalAttr("text_angle", 0),
+          text_align   = this.v7EvalAttr("text_align", 22),
+          text_color   = this.v7EvalColor("text_color", "black"),
+          text_font    = this.v7EvalAttr("text_font", 41);
 
-      this.CreateG(false).attr("transform","translate(" + fx + "," + Math.round(fy-title_margin-title_height) + ")");
+      this.CreateG(false);
 
-      var arg = { align: 22, x: fw/2, y: title_height/2, text: title.fText, rotate: text_angle, color: text_color, latex: 1 };
+      if (reason == 'drag') {
+         title_width = parseInt(this.draw_g.attr("width"));
+         title_height = parseInt(this.draw_g.attr("height"));
+
+         var changes = {};
+         this.v7AttrChange(changes, "margin", (fy - parseInt(this.draw_g.attr("y")) - title_height) / ph );
+         this.v7AttrChange(changes, "height", title_height / ph);
+         this.v7SendAttrChanges(changes, false); // do not invoke canvas update on the server
+      } else {
+         this.draw_g.attr("transform","translate(" + fx + "," + Math.round(fy-title_margin-title_height) + ")")
+                    .attr("x", fx).attr("y", Math.round(fy-title_margin-title_height))
+                    .attr("width",title_width).attr("height",title_height);
+      }
+
+      var arg = { align: 22, x: title_width/2, y: title_height/2, text: title.fText, rotate: text_angle, color: text_color, latex: 1 };
 
       this.StartTextDrawing(text_font, text_size);
 
       this.DrawText(arg);
 
       this.FinishTextDrawing();
+
+      this.AddDrag({ minwidth: 20, minheight: 20, no_change_x: true, redraw: this.Redraw.bind(this,'drag') });
    }
 
    ////////////////////////////////////////////////////////////////////////////////////////////
@@ -4764,7 +4934,7 @@
             return l;
          }
 
-         // last color in pallette starts from level cntr[r-1]
+         // last color in palette starts from level cntr[r-1]
          return Math.floor((zc-cntr[0]) / (cntr[r-1] - cntr[0]) * (r-1));
       },
 
@@ -4864,8 +5034,7 @@
 
    RPalettePainter.prototype = Object.create(JSROOT.TObjectPainter.prototype);
 
-   RPalettePainter.prototype.GetPalette = function()
-   {
+   RPalettePainter.prototype.GetPalette = function() {
       var drawable = this.GetObject();
       var pal = drawable ? drawable.fPalette : null;
 
@@ -4875,13 +5044,10 @@
       return pal;
    }
 
-   RPalettePainter.prototype.DrawPalette = function() {
+   RPalettePainter.prototype.DrawPalette = function(after_resize) {
 
-      var pthis = this,
-          palette = this.GetPalette(),
+      var palette = this.GetPalette(),
           contour = palette.GetContour(),
-          can_move = false,
-          nbr1 = 8,
           framep = this.frame_painter();
 
       if (!contour)
@@ -4891,29 +5057,43 @@
       if (!framep)
          return console.log('no frame painter - no palette');
 
-      // zmin = Math.min(contour[0], framep.zmin);
-      // zmax = Math.max(contour[contour.length-1], framep.zmax);
-
-      var  zmin = contour[0],
-           zmax = contour[contour.length-1],
-          fx = this.frame_x(),
-          fy = this.frame_y(),
-          fw = this.frame_width(),
-          fh = this.frame_height(),
-          pw = this.pad_width(),
+      var zmin         = contour[0],
+          zmax         = contour[contour.length-1],
           obj          = this.GetObject(),
           pp           = this.pad_painter(),
-          use_frame    = false,
-          visible        = this.v7EvalAttr("visible", true),
-          palette_margin = this.v7EvalLength("margin", pw, 0.02),
-          palette_width = this.v7EvalLength("size", pw, 0.05),
+          fx           = this.frame_x(),
+          fy           = this.frame_y(),
+          fw           = this.frame_width(),
+          fh           = this.frame_height(),
+          pw           = this.pad_width(),
+          visible      = this.v7EvalAttr("visible", true),
+          palette_width, palette_height;
+
+      if (after_resize) {
+         palette_width = parseInt(this.draw_g.attr("width"));
+         palette_height = parseInt(this.draw_g.attr("height"));
+
+         var changes = {};
+         this.v7AttrChange(changes, "margin", (parseInt(this.draw_g.attr("x")) - fx - fw) / pw);
+         this.v7AttrChange(changes, "size", palette_width / pw);
+         this.v7SendAttrChanges(changes, false); // do not invoke canvas update on the server
+      } else {
+          var palette_margin = this.v7EvalLength("margin", pw, 0.02),
+              palette_x = Math.round(fx + fw + palette_margin),
+              palette_y = fy;
+
+          palette_width = this.v7EvalLength("size", pw, 0.05);
           palette_height = fh;
+
+          // x,y,width,height attributes used for drag functionality
+          this.draw_g.attr("transform","translate(" + palette_x +  "," + palette_y + ")")
+                     .attr("x", palette_x).attr("y", palette_y)
+                     .attr("width", palette_width).attr("height", palette_height);
+      }
 
       this.draw_g.selectAll("rect").remove();
 
       if (!visible) return;
-
-      this.draw_g.attr("transform","translate(" + Math.round(fx + fw + palette_margin) +  "," + fy + ")");
 
       var g_btns = this.draw_g.select(".colbtns");
       if (g_btns.empty())
@@ -4970,6 +5150,11 @@
       this.z_handle.max_tick_size = Math.round(palette_width*0.3);
 
       this.z_handle.DrawAxis(true, this.draw_g, palette_width, palette_height, "translate(" + palette_width + ", 0)");
+
+      if (JSROOT.BatchMode) return;
+
+      if (!after_resize)
+         this.AddDrag({ minwidth: 20, minheight: 20, no_change_y: true, redraw: this.DrawPalette.bind(this, true) });
 
       if (!JSROOT.gStyle.Zooming) return;
 
@@ -5057,6 +5242,8 @@
 
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHist1Drawable", icon: "img_histo1d", prereq: "v7hist", func: "JSROOT.v7.drawHist1", opt: "" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHist2Drawable", icon: "img_histo2d", prereq: "v7hist", func: "JSROOT.v7.drawHist2", opt: "" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHist3Drawable", icon: "img_histo3d", prereq: "v7hist3d", func: "JSROOT.v7.drawHist3", opt: "" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHistDisplayItem", icon: "img_histo1d", prereq: "v7hist", func: "JSROOT.v7.drawHistDisplayItem", opt: "" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RText", icon: "img_text", prereq: "v7more", func: "JSROOT.v7.drawText", opt: "", direct: true, csstype: "text" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RFrameTitle", icon: "img_text", func: drawFrameTitle, opt: "", direct: true, csstype: "title" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RPaletteDrawable", icon: "img_text", func: drawPalette, opt: "" });
@@ -5064,7 +5251,9 @@
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RLine", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawLine", opt: "", direct: true, csstype: "line" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RBox", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawBox", opt: "", direct: true, csstype: "box" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RMarker", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawMarker", opt: "", direct: true, csstype: "marker" });
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RLegend", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawLegend", opt: "", direct: true, csstype: "legend" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RPave", icon: "img_pavetext", func: drawPave, opt: "" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RLegend", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawLegend", opt: "" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RPaveText", icon: "img_pavetext", prereq: "v7more", func: "JSROOT.v7.drawPaveText", opt: "" });
    JSROOT.addDrawFunc({ name: "ROOT::Experimental::RFrame", icon: "img_frame", func: "JSROOT.v7.drawFrame", opt: "" });
 
    JSROOT.v7.RAxisPainter = RAxisPainter;
@@ -5073,10 +5262,12 @@
    JSROOT.v7.RPadPainter = RPadPainter;
    JSROOT.v7.RCanvasPainter = RCanvasPainter;
    JSROOT.v7.TCanvasPainter = RCanvasPainter; // temporary, fix in ROOT soon
+   JSROOT.v7.RPavePainter = RPavePainter;
    JSROOT.v7.drawFrame = drawFrame;
    JSROOT.v7.drawPad = drawPad;
    JSROOT.v7.drawCanvas = drawCanvas;
    JSROOT.v7.drawPadSnapshot = drawPadSnapshot;
+   JSROOT.v7.drawPave = drawPave;
    JSROOT.v7.drawFrameTitle = drawFrameTitle;
 
    return JSROOT;

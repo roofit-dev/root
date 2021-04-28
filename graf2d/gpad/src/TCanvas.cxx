@@ -9,17 +9,18 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <string.h>
-#include <stdlib.h>
+#include <cstring>
+#include <cstdlib>
+#include <iostream>
+#include <fstream>
 
-#include "Riostream.h"
 #include "TROOT.h"
 #include "TBuffer.h"
 #include "TCanvas.h"
+#include "TCanvasImp.h"
 #include "TDatime.h"
 #include "TClass.h"
 #include "TStyle.h"
-#include "TText.h"
 #include "TBox.h"
 #include "TCanvasImp.h"
 #include "TDialogCanvas.h"
@@ -43,6 +44,8 @@
 #include "TGraph.h"
 #include "TMath.h"
 #include "TView.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 #include "TVirtualMutex.h"
 
@@ -1156,6 +1159,14 @@ void TCanvas::Flush()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Force canvas update
+
+void TCanvas::ForceUpdate()
+{
+   if (fCanvasImp) fCanvasImp->ForceUpdate();
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Force a copy of current style for all objects in canvas.
 
 void TCanvas::UseCurrentStyle()
@@ -1449,11 +1460,28 @@ void TCanvas::HandleInput(EEventType event, Int_t px, Int_t py)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Iconify canvas
+
+void TCanvas::Iconify()
+{
+   if (fCanvasImp)
+      fCanvasImp->Iconify();
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Is folder ?
 
 Bool_t TCanvas::IsFolder() const
 {
    return fgIsFolder;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Is web canvas
+
+Bool_t TCanvas::IsWeb() const
+{
+   return fCanvasImp ? fCanvasImp->IsWeb() : kFALSE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1708,6 +1736,16 @@ void TCanvas::Resize(Option_t *)
    TPad::ResizePad();
 
    if (padsav) padsav->cd();
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Raise canvas window
+
+void TCanvas::RaiseWindow()
+{
+   if (fCanvasImp)
+      fCanvasImp->RaiseWindow();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2145,6 +2183,26 @@ void TCanvas::SetTitle(const char *title)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Set canvas window position
+
+void TCanvas::SetWindowPosition(Int_t x, Int_t y)
+{
+   if (fCanvasImp)
+      fCanvasImp->SetWindowPosition(x, y);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Set canvas window size
+
+void TCanvas::SetWindowSize(UInt_t ww, UInt_t wh)
+{
+   if (fBatch)
+      SetCanvasSize((ww + fCw) / 2, (wh + fCh) / 2);
+   else if (fCanvasImp)
+      fCanvasImp->SetWindowSize(ww, wh);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Set the canvas scale in centimeters.
 ///
 /// This information is used by PostScript to set the page size.
@@ -2170,6 +2228,15 @@ void TCanvas::Size(Float_t xsize, Float_t ysize)
    fYsizeUser = ysize;
 
    Resize();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Show canvas
+
+void TCanvas::Show()
+{
+   if (fCanvasImp)
+      fCanvasImp->Show();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

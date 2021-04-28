@@ -32,7 +32,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.TObjectPainter
+    * @arguments JSROOT.TObjectPainter
     * @param {object} axis - object to draw
     * @param {boolean} embedded - if true, painter used in other objects painters
     */
@@ -840,7 +840,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.TObjectPainter
+    * @arguments JSROOT.TObjectPainter
     * @param {object} tframe - TFrame object to draw
     */
 
@@ -1594,8 +1594,6 @@
       var pp = this.pad_painter();
       if (pp) pp.frame_painter_ref = this; // keep direct reference to the frame painter
 
-      if (this.mode3d) return; // no need to create any elements in 3d mode
-
       // first update all attributes from objects
       this.UpdateAttributes();
 
@@ -1605,12 +1603,24 @@
           w = Math.round(width * (this.fX2NDC - this.fX1NDC)),
           tm = Math.round(height * (1 - this.fY2NDC)),
           h = Math.round(height * (this.fY2NDC - this.fY1NDC)),
-          rotate = false, fixpos = false;
+          rotate = false, fixpos = false, trans = "translate(" + lm + "," + tm + ")";
 
       if (pp && pp.options) {
          if (pp.options.RotateFrame) rotate = true;
          if (pp.options.FixFrame) fixpos = true;
       }
+
+      if (rotate) {
+         trans += " rotate(-90) " + "translate(" + -h + ",0)";
+         var d = w; w = h; h = d;
+      }
+
+      this._frame_x = lm;
+      this._frame_y = tm;
+      this._frame_width = w;
+      this._frame_height = h;
+
+      if (this.mode3d) return; // no need to create any elements in 3d mode
 
       // this is svg:g object - container for every other items belonging to frame
       this.draw_g = this.svg_layer("primitives_layer").select(".root_frame");
@@ -1644,17 +1654,6 @@
       }
 
       this.axes_drawn = false;
-
-      var trans = "translate(" + lm + "," + tm + ")";
-      if (rotate) {
-         trans += " rotate(-90) " + "translate(" + -h + ",0)";
-         var d = w; w = h; h = d;
-      }
-
-      this._frame_x = lm;
-      this._frame_y = tm;
-      this._frame_width = w;
-      this._frame_height = h;
 
       this.draw_g.attr("transform", trans);
 
@@ -1908,10 +1907,8 @@
    }
 
    TFramePainter.prototype.ProcessKeyPress = function(evnt) {
-      if (!JSROOT.key_handling) return;
-
       var main = this.select_main();
-      if (main.empty()) return;
+      if (!JSROOT.key_handling || main.empty()) return;
 
       var key = "";
       switch (evnt.keyCode) {
@@ -2096,8 +2093,7 @@
       } else {
          switch (kind) {
             case 1:
-               var fp = this.frame_painter();
-               if (fp) fp.ProcessFrameClick(pnt);
+               this.ProcessFrameClick(pnt);
                break;
             case 2:
                var pp = this.pad_painter();
@@ -2505,7 +2501,7 @@
 
          var diff = now.getTime() - this.last_touch.getTime();
 
-         if ((diff > 500) && (diff<2000) && !this.frame_painter().IsTooltipShown()) {
+         if ((diff > 500) && (diff < 2000) && !this.IsTooltipShown()) {
             this.ShowContextMenu('main', { clientX: this.zoom_curr[0], clientY: this.zoom_curr[1] });
             this.last_touch = new Date(0);
          } else {
@@ -2709,7 +2705,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.TObjectPainter
+    * @arguments JSROOT.TObjectPainter
     * @param {object} pad - TPad object to draw
     * @param {boolean} iscan - if TCanvas object
     */
@@ -3124,7 +3120,7 @@
       if (!obj) return false;
 
       if (obj._typename == "TStyle") {
-         JSROOT.extend(JSROOT.gStyle, style);
+         JSROOT.extend(JSROOT.gStyle, obj);
          return true;
       }
 
@@ -4441,7 +4437,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.TPadPainter
+    * @arguments JSROOT.TPadPainter
     * @param {object} canvas - TCanvas object to draw
     */
 

@@ -21,6 +21,8 @@
 #include "RooArgSet.h"
 #include "RooArgList.h"
 #include "RooSpan.h"
+#include <map>
+#include <string>
 
 class RooAbsArg;
 class RooAbsReal ;
@@ -102,8 +104,13 @@ public:
   /// This indicates that the weight is constant. Use weight() to retrieve it.
   virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t len) const = 0;
 
+  /// Return number of entries in dataset, *i.e.*, count unweighted entries.
   virtual Int_t numEntries() const ;
+  /// Return effective number of entries in dataset, *i.e.*, sum all weights.
   virtual Double_t sumEntries() const = 0 ;
+  /// Return effective number of entries in dataset inside range or after cuts, *i.e.*, sum certain weights.
+  /// \param[in] cutSpec Apply given cut when counting (*e.g.* `0 < x && x < 5`). Passing `"1"` selects all events.
+  /// \param[in] cutRange If the observables have a range with this name, only count events inside this range.
   virtual Double_t sumEntries(const char* cutSpec, const char* cutRange=0) const = 0 ; // DERIVED
   virtual Bool_t isWeighted() const { 
     // Do events in dataset have weights?
@@ -121,7 +128,7 @@ public:
   // Plot the distribution of a real valued arg
   virtual Roo1DTable* table(const RooArgSet& catSet, const char* cuts="", const char* opts="") const ;
   virtual Roo1DTable* table(const RooAbsCategory& cat, const char* cuts="", const char* opts="") const ;
-  /// Calls RooPlot* plotOn(RooPlot* frame, const RooLinkedList& cmdList) const ;
+  /// \see RooPlot* plotOn(RooPlot* frame, const RooLinkedList& cmdList) const
   virtual RooPlot* plotOn(RooPlot* frame, 
 			  const RooCmdArg& arg1=RooCmdArg::none(), const RooCmdArg& arg2=RooCmdArg::none(),
 			  const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(),

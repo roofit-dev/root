@@ -41,7 +41,8 @@ In order to access the name of a class within the ROOT type system, the method T
 
 #include "TClass.h"
 
-#include "Riostream.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 #include "TBaseClass.h"
 #include "TBrowser.h"
 #include "TBuffer.h"
@@ -88,12 +89,13 @@ In order to access the name of a class within the ROOT type system, the method T
 #include <cstdio>
 #include <cctype>
 #include <set>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <map>
 #include <typeinfo>
 #include <cmath>
-#include <assert.h>
+#include <cassert>
 #include <vector>
 #include <memory>
 
@@ -2853,7 +2855,7 @@ TVirtualCollectionProxy *TClass::GetCollectionProxy() const
 {
    // Use assert, so that this line (slow because of the TClassEdit) is completely
    // removed in optimized code.
-   assert(TestBit(kLoading) || !TClassEdit::IsSTLCont(fName) || fCollectionProxy || 0 == "The TClass for the STL collection has no collection proxy!");
+   //assert(TestBit(kLoading) || !TClassEdit::IsSTLCont(fName) || fCollectionProxy || 0 == "The TClass for the STL collection has no collection proxy!");
    if (gThreadTsd && fCollectionProxy) {
       TClassLocalStorage *local = TClassLocalStorage::GetStorage(this);
       if (local == 0) return fCollectionProxy;
@@ -3570,7 +3572,7 @@ TList *TClass::GetListOfBases()
             }
          }
          // We test again on fCanLoadClassInfo has another thread may have executed it.
-         if (!fHasRootPcmInfo && !fCanLoadClassInfo) {
+         if (!fHasRootPcmInfo && fCanLoadClassInfo) {
             LoadClassInfo();
          }
       }
@@ -4000,6 +4002,11 @@ void TClass::GetMissingDictionaries(THashTable& result, bool recurse)
       return;
    }
 
+   if (strncmp(fName, "unique_ptr<", 11) == 0 || strncmp(fName, "array<", 6) == 0 || strncmp(fName, "tuple<", 6) == 0) {
+      GetMissingDictionariesWithRecursionCheck(result, visited, recurse);
+      return;
+   }
+
    if (!HasDictionary()) {
       result.Add(this);
    }
@@ -4057,11 +4064,6 @@ void TClass::ReplaceWith(TClass *newcl) const
 
          info->Update(this, newcl);
       }
-
-      if (acl->GetCollectionProxy()) {
-         acl->GetCollectionProxy()->UpdateValueClass(this, newcl);
-      }
-      // We should also inform all the TBranchElement :( but we do not have a master list :(
    }
 
    TIter delIter( &tobedeleted );
@@ -6778,7 +6780,7 @@ void TClass::SetDestructor(ROOT::DesFunc_t destructorFunc)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Install a new wrapper around the directory auto add function..
+/// Install a new wrapper around the directory auto add function.
 /// The function autoAddFunc has the signature void (*)(void *obj, TDirectory dir)
 /// and should register 'obj' to the directory if dir is not null
 /// and unregister 'obj' from its current directory if dir is null
@@ -7118,12 +7120,12 @@ Bool_t ROOT::Internal::HasConsistentHashMember(TClass &clRef)
 /// (public or not), use
 /// \code{.cpp}
 ///     cl->GetProperty() & kClassHasDefaultCtor
-/// \code
+/// \endcode
 /// To know if the class described by this TClass has a public default
 /// constructor use:
 /// \code{.cpp}
 ///    gInterpreter->ClassInfo_HasDefaultConstructor(aClass->GetClassInfo());
-/// \code
+/// \endcode
 
 Bool_t TClass::HasDefaultConstructor(Bool_t testio) const
 {
