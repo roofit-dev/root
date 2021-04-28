@@ -35,8 +35,8 @@ class REveScene : public REveElement
    friend class REveManager;
 
 private:
-   REveScene(const REveScene &);            // Not implemented
-   REveScene &operator=(const REveScene &); // Not implemented
+   REveScene(const REveScene &) = delete;
+   REveScene &operator=(const REveScene &) = delete;
 
 protected:
    struct SceneCommand
@@ -45,7 +45,7 @@ protected:
       std::string fIcon;
       std::string fElementClass;
       std::string fAction;
-      ElementId_t fElementId;
+      ElementId_t fElementId{0};
 
       SceneCommand(const std::string& name, const std::string& icon,
                    const REveElement* element, const std::string& action) :
@@ -62,12 +62,13 @@ protected:
 
    Bool_t fAcceptingChanges{kFALSE};       ///<!
    Bool_t fChanged{kFALSE};                ///<!
-   Set_t  fChangedElements;                ///<!
+   // Changed or/and added.
+   // XXXX can change to vector (element checks if already registered now).
+   List_t  fChangedElements;               ///<!
    // For the following two have to re-think how the hierarchy will be handled.
    // If I remove a parent, i have to remove all the children.
    // So this has to be done right on both sides (on eve element and here).
    // I might need a set, so i can easily check if parent is in the removed / added list already.
-   List_t fAddedElements;                     ///<!
    std::vector<ElementId_t> fRemovedElements; ///<!
 
    std::vector<std::unique_ptr<REveClient>> fSubscribers; ///<!
@@ -85,8 +86,6 @@ public:
    REveScene(const std::string &n = "REveScene", const std::string &t = "");
    virtual ~REveScene();
 
-   void CollectSceneParents(List_t &scenes);
-
    Bool_t SingleRnrState() const override { return kTRUE; }
 
    void   SetHierarchical(Bool_t h) { fHierarchical = h; }
@@ -98,7 +97,6 @@ public:
    Bool_t IsAcceptingChanges() const { return fAcceptingChanges; }
    void BeginAcceptingChanges();
    void SceneElementChanged(REveElement *element);
-   void SceneElementAdded(REveElement *element);
    void SceneElementRemoved(ElementId_t id);
    void EndAcceptingChanges();
    void ProcessChanges();
@@ -132,12 +130,12 @@ public:
 class REveSceneList : public REveElement
 {
 private:
-   REveSceneList(const REveSceneList &);            // Not implemented
-   REveSceneList &operator=(const REveSceneList &); // Not implemented
+   REveSceneList(const REveSceneList &) = delete;
+   REveSceneList &operator=(const REveSceneList &) = delete;
 
 protected:
 public:
-   REveSceneList(const std::string& n = "REveSceneList", const std::string& t = "");
+   REveSceneList(const std::string &n = "REveSceneList", const std::string &t = "");
    virtual ~REveSceneList() {}
 
    void DestroyScenes();

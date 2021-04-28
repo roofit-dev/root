@@ -156,7 +156,7 @@
          depthMethod: "dflt",
          select_in_view: false,
          update_browser: true,
-         light: { top: false, bottom: false, left: false, right: false, front: false, specular: true },
+         light: { kind: "points", top: false, bottom: false, left: false, right: false, front: false, specular: true, power: 1 },
          trans_radial: 0, trans_z: 0
       };
 
@@ -467,6 +467,7 @@
 
       if (d.check("ORTHO_CAMERA_ROTATE")) { res.ortho_camera = true; res.can_rotate = true; }
       if (d.check("ORTHO_CAMERA")) { res.ortho_camera = true; res.can_rotate = false; }
+      if (d.check("MOUSE_CLICK")) res.mouse_click = true;
 
       if (d.check("DEPTHRAY") || d.check("DRAY")) res.depthMethod = "ray";
       if (d.check("DEPTHBOX") || d.check("DBOX")) res.depthMethod = "box";
@@ -657,9 +658,10 @@
       menu.add("Reset camera position", function() {
          this.focusCamera();
       });
-      menu.add("Get camera position", function() {
-         alert("Position (as url): &opt=" + this.produceCameraUrl());
-      });
+      if (!this._geom_viewer)
+         menu.add("Get camera position", function() {
+            alert("Position (as url): &opt=" + this.produceCameraUrl());
+         });
       if (!this.ctrl.project)
          menu.addchk(this.ctrl.rotate, "Autorotate", function() {
             this.setAutoRotate(!this.ctrl.rotate);
@@ -1743,6 +1745,7 @@
    /** Insert appropriate mesh for given entry
     * @private*/
    TGeoPainter.prototype.createEntryMesh = function(entry, shape, toplevel) {
+
       if (!shape.geom || (shape.nfaces === 0)) {
          // node is visible, but shape does not created
          this._clones.CreateObject3D(entry.stack, toplevel, 'delete_mesh');
@@ -1938,20 +1941,43 @@
        return (m1.fFillStyle === m2.fFillStyle) && (m1.fFillColor === m2.fFillColor);
    }
 
+   /** Should be invoked when light configuration changed. @private */
    TGeoPainter.prototype.changedLight = function(box) {
       if (!this._camera) return;
 
       var need_render = !box;
 
-     if (!box) box = this.getGeomBoundingBox(this._toplevel);
+      if (!box) box = this.getGeomBoundingBox(this._toplevel);
 
       var sizex = box.max.x - box.min.x,
           sizey = box.max.y - box.min.y,
           sizez = box.max.z - box.min.z,
-          lights = [];
+          plights = [], p = this.ctrl.light.power;
+
+      if (p === undefined) p = 1;
+
+      if (this._camera._lights != this.ctrl.light.kind) {
+         // remove all childs and recreate only necessary lights
+         JSROOT.Painter.DisposeThreejsObject(this._camera, true);
+
+         this._camera._lights = this.ctrl.light.kind;
+
+         switch (this._camera._lights) {
+            case "ambient" : this._camera.add(new THREE.AmbientLight(0xefefef, p)); break;
+            case "hemisphere" : this._camera.add(new THREE.HemisphereLight(0xffffbb, 0x080820, p)); break;
+            default: // 6 point lights
+               for (var n=0;n<6;++n)
+                  this._camera.add( new THREE.PointLight(0xefefef, p) );
+         }
+      }
 
       for (var k=0;k<this._camera.children.length;++k) {
          var light = this._camera.children[k], enabled = false;
+         if (light.isAmbientLight || light.isHemisphereLight) {
+            light.intensity = p;
+            continue;
+         }
+
          if (!light.isPointLight) continue;
          switch (k) {
             case 0: light.position.set(sizex/5, sizey/5, sizez/5); enabled = this.ctrl.light.specular; break;
@@ -1961,12 +1987,12 @@
             case 4: light.position.set(-2*sizex, 0, 0); enabled = this.ctrl.light.left; break;
             case 5: light.position.set(2*sizex, 0, 0); enabled = this.ctrl.light.right; break;
          }
-         light.power = enabled ? Math.PI*4 : 0;
-         if (enabled) lights.push(light);
+         light.power = enabled ? p*Math.PI*4 : 0;
+         if (enabled) plights.push(light);
       }
 
       // keep light power of all soources constant
-      lights.forEach(function(light) { light.power = 4*Math.PI/lights.length; })
+      plights.forEach(function(ll) { ll.power = p*4*Math.PI/plights.length; })
 
       if (need_render) this.Render3D();
    }
@@ -2051,12 +2077,11 @@
                            new THREE.Plane(new THREE.Vector3(0, 0, this.ctrl._yup ? 1 : -1), 0) ];
 
 
-      // Lights - add 6 sources, place them once dimension of geometry is known
-      for (var n=0;n<6;++n) {
-         var light = new THREE.PointLight(0xefefef, n==0 ? 1 : 0);
-         if (n==0) light.position.set(10, 10, 10);
-         this._camera.add( light );
-      }
+      // Light - add default point light, adjust later
+
+      var light = new THREE.PointLight(0xefefef, 1);
+      light.position.set(10, 10, 10);
+      this._camera.add( light );
 
       // Smooth Lighting Shader (Screen Space Ambient Occlusion)
       // http://threejs.org/examples/webgl_postprocessing_ssao.html
@@ -2359,7 +2384,7 @@
 
    TGeoPainter.prototype.focusCamera = function( focus, autoClip ) {
 
-      if (this.ctrl.project)
+      if (this.ctrl.project || this.ctrl.ortho_camera)
          return this.adjustCameraPosition();
 
       var box = new THREE.Box3();
@@ -4131,9 +4156,11 @@
          obj = null;
       }
 
-      if (opt && opt.indexOf("comp")==0 && shape && (shape._typename == 'TGeoCompositeShape') && shape.fNode) {
+      if ((typeof opt == "string") && opt.indexOf("comp")==0 && shape && (shape._typename == 'TGeoCompositeShape') && shape.fNode) {
+         var maxlvl = 1;
          opt = opt.substr(4);
-         obj = JSROOT.GEO.buildCompositeVolume(shape);
+         if (opt[0] == "x") {  maxlvl = 999; opt = opt.substr(1) + "_vislvl999"; }
+         obj = JSROOT.GEO.buildCompositeVolume(shape, maxlvl);
       }
 
       if (!obj && shape)
@@ -4174,34 +4201,48 @@
 
    /** Function used to build hierarchy of elements of composite shapes
     * @private */
-   JSROOT.GEO.buildCompositeVolume = function(comp, side) {
+   JSROOT.GEO.buildCompositeVolume = function(comp, maxlvl, side) {
+
+      if (maxlvl === undefined) maxlvl = 1;
+      if (!side) {
+         this.$comp_col_cnt = 0;
+         side = "";
+      }
 
       var vol = JSROOT.Create("TGeoVolume");
-      if (side && (comp._typename!=='TGeoCompositeShape')) {
+      JSROOT.GEO.SetBit(vol, JSROOT.GEO.BITS.kVisThis, true);
+      JSROOT.GEO.SetBit(vol, JSROOT.GEO.BITS.kVisDaughters, true);
+
+      if ((side && (comp._typename!=='TGeoCompositeShape')) || (maxlvl<=0)) {
          vol.fName = side;
-         JSROOT.GEO.SetBit(vol, JSROOT.GEO.BITS.kVisThis, true);
-         vol.fLineColor = (side=="Left"? 2 : 3);
+         vol.fLineColor = (this.$comp_col_cnt++ % 8) + 2;
          vol.fShape = comp;
          return vol;
       }
 
-      JSROOT.GEO.SetBit(vol, JSROOT.GEO.BITS.kVisDaughters, true);
+      if (side) side += "/";
       vol.$geoh = true; // workaround, let know browser that we are in volumes hierarchy
       vol.fName = "";
 
       var node1 = JSROOT.Create("TGeoNodeMatrix");
+      JSROOT.GEO.SetBit(node1, JSROOT.GEO.BITS.kVisThis, true);
+      JSROOT.GEO.SetBit(node1, JSROOT.GEO.BITS.kVisDaughters, true);
       node1.fName = "Left";
       node1.fMatrix = comp.fNode.fLeftMat;
-      node1.fVolume = JSROOT.GEO.buildCompositeVolume(comp.fNode.fLeft, "Left");
+      node1.fVolume = JSROOT.GEO.buildCompositeVolume(comp.fNode.fLeft, maxlvl-1, side + "Left");
 
       var node2 = JSROOT.Create("TGeoNodeMatrix");
+      JSROOT.GEO.SetBit(node2, JSROOT.GEO.BITS.kVisThis, true);
+      JSROOT.GEO.SetBit(node2, JSROOT.GEO.BITS.kVisDaughters, true);
       node2.fName = "Right";
       node2.fMatrix = comp.fNode.fRightMat;
-      node2.fVolume = JSROOT.GEO.buildCompositeVolume(comp.fNode.fRight, "Right");
+      node2.fVolume = JSROOT.GEO.buildCompositeVolume(comp.fNode.fRight, maxlvl-1, side + "Right");
 
       vol.fNodes = JSROOT.Create("TList");
       vol.fNodes.Add(node1);
       vol.fNodes.Add(node2);
+
+      if (!side) delete this.$comp_col_cnt;
 
       return vol;
    }

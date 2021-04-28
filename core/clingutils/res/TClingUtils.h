@@ -164,6 +164,7 @@ private:
    TNormalizedCtxt    *fNormalizedCtxt;
    ExistingTypeCheck_t fExistingTypeCheck;
    AutoParse_t         fAutoParse;
+   bool               *fInterpreterIsShuttingDownPtr;
    const int          *fPDebug; // debug flag, might change at runtime thus *
    bool WantDiags() const { return fPDebug && *fPDebug > 5; }
 
@@ -171,6 +172,7 @@ public:
    TClingLookupHelper(cling::Interpreter &interpreter, TNormalizedCtxt &normCtxt,
                       ExistingTypeCheck_t existingTypeCheck,
                       AutoParse_t autoParse,
+                      bool *shuttingDownPtr,
                       const int *pgDebug = 0);
    virtual ~TClingLookupHelper() { /* we're not owner */ }
 
@@ -178,7 +180,8 @@ public:
    virtual void GetPartiallyDesugaredName(std::string &nameLong);
    virtual bool IsAlreadyPartiallyDesugaredName(const std::string &nondef, const std::string &nameLong);
    virtual bool IsDeclaredScope(const std::string &base, bool &isInlined);
-   virtual bool GetPartiallyDesugaredNameWithScopeHandling(const std::string &tname, std::string &result);
+   virtual bool GetPartiallyDesugaredNameWithScopeHandling(const std::string &tname, std::string &result, bool dropstd = true);
+   virtual void ShuttingDownSignal();
 };
 
 //______________________________________________________________________________
@@ -346,10 +349,16 @@ clang::QualType AddDefaultParameters(clang::QualType instanceType,
 //______________________________________________________________________________
 llvm::StringRef DataMemberInfo__ValidArrayIndex(const clang::DeclaratorDecl &m, int *errnum = 0, llvm::StringRef  *errstr = 0);
 
-enum class EIOCtorCategory : short {kAbsent, kDefault, kIOPtrType, kIORefType};
+enum class EIOCtorCategory : short { kAbsent, kDefault, kIOPtrType, kIORefType };
 
 //______________________________________________________________________________
 EIOCtorCategory CheckConstructor(const clang::CXXRecordDecl*, const RConstructorType&, const cling::Interpreter& interp);
+
+//______________________________________________________________________________
+bool CheckDefaultConstructor(const clang::CXXRecordDecl*, const cling::Interpreter& interp);
+
+//______________________________________________________________________________
+EIOCtorCategory CheckIOConstructor(const clang::CXXRecordDecl*, const char *, const clang::CXXRecordDecl *, const cling::Interpreter& interp);
 
 //______________________________________________________________________________
 const clang::FunctionDecl* ClassInfo__HasMethod(const clang::DeclContext *cl, char const*, const cling::Interpreter& interp);

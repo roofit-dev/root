@@ -65,7 +65,9 @@ TClingMethodInfo::TClingMethodInfo(const TClingMethodInfo &rhs) :
    fContextIdx(rhs.fContextIdx),
    fIter(rhs.fIter),
    fTitle(rhs.fTitle),
-   fTemplateSpec(rhs.fTemplateSpec)
+   fTemplateSpec(rhs.fTemplateSpec),
+   fDefDataSpecFuns(rhs.fDefDataSpecFuns),
+   fDefDataSpecFunIter(fDefDataSpecFuns.begin() + (rhs.fDefDataSpecFunIter - rhs.fDefDataSpecFuns.begin()))
 {
 }
 
@@ -82,6 +84,8 @@ TClingMethodInfo& TClingMethodInfo::operator=(const TClingMethodInfo &rhs) {
    fIter = rhs.fIter;
    fTitle = rhs.fTitle;
    fTemplateSpec = rhs.fTemplateSpec;
+   fDefDataSpecFuns = rhs.fDefDataSpecFuns;
+   fDefDataSpecFunIter = fDefDataSpecFuns.begin() + (rhs.fDefDataSpecFunIter - rhs.fDefDataSpecFuns.begin());
 
    return *this;
 }
@@ -99,18 +103,38 @@ TClingMethodInfo::TClingMethodInfo(cling::Interpreter *interp,
    }
    clang::CXXRecordDecl *cxxdecl = llvm::dyn_cast<clang::CXXRecordDecl>(const_cast<clang::Decl*>(ci->GetDecl()));
    if (cxxdecl) {
-      // Make sure we have an entry for all the implicit function.
+      // Make sure we have an entry for all the implicit functions.
 
       // Could trigger deserialization of decls.
       cling::Interpreter::PushTransactionRAII RAII(interp);
 
-      fInterp->getSema().ForceDeclarationOfImplicitMembers(cxxdecl);
+      auto &SemaRef = fInterp->getSema();
+      SemaRef.ForceDeclarationOfImplicitMembers(cxxdecl);
+
+      auto emplaceSpecFunIfNeeded = [&](clang::Decl *D) {
+         if (!D)
+            return; // Handle "structor not found" case.
+
+         if (std::find(cxxdecl->decls_begin(), cxxdecl->decls_end(), D)
+            == cxxdecl->decls_end())
+            fDefDataSpecFuns.emplace_back(D);
+      };
+
+      // Assemble special functions (or FunctionTemplate-s) that are synthesized from DefinitionData but
+      // won't be enumerated as part of decls_begin()/decls_end().
+      for (auto ctor: SemaRef.LookupConstructors(cxxdecl))
+         emplaceSpecFunIfNeeded(ctor);
+      emplaceSpecFunIfNeeded(SemaRef.LookupCopyingAssignment(cxxdecl, /*Quals*/ 0, /*RValueThis*/ false, 0 /*ThisQuals*/));
+      emplaceSpecFunIfNeeded(SemaRef.LookupMovingAssignment(cxxdecl, /*Quals*/ 0, /*RValueThis*/ false, 0 /*ThisQuals*/));
+      emplaceSpecFunIfNeeded(SemaRef.LookupDestructor(cxxdecl));
    }
    clang::DeclContext *dc =
       llvm::cast<clang::DeclContext>(const_cast<clang::Decl*>(ci->GetDecl()));
    dc->collectAllContexts(fContexts);
    // Could trigger deserialization of decls.
    cling::Interpreter::PushTransactionRAII RAII(interp);
+   if (!fDefDataSpecFuns.empty())
+      fDefDataSpecFunIter = fDefDataSpecFuns.begin();
    fIter = dc->decls_begin();
    InternalNext();
    fFirstTime = true;
@@ -202,6 +226,8 @@ const clang::Decl* TClingMethodInfo::GetDeclSlow() const
    if (fTemplateSpec) {
       return fTemplateSpec;
    }
+   if (!fDefDataSpecFuns.empty())
+      return *fDefDataSpecFunIter;
    return *fIter;
 }
 
@@ -292,10 +318,16 @@ GetOrInstantiateFuncTemplateWithDefaults(clang::FunctionTemplateDecl* FTDecl,
          assert(0 && "unexpected template parameter pack");
          return nullptr;
       } if (auto TTP = dyn_cast<TemplateTypeParmDecl>(templateParm)) {
+         if (!TTP->hasDefaultArgument())
+            return nullptr;
          defaultTemplateArgs[iParam] = TemplateArgument(TTP->getDefaultArgument());
       } else if (auto NTTP = dyn_cast<NonTypeTemplateParmDecl>(templateParm)) {
+         if (!NTTP->hasDefaultArgument())
+            return nullptr;
          defaultTemplateArgs[iParam] = TemplateArgument(NTTP->getDefaultArgument());
       } else if (auto TTP = dyn_cast<TemplateTemplateParmDecl>(templateParm)) {
+         if (!TTP->hasDefaultArgument())
+            return nullptr;
          defaultTemplateArgs[iParam] = TemplateArgument(TTP->getDefaultArgument().getArgument());
       } else {
          // shouldn't end up here
@@ -371,10 +403,19 @@ int TClingMethodInfo::InternalNext()
          fFirstTime = false;
       }
       else {
-         ++fIter;
+         if (!fDefDataSpecFuns.empty()) {
+            ++fDefDataSpecFunIter;
+            if (fDefDataSpecFunIter == fDefDataSpecFuns.end()) {
+               // We have finished iterating the synthesized specfuns.
+               // Now continue with fContexts[0].decls_begin().
+               fDefDataSpecFuns.clear();
+               assert(fContextIdx == 0 && "Unexpected DC iteration state");
+            }
+         } else
+            ++fIter;
       }
       // Fix it if we have gone past the end of the current decl context.
-      while (!*fIter) {
+      while (fDefDataSpecFuns.empty() && !*fIter) {
          ++fContextIdx;
          if (fContextIdx >= fContexts.size()) {
             // Iterator is now invalid.
@@ -391,7 +432,11 @@ int TClingMethodInfo::InternalNext()
          }
       }
 
-      if (const auto templateDecl = llvm::dyn_cast<clang::FunctionTemplateDecl>(*fIter)) {
+      clang::Decl *declIter = *fIter;
+      if (!fDefDataSpecFuns.empty())
+         declIter = *fDefDataSpecFunIter;
+
+      if (const auto templateDecl = llvm::dyn_cast<clang::FunctionTemplateDecl>(declIter)) {
          // Instantiation below can trigger deserialization.
          cling::Interpreter::PushTransactionRAII RAII(fInterp);
 
@@ -405,11 +450,17 @@ int TClingMethodInfo::InternalNext()
       }
 
       // Return if this decl is a function or method.
-      if (llvm::isa<clang::FunctionDecl>(*fIter)) {
+      if (llvm::isa<clang::FunctionDecl>(declIter)) {
          // Iterator is now valid.
          return 1;
       }
-//      if (clang::FunctionDecl *fdecl = llvm::dyn_cast<clang::FunctionDecl>(*fIter)) {
+
+      // Collect internal `__cling_N5xxx' inline namespaces; they will be traversed later
+      if (auto NS = dyn_cast<NamespaceDecl>(declIter)) {
+         if (NS->getDeclContext()->isTranslationUnit() && NS->isInlineNamespace())
+            fContexts.push_back(NS);
+      }
+//      if (clang::FunctionDecl *fdecl = llvm::dyn_cast<clang::FunctionDecl>(declIter)) {
 //         if (fdecl->getAccess() == clang::AS_public || fdecl->getAccess() == clang::AS_none) {
 //            // Iterator is now valid.
 //            return 1;
@@ -431,6 +482,8 @@ long TClingMethodInfo::Property() const
    long property = 0L;
    property |= kIsCompiled;
    const clang::FunctionDecl *fd = GetMethodDecl();
+   if (fd->isConstexpr())
+      property |= kIsConstexpr;
    switch (fd->getAccess()) {
       case clang::AS_public:
          property |= kIsPublic;

@@ -1,6 +1,7 @@
 // Bindings
 #include "CPyCppyy.h"
 #include "CustomPyTypes.h"
+#include "CPPInstance.h"
 #include "Converters.h"
 #include "ProxyWrappers.h"
 #include "PyStrings.h"
@@ -41,7 +42,11 @@ PyTypeObject RefInt_Type = {       // python int is a C/C++ long
     (char*)"cppyy.Long",           // tp_name
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_CHECKTYPES |
-        Py_TPFLAGS_BASETYPE,       // tp_flags
+        Py_TPFLAGS_BASETYPE
+#if PY_VERSION_HEX >= 0x03040000
+        | Py_TPFLAGS_LONG_SUBCLASS
+#endif
+        ,                          // tp_flags
     (char*)"CPyCppyy long object for pass by reference",    // tp_doc
     0, 0, 0, 0, 0, 0, 0, 0, 0,
     &PyInt_Type,                   // tp_base
@@ -304,7 +309,7 @@ PyTypeObject IndexIter_Type = {
 
 
 static void vectoriter_dealloc(vectoriterobject* vi) {
-    delete vi->vi_converter;
+    if (vi->vi_converter && vi->vi_converter->HasState()) delete vi->vi_converter;
     indexiter_dealloc(vi);
 }
 
@@ -317,6 +322,14 @@ static PyObject* vectoriter_iternext(vectoriterobject* vi) {
     if (vi->vi_data && vi->vi_converter) {
         void* location = (void*)((ptrdiff_t)vi->vi_data + vi->vi_stride * vi->ii_pos);
         result = vi->vi_converter->FromMemory(location);
+    } else if (vi->vi_data && vi->vi_klass) {
+    // The CPPInstance::kNoMemReg by-passes the memory regulator; the assumption here is
+    // that objects in vectors are simple and thus do not need to maintain object identity
+    // (or at least not during the loop anyway). This gains 2x in performance.
+        Cppyy::TCppObject_t cppobj = (Cppyy::TCppObject_t)((ptrdiff_t)vi->vi_data + vi->vi_stride * vi->ii_pos);
+        result = CPyCppyy::BindCppObjectNoCast(cppobj, vi->vi_klass, CPyCppyy::CPPInstance::kNoMemReg);
+        if (vi->vi_flags && CPPInstance_Check(result))
+            PyObject_SetAttr(result, PyStrings::gLifeLine, vi->ii_container);
     } else {
         PyObject* pyindex = PyLong_FromSsize_t(vi->ii_pos);
         result = PyObject_CallMethodObjArgs((PyObject*)vi->ii_container, PyStrings::gGetNoCheck, pyindex, nullptr);

@@ -14,6 +14,8 @@
  *************************************************************************/
 
 #include <ROOT/RWebDisplayArgs.hxx>
+#include <ROOT/RWebWindow.hxx>
+#include <ROOT/RConfig.hxx>
 
 #include "TROOT.h"
 
@@ -60,12 +62,78 @@ ROOT::Experimental::RWebDisplayArgs::RWebDisplayArgs(int width, int height, int 
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
+/// Constructor - specify master window and channel (if reserved already)
+
+ROOT::Experimental::RWebDisplayArgs::RWebDisplayArgs(std::shared_ptr<RWebWindow> master, int channel)
+{
+   SetMasterWindow(master, channel);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////
+/// Destructor
+
+ROOT::Experimental::RWebDisplayArgs::~RWebDisplayArgs()
+{
+  // must be defined here to correctly call RWebWindow destructor
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+/// Set size of web browser window as string like "800x600"
+
+bool ROOT::Experimental::RWebDisplayArgs::SetSizeAsStr(const std::string &str)
+{
+   auto separ = str.find("x");
+   if ((separ == std::string::npos) || (separ == 0) || (separ == str.length()-1)) return false;
+
+   int width = 0, height = 0;
+
+   try {
+      width = std::stoi(str.substr(0,separ));
+      height = std::stoi(str.substr(separ+1));
+   } catch(...) {
+       return false;
+   }
+
+   if ((width<=0) || (height<=0))
+      return false;
+
+   SetSize(width, height);
+   return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+/// Set position of web browser window as string like "100,100"
+
+bool ROOT::Experimental::RWebDisplayArgs::SetPosAsStr(const std::string &str)
+{
+   auto separ = str.find(",");
+   if ((separ == std::string::npos) || (separ == 0) || (separ == str.length()-1)) return false;
+
+   int x = 0, y = 0;
+
+   try {
+      x = std::stoi(str.substr(0,separ));
+      y = std::stoi(str.substr(separ+1));
+   } catch(...) {
+      return false;
+   }
+
+   if ((x<0) || (y<0))
+      return false;
+
+   SetPos(x, y);
+   return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
 /// Set browser kind as string argument
 /// Recognized values:
 ///  chrome  - use Google Chrome web browser, supports headless mode from v60, default
 ///  firefox - use Mozilla Firefox browser, supports headless mode from v57
 ///   native - (or empty string) either chrome or firefox, only these browsers support batch (headless) mode
 ///  browser - default system web-browser, no batch mode
+///   safari - Safari browser on Mac
 ///      cef - Chromium Embeded Framework, local display, local communication
 ///      qt5 - Qt5 WebEngine, local display, local communication
 ///    local - either cef or qt5
@@ -80,6 +148,29 @@ ROOT::Experimental::RWebDisplayArgs &ROOT::Experimental::RWebDisplayArgs::SetBro
       SetUrlOpt(kind.substr(1));
       kind.clear();
    }
+
+   pos = kind.find("size:");
+   if (pos != std::string::npos) {
+      auto epos = kind.find_first_of(" ;", pos+5);
+      if (epos == std::string::npos) epos = kind.length();
+      SetSizeAsStr(kind.substr(pos+5, epos-pos-5));
+      kind.erase(pos, epos-pos);
+   }
+
+   pos = kind.find("pos:");
+   if (pos != std::string::npos) {
+      auto epos = kind.find_first_of(" ;", pos+4);
+      if (epos == std::string::npos) epos = kind.length();
+      SetPosAsStr(kind.substr(pos+4, epos-pos-4));
+      kind.erase(pos, epos-pos);
+   }
+
+   // remove all trailing spaces
+   while ((kind.length() > 0) && (kind[kind.length()-1] == ' '))
+      kind.resize(kind.length()-1);
+
+   // remove any remaining spaces?
+   // kind.erase(remove_if(kind.begin(), kind.end(), std::isspace), kind.end());
 
    if (kind.empty())
       kind = gROOT->GetWebDisplay().Data();
@@ -96,7 +187,9 @@ ROOT::Experimental::RWebDisplayArgs &ROOT::Experimental::RWebDisplayArgs::SetBro
       SetBrowserKind(kCEF);
    else if ((kind == "qt") || (kind == "qt5"))
       SetBrowserKind(kQt5);
-   else
+   else if ((kind == "embed") || (kind == "embedded"))
+      SetBrowserKind(kEmbedded);
+   else if (!SetSizeAsStr(kind))
       SetCustomExec(kind);
 
    return *this;
@@ -115,6 +208,7 @@ std::string ROOT::Experimental::RWebDisplayArgs::GetBrowserName() const
       case kQt5: return "qt5";
       case kLocal: return "local";
       case kStandard: return "default";
+      case kEmbedded: return "embed";
       case kCustom:
           auto pos = fExec.find(" ");
           return (pos == std::string::npos) ? fExec : fExec.substr(0,pos);
@@ -124,8 +218,18 @@ std::string ROOT::Experimental::RWebDisplayArgs::GetBrowserName() const
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
+/// Assign window and channel id where other window will be embed
+
+void ROOT::Experimental::RWebDisplayArgs::SetMasterWindow(std::shared_ptr<RWebWindow> master, int channel)
+{
+   SetBrowserKind(kEmbedded);
+   fMaster = master;
+   fMasterChannel = channel;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
 /// Append string to url options
-/// Add "&" as separator if any options already exsists
+/// Add "&" as separator if any options already exists
 
 void ROOT::Experimental::RWebDisplayArgs::AppendUrlOpt(const std::string &opt)
 {
@@ -174,5 +278,13 @@ void ROOT::Experimental::RWebDisplayArgs::SetCustomExec(const std::string &exec)
 
 std::string ROOT::Experimental::RWebDisplayArgs::GetCustomExec() const
 {
-   return GetBrowserKind() == kCustom ? fExec : "";
+   if (GetBrowserKind() != kCustom)
+      return "";
+
+#ifdef R__MACOSX
+   if ((fExec == "safari") || (fExec == "Safari"))
+      return "open -a Safari";
+#endif
+
+   return fExec;
 }

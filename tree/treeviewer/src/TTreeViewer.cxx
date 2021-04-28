@@ -201,7 +201,6 @@ or :
 #include "TGFrame.h"
 #include "TCanvas.h"
 #include "TH1.h"
-#include "TTree.h"
 #include "TFriendElement.h"
 #include "TObjArray.h"
 #include "TObjString.h"
@@ -222,7 +221,6 @@ or :
 #include "TG3DLine.h"
 #include "TGFileDialog.h"
 #include "TGProgressBar.h"
-#include "TClonesArray.h"
 #include "TSpider.h"
 
 #ifdef WIN32
@@ -1992,7 +1990,7 @@ Bool_t TTreeViewer::ProcessMessage(Long_t msg, Long_t parm1, Long_t parm2)
                         static TString dir(".");
                         TGFileInfo info;
                         info.fFileTypes = gOpenTypes;
-                        info.fIniDir    = StrDup(dir);
+                        info.SetIniDir(dir);
                         new TGFileDialog(fClient->GetRoot(), this, kFDOpen, &info);
                         if (!info.fFilename) return kTRUE;
                         dir = info.fIniDir;
@@ -2020,7 +2018,7 @@ Bool_t TTreeViewer::ProcessMessage(Long_t msg, Long_t parm1, Long_t parm2)
                         static TString dir(".");
                         TGFileInfo info;
                         info.fFileTypes = gMacroTypes;
-                        info.fIniDir    = StrDup(dir);
+                        info.SetIniDir(dir);
                         new TGFileDialog(fClient->GetRoot(), this, kFDOpen, &info);
                         if (!info.fFilename) return kTRUE;
                         dir = info.fIniDir;

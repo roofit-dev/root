@@ -17,6 +17,7 @@
 #include "TMethodArg.h"
 #include "TColor.h"
 #include "TClass.h"
+#include "TBaseClass.h"
 
 #include "json.hpp"
 #include <sstream>
@@ -94,58 +95,105 @@ void REveDataCollection::ApplyFilter()
       ids.push_back(idx++);
    }
    StampObjProps();
-   if ( _handler_func_ids) _handler_func_ids( this , ids);
+   if (_handler_func_ids) _handler_func_ids( this , ids);
 }
 
 //______________________________________________________________________________
 
 Int_t REveDataCollection::WriteCoreJson(nlohmann::json &j, Int_t rnr_offset)
 {
+   struct PubMethods
+   {
+      void FillJSON(TClass* c, nlohmann::json & arr)
+      {
+         TString  ctor = c->GetName(), dtor = "~";
+         {
+            int i = ctor.Last(':');
+            if (i != kNPOS)
+            {
+               ctor.Replace(0, i + 1, "");
+            }
+            dtor += ctor;
+         }
+
+         TMethod *meth;
+         TIter    next(c->GetListOfMethods());
+         while ((meth = (TMethod*) next()))
+         {
+            // Filter out ctor, dtor, some ROOT stuff.
+            {
+               TString m(meth->GetName());
+               if (m == ctor || m == dtor ||
+                   m == "Class" || m == "Class_Name" || m == "Class_Version" || m == "Dictionary" || m == "IsA" ||
+                   m == "DeclFileName" || m == "ImplFileName" || m == "DeclFileLine" || m == "ImplFileLine" ||
+                   m == "Streamer" || m == "StreamerNVirtual" || m == "ShowMembers" ||
+                   m == "CheckTObjectHashConsistency")
+               {
+                  continue;
+               }
+            }
+
+            TString     ms;
+            TMethodArg *ma;
+            TIter       next_ma(meth->GetListOfMethodArgs());
+            while ((ma = (TMethodArg*) next_ma()))
+            {
+               if ( ! ms.IsNull()) ms += ", ";
+
+               ms += ma->GetTypeName();
+               ms += " ";
+               ms += ma->GetName();
+            }
+            char* entry = Form("i.%s(%s)",meth->GetName(),ms.Data());
+            nlohmann::json jm ;
+            jm["f"] = entry;
+            jm["r"] = meth->GetReturnTypeName();
+            jm["c"] = c->GetName();
+            arr.push_back(jm);
+         }
+         {
+            TBaseClass *base;
+            TIter       blnext(c->GetListOfBases());
+            while ((base = (TBaseClass*) blnext()))
+            {
+               FillJSON(base->GetClassPointer(), arr);
+            }
+         }
+      }
+   };
+
    Int_t ret = REveElement::WriteCoreJson(j, rnr_offset);
    j["fFilterExpr"] = fFilterExpr.Data();
-   j["publicFunction"]  = nlohmann::json::array();
-
-   TIter x( fItemClass->GetListOfAllPublicMethods());
-   while (TObject *obj = x()) {
-      TMethod *method = dynamic_cast<TMethod *>(obj);
-
-      nlohmann::json m;
-      m["name"] = method->GetPrototype();
-      j["publicFunction"].push_back(m);
-   }
+   j["fPublicFunctions"]  = nlohmann::json::array();
+   PubMethods pm;
+   pm.FillJSON(fItemClass, j["fPublicFunctions"]);
 
    return ret;
 }
 
 //______________________________________________________________________________
 
-void REveDataCollection::SetCollectionColorRGB(UChar_t r, UChar_t g, UChar_t b)
+void REveDataCollection::SetMainColor(Color_t newv)
 {
-   Color_t oldv = GetMainColor();
-   Color_t newv = TColor::GetColor(r, g, b);
    int idx = 0;
    Ids_t ids;
    for (auto & chld : fChildren)
    {
-      // if (chld->GetMainColor() == oldv) {
-         chld->SetMainColor(newv);
-         printf(" REveDataCollection::SetCollectionColorRGB going to change color for idx %d --------------------\n", idx);
-         ids.push_back(idx);
-         // }
-
+      chld->SetMainColor(newv);
+      ids.push_back(idx);
       idx++;
    }
 
    REveElement::SetMainColor(newv);
-   printf("REveDataCollection::SetCollectionColorRGB color ched to %d ->%d\n", oldv, GetMainColor());
-   _handler_func_ids( this , ids);
+   // printf("REveDataCollection::SetCollectionColorRGB color ched to %d ->%d\n", oldv, GetMainColor());
+    if ( _handler_func_ids) _handler_func_ids( this , ids);
 }
 
 //______________________________________________________________________________
 
-void REveDataCollection::SetCollectionVisible(bool iRnrSelf)
+Bool_t REveDataCollection::SetRnrState(Bool_t iRnrSelf)
 {
-   SetRnrSelf(iRnrSelf);
+   Bool_t ret = REveElement::SetRnrState(iRnrSelf);
 
    Ids_t ids;
 
@@ -155,6 +203,8 @@ void REveDataCollection::SetCollectionVisible(bool iRnrSelf)
    }
 
    _handler_func_ids( this , ids);
+
+   return ret;
 }
 
 
@@ -201,11 +251,12 @@ void REveDataItem::SetItemColorRGB(UChar_t r, UChar_t g, UChar_t b)
    c->ItemChanged(this);
 }
 
-void REveDataItem::SetItemRnrSelf(bool iRnrSelf)
+Bool_t REveDataItem::SetRnrSelf(Bool_t iRnrSelf)
 {
-   REveElement::SetRnrSelf(iRnrSelf);
+   Bool_t r = REveElement::SetRnrSelf(iRnrSelf);
    REveDataCollection* c = dynamic_cast<REveDataCollection*>(fMother);
    c->ItemChanged(this);
+   return r;
 }
 
 void REveDataItem::SetFiltered(bool f)
@@ -215,6 +266,21 @@ void REveDataItem::SetFiltered(bool f)
      fFiltered = f;
      StampObjProps();
   }
+}
+
+void REveDataItem::FillImpliedSelectedSet(Set_t &impSelSet)
+{
+   for (auto &n : fNieces)
+   {
+      impSelSet.insert(n);
+      n->FillImpliedSelectedSet(impSelSet);
+
+      if (gDebug > 1)
+      {
+         printf("REveDataItem::FillImpliedSelectedSet added niece '%s' [%s]\n",
+                n->GetCName(), n->IsA()->GetName());
+      }
+   }
 }
 
 //==============================================================================

@@ -25,7 +25,6 @@
 class RooDataSet;
 class RooDataHist ;
 class RooArgSet ;
-class RooRealProxy ;
 class RooAbsGenContext ;
 class RooFitResult ;
 class RooExtendPdf ;
@@ -104,13 +103,13 @@ public:
   /// \param[in] nEvents How many events to generate
   virtual RooDataHist *generateBinned(const RooArgSet &whatVars, Double_t nEvents, const RooCmdArg& arg1,
 			      const RooCmdArg& arg2=RooCmdArg::none(), const RooCmdArg& arg3=RooCmdArg::none(),
-			      const RooCmdArg& arg4=RooCmdArg::none(), const RooCmdArg& arg5=RooCmdArg::none()) {
+			      const RooCmdArg& arg4=RooCmdArg::none(), const RooCmdArg& arg5=RooCmdArg::none()) const {
     return generateBinned(whatVars,RooFit::NumEvents(nEvents),arg1,arg2,arg3,arg4,arg5);
   }
   virtual RooDataHist *generateBinned(const RooArgSet &whatVars,  
 			      const RooCmdArg& arg1=RooCmdArg::none(),const RooCmdArg& arg2=RooCmdArg::none(),
 			      const RooCmdArg& arg3=RooCmdArg::none(),const RooCmdArg& arg4=RooCmdArg::none(),
-			      const RooCmdArg& arg5=RooCmdArg::none(),const RooCmdArg& arg6=RooCmdArg::none()) ;
+			      const RooCmdArg& arg5=RooCmdArg::none(),const RooCmdArg& arg6=RooCmdArg::none()) const;
   virtual RooDataHist *generateBinned(const RooArgSet &whatVars, Double_t nEvents, Bool_t expectedData=kFALSE, Bool_t extended=kFALSE) const;
 
   virtual RooDataSet* generateSimGlobal(const RooArgSet& whatVars, Int_t nEvents) ;
@@ -197,13 +196,12 @@ public:
   RooAbsReal* createScanCdf(const RooArgSet& iset, const RooArgSet& nset, Int_t numScanBins, Int_t intOrder) ;
 
   // Function evaluation support
-  [[deprecated]] virtual Bool_t traceEvalHook(Double_t value) const ;
   virtual Double_t getValV(const RooArgSet* set=0) const ;
   virtual Double_t getLogVal(const RooArgSet* set=0) const ;
 
   virtual RooSpan<const double> getValBatch(std::size_t begin, std::size_t batchSize,
       const RooArgSet* normSet = nullptr) const;
-  RooSpan<double> getLogValBatch(std::size_t begin, std::size_t batchSize,
+  RooSpan<const double> getLogValBatch(std::size_t begin, std::size_t batchSize,
       const RooArgSet* normSet = nullptr) const;
 
   Double_t getNorm(const RooArgSet& nset) const { 
@@ -258,9 +256,6 @@ public:
 
   virtual Double_t extendedTerm(Double_t observedEvents, const RooArgSet* nset=0) const ;
 
-  static void clearEvalError() ;
-  static Bool_t evalError() ;
-
   void setNormRange(const char* rangeName) ;
   const char* normRange() const { 
     return _normRange.Length()>0 ? _normRange.Data() : 0 ; 
@@ -293,7 +288,7 @@ private:
                            const char *label= "", Int_t sigDigits = 2, Option_t *options = "NELU", Double_t xmin=0.65,
 			   Double_t xmax= 0.99,Double_t ymax=0.95, const RooCmdArg* formatCmd=0) ;
 
-  void fixOutputsAndLogErrors(RooSpan<double>& outputs, std::size_t begin) const;
+  void logBatchComputationErrors(RooSpan<const double>& outputs, std::size_t begin) const;
 
 protected:
   virtual RooPlot *plotOn(RooPlot *frame, PlotOpt o) const;  
@@ -353,10 +348,6 @@ protected:
   mutable Int_t _negCount ;          // Number of negative probablities remaining to print
 
   Bool_t _selectComp ;               // Component selection flag for RooAbsPdf::plotCompOn
-
-  static void raiseEvalError() ;
-
-  static Bool_t _evalError ;
 
   RooNumGenConfig* _specGeneratorConfig ; //! MC generator configuration specific for this object
   

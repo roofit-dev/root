@@ -117,6 +117,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 #---Load some basic macros which are needed later for the confiuration and build----------------
+include(SearchRootCoreDeps)
 include(RootBuildOptions)
 include(RootMacros)
 include(CheckCompiler)
@@ -220,7 +221,7 @@ foreach(artifact_file ${artifact_files})
   # target below will interfere.
   if (NOT (artifact_file STREQUAL "tutorials/hsimple.root"))
     add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/${artifact_file}
-      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/${artifact_file} ${CMAKE_BINARY_DIR}/${artifact_file}
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/${artifact_file} ${CMAKE_BINARY_DIR}/${artifact_file}
       COMMENT "Copying ${CMAKE_SOURCE_DIR}/${artifact_file}"
       DEPENDS ${CMAKE_SOURCE_DIR}/${artifact_file})
     list(APPEND artifact_files_builddir ${CMAKE_BINARY_DIR}/${artifact_file})
@@ -328,20 +329,17 @@ install(FILES "${CMAKE_BINARY_DIR}/include/module.modulemap" DESTINATION ${CMAKE
 
 add_dependencies(move_headers copymodulemap)
 
-# Provide our own modulemap for implementations other than libcxx.
-if (NOT WIN32 AND NOT libcxx)
-  configure_file(${CMAKE_SOURCE_DIR}/build/unix/std.modulemap ${CMAKE_BINARY_DIR}/include/std.modulemap)
-  install(FILES "${CMAKE_BINARY_DIR}/include/std.modulemap" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
-  configure_file(${CMAKE_SOURCE_DIR}/build/unix/libc.modulemap ${CMAKE_BINARY_DIR}/include/libc.modulemap)
-  install(FILES "${CMAKE_BINARY_DIR}/include/libc.modulemap" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
-endif()
-
 # Take all the modulemap contents we collected from the packages and append them to our modulemap.
 # We have to delay this because the ROOT_CXXMODULES_EXTRA_MODULEMAP_CONTENT is filled in the
 # add_subdirectory calls above.
 get_property(__modulemap_extra_content GLOBAL PROPERTY ROOT_CXXMODULES_EXTRA_MODULEMAP_CONTENT)
 string(REPLACE ";" "" __modulemap_extra_content "${__modulemap_extra_content}")
-file(WRITE "${CMAKE_BINARY_DIR}/include/module.modulemap.extra" "${__modulemap_extra_content}")
+# Write module.modulemap.extra to a temporary file first, to not touch module.modulemap.extra
+# if it's unchanged.
+file(WRITE "${CMAKE_BINARY_DIR}/include/module.modulemap.extra.tmp" "${__modulemap_extra_content}")
+configure_file("${CMAKE_BINARY_DIR}/include/module.modulemap.extra.tmp"
+    "${CMAKE_BINARY_DIR}/include/module.modulemap.extra"
+    COPYONLY)
 
 # From now on we handled all exposed module and want to make all new modulemaps private to ROOT.
 set(ROOT_CXXMODULES_WRITE_TO_CURRENT_DIR ON)
@@ -393,6 +391,7 @@ else()
 
   get_property(__cling_pch GLOBAL PROPERTY CLINGETCPCH)
   get_property(__pch_dependencies GLOBAL PROPERTY ROOT_PCH_DEPENDENCIES)
+  get_property(__pch_dictionaries GLOBAL PROPERTY ROOT_PCH_DICTIONARIES)
 
   add_custom_command(OUTPUT etc/allDict.cxx.pch
     BYPRODUCTS
@@ -407,7 +406,7 @@ else()
       ${CMAKE_SOURCE_DIR}/etc/dictpch/makepch.py etc/allDict.cxx.pch
       ${__allIncludes} -I${CMAKE_BINARY_DIR}/include
     DEPENDS
-      rootcling ${__pch_dependencies}
+      rootcling ${__pch_dependencies} ${__pch_dictionaries}
       ${CMAKE_SOURCE_DIR}/build/unix/makepchinput.py
       ${CMAKE_SOURCE_DIR}/etc/dictpch/makepch.py
   )
@@ -416,11 +415,17 @@ else()
   install(DIRECTORY ${CMAKE_BINARY_DIR}/etc/dictpch DESTINATION ${CMAKE_INSTALL_SYSCONFDIR})
 endif()
 
+# FIXME: move installation of PCMS in ROOT_GENERATE_DICTIONARY().
+# We are excluding directories, which are accidentaly copied via unxpected behaviour of install(DIRECTORY ..)
 install(
    DIRECTORY ${CMAKE_BINARY_DIR}/lib/
    DESTINATION ${CMAKE_INSTALL_LIBDIR}
    FILES_MATCHING PATTERN "*.pcm"
-   PATTERN ".*rdict.*" EXCLUDE
+   PATTERN "JupyROOT" EXCLUDE
+   PATTERN "JsMVA" EXCLUDE
+   PATTERN "python*" EXCLUDE
+   PATTERN "cmake" EXCLUDE
+   PATTERN "pkgconfig" EXCLUDE
 )
 
 #---hsimple.root---------(use the executable for clearer dependencies and proper return code)---
@@ -445,9 +450,8 @@ install(FILES ${CMAKE_BINARY_DIR}/tutorials/hsimple.root DESTINATION ${CMAKE_INS
 
 #---version--------------------------------------------------------------------------------------
 if(NOT WIN32)
-add_custom_target(version COMMAND ${CMAKE_SOURCE_DIR}/build/unix/makeversion.sh ${CMAKE_BINARY_DIR}
+add_custom_target(version COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/build/unix/makeversion.py
                           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-#add_dependencies(version root.exe)
 endif()
 
 #---distribution commands------------------------------------------------------------------------

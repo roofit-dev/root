@@ -6,6 +6,10 @@
 
 cmake_minimum_required(VERSION 3.1)
 
+if(NOT CMAKE_PROJECT_NAME STREQUAL ROOT)
+  project(Minuit2 LANGUAGES CXX)
+endif(NOT CMAKE_PROJECT_NAME STREQUAL ROOT)
+
 option(minuit2_mpi "Enable support for MPI in Minuit2")
 option(minuit2_omp "Enable support for OpenMP in Minuit2")
 

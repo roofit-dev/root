@@ -44,7 +44,6 @@ eliminated, optimizing the number of messages exchanged and created / destroyed.
 #include <cstdlib>
 
 #include "TProofServLite.h"
-#include "TObjString.h"
 #include "TEnv.h"
 #include "TError.h"
 #include "TException.h"
@@ -399,9 +398,7 @@ Int_t TProofServLite::Setup()
    }
 
    // Goto to the main PROOF working directory
-   char *workdir = gSystem->ExpandPathName(fWorkDir.Data());
-   fWorkDir = workdir;
-   delete [] workdir;
+   gSystem->ExpandPathName(fWorkDir);
    if (gProofDebugLevel > 0)
       Info("Setup", "working directory set to %s", fWorkDir.Data());
 
@@ -524,7 +521,7 @@ Int_t TProofServLite::SetupOnFork(const char *ord)
       fLogFileDes = -1;
    }
 
-   TString sdir = gSystem->DirName(fSessionDir.Data());
+   TString sdir = gSystem->GetDirName(fSessionDir.Data());
    RedirectOutput(sdir.Data(), "a");
    // If for some reason we failed setting a redirection file for the logs
    // we cannot continue

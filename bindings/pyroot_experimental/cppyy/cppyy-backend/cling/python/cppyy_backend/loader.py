@@ -36,8 +36,9 @@ def _load_helper(bkname):
             for loc in ['lib', 'bin']:
                 fpath = os.path.join(pkgpath, loc, dep+soext)
                 if os.path.exists(fpath):
-                    dep = fpath
-                    ctypes.CDLL(dep, ctypes.RTLD_GLOBAL)
+                    ldtype = ctypes.RTLD_GLOBAL
+                    if dep == 'libCling': ldtype = ctypes.RTLD_LOCAL
+                    ctypes.CDLL(fpath, ldtype)
                     break
         return ctypes.CDLL(os.path.join(pkgpath, 'lib', bkname), ctypes.RTLD_GLOBAL)
     except OSError:
@@ -86,10 +87,11 @@ def set_cling_compile_options(add_defaults = False):
     if add_defaults:
         has_avx = False
         try:
-            for line in open('/proc/cpuinfo', 'r'):
-                if 'avx' in line:
-                    has_avx = True
-                    break
+            with open('/proc/cpuinfo', 'r') as ci:
+                for line in ci:
+                    if 'avx' in line:
+                        has_avx = True
+                        break
         except Exception:
             try:
                 cli_arg = subprocess.check_output(['sysctl', 'machdep.cpu.features'])
@@ -118,7 +120,7 @@ def _is_uptodate(pchname, incpath):
         return os.stat(pchname).st_mtime >= os.stat(incpath).st_mtime
     except Exception:
         if not os.path.exists(incpath):
-            return True     # no point in updating as it will fail 
+            return True     # no point in updating as it will fail
     return False
 
 def ensure_precompiled_header(pchdir = '', pchname = ''):
@@ -152,7 +154,7 @@ def ensure_precompiled_header(pchdir = '', pchname = ''):
              if os.access(pchdir, os.R_OK|os.W_OK):
                  print('(Re-)building pre-compiled headers (options:%s); this may take a minute ...' % os.environ.get('EXTRA_CLING_ARGS', ' none'))
                  makepch = os.path.join(pkgpath, 'etc', 'dictpch', 'makepch.py')
-                 if subprocess.call(['python', makepch, full_pchname, '-I'+incpath]) != 0:
+                 if subprocess.call([sys.executable, makepch, full_pchname, '-I'+incpath]) != 0:
                      _warn_no_pch('failed to build', full_pchname)
              else:
                  _warn_no_pch('%s not writable' % pchdir, full_pchname)

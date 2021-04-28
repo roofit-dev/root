@@ -171,8 +171,8 @@ protected:
    };
 
 private:
-   REveTrackPropagator(const REveTrackPropagator &);            // Not implemented
-   REveTrackPropagator &operator=(const REveTrackPropagator &); // Not implemented
+   REveTrackPropagator(const REveTrackPropagator &) = delete;
+   REveTrackPropagator &operator=(const REveTrackPropagator &) = delete;
 
    void DistributeOffset(const REveVectorD &off, Int_t first_point, Int_t np, REveVectorD &p);
 
@@ -248,7 +248,7 @@ public:
 
    void CheckReferenceCount(const std::string &from = "<unknown>") override;
 
-   void ElementChanged(Bool_t update_scenes = kTRUE, Bool_t redraw = kFALSE) override;
+   void StampAllTracks();
 
    // propagation
    void InitTrack(const REveVectorD &v, Int_t charge);

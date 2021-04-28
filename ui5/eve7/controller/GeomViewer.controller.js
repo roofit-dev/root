@@ -127,7 +127,6 @@ sap.ui.define(['sap/ui/core/Component',
             t.addEventDelegate({
                onAfterRendering: function() { this.assignRowHandlers(); }
             }, this);
-
          }
 
          JSROOT.AssertPrerequisites("geom", function() {
@@ -820,6 +819,9 @@ sap.ui.define(['sap/ui/core/Component',
          this.renderingDone = true;
 
          this.checkSendRequest();
+      },
+
+      onAfterMasterOpen: function() {
       },
 
       checkSendRequest: function(force) {

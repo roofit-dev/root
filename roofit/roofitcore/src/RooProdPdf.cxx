@@ -514,6 +514,50 @@ Double_t RooProdPdf::calculate(const RooProdPdf::CacheElem& cache, Bool_t /*verb
   }
 }
 
+RooSpan<double> RooProdPdf::evaluateBatch(std::size_t begin, std::size_t size) const {
+  int code;
+  auto cache = static_cast<CacheElem*>(_cacheMgr.getObj(_curNormSet, nullptr, &code));
+
+  // If cache doesn't have our configuration, recalculate here
+  if (!cache) {
+    code = getPartIntList(_curNormSet, nullptr);
+    cache = static_cast<CacheElem*>(_cacheMgr.getObj(_curNormSet, nullptr, &code));
+  }
+
+  if (cache->_isRearranged) {
+    if (dologD(Eval)) {
+      cxcoutD(Eval) << "RooProdPdf::calculate(" << GetName() << ") rearranged product calculation"
+                    << " calculate: num = " << cache->_rearrangedNum->GetName() << " = " << cache->_rearrangedNum->getVal() << endl ;
+      cxcoutD(Eval) << "calculate: den = " << cache->_rearrangedDen->GetName() << " = " << cache->_rearrangedDen->getVal() << endl ;
+    }
+
+    auto outputs = _batchData.makeWritableBatchUnInit(begin, size);
+    auto numerator = cache->_rearrangedNum->getValBatch(begin, size);
+    auto denominator = cache->_rearrangedDen->getValBatch(begin, size);
+
+    for (std::size_t i=0; i < outputs.size(); ++i) {
+      outputs[i] = numerator[i] / denominator[i];
+    }
+
+    return outputs;
+  } else {
+
+    auto outputs = _batchData.makeWritableBatchInit(begin, size, 1.);
+    assert(cache->_normList.size() == cache->_partList.size());
+    for (std::size_t i = 0; i < cache->_partList.size(); ++i) {
+      const auto& partInt = static_cast<const RooAbsReal&>(cache->_partList[i]);
+      const auto normSet = cache->_normList[i].get();
+
+      const auto partialInts = partInt.getValBatch(begin, size, normSet->getSize() > 0 ? normSet : nullptr);
+      for (std::size_t j=0; j < outputs.size(); ++j) {
+        outputs[j] *= partialInts[j];
+      }
+    }
+
+    return outputs;
+  }
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1804,15 +1848,16 @@ RooAbsPdf::ExtendMode RooProdPdf::extendMode() const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return the expected number of events associated with the extentable input p.d.f
-/// in the product. If there is no extendable term, return zero and issue and error
+/// Return the expected number of events associated with the extendable input PDF
+/// in the product. If there is no extendable term, abort.
 
 Double_t RooProdPdf::expectedEvents(const RooArgSet* nset) const
 {
   if (_extendedIndex<0) {
-    coutE(Generation) << "ERROR: Requesting expected number of events from a RooProdPdf that does not contain an extended p.d.f" << endl ;
+    coutF(Generation) << "Requesting expected number of events from a RooProdPdf that does not contain an extended p.d.f" << endl ;
+    throw std::logic_error(std::string("RooProdPdf ") + GetName() + " could not be extended.");
   }
-  assert(_extendedIndex>=0) ;
+
   return ((RooAbsPdf*)_pdfList.at(_extendedIndex))->expectedEvents(nset) ;
 }
 
@@ -2055,7 +2100,7 @@ RooArgSet* RooProdPdf::getConstraints(const RooArgSet& observables, RooArgSet& c
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return all parameter constraint p.d.f.s on parameters listed in constrainedParams
+/// Return all parameter constraint p.d.f.s on parameters listed in constrainedParams.
 /// The observables set is required to distinguish unambiguously p.d.f in terms
 /// of observables and parameters, which are not constraints, and p.d.fs in terms
 /// of parameters only, which can serve as constraints p.d.f.s
