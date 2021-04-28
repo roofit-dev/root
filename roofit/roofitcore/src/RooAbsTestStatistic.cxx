@@ -75,8 +75,8 @@ RooAbsTestStatistic::RooAbsTestStatistic() :
   _func(0), _data(0), _projDeps(0), _splitRange(0), _simCount(0),
   _verbose(kFALSE), _init(kFALSE), _gofOpMode(Slave), _nEvents(0), _setNum(0),
   _numSets(0), _extSet(0), _nGof(0), _gofArray(0), _nCPU(1), _mpfeArray(0),
-  _mpinterl(RooFit::BulkPartition), _CPUAffinity(1), _doOffset(kFALSE), _offset(0),
-  _offsetCarry(0), _evalCarry(0)
+  _mpinterl(RooFit::BulkPartition), _CPUAffinity(1), _doOffset(kFALSE),
+  _evalCarry(0)
 {
 }
 
@@ -128,8 +128,6 @@ RooAbsTestStatistic::RooAbsTestStatistic(const char *name, const char *title, Ro
   _mpinterl(interleave),
   _CPUAffinity(CPUAffinity),
   _doOffset(kFALSE),
-  _offset(0),
-  _offsetCarry(0),
   _evalCarry(0)
 {
   // Register all parameters as servers
@@ -189,7 +187,6 @@ RooAbsTestStatistic::RooAbsTestStatistic(const RooAbsTestStatistic& other, const
   _CPUAffinity(other._CPUAffinity),
   _doOffset(other._doOffset),
   _offset(other._offset),
-  _offsetCarry(other._offsetCarry),
   _evalCarry(other._evalCarry)
 {
   // Our parameters are those of original
@@ -314,8 +311,8 @@ Double_t RooAbsTestStatistic::evaluate() const
     // Start calculations in parallel
     for (Int_t i = 0; i < _nCPU; ++i) _mpfeArray[i]->calculate();
 
-    Double_t sum(0), carry = 0.;
 
+    Double_t sum(0), carry = 0.;
     for (Int_t i = 0; i < _nCPU; ++i) {
       if (RooTrace::timing_flag == 3) {
         timer.start();
@@ -360,26 +357,26 @@ Double_t RooAbsTestStatistic::evaluate() const
 
     // Evaluate as straight FUNC
     Int_t nFirst(0), nLast(_nEvents), nStep(1) ;
-
+    
     switch (_mpinterl) {
     case RooFit::BulkPartition:
       nFirst = _nEvents * _setNum / _numSets ;
       nLast  = _nEvents * (_setNum+1) / _numSets ;
       nStep  = 1 ;
       break;
-
+      
     case RooFit::Interleave:
       nFirst = _setNum ;
       nLast  = _nEvents ;
       nStep  = _numSets ;
       break ;
-
+      
     case RooFit::SimComponents:
       nFirst = 0 ;
       nLast  = _nEvents ;
       nStep  = 1 ;
       break ;
-
+      
     case RooFit::Hybrid:
       throw std::logic_error("this should never happen");
       break ;
@@ -438,7 +435,6 @@ Bool_t RooAbsTestStatistic::initialize()
     initSimMode((RooSimultaneous*)_func,_data,_projDeps,_rangeName.size()?_rangeName.c_str():0,_addCoefRangeName.size()?_addCoefRangeName.c_str():0) ;
   }
   _init = kTRUE;
-
   return kFALSE;
 }
 
@@ -854,7 +850,6 @@ void RooAbsTestStatistic::enableOffsetting(Bool_t flag)
     // Clear offset if feature is disabled to that it is recalculated next time it is enabled
     if (!_doOffset) {
       _offset = 0 ;
-      _offsetCarry = 0;
     }
     setValueDirty() ;
     break ;
