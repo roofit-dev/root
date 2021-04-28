@@ -422,6 +422,11 @@ if(dataframe)
 else()
   set(hasdataframe undef)
 endif()
+if(dev)
+  set(use_less_includes define)
+else()
+  set(use_less_includes undef)
+endif()
 
 set(uselz4 undef)
 set(usezlib undef)
@@ -814,8 +819,8 @@ if (XROOTD_FOUND AND XROOTD_NOMAIN)
                  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-install(FILES ${CMAKE_BINARY_DIR}/include/RConfigOptions.h
-              ${CMAKE_BINARY_DIR}/include/compiledata.h
+install(FILES ${CMAKE_BINARY_DIR}/ginclude/RConfigOptions.h
+              ${CMAKE_BINARY_DIR}/ginclude/compiledata.h
               DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 install(FILES ${CMAKE_BINARY_DIR}/etc/root.mimes
