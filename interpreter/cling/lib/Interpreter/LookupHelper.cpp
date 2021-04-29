@@ -38,7 +38,15 @@ namespace cling {
   class StartParsingRAII {
     LookupHelper& m_LH;
     llvm::SaveAndRestore<bool> SaveIsRecursivelyRunning;
+    // Save and restore the state of the Parser and lexer.
+    // Note: ROOT::Internal::ParsingStateRAII also save and restore the state of
+    // Sema, including pending instantiation for example.  It is not clear
+    // whether we need to do so here too or whether we need to also see the
+    // "on-going" semantic information ... For now, we leave Sema untouched.
+    clang::Preprocessor::CleanupAndRestoreCacheRAII fCleanupRAII;
+    clang::Parser::ParserCurTokRestoreRAII fSavedCurToken;
     ParserStateRAII ResetParserState;
+    clang::Sema::SFINAETrap fSFINAETrap;
     void prepareForParsing(llvm::StringRef code, llvm::StringRef bufferName,
                            LookupHelper::DiagSetting diagOnOff);
   public:
@@ -46,8 +54,11 @@ namespace cling {
                      llvm::StringRef bufferName,
                      LookupHelper::DiagSetting diagOnOff)
         : m_LH(LH), SaveIsRecursivelyRunning(LH.IsRecursivelyRunning),
-          ResetParserState(*LH.m_Parser.get(),
-                           !LH.IsRecursivelyRunning /*skipToEOF*/) {
+          fCleanupRAII(LH.m_Parser->getPreprocessor()),
+          fSavedCurToken(*LH.m_Parser),
+          ResetParserState(*LH.m_Parser,
+                           !LH.IsRecursivelyRunning /*skipToEOF*/),
+          fSFINAETrap(m_LH.m_Parser->getActions()) {
       LH.IsRecursivelyRunning = true;
       prepareForParsing(code, bufferName, diagOnOff);
     }
@@ -60,7 +71,7 @@ namespace cling {
                                            llvm::StringRef bufferName,
                                           LookupHelper::DiagSetting diagOnOff) {
     ++m_LH.m_TotalParseRequests;
-    Parser& P = *m_LH.m_Parser.get();
+    Parser& P = *m_LH.m_Parser;
     Sema& S = P.getActions();
     Preprocessor& PP = P.getPreprocessor();
     //
@@ -72,7 +83,9 @@ namespace cling {
                                       diagOnOff == LookupHelper::NoDiagnostics);
     //
     //  Tell Sema we are not in the process of doing an instantiation.
-    //
+    //  fSFINAETrap will reset any SFINAE error count of a SFINAE context from "above".
+    //  fSFINAETrap will reset this value to the previous one; the line below is overwriting
+    //  the value set by fSFINAETrap.
     P.getActions().InNonInstantiationSFINAEContext = true;
     //
     //  Tell the parser to not attempt spelling correction.
@@ -487,9 +500,9 @@ namespace cling {
     //  Try parsing the type name.
     //
     clang::ParsedAttributes Attrs(P.getAttrFactory());
-
-    TypeResult Res(P.ParseTypeName(0,Declarator::TypeNameContext,clang::AS_none,
-                                   0,&Attrs));
+    // FIXME: All arguments to ParseTypeName are the default arguments. Remove.
+    TypeResult Res(P.ParseTypeName(0, DeclaratorContext::TypeNameContext,
+                                   clang::AS_none, 0, &Attrs));
     if (Res.isUsable()) {
       // Accept it only if the whole name was parsed.
       if (P.NextToken().getKind() == clang::tok::eof) {
@@ -703,8 +716,17 @@ namespace cling {
                         }
                       } else {
                         // NOTE: We cannot instantiate the scope: not a valid decl.
-                        // Need to rollback transaction.
-                        UnloadDecl(&S, TD);
+                        // Need to unload it if this decl is a definition.
+                        // But do not unload pre-existing fwd decls. Note that this might have failed
+                        // because several other Decls failed to instantiate, leaving several Decls
+                        // in invalid state. We should be unloading all of them, i.e. inload the
+                        // current (possibly nested) transaction.
+                        auto *T = const_cast<Transaction*>(m_Interpreter->getCurrentTransaction());
+                        // Must not unload the Transaction, which might delete
+                        // it: the RAII above still points to it! Instead, just
+                        // mark it as "erroneous" which causes the RAII to
+                        // unload it in due time.
+                        T->setIssuedDiags(Transaction::kErrors);
                         *setResultType = nullptr;
                         return 0;
                       }
@@ -1218,11 +1240,11 @@ namespace cling {
         // Double check const-ness.
         if (const clang::CXXMethodDecl *md =
             llvm::dyn_cast<clang::CXXMethodDecl>(TheDecl)) {
-          if (md->getTypeQualifiers() & clang::Qualifiers::Const) {
+          if (md->getMethodQualifiers().hasConst()) {
             if (!objectIsConst) {
               TheDecl = 0;
             }
-          } else {
+          } else { // FIXME: The else should be attached to the if hasConst stmt
             if (objectIsConst) {
               TheDecl = 0;
             }
@@ -1237,7 +1259,8 @@ namespace cling {
                                  llvm::StringRef funcName,
                                  Interpreter* Interp,
                                  UnqualifiedId &FuncId,
-                                 LookupHelper::DiagSetting diagOnOff) {
+                                 LookupHelper::DiagSetting diagOnOff,
+                                 ParserStateRAII &ResetParserState) {
 
     // Use a very simple parse step that dectect whether the name search (which
     // is already supposed to be an unqualified name) is a simple identifier,
@@ -1336,6 +1359,7 @@ namespace cling {
     //  Create a fake file to parse the function name.
     //
     // FIXME:, TODO: Cleanup that complete mess.
+    ResetParserState.SetSkipToEOF(true);
     {
       PP.getDiagnostics().setSuppressAllDiagnostics(diagOnOff ==
                                                    LookupHelper::NoDiagnostics);
@@ -1365,7 +1389,7 @@ namespace cling {
                              /*AllowDestructorName*/true,
                              /*AllowConstructorName*/true,
                              /*AllowDeductionGuide*/ false,
-                             ParsedType(), TemplateKWLoc,
+                             ParsedType(), &TemplateKWLoc,
                              FuncId)) {
       // Failed parse, cleanup.
       return false;
@@ -1410,9 +1434,9 @@ namespace cling {
     S.EnterDeclaratorContext(P.getCurScope(), foundDC);
 
     UnqualifiedId FuncId;
-    ParserStateRAII ResetParserState(P, true /*skipToEOF*/);
-    if (!ParseWithShortcuts(foundDC, Context, funcName, Interp,
-                            FuncId, diagOnOff)) {
+    ParserStateRAII ResetParserState(P, false /*skipToEOF*/);
+    if (!ParseWithShortcuts(foundDC, Context, funcName, Interp, FuncId,
+                            diagOnOff, ResetParserState)) {
       // Failed parse, cleanup.
       // Destroy the scope we created first, and
       // restore the original.
@@ -1661,7 +1685,7 @@ namespace cling {
           // memory corruption on the OpaqueValueExpr. See ROOT-7749.
           clang::QualType NonRefQT(QT.getNonReferenceType());
           ExprMemory.resize(++nargs);
-          new (&ExprMemory[nargs-1]) OpaqueValueExpr(TSI->getTypeLoc().getLocStart(),
+          new (&ExprMemory[nargs-1]) OpaqueValueExpr(TSI->getTypeLoc().getBeginLoc(),
                                                      NonRefQT, VK);
         }
         // Type names should be comma separated.

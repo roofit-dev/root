@@ -26,7 +26,6 @@ few other, which can not be converted to SQL (yet).
 
 #include "TBufferSQL2.h"
 
-#include "TObjArray.h"
 #include "TROOT.h"
 #include "TDataType.h"
 #include "TClass.h"
@@ -34,13 +33,14 @@ few other, which can not be converted to SQL (yet).
 #include "TMap.h"
 #include "TStreamerInfo.h"
 #include "TStreamerElement.h"
-#include "TFile.h"
 #include "TMemberStreamer.h"
 #include "TStreamer.h"
-#include "Riostream.h"
-#include <stdlib.h>
-#include <string>
 #include "TStreamerInfoActions.h"
+#include "snprintf.h"
+
+#include <iostream>
+#include <cstdlib>
+#include <string>
 
 #include "TSQLServer.h"
 #include "TSQLResult.h"
@@ -1868,7 +1868,7 @@ void TBufferSQL2::ReadCharP(Char_t *c)
 {
    const char *buf = SqlReadCharStarValue();
    if (buf)
-      strcpy(c, buf);
+      strcpy(c, buf);  // NOLINT unfortunately, we do not know size of target buffer
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1890,7 +1890,7 @@ void TBufferSQL2::ReadTString(TString &s)
          else
             nbig = nwh;
 
-         char *data = new char[nbig];
+         char *data = new char[nbig+1];
          data[nbig] = 0;
          ReadFastArray(data, nbig);
          s = data;

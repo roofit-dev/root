@@ -13,11 +13,11 @@
 #pragma optimize("",off)
 #endif
 
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <fstream>
 
-#include "Riostream.h"
 #include "TROOT.h"
 #include "TColor.h"
 #include "TVirtualPad.h"
@@ -25,16 +25,13 @@
 #include "TTeXDump.h"
 #include "TStyle.h"
 #include "TMath.h"
-#include "TObjString.h"
-#include "TObjArray.h"
-#include "TClass.h"
 
 ClassImp(TTeXDump);
 
 /** \class TTeXDump
 \ingroup PS
 
-Interface to TeX.
+\brief Interface to TeX.
 
 This class allow to generate <b>PGF/TikZ</b> vector graphics output
 which can be included in TeX and LaTeX documents.
@@ -429,10 +426,12 @@ void TTeXDump::DrawPolyMarker(Int_t n, Double_t *xw, Double_t *yw)
       WriteReal(fCurrentAlpha, kFALSE);
    }
 
-   if (fMarkerStyle == 23 || fMarkerStyle == 32) PrintStr(",rotate=180");
+   if (TAttMarker::GetMarkerStyleBase(fMarkerStyle) == 23 || TAttMarker::GetMarkerStyleBase(fMarkerStyle) == 32) PrintStr(",rotate=180");
 
-   PrintStr(Form("},mark size=%fpt,mark=",8./3.33*fMarkerSize));
-   switch (fMarkerStyle) {
+   PrintStr(Form("},mark size=%fpt", 8./3.33*(fMarkerSize - TMath::Floor(TAttMarker::GetMarkerLineWidth(fMarkerStyle)/2.)/4.)));
+   PrintStr(Form(", line width=%fpt", 4./3.33*TMath::Floor(TAttMarker::GetMarkerLineWidth(fMarkerStyle)/2.)));
+   PrintStr(", mark=");
+   switch (TAttMarker::GetMarkerStyleBase(fMarkerStyle)) {
    case 1 :
       PrintStr("*");
       PrintStr(",mark size=1pt");
@@ -662,7 +661,6 @@ void TTeXDump::Range(Float_t xsize, Float_t ysize)
 void TTeXDump::SetFillColor( Color_t cindex )
 {
    fFillColor = cindex;
-   if (gStyle->GetFillColor() <= 0) cindex = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

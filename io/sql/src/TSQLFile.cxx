@@ -162,11 +162,7 @@ Author: S.Linev, GSI Darmstadt,   S.Linev@gsi.de
 #include "TSQLFile.h"
 
 #include "TROOT.h"
-#include "TSystem.h"
-#include "TList.h"
-#include "TBrowser.h"
 #include "TObjArray.h"
-#include "TObjString.h"
 #include "TList.h"
 #include "TArrayC.h"
 #include "TVirtualStreamerInfo.h"
@@ -188,7 +184,8 @@ Author: S.Linev, GSI Darmstadt,   S.Linev@gsi.de
 #include "TSQLClassInfo.h"
 #include "TSQLObjectData.h"
 
-#include "Riostream.h"
+#include <iostream>
+#include <fstream>
 
 ClassImp(TSQLFile);
 
@@ -328,7 +325,7 @@ TSQLFile::TSQLFile(const char *dbname, Option_t *option, const char *user, const
    fVersion = gROOT->GetVersionInt(); // ROOT version in integer format
    fUnits = 4;
    fOption = option;
-   SetCompressionLevel(ROOT::RCompressionSetting::EDefaults::kUseGeneralPurpose % 100);
+   SetCompressionLevel(ROOT::RCompressionSetting::EDefaults::kUseCompiledDefault % 100);
    fWritten = 0;
    fSumBuffer = 0;
    fSum2Buffer = 0;
@@ -386,7 +383,6 @@ TSQLFile::TSQLFile(const char *dbname, Option_t *option, const char *user, const
             goto zombie;
          }
       SQLDeleteAllTables();
-      recreate = kFALSE;
       create = kTRUE;
       fOption = "CREATE";
    }
