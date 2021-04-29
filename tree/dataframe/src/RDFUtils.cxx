@@ -19,11 +19,12 @@
 #include "TClassRef.h"
 #include "TInterpreter.h"
 #include "TLeaf.h"
-#include "TROOT.h" // IsImplicitMTEnabled, GetImplicitMTPoolSize
+#include "TROOT.h" // IsImplicitMTEnabled, GetThreadPoolSize
 #include "TTree.h"
 
 #include <stdexcept>
 #include <string>
+#include <cstring>
 #include <typeinfo>
 
 using namespace ROOT::Detail::RDF;
@@ -175,7 +176,7 @@ std::string GetBranchOrLeafTypeName(TTree &t, const std::string &colName)
             if (mother && mother->InheritsFrom(tbranchelement)) {
                auto beMom = static_cast<TBranchElement *>(mother);
                auto beMomClass = beMom->GetClass();
-               if (beMomClass && 0 == strcmp("TClonesArray", beMomClass->GetName()))
+               if (beMomClass && 0 == std::strcmp("TClonesArray", beMomClass->GetName()))
                   return be->GetTypeName();
             }
             return be->GetClassName();
@@ -193,8 +194,8 @@ std::string GetBranchOrLeafTypeName(TTree &t, const std::string &colName)
 /// vector2rvec specifies whether typename 'std::vector<T>' should be converted to 'RVec<T>' or returned as is
 /// customColID is only used if isCustomColumn is true, and must correspond to the custom column's unique identifier
 /// returned by its `GetID()` method.
-std::string ColumnName2ColumnTypeName(const std::string &colName, unsigned int namespaceID, TTree *tree,
-                                      RDataSource *ds, bool isCustomColumn, bool vector2rvec, unsigned int customColID)
+std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, RDataSource *ds, bool isCustomColumn,
+                                      bool vector2rvec, unsigned int customColID)
 {
    std::string colType;
 
@@ -214,7 +215,7 @@ std::string ColumnName2ColumnTypeName(const std::string &colName, unsigned int n
 
    if (colType.empty() && isCustomColumn) {
       // this must be a temporary branch, we know there is an alias for its type
-      colType = "__rdf" + std::to_string(namespaceID) + "::" + colName + std::to_string(customColID) + "_type";
+      colType = "__rdf::" + colName + std::to_string(customColID) + "_type";
    }
 
    if (colType.empty())
@@ -258,7 +259,7 @@ unsigned int GetNSlots()
    unsigned int nSlots = 1;
 #ifdef R__USE_IMT
    if (ROOT::IsImplicitMTEnabled())
-      nSlots = ROOT::GetImplicitMTPoolSize();
+      nSlots = ROOT::GetThreadPoolSize();
 #endif // R__USE_IMT
    return nSlots;
 }

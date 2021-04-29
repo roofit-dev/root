@@ -39,7 +39,6 @@
 #include "RooMsgService.h"
 
 #include "RooAbsReal.h"
-#include "RooAbsReal.h"
 #include "RooArgSet.h"
 #include "RooArgList.h"
 #include "RooBinning.h"
@@ -71,7 +70,6 @@
 #include "RooDerivative.h"
 #include "RooGenFunction.h"
 #include "RooMultiGenFunction.h"
-#include "RooCmdConfig.h"
 #include "RooXYChi2Var.h"
 #include "RooMinuit.h"
 #include "RooMinimizer.h"
@@ -1688,7 +1686,7 @@ void RooAbsReal::plotOnCompSelect(RooArgSet* selNodes) const
 /// <tr><td> `MarkerSize(Double_t size)`   <td> Select the ROOT marker size
 ///
 /// <tr><td> `FillStyle(Int_t style)`          <td> Select fill style, default is not filled. If a filled style is selected, also use VLines()
-///                                    to add vertical downward lines at end of curve to ensure proper closure
+///                                    to add vertical downward lines at end of curve to ensure proper closure. Add `DrawOption("F")` for filled drawing.
 /// <tr><td> `FillColor(Int_t color)`          <td> Select fill color by ROOT color code
 ///
 /// <tr><td> `Range(const char* name)`         <td> Only draw curve in range defined by given name
@@ -1982,6 +1980,11 @@ RooPlot* RooAbsReal::plotOn(RooPlot* frame, RooLinkedList& argList) const
   if (markerColor!=-999) ret->getAttMarker()->SetMarkerColor(markerColor) ;
   if (markerStyle!=-999) ret->getAttMarker()->SetMarkerStyle(markerStyle) ;
   if (markerSize!=-999) ret->getAttMarker()->SetMarkerSize(markerSize) ;
+
+  if ((fillColor != -999 || fillStyle != -999) && !drawOpt.Contains("F")) {
+    coutW(Plotting) << "Fill color or style was set for plotting \"" << GetName()
+        << "\", but these only have an effect when 'DrawOption(\"F\")' for fill is used at the same time." << std::endl;
+  }
 
   // Move last inserted object to back to drawing stack if requested
   if (pc.getInt("moveToBack") && frame->numItems()>1) {
@@ -4928,7 +4931,6 @@ RooSpan<double> RooAbsReal::evaluateBatch(std::size_t begin, std::size_t maxSize
 
 
 #include "TSystem.h"
-#include "RooHelpers.h"
 
 using RooHelpers::CachingError;
 using RooHelpers::FormatPdfTree;
