@@ -273,6 +273,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         RooAbsMinimizerFcn.h
     RooHelpers.h
     RooSpan.h
+    BatchData.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -514,6 +515,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/TestStatistics/RooUnbinnedL.cxx
         src/RooAbsMinimizerFcn.cxx
     src/RooHelpers.cxx
+    src/BatchData.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
 #    -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
