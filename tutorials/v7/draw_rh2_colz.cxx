@@ -22,6 +22,7 @@
 #include "ROOT/RCanvas.hxx"
 #include "ROOT/RFrameTitle.hxx"
 #include "ROOT/RPaletteDrawable.hxx"
+#include "ROOT/RHistStatBox.hxx"
 #include "ROOT/RFrame.hxx"
 #include "TRandom.h"
 
@@ -44,14 +45,25 @@ void draw_rh2_colz()
    // Create a canvas to be displayed.
    auto canvas = RCanvas::Create("Canvas Title");
 
+   auto frame = canvas->GetOrCreateFrame();
+
    // should we made special style for frame with palette?
-   canvas->GetOrCreateFrame()->Margins().SetRight(0.2_normal);
+   frame->Margins().SetRight(0.2_normal);
+
+   frame->SetGridX(true).SetGridY(false);
+
+   frame->AttrX().SetZoomMinMax(2.,8.);
+
+   frame->AttrY().SetZoomMinMax(2.,8.);
 
    canvas->Draw<RFrameTitle>("2D histogram with color palette");
 
    canvas->Draw<RPaletteDrawable>(RPalette::GetPalette(), true);
 
-   auto draw1 = canvas->Draw(pHist);
+   canvas->Draw(pHist);
+
+   auto stat = canvas->Draw<RHist2StatBox>(pHist, "hist2");
+   stat->AttrFill().SetColor(RColor::kRed);
 
    canvas->Show("1000x700");
 }

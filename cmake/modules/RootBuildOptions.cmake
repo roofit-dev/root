@@ -115,6 +115,7 @@ ROOT_BUILD_OPTION(cxxmodules OFF "Enable support for C++ modules")
 ROOT_BUILD_OPTION(dataframe ON "Enable ROOT RDataFrame")
 ROOT_BUILD_OPTION(davix ON "Enable support for Davix (HTTP/WebDAV access)")
 ROOT_BUILD_OPTION(dcache OFF "Enable support for dCache (requires libdcap from DESY)")
+ROOT_BUILD_OPTION(dev OFF "Enable recommended developer compilation flags")
 ROOT_BUILD_OPTION(exceptions ON "Enable compiler exception handling")
 ROOT_BUILD_OPTION(fftw3 ON "Enable support for FFTW3")
 ROOT_BUILD_OPTION(fitsio ON "Enable support for reading FITS images")
@@ -186,6 +187,7 @@ option(minimal "Enable only required options by default" OFF)
 option(rootbench "Build rootbench if rootbench exists in root or if it is a sibling directory." OFF)
 option(roottest "Build roottest if roottest exists in root or if it is a sibling directory." OFF)
 option(testing "Enable testing with CTest" OFF)
+option(asan "Build ROOT with address sanitizer instrumentation" OFF)
 
 set(gcctoolchain "" CACHE PATH "Set path to GCC toolchain used to build llvm/clang")
 
@@ -303,10 +305,18 @@ if(WIN32)
   set(tmva_defvalue OFF)
   set(vdt_defvalue OFF)
   set(x11_defvalue OFF)
+  set(xrootd_defvalue OFF)
 elseif(APPLE)
   set(cocoa_defvalue ON)
-  set(runtime_cxxmodules_defvalue OFF)
   set(x11_defvalue OFF)
+endif()
+
+# Pyroot requires python-dev package; force to OFF if it was not found
+# PYTHONLIBS_FOUND is used for cmake < 3.12
+if(NOT PYTHONLIBS_FOUND AND NOT Python3_Development_FOUND AND (NOT Python2_Development_FOUND OR "${Python2_VERSION}" VERSION_LESS "2.7"))
+  set(pyroot_defvalue OFF)
+  set(pyroot_experimental_defvalue OFF)
+  set(tmva-pymva_defvalue OFF)
 endif()
 
 # Current limitations for modules:
