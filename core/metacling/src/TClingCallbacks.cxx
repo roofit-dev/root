@@ -74,14 +74,16 @@ extern "C" {
                                     cling::Interpreter &interpreter, bool searchSystem);
 }
 
-TClingCallbacks::TClingCallbacks(cling::Interpreter* interp)
+TClingCallbacks::TClingCallbacks(cling::Interpreter* interp, bool hasCodeGen)
    : InterpreterCallbacks(interp),
      fLastLookupCtx(0), fROOTSpecialNamespace(0),
      fFirstRun(true), fIsAutoloading(false), fIsAutoloadingRecursively(false),
      fIsAutoParsingSuspended(false), fPPOldFlag(false), fPPChanged(false) {
-   Transaction* T = 0;
-   m_Interpreter->declare("namespace __ROOT_SpecialObjects{}", &T);
-   fROOTSpecialNamespace = dyn_cast<NamespaceDecl>(T->getFirstDecl().getSingleDecl());
+   if (hasCodeGen) {
+      Transaction* T = 0;
+      m_Interpreter->declare("namespace __ROOT_SpecialObjects{}", &T);
+      fROOTSpecialNamespace = dyn_cast<NamespaceDecl>(T->getFirstDecl().getSingleDecl());
+   }
 }
 
 //pin the vtable here
@@ -97,8 +99,8 @@ void TClingCallbacks::InclusionDirective(clang::SourceLocation sLoc/*HashLoc*/,
                                          llvm::StringRef /*RelativePath*/,
                                          const clang::Module * Imported) {
    // We found a module. Do not try to do anything else.
+   Sema &SemaR = m_Interpreter->getSema();
    if (Imported) {
-      Sema &SemaR = m_Interpreter->getSema();
       // FIXME: We should make the module visible at that point.
       if (!SemaR.isModuleVisible(Imported))
          ROOT::TMetaUtils::Info("TClingCallbacks::InclusionDirective",
@@ -124,7 +126,6 @@ void TClingCallbacks::InclusionDirective(clang::SourceLocation sLoc/*HashLoc*/,
 
    std::string localString(FileName.str());
 
-   Sema &SemaR = m_Interpreter->getSema();
    DeclarationName Name = &SemaR.getASTContext().Idents.get(localString.c_str());
    LookupResult RHeader(SemaR, Name, sLoc, Sema::LookupOrdinaryName);
 
@@ -242,6 +243,11 @@ static bool topmostDCIsFunction(Scope* S) {
 // returns true when a declaration is found and no error should be emitted.
 //
 bool TClingCallbacks::LookupObject(LookupResult &R, Scope *S) {
+   if (!fROOTSpecialNamespace) {
+      // init error or rootcling
+      return false;
+   }
+
    // Don't do any extra work if an error that is not still recovered occurred.
    if (m_Interpreter->getSema().getDiagnostics().hasErrorOccurred())
       return false;
@@ -280,6 +286,11 @@ bool TClingCallbacks::LookupObject(LookupResult &R, Scope *S) {
 }
 
 bool TClingCallbacks::LookupObject(const DeclContext* DC, DeclarationName Name) {
+   if (!fROOTSpecialNamespace) {
+      // init error or rootcling
+      return false;
+   }
+
    if (!IsAutoloadingEnabled() || fIsAutoloadingRecursively) return false;
 
    if (Name.getNameKind() != DeclarationName::Identifier) return false;
@@ -327,6 +338,11 @@ bool TClingCallbacks::LookupObject(const DeclContext* DC, DeclarationName Name) 
 }
 
 bool TClingCallbacks::LookupObject(clang::TagDecl* Tag) {
+   if (!fROOTSpecialNamespace) {
+      // init error or rootcling
+      return false;
+   }
+
    // Clang needs Tag's complete definition. Can we parse it?
    if (fIsAutoloadingRecursively || fIsAutoParsingSuspended) return false;
 
@@ -379,6 +395,11 @@ bool TClingCallbacks::LookupObject(clang::TagDecl* Tag) {
 //
 bool TClingCallbacks::tryAutoParseInternal(llvm::StringRef Name, LookupResult &R,
                                            Scope *S, const FileEntry* FE /*=0*/) {
+   if (!fROOTSpecialNamespace) {
+      // init error or rootcling
+      return false;
+   }
+
    Sema &SemaR = m_Interpreter->getSema();
 
    // Try to autoload first if autoloading is enabled
@@ -463,6 +484,11 @@ bool TClingCallbacks::tryAutoParseInternal(llvm::StringRef Name, LookupResult &R
 // returns true when declaration is found and no error should be emitted.
 //
 bool TClingCallbacks::tryFindROOTSpecialInternal(LookupResult &R, Scope *S) {
+   if (!fROOTSpecialNamespace) {
+      // init error or rootcling
+      return false;
+   }
+
    // User must be able to redefine the names that come from a file.
    if (R.isForRedeclaration())
       return false;
@@ -563,6 +589,11 @@ bool TClingCallbacks::tryFindROOTSpecialInternal(LookupResult &R, Scope *S) {
 }
 
 bool TClingCallbacks::tryResolveAtRuntimeInternal(LookupResult &R, Scope *S) {
+   if (!fROOTSpecialNamespace) {
+      // init error or rootcling
+      return false;
+   }
+
    if (!shouldResolveAtRuntime(R, S))
       return false;
 
@@ -670,6 +701,11 @@ bool TClingCallbacks::shouldResolveAtRuntime(LookupResult& R, Scope* S) {
 }
 
 bool TClingCallbacks::tryInjectImplicitAutoKeyword(LookupResult &R, Scope *S) {
+   if (!fROOTSpecialNamespace) {
+      // init error or rootcling
+      return false;
+   }
+
    // Should be disabled with the dynamic scopes.
    if (m_IsRuntime)
       return false;
@@ -851,15 +887,16 @@ static void SearchAndAddPath(const std::string& Path,
          DirIt != DirEnd && !EC; DirIt.increment(EC)) {
 
       std::string FileName(DirIt->path());
-      if (!llvm::sys::fs::is_directory(FileName) && llvm::sys::path::extension(FileName) == ".so") {
-         // TCling::IsLoaded is incredibly slow!
-         // No need to check linked libraries, as this function is only invoked
-         // for symbols that cannot be found (neither by dlsym nor in the JIT).
-         if (dyLibManager->isLibraryLoaded(FileName.c_str()))
-            continue;
-         sLibraries.push_back(std::make_pair(sPaths.size(), llvm::sys::path::filename(FileName)));
-         flag = true;
-      }
+      if (llvm::sys::fs::is_directory(FileName))
+         continue;
+      if (!cling::DynamicLibraryManager::isSharedLibrary(FileName))
+         continue;
+      // No need to check linked libraries, as this function is only invoked
+      // for symbols that cannot be found (neither by dlsym nor in the JIT).
+      if (dyLibManager->isLibraryLoaded(FileName.c_str()))
+         continue;
+      sLibraries.push_back(std::make_pair(sPaths.size(), llvm::sys::path::filename(FileName)));
+      flag = true;
    }
 
    if (flag)
@@ -879,20 +916,12 @@ void TCling__FindLoadedLibraries(std::vector<std::pair<uint32_t, std::string>> &
 {
    // Store the information of path so that we don't have to iterate over the same path again and again.
    static std::unordered_set<std::string> alreadyLookedPath;
-   const clang::Preprocessor &PP = interpreter.getCI()->getPreprocessor();
-   const HeaderSearchOptions &HSOpts = PP.getHeaderSearchInfo().getHeaderSearchOpts();
    cling::DynamicLibraryManager* dyLibManager = interpreter.getDynamicLibraryManager();
 
-   if (searchSystem) {
-      llvm::SmallVector<std::string, 32> systemPath = dyLibManager->getSystemSearchPath();
-      for (const std::string& sysPath : systemPath) {
-         SearchAndAddPath(sysPath, sLibraries, sPaths, alreadyLookedPath, dyLibManager);
-      }
-   } else {
-      const std::vector<std::string>& MPaths = HSOpts.PrebuiltModulePaths;
-      // Take path here eg. "/home/foo/module-release/lib/"
-      for (const std::string& mPath : MPaths) {
-         SearchAndAddPath(mPath, sLibraries, sPaths, alreadyLookedPath, dyLibManager);
-      }
+   const auto &searchPaths = dyLibManager->getSearchPath();
+   for (const cling::DynamicLibraryManager::SearchPathInfo &Info : searchPaths) {
+      if (!Info.IsUser && !searchSystem)
+         continue;
+      SearchAndAddPath(Info.Path, sLibraries, sPaths, alreadyLookedPath, dyLibManager);
    }
 }

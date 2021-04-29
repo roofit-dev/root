@@ -33,6 +33,7 @@ namespace clang {
   class DiagnosticConsumer;
   class Decl;
   class FileID;
+  class ModuleFileExtension;
   class Parser;
 }
 
@@ -100,6 +101,9 @@ namespace cling {
     ///
     std::unique_ptr<IncrementalCUDADeviceCompiler> m_CUDACompiler;
 
+    using ModuleFileExtensions =
+        std::vector<std::shared_ptr<clang::ModuleFileExtension>>;
+
   public:
     enum EParseResult {
       kSuccess,
@@ -108,7 +112,8 @@ namespace cling {
     };
     typedef llvm::PointerIntPair<Transaction*, 2, EParseResult>
       ParseResultTransaction;
-    IncrementalParser(Interpreter* interp, const char* llvmdir);
+    IncrementalParser(Interpreter* interp, const char* llvmdir,
+                      const ModuleFileExtensions& moduleExtensions);
     ~IncrementalParser();
 
     ///\brief Whether the IncrementalParser is valid.
@@ -181,6 +186,11 @@ namespace cling {
         return 0;
       return m_Transactions.back();
     }
+
+    ///\brief Returns the most recent transaction with an input line wrapper,
+    /// which could well be the current one.
+    ///
+    const Transaction* getLastWrapperTransaction() const;
 
     ///\brief Returns the currently active transaction.
     ///

@@ -66,7 +66,7 @@ of a main program creating an interactive version is shown below:
 ~~~
 */
 
-#include <ROOT/RConfig.h>
+#include <ROOT/RConfig.hxx>
 #include "RConfigure.h"
 #include "RConfigOptions.h"
 #include "RVersion.h"
@@ -540,6 +540,9 @@ namespace Internal {
    /// In all threads, gDirectory defaults to gROOT, a singleton which supports thread-safe insertion and deletion of contents.
    /// gFile and gPad default to nullptr, as it is for single-thread programs.
    ///
+   /// The ROOT graphics subsystem is not made thread-safe by this method. In particular drawing or printing different
+   /// canvases from different threads (and analogous operations such as invoking `Draw` on a `TObject`) is not thread-safe.
+   ///
    /// Note that there is no `DisableThreadSafety()`. ROOT's thread-safety features cannot be disabled once activated.
    // clang-format on
    void EnableThreadSafety()
@@ -727,7 +730,7 @@ TROOT::TROOT(const char *name, const char *title, VoidFuncPtr_t *initfunc)
 
    gRootDir = GetRootSys().Data();
 
-   TDirectory::Build();
+   TDirectory::BuildDirectory(nullptr, nullptr);
 
    // Initialize interface to CINT C++ interpreter
    fVersionInt      = 0;  // check in TROOT dtor in case TCling fails
@@ -1247,7 +1250,7 @@ void TROOT::EndOfProcessCleanups()
    CloseFiles();
 
    if (gInterpreter) {
-      gInterpreter->ResetGlobals();
+      gInterpreter->ShutDown();
    }
 
    // Now delete the objects 'held' by the TFiles so that it
@@ -1763,18 +1766,19 @@ TCollection *TROOT::GetListOfFunctionTemplates()
 TCollection *TROOT::GetListOfGlobals(Bool_t load)
 {
    if (!fGlobals) {
-      // We add to the list the "funcky-fake" globals.
       fGlobals = new TListOfDataMembers(0);
-      fGlobals->Add(new TGlobalMappedFunction("gROOT", "TROOT*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&ROOT::GetROOT)));
-      fGlobals->Add(new TGlobalMappedFunction("gPad", "TVirtualPad*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TVirtualPad::Pad)));
-      fGlobals->Add(new TGlobalMappedFunction("gInterpreter", "TInterpreter*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TInterpreter::Instance)));
-      fGlobals->Add(new TGlobalMappedFunction("gVirtualX", "TVirtualX*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TVirtualX::Instance)));
-      fGlobals->Add(new TGlobalMappedFunction("gDirectory", "TDirectory*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TDirectory::CurrentDirectory)));
+      // We add to the list the "funcky-fake" globals.
+
+      // provide special functor for gROOT, while ROOT::GetROOT() does not return reference
+      TGlobalMappedFunction::MakeFunctor("gROOT", "TROOT*", ROOT::GetROOT, [] {
+         ROOT::GetROOT();
+         return (void *)&ROOT::Internal::gROOTLocal;
+      });
+
+      TGlobalMappedFunction::MakeFunctor("gPad", "TVirtualPad*", TVirtualPad::Pad);
+      TGlobalMappedFunction::MakeFunctor("gVirtualX", "TVirtualX*", TVirtualX::Instance);
+      TGlobalMappedFunction::MakeFunctor("gDirectory", "TDirectory*", TDirectory::CurrentDirectory);
+
       // Don't let TGlobalMappedFunction delete our globals, now that we take them.
       fGlobals->AddAll(&TGlobalMappedFunction::GetEarlyRegisteredGlobals());
       TGlobalMappedFunction::GetEarlyRegisteredGlobals().SetOwner(kFALSE);
@@ -2139,9 +2143,6 @@ void TROOT::InitInterpreter()
    // load the libraries for the classes concerned even-though the user is
    // *not* using them.
    TClass::ReadRules(); // Read the default customization rules ...
-
-   // Enable autoloading
-   fInterpreter->EnableAutoLoading();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2897,8 +2898,22 @@ Int_t TROOT::RootVersionCode()
 {
    return ROOT_VERSION_CODE;
 }
+////////////////////////////////////////////////////////////////////////////////
+/// Provide command line arguments to the interpreter construction.
+/// These arguments are added to the existing flags (e.g. `-DNDEBUG`).
+/// They are evaluated once per process, at the time where TROOT (and thus
+/// TInterpreter) is constructed.
+/// Returns the new flags.
+
+const std::vector<std::string> &TROOT::AddExtraInterpreterArgs(const std::vector<std::string> &args) {
+   static std::vector<std::string> sArgs = {};
+   sArgs.insert(sArgs.begin(), args.begin(), args.end());
+   return sArgs;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
+/// INTERNAL function!
+/// Used by rootcling to inject interpreter arguments through a C-interface layer.
 
 const char**& TROOT::GetExtraInterpreterArgs() {
    static const char** extraInterpArgs = 0;
@@ -3091,6 +3106,17 @@ const TString& TROOT::GetTutorialDir() {
       return roottutdir;
    }
 #endif
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Shut down ROOT.
+
+void TROOT::ShutDown()
+{
+   if (gROOT)
+      gROOT->EndOfProcessCleanups();
+   else if (gInterpreter)
+      gInterpreter->ShutDown();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
