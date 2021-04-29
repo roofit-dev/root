@@ -6,7 +6,7 @@
 /// is welcome!
 
 /*************************************************************************
- * Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -20,6 +20,10 @@
 
 #include <ROOT/RWebWindow.hxx>
 
+#include <string>
+
+using namespace std::string_literals;
+
 namespace ROOT {
 namespace Experimental {
 
@@ -31,6 +35,26 @@ protected:
    Bool_t ProcessBatchHolder(std::shared_ptr<THttpCallArg> &arg) override
    {
       return IsDisabled() ? kFALSE : fWindow.ProcessBatchHolder(arg);
+   }
+
+   void VerifyDefaultPageContent(std::shared_ptr<THttpCallArg> &arg) override
+   {
+      auto version = fWindow.GetClientVersion();
+      if (!version.empty()) {
+         std::string search = "jsrootsys/scripts/JSRootCore."s;
+         std::string replace = version + "/jsrootsys/scripts/JSRootCore."s;
+         // replace link to JSROOT main script to emulate new version
+         arg->ReplaceAllinContent(search, replace, true);
+         arg->AddNoCacheHeader();
+      }
+
+      auto user_args = fWindow.GetUserArgs();
+      if (!user_args.empty()) {
+         std::string search = "JSROOT.ConnectWebWindow({"s;
+         std::string replace = search + "user_args: " + user_args + ",";
+         arg->ReplaceAllinContent(search, replace, true);
+         arg->AddNoCacheHeader();
+      }
    }
 
 public:
@@ -47,6 +71,9 @@ public:
    /// returns content of default web-page
    /// THttpWSHandler interface
    TString GetDefaultPageContent() override { return IsDisabled() ? "" : fWindow.fDefaultPage.c_str(); }
+
+   /// returns true when window allowed to serve files relative to default page
+   Bool_t CanServeFiles() const override { return !IsDisabled(); }
 
    /// Process websocket request - called from THttpServer thread
    /// THttpWSHandler interface

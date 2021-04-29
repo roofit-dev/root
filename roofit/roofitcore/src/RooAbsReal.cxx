@@ -83,6 +83,7 @@
 #include "RooBrentRootFinder.h"
 #include "RooVectorDataStore.h"
 #include "RooCachedReal.h"
+#include "RooHelpers.h"
 
 #include "Riostream.h"
 
@@ -107,11 +108,9 @@
 
 using namespace std ;
 
-ClassImp(RooAbsReal);
-;
+ClassImp(RooAbsReal)
 
-Bool_t RooAbsReal::_cacheCheck(kFALSE) ;
-Bool_t RooAbsReal::_globalSelectComp = kFALSE ;
+Bool_t RooAbsReal::_globalSelectComp = false;
 Bool_t RooAbsReal::_hideOffset = kTRUE ;
 
 void RooAbsReal::setHideOffset(Bool_t flag) { _hideOffset = flag ; }
@@ -487,15 +486,20 @@ RooAbsReal* RooAbsReal::createProfile(const RooArgSet& paramsOfInterest)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Create an object that represents the integral of the function over one or more observables listed in iset
-/// The actual integration calculation is only performed when the return object is evaluated. The name
+/// Create an object that represents the integral of the function over one or more observables listed in `iset`.
+/// The actual integration calculation is only performed when the returned object is evaluated. The name
 /// of the integral object is automatically constructed from the name of the input function, the variables
-/// it integrates and the range integrates over
+/// it integrates and the range integrates over.
+///
+/// \note The integral over a PDF is usually not normalised (*i.e.*, it is usually not
+/// 1 when integrating the PDF over the full range). In fact, this integral is used *to compute*
+/// the normalisation of each PDF. See the rf110 tutorial at https://root.cern.ch/doc/master/group__tutorial__roofit.html
+/// for details on PDF normalisation.
 ///
 /// The following named arguments are accepted
 /// |  | Effect on integral creation
 /// |--|-------------------------------
-/// | `NormSet(const RooArgSet&)`            | Specify normalization set, mostly useful when working with PDFS
+/// | `NormSet(const RooArgSet&)`            | Specify normalization set, mostly useful when working with PDFs
 /// | `NumIntConfig(const RooNumIntConfig&)` | Use given configuration for any numeric integration, if necessary
 /// | `Range(const char* name)`              | Integrate only over given range. Multiple ranges may be specified by passing multiple Range() arguments
 
@@ -551,15 +555,12 @@ RooAbsReal* RooAbsReal::createIntegral(const RooArgSet& iset, const RooArgSet* n
   // Integral over multiple ranges
   RooArgSet components ;
 
-  TObjArray* oa = TString(rangeName).Tokenize(",");
+  auto tokens = RooHelpers::tokenise(rangeName, ",");
 
-  for( Int_t i=0; i < oa->GetEntries(); ++i) {
-    TObjString* os = (TObjString*) (*oa)[i];
-    if(!os) break;
-    RooAbsReal* compIntegral = createIntObj(iset,nset,cfg,os->GetString().Data()) ;
-    components.add(*compIntegral) ;
+  for (const std::string& token : tokens) {
+    RooAbsReal* compIntegral = createIntObj(iset,nset,cfg, token.c_str());
+    components.add(*compIntegral);
   }
-  delete oa;
 
   TString title(GetTitle()) ;
   title.Prepend("Integral of ") ;
@@ -706,9 +707,7 @@ void RooAbsReal::findInnerMostIntegration(const RooArgSet& allObs, RooArgSet& in
   RooArgSet obsServingAsRangeParams ;
 
   // Loop over all integrated observables
-  TIterator* oiter = allObs.createIterator() ;
-  RooAbsArg* aarg ;
-  while((aarg=(RooAbsArg*)oiter->Next())) {
+  for (const auto aarg : allObs) {
     // Check if observable is real-valued lvalue
     RooAbsRealLValue* arglv = dynamic_cast<RooAbsRealLValue*>(aarg) ;
     if (arglv) {
@@ -716,22 +715,21 @@ void RooAbsReal::findInnerMostIntegration(const RooArgSet& allObs, RooArgSet& in
       // Check if range is parameterized
       RooAbsBinning& binning = arglv->getBinning(rangeName,kFALSE,kTRUE) ;
       if (binning.isParameterized()) {
-	RooArgSet* loBoundObs = binning.lowBoundFunc()->getObservables(allObs) ;
-	RooArgSet* hiBoundObs = binning.highBoundFunc()->getObservables(allObs) ;
+        RooArgSet* loBoundObs = binning.lowBoundFunc()->getObservables(allObs) ;
+        RooArgSet* hiBoundObs = binning.highBoundFunc()->getObservables(allObs) ;
 
-	// Check if range parameterization depends on other integrated observables
-	if (loBoundObs->overlaps(allObs) || hiBoundObs->overlaps(allObs)) {
-	  obsWithParamRange.add(*aarg) ;
-	  obsWithFixedRange.remove(*aarg) ;
-	  obsServingAsRangeParams.add(*loBoundObs,kFALSE) ;
-	  obsServingAsRangeParams.add(*hiBoundObs,kFALSE) ;
-	}
-	delete loBoundObs ;
-	delete hiBoundObs ;
+        // Check if range parameterization depends on other integrated observables
+        if (loBoundObs->overlaps(allObs) || hiBoundObs->overlaps(allObs)) {
+          obsWithParamRange.add(*aarg) ;
+          obsWithFixedRange.remove(*aarg) ;
+          obsServingAsRangeParams.add(*loBoundObs,kFALSE) ;
+          obsServingAsRangeParams.add(*hiBoundObs,kFALSE) ;
+        }
+        delete loBoundObs ;
+        delete hiBoundObs ;
       }
     }
   }
-  delete oiter ;
 
   // Make list of fixed-range observables that are _not_ involved in the parameterization of ranges of other observables
   RooArgSet obsWithFixedRangeNP(obsWithFixedRange) ;
@@ -979,7 +977,7 @@ const RooAbsReal *RooAbsReal::createPlotProjection(const RooArgSet &dependentVar
   }
 
   if(projected->InheritsFrom(RooRealIntegral::Class())){
-    ((RooRealIntegral*)projected)->setAllowComponentSelection(true);
+    static_cast<RooRealIntegral*>(projected)->setAllowComponentSelection(true);
   }
 
   projected->SetName(name.Data()) ;
@@ -1319,7 +1317,7 @@ TH1* RooAbsReal::createHistogram(const char* varNameList, Int_t xbins, Int_t ybi
 /// <tr><td> `Binning(const char* name)`                    <td> Apply binning with given name to x axis of histogram
 /// <tr><td> `Binning(RooAbsBinning& binning)`              <td> Apply specified binning to x axis of histogram
 /// <tr><td> `Binning(int nbins, [double lo, double hi])`   <td> Apply specified binning to x axis of histogram
-/// <tr><td> `ConditionalObservables(const RooArgSet& set)` <td> Do not normalized PDF over following observables when projecting PDF into histogram
+/// <tr><td> `ConditionalObservables(const RooArgSet& set)` <td> Do not normalise PDF over following observables when projecting PDF into histogram
 /// <tr><td> `Scaling(Bool_t)`                              <td> Apply density-correction scaling (multiply by bin volume), default is kTRUE
 /// <tr><td> `Extended(Bool_t)`                             <td> Plot event yield instead of probability density (for extended pdfs only)
 ///
@@ -1514,13 +1512,13 @@ TH1* RooAbsReal::createHistogram(const char *name, const RooAbsRealLValue& xvar,
 void RooAbsReal::plotOnCompSelect(RooArgSet* selNodes) const
 {
   // Get complete set of tree branch nodes
-  RooArgSet branchNodeSet ;
-  branchNodeServerList(&branchNodeSet) ;
+  RooArgSet branchNodeSet;
+  branchNodeServerList(&branchNodeSet);
 
   // Discard any non-PDF nodes
-  TIterator* iter = branchNodeSet.createIterator() ;
-  RooAbsArg* arg ;
-  while((arg=(RooAbsArg*)iter->Next())) {
+  // Iterate by number because collection is being modified! Iterators may invalidate ...
+  for (unsigned int i = 0; i < branchNodeSet.size(); ++i) {
+    const auto arg = branchNodeSet[i];
     if (!dynamic_cast<RooAbsReal*>(arg)) {
       branchNodeSet.remove(*arg) ;
     }
@@ -1529,51 +1527,40 @@ void RooAbsReal::plotOnCompSelect(RooArgSet* selNodes) const
   // If no set is specified, restored all selection bits to kTRUE
   if (!selNodes) {
     // Reset PDF selection bits to kTRUE
-    iter->Reset() ;
-    while((arg=(RooAbsArg*)iter->Next())) {
-      ((RooAbsReal*)arg)->selectComp(kTRUE) ;
+    for (const auto arg : branchNodeSet) {
+      static_cast<RooAbsReal*>(arg)->selectComp(true);
     }
-    delete iter ;
     return ;
   }
 
 
   // Add all nodes below selected nodes
-  iter->Reset() ;
-  TIterator* sIter = selNodes->createIterator() ;
-  RooArgSet tmp ;
-  while((arg=(RooAbsArg*)iter->Next())) {
-    sIter->Reset() ;
-    RooAbsArg* selNode ;
-    while((selNode=(RooAbsArg*)sIter->Next())) {
+  RooArgSet tmp;
+  for (const auto arg : branchNodeSet) {
+    for (const auto selNode : *selNodes) {
       if (selNode->dependsOn(*arg)) {
-	tmp.add(*arg,kTRUE) ;
+        tmp.add(*arg,kTRUE);
       }
     }
   }
-  delete sIter ;
 
   // Add all nodes that depend on selected nodes
-  iter->Reset() ;
-  while((arg=(RooAbsArg*)iter->Next())) {
+  for (const auto arg : branchNodeSet) {
     if (arg->dependsOn(*selNodes)) {
-      tmp.add(*arg,kTRUE) ;
+      tmp.add(*arg,kTRUE);
     }
   }
 
-  tmp.remove(*selNodes,kTRUE) ;
-  tmp.remove(*this) ;
-  selNodes->add(tmp) ;
+  tmp.remove(*selNodes, true);
+  tmp.remove(*this);
+  selNodes->add(tmp);
   coutI(Plotting) << "RooAbsPdf::plotOn(" << GetName() << ") indirectly selected PDF components: " << tmp << endl ;
 
   // Set PDF selection bits according to selNodes
-  iter->Reset() ;
-  while((arg=(RooAbsArg*)iter->Next())) {
-    Bool_t select = selNodes->find(arg->GetName()) ? kTRUE : kFALSE ;
-    ((RooAbsReal*)arg)->selectComp(select) ;
+  for (const auto arg : branchNodeSet) {
+    Bool_t select = selNodes->find(arg->GetName()) != nullptr;
+    static_cast<RooAbsReal*>(arg)->selectComp(select);
   }
-
-  delete iter ;
 }
 
 
@@ -1639,6 +1626,9 @@ void RooAbsReal::plotOnCompSelect(RooArgSet* selNodes) const
 /// <tr><td> `ShiftToZero(Bool_t flag)`        <td> Shift entire curve such that lowest visible point is at exactly zero. Mostly useful when plotting \f$ -\log(L) \f$ or \f$ \chi^2 \f$ distributions
 ///
 /// <tr><td> `AddTo(const char* name, double_t wgtSelf, double_t wgtOther)`   <td> Add constructed projection to already existing curve with given name and relative weight factors
+/// <tr><td> `Components(const char* names)`  <td>  When plotting sums of PDFs, plot only the named components (*e.g.* only
+///                                                 the signal of a signal+background model).
+/// <tr><td> `Components(const RooArgSet& compSet)` <td> As above, but pass a RooArgSet of the components themselves.
 ///
 /// <tr><th><th> Plotting control
 /// <tr><td> `DrawOption(const char* opt)`     <td> Select ROOT draw option for resulting TGraph object
@@ -1708,21 +1698,17 @@ RooPlot* RooAbsReal::plotOn(RooPlot* frame, RooLinkedList& argList) const
     RooCmdArg rnorm = RooFit::NormRange(rcmd->getString(0)) ;
     argList.Add(&rnorm) ;
 
-    list<string> rlist ;
+    std::vector<string> rlist;
 
     // Separate named ranges using strtok
-    char buf[1024] ;
-    strlcpy(buf,rcmd->getString(0),1024) ;
-    char* oneRange = strtok(buf,",") ;
-    while(oneRange) {
-      rlist.push_back(oneRange) ;
-      oneRange = strtok(0,",") ;
+    for (const std::string& rangeNameToken : RooHelpers::tokenise(rcmd->getString(0), ",")) {
+      rlist.emplace_back(rangeNameToken);
     }
 
-    for (list<string>::iterator riter=rlist.begin() ; riter!=rlist.end() ; ++riter) {
+    for (const auto& rangeString : rlist) {
       // Process each range with a separate command with a single range to be plotted
-      rcmd->setString(0,riter->c_str()) ;
-      RooAbsReal::plotOn(frame,argList) ;
+      rcmd->setString(0, rangeString.c_str());
+      RooAbsReal::plotOn(frame,argList);
     }
     return frame ;
 
@@ -1945,26 +1931,26 @@ RooPlot* RooAbsReal::plotOn(RooPlot* frame, RooLinkedList& argList) const
 
 
 
-
+/// Plotting engine function for internal use
+///
+/// Plot ourselves on given frame. If frame contains a histogram, all dimensions of the plotted
+/// function that occur in the previously plotted dataset are projected via partial integration,
+/// otherwise no projections are performed. Optionally, certain projections can be performed
+/// by summing over the values present in a provided dataset ('projData'), to correctly
+/// project out data dependents that are not properly described by the PDF (e.g. per-event errors).
+///
+/// The functions value can be multiplied with an optional scale factor. The interpretation
+/// of the scale factor is unique for generic real functions, for PDFs there are various interpretations
+/// possible, which can be selection with 'stype' (see RooAbsPdf::plotOn() for details).
+///
+/// The default projection behaviour can be overriden by supplying an optional set of dependents
+/// to project. For most cases, plotSliceOn() and plotProjOn() provide a more intuitive interface
+/// to modify the default projection behaviour.
 //_____________________________________________________________________________
 // coverity[PASS_BY_VALUE]
 RooPlot* RooAbsReal::plotOn(RooPlot *frame, PlotOpt o) const
 {
-  // Plotting engine function for internal use
-  //
-  // Plot ourselves on given frame. If frame contains a histogram, all dimensions of the plotted
-  // function that occur in the previously plotted dataset are projected via partial integration,
-  // otherwise no projections are performed. Optionally, certain projections can be performed
-  // by summing over the values present in a provided dataset ('projData'), to correctly
-  // project out data dependents that are not properly described by the PDF (e.g. per-event errors).
-  //
-  // The functions value can be multiplied with an optional scale factor. The interpretation
-  // of the scale factor is unique for generic real functions, for PDFs there are various interpretations
-  // possible, which can be selection with 'stype' (see RooAbsPdf::plotOn() for details).
-  //
-  // The default projection behaviour can be overriden by supplying an optional set of dependents
-  // to project. For most cases, plotSliceOn() and plotProjOn() provide a more intuitive interface
-  // to modify the default projection behavour.
+
 
   // Sanity checks
   if (plotSanityChecks(frame)) return frame ;
@@ -2250,12 +2236,10 @@ RooPlot* RooAbsReal::plotOn(RooPlot *frame, PlotOpt o) const
       }
 
       // Evaluate fractional correction integral always on full p.d.f, not component.
-      Bool_t tmp = _globalSelectComp ;
-      globalSelectComp(kTRUE) ;
+      GlobalSelectComponentRAII selectCompRAII(true);
       RooAbsReal* intFrac = projection->createIntegral(*plotVar,*plotVar,o.normRangeName) ;
-      globalSelectComp(kTRUE) ;
+      _globalSelectComp = true; //It's unclear why this is done a second time. Maybe unnecessary.
       o.scaleFactor /= intFrac->getVal() ;
-      globalSelectComp(tmp) ;
       delete intFrac ;
 
     }
@@ -2736,9 +2720,9 @@ Double_t RooAbsReal::getPropagatedError(const RooFitResult &fr, const RooArgSet 
 /// \param[in] fr The RooFitResult, where errors can be extracted
 /// \param[in] Z  The desired significance (width) of the error band
 /// \param[in] params If non-zero, consider only the subset of the parameters in fr for the error evaluation
-/// \param[in] argList Optional RooCmdArg that can be applied to a regular plotOn() operation
-/// \param[in] linMethod By default (linMethod=kTRUE) a linearized error is shown.
-/// \return The RooPlot the band was plotted on (for chaining)
+/// \param[in] argList Optional `RooCmdArg` that can be applied to a regular plotOn() operation
+/// \param[in] linMethod By default (linMethod=kTRUE), a linearized error is shown.
+/// \return The RooPlot the band was plotted on (for chaining of plotting commands).
 ///
 /// The linearized error is calculated as follows:
 /// \f[
@@ -3257,11 +3241,6 @@ void RooAbsReal::attachToTree(TTree& t, Int_t bufSize)
       coutE(InputArguments) << "RooAbsReal::attachToTree(" << GetName() << ") data type " << typeName << " is not supported" << endl ;
     }
 
-    if (branch->GetCompressionLevel()<0) {
-      // cout << "RooAbsReal::attachToTree(" << GetName() << ") Fixing compression level of branch " << cleanName << endl ;
-      branch->SetCompressionLevel(ROOT::RCompressionSetting::EDefaults::kUseGlobal % 100) ;
-    }
-
 //      cout << "RooAbsReal::attachToTree(" << cleanName << "): branch already exists in tree " << (void*)&t << ", changing address" << endl ;
 
   } else {
@@ -3269,7 +3248,6 @@ void RooAbsReal::attachToTree(TTree& t, Int_t bufSize)
     TString format(cleanName);
     format.Append("/D");
     branch = t.Branch(cleanName, &_value, (const Text_t*)format, bufSize);
-    branch->SetCompressionLevel(ROOT::RCompressionSetting::EDefaults::kUseGlobal % 100) ;
     //      cout << "RooAbsReal::attachToTree(" << cleanName << "): creating new branch in tree " << (void*)&t << endl ;
   }
 
@@ -3572,16 +3550,6 @@ void RooAbsReal::selectNormalizationRange(const char*, Bool_t)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Activate cache validation mode
-
-void RooAbsReal::setCacheCheck(Bool_t flag)
-{
-  _cacheCheck = flag ;
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
 /// Advertise capability to determine maximum value of function for given set of
 /// observables. If no direct generator method is provided, this information
 /// will assist the accept/reject generator to operate more efficiently as
@@ -3878,7 +3846,7 @@ void RooAbsReal::fixAddCoefRange(const char* rangeName, Bool_t force)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Interface method for function objects to indicate their prefferred order of observables
+/// Interface method for function objects to indicate their preferred order of observables
 /// for scanning their values into a (multi-dimensional) histogram or RooDataSet. The observables
 /// to be ordered are offered in argument 'obs' and should be copied in their preferred
 /// order into argument 'orderdObs', This default implementation indicates no preference

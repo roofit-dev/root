@@ -235,11 +235,7 @@ TApplication::~TApplication()
    // end of 'main' (or more exactly before the library start being
    // unloaded).
    if (fgApplications == 0 || fgApplications->FirstLink() == 0 ) {
-      if (gROOT) {
-         gROOT->EndOfProcessCleanups();
-      } else if (gInterpreter) {
-         gInterpreter->ResetGlobals();
-      }
+      TROOT::ShutDown();
    }
 
    // Now that all the canvases and files have been closed we can
@@ -496,6 +492,8 @@ void TApplication::GetOptions(Int_t *argc, char **argv)
          char *arg = strchr(argv[i], '(');
          if (arg) *arg = '\0';
          char *dir = gSystem->ExpandPathName(argv[i]);
+         // ROOT-9959: we do not continue if we could not expand the path
+         if (!dir) continue;
          TUrl udir(dir, kTRUE);
          // remove options and anchor to check the path
          TString sfx = udir.GetFileAndOptions();
