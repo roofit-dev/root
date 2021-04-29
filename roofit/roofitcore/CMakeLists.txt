@@ -251,13 +251,15 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         RooMinimizerType.h
         RooMinimizer_impl.h
         MultiProcess/BidirMMapPipe.h
-#        MultiProcess/GradMinimizer.h
-#        MultiProcess/Job.h
-#        MultiProcess/NLLVar.h
-#        MultiProcess/TaskManager.h
-#        MultiProcess/Vector.h
-#        MultiProcess/messages.h
-#        MultiProcess/util.h
+        MultiProcess/GradMinimizer.h
+        MultiProcess/Job.h
+        MultiProcess/NLLVar.h
+        MultiProcess/TaskManager.h
+        MultiProcess/Vector.h
+        MultiProcess/messages.h
+        MultiProcess/util.h
+        MultiProcess/zmq.hxx
+    RooHelpers.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -490,6 +492,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
 #        src/MultiProcess/TaskManager.cxx
 #        src/MultiProcess/messages.cxx
 #        src/MultiProcess/util.cxx
+    src/RooHelpers.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
 #    -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
