@@ -14,30 +14,21 @@
  *************************************************************************/
 
 #include <ROOT/RPageStorage.hxx>
+#include <ROOT/RPageStorageFile.hxx>
 #include <ROOT/RColumn.hxx>
 #include <ROOT/RField.hxx>
+#include <ROOT/RNTupleDescriptor.hxx>
+#include <ROOT/RNTupleMetrics.hxx>
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RPagePool.hxx>
-#include <ROOT/RPageStorageRaw.hxx>
-#include <ROOT/RPageStorageRoot.hxx>
+#include <ROOT/RPageStorageFile.hxx>
 #include <ROOT/RStringView.hxx>
 
 #include <Compression.h>
 #include <TError.h>
 
-#include <unordered_map>
 #include <utility>
 
-namespace {
-
-bool StrEndsWith(const std::string &str, const std::string &suffix)
-{
-   if (str.size() < suffix.size())
-      return false;
-   return (str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0);
-}
-
-} // anonymous namespace
 
 ROOT::Experimental::Detail::RPageStorage::RPageStorage(std::string_view name) : fNTupleName(name)
 {
@@ -45,6 +36,12 @@ ROOT::Experimental::Detail::RPageStorage::RPageStorage(std::string_view name) : 
 
 ROOT::Experimental::Detail::RPageStorage::~RPageStorage()
 {
+}
+
+ROOT::Experimental::Detail::RNTupleMetrics &ROOT::Experimental::Detail::RPageStorage::GetMetrics()
+{
+   static RNTupleMetrics metrics("");
+   return metrics;
 }
 
 
@@ -63,9 +60,7 @@ ROOT::Experimental::Detail::RPageSource::~RPageSource()
 std::unique_ptr<ROOT::Experimental::Detail::RPageSource> ROOT::Experimental::Detail::RPageSource::Create(
    std::string_view ntupleName, std::string_view location, const RNTupleReadOptions &options)
 {
-   if (StrEndsWith(std::string(location), ".root"))
-      return std::make_unique<RPageSourceRoot>(ntupleName, location, options);
-   return std::make_unique<RPageSourceRaw>(ntupleName, location, options);
+   return std::make_unique<RPageSourceFile>(ntupleName, location, options);
 }
 
 ROOT::Experimental::Detail::RPageStorage::ColumnHandle_t
@@ -74,7 +69,13 @@ ROOT::Experimental::Detail::RPageSource::AddColumn(DescriptorId_t fieldId, const
    R__ASSERT(fieldId != kInvalidDescriptorId);
    auto columnId = fDescriptor.FindColumnId(fieldId, column.GetIndex());
    R__ASSERT(columnId != kInvalidDescriptorId);
-   return ColumnHandle_t(columnId, &column);
+   fActiveColumns.emplace(columnId);
+   return ColumnHandle_t{columnId, &column};
+}
+
+void ROOT::Experimental::Detail::RPageSource::DropColumn(ColumnHandle_t columnHandle)
+{
+   fActiveColumns.erase(columnHandle.fId);
 }
 
 ROOT::Experimental::NTupleSize_t ROOT::Experimental::Detail::RPageSource::GetNEntries()
@@ -93,6 +94,40 @@ ROOT::Experimental::ColumnId_t ROOT::Experimental::Detail::RPageSource::GetColum
    return columnHandle.fId;
 }
 
+void ROOT::Experimental::Detail::RPageSource::UnzipCluster(RCluster *cluster)
+{
+   if (fTaskScheduler)
+      UnzipClusterImpl(cluster);
+}
+
+
+std::unique_ptr<unsigned char []> ROOT::Experimental::Detail::RPageSource::UnsealPage(
+   const RSealedPage &sealedPage, const RColumnElementBase &element)
+{
+   const auto bytesPacked = element.GetPackedSize(sealedPage.fNElements);
+   const auto pageSize = element.GetSize() * sealedPage.fNElements;
+
+   // TODO(jblomer): We might be able to do better memory handling for unsealing pages than a new malloc for every
+   // new page.
+   auto pageBuffer = std::make_unique<unsigned char[]>(bytesPacked);
+   if (sealedPage.fSize != bytesPacked) {
+      fDecompressor->Unzip(sealedPage.fBuffer, sealedPage.fSize, bytesPacked, pageBuffer.get());
+   } else {
+      // We cannot simply map the sealed page as we don't know its life time. Specialized page sources
+      // may decide to implement to not use UnsealPage but to custom mapping / decompression code.
+      // Note that usually pages are compressed.
+      memcpy(pageBuffer.get(), sealedPage.fBuffer, bytesPacked);
+   }
+
+   if (!element.IsMappable()) {
+      auto unpackedBuffer = new unsigned char[pageSize];
+      element.Unpack(unpackedBuffer, pageBuffer.get(), sealedPage.fNElements);
+      pageBuffer = std::unique_ptr<unsigned char []>(unpackedBuffer);
+   }
+
+   return pageBuffer;
+}
+
 
 //------------------------------------------------------------------------------
 
@@ -109,9 +144,7 @@ ROOT::Experimental::Detail::RPageSink::~RPageSink()
 std::unique_ptr<ROOT::Experimental::Detail::RPageSink> ROOT::Experimental::Detail::RPageSink::Create(
    std::string_view ntupleName, std::string_view location, const RNTupleWriteOptions &options)
 {
-   if (StrEndsWith(std::string(location), ".root"))
-      return std::make_unique<RPageSinkRoot>(ntupleName, location, options);
-   return std::make_unique<RPageSinkRaw>(ntupleName, location, options);
+   return std::make_unique<RPageSinkFile>(ntupleName, location, options);
 }
 
 ROOT::Experimental::Detail::RPageStorage::ColumnHandle_t
@@ -119,7 +152,7 @@ ROOT::Experimental::Detail::RPageSink::AddColumn(DescriptorId_t fieldId, const R
 {
    auto columnId = fLastColumnId++;
    fDescriptorBuilder.AddColumn(columnId, fieldId, column.GetVersion(), column.GetModel(), column.GetIndex());
-   return ColumnHandle_t(columnId, &column);
+   return ColumnHandle_t{columnId, &column};
 }
 
 
@@ -128,18 +161,25 @@ void ROOT::Experimental::Detail::RPageSink::Create(RNTupleModel &model)
    fDescriptorBuilder.SetNTuple(fNTupleName, model.GetDescription(), "undefined author",
                                 model.GetVersion(), model.GetUuid());
 
-   std::unordered_map<const RFieldBase *, DescriptorId_t> fieldPtr2Id; // necessary to find parent field ids
-   const auto &rootField = *model.GetRootField();
-   fDescriptorBuilder.AddField(fLastFieldId, rootField.GetFieldVersion(), rootField.GetTypeVersion(),
-      rootField.GetName(), rootField.GetType(), rootField.GetNRepetitions(), rootField.GetStructure());
-   fieldPtr2Id[&rootField] = fLastFieldId++;
-   for (auto& f : *model.GetRootField()) {
-      fDescriptorBuilder.AddField(fLastFieldId, f.GetFieldVersion(), f.GetTypeVersion(), f.GetName(), f.GetType(),
-                                  f.GetNRepetitions(), f.GetStructure());
-      fDescriptorBuilder.AddFieldLink(fieldPtr2Id[f.GetParent()], fLastFieldId);
-
-      Detail::RFieldFuse::Connect(fLastFieldId, *this, f); // issues in turn one or several calls to AddColumn()
-      fieldPtr2Id[&f] = fLastFieldId++;
+   auto &fieldZero = *model.GetFieldZero();
+   fDescriptorBuilder.AddField(
+      RDanglingFieldDescriptor::FromField(fieldZero)
+         .FieldId(fLastFieldId)
+         .MakeDescriptor()
+         .Unwrap()
+   );
+   fieldZero.SetOnDiskId(fLastFieldId);
+   for (auto& f : *model.GetFieldZero()) {
+      fLastFieldId++;
+      fDescriptorBuilder.AddField(
+         RDanglingFieldDescriptor::FromField(f)
+            .FieldId(fLastFieldId)
+            .MakeDescriptor()
+            .Unwrap()
+      );
+      fDescriptorBuilder.AddFieldLink(f.GetParent()->GetOnDiskId(), fLastFieldId);
+      f.SetOnDiskId(fLastFieldId);
+      f.ConnectPageStorage(*this); // issues in turn one or several calls to AddColumn()
    }
 
    auto nColumns = fLastColumnId;
@@ -155,13 +195,13 @@ void ROOT::Experimental::Detail::RPageSink::Create(RNTupleModel &model)
       fOpenPageRanges.emplace_back(std::move(pageRange));
    }
 
-   DoCreate(model);
+   CreateImpl(model);
 }
 
 
 void ROOT::Experimental::Detail::RPageSink::CommitPage(ColumnHandle_t columnHandle, const RPage &page)
 {
-   auto locator = DoCommitPage(columnHandle, page);
+   auto locator = CommitPageImpl(columnHandle, page);
 
    auto columnId = columnHandle.fId;
    fOpenColumnRanges[columnId].fNElements += page.GetNElements();
@@ -174,7 +214,7 @@ void ROOT::Experimental::Detail::RPageSink::CommitPage(ColumnHandle_t columnHand
 
 void ROOT::Experimental::Detail::RPageSink::CommitCluster(ROOT::Experimental::NTupleSize_t nEntries)
 {
-   auto locator = DoCommitCluster(nEntries);
+   auto locator = CommitClusterImpl(nEntries);
 
    R__ASSERT((nEntries - fPrevClusterNEntries) < ClusterSize_t(-1));
    fDescriptorBuilder.AddCluster(fLastClusterId, RNTupleVersion(), fPrevClusterNEntries,
@@ -193,4 +233,34 @@ void ROOT::Experimental::Detail::RPageSink::CommitCluster(ROOT::Experimental::NT
    }
    ++fLastClusterId;
    fPrevClusterNEntries = nEntries;
+}
+
+
+ROOT::Experimental::Detail::RPageStorage::RSealedPage
+ROOT::Experimental::Detail::RPageSink::SealPage(
+   const RPage &page, const RColumnElementBase &element, int compressionSetting)
+{
+   unsigned char *buffer = reinterpret_cast<unsigned char *>(page.GetBuffer());
+   bool isAdoptedBuffer = true;
+   auto packedBytes = page.GetSize();
+
+   if (!element.IsMappable()) {
+      packedBytes = element.GetPackedSize(page.GetNElements());
+      buffer = new unsigned char[packedBytes];
+      isAdoptedBuffer = false;
+      element.Pack(buffer, page.GetBuffer(), page.GetNElements());
+   }
+   auto zippedBytes = packedBytes;
+
+   if ((compressionSetting != 0) || !element.IsMappable()) {
+      zippedBytes = fCompressor->Zip(buffer, packedBytes, fOptions.GetCompression());
+      if (!isAdoptedBuffer)
+         delete[] buffer;
+      buffer = const_cast<unsigned char *>(reinterpret_cast<const unsigned char *>(fCompressor->GetZipBuffer()));
+      isAdoptedBuffer = true;
+   }
+
+   R__ASSERT(isAdoptedBuffer);
+
+   return RSealedPage{buffer, zippedBytes, page.GetNElements()};
 }

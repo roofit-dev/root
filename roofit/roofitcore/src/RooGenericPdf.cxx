@@ -46,10 +46,10 @@ the names of the arguments are not hard coded.
 #include "Riostream.h"
 
 #include "RooGenericPdf.h"
-#include "RooGenericPdf.h"
 #include "RooStreamParser.h"
 #include "RooMsgService.h"
 #include "RooArgList.h"
+#include "RunContext.h"
 
 
 
@@ -65,10 +65,10 @@ ClassImp(RooGenericPdf);
 RooGenericPdf::RooGenericPdf(const char *name, const char *title, const RooArgList& dependents) : 
   RooAbsPdf(name,title), 
   _actualVars("actualVars","Variables used by PDF expression",this),
-  _formula(nullptr),
   _formExpr(title)
 {  
   _actualVars.add(dependents) ; 
+  formula();
 
   if (_actualVars.getSize()==0) _value = traceEval(0) ;
 }
@@ -82,10 +82,10 @@ RooGenericPdf::RooGenericPdf(const char *name, const char *title,
 			     const char* inFormula, const RooArgList& dependents) : 
   RooAbsPdf(name,title), 
   _actualVars("actualVars","Variables used by PDF expression",this),
-  _formula(nullptr),
   _formExpr(inFormula)
 {  
-  _actualVars.add(dependents) ; 
+  _actualVars.add(dependents) ;
+  formula();
 
   if (_actualVars.getSize()==0) _value = traceEval(0) ;
 }
@@ -98,9 +98,9 @@ RooGenericPdf::RooGenericPdf(const char *name, const char *title,
 RooGenericPdf::RooGenericPdf(const RooGenericPdf& other, const char* name) : 
   RooAbsPdf(other, name), 
   _actualVars("actualVars",this,other._actualVars),
-  _formula(nullptr),
   _formExpr(other._formExpr)
 {
+  formula();
 }
 
 
@@ -111,7 +111,8 @@ RooFormula& RooGenericPdf::formula() const
   if (!_formula) {
     const_cast<std::unique_ptr<RooFormula>&>(_formula).reset(
         new RooFormula(GetName(),_formExpr.Data(),_actualVars));
-  } 
+    const_cast<TString&>(_formExpr) = _formula->formulaString().c_str();
+  }
   return *_formula ;
 }
 
@@ -126,6 +127,17 @@ Double_t RooGenericPdf::evaluate() const
 }
 
 
+////////////////////////////////////////////////////////////////////////////////
+/// Evaluate this formula for values found in inputData.
+RooSpan<double> RooGenericPdf::evaluateSpan(RooBatchCompute::RunContext& inputData, const RooArgSet* normSet) const {
+  if (normSet != nullptr && normSet != _normSet)
+    throw std::logic_error("Got conflicting normSets");
+
+  auto results = formula().evaluateSpan(this, inputData, _normSet);
+  inputData.spans[this] = results;
+
+  return results;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Change formula expression to given expression
@@ -157,7 +169,7 @@ Bool_t RooGenericPdf::isValidReal(Double_t /*value*/, Bool_t /*printError*/) con
 Bool_t RooGenericPdf::redirectServersHook(const RooAbsCollection& newServerList, Bool_t mustReplaceAll, Bool_t nameChange, Bool_t /*isRecursive*/)
 {
   if (_formula) {
-     return _formula->changeDependents(newServerList,mustReplaceAll,nameChange) ;
+     return _formula->changeDependents(newServerList,mustReplaceAll,nameChange);
   } else {
     return kTRUE ;
   }

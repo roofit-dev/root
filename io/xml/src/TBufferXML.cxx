@@ -35,20 +35,19 @@ There are limitations for complex objects like TTree, which can not be converted
 
 #include "Compression.h"
 #include "TXMLFile.h"
-#include "TObjArray.h"
 #include "TROOT.h"
 #include "TError.h"
 #include "TClass.h"
 #include "TClassTable.h"
 #include "TDataType.h"
 #include "TExMap.h"
-#include "TMethodCall.h"
 #include "TStreamerInfo.h"
 #include "TStreamerElement.h"
 #include "TMemberStreamer.h"
 #include "TStreamer.h"
 #include "RZip.h"
 #include "ROOT/RMakeUnique.hxx"
+#include "snprintf.h"
 
 ClassImp(TBufferXML);
 
@@ -2533,7 +2532,7 @@ void TBufferXML::ReadCharP(Char_t *c)
    BeforeIOoperation();
    const char *buf;
    if ((buf = XmlReadValue(xmlio::CharStar)))
-      strcpy(c, buf);
+      strcpy(c, buf);  // NOLINT unfortunately, size of target buffer cannot be controlled here
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2555,7 +2554,7 @@ void TBufferXML::ReadTString(TString &s)
          else
             nbig = nwh;
 
-         char *data = new char[nbig];
+         char *data = new char[nbig+1];
          data[nbig] = 0;
          ReadFastArray(data, nbig);
          s = data;

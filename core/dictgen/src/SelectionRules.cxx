@@ -270,18 +270,18 @@ void SelectionRules::Optimize(){
    fClassSelectionRules.remove_if(predicate);
 }
 
-const ClassSelectionRule *SelectionRules::IsDeclSelected(const clang::RecordDecl *D) const
+const ClassSelectionRule *SelectionRules::IsDeclSelected(const clang::RecordDecl *D, bool includeTypedefRule) const
 {
    std::string qual_name;
    GetDeclQualName(D,qual_name);
-   return IsClassSelected(D, qual_name);
+   return IsClassSelected(D, qual_name, includeTypedefRule);
 }
 
 const ClassSelectionRule *SelectionRules::IsDeclSelected(const clang::TypedefNameDecl *D) const
 {
    std::string qual_name;
    GetDeclQualName(D,qual_name);
-   return IsClassSelected(D, qual_name);
+   return IsClassSelected(D, qual_name, true);
 }
 
 const ClassSelectionRule *SelectionRules::IsDeclSelected(const clang::NamespaceDecl *D) const
@@ -441,13 +441,16 @@ bool SelectionRules::GetDeclName(const clang::Decl* D, std::string& name, std::s
    return true;
 }
 
-void SelectionRules::GetDeclQualName(const clang::Decl* D, std::string& qual_name) const{
+void SelectionRules::GetDeclQualName(const clang::Decl* D, std::string& qual_name) const
+{
    const clang::NamedDecl* N = static_cast<const clang::NamedDecl*> (D);
    llvm::raw_string_ostream stream(qual_name);
-   N->getNameForDiagnostic(stream,N->getASTContext().getPrintingPolicy(),true);
-   }
+   if (N)
+      N->getNameForDiagnostic(stream,N->getASTContext().getPrintingPolicy(),true);
+}
 
-bool SelectionRules::GetFunctionPrototype(const clang::FunctionDecl* F, std::string& prototype) const {
+bool SelectionRules::GetFunctionPrototype(const clang::FunctionDecl* F, std::string& prototype) const
+{
 
    if (!F) {
       return false;
@@ -496,8 +499,10 @@ bool SelectionRules::GetFunctionPrototype(const clang::FunctionDecl* F, std::str
 bool SelectionRules::IsParentClass(const clang::Decl* D) const
 {
    //TagDecl has methods to understand of what kind is the Decl - class, struct or union
-   if (const clang::TagDecl* T
-       = llvm::dyn_cast<clang::TagDecl>(D->getDeclContext()))
+   if (!D)
+      return false;
+   if (const clang::TagDecl *T = llvm::dyn_cast<clang::TagDecl>(
+         D->getDeclContext()))
       return T->isClass() || T->isStruct();
    return false;
 }
@@ -662,7 +667,7 @@ const ClassSelectionRule *SelectionRules::IsNamespaceSelected(const clang::Decl*
 }
 
 
-const ClassSelectionRule *SelectionRules::IsClassSelected(const clang::Decl* D, const std::string& qual_name) const
+const ClassSelectionRule *SelectionRules::IsClassSelected(const clang::Decl* D, const std::string& qual_name, bool includeTypedefRule) const
 {
    const clang::TagDecl* tagDecl = llvm::dyn_cast<clang::TagDecl> (D); //TagDecl has methods to understand of what kind is the Decl
    const clang::TypedefNameDecl* typeDefNameDecl = llvm::dyn_cast<clang::TypedefNameDecl> (D);
@@ -699,6 +704,8 @@ const ClassSelectionRule *SelectionRules::IsClassSelected(const clang::Decl* D, 
    const ClassSelectionRule* retval = nullptr;
    const clang::NamedDecl* nDecl(llvm::dyn_cast<clang::NamedDecl>(D));
    for(auto& rule : fClassSelectionRules) {
+      if (!includeTypedefRule && rule.IsFromTypedef())
+         continue;
       BaseSelectionRule::EMatchType match = rule.Match(nDecl, qual_name, "", isLinkDefFile);
       if (match != BaseSelectionRule::kNoMatch) {
          // Check if the template must have its arguments manipulated
@@ -1418,15 +1425,10 @@ bool SelectionRules::AreAllSelectionRulesUsed() const {
             continue;
          }
 
-         const char* attrName = nullptr;
+         const char* attrName = "class";
          const char* attrVal = nullptr;
-         if (!file_name_value.empty()) {
-            attrName = "file name";
-            attrVal = file_name_value.c_str();
-         } else {
-            attrName = "class";
-            if (!name.empty()) attrVal = name.c_str();
-         }
+         if (!name.empty()) attrVal = name.c_str();
+
          ROOT::TMetaUtils::Warning(0,"Unused %s rule: %s\n", attrName, attrVal);
       }
    }

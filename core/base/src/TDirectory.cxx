@@ -8,11 +8,12 @@
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
-#include <stdlib.h>
+#include <cstdlib>
 
-#include "Riostream.h"
 #include "Strlen.h"
+#include "strlcpy.h"
 #include "TDirectory.h"
+#include "TBuffer.h"
 #include "TClassTable.h"
 #include "TInterpreter.h"
 #include "THashList.h"
@@ -270,6 +271,12 @@ void TDirectory::CleanTargets()
          }
          fContext = next;
       }
+
+      for(auto ptr : fGDirectories) {
+         if (ptr->load() == this) {
+            (*ptr) = nullptr;
+         }
+      }
    }
    for(auto &&context : extraWait) {
       // Wait until the TContext is done spinning
@@ -377,13 +384,13 @@ TObject *TDirectory::CloneObject(const TObject *obj, Bool_t autoadd /* = kTRUE *
 ////////////////////////////////////////////////////////////////////////////////
 /// Return the current directory for the current thread.
 
-TDirectory *&TDirectory::CurrentDirectory()
+std::atomic<TDirectory*> &TDirectory::CurrentDirectory()
 {
-   static TDirectory *currentDirectory = nullptr;
+   static std::atomic<TDirectory*> currentDirectory{nullptr};
    if (!gThreadTsd)
       return currentDirectory;
    else
-      return *(TDirectory**)(*gThreadTsd)(&currentDirectory,ROOT::kDirectoryThreadSlot);
+      return *(std::atomic<TDirectory*>*)(*gThreadTsd)(&currentDirectory,ROOT::kDirectoryThreadSlot);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -517,7 +524,9 @@ Bool_t TDirectory::cd1(const char *apath)
    Int_t nch = 0;
    if (apath) nch = strlen(apath);
    if (!nch) {
-      gDirectory = this;
+      auto &global = CurrentDirectory();
+      RegisterGDirectory(&global);
+      global = this;
       return kTRUE;
    }
 
@@ -1015,6 +1024,7 @@ void TDirectory::FillFullPath(TString& buf) const
 ///
 /// Returns 0 in case of error or if a sub-directory (hierarchy) with the requested
 /// name already exists.
+/// returnExistingDirectory returns a pointer to an already existing sub-directory with the same name.
 /// Returns a pointer to the created sub-directory or to the top sub-directory of
 /// the hierarchy (in the above example, the returned TDirectory * always points
 /// to "a").
@@ -1028,12 +1038,24 @@ void TDirectory::FillFullPath(TString& buf) const
 ///    gDirectory->cd("b");
 ///    gDirectory->mkdir("d");
 /// ~~~
+/// or
+/// ~~~ {.cpp}
+///    TFile * file = new TFile("afile","RECREATE");
+///    file->mkdir("a");
+///    file->cd("a");
+///    gDirectory->mkdir("b/c");
+///    gDirectory->mkdir("b/d", "", true);
+/// ~~~
 
-TDirectory *TDirectory::mkdir(const char *name, const char *title)
+TDirectory *TDirectory::mkdir(const char *name, const char *title, Bool_t returnExistingDirectory)
 {
+   if (returnExistingDirectory) {
+      auto existingdir = GetDirectory(name);
+      if (existingdir)
+        return existingdir;
+   }
    if (!name || !title || !name[0]) return nullptr;
    if (!title[0]) title = name;
-   TDirectory *newdir = nullptr;
    if (const char *slash = strchr(name,'/')) {
       Long_t size = Long_t(slash-name);
       char *workname = new char[size+1];
@@ -1041,22 +1063,16 @@ TDirectory *TDirectory::mkdir(const char *name, const char *title)
       workname[size] = 0;
       TDirectory *tmpdir;
       GetObject(workname,tmpdir);
-      if (!tmpdir) {
+      if (!tmpdir)
          tmpdir = mkdir(workname,title);
-         if (!tmpdir) return nullptr;
-      }
       delete[] workname;
       if (!tmpdir) return nullptr;
-      if (!newdir) newdir = tmpdir;
-      tmpdir->mkdir(slash+1);
-      return newdir;
+      return tmpdir->mkdir(slash+1);
    }
 
    TDirectory::TContext ctxt(this);
 
-   newdir = new TDirectory(name, title, "", this);
-
-   return newdir;
+   return new TDirectory(name, title, "", this);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1186,7 +1202,7 @@ Int_t TDirectory::SaveObjectAs(const TObject *obj, const char *filename, Option_
    }
    TString cmd;
    if (fname.Index(".json") > 0) {
-      cmd.Form("TBufferJSON::ExportToFile(\"%s\",(TObject*) %s, \"%s\");", fname.Data(), TString::LLtoa((Long_t)obj, 10).Data(), (option ? option : ""));
+      cmd.Form("TBufferJSON::ExportToFile(\"%s\",(TObject*) %s, \"%s\");", fname.Data(), TString::LLtoa((Longptr_t)obj, 10).Data(), (option ? option : ""));
       nbytes = gROOT->ProcessLine(cmd);
    } else {
       cmd.Form("TFile::Open(\"%s\",\"recreate\");",fname.Data());
@@ -1237,7 +1253,7 @@ void TDirectory::DecodeNameCycle(const char *buffer, char *name, Short_t &cycle,
                                  const size_t namesize)
 {
    size_t len = 0;
-   const char *ni = strchr(buffer, ';');
+   const char *ni = buffer ? strchr(buffer, ';') : nullptr;
 
    if (ni) {
       // Found ';'
@@ -1271,7 +1287,7 @@ void TDirectory::DecodeNameCycle(const char *buffer, char *name, Short_t &cycle,
       cycle = 9999;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 /// Register a TContext pointing to this TDirectory object
 
 void TDirectory::RegisterContext(TContext *ctxt) {
@@ -1290,7 +1306,28 @@ void TDirectory::RegisterContext(TContext *ctxt) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// See TDirectoryFile::WriteTObject for details
+/// Register a std::atomic<TDirectory*> pointing to this TDirectory object
+
+void TDirectory::RegisterGDirectory(std::atomic<TDirectory*> *globalptr)
+{
+   ROOT::Internal::TSpinLockGuard slg(fSpinLock);
+
+   auto oldvalue = globalptr->load();
+
+   auto iter = std::find(fGDirectories.begin(), fGDirectories.end(), globalptr);
+   if (iter != fGDirectories.begin())
+      fGDirectories.push_back(globalptr);
+
+   if (oldvalue && oldvalue != this) {
+      iter = std::find(oldvalue->fGDirectories.begin(), oldvalue->fGDirectories.end(), globalptr);
+      if (iter != oldvalue->fGDirectories.begin())
+         oldvalue->fGDirectories.erase(iter);
+   }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// \copydoc TDirectory::WriteTObject().
 
 Int_t TDirectory::WriteTObject(const TObject *obj, const char *name, Option_t * /*option*/, Int_t /*bufsize*/)
 {

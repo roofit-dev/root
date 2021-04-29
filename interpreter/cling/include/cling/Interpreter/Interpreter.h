@@ -11,6 +11,7 @@
 #define CLING_INTERPRETER_H
 
 #include "cling/Interpreter/InvocationOptions.h"
+#include "cling/Interpreter/RuntimeOptions.h"
 
 #include "llvm/ADT/StringRef.h"
 
@@ -45,13 +46,13 @@ namespace clang {
   class NamedDecl;
   class Parser;
   class Preprocessor;
+  class PresumedLoc;
   class QualType;
   class RecordDecl;
   class Sema;
   class SourceLocation;
   class SourceManager;
   class Type;
-  class PresumedLoc;
 }
 
 namespace cling {
@@ -66,12 +67,13 @@ namespace cling {
   class ClangInternalState;
   class CompilationOptions;
   class DynamicLibraryManager;
+  class IncrementalCUDADeviceCompiler;
   class IncrementalExecutor;
   class IncrementalParser;
   class InterpreterCallbacks;
   class LookupHelper;
-  class Value;
   class Transaction;
+  class Value;
 
   ///\brief Class that implements the interpreter-like behavior. It manages the
   /// incremental compilation.
@@ -187,6 +189,10 @@ namespace cling {
     ///
     bool m_RawInputEnabled;
 
+    ///\brief Configuration bits that can be changed at runtime. This allows the
+    /// user to enable/disable specific interpreter extensions.
+    cling::runtime::RuntimeOptions m_RuntimeOptions;
+
     ///\brief Flag toggling the optimization level to be used.
     ///
     int m_OptLevel;
@@ -202,6 +208,11 @@ namespace cling {
     ///\brief Information about the last stored states through .storeState
     ///
     mutable std::vector<ClangInternalState*> m_StoredStates;
+
+    ///\brief Cling's worker class implementing the compilation of CUDA device
+    /// code
+    ///
+    std::unique_ptr<IncrementalCUDADeviceCompiler> m_CUDACompiler;
 
     enum {
       kStdStringTransaction = 0, // Transaction known to contain std::string
@@ -305,6 +316,10 @@ namespace cling {
     Transaction* Initialize(bool NoRuntime, bool SyntaxOnly,
                             llvm::SmallVectorImpl<llvm::StringRef>& Globals);
 
+    ///\ Shut down the interpreter runtime.
+    ///
+    void ShutDown();
+
     ///\brief The target constructor to be called from both the delegating
     /// constructors. parentInterp might be nullptr.
     ///
@@ -346,6 +361,9 @@ namespace cling {
 
     const InvocationOptions& getOptions() const { return m_Opts; }
     InvocationOptions& getOptions() { return m_Opts; }
+
+    const cling::runtime::RuntimeOptions& getRuntimeOptions() const { return m_RuntimeOptions; }
+    cling::runtime::RuntimeOptions& getRuntimeOptions() { return m_RuntimeOptions; }
 
     const llvm::LLVMContext* getLLVMContext() const {
       return m_LLVMContext.get();
@@ -675,6 +693,10 @@ namespace cling {
     clang::Sema& getSema() const;
     clang::DiagnosticsEngine& getDiagnostics() const;
 
+    IncrementalCUDADeviceCompiler* getCUDACompiler() const {
+      return m_CUDACompiler.get();
+    }
+
     ///\brief Create suitable default compilation options.
     CompilationOptions makeDefaultCompilationOpts() const;
 
@@ -787,7 +809,13 @@ namespace cling {
     ///
     void AddAtExitFunc(void (*Func) (void*), void* Arg);
 
-    void GenerateAutoloadingMap(llvm::StringRef inFile, llvm::StringRef outFile,
+    ///\brief Run once the list of registered atexit functions. This is useful
+    /// when an external process wants to control carefully the teardown because
+    /// the registered atexit functions require alive interpreter service.
+    ///
+    void runAtExitFuncs();
+
+    void GenerateAutoLoadingMap(llvm::StringRef inFile, llvm::StringRef outFile,
                                 bool enableMacros = false, bool enableLogs = true);
 
     void forwardDeclare(Transaction& T, clang::Preprocessor& P,

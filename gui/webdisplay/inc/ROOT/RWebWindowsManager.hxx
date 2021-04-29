@@ -1,9 +1,6 @@
-/// \file ROOT/RWebWindowsManager.hxx
-/// \ingroup WebGui ROOT7
-/// \author Sergey Linev <s.linev@gsi.de>
-/// \date 2017-10-16
-/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
-/// is welcome!
+// Author: Sergey Linev <s.linev@gsi.de>
+// Date: 2017-10-16
+// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 /*************************************************************************
  * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
@@ -56,11 +53,9 @@ private:
    void Unregister(RWebWindow &win);
 
    /// Show window in specified location, see Show() method for more details
-   unsigned ShowWindow(RWebWindow &win, bool batch_mode, const RWebDisplayArgs &args);
+   unsigned ShowWindow(RWebWindow &win, const RWebDisplayArgs &args);
 
    int WaitFor(RWebWindow &win, WebWindowWaitFunc_t check, bool timed = false, double tm = -1);
-
-   static bool IsMainThrd();
 
    std::string GetUrl(const RWebWindow &win, bool remote = false);
 
@@ -82,6 +77,9 @@ public:
    std::shared_ptr<RWebWindow> CreateWindow();
 
    void Terminate();
+
+   static bool IsMainThrd();
+   static void AssignMainThrd();
 };
 
 } // namespace Experimental

@@ -9,7 +9,7 @@
 
 #include "cling/Interpreter/Interpreter.h"
 #include "cling/Utils/Paths.h"
-#ifdef LLVM_ON_WIN32
+#ifdef _WIN32
 #include "cling/Utils/Platform.h"
 #endif
 #include "ClingUtils.h"
@@ -31,6 +31,7 @@
 #include "cling/Interpreter/DynamicExprInfo.h"
 #include "cling/Interpreter/DynamicLibraryManager.h"
 #include "cling/Interpreter/Exception.h"
+#include "cling/Interpreter/IncrementalCUDADeviceCompiler.h"
 #include "cling/Interpreter/LookupHelper.h"
 #include "cling/Interpreter/Transaction.h"
 #include "cling/Interpreter/Value.h"
@@ -87,10 +88,6 @@ namespace {
     }
     return cling::Interpreter::kExeSuccess;
   }
-
-  static bool isPracticallyEmptyModule(const llvm::Module* M) {
-    return M->empty() && M->global_empty() && M->alias_empty();
-  }
 } // unnamed namespace
 
 namespace cling {
@@ -109,6 +106,8 @@ namespace cling {
   }
 
   void Interpreter::PushTransactionRAII::pop() const {
+    if (m_Transaction->getState() == Transaction::kRolledBack)
+      return;
     IncrementalParser::ParseResultTransaction PRT
       = m_Interpreter->m_IncrParser->endTransaction(m_Transaction);
     if (PRT.getPointer()) {
@@ -152,7 +151,7 @@ namespace cling {
   }
 
   clang::SourceLocation Interpreter::getNextAvailableLoc() const {
-    return m_IncrParser->getLastMemoryBufferEndLoc().getLocWithOffset(1);
+    return m_IncrParser->getNextAvailableUniqueSourceLoc();
   }
 
   bool Interpreter::isInSyntaxOnlyMode() const {
@@ -198,24 +197,6 @@ namespace cling {
     Interp.setCallbacks(std::move(AutoLoadCB));
   }
 
-  // Construct a column of modulemap overlay file, given System filename,
-  // Location + Filename (modulemap to be overlayed). If NotLast is true,
-  // append ",".
-  static std::string buildModuleMapOverlayEntry(const std::string& System,
-        const std::string& Filename, const std::string& Location, bool NotLast) {
-    std::string modulemap_overlay;
-    modulemap_overlay += "{ 'name': '";
-    modulemap_overlay += System;
-    modulemap_overlay += "', 'type': 'directory',\n";
-    modulemap_overlay += "'contents': [\n   { 'name': 'module.modulemap', ";
-    modulemap_overlay += "'type': 'file',\n  'external-contents': '";
-    modulemap_overlay += Location + "/" + Filename + "'\n";
-    modulemap_overlay += "}\n ]\n }";
-    if (NotLast)
-      modulemap_overlay += ",\n";
-    return modulemap_overlay;
-  }
-
   Interpreter::Interpreter(int argc, const char* const *argv,
                            const char* llvmdir /*= 0*/,
                            const ModuleFileExtensions& moduleExtensions,
@@ -224,6 +205,7 @@ namespace cling {
     m_UniqueCounter(parentInterp ? parentInterp->m_UniqueCounter + 1 : 0),
     m_PrintDebug(false), m_DynamicLookupDeclared(false),
     m_DynamicLookupEnabled(false), m_RawInputEnabled(false),
+    m_RuntimeOptions{},
     m_OptLevel(parentInterp ? parentInterp->m_OptLevel : -1) {
 
     if (handleSimpleOptions(m_Opts))
@@ -238,6 +220,30 @@ namespace cling {
     // Initialize the opt level to what CodeGenOpts says.
     if (m_OptLevel == -1)
       setDefaultOptLevel(getCI()->getCodeGenOpts().OptimizationLevel);
+
+    if (!isInSyntaxOnlyMode() && m_Opts.CompilerOpts.CUDAHost) {
+      // Create temporary folder for all files, which the CUDA device compiler
+      // will generate.
+      llvm::SmallString<256> TmpPath;
+      llvm::StringRef sep = llvm::sys::path::get_separator().data();
+      llvm::sys::path::system_temp_directory(false, TmpPath);
+      TmpPath.append(sep.data());
+      TmpPath.append("cling-%%%%");
+      TmpPath.append(sep.data());
+
+      llvm::SmallString<256> TmpFolder;
+      llvm::sys::fs::createUniqueFile(TmpPath.c_str(), TmpFolder);
+      llvm::sys::fs::create_directory(TmpFolder);
+
+      // The CUDA fatbin file is the connection beetween the CUDA device
+      // compiler and the CodeGen of cling. The file will every time reused.
+      if (getCI()->getCodeGenOpts().CudaGpuBinaryFileName.empty())
+        getCI()->getCodeGenOpts().CudaGpuBinaryFileName
+          = std::string(TmpFolder.c_str()) + "cling.fatbin";
+
+      m_CUDACompiler.reset(new IncrementalCUDADeviceCompiler(
+          TmpFolder.c_str(), m_OptLevel, m_Opts, *(getCI())));
+    }
 
     Sema& SemaRef = getSema();
     Preprocessor& PP = SemaRef.getPreprocessor();
@@ -257,62 +263,6 @@ namespace cling {
         return;
     }
 
-    // Tell the diagnostic client that we are entering file parsing mode.
-    DiagnosticConsumer& DClient = getCI()->getDiagnosticClient();
-    DClient.BeginSourceFile(getCI()->getLangOpts(), &PP);
-
-    if (!m_Opts.OverlayFile.empty()) {
-      assert(getSema().getLangOpts().Modules
-             && "Using overlay without -fmodules");
-      HeaderSearch& HSearch = getCI()->getPreprocessor().getHeaderSearchInfo();
-
-      // Get system include paths
-      llvm::SmallVector<std::string, 3> HSearchPaths;
-      for (auto Path = HSearch.system_dir_begin();
-            Path < HSearch.system_dir_end(); Path++) {
-        HSearchPaths.push_back((*Path).getName());
-      }
-
-      // Virtual modulemap overlay file
-      std::string MOverlay = "{\n 'version': 0,\n 'roots': [\n";
-
-      // Check if the system path exists. If it does and it contains
-      // "/include/c++/" (as stl path is always inferred from gcc path),
-      // append this to MOverlay.
-      // FIXME: Implement a more sophisticated way to detect stl paths
-      for (auto &&SystemPath : HSearchPaths) {
-        llvm::StringRef SystemPathSR = SystemPath;
-        if (llvm::sys::fs::is_directory(SystemPathSR) &&
-            llvm::sys::path::filename(SystemPathSR) != "backward" &&
-            SystemPathSR.contains("/include/c++/")) {
-          MOverlay += buildModuleMapOverlayEntry(SystemPath, "std.modulemap",
-                m_Opts.OverlayFile, /*NotLast*/ true);
-          break; // first one wins!
-        }
-      }
-
-      // FIXME: Support system which doesn't have /usr/include as libc path.
-      // We need to find out how to identify the correct libc path on such
-      // system, we cannot add random include path to overlay file.
-      MOverlay += buildModuleMapOverlayEntry("/usr/include", "libc.modulemap",
-            m_Opts.OverlayFile, /*NotLast*/ false);
-
-      MOverlay += "]\n }\n ]\n }\n";
-
-      // Set up the virtual modulemap overlay file
-      std::unique_ptr<llvm::MemoryBuffer> Buffer =
-         llvm::MemoryBuffer::getMemBuffer(MOverlay);
-
-      IntrusiveRefCntPtr<clang::vfs::FileSystem> FS =
-         vfs::getVFSFromYAML(std::move(Buffer), nullptr, "modulemap.overlay.yaml");
-      if (!FS.get())
-        llvm::errs() << "Error in modulemap.overlay!\n";
-
-      clang::CompilerInvocation &CInvo = getCI()->getInvocation();
-      // Load virtual modulemap overlay file
-      CInvo.addOverlay(FS);
-    }
-
     bool usingCxxModules = getSema().getLangOpts().Modules;
     if (usingCxxModules) {
       // Explicitly create the modulemanager now. If we would create it later
@@ -327,7 +277,7 @@ namespace cling {
       setupCallbacks(*this, parentInterp);
     }
 
-    if(m_Opts.CompilerOpts.CUDA){
+    if(m_Opts.CompilerOpts.CUDAHost){
        if(m_DyLibManager->loadLibrary("libcudart.so", true) ==
          cling::DynamicLibraryManager::LoadLibResult::kLoadLibNotFound){
            llvm::errs() << "Error: libcudart.so not found!\n" <<
@@ -363,24 +313,18 @@ namespace cling {
 
     // Now that the transactions have been commited, force symbol emission
     // and overrides.
-    if (!isInSyntaxOnlyMode()) {
-      if (const Transaction* T = getLastTransaction()) {
-        if (auto M = T->getModule()) {
-          for (const llvm::StringRef& Sym : Syms) {
-            const llvm::GlobalValue* GV = M->getNamedValue(Sym);
-  #if defined(__linux__)
-            // libstdc++ mangles at_quick_exit on Linux when g++ < 5
-            if (!GV && Sym.equals("at_quick_exit"))
-              GV = M->getNamedValue("_Z13at_quick_exitPFvvE");
-  #endif
-            if (GV) {
-              if (void* Addr = m_Executor->getPointerToGlobalFromJIT(*GV))
-                m_Executor->addSymbol(Sym.str().c_str(), Addr, true);
-              else
-                cling::errs() << Sym << " not defined\n";
-            } else
-              cling::errs() << Sym << " not in Module!\n";
-          }
+    if (!isInSyntaxOnlyMode() && !m_Opts.CompilerOpts.CUDADevice) {
+      for (const llvm::StringRef& Sym : Syms) {
+        void* Addr = m_Executor->getPointerToGlobalFromJIT(Sym);
+#if defined(__linux__)
+        // libstdc++ mangles at_quick_exit on Linux when g++ < 5
+        if (!Addr && Sym.equals("at_quick_exit"))
+          Addr = m_Executor->getPointerToGlobalFromJIT("_Z13at_quick_exitPFvvE");
+#endif
+        if (!Addr) {
+          cling::errs() << "Replaced symbol " << Sym << " cannot be found in JIT!\n";
+        } else {
+          m_Executor->addSymbol(Sym.str().c_str(), Addr, true);
         }
       }
     }
@@ -437,12 +381,11 @@ namespace cling {
     if (m_Executor)
       m_Executor->shuttingDown();
 
-    if (CompilerInstance* CI = getCIOrNull())
-      CI->getDiagnostics().getClient()->EndSourceFile();
-
     // LookupHelper's ~Parser needs the PP from IncrParser's CI, so do this
     // first:
     m_LookupHelper.reset();
+
+    ShutDown();
 
     // We want to keep the callback alive during the shutdown of Sema, CodeGen
     // and the ASTContext. For that to happen we shut down the IncrementalParser
@@ -453,6 +396,24 @@ namespace cling {
 
   Transaction* Interpreter::Initialize(bool NoRuntime, bool SyntaxOnly,
                               llvm::SmallVectorImpl<llvm::StringRef>& Globals) {
+    // The Initialize() function is called twice in CUDA mode. The first time
+    // the host interpreter is initialized and the second time the device
+    // interpreter is initialized. Without this if statement, a redefinition
+    // error would occur because process(), declare(), and parse() are designed
+    // to process the code in the host and device interpreter when called by the
+    // host interpreter instance. This means that first the Initialize()
+    // function of the host interpreter is called and the initialization code is
+    // processed in the host and device interpreter. It then calls the
+    // Initialize() function of the device interpreter and throws an error
+    // because the code was already processed in the host Initialize() function.
+    //
+    // declare() is only used to generate a valid Transaction object
+    if (m_Opts.CompilerOpts.CUDADevice) {
+      Transaction* T;
+      declare("", &T);
+      return T;
+    }
+
     largestream Strm;
     const clang::LangOptions& LangOpts = getCI()->getLangOpts();
     const void* ThisP = static_cast<void*>(this);
@@ -473,7 +434,8 @@ namespace cling {
         Strm << "#include \"cling/Interpreter/RuntimeUniverse.h\"\n";
         if (EmitDefinitions)
           Strm << "namespace cling { class Interpreter; namespace runtime { "
-                  "Interpreter* gCling=(Interpreter*)" << ThisP << ";}}\n";
+                  "Interpreter* gCling=(Interpreter*)" << ThisP << ";\n"
+                  "RuntimeOptions* gClingOpts=(RuntimeOptions*)" << &this->m_RuntimeOptions << ";}}\n";
       } else {
         Strm << "#include \"cling/Interpreter/CValuePrinter.h\"\n"
              << "void* gCling";
@@ -539,7 +501,7 @@ namespace cling {
       Globals.push_back("at_quick_exit");
     }
 
-#if defined(LLVM_ON_WIN32)
+#if defined(_WIN32)
     // Windows specific: _onexit, _onexit_m, __dllonexit
 #if !defined(_M_CEE)
     const char* Spec = "__cdecl";
@@ -601,6 +563,56 @@ namespace cling {
     return T;
   }
 
+  void Interpreter::ShutDown() {
+    // Model the shutdown actions done in FrontendAction::EndSourceFile
+    if (CompilerInstance* CI = getCIOrNull()) {
+      CI->getDiagnostics().getClient()->EndSourceFile();
+
+      if (CI->hasPreprocessor())
+        CI->getPreprocessor().EndSourceFile();
+
+      bool DisableFree = CI->getFrontendOpts().DisableFree;
+      if (DisableFree) {
+        CI->resetAndLeakSema();
+        CI->resetAndLeakASTContext();
+        llvm::BuryPointer(CI->takeASTConsumer().get());
+      } else {
+        CI->setSema(nullptr);
+        CI->setASTContext(nullptr);
+        CI->setASTConsumer(nullptr);
+      }
+
+      if (CI->getFrontendOpts().ShowStats) {
+        llvm::errs() << "\nSTATISTICS \n";
+        CI->getPreprocessor().PrintStats();
+        CI->getPreprocessor().getIdentifierTable().PrintStats();
+        CI->getPreprocessor().getHeaderSearchInfo().PrintStats();
+        CI->getSourceManager().PrintStats();
+        llvm::errs() << "\n";
+      }
+
+      // Cleanup the output streams, and erase the output files if instructed by
+      // the FrontendAction.
+      bool shouldEraseOutputFiles = CI->getDiagnostics().hasErrorOccurred();
+      CI->clearOutputFiles(/*EraseFiles=*/shouldEraseOutputFiles);
+
+      LangOptions& LO = CI->getLangOpts();
+      if (LO.getCompilingModule() != clang::LangOptions::CMK_None) {
+        if (DisableFree) {
+          CI->resetAndLeakPreprocessor();
+          CI->resetAndLeakSourceManager();
+          CI->resetAndLeakFileManager();
+        } else {
+          CI->setPreprocessor(nullptr);
+          CI->setSourceManager(nullptr);
+          CI->setFileManager(nullptr);
+        }
+      }
+
+      LO.setCompilingModule(clang::LangOptions::CMK_None);
+    }
+  }
+
   void Interpreter::AddIncludePaths(llvm::StringRef PathStr, const char* Delm) {
     CompilerInstance* CI = getCI();
     HeaderSearchOptions& HOpts = CI->getHeaderSearchOpts();
@@ -623,6 +635,9 @@ namespace cling {
                               E.Group == frontend::Angled);
       }
     }
+
+    if (m_CUDACompiler)
+      m_CUDACompiler->getPTXInterpreter()->AddIncludePaths(PathStr, Delm);
   }
 
   void Interpreter::AddIncludePath(llvm::StringRef PathsStr) {
@@ -641,9 +656,11 @@ namespace cling {
     PushTransactionRAII RAII(this);
     if (what.equals("asttree")) {
       std::unique_ptr<clang::ASTConsumer> printer =
-          clang::CreateASTDumper(filter, true  /*DumpDecls*/,
-                                         false /*Deserialize*/,
-                                         false /*DumpLookups*/);
+        clang::CreateASTDumper(nullptr /*Dump to stdout.*/,
+                               filter, true  /*DumpDecls*/,
+                               false /*Deserialize*/,
+                               false /*DumpLookups*/,
+                               ADOF_Default /*DumpFormat*/);
       printer->HandleTranslationUnit(getSema().getASTContext());
     } else if (what.equals("ast"))
       getSema().getASTContext().PrintStats();
@@ -659,7 +676,7 @@ namespace cling {
     CodeGenerator* CG = m_IncrParser->getCodeGenerator();
     ClangInternalState* state = new ClangInternalState(
         getCI()->getASTContext(), getCI()->getPreprocessor(),
-        getLastTransaction()->getModule().get(), CG, name);
+        getLastTransaction()->getModule(), CG, name);
     m_StoredStates.push_back(state);
   }
 
@@ -726,6 +743,7 @@ namespace cling {
   CompilationOptions Interpreter::makeDefaultCompilationOpts() const {
     CompilationOptions CO;
     CO.DeclarationExtraction = 0;
+    CO.EnableShadowing = 0;
     CO.ValuePrinting = CompilationOptions::VPDisabled;
     CO.CodeGeneration = m_IncrParser->hasCodeGenerator();
     CO.DynamicScoping = isDynamicLookupEnabled();
@@ -774,20 +792,24 @@ namespace cling {
   Interpreter::process(const std::string& input, Value* V /* = 0 */,
                        Transaction** T /* = 0 */,
                        bool disableValuePrinting /* = false*/) {
+    if (!isInSyntaxOnlyMode() && m_Opts.CompilerOpts.CUDAHost)
+      m_CUDACompiler->process(input);
+
     std::string wrapReadySource = input;
     size_t wrapPoint = std::string::npos;
     if (!isRawInputEnabled())
       wrapPoint = utils::getWrapPoint(wrapReadySource, getCI()->getLangOpts());
 
+    CompilationOptions CO = makeDefaultCompilationOpts();
+    CO.EnableShadowing = m_RuntimeOptions.AllowRedefinition && !isRawInputEnabled();
+
     if (isRawInputEnabled() || wrapPoint == std::string::npos) {
-      CompilationOptions CO = makeDefaultCompilationOpts();
       CO.DeclarationExtraction = 0;
       CO.ValuePrinting = 0;
       CO.ResultEvaluation = 0;
       return DeclareInternal(input, CO, T);
     }
 
-    CompilationOptions CO = makeDefaultCompilationOpts();
     CO.DeclarationExtraction = 1;
     CO.ValuePrinting = disableValuePrinting ? CompilationOptions::VPDisabled
       : CompilationOptions::VPAuto;
@@ -804,6 +826,8 @@ namespace cling {
 
   Interpreter::CompilationResult
   Interpreter::parse(const std::string& input, Transaction** T /*=0*/) const {
+    if (!isInSyntaxOnlyMode() && m_Opts.CompilerOpts.CUDAHost)
+      m_CUDACompiler->parse(input);
     CompilationOptions CO = makeDefaultCompilationOpts();
     CO.CodeGeneration = 0;
     CO.DeclarationExtraction = 0;
@@ -840,18 +864,36 @@ namespace cling {
     if (getSema().isModuleVisible(M))
       return true;
 
-    Preprocessor& PP = getCI()->getPreprocessor();
+    // We cannot use #pragma clang module import because the on-demand modules
+    // may load a module in the middle of a function body for example. In this
+    // case this triggers an error:
+    // fatal error: import of module '...' appears within function '...'
+    //
+    // if (declare("#pragma clang module import \"" + M->Name + "\"") ==
+    // kSuccess)
+    //   return true;
 
-    IdentifierInfo *II = PP.getIdentifierInfo(M->Name);
-    SourceLocation ValidLoc = M->DefinitionLoc;
-    Interpreter::PushTransactionRAII RAII(this);
-    bool success = !getCI()->getSema().ActOnModuleImport(ValidLoc, ValidLoc,
-                                      std::make_pair(II, ValidLoc)).isInvalid();
+    // FIXME: What about importing submodules such as std.blah. This disables
+    // this functionality.
+    Preprocessor& PP = getCI()->getPreprocessor();
+    IdentifierInfo* II = PP.getIdentifierInfo(M->Name);
+    SourceLocation ValidLoc = getNextAvailableLoc();
+
+    // Don't push the ImportDecl into a ClassDecl or whatever - who knows which
+    // context triggered this import!
+    DeclContext *OldDC = getSema().CurContext;
+    getSema().CurContext = getSema().getASTContext().getTranslationUnitDecl();
+    bool success =
+      !getSema().ActOnModuleImport(ValidLoc, /*ExportLoc*/ {}, ValidLoc,
+                                   std::make_pair(II, ValidLoc)).isInvalid();
+    getSema().CurContext = OldDC;
+
     if (success) {
       // Also make the module visible in the preprocessor to export its macros.
       PP.makeModuleVisible(M, ValidLoc);
       return success;
     }
+
     if (complain) {
       if (M->IsSystem)
         llvm::errs() << "Failed to load module " << M->Name << "\n";
@@ -910,6 +952,9 @@ namespace cling {
 
   Interpreter::CompilationResult
   Interpreter::declare(const std::string& input, Transaction** T/*=0 */) {
+    if (!isInSyntaxOnlyMode() && m_Opts.CompilerOpts.CUDAHost)
+      m_CUDACompiler->declare(input);
+
     CompilationOptions CO = makeDefaultCompilationOpts();
     CO.DeclarationExtraction = 0;
     CO.ValuePrinting = 0;
@@ -1238,15 +1283,9 @@ namespace cling {
     const FunctionDecl* FD = DeclareCFunction(name, code, withAccessControl, T);
     if (!FD || !T)
       return 0;
-    //
-    //  Get the wrapper function pointer
-    //  from the ExecutionEngine (the JIT).
-    //
-    if (const llvm::GlobalValue* GV
-        = T->getModule()->getNamedValue(name))
-      return m_Executor->getPointerToGlobalFromJIT(*GV);
 
-    return 0;
+    //  Get the wrapper function pointer from the ExecutionEngine (the JIT).
+    return m_Executor->getPointerToGlobalFromJIT(name);
   }
 
   void*
@@ -1303,7 +1342,7 @@ namespace cling {
   Interpreter::EvaluateInternal(const std::string& input,
                                 CompilationOptions CO,
                                 Value* V, /* = 0 */
-                                Transaction** T /* = 0 */,
+                                Transaction** /* T = 0 */,
                                 size_t wrapPoint /* = 0*/) {
     StateDebuggerRAII stateDebugger(this);
 
@@ -1345,7 +1384,8 @@ namespace cling {
     Value resultV;
     if (!V)
       V = &resultV;
-    if (!lastT->getWrapperFD()) // no wrapper to run
+    if (m_Opts.CompilerOpts.CUDADevice ||
+        !lastT->getWrapperFD()) // no wrapper to run
       return Interpreter::kSuccess;
     else {
       ExecutionResult res = RunFunction(lastT->getWrapperFD(), V);
@@ -1384,7 +1424,8 @@ namespace cling {
     SourceLocation fileNameLoc;
     FE = PP.LookupFile(fileNameLoc, canonicalFile, isAngled, FromDir, FromFile,
                        CurDir, /*SearchPath*/0, /*RelativePath*/ 0,
-                       /*suggestedModule*/0, 0 /*IsMapped*/, /*SkipCache*/false,
+                       /*suggestedModule*/0, 0 /*IsMapped*/,
+                       /*IsFrameworkFound*/ nullptr, /*SkipCache*/false,
                        /*OpenFile*/ false, /*CacheFail*/ false);
     if (FE)
       return FE->getName();
@@ -1431,12 +1472,13 @@ namespace cling {
   }
 
   void Interpreter::unload(Transaction& T) {
+    T.setUnloading();
     // Clear any stored states that reference the llvm::Module.
     // Do it first in case
     auto Module = T.getModule();
     if (Module && !m_StoredStates.empty()) {
       const auto Predicate = [&Module](const ClangInternalState* S) {
-        return S->getModule() == Module.get();
+        return S->getModule() == Module;
       };
       auto Itr =
           std::find_if(m_StoredStates.begin(), m_StoredStates.end(), Predicate);
@@ -1473,8 +1515,11 @@ namespace cling {
     assert((T.getState() != Transaction::kRolledBack ||
             T.getState() != Transaction::kRolledBackWithErrors) &&
            "Transaction already rolled back.");
-    if (getOptions().ErrorOut)
+    if (getOptions().ErrorOut) {
+      // Tag the transaction as "won't need to be committed" (ROOT-10798).
+      T.setState(Transaction::kRolledBack);
       return;
+    }
 
     if (InterpreterCallbacks* callbacks = getCallbacks())
       callbacks->TransactionRollback(T);
@@ -1628,19 +1673,18 @@ namespace cling {
     assert(!isInSyntaxOnlyMode() && "Running on what?");
     assert(T.getState() == Transaction::kCommitted && "Must be committed");
 
-    const std::shared_ptr<llvm::Module>& M = T.getModule();
-    if (!M)
+    if (!T.getModule())
       return Interpreter::kExeNoModule;
 
     IncrementalExecutor::ExecutionResult ExeRes
        = IncrementalExecutor::kExeSuccess;
-    if (!isPracticallyEmptyModule(M.get())) {
-      m_Executor->emitModule(M, T.getCompilationOpts().OptLevel);
 
+    // CUDA device code is not direct executable
+    // the code is executed by a CUDA library function in the host code
+    if (!m_Opts.CompilerOpts.CUDADevice)
       // Forward to IncrementalExecutor; should not be called by
       // anyone except for IncrementalParser.
       ExeRes = m_Executor->runStaticInitializersOnce(T);
-    }
 
     return ConvertExecutionResult(ExeRes);
   }
@@ -1658,6 +1702,21 @@ namespace cling {
     // Return a symbol's address, and whether it was jitted.
     std::string mangledName;
     utils::Analyze::maybeMangleDeclName(GD, mangledName);
+#if defined(_WIN32)
+    // For some unknown reason, Clang 5.0 adds a special symbol ('\01') in front
+    // of the mangled names on Windows, making them impossible to find
+    // TODO: remove this piece of code and try again when updating Clang
+    std::string mncp = mangledName;
+    // use corrected symbol for "external" lookup
+    if (mncp.size() > 2 && mncp[1] == '?' &&
+        mncp.compare(1, 14, std::string("?__cling_Un1Qu"))) {
+      mncp.erase(0, 1);
+    }
+    void *addr = getAddressOfGlobal(mncp, fromJIT);
+    if (addr)
+      return addr;
+    // if failed, proceed with original symbol for lookups in JIT tables
+#endif
     return getAddressOfGlobal(mangledName, fromJIT);
   }
 
@@ -1670,10 +1729,15 @@ namespace cling {
   }
 
   void Interpreter::AddAtExitFunc(void (*Func) (void*), void* Arg) {
-    m_Executor->AddAtExitFunc(Func, Arg, getLatestTransaction()->getModule());
+    m_Executor->AddAtExitFunc(Func, Arg, getLatestTransaction());
   }
 
-  void Interpreter::GenerateAutoloadingMap(llvm::StringRef inFile,
+  void Interpreter::runAtExitFuncs() {
+    assert(!isInSyntaxOnlyMode() && "Must have JIT");
+    m_Executor->runAtExitFuncs();
+  }
+
+  void Interpreter::GenerateAutoLoadingMap(llvm::StringRef inFile,
                                            llvm::StringRef outFile,
                                            bool enableMacros,
                                            bool enableLogs) {
