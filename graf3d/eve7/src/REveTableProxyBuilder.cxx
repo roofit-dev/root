@@ -1,13 +1,25 @@
+// @(#)root/eve7:$Id$
+// Authors: Matevz Tadel & Alja Mrak-Tadel: 2020
+
+/*************************************************************************
+ * Copyright (C) 1995-2020, Rene Brun and Fons Rademakers.               *
+ * All rights reserved.                                                  *
+ *                                                                       *
+ * For the licensing terms see $ROOTSYS/LICENSE.                         *
+ * For the list of contributors see $ROOTSYS/README/CREDITS.             *
+ *************************************************************************/
+
 #include "TClass.h"
 #include <ROOT/REveTableProxyBuilder.hxx>
 #include <ROOT/REveTableInfo.hxx>
 #include <ROOT/REveViewContext.hxx>
-#include <ROOT/REveDataClasses.hxx>
+#include <ROOT/REveDataCollection.hxx>
+#include <ROOT/REveDataTable.hxx>
 #include <ROOT/REveManager.hxx>
 
 using namespace ROOT::Experimental;
 
-REveTableProxyBuilder::REveTableProxyBuilder() : REveDataProxyBuilderBase("Table"), fTable(nullptr)
+REveTableProxyBuilder::REveTableProxyBuilder() : REveDataProxyBuilderBase(), fTable(nullptr)
 {
     fTable = new REveDataTable("ProxyTable");
 }

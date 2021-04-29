@@ -22,12 +22,17 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include <atomic>
+#include <string>
 
 #include "Compression.h"
 #include "TDirectoryFile.h"
-#include "TMap.h"
 #include "TUrl.h"
 #include "ROOT/RConcurrentHashColl.hxx"
+
+// Not a part of TFile interface; provide a forward declaration instead of #include.
+// #ifndef R__LESS_INCLUDES
+// #include "TMap.h"
+// #endif
 
 #ifdef R__USE_IMT
 #include "ROOT/TRWSpinLock.hxx"
@@ -35,6 +40,7 @@
 #endif
 
 
+class TMap;
 class TFree;
 class TArrayC;
 class TArchiveFile;

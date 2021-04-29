@@ -13,9 +13,9 @@ foreach(suffix FOUND INCLUDE_DIR INCLUDE_DIRS CRYPTO_LIBRARY SSL_LIBRARY LIBRARY
   unset(OPENSSL_${suffix} PARENT_SCOPE)
 endforeach()
 
-set(OPENSSL_VERSION "1.1.1f")
+set(OPENSSL_VERSION "1.1.1g")
 set(OPENSSL_URL "http://lcgpackages.web.cern.ch/lcgpackages/tarFiles/sources/openssl-${OPENSSL_VERSION}.tar.gz")
-set(OPENSSL_URLHASH "SHA256=186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35")
+set(OPENSSL_URLHASH "SHA256=ddb04774f1e32f0c49751e21b67216ac87852ceb056b75209af2443400636d46")
 set(OPENSSL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/OPENSSL-prefix)
 
 foreach(lib ssl crypto)
@@ -25,7 +25,11 @@ foreach(lib ssl crypto)
 endforeach()
 
 if(APPLE)
-  set(OPENSSL_CONFIG_CMD ./Configure darwin64-x86_64-cc)
+  if(${ROOT_ARCHITECTURE} MATCHES "macosxarm64")
+    set(OPENSSL_CONFIG_CMD ./Configure darwin64-aarch64-cc)
+  else()
+    set(OPENSSL_CONFIG_CMD ./Configure darwin64-x86_64-cc)
+  endif()
   if (CMAKE_OSX_SYSROOT)
     set(OSX_SYSROOT "-isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
@@ -35,6 +39,7 @@ endif()
 
 ExternalProject_Add(OPENSSL
   URL ${OPENSSL_URL} URL_HASH ${OPENSSL_URLHASH}
+  PATCH_COMMAND patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/openssl-darwin64-aarch64-cc.diff
   CONFIGURE_COMMAND ${OPENSSL_CONFIG_CMD} no-shared --prefix=<INSTALL_DIR>
   BUILD_COMMAND make -j1 CC=${CMAKE_C_COMPILER}\ -fPIC\ ${OSX_SYSROOT}
   INSTALL_COMMAND make install_sw

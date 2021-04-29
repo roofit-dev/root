@@ -66,14 +66,15 @@
 #include "TMath.h"
 #include "TSystem.h"
 #include "TList.h"
-#include "Riostream.h"
 #include "KeySymbols.h"
 #include "TGButton.h"
 #include "TQConnection.h"
 #include "TParameter.h"
 #include "RConfigure.h"
 #include "TVirtualX.h"
-#include "TEnv.h"
+#include "snprintf.h"
+
+#include <iostream>
 
 const TGGC   *TGPopupMenu::fgDefaultGC = nullptr;
 const TGGC   *TGPopupMenu::fgDefaultSelectedGC = nullptr;
