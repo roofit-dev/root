@@ -67,7 +67,7 @@
 //- data -----------------------------------------------------------------------
 static PyObject* nullptr_repr(PyObject*)
 {
-    return CPyCppyy_PyUnicode_FromString("nullptr");
+    return CPyCppyy_PyText_FromString("nullptr");
 }
 
 static void nullptr_dealloc(PyObject*)
@@ -293,7 +293,7 @@ PyDictEntry* CPyCppyyLookDictString(PyDictObject* mp, PyObject* key, Long_t hash
         PyObject* buf[maxinsert];
         for (int varmax = 1; varmax <= maxinsert; ++varmax) {
             for (int ivar = 0; ivar < varmax; ++ivar) {
-                buf[ivar] = CPyCppyy_PyUnicode_FromFormat("__CPYCPPYY_FORCE_RESIZE_%d", ivar);
+                buf[ivar] = CPyCppyy_PyText_FromFormat("__CPYCPPYY_FORCE_RESIZE_%d", ivar);
                 PyDict_SetItem((PyObject*)mp, buf[ivar], Py_None);
             }
             for (int ivar = 0; ivar < varmax; ++ivar) {
@@ -349,7 +349,7 @@ PyObject* MakeCppTemplateClass(PyObject*, PyObject* args)
 
 // build "< type, type, ... >" part of class name (modifies pyname)
     const std::string& tmpl_name =
-        Utility::ConstructTemplateArgs(PyTuple_GET_ITEM(args, 0), args, nullptr, 1);
+        Utility::ConstructTemplateArgs(PyTuple_GET_ITEM(args, 0), args, nullptr, Utility::kNone, 1);
     if (!tmpl_name.size())
         return nullptr;
 
@@ -363,7 +363,7 @@ void* GetCPPInstanceAddress(PyObject*, PyObject* args)
     CPPInstance* pyobj = 0;
     PyObject* pyname = 0;
     if (PyArg_ParseTuple(args, const_cast<char*>("O|O!"), &pyobj,
-                         &CPyCppyy_PyUnicode_Type, &pyname) && CPPInstance_Check(pyobj)) {
+                         &CPyCppyy_PyText_Type, &pyname) && CPPInstance_Check(pyobj)) {
 
         if (pyname != 0) {
         // locate property proxy for offset info
@@ -384,13 +384,13 @@ void* GetCPPInstanceAddress(PyObject*, PyObject* args)
             Py_XDECREF(pyprop);
 
             PyErr_Format(PyExc_TypeError,
-                "%s is not a valid data member", CPyCppyy_PyUnicode_AsString(pyname));
+                "%s is not a valid data member", CPyCppyy_PyText_AsString(pyname));
             return nullptr;
         }
 
     // this is an address of an address (i.e. &myobj, with myobj of type MyObj*)
-    // note that pyobject->fObject may be null
-        return (void*)pyobj->fObject;
+    // note that the return result may be null
+        return ((CPPInstance*)pyobj)->GetObject();
     }
 
     PyErr_SetString(PyExc_ValueError, "invalid argument for addressof()");
@@ -417,8 +417,8 @@ PyObject* addressof(PyObject* pyobj, PyObject* args)
 
 // error message
     PyObject* str = PyObject_Str(pyobj);
-    if (str && CPyCppyy_PyUnicode_Check(str))
-        PyErr_Format(PyExc_TypeError, "unknown object %s", PyBytes_AS_STRING(str));
+    if (str && CPyCppyy_PyText_Check(str))
+        PyErr_Format(PyExc_TypeError, "unknown object %s", CPyCppyy_PyText_AsString(str));
     else
         PyErr_Format(PyExc_TypeError, "unknown object at %p", (void*)pyobj);
     Py_XDECREF(str);
@@ -431,7 +431,7 @@ PyObject* AsCObject(PyObject* dummy, PyObject* args)
 // Return object proxy as an opaque CObject.
     void* addr = GetCPPInstanceAddress(dummy, args);
     if (addr)
-        return CPyCppyy_PyCapsule_New((void*)(*(intptr_t*)addr), nullptr, nullptr);
+        return CPyCppyy_PyCapsule_New((void*)addr, nullptr, nullptr);
 
     return nullptr;
 }
@@ -473,7 +473,7 @@ PyObject* BindObject(PyObject*, PyObject* args, PyObject* kwds)
 
     Cppyy::TCppType_t klass = 0;
     PyObject* pyname = PyTuple_GET_ITEM(args, 1);
-    if (!CPyCppyy_PyUnicode_Check(pyname)) {      // not string, then class
+    if (!CPyCppyy_PyText_Check(pyname)) {         // not string, then class
         if (CPPScope_Check(pyname))
             klass = ((CPPClass*)pyname)->fCppType;
         else
@@ -482,7 +482,7 @@ PyObject* BindObject(PyObject*, PyObject* args, PyObject* kwds)
         Py_INCREF(pyname);
 
     if (!klass && pyname) {
-        klass = (Cppyy::TCppType_t)Cppyy::GetScope(CPyCppyy_PyUnicode_AsString(pyname));
+        klass = (Cppyy::TCppType_t)Cppyy::GetScope(CPyCppyy_PyText_AsString(pyname));
         Py_DECREF(pyname);
     }
 
@@ -530,7 +530,7 @@ static PyObject* AddPythonization(PyObject*, PyObject* args)
     if (!PyCallable_Check(pythonizor)) {
         PyObject* pystr = PyObject_Str(pythonizor);
         PyErr_Format(PyExc_TypeError,
-            "given \'%s\' object is not callable", CPyCppyy_PyUnicode_AsString(pystr));
+            "given \'%s\' object is not callable", CPyCppyy_PyText_AsString(pystr));
         Py_DECREF(pystr);
         return nullptr;
     }
@@ -654,13 +654,6 @@ PyObject* Cast(PyObject*, PyObject* args)
 // be cast ...
     return BindCppObjectNoCast(obj->GetObject(), type->fCppType,
                                obj->fFlags & CPPInstance::kIsReference);
-}
-
-
-//----------------------------------------------------------------------------
-void* create_converter(const char* type_name, long* dims)
-{
-    return (void*)CreateConverter(type_name, dims);
 }
 
 } // unnamed namespace
@@ -825,6 +818,13 @@ extern "C" void initlibcppyy()
     if (PyType_Ready(&LowLevelView_Type) < 0)
         CPYCPPYY_INIT_ERROR;
 
+// custom iterators
+    if (PyType_Ready(&IndexIter_Type) < 0)
+        CPYCPPYY_INIT_ERROR;
+
+    if (PyType_Ready(&VectorIter_Type) < 0)
+        CPYCPPYY_INIT_ERROR;
+
 // inject identifiable nullptr
     gNullPtrObject = (PyObject*)&_CPyCppyy_NullPtrStruct;
     Py_INCREF(gNullPtrObject);
@@ -844,9 +844,6 @@ extern "C" void initlibcppyy()
 
 // create the memory regulator
     static MemoryRegulator s_memory_regulator;
-
-// setup the converter creator callback
-    cppyy_set_converter_creator(create_converter);
 
 #if PY_VERSION_HEX >= 0x03000000
     Py_INCREF(gThisModule);

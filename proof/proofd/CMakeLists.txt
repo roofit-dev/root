@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT proof/proofd package
 # @author Pere Mato, CERN
@@ -51,7 +57,6 @@ else()
       ${PROOFD_SOURCES}
       LIBRARIES
         ${XROOTD_LIBRARIES}
-        ${SYSLIBS}
       BUILTINS
         XROOTD
     )
@@ -73,7 +78,5 @@ else()
     proofexecv.cxx
     ${CMAKE_SOURCE_DIR}/net/rpdutils/src/rpdconn.cxx
     ${CMAKE_SOURCE_DIR}/net/rpdutils/src/rpdpriv.cxx
-    LIBRARIES
-      ${SYSLIBS}
   )
 endif()
