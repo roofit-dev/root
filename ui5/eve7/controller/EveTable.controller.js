@@ -13,8 +13,8 @@ sap.ui.define([
    "sap/ui/table/Column",
    "sap/m/MessageBox"
 ], function (Controller, JSONModel, Sorter,
-             mColumn, mColumnListItem, mInput, mLabel, mButton,
-             FormattedText, VerticalLayout, HorizontalLayout, tableColumn, MessageBox) {
+   mColumn, mColumnListItem, mInput, mLabel, mButton,
+   FormattedText, VerticalLayout, HorizontalLayout, tableColumn, MessageBox) {
 
    "use strict";
 
@@ -34,7 +34,7 @@ sap.ui.define([
          this.eveViewerId = data.eveViewerId;
          this.kind = data.kind;
 
-         var rh = this.mgr.handle.GetUserArgs("TableRowHeight");
+         var rh = this.mgr.handle.getUserArgs("TableRowHeight");
          if (rh && (rh > 0))
             this.getView().byId("table").setRowHeight(rh);
 
@@ -146,7 +146,7 @@ sap.ui.define([
          if (!oTable.sortMap)
             oTable.sortMap = new Map();
 
-         for (let r = 0; r < nr; ++r ) {
+         for (let r = 0; r < nr; ++r) {
             var oData = oTable.getContextByIndex(r);
             let unsortedIdx = oData.sPath.substring(6);
             oTable.sortMap[unsortedIdx] = r;
@@ -181,6 +181,9 @@ sap.ui.define([
       },
 
       buildTableBody: function () {
+         if (!(this.eveTable && this.eveTable.body))
+            return;
+
          var oTable = this.getView().byId("table");
 
          // row definition
@@ -498,7 +501,7 @@ sap.ui.define([
 
       sceneElementChange: function (el) {
          this.refreshTable = true;
-         if (el._typename == "ROOT::Experimental::REveTableViewInfo" ) {
+         if (el._typename == "ROOT::Experimental::REveTableViewInfo") {
             this.bindTableColumns = true;
          }
       },
