@@ -27,8 +27,6 @@
 #include "RooMsgService.h"
 #include "RooTrace.h"
 
-#include "TMath.h"
-
 #include "RooStats/HistFactory/FlexibleInterpVar.h"
 
 using namespace std;
@@ -154,9 +152,9 @@ FlexibleInterpVar::FlexibleInterpVar(const char* name, const char* title,
   RooAbsArg* param ;
   while((param = (RooAbsArg*)paramIter->Next())) {
     if (!dynamic_cast<RooAbsReal*>(param)) {
-      coutE(InputArguments) << "FlexibleInterpVar::ctor(" << GetName() << ") ERROR: paramficient " << param->GetName() 
+      coutE(InputArguments) << "FlexibleInterpVar::ctor(" << GetName() << ") ERROR: paramficient " << param->GetName()
 			    << " is not of type RooAbsReal" << endl ;
-      // use R__ASSERT which remains also in release mode 
+      // use R__ASSERT which remains also in release mode
       R__ASSERT(0) ;
     }
     _paramList.add(*param) ;

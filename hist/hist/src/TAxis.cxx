@@ -22,7 +22,6 @@
 #include "TDatime.h"
 #include "TTimeStamp.h"
 #include "TROOT.h"
-#include "TClass.h"
 #include "TMath.h"
 #include <time.h>
 #include <cassert>
@@ -243,6 +242,18 @@ void TAxis::Copy(TObject &obj) const
       delete axis.fModLabs;
       axis.fModLabs = 0;
    }
+   if (fModLabs) {
+      TIter next(fModLabs);
+      TAxisModLab *modlabel;
+      if(! axis.fModLabs) {
+         axis.fModLabs = new TList();
+      }
+      while( (modlabel=(TAxisModLab*)next()) ) {
+         TAxisModLab *copyModLabel = new TAxisModLab(*modlabel);
+         axis.fModLabs->Add(copyModLabel);
+         copyModLabel->SetUniqueID(modlabel->GetUniqueID());
+      }
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -381,7 +392,7 @@ Int_t TAxis::FindBin(const char *label)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Find bin number with label.
-/// If the List of labels does not exist or the label doe not exist just return -1 .
+/// If the List of labels does not exist or the label does not exist just return -1 .
 /// Do not attempt to modify the axis. This is different than FindBin
 
 Int_t TAxis::FindFixBin(const char *label) const

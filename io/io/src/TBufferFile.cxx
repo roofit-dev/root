@@ -2517,7 +2517,7 @@ void TBufferFile::WriteObjectClass(const void *actualObjectStart, const TClass *
 
          // A warning to let the user know it will need to change the class code
          // to  be able to read this back.
-         if (!actualClass->HasDefaultConstructor()) {
+         if (!actualClass->HasDefaultConstructor(kTRUE)) {
             Warning("WriteObjectAny", "since %s has no public constructor\n"
                "\twhich can be called without argument, objects of this class\n"
                "\tcan not be read with the current library. You will need to\n"
@@ -3580,8 +3580,11 @@ Int_t TBufferFile::ApplySequenceVecPtr(const TStreamerInfoActions::TActionSequen
       for(TStreamerInfoActions::ActionContainer_t::const_iterator iter = sequence.fActions.begin();
           iter != end;
           ++iter) {
-         (*iter).PrintDebug(*this,*(char**)start_collection);  // Warning: This limits us to TClonesArray and vector of pointers.
-         (*iter)(*this,start_collection,end_collection);
+         if (!start_collection || start_collection == end_collection)
+            (*iter).PrintDebug(*this, nullptr);  // Warning: This limits us to TClonesArray and vector of pointers.
+         else
+            (*iter).PrintDebug(*this, *(char**)start_collection);  // Warning: This limits us to TClonesArray and vector of pointers.
+         (*iter)(*this, start_collection, end_collection);
       }
 
    } else {

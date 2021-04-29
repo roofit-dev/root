@@ -25,8 +25,6 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #endif
-#include <stdio.h>
-#include <errno.h>
 #include <stdlib.h>
 #include <sys/types.h>
 
@@ -215,9 +213,6 @@ int main(int argc, char **argv)
 
    gROOT->SetBatch();
    TApplication *theApp = 0;
-
-   // Enable autoloading
-   gInterpreter->EnableAutoLoading();
 
    TString getter("GetTXProofServ");
    TString prooflib = "libProofx";

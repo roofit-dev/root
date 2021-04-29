@@ -1104,7 +1104,8 @@ tcling_callfunc_Wrapper_t TClingCallFunc::make_wrapper()
    return (tcling_callfunc_Wrapper_t)F;
 }
 
-tcling_callfunc_ctor_Wrapper_t TClingCallFunc::make_ctor_wrapper(const TClingClassInfo *info)
+tcling_callfunc_ctor_Wrapper_t TClingCallFunc::make_ctor_wrapper(const TClingClassInfo *info,
+      ROOT::TMetaUtils::EIOCtorCategory kind, const std::string &type_name)
 {
    // Make a code string that follows this pattern:
    //
@@ -1128,6 +1129,35 @@ tcling_callfunc_ctor_Wrapper_t TClingCallFunc::make_ctor_wrapper(const TClingCla
    //       }
    //    }
    // }
+   //
+   // When I/O constructor used:
+   //
+   // void
+   // unique_wrapper_ddd(void** ret, void* arena, unsigned long nary)
+   // {
+   //    if (!arena) {
+   //       if (!nary) {
+   //          *ret = new ClassName((TRootIOCtor*)nullptr);
+   //       }
+   //       else {
+   //          char *buf = malloc(nary * sizeof(ClassName));
+   //          for (int k=0;k<nary;++k)
+   //             new (buf + k * sizeof(ClassName)) ClassName((TRootIOCtor*)nullptr);
+   //          *ret = buf;
+   //       }
+   //    }
+   //    else {
+   //       if (!nary) {
+   //          *ret = new (arena) ClassName((TRootIOCtor*)nullptr);
+   //       }
+   //       else {
+   //          for (int k=0;k<nary;++k)
+   //             new ((char *) arena + k * sizeof(ClassName)) ClassName((TRootIOCtor*)nullptr);
+   //          *ret = arena;
+   //       }
+   //    }
+   // }
+   //
    //
    // Note:
    //
@@ -1163,6 +1193,8 @@ tcling_callfunc_ctor_Wrapper_t TClingCallFunc::make_ctor_wrapper(const TClingCla
       ND->getNameForDiagnostic(stream, Policy, /*Qualified=*/true);
       stream.flush();
    }
+
+
    //
    //  Make the wrapper name.
    //
@@ -1177,6 +1209,13 @@ tcling_callfunc_ctor_Wrapper_t TClingCallFunc::make_ctor_wrapper(const TClingCla
       buf << '_' << gWrapperSerial++;
       wrapper_name = buf.str();
    }
+
+   string constr_arg;
+   if (kind == ROOT::TMetaUtils::EIOCtorCategory::kIOPtrType)
+      constr_arg = string("((") + type_name + "*)nullptr)";
+   else if (kind == ROOT::TMetaUtils::EIOCtorCategory::kIORefType)
+      constr_arg = string("(*((") + type_name + "*)arena))";
+
    //
    //  Write the wrapper code.
    //
@@ -1187,6 +1226,7 @@ tcling_callfunc_ctor_Wrapper_t TClingCallFunc::make_ctor_wrapper(const TClingCla
    buf << wrapper_name;
    buf << "(void** ret, void* arena, unsigned long nary)\n";
    buf << "{\n";
+
    //    if (!arena) {
    //       if (!nary) {
    //          *ret = new ClassName;
@@ -1195,28 +1235,31 @@ tcling_callfunc_ctor_Wrapper_t TClingCallFunc::make_ctor_wrapper(const TClingCla
    //          *ret = new ClassName[nary];
    //       }
    //    }
-   ++indent_level;
-   indent(buf, indent_level);
+   indent(buf, ++indent_level);
    buf << "if (!arena) {\n";
-   ++indent_level;
-   indent(buf, indent_level);
+   indent(buf, ++indent_level);
    buf << "if (!nary) {\n";
-   ++indent_level;
-   indent(buf, indent_level);
-   buf << "*ret = new " << class_name << ";\n";
-   --indent_level;
-   indent(buf, indent_level);
+   indent(buf, ++indent_level);
+   buf << "*ret = new " << class_name << constr_arg << ";\n";
+   indent(buf, --indent_level);
    buf << "}\n";
    indent(buf, indent_level);
    buf << "else {\n";
-   ++indent_level;
-   indent(buf, indent_level);
-   buf << "*ret = new " << class_name << "[nary];\n";
-   --indent_level;
-   indent(buf, indent_level);
+   indent(buf, ++indent_level);
+   if (constr_arg.empty()) {
+      buf << "*ret = new " << class_name << "[nary];\n";
+   } else {
+      buf << "char *buf = (char *) malloc(nary * sizeof(" << class_name << "));\n";
+      indent(buf, indent_level);
+      buf << "for (int k=0;k<nary;++k)\n";
+      indent(buf, ++indent_level);
+      buf << "new (buf + k * sizeof(" << class_name << ")) " << class_name << constr_arg << ";\n";
+      indent(buf, --indent_level);
+      buf << "*ret = buf;\n";
+   }
+   indent(buf, --indent_level);
    buf << "}\n";
-   --indent_level;
-   indent(buf, indent_level);
+   indent(buf, --indent_level);
    buf << "}\n";
    //    else {
    //       if (!nary) {
@@ -1228,25 +1271,27 @@ tcling_callfunc_ctor_Wrapper_t TClingCallFunc::make_ctor_wrapper(const TClingCla
    //    }
    indent(buf, indent_level);
    buf << "else {\n";
-   ++indent_level;
-   indent(buf, indent_level);
+   indent(buf, ++indent_level);
    buf << "if (!nary) {\n";
-   ++indent_level;
-   indent(buf, indent_level);
-   buf << "*ret = new (arena) " << class_name << ";\n";
-   --indent_level;
-   indent(buf, indent_level);
+   indent(buf, ++indent_level);
+   buf << "*ret = new (arena) " << class_name << constr_arg << ";\n";
+   indent(buf, --indent_level);
    buf << "}\n";
    indent(buf, indent_level);
    buf << "else {\n";
-   ++indent_level;
-   indent(buf, indent_level);
-   buf << "*ret = new (arena) " << class_name << "[nary];\n";
-   --indent_level;
-   indent(buf, indent_level);
+   indent(buf, ++indent_level);
+   if (constr_arg.empty()) {
+      buf << "*ret = new (arena) " << class_name << "[nary];\n";
+   } else {
+      buf << "for (int k=0;k<nary;++k)\n";
+      indent(buf, ++indent_level);
+      buf << "new ((char *) arena + k * sizeof(" << class_name << ")) " << class_name << constr_arg << ";\n";
+      indent(buf, --indent_level);
+      buf << "*ret = arena;\n";
+   }
+   indent(buf, --indent_level);
    buf << "}\n";
-   --indent_level;
-   indent(buf, indent_level);
+   indent(buf, --indent_level);
    buf << "}\n";
    // End wrapper.
    --indent_level;
@@ -1483,7 +1528,7 @@ void TClingCallFunc::exec(void *address, void *ret)
       if (num_args < GetMinRequiredArguments()) {
          ::Error("TClingCallFunc::exec",
                "Not enough arguments provided for %s (%d instead of the minimum %d)",
-               fMethod->Name(ROOT::TMetaUtils::TNormalizedCtxt(fInterp->getLookupHelper())),
+               fMethod->Name(),
                num_args, (int)GetMinRequiredArguments());
          return;
       }
@@ -1492,7 +1537,7 @@ void TClingCallFunc::exec(void *address, void *ret)
           && !dyn_cast<CXXConstructorDecl>(FD)) {
          ::Error("TClingCallFunc::exec",
                "The method %s is called without an object.",
-               fMethod->Name(ROOT::TMetaUtils::TNormalizedCtxt(fInterp->getLookupHelper())));
+               fMethod->Name());
          return;
       }
       vh_ary.reserve(num_args);
@@ -2098,17 +2143,19 @@ void TClingCallFunc::ExecWithReturn(void *address, void *ret/*= 0*/)
    exec(address, ret);
 }
 
-void *TClingCallFunc::ExecDefaultConstructor(const TClingClassInfo *info, void *address /*=0*/,
-      unsigned long nary /*= 0UL*/)
+void *TClingCallFunc::ExecDefaultConstructor(const TClingClassInfo *info,
+                                             ROOT::TMetaUtils::EIOCtorCategory kind,
+                                             const std::string &type_name,
+                                             void *address /*=0*/, unsigned long nary /*= 0UL*/)
 {
    if (!info->IsValid()) {
       ::Error("TClingCallFunc::ExecDefaultConstructor", "Invalid class info!");
-      return 0;
+      return nullptr;
    }
-   tcling_callfunc_ctor_Wrapper_t wrapper = 0;
+   tcling_callfunc_ctor_Wrapper_t wrapper = nullptr;
    {
       R__LOCKGUARD_CLING(gInterpreterMutex);
-      const Decl *D = info->GetDecl();
+      auto D = info->GetDecl();
       //if (!info->HasDefaultConstructor()) {
       //   // FIXME: We might have a ROOT ioctor, we might
       //   //        have to check for that here.
@@ -2117,17 +2164,17 @@ void *TClingCallFunc::ExecDefaultConstructor(const TClingClassInfo *info, void *
       //         info->Name());
       //   return 0;
       //}
-      map<const Decl *, void *>::iterator I = gCtorWrapperStore.find(D);
+      auto I = gCtorWrapperStore.find(D);
       if (I != gCtorWrapperStore.end()) {
          wrapper = (tcling_callfunc_ctor_Wrapper_t) I->second;
       } else {
-         wrapper = make_ctor_wrapper(info);
+         wrapper = make_ctor_wrapper(info, kind, type_name);
       }
    }
    if (!wrapper) {
       ::Error("TClingCallFunc::ExecDefaultConstructor",
             "Called with no wrapper, not implemented!");
-      return 0;
+      return nullptr;
    }
    void *obj = 0;
    (*wrapper)(&obj, address, nary);

@@ -11,6 +11,7 @@
 #ifndef ROOT_RDFDISPLAYER
 #define ROOT_RDFDISPLAYER
 
+#include "ROOT/RDF/Utils.hxx"
 #include "ROOT/TypeTraits.hxx"
 #include "TClassEdit.h"
 
@@ -95,7 +96,7 @@ private:
    /// \param[in] element The event to convert to its string representation
    /// \param[in] index To which column the event belongs to
    /// \return false, the event is not a collection
-   template <typename T, typename std::enable_if<!ROOT::TypeTraits::IsContainer<T>::value, int>::type = 0>
+   template <typename T, typename std::enable_if<!ROOT::Internal::RDF::IsDataContainer<T>::value, int>::type = 0>
    bool AddInterpreterString(std::stringstream &stream, T &element, const int &index)
    {
       stream << "*((std::string*)" << ROOT::Internal::RDF::PrettyPrintAddr(&(fRepresentations[index]))
@@ -111,7 +112,7 @@ private:
    /// \param[in] index To which column the event belongs to
    /// \return true, the event is a collection
    /// This function chains a sequence of call to cling::printValue, one for each element of the collection.
-   template <typename T, typename std::enable_if<ROOT::TypeTraits::IsContainer<T>::value, int>::type = 0>
+   template <typename T, typename std::enable_if<ROOT::Internal::RDF::IsDataContainer<T>::value, int>::type = 0>
    bool AddInterpreterString(std::stringstream &stream, T &collection, const int &index)
    {
       size_t collectionSize = std::distance(std::begin(collection), std::end(collection));
@@ -150,10 +151,6 @@ private:
    void MovePosition();
 
    ////////////////////////////////////////////////////////////////////////////
-   /// Feed a piece of code to cling and handle errors
-   void CallInterpreter(const std::string &code);
-
-   ////////////////////////////////////////////////////////////////////////////
    /// Get the number of columns that do NOT fit in the characters limit
    size_t GetNColumnsToShorten() const;
 
@@ -168,7 +165,7 @@ private:
       fIsCollection = {AddInterpreterString(calc, columns, columnIndex++)...};
 
       // Let cling::printValue handle the conversion. This can be done only through cling-compiled code.
-      CallInterpreter(calc.str());
+      ROOT::Internal::RDF::InterpreterCalc(calc.str(), "Display");
 
       // Populate the fTable using the results of the JITted code.
       for (size_t i = 0; i < fNColumns; ++i) {
@@ -185,6 +182,8 @@ private:
    ////////////////////////////////////////////////////////////////////////////
    /// If the number of required rows has been parsed, returns false.
    bool HasNext() { return fEntries > 0; }
+
+   void EnsureCurrentColumnWidth(size_t w);
 
 public:
    ////////////////////////////////////////////////////////////////////////////
