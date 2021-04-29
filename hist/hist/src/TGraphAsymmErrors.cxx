@@ -9,11 +9,10 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <string.h>
 
-#include "Riostream.h"
 #include "TEfficiency.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TGraphAsymmErrors.h"
 #include "TGraphErrors.h"
 #include "TStyle.h"
@@ -25,6 +24,12 @@
 #include "TVectorD.h"
 #include "TSystem.h"
 #include "Math/QuantFuncMathCore.h"
+#include "strtok.h"
+
+#include <cstring>
+#include <iostream>
+#include <fstream>
+
 
 ClassImp(TGraphAsymmErrors);
 

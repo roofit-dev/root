@@ -73,6 +73,7 @@ set(HEADERS
   Math/QuantFuncMathCore.h
   Math/Random.h
   Math/RandomFunctions.h
+  Math/RanluxppEngine.h
   Math/RichardsonDerivator.h
   Math/RootFinder.h
   Math/SpecFuncMathCore.h
@@ -160,6 +161,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(MathCore
     src/ProbFuncMathCore.cxx
     src/QuantFuncMathCore.cxx
     src/RandomFunctions.cxx
+    src/RanluxppEngineImpl.cxx
     src/RichardsonDerivator.cxx
     src/RootFinder.cxx
     src/SparseData.cxx
@@ -198,7 +200,7 @@ target_include_directories(MathCore PRIVATE ${VecCore_INCLUDE_DIRS})
 list(APPEND math_incl ${Vc_INCLUDE_DIR})
 list(APPEND math_incl ${VecCore_INCLUDE_DIRS})
 
-foreach(inlc ${math_incl})
+foreach(incl ${math_incl})
    target_include_directories(MathCore PUBLIC $<BUILD_INTERFACE:${incl}>)
 endforeach()
 

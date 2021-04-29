@@ -41,8 +41,10 @@
 #include "TSystem.h"
 #include "TObjArray.h"
 #include "TVirtualX.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
-#include <stdlib.h>
+#include <cstdlib>
 
 
 ClassImp(TGSearchDialog);
@@ -50,7 +52,7 @@ ClassImp(TGPrintDialog);
 ClassImp(TGGotoDialog);
 
 static TString gLastSearchString;
-TGSearchDialog *TGSearchDialog::fgSearchDialog = 0;
+TGSearchDialog *TGSearchDialog::fgSearchDialog = nullptr;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a search dialog box. Used to get from the user the required

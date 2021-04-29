@@ -133,7 +133,7 @@ void ROOT::Experimental::RPadBase::AssignAutoColors()
 /// Each display item gets its special id, which used later for client-server communication
 /// Second parameter is version id which already delivered to the client
 
-void ROOT::Experimental::RPadBase::DisplayPrimitives(RPadBaseDisplayItem &paditem, Version_t vers) const
+void ROOT::Experimental::RPadBase::DisplayPrimitives(RPadBaseDisplayItem &paditem, RDisplayContext &ctxt)
 {
    paditem.SetAttributes(&GetAttrMap());
    paditem.SetPadStyle(fStyle.lock());
@@ -141,13 +141,16 @@ void ROOT::Experimental::RPadBase::DisplayPrimitives(RPadBaseDisplayItem &padite
    unsigned indx = 0;
 
    for (auto &drawable : fPrimitives) {
-      auto item = drawable->Display(*this, vers);
+
+      ctxt.SetDrawable(drawable.get(), indx++);
+
+      auto item = drawable->Display(ctxt);
 
       if (!item)
          item = std::make_unique<RDisplayItem>(true);
 
       item->SetObjectIDAsPtr(drawable.get());
-      item->SetIndex(indx++);
+      item->SetIndex(ctxt.GetIndex());
       // add object with the style
       paditem.Add(std::move(item), drawable->fStyle.lock());
    }
@@ -162,9 +165,9 @@ ROOT::Experimental::RPadBase::Divide(int nHoriz, int nVert, const RPadExtent &pa
 {
    std::vector<std::vector<std::shared_ptr<RPad>>> ret;
    if (!nHoriz)
-      R__ERROR_HERE("Gpad") << "Cannot divide into 0 horizontal sub-pads!";
+      R__LOG_ERROR(GPadLog()) << "Cannot divide into 0 horizontal sub-pads!";
    if (!nVert)
-      R__ERROR_HERE("Gpad") << "Cannot divide into 0 vertical sub-pads!";
+      R__LOG_ERROR(GPadLog()) << "Cannot divide into 0 vertical sub-pads!";
    if (!nHoriz || !nVert)
       return ret;
 
@@ -294,7 +297,7 @@ void ROOT::Experimental::RPadBase::SetAllAxisBounds(const std::vector<std::array
 
    frame->GrowToDimensions(vecBeginAndEnd.size());
    if (vecBeginAndEnd.size() != frame->GetNDimensions()) {
-      R__ERROR_HERE("Gpadv7")
+      R__LOG_ERROR(GPadLog())
          << "Array of axis bound has wrong size " <<  vecBeginAndEnd.size()
          << " versus numer of axes in frame " << frame->GetNDimensions();
       return;
@@ -313,7 +316,7 @@ void ROOT::Experimental::RPadBase::SetAllAxisBound(const std::vector<BoundKindAn
 
    frame->GrowToDimensions(vecBoundAndKind.size());
    if (vecBoundAndKind.size() != frame->GetNDimensions()) {
-      R__ERROR_HERE("Gpadv7")
+      R__LOG_ERROR(GPadLog())
          << "Array of axis bound has wrong size " << vecBoundAndKind.size()
          << " versus numer of axes in frame " << frame->GetNDimensions();
       return;

@@ -47,15 +47,15 @@ Begin_Macro(source)
 End_Macro
 */
 
-#include "Riostream.h"
 
 #include "TGeoPgon.h"
+
+#include <iostream>
 
 #include "TGeoManager.h"
 #include "TGeoVolume.h"
 #include "TVirtualGeoPainter.h"
 #include "TGeoTube.h"
-#include "TVirtualPad.h"
 #include "TBuffer3D.h"
 #include "TBuffer3DTypes.h"
 #include "TMath.h"
@@ -163,7 +163,7 @@ TGeoPgon::TGeoPgon(const char *name, Double_t phi, Double_t dphi, Int_t nedges, 
 ///  - param[6] = Rmax1
 /// ...
 
-TGeoPgon::TGeoPgon(Double_t *param) : TGeoPcon()
+TGeoPgon::TGeoPgon(Double_t *param) : TGeoPcon("")
 {
    SetShapeBit(TGeoShape::kGeoPgon);
    SetDimensions(param);
@@ -1695,7 +1695,7 @@ void TGeoPgon::SetSegsAndPolsNoInside(TBuffer3D &buff) const
 
    // outside, number of polygons: (nz-1)*(n-1)
    for (Int_t k = 0; k < (nz - 1); k++) {
-      indx1 = k*n;
+      indx1 = k*(n-1);
       indx2 = nz*(n-1) + n*2 + k*n;
       for (j = 0; j < n-1; j++) {
          buff.fPols[indx++] = c;
