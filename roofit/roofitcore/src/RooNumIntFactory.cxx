@@ -29,6 +29,7 @@ the preference of the caller as encoded in the configuration object.
 **/
 
 #include "TClass.h"
+#include "TSystem.h"
 #include "Riostream.h"
 
 #include "RooFit.h"
@@ -46,8 +47,8 @@ the preference of the caller as encoded in the configuration object.
 #include "RooSegmentedIntegrator2D.h"
 #include "RooImproperIntegrator1D.h"
 #include "RooMCIntegrator.h"
-#include "RooGaussKronrodIntegrator1D.h"
-#include "RooAdaptiveGaussKronrodIntegrator1D.h"
+//#include "RooGaussKronrodIntegrator1D.h"
+//#include "RooAdaptiveGaussKronrodIntegrator1D.h"
 #include "RooAdaptiveIntegratorND.h"
 
 #include "RooMsgService.h"
@@ -69,14 +70,23 @@ void RooNumIntFactory::init() {
   RooSegmentedIntegrator2D::registerIntegrator(*this) ;
   RooImproperIntegrator1D::registerIntegrator(*this) ;
   RooMCIntegrator::registerIntegrator(*this) ;
-  RooAdaptiveGaussKronrodIntegrator1D::registerIntegrator(*this) ;
-  RooGaussKronrodIntegrator1D::registerIntegrator(*this) ;  
+  // GSL integrator is now in RooFitMore and it register itself
+  //RooAdaptiveGaussKronrodIntegrator1D::registerIntegrator(*this) ;
+  //RooGaussKronrodIntegrator1D::registerIntegrator(*this) ;  
   RooAdaptiveIntegratorND::registerIntegrator(*this) ;
 
   RooNumIntConfig::defaultConfig().method1D().setLabel("RooIntegrator1D") ;
   RooNumIntConfig::defaultConfig().method1DOpen().setLabel("RooImproperIntegrator1D") ;
   RooNumIntConfig::defaultConfig().method2D().setLabel("RooAdaptiveIntegratorND") ;
   RooNumIntConfig::defaultConfig().methodND().setLabel("RooAdaptiveIntegratorND") ;
+
+  //if GSL is available load (and register GSL integrator)
+#ifdef R__HAS_MATHMORE
+  int iret = gSystem->Load("libRooFitMore");
+  if (iret < 0) {
+     oocoutE((TObject*)nullptr, Integration) << " RooNumIntFactory::Init : libRooFitMore cannot be loaded. GSL integrators will not beavailable ! " << std::endl;
+  }
+#endif
 }
 
 
@@ -177,15 +187,15 @@ RooAbsIntegrator* RooNumIntFactory::createIntegrator(RooAbsFunc& func, const Roo
   TString method ;
   switch(ndim) {
   case 1:
-    method = openEnded ? config.method1DOpen().getLabel() : config.method1D().getLabel() ;
+    method = openEnded ? config.method1DOpen().getCurrentLabel() : config.method1D().getCurrentLabel() ;
     break ;
 
   case 2:
-    method = openEnded ? config.method2DOpen().getLabel() : config.method2D().getLabel() ;
+    method = openEnded ? config.method2DOpen().getCurrentLabel() : config.method2D().getCurrentLabel() ;
     break ;
 
   default:
-    method = openEnded ? config.methodNDOpen().getLabel() : config.methodND().getLabel() ;
+    method = openEnded ? config.methodNDOpen().getCurrentLabel() : config.methodND().getCurrentLabel() ;
     break ;
   }
 

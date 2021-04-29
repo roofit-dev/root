@@ -23,8 +23,9 @@ End_Macro
  The structure of a file is shown in TFile::TFile
 */
 
-#include "Riostream.h"
+#include <iostream>
 #include "Strlen.h"
+#include "strlcpy.h"
 #include "TDirectoryFile.h"
 #include "TFile.h"
 #include "TBufferFile.h"
@@ -479,8 +480,11 @@ TDirectory *TDirectoryFile::GetDirectory(const char *apath,
       // this file.
       if (GetFile()) {
          auto url = GetFile()->GetEndpointUrl();
-         if (f && 0 == url->Compare(f->GetFile()->GetEndpointUrl()))
-            return GetDirectory(s+1,printError,funcname);
+         if (f && 0 == url->Compare(f->GetFile()->GetEndpointUrl())) {
+            result = GetDirectory(s+1,printError,funcname);
+            delete [] path;
+            return result;
+         }
       }
       if (!f && !strcmp(gROOT->GetName(), path)) f = gROOT;
       if (s) *s = ':';
@@ -861,10 +865,10 @@ TObject *TDirectoryFile::FindObjectAny(const char *aname) const
 ///   - cycle = "" or cycle = 9999 ==> apply to a memory object
 ///
 /// Examples:
-/// | Pattern | Explanation |
-/// |---------|-------------|
-/// |  foo    | get object named foo in memory if object is not in memory, try with highest cycle from file |
-/// |  foo;1  | get cycle 1 of foo on file |
+/// | %Pattern | Explanation |
+/// |----------|-------------|
+/// |   foo    | get object named foo in memory if object is not in memory, try with highest cycle from file |
+/// |   foo;1  | get cycle 1 of foo on file |
 ///
 /// The retrieved object should in principle derive from TObject.
 /// If not, the function TDirectoryFile::Get<T> should be called.
@@ -1160,13 +1164,23 @@ void TDirectoryFile::ls(Option_t *option) const
       }
    }
 
-   if (diskobj) {
-      TKey *key;
-      TIter next(GetListOfKeys());
-      while ((key = (TKey *) next())) {
+   if (diskobj && fKeys) {
+      //*-* Loop on all the keys
+      TObjLink *lnk = fKeys->FirstLink();
+      while (lnk) {
+         TKey *key = (TKey*)lnk->GetObject();
          TString s = key->GetName();
          if (s.Index(re) == kNPOS) continue;
-         key->ls();                 //*-* Loop on all the keys
+         bool first = (lnk->Prev() == nullptr) || (s != lnk->Prev()->GetObject()->GetName());
+         bool hasbackup = (lnk->Next() != nullptr) && (s == lnk->Next()->GetObject()->GetName());
+         if (first)
+            if (hasbackup)
+               key->ls(true);
+            else
+               key->ls();
+         else
+            key->ls(false);
+         lnk = lnk->Next();
       }
    }
    TROOT::DecreaseDirLevel();
@@ -1186,17 +1200,22 @@ TFile *TDirectoryFile::OpenFile(const char *name, Option_t *option,const char *f
 ///
 /// Returns 0 in case of error or if a sub-directory (hierarchy) with the requested
 /// name already exists.
+/// returnExistingDirectory returns a pointer to an already existing sub-directory instead of 0.
 /// Returns a pointer to the created sub-directory or to the top sub-directory of
 /// the hierarchy (in the above example, the returned TDirectory * always points
 /// to "a").
 
-TDirectory *TDirectoryFile::mkdir(const char *name, const char *title)
+TDirectory *TDirectoryFile::mkdir(const char *name, const char *title, Bool_t returnExistingDirectory)
 {
    if (!name || !title || !name[0]) return nullptr;
    if (!title[0]) title = name;
    if (GetKey(name)) {
-      Error("mkdir","An object with name %s exists already",name);
-      return nullptr;
+      if (returnExistingDirectory)
+         return (TDirectoryFile*) GetDirectory(name);
+      else {
+        Error("mkdir","An object with name %s exists already",name);
+        return nullptr;
+      }
    }
    TDirectoryFile *newdir = nullptr;
    if (const char *slash = strchr(name,'/')) {
@@ -1224,6 +1243,8 @@ TDirectory *TDirectoryFile::mkdir(const char *name, const char *title)
 ///
 /// By default, only the highest cycle of a key is kept. Keys for which
 /// the "KEEP" flag has been set are not removed. See TKey::Keep().
+/// NOTE: This does not reduce the size of a TFile--
+/// the space is simply freed up to be overwritten.
 
 void TDirectoryFile::Purge(Short_t)
 {
@@ -1775,7 +1796,8 @@ Int_t TDirectoryFile::Write(const char *, Int_t opt, Int_t bufsize)
    while ((obj=next())) {
       nbytes += obj->Write(0,opt,bufsize);
    }
-   SaveSelf(kTRUE);   // force save itself
+   if (R__likely(!(opt & kOnlyPrepStep)))
+      SaveSelf(kTRUE);   // force save itself
 
    return nbytes;
 }

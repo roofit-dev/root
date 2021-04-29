@@ -16,8 +16,9 @@
 #include "ClingPragmas.h"
 #include "DeclCollector.h"
 #include "DeclExtractor.h"
+#include "DefinitionShadower.h"
+#include "DeviceKernelInliner.h"
 #include "DynamicLookup.h"
-#include "IncrementalCUDADeviceCompiler.h"
 #include "IncrementalExecutor.h"
 #include "NullDerefProtectionTransformer.h"
 #include "TransactionPool.h"
@@ -286,34 +287,6 @@ namespace cling {
     m_DiagConsumer.reset(new FilteringDiagConsumer(Diag, false));
 
     initializeVirtualFile();
-
-    if(m_CI->getFrontendOpts().ProgramAction != frontend::ParseSyntaxOnly &&
-      m_Interpreter->getOptions().CompilerOpts.CUDA){
-        // Create temporary folder for all files, which the CUDA device compiler
-        // will generate.
-        llvm::SmallString<256> TmpPath;
-        llvm::StringRef sep = llvm::sys::path::get_separator().data();
-        llvm::sys::path::system_temp_directory(false, TmpPath);
-        TmpPath.append(sep.data());
-        TmpPath.append("cling-%%%%");
-        TmpPath.append(sep.data());
-
-        llvm::SmallString<256> TmpFolder;
-        llvm::sys::fs::createUniqueFile(TmpPath.c_str(), TmpFolder);
-        llvm::sys::fs::create_directory(TmpFolder);
-
-        // The CUDA fatbin file is the connection beetween the CUDA device
-        // compiler and the CodeGen of cling. The file will every time reused.
-        if(getCI()->getCodeGenOpts().CudaGpuBinaryFileNames.empty())
-          getCI()->getCodeGenOpts().CudaGpuBinaryFileNames.push_back(
-            std::string(TmpFolder.c_str()) + "cling.fatbin");
-
-        m_CUDACompiler.reset(
-          new IncrementalCUDADeviceCompiler(TmpFolder.c_str(),
-                                            m_CI->getCodeGenOpts().OptimizationLevel,
-                                            m_Interpreter->getOptions(),
-                                            *m_CI));
-    }
   }
 
   bool
@@ -418,10 +391,10 @@ namespace cling {
     return m_Consumer->getTransaction();
   }
 
-  SourceLocation IncrementalParser::getLastMemoryBufferEndLoc() const {
+  SourceLocation IncrementalParser::getNextAvailableUniqueSourceLoc() {
     const SourceManager& SM = getCI()->getSourceManager();
     SourceLocation Result = SM.getLocForStartOfFile(m_VirtualFileID);
-    return Result.getLocWithOffset(m_MemoryBuffers.size() + 1);
+    return Result.getLocWithOffset(m_VirtualFileLocOffset++);
   }
 
   IncrementalParser::~IncrementalParser() {
@@ -609,7 +582,7 @@ namespace cling {
       Transaction* nestedT = beginTransaction(T->getCompilationOpts());
       // Pull all template instantiations in that came from the consumers.
       getCI()->getSema().PerformPendingInstantiations();
-#ifdef LLVM_ON_WIN32
+#ifdef _WIN32
       // Microsoft-specific:
       // Late parsed templates can leave unswallowed "macro"-like tokens.
       // They will seriously confuse the Parser when entering the next
@@ -684,6 +657,9 @@ namespace cling {
     // This llvm::Module is done; finalize it and pass it to the execution
     // engine.
     if (!T->isNestedTransaction() && hasCodeGenerator()) {
+      if (InterpreterCallbacks* callbacks = m_Interpreter->getCallbacks())
+        callbacks->TransactionCodeGenStarted(*T);
+
       // The initializers are emitted to the symbol "_GLOBAL__sub_I_" + filename.
       // Make that unique!
       deserT = beginTransaction(CompilationOptions());
@@ -705,6 +681,9 @@ namespace cling {
         Diags.getClient()->clear();
       }
 
+      if (InterpreterCallbacks* callbacks = m_Interpreter->getCallbacks())
+        callbacks->TransactionCodeGenFinished(*T);
+
       // Create a new module.
       StartModule();
     }
@@ -718,11 +697,18 @@ namespace cling {
       Parent->removeNestedTransaction(&T);
       T.setParent(0);
     } else {
-      // Remove from the queue
-      assert(&T == m_Transactions.back() && "Out of order transaction removal");
-      m_Transactions.pop_back();
-      if (!m_Transactions.empty())
-        m_Transactions.back()->setNext(0);
+      if (&T == m_Transactions.back()) {
+        // Remove from the queue
+        m_Transactions.pop_back();
+        if (!m_Transactions.empty())
+          m_Transactions.back()->setNext(0);
+      } else {
+        // If T is not the last transaction it must not be a previous
+        // transaction either, but a "disconnected" one, i.e. one that
+        // was not yet committed.
+        assert(std::find(m_Transactions.begin(), m_Transactions.end(), &T)
+              == m_Transactions.end() && "Out of order transaction removal");
+      }
     }
 
     m_TransactionPool->releaseTransaction(&T);
@@ -819,10 +805,10 @@ namespace cling {
     // Create an uninitialized memory buffer, copy code in and append "\n"
     size_t InputSize = input.size(); // don't include trailing 0
     // MemBuffer size should *not* include terminating zero
-    std::unique_ptr<llvm::MemoryBuffer>
-      MB(llvm::MemoryBuffer::getNewUninitMemBuffer(InputSize + 1,
-                                                   source_name.str()));
-    char* MBStart = const_cast<char*>(MB->getBufferStart());
+    std::unique_ptr<llvm::WritableMemoryBuffer>
+      MB(llvm::WritableMemoryBuffer::getNewUninitMemBuffer(InputSize + 1,
+                                                           source_name.str()));
+    char* MBStart = MB->getBufferStart();
     memcpy(MBStart, input.data(), InputSize);
     MBStart[InputSize] = '\n';
 
@@ -830,7 +816,7 @@ namespace cling {
 
     // Create SourceLocation, which will allow clang to order the overload
     // candidates for example
-    SourceLocation NewLoc = getLastMemoryBufferEndLoc().getLocWithOffset(1);
+    SourceLocation NewLoc = getNextAvailableUniqueSourceLoc();
 
     llvm::MemoryBuffer* MBNonOwn = MB.get();
 
@@ -890,7 +876,7 @@ namespace cling {
       return kSuccess;
     }
 
-#ifdef LLVM_ON_WIN32
+#ifdef _WIN32
     // Microsoft-specific:
     // Late parsed templates can leave unswallowed "macro"-like tokens.
     // They will seriously confuse the Parser when entering the next
@@ -919,9 +905,6 @@ namespace cling {
     else if (Diags.getNumWarnings())
       return kSuccessWithWarnings;
 
-    if(!m_Interpreter->isInSyntaxOnlyMode() && m_CI->getLangOpts().CUDA )
-      m_CUDACompiler->compileDeviceCode(input, m_Consumer->getTransaction());
-
     return kSuccess;
   }
 
@@ -934,24 +917,33 @@ namespace cling {
   void IncrementalParser::SetTransformers(bool isChildInterpreter) {
     // Add transformers to the IncrementalParser, which owns them
     Sema* TheSema = &m_CI->getSema();
+    // if the interpreter compiles ptx code, some transformers should not be
+    // used
+    bool isCUDADevice = m_Interpreter->getOptions().CompilerOpts.CUDADevice;
     // Register the AST Transformers
     typedef std::unique_ptr<ASTTransformer> ASTTPtr_t;
     std::vector<ASTTPtr_t> ASTTransformers;
     ASTTransformers.emplace_back(new AutoSynthesizer(TheSema));
     ASTTransformers.emplace_back(new EvaluateTSynthesizer(TheSema));
     if (hasCodeGenerator() && !m_Interpreter->getOptions().NoRuntime) {
-       // Don't protect against crashes if we cannot run anything.
-       // cling might also be in a PCH-generation mode; don't inject our Sema pointer
-       // into the PCH.
-       ASTTransformers.emplace_back(new NullDerefProtectionTransformer(m_Interpreter));
+      // Don't protect against crashes if we cannot run anything.
+      // cling might also be in a PCH-generation mode; don't inject our Sema
+      // pointer into the PCH.
+      if (!isCUDADevice)
+        ASTTransformers.emplace_back(
+            new NullDerefProtectionTransformer(m_Interpreter));
+      else
+        ASTTransformers.emplace_back(
+            new DeviceKernelInliner(TheSema));
     }
+    ASTTransformers.emplace_back(new DefinitionShadower(*TheSema, *m_Interpreter));
 
     typedef std::unique_ptr<WrapperTransformer> WTPtr_t;
     std::vector<WTPtr_t> WrapperTransformers;
-    if (!m_Interpreter->getOptions().NoRuntime)
+    if (!m_Interpreter->getOptions().NoRuntime && !isCUDADevice)
       WrapperTransformers.emplace_back(new ValuePrinterSynthesizer(TheSema));
     WrapperTransformers.emplace_back(new DeclExtractor(TheSema));
-    if (!m_Interpreter->getOptions().NoRuntime)
+    if (!m_Interpreter->getOptions().NoRuntime && !isCUDADevice)
       WrapperTransformers.emplace_back(new ValueExtractionSynthesizer(TheSema,
                                                            isChildInterpreter));
     WrapperTransformers.emplace_back(new CheckEmptyTransactionTransformer(TheSema));

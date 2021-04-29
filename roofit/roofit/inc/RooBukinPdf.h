@@ -48,6 +48,7 @@ protected:
   RooRealProxy rho1;
   RooRealProxy rho2;
   Double_t evaluate() const;
+  RooSpan<double> evaluateSpan(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const;
 
 private:
 
