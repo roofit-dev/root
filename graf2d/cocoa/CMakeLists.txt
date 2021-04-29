@@ -33,12 +33,13 @@ ROOT_STANDARD_LIBRARY_PACKAGE(GCocoa
     src/X11Events.mm
     src/XLFDParser.mm
   DEPENDENCIES
-    GQuartz
     Gui
   LIBRARIES
+    GQuartz
     "-framework Cocoa"
     "-framework OpenGL"
     ${FREETYPE_LIBRARIES}
+    RGlew
 )
 
 target_include_directories(GCocoa PRIVATE ${CMAKE_SOURCE_DIR}/graf3d/gl/inc)
@@ -52,11 +53,6 @@ if(opengl) # special case when cocoa is enabled but not opengl (i.e. gminimal=ON
 else()
   target_include_directories(GCocoa PRIVATE
     ${CMAKE_SOURCE_DIR}/graf3d/gl/inc
-    ${CMAKE_SOURCE_DIR}/graf3d/glew/inc
   )
 endif(opengl)
-
-if(builtin_glew)
-   target_include_directories(GCocoa PRIVATE ${CMAKE_SOURCE_DIR}/graf3d/glew/inc)
-endif()
 

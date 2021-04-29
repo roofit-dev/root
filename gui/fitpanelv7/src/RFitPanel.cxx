@@ -21,7 +21,6 @@
 
 #include "Fit/BinData.h"
 #include "Fit/Fitter.h"
-// #include "TBackCompFitter.h"
 
 #include "TString.h"
 #include "TGraph.h"
@@ -42,7 +41,6 @@
 #include "TCanvas.h"
 #include "TDirectory.h"
 #include "TBufferJSON.h"
-#include "TMath.h"
 #include "Math/Minimizer.h"
 #include "HFitInterface.h"
 #include "TColor.h"
@@ -334,7 +332,7 @@ void ROOT::Experimental::RFitPanel::AssignCanvas(std::shared_ptr<RCanvas> &canv)
    if (!fCanvas) {
       fCanvas = canv;
    } else {
-      R__ERROR_HERE("webgui") << "FitPanel already bound to the canvas - change is not yet supported";
+      R__LOG_ERROR(FitPanelLog()) << "FitPanel already bound to the canvas - change is not yet supported";
    }
 }
 
@@ -525,7 +523,7 @@ int ROOT::Experimental::RFitPanel::UpdateModel(const std::string &json)
    auto m = TBufferJSON::FromJSON<RFitPanelModel>(json);
 
    if (!m) {
-      R__ERROR_HERE("webgui") << "Fail to parse JSON for RFitPanelModel";
+      R__LOG_ERROR(FitPanelLog()) << "Fail to parse JSON for RFitPanelModel";
       return -1;
    }
 
@@ -825,13 +823,13 @@ TObject *ROOT::Experimental::RFitPanel::MakeConfidenceLevels(TFitResult *result)
 
    const auto *function = result->FittedFunction();
    if (!function) {
-      R__ERROR_HERE("webgui") << "Fit Function does not exist!";
+      R__LOG_ERROR(FitPanelLog()) << "Fit Function does not exist!";
       return nullptr;
    }
 
    const auto *data = result->FittedBinData();
    if (!data) {
-      R__ERROR_HERE("webgui") << "Unbinned data set cannot draw confidence levels.";
+      R__LOG_ERROR(FitPanelLog()) << "Unbinned data set cannot draw confidence levels.";
       return nullptr;
    }
 

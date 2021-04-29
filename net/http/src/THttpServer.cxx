@@ -21,6 +21,7 @@
 #include "TClass.h"
 #include "RConfigure.h"
 #include "TRegexp.h"
+#include "TObjArray.h"
 
 #include "THttpEngine.h"
 #include "THttpLongPollEngine.h"
@@ -1249,6 +1250,8 @@ const char *THttpServer::GetMimeType(const char *path)
                              {".avi", 4, "video/x-msvideo"},
                              {".bmp", 4, "image/bmp"},
                              {".ttf", 4, "application/x-font-ttf"},
+                             {".woff", 5, "font/woff"},
+                             {".woff2", 6, "font/woff2"},
                              {NULL, 0, NULL}};
 
    int path_len = strlen(path);

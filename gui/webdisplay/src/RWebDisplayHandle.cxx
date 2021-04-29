@@ -97,12 +97,15 @@ class RWebBrowserHandle : public RWebDisplayHandle {
 #else
    typedef pid_t browser_process_id;
 #endif
-   std::string fTmpDir;
+   std::string fTmpDir;         ///< temporary directory to delete at the end
    bool fHasPid{false};
    browser_process_id fPid;
 
 public:
-   RWebBrowserHandle(const std::string &url, const std::string &tmpdir) : RWebDisplayHandle(url), fTmpDir(tmpdir) {}
+   RWebBrowserHandle(const std::string &url, const std::string &tmpdir, const std::string &dump) : RWebDisplayHandle(url), fTmpDir(tmpdir)
+   {
+      SetContent(dump);
+   }
 
    RWebBrowserHandle(const std::string &url, const std::string &tmpdir, browser_process_id pid)
       : RWebDisplayHandle(url), fTmpDir(tmpdir), fHasPid(true), fPid(pid)
@@ -123,6 +126,7 @@ public:
       if (!fTmpDir.empty())
          gSystem->Exec((rmdir + fTmpDir).c_str());
    }
+
 };
 
 } // namespace Experimental
@@ -230,7 +234,7 @@ ROOT::Experimental::RWebDisplayHandle::BrowserCreator::Display(const RWebDisplay
 
    if (exec.compare(0,5,"fork:") == 0) {
       if (fProg.empty()) {
-         R__ERROR_HERE("WebDisplay") << "Fork instruction without executable";
+         R__LOG_ERROR(WebGUILog()) << "Fork instruction without executable";
          return nullptr;
       }
 
@@ -240,7 +244,7 @@ ROOT::Experimental::RWebDisplayHandle::BrowserCreator::Display(const RWebDisplay
 
       std::unique_ptr<TObjArray> fargs(TString(exec.c_str()).Tokenize(" "));
       if (!fargs || (fargs->GetLast()<=0)) {
-         R__ERROR_HERE("WebDisplay") << "Fork instruction is empty";
+         R__LOG_ERROR(WebGUILog()) << "Fork instruction is empty";
          return nullptr;
       }
 
@@ -250,12 +254,12 @@ ROOT::Experimental::RWebDisplayHandle::BrowserCreator::Display(const RWebDisplay
          argv.push_back((char *)fargs->At(n)->GetName());
       argv.push_back(nullptr);
 
-      R__DEBUG_HERE("WebDisplay") << "Show web window in browser with posix_spawn:\n" << fProg << " " << exec;
+      R__LOG_DEBUG(0, WebGUILog()) << "Show web window in browser with posix_spawn:\n" << fProg << " " << exec;
 
       pid_t pid;
       int status = posix_spawn(&pid, argv[0], nullptr, nullptr, argv.data(), nullptr);
       if (status != 0) {
-         R__ERROR_HERE("WebDisplay") << "Fail to launch " << argv[0];
+         R__LOG_ERROR(WebGUILog()) << "Fail to launch " << argv[0];
          return nullptr;
       }
 
@@ -266,7 +270,7 @@ ROOT::Experimental::RWebDisplayHandle::BrowserCreator::Display(const RWebDisplay
 #else
 
       if (fProg.empty()) {
-         R__ERROR_HERE("WebDisplay") << "No Web browser found";
+         R__LOG_ERROR(WebGUILog()) << "No Web browser found";
          return nullptr;
       }
 
@@ -280,7 +284,7 @@ ROOT::Experimental::RWebDisplayHandle::BrowserCreator::Display(const RWebDisplay
       ss >> tmp >> c >> pid;
 
       if (pid <= 0) {
-         R__ERROR_HERE("WebDisplay") << "Fail to launch " << fProg;
+         R__LOG_ERROR(WebGUILog()) << "Fail to launch " << fProg;
          return nullptr;
       }
 
@@ -308,11 +312,11 @@ ROOT::Experimental::RWebDisplayHandle::BrowserCreator::Display(const RWebDisplay
          argv.push_back((char *)fargs->At(n)->GetName());
       argv.push_back(nullptr);
 
-      R__DEBUG_HERE("WebDisplay") << "Showing web window in " << fProg << " with:\n" << exec;
+      R__LOG_DEBUG(0, WebGUILog()) << "Showing web window in " << fProg << " with:\n" << exec;
 
       _spawnv(_P_NOWAIT, fProg.c_str(), argv.data());
 
-      return std::make_unique<RWebBrowserHandle>(url, rmdir);
+      return std::make_unique<RWebBrowserHandle>(url, rmdir, ""s);
    }
 
    std::string prog = "\""s + gSystem->UnixPathName(fProg.c_str()) + "\""s;
@@ -329,18 +333,27 @@ ROOT::Experimental::RWebDisplayHandle::BrowserCreator::Display(const RWebDisplay
 
    exec = std::regex_replace(exec, std::regex("\\$prog"), prog);
 
-   if (!args.GetRedirectOutput().empty()) {
+   std::string redirect = args.GetRedirectOutput(), dump_content;
+
+   if (!redirect.empty()) {
       auto p = exec.length();
       if (exec.rfind("&") == p-1) --p;
-      exec.insert(p, " >"s + args.GetRedirectOutput() + " "s);
+      exec.insert(p, " >"s + redirect + " "s);
    }
 
-   R__DEBUG_HERE("WebDisplay") << "Showing web window in browser with:\n" << exec;
+   R__LOG_DEBUG(0, WebGUILog()) << "Showing web window in browser with:\n" << exec;
 
    gSystem->Exec(exec.c_str());
 
+   // read content of redirected output
+   if (!redirect.empty()) {
+      dump_content = THttpServer::ReadFileContent(redirect.c_str());
+
+      gSystem->Unlink(redirect.c_str());
+   }
+
    // add rmdir if required
-   return std::make_unique<RWebBrowserHandle>(url, rmdir);
+   return std::make_unique<RWebBrowserHandle>(url, rmdir, dump_content);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -481,7 +494,7 @@ std::string ROOT::Experimental::RWebDisplayHandle::FirefoxCreator::MakeProfile(s
       if (gSystem->mkdir(profile_dir.c_str()) == 0) {
          rmdir = profile_dir;
       } else {
-         R__ERROR_HERE("WebDisplay") << "Cannot create Firefox profile directory " << profile_dir;
+         R__LOG_ERROR(WebGUILog()) << "Cannot create Firefox profile directory " << profile_dir;
       }
    }
 
@@ -489,7 +502,6 @@ std::string ROOT::Experimental::RWebDisplayHandle::FirefoxCreator::MakeProfile(s
 
    return rmdir;
 }
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /// Create web display
@@ -519,7 +531,7 @@ std::unique_ptr<ROOT::Experimental::RWebDisplayHandle> ROOT::Experimental::RWebD
    }
 
    if (args.IsLocalDisplay()) {
-      R__ERROR_HERE("WebDisplay") << "Neither Qt5 nor CEF libraries were found to provide local display";
+      R__LOG_ERROR(WebGUILog()) << "Neither Qt5 nor CEF libraries were found to provide local display";
       return handle;
    }
 
@@ -534,7 +546,7 @@ std::unique_ptr<ROOT::Experimental::RWebDisplayHandle> ROOT::Experimental::RWebD
    }
 
    if ((args.GetBrowserKind() == RWebDisplayArgs::kChrome) || (args.GetBrowserKind() == RWebDisplayArgs::kFirefox)) {
-      // R__ERROR_HERE("WebDisplay") << "Neither Chrome nor Firefox browser cannot be started to provide display";
+      // R__LOG_ERROR(WebGUILog()) << "Neither Chrome nor Firefox browser cannot be started to provide display";
       return handle;
    }
 
@@ -600,16 +612,22 @@ bool ROOT::Experimental::RWebDisplayHandle::ProduceImage(const std::string &fnam
    if (!jsrootsys) {
       jsrootsysdflt = TROOT::GetDataDir() + "/js";
       if (gSystem->ExpandPathName(jsrootsysdflt)) {
-         R__ERROR_HERE("CanvasPainter") << "Fail to locate JSROOT " << jsrootsysdflt;
+         R__LOG_ERROR(WebGUILog()) << "Fail to locate JSROOT " << jsrootsysdflt;
          return false;
       }
       jsrootsys = jsrootsysdflt.Data();
    }
 
+   RWebDisplayArgs args; // set default browser kind, only Chrome or CEF or Qt5 can be used here
+   if ((args.GetBrowserKind() != RWebDisplayArgs::kCEF) && (args.GetBrowserKind() != RWebDisplayArgs::kQt5))
+      args.SetBrowserKind(RWebDisplayArgs::kChrome);
+
    std::string draw_kind;
 
-   if (EndsWith(".pdf") || EndsWith("shot.png"))
-      draw_kind = "draw";
+   if (EndsWith(".pdf"))
+      draw_kind = "draw"; // not a JSROOT drawing but Chrome capability to create PDF out of HTML page is used
+   else if (EndsWith("shot.png"))
+      draw_kind = (args.GetBrowserKind() == RWebDisplayArgs::kChrome) ? "draw" : "png";
    else if (EndsWith(".svg"))
       draw_kind = "svg";
    else if (EndsWith(".png"))
@@ -623,13 +641,13 @@ bool ROOT::Experimental::RWebDisplayHandle::ProduceImage(const std::string &fnam
 
    TString origin = TROOT::GetDataDir() + "/js/files/canv_batch.htm";
    if (gSystem->ExpandPathName(origin)) {
-      R__ERROR_HERE("CanvasPainter") << "Fail to find " << origin;
+      R__LOG_ERROR(WebGUILog()) << "Fail to find " << origin;
       return false;
    }
 
    auto filecont = THttpServer::ReadFileContent(origin.Data());
    if (filecont.empty()) {
-      R__ERROR_HERE("CanvasPainter") << "Fail to read content of " << origin;
+      R__LOG_ERROR(WebGUILog()) << "Fail to read content of " << origin;
       return false;
    }
 
@@ -645,13 +663,12 @@ bool ROOT::Experimental::RWebDisplayHandle::ProduceImage(const std::string &fnam
 
    filecont = std::regex_replace(filecont, std::regex("\\$draw_object"), json);
 
-
    TString dump_name;
-   if (draw_kind != "draw") {
+   if ((draw_kind != "draw") && (args.GetBrowserKind() == RWebDisplayArgs::kChrome)) {
       dump_name = "canvasdump";
       FILE *df = gSystem->TempFileName(dump_name);
       if (!df) {
-         R__ERROR_HERE("CanvasPainter") << "Fail to create temporary file for dump-dom";
+         R__LOG_ERROR(WebGUILog()) << "Fail to create temporary file for dump-dom";
          return false;
       }
       fputs("placeholder", df);
@@ -659,44 +676,60 @@ bool ROOT::Experimental::RWebDisplayHandle::ProduceImage(const std::string &fnam
    }
 
    // When true, place HTML file into home directory
-   // Some Crome installation do not allow run html code from files, created in /tmp directory
+   // Some Chrome installation do not allow run html code from files, created in /tmp directory
    static bool chrome_tmp_workaround = false;
+
+   TString tmp_name, html_name;
 
 try_again:
 
-   TString tmp_name("canvasbody");
-   FILE *hf = gSystem->TempFileName(tmp_name);
-   if (!hf) {
-      R__ERROR_HERE("CanvasPainter") << "Fail to create temporary file for batch job";
-      return false;
-   }
-   fputs(filecont.c_str(), hf);
-   fclose(hf);
+   if ((args.GetBrowserKind() == RWebDisplayArgs::kCEF) || (args.GetBrowserKind() == RWebDisplayArgs::kQt5)) {
+      args.SetUrl(""s);
+      args.SetPageContent(filecont);
 
-   TString html_name = tmp_name + ".html";
+      tmp_name.Clear();
+      html_name.Clear();
 
-   if (chrome_tmp_workaround) {
-      std::string homedir = gSystem->GetHomeDirectory();
-      auto pos = html_name.Last('/');
-      if (pos == kNPOS)
-         html_name = TString::Format("/random%d.html", gRandom->Integer(1000000));
-      else
-         html_name.Remove(0,pos);
-      html_name = homedir + html_name.Data();
-      gSystem->Unlink(html_name.Data());
-      gSystem->Unlink(tmp_name.Data());
+      R__LOG_DEBUG(0, WebGUILog()) << "Using file content_len " << filecont.length() << " to produce batch image " << fname;
 
-      std::ofstream ofs (html_name.Data(), std::ofstream::out);
-      ofs << filecont;
    } else {
-      if (gSystem->Rename(tmp_name.Data(), html_name.Data()) != 0) {
-         R__ERROR_HERE("CanvasPainter") << "Fail to rename temp file " << tmp_name << " into " << html_name;
-         gSystem->Unlink(tmp_name.Data());
+      tmp_name = "canvasbody";
+      FILE *hf = gSystem->TempFileName(tmp_name);
+      if (!hf) {
+         R__LOG_ERROR(WebGUILog()) << "Fail to create temporary file for batch job";
          return false;
       }
-   }
+      fputs(filecont.c_str(), hf);
+      fclose(hf);
 
-   R__DEBUG_HERE("CanvasPainter") << "Using " << html_name << " content_len " << filecont.length() << " to produce batch image " << fname;
+      html_name = tmp_name + ".html";
+
+      if (chrome_tmp_workaround) {
+         std::string homedir = gSystem->GetHomeDirectory();
+         auto pos = html_name.Last('/');
+         if (pos == kNPOS)
+            html_name = TString::Format("/random%d.html", gRandom->Integer(1000000));
+         else
+            html_name.Remove(0, pos);
+         html_name = homedir + html_name.Data();
+         gSystem->Unlink(html_name.Data());
+         gSystem->Unlink(tmp_name.Data());
+
+         std::ofstream ofs(html_name.Data(), std::ofstream::out);
+         ofs << filecont;
+      } else {
+         if (gSystem->Rename(tmp_name.Data(), html_name.Data()) != 0) {
+            R__LOG_ERROR(WebGUILog()) << "Fail to rename temp file " << tmp_name << " into " << html_name;
+            gSystem->Unlink(tmp_name.Data());
+            return false;
+         }
+      }
+
+      args.SetUrl("file://"s + gSystem->UnixPathName(html_name.Data()));
+      args.SetPageContent(""s);
+
+      R__LOG_DEBUG(0, WebGUILog()) << "Using " << html_name << " content_len " << filecont.length() << " to produce batch image " << fname;
+   }
 
    TString tgtfilename = fname.c_str();
    if (!gSystem->IsAbsoluteFileName(tgtfilename.Data()))
@@ -704,12 +737,10 @@ try_again:
 
    TString wait_file_name;
 
-   ROOT::Experimental::RWebDisplayArgs args;
-   args.SetBrowserKind(ROOT::Experimental::RWebDisplayArgs::kChrome);
    args.SetStandalone(true);
    args.SetHeadless(true);
    args.SetSize(width, height);
-   args.SetUrl("file://"s + gSystem->UnixPathName(html_name.Data()));
+
    if (draw_kind == "draw") {
 
       wait_file_name = tgtfilename;
@@ -719,15 +750,14 @@ try_again:
       else
          args.SetExtraArgs("--screenshot="s + gSystem->UnixPathName(tgtfilename.Data()));
 
-   } else {
+   } else if (args.GetBrowserKind() == RWebDisplayArgs::kChrome) {
       // require temporary output file
       args.SetExtraArgs("--dump-dom");
       args.SetRedirectOutput(dump_name.Data());
 
-      wait_file_name = dump_name;
+      // wait_file_name = dump_name;
 
       gSystem->Unlink(dump_name.Data());
-      // printf("Redirect to %s\n", dump_name.Data());
    }
 
    // remove target image file - we use it as detection when chrome is ready
@@ -736,25 +766,24 @@ try_again:
    auto handle = ROOT::Experimental::RWebDisplayHandle::Display(args);
 
    if (!handle) {
-      R__DEBUG_HERE("CanvasPainter") << "Cannot start Chrome to produce image " << fname;
+      R__LOG_DEBUG(0, WebGUILog()) << "Cannot start " << args.GetBrowserName() << " to produce image " << fname;
       return false;
    }
 
    // delete temporary HTML file
-   gSystem->Unlink(html_name.Data());
+   if (html_name.Length() > 0)
+      gSystem->Unlink(html_name.Data());
 
-   if (gSystem->AccessPathName(wait_file_name.Data())) {
-      R__ERROR_HERE("CanvasPainter") << "Fail to produce image " << fname;
+   if (!wait_file_name.IsNull() && gSystem->AccessPathName(wait_file_name.Data())) {
+      R__LOG_ERROR(WebGUILog()) << "Fail to produce image " << fname;
       return false;
    }
 
    if (draw_kind != "draw") {
 
-      auto dumpcont = THttpServer::ReadFileContent(dump_name.Data());
+      auto dumpcont = handle->GetContent();
 
-      gSystem->Unlink(dump_name.Data());
-
-      if ((dumpcont.length() > 20) && (dumpcont.length() < 60) && !chrome_tmp_workaround) {
+      if ((dumpcont.length() > 20) && (dumpcont.length() < 60) && !chrome_tmp_workaround && (args.GetBrowserKind() == RWebDisplayArgs::kChrome)) {
          // chrome creates dummy html file with mostly no content
          // problem running chrome from /tmp directory, lets try work from home directory
          chrome_tmp_workaround = true;
@@ -762,7 +791,7 @@ try_again:
       }
 
       if (dumpcont.length() < 100) {
-         R__ERROR_HERE("CanvasPainter") << "Fail to dump HTML code into " << dump_name;
+         R__LOG_ERROR(WebGUILog()) << "Fail to dump HTML code into " << (dump_name.IsNull() ? "CEF" : dump_name.Data());
          return false;
       }
 
@@ -774,13 +803,13 @@ try_again:
          if ((p1 != std::string::npos) && (p2 != std::string::npos) && (p1 < p2)) {
             ofs << dumpcont.substr(p1,p2-p1+6);
          } else {
-            R__ERROR_HERE("CanvasPainter") << "Fail to extract SVG from HTML dump " << dump_name;
+            R__LOG_ERROR(WebGUILog()) << "Fail to extract SVG from HTML dump " << dump_name;
             ofs << "Failure!!!\n" << dumpcont;
             return false;
          }
       } else {
 
-         auto p1 = dumpcont.find(";base64,");
+         auto p1 = dumpcont.rfind(";base64,");
          auto p2 = dumpcont.rfind("></div>");
 
          if ((p1 != std::string::npos) && (p2 != std::string::npos) && (p1 < p2)) {
@@ -791,14 +820,14 @@ try_again:
             std::ofstream ofs(tgtfilename, std::ios::binary);
             ofs.write(binary.Data(), binary.Length());
          } else {
-            R__ERROR_HERE("CanvasPainter") << "Fail to extract image from dump HTML code " << dump_name;
+            R__LOG_ERROR(WebGUILog()) << "Fail to extract image from dump HTML code " << dump_name;
 
             return false;
          }
       }
    }
 
-   R__DEBUG_HERE("CanvasPainter") << "Create file " << fname;
+   R__LOG_DEBUG(0, WebGUILog()) << "Create file " << fname;
 
    return true;
 }

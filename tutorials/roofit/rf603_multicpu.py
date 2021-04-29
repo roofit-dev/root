@@ -1,7 +1,6 @@
 ## \file
 ## \ingroup tutorial_roofit
 ## \notebook
-##
 ## Likelihood and minimization: setting up a multi-core parallelized unbinned maximum likelihood fit
 ##
 ## \macro_code

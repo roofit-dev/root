@@ -19,6 +19,7 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
+#include <string>
 
 #include "../Utility.h"
 #include "Math/Functor.h"
@@ -334,7 +335,7 @@ bool testRecurrentBackpropagation(size_t timeSteps, size_t batchSize, size_t sta
       std::cout << "\rTesting weight input gradients:      ";
       std::cout << "maximum error (" << maxerrorType << "): " << print_error(maximum_error) << std::endl;
       if (maximum_error > 1.E-2) {
-         std::cerr << "\e[31m Error \e[39m in weight input gradients" << std::endl;
+         std::cerr << "\033[31m Error \033[39m in weight input gradients" << std::endl;
          failed = true;
       }
 
@@ -386,7 +387,7 @@ bool testRecurrentBackpropagation(size_t timeSteps, size_t batchSize, size_t sta
       std::cout << "\rTesting weight state gradients:      ";
       std::cout << "maximum error (" << maxerrorType << "): " << print_error(maximum_error) << std::endl;
       if (maximum_error > 1.E-2) {
-         std::cerr << "\e[31m Error \e[39m in weight state gradients" << std::endl;
+         std::cerr << "\033[31m Error \033[39m in weight state gradients" << std::endl;
          failed = true;
       }
 
@@ -423,7 +424,7 @@ bool testRecurrentBackpropagation(size_t timeSteps, size_t batchSize, size_t sta
    std::cout << "\rTesting bias gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in bias state gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in bias state gradients" << std::endl;
       failed = true;
    }
    }
