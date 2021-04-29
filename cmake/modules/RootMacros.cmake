@@ -116,9 +116,14 @@ function(ROOT_GET_SOURCES variable cwd )
 endfunction()
 
 #---------------------------------------------------------------------------------------------------
-#---REFLEX_GENERATE_DICTIONARY( dictionary headerfiles SELECTION selectionfile OPTIONS opt1 opt2 ...)
+#---REFLEX_GENERATE_DICTIONARY( dictionary headerfiles SELECTION selectionfile OPTIONS opt1 opt2 ...
+#                               DEPENDS dependency1 dependency2 ...
+#                             )
+# if dictionary is a TARGET (e.g., created with add_library), we inherit the INCLUDE_DIRECTORES and
+# COMPILE_DEFINITIONS properties
+#
 #---------------------------------------------------------------------------------------------------
-macro(REFLEX_GENERATE_DICTIONARY dictionary)
+function(REFLEX_GENERATE_DICTIONARY dictionary)
   CMAKE_PARSE_ARGUMENTS(ARG "" "SELECTION" "OPTIONS;DEPENDS" ${ARGN})
   #---Get List of header files---------------
   set(headerfiles)
@@ -157,25 +162,42 @@ macro(REFLEX_GENERATE_DICTIONARY dictionary)
     set(rootmapopts --rootmap=${rootmapname} --rootmap-lib=${libprefix}${dictionary}Dict)
   endif()
 
-  set(include_dirs -I${CMAKE_CURRENT_SOURCE_DIR})
+  set(include_dirs ${CMAKE_CURRENT_SOURCE_DIR})
   get_directory_property(incdirs INCLUDE_DIRECTORIES)
   foreach(d ${incdirs})
     if(NOT "${d}" MATCHES "^(AFTER|BEFORE|INTERFACE|PRIVATE|PUBLIC|SYSTEM)$")
-      set(include_dirs ${include_dirs} -I${d})
+      list(APPEND include_dirs ${d})
     endif()
   endforeach()
 
   get_directory_property(defs COMPILE_DEFINITIONS)
   foreach( d ${defs})
-   set(definitions ${definitions} -D${d})
+   list(APPEND definitions ${d})
   endforeach()
+
+  IF(TARGET ${dictionary})
+    LIST(APPEND include_dirs $<TARGET_PROPERTY:${dictionary},INCLUDE_DIRECTORIES>)
+    LIST(APPEND definitions $<TARGET_PROPERTY:${dictionary},COMPILE_DEFINITIONS>)
+  ENDIF()
 
   add_custom_command(
     OUTPUT ${gensrcdict} ${rootmapname}
     COMMAND ${ROOT_genreflex_CMD}
     ARGS ${headerfiles} -o ${gensrcdict} ${rootmapopts} --select=${selectionfile}
-         --gccxmlpath=${GCCXML_home}/bin ${ARG_OPTIONS} ${include_dirs} ${definitions}
-    DEPENDS ${headerfiles} ${selectionfile} ${ARG_DEPENDS})
+         --gccxmlpath=${GCCXML_home}/bin ${ARG_OPTIONS}
+         "-I$<JOIN:${include_dirs},;-I>"
+         "$<$<BOOL:$<JOIN:${definitions},>>:-D$<JOIN:${definitions},;-D>>"
+    DEPENDS ${headerfiles} ${selectionfile} ${ARG_DEPENDS}
+
+    COMMAND_EXPAND_LISTS
+    )
+  IF(TARGET ${dictionary})
+    target_sources(${dictionary} PRIVATE ${gensrcdict})
+  ENDIF()
+  # FIXME: Do not set gensrcdict variable to the outer scope but use an argument to
+  # REFLEX_GENERATE_DICTIONARY passed from the outside. Note this would be a
+  # breaking change for roottest and other external users.
+  set(gensrcdict ${dictionary}.cxx PARENT_SCOPE)
 
   #---roottest compability---------------------------------
   if(CMAKE_ROOTTEST_DICT)
@@ -191,7 +213,7 @@ macro(REFLEX_GENERATE_DICTIONARY dictionary)
     add_custom_target(${targetname} ALL DEPENDS ${gensrcdict})
   endif()
 
-endmacro()
+endfunction()
 
 #---------------------------------------------------------------------------------------------------
 #---ROOT_GET_LIBRARY_OUTPUT_DIR( result_var )
@@ -1556,21 +1578,18 @@ function(ROOT_ADD_PYUNITTESTS name)
 endfunction()
 
 #----------------------------------------------------------------------------
-# ROOT_ADD_PYUNITTEST( <name> <file>)
+# ROOT_ADD_PYUNITTEST( <name> <file>
+#                     [WILLFAIL]
+#                     [COPY_TO_BUILDDIR copy_file1 copy_file1 ...]
+#                     [ENVIRONMENT var1=val1 var2=val2 ...]
+#                     [DEPENDENCIES_FOUND dep_x_found dep_y_found ...])
 #----------------------------------------------------------------------------
 function(ROOT_ADD_PYUNITTEST name file)
-  CMAKE_PARSE_ARGUMENTS(ARG "WILLFAIL" "" "COPY_TO_BUILDDIR;ENVIRONMENT" ${ARGN})
-  if(pyroot_experimental)
-    set(ROOT_ENV ROOTSYS=${ROOTSYS}
-        PATH=${ROOTSYS}/bin:$ENV{PATH}
-        LD_LIBRARY_PATH=${ROOTSYS}/lib:${ROOTSYS}/lib/${python_dir}:$ENV{LD_LIBRARY_PATH}
-        PYTHONPATH=${ROOTSYS}/lib:${ROOTSYS}/lib/${python_dir}:$ENV{PYTHONPATH})
-  else()
-    set(ROOT_ENV ROOTSYS=${ROOTSYS}
-        PATH=${ROOTSYS}/bin:$ENV{PATH}
-        LD_LIBRARY_PATH=${ROOTSYS}/lib:$ENV{LD_LIBRARY_PATH}
-        PYTHONPATH=${ROOTSYS}/lib:$ENV{PYTHONPATH})
-  endif()
+  CMAKE_PARSE_ARGUMENTS(ARG "WILLFAIL" "" "COPY_TO_BUILDDIR;ENVIRONMENT;DEPENDENCIES_FOUND" ${ARGN})
+  set(ROOT_ENV ROOTSYS=${ROOTSYS}
+      PATH=${ROOTSYS}/bin:$ENV{PATH}
+      LD_LIBRARY_PATH=${ROOTSYS}/lib:$ENV{LD_LIBRARY_PATH}
+      PYTHONPATH=${ROOTSYS}/lib:$ENV{PYTHONPATH})
   string(REGEX REPLACE "[_]" "-" good_name "${name}")
   get_filename_component(file_name ${file} NAME)
   get_filename_component(file_dir ${file} DIRECTORY)
@@ -1587,11 +1606,22 @@ function(ROOT_ADD_PYUNITTEST name file)
     set(will_fail WILLFAIL)
   endif()
 
-  ROOT_ADD_TEST(pyunittests-${good_name}
+  set(dependencies ON)
+  if(DEFINED ARG_DEPENDENCIES_FOUND)
+      foreach(dep ${ARG_DEPENDENCIES_FOUND})
+      if(NOT ${dep})
+        set(dependencies FALSE)
+      endif()
+    endforeach()
+  endif()
+
+  if(dependencies)
+    ROOT_ADD_TEST(pyunittests-${good_name}
                 COMMAND ${PYTHON_EXECUTABLE} -B -m unittest discover -s ${CMAKE_CURRENT_SOURCE_DIR}/${file_dir} -p ${file_name} -v
                 ENVIRONMENT ${ROOT_ENV} ${ARG_ENVIRONMENT}
                 ${copy_to_builddir}
                 ${will_fail})
+  endif()
 endfunction()
 
 #----------------------------------------------------------------------------
