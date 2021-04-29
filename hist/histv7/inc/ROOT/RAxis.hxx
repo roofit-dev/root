@@ -17,6 +17,7 @@
 #define ROOT7_RAxis
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <string>
 #include <unordered_map>
@@ -94,6 +95,34 @@ protected:
 
       // Bin index is in range and has been corrected for over/underflow
       return (int)rawbin;
+   }
+
+   /// Check if two axis have the same bin borders
+   ///
+   /// Default implementation should work for any RAxis type, but is quite
+   /// inefficient as it does virtual GetBinFrom calls in a loop. RAxis
+   /// implementations are encouraged to provide optimized overrides for common
+   /// axis binning comparison scenarios.
+   virtual bool HasSameBinBordersAs(const RAxisBase& other) const {
+      // Axis growability (and thus under/overflow bin existence) must match
+      if (CanGrow() != other.CanGrow())
+         return false;
+
+      // Number of normal bins must match
+      if (GetNBinsNoOver() != other.GetNBinsNoOver())
+         return false;
+
+      // Left borders of normal bins must match
+      for (int bin: *this)
+         if (GetBinFrom(bin) != other.GetBinFrom(bin))
+            return false;
+
+      // Right border of the last normal bin (aka maximum) must also match
+      if (GetMaximum() != other.GetMaximum())
+         return false;
+
+      // If all of these checks passed, the two axes have the same bin borders
+      return true;
    }
 
 public:
@@ -277,21 +306,33 @@ public:
 
    /// Get the bin center for the given bin index.
    /// The result of this method on an overflow or underflow bin is unspecified
-   virtual double GetBinCenter(int bin) const noexcept = 0;
+   virtual double GetBinCenter(int bin) const = 0;
 
    /// Get the low bin border ("left edge") for the given bin index.
    /// The result of this method on an underflow bin is unspecified
-   virtual double GetBinFrom(int bin) const noexcept = 0;
+   virtual double GetBinFrom(int bin) const = 0;
 
    /// Get the high bin border ("right edge") for the given bin index.
    /// The result of this method on an overflow bin is unspecified
-   double GetBinTo(int bin) const noexcept { return GetBinFrom(bin + 1); }
+   double GetBinTo(int bin) const { return GetBinFrom(bin + 1); }
 
    /// Get the low end of the axis range.
-   double GetMinimum() const noexcept { return GetBinTo(GetUnderflowBin()); }
+   double GetMinimum() const { return GetBinTo(GetUnderflowBin()); }
 
    /// Get the high end of the axis range.
-   double GetMaximum() const noexcept { return GetBinFrom(GetOverflowBin()); }
+   double GetMaximum() const { return GetBinFrom(GetOverflowBin()); }
+
+   /// Check if two axes use the same binning convention, i.e.
+   ///
+   /// - Either they are both growable or neither of them is growable.
+   /// - Minimum, maximum, and all bin borders in the middle are the same.
+   /// - Bin labels must match (exactly including order, for now).
+   bool HasSameBinningAs(const RAxisBase& other) const;
+
+   /// If the coordinate `x` is within 10 ULPs of a bin low edge coordinate,
+   /// return the bin for which this is a low edge. If it's not a bin edge,
+   /// return -1.
+   virtual int GetBinIndexForLowEdge(double x) const noexcept = 0;
 
 private:
    std::string fTitle;    ///< Title of this axis, used for graphics / text.
@@ -361,8 +402,11 @@ protected:
    /// \param lighOrLow - second axis boundary
    static double GetInvBinWidth(int nbinsNoOver, double lowOrHigh, double highOrLow)
    {
-      return nbinsNoOver / std::abs(highOrLow - lowOrHigh);
+      return nbinsNoOver / std::fabs(highOrLow - lowOrHigh);
    }
+
+   /// See RAxisBase::HasSameBinBordersAs
+   bool HasSameBinBordersAs(const RAxisBase& other) const override;
 
 public:
    RAxisEquidistant() = default;
@@ -422,32 +466,19 @@ public:
    /// For the bin == 1 (the first bin) of 2 bins for an axis (0., 1.), this
    /// returns 0.25.
    /// The result of this method on an overflow or underflow bin is unspecified
-   double GetBinCenter(int bin) const noexcept final override { return fLow + (bin - *begin() + 0.5) / fInvBinWidth; }
+   double GetBinCenter(int bin) const final override { return fLow + (bin - *begin() + 0.5) / fInvBinWidth; }
 
    /// Get the low bin border for the given bin index.
    /// For the bin == 1 (the first bin) of 2 bins for an axis (0., 1.), this
    /// returns 0.
    /// The result of this method on an underflow bin is unspecified
-   double GetBinFrom(int bin) const noexcept final override { return fLow + (bin - *begin()) / fInvBinWidth; }
+   double GetBinFrom(int bin) const final override { return fLow + (bin - *begin()) / fInvBinWidth; }
 
    /// If the coordinate `x` is within 10 ULPs of a bin low edge coordinate,
    /// return the bin for which this is a low edge. If it's not a bin edge,
    /// return -1.
-   // RODO: Decide if this shouldn't go to RAxisBase so that RAxisIrregular has
-   //       it has well. If so, update tests.
-   int GetBinIndexForLowEdge(double x) const noexcept;
+   int GetBinIndexForLowEdge(double x) const noexcept final override;
 };
-
-/// Equality-compare two RAxisEquidistant.
-inline bool operator==(const RAxisEquidistant &lhs, const RAxisEquidistant &rhs) noexcept
-{
-   return lhs.GetNBins() == rhs.GetNBins() && lhs.GetMinimum() == rhs.GetMinimum() &&
-          lhs.GetInverseBinWidth() == rhs.GetInverseBinWidth();
-}
-inline bool operator!=(const RAxisEquidistant &lhs, const RAxisEquidistant &rhs) noexcept
-{
-   return !(lhs == rhs);
-}
 
 namespace Internal {
 
@@ -558,6 +589,10 @@ private:
    /// Bin borders, one more than the number of non-overflow bins.
    std::vector<double> fBinBorders;
 
+protected:
+   /// See RAxisBase::HasSameBinBordersAs
+   bool HasSameBinBordersAs(const RAxisBase& other) const override;
+
 public:
    RAxisIrregular() = default;
 
@@ -638,7 +673,7 @@ public:
    /// Similarly, for the bin at index N + 1 (i.e. the overflow bin), a bin
    /// center of `std::numeric_limits<double>::max()` is returned, i.e. the
    /// largest value that can be held in a double.
-   double GetBinCenter(int bin) const noexcept final override
+   double GetBinCenter(int bin) const final override
    {
       if (IsUnderflowBin(bin))
          return std::numeric_limits<double>::lowest();
@@ -655,7 +690,7 @@ public:
    /// Similarly, for the bin at index N + 2 (i.e. after the overflow bin), a
    /// lower bin border of `std::numeric_limits<double>::max()` is returned,
    /// i.e. the largest value that can be held in a double.
-   double GetBinFrom(int bin) const noexcept final override
+   double GetBinFrom(int bin) const final override
    {
       if (IsUnderflowBin(bin))
          return std::numeric_limits<double>::lowest();
@@ -665,6 +700,11 @@ public:
       // bin 1 starts at fBinBorders[0]
       return fBinBorders[bin - 1];
    }
+
+   /// If the coordinate `x` is within 10 ULPs of a bin low edge coordinate,
+   /// return the bin for which this is a low edge. If it's not a bin edge,
+   /// return -1.
+   int GetBinIndexForLowEdge(double x) const noexcept final override;
 
    /// This axis cannot be extended.
    bool CanGrow() const noexcept final override { return false; }
@@ -759,6 +799,50 @@ public:
          vec.at(kv.second) = kv.first;
       return vec;
    }
+
+   /// Result of an RAxisLabels label set comparison
+   enum LabelsCmpFlags {
+      /// Both axes have the same labels, mapping to the same bins
+      kLabelsCmpSame = 0,
+
+      /// The other axis doesn't have some labels from this axis
+      kLabelsCmpSubset = 0b1,
+
+      /// The other axis has some labels which this axis doesn't have
+      kLabelsCmpSuperset = 0b10,
+
+      /// The labels shared by both axes do not map into the same bins
+      kLabelsCmpDisordered = 0b100,
+   };
+
+   /// Compare the labels of this axis with those of another axis
+   LabelsCmpFlags CompareBinLabels(const RAxisLabels& other) const noexcept {
+      // This will eventually contain the results of the labels comparison
+      LabelsCmpFlags result = kLabelsCmpSame;
+      size_t missing_in_other = 0;
+
+      // First, check how this axis' labels map into the other axis
+      for (const auto &kv: fLabelsIndex) {
+         auto iter = other.fLabelsIndex.find(kv.first);
+         if (iter == other.fLabelsIndex.cend()) {
+            ++missing_in_other;
+         } else if (iter->second != kv.second) {
+            result = LabelsCmpFlags(result | kLabelsCmpDisordered);
+         }
+      }
+      if (missing_in_other > 0)
+         result = LabelsCmpFlags(result | kLabelsCmpSubset);
+
+      // If this covered all labels in the other axis, we're done
+      if (fLabelsIndex.size() == other.fLabelsIndex.size() + missing_in_other)
+         return result;
+
+      // Otherwise, we must check the labels of the other axis too
+      for (const auto &kv: other.fLabelsIndex)
+         if (fLabelsIndex.find(kv.first) == fLabelsIndex.cend())
+            return LabelsCmpFlags(result | kLabelsCmpSuperset);
+      return result;
+   }
 };
 
 namespace Internal {
@@ -792,7 +876,7 @@ enum class EAxisCompatibility {
 };
 
 /// Whether (and how) the source axis can be merged into the target axis.
-EAxisCompatibility CanMap(RAxisEquidistant &target, RAxisEquidistant &source) noexcept;
+EAxisCompatibility CanMap(const RAxisEquidistant &target, const RAxisEquidistant &source) noexcept;
 ///\}
 
 } // namespace Experimental

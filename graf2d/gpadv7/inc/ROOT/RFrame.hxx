@@ -11,11 +11,16 @@
 
 #include "ROOT/RDrawable.hxx"
 
-#include "ROOT/RAttrBox.hxx"
+#include "ROOT/RAttrLine.hxx"
+#include "ROOT/RAttrFill.hxx"
+#include "ROOT/RAttrMargins.hxx"
+#include "ROOT/RAttrAxis.hxx"
+
 #include "ROOT/RPadUserAxis.hxx"
-#include "ROOT/RPalette.hxx"
 
 #include <memory>
+
+class TRootIOCtor;
 
 namespace ROOT {
 namespace Experimental {
@@ -29,16 +34,23 @@ namespace Experimental {
 */
 
 class RFrame : public RDrawable  {
-public:
+
+   friend class RPadBase;
 
 private:
+   RAttrMargins fMargins{this, "margin_"};     ///<!
+   RAttrLine fAttrBorder{this, "border_"};     ///<!
+   RAttrFill fAttrFill{this, "fill_"};         ///<!
+   RAttrAxis fAttrX{this, "x_"};               ///<!
+   RAttrAxis fAttrY{this, "y_"};               ///<!
+   RAttrAxis fAttrZ{this, "z_"};               ///<!
+
    /// Mapping of user coordinates to normal coordinates, one entry per dimension.
    std::vector<std::unique_ptr<RPadUserAxisBase>> fUserCoord;
 
-   /// Palette used to visualize user coordinates.
-   RPalette fPalette;
+   RFrame(const RFrame &) = delete;
+   RFrame &operator=(const RFrame &) = delete;
 
-public:
    // Default constructor
    RFrame() : RDrawable("frame")
    {
@@ -47,6 +59,38 @@ public:
 
    /// Constructor taking user coordinate system, position and extent.
    explicit RFrame(std::vector<std::unique_ptr<RPadUserAxisBase>> &&coords);
+
+public:
+
+   RFrame(TRootIOCtor*) : RFrame() {}
+
+   const RAttrMargins &GetMargins() const { return fMargins; }
+   RFrame &SetMargins(const RAttrMargins &margins) { fMargins = margins; return *this; }
+   RAttrMargins &Margins() { return fMargins; }
+
+   const RAttrLine &GetAttrBorder() const { return fAttrBorder; }
+   RFrame &SetAttrBorder(const RAttrLine &border) { fAttrBorder = border; return *this; }
+   RAttrLine &AttrBorder() { return fAttrBorder; }
+
+   const RAttrFill &GetAttrFill() const { return fAttrFill; }
+   RFrame &SetAttrFill(const RAttrFill &fill) { fAttrFill = fill; return *this; }
+   RAttrFill &AttrFill() { return fAttrFill; }
+
+   const RAttrAxis &GetAttrX() const { return fAttrX; }
+   RFrame &SetAttrX(const RAttrAxis &axis) { fAttrX = axis; return *this; }
+   RAttrAxis &AttrX() { return fAttrX; }
+
+   const RAttrAxis &GetAttrY() const { return fAttrY; }
+   RFrame &SetAttrY(const RAttrAxis &axis) { fAttrY = axis; return *this; }
+   RAttrAxis &AttrY() { return fAttrY; }
+
+   const RAttrAxis &GetAttrZ() const { return fAttrZ; }
+   RFrame &SetAttrZ(const RAttrAxis &axis) { fAttrZ = axis; return *this; }
+   RAttrAxis &AttrZ() { return fAttrZ; }
+
+   void PopulateMenu(RMenuItems &) override;
+
+   void Execute(const std::string &) override;
 
    /// Create `nDimensions` default axes for the user coordinate system.
    void GrowToDimensions(size_t nDimensions);
