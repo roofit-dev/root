@@ -13,6 +13,7 @@ if(WIN32)
   ROOT_EXECUTABLE(bindexplib
     win/bindexplib/bindexplib.cxx
   )
+  file(COPY win/w32pragma.h DESTINATION ${CMAKE_BINARY_DIR}/include/)
 endif()
 
 ROOT_EXECUTABLE(rmkdepend
@@ -25,6 +26,7 @@ ROOT_EXECUTABLE(rmkdepend
   rmkdepend/pr.c
 )
 
+if(NOT MSVC)
 IF(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
   file(GLOB PRETTY_PRINTERS "gdbPrinters/*.so-gdb.py")
   set(PRETTY_PRINTER_DESTS)
@@ -46,3 +48,4 @@ IF(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
           DESTINATION ${CMAKE_INSTALL_LIBDIR}
           CONFIGURATIONS Debug RelWithDebInfo)
 ENDIF()
+endif()

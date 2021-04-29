@@ -26,19 +26,25 @@ int test()
 
     double error;
 
+    gRandom->SetSeed(111);
+    TCuda<double>::SetRandomSeed(gRandom->Integer(TMath::Limits<UInt_t>::Max()));
     //
     // Test backpropagation for linear net.
     //
+    //Since batch norm is not supported for plain Cuda - the BNOrm layer will be a dummy layer
+    // and an error message should be produced
 
     error = testBackpropagationWeights<TCuda<double>>(0.00001);
     if (error > 1e-3)
         return 1;
 
-    
+    error = testCNNBackpropagationWeights<TCuda<double>>(0.00001);
+    if (error > 1e-3)
+       return 1;
 
     return 0;
 }
 
 int main() {
-    return test(); 
+    return test();
 }

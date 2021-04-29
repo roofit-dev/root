@@ -143,6 +143,7 @@
 #pragma link C++ class ROOT::Experimental::REveViewContext+;
 #pragma link C++ class ROOT::Experimental::REveDataCollection+;
 #pragma link C++ class ROOT::Experimental::REveDataItem+;
+#pragma link C++ class ROOT::Experimental::REveDataItemList+;
 #pragma link C++ class ROOT::Experimental::REveDataProxyBuilderBase+;
 #pragma link C++ class ROOT::Experimental::REveDataSimpleProxyBuilder+;
 #pragma link C++ class ROOT::Experimental::REveDataTable+;
@@ -201,13 +202,39 @@
 // #pragma link C++ class ROOT::Experimental::REveGeoNode+;
 // #pragma link C++ class ROOT::Experimental::REveGeoTopNode+;
 
+// REveCalo
+#pragma link C++ class ROOT::Experimental::REveCaloData+;
+#pragma link C++ class ROOT::Experimental::REveCaloData::SliceInfo_t+;
+#pragma link C++ class ROOT::Experimental::REveCaloDataVec;
+#pragma link C++ class ROOT::Experimental::REveCaloDataHist+;
+#pragma link C++ class ROOT::Experimental::REveCaloViz+;
+#pragma link C++ class ROOT::Experimental::REveCalo3D+;
+#pragma link C++ class ROOT::Experimental::REveCalo2D+;
+#pragma link C++ class ROOT::Experimental::REveCaloLego+;
+
 // REveJetCone
 #pragma link C++ class ROOT::Experimental::REveJetCone+;
 #pragma link C++ class ROOT::Experimental::REveJetConeProjected+;
 
+// Ellipse
+#pragma link C++ class ROOT::Experimental::REveEllipsoid+;
+#pragma link C++ class ROOT::Experimental::REveEllipsoidProjected+;
+
 // REveLineSet
 #pragma link C++ class ROOT::Experimental::REveStraightLineSet+;
 #pragma link C++ class ROOT::Experimental::REveStraightLineSetProjected+;
+
+// Digits
+
+// REveBox-es
+#pragma link C++ class ROOT::Experimental::REveFrameBox+;
+#pragma link C++ class ROOT::Experimental::REveBox+;
+#pragma link C++ class ROOT::Experimental::REveBoxProjected+;
+
+// Digits
+#pragma link C++ class ROOT::Experimental::REveRGBAPalette+;
+#pragma link C++ class ROOT::Experimental::REveDigitSet+;
+#pragma link C++ class ROOT::Experimental::REveBoxSet+;
 
 // REveChunkManager
 #pragma link C++ class ROOT::Experimental::REveChunkManager+;

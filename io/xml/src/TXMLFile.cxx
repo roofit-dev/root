@@ -76,8 +76,6 @@
 #include "TROOT.h"
 #include "TSystem.h"
 #include "TList.h"
-#include "TBrowser.h"
-#include "TObjArray.h"
 #include "TKeyXML.h"
 #include "TObjArray.h"
 #include "TArrayC.h"
@@ -202,7 +200,6 @@ TXMLFile::TXMLFile(const char *filename, Option_t *option, const char *title, In
    if (recreate) {
       if (!gSystem->AccessPathName(fname, kFileExists))
          gSystem->Unlink(fname);
-      recreate = kFALSE;
       create = kTRUE;
       fOption = "CREATE";
    }
