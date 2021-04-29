@@ -1,9 +1,6 @@
-/// \file RWebDisplayHandle.cxx
-/// \ingroup WebGui ROOT7
-/// \author Sergey Linev <s.linev@gsi.de>
-/// \date 2018-10-17
-/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
-/// is welcome!
+// Author: Sergey Linev <s.linev@gsi.de>
+// Date: 2018-10-17
+// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 /*************************************************************************
  * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
@@ -40,14 +37,15 @@
 #include <spawn.h>
 #endif
 
+using namespace ROOT::Experimental;
 using namespace std::string_literals;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 /// Static holder of registered creators of web displays
 
-std::map<std::string, std::unique_ptr<ROOT::Experimental::RWebDisplayHandle::Creator>> &ROOT::Experimental::RWebDisplayHandle::GetMap()
+std::map<std::string, std::unique_ptr<RWebDisplayHandle::Creator>> &RWebDisplayHandle::GetMap()
 {
-   static std::map<std::string, std::unique_ptr<ROOT::Experimental::RWebDisplayHandle::Creator>> sMap;
+   static std::map<std::string, std::unique_ptr<RWebDisplayHandle::Creator>> sMap;
    return sMap;
 }
 
@@ -57,7 +55,7 @@ std::map<std::string, std::unique_ptr<ROOT::Experimental::RWebDisplayHandle::Cre
 /// \param name - creator name like ChromeCreator
 /// \param libname - shared library name where creator could be provided
 
-std::unique_ptr<ROOT::Experimental::RWebDisplayHandle::Creator> &ROOT::Experimental::RWebDisplayHandle::FindCreator(const std::string &name, const std::string &libname)
+std::unique_ptr<RWebDisplayHandle::Creator> &RWebDisplayHandle::FindCreator(const std::string &name, const std::string &libname)
 {
    auto &m = GetMap();
    auto search = m.find(name);
@@ -79,7 +77,7 @@ std::unique_ptr<ROOT::Experimental::RWebDisplayHandle::Creator> &ROOT::Experimen
    if (search != m.end())
       return search->second;
 
-   static std::unique_ptr<ROOT::Experimental::RWebDisplayHandle::Creator> dummy;
+   static std::unique_ptr<RWebDisplayHandle::Creator> dummy;
    return dummy;
 }
 
@@ -135,7 +133,7 @@ public:
 //////////////////////////////////////////////////////////////////////////////////////////////////
 /// Class to handle starting of web-browsers like Chrome or Firefox
 
-ROOT::Experimental::RWebDisplayHandle::BrowserCreator::BrowserCreator(bool custom, const std::string &exec)
+RWebDisplayHandle::BrowserCreator::BrowserCreator(bool custom, const std::string &exec)
 {
    if (custom) return;
 
@@ -165,7 +163,7 @@ ROOT::Experimental::RWebDisplayHandle::BrowserCreator::BrowserCreator(bool custo
 //////////////////////////////////////////////////////////////////////////////////////////////////
 /// Check if browser executable exists and can be used
 
-void ROOT::Experimental::RWebDisplayHandle::BrowserCreator::TestProg(const std::string &nexttry, bool check_std_paths)
+void RWebDisplayHandle::BrowserCreator::TestProg(const std::string &nexttry, bool check_std_paths)
 {
    if (nexttry.empty() || !fProg.empty())
       return;
@@ -199,16 +197,18 @@ void ROOT::Experimental::RWebDisplayHandle::BrowserCreator::TestProg(const std::
 //////////////////////////////////////////////////////////////////////////////////////////////////
 /// Display given URL in web browser
 
-std::unique_ptr<ROOT::Experimental::RWebDisplayHandle>
-ROOT::Experimental::RWebDisplayHandle::BrowserCreator::Display(const RWebDisplayArgs &args)
+std::unique_ptr<RWebDisplayHandle>
+RWebDisplayHandle::BrowserCreator::Display(const RWebDisplayArgs &args)
 {
    std::string url = args.GetFullUrl();
    if (url.empty())
       return nullptr;
 
    std::string exec;
-   if (args.IsHeadless())
+   if (args.IsBatchMode())
       exec = fBatchExec;
+   else if (args.IsHeadless())
+      exec = fHeadlessExec;
    else if (args.IsStandalone())
       exec = fExec;
    else
@@ -359,7 +359,7 @@ ROOT::Experimental::RWebDisplayHandle::BrowserCreator::Display(const RWebDisplay
 //////////////////////////////////////////////////////////////////////////////////////////////////
 /// Constructor
 
-ROOT::Experimental::RWebDisplayHandle::ChromeCreator::ChromeCreator() : BrowserCreator(true)
+RWebDisplayHandle::ChromeCreator::ChromeCreator() : BrowserCreator(true)
 {
    TestProg(gEnv->GetValue("WebGui.Chrome", ""));
 
@@ -376,12 +376,12 @@ ROOT::Experimental::RWebDisplayHandle::ChromeCreator::ChromeCreator() : BrowserC
 #endif
 
 #ifdef _MSC_VER
-   // fBatchExec = gEnv->GetValue("WebGui.ChromeBatch", "fork: --headless --disable-gpu $geometry $url");
-
    fBatchExec = gEnv->GetValue("WebGui.ChromeBatch", "$prog --headless $geometry $url");
+   fHeadlessExec = gEnv->GetValue("WebGui.ChromeHeadless", "$prog --headless --disable-gpu $geometry $url &");
    fExec = gEnv->GetValue("WebGui.ChromeInteractive", "$prog $geometry --no-first-run --app=$url &"); // & in windows mean usage of spawn
 #else
    fBatchExec = gEnv->GetValue("WebGui.ChromeBatch", "$prog --headless --incognito $geometry $url");
+   fHeadlessExec = gEnv->GetValue("WebGui.ChromeHeadless", "fork: --headless --incognito $geometry $url");
    fExec = gEnv->GetValue("WebGui.ChromeInteractive", "$prog $geometry --no-first-run --incognito --app=\'$url\' &");
 #endif
 }
@@ -391,7 +391,7 @@ ROOT::Experimental::RWebDisplayHandle::ChromeCreator::ChromeCreator() : BrowserC
 /// Replace $geometry placeholder with geometry settings
 /// Also RWebDisplayArgs::GetExtraArgs() are appended
 
-void ROOT::Experimental::RWebDisplayHandle::ChromeCreator::ProcessGeometry(std::string &exec, const RWebDisplayArgs &args)
+void RWebDisplayHandle::ChromeCreator::ProcessGeometry(std::string &exec, const RWebDisplayArgs &args)
 {
    std::string geometry;
    if ((args.GetWidth() > 0) && (args.GetHeight() > 0))
@@ -417,7 +417,7 @@ void ROOT::Experimental::RWebDisplayHandle::ChromeCreator::ProcessGeometry(std::
 //////////////////////////////////////////////////////////////////////////////////////////////////
 /// Handle profile argument
 
-std::string ROOT::Experimental::RWebDisplayHandle::ChromeCreator::MakeProfile(std::string &exec, bool)
+std::string RWebDisplayHandle::ChromeCreator::MakeProfile(std::string &exec, bool)
 {
    std::string rmdir, profile_arg;
 
@@ -429,7 +429,15 @@ std::string ROOT::Experimental::RWebDisplayHandle::ChromeCreator::MakeProfile(st
       profile_arg = chrome_profile;
    } else {
       gRandom->SetSeed(0);
-      rmdir = profile_arg = std::string(gSystem->TempDirectory()) + "/root_chrome_profile_"s + std::to_string(gRandom->Integer(0x100000));
+      std::string rnd_profile = "root_chrome_profile_"s + std::to_string(gRandom->Integer(0x100000));
+      profile_arg = gSystem->TempDirectory();
+
+#ifdef _MSC_VER
+      profile_arg += "\\"s + rnd_profile;
+#else
+      profile_arg += "/"s + rnd_profile;
+#endif
+      rmdir = profile_arg;
    }
 
    exec = std::regex_replace(exec, std::regex("\\$profile"), profile_arg);
@@ -441,7 +449,7 @@ std::string ROOT::Experimental::RWebDisplayHandle::ChromeCreator::MakeProfile(st
 //////////////////////////////////////////////////////////////////////////////////////////////////
 /// Constructor
 
-ROOT::Experimental::RWebDisplayHandle::FirefoxCreator::FirefoxCreator() : BrowserCreator(true)
+RWebDisplayHandle::FirefoxCreator::FirefoxCreator() : BrowserCreator(true)
 {
    TestProg(gEnv->GetValue("WebGui.Firefox", ""));
 
@@ -458,10 +466,10 @@ ROOT::Experimental::RWebDisplayHandle::FirefoxCreator::FirefoxCreator() : Browse
 #ifdef _MSC_VER
    // there is a problem when specifying the window size with wmic on windows:
    // It gives: Invalid format. Hint: <paramlist> = <param> [, <paramlist>].
-   // fBatchExec = gEnv->GetValue("WebGui.FirefoxBatch", "fork: -headless -no-remote $profile $url");
+   fHeadlessExec = gEnv->GetValue("WebGui.FirefoxHeadless", "$prog -headless -no-remote $profile $url &");
    fExec = gEnv->GetValue("WebGui.FirefoxInteractive", "$prog -no-remote $profile $url &");
 #else
-   // fBatchExec = gEnv->GetValue("WebGui.FirefoxBatch", "fork:--headless --private-window --no-remote $profile $url");
+   fHeadlessExec = gEnv->GetValue("WebGui.FirefoxHeadless", "fork:--headless --private-window --no-remote $profile $url");
    fExec = gEnv->GetValue("WebGui.FirefoxInteractive", "$prog --private-window \'$url\' &");
 #endif
 }
@@ -469,7 +477,7 @@ ROOT::Experimental::RWebDisplayHandle::FirefoxCreator::FirefoxCreator() : Browse
 //////////////////////////////////////////////////////////////////////////////////////////////////
 /// Create Firefox profile to run independent browser window
 
-std::string ROOT::Experimental::RWebDisplayHandle::FirefoxCreator::MakeProfile(std::string &exec, bool batch_mode)
+std::string RWebDisplayHandle::FirefoxCreator::MakeProfile(std::string &exec, bool batch_mode)
 {
    std::string rmdir, profile_arg;
 
@@ -487,7 +495,13 @@ std::string ROOT::Experimental::RWebDisplayHandle::FirefoxCreator::MakeProfile(s
 
       gRandom->SetSeed(0);
       std::string rnd_profile = "root_ff_profile_"s + std::to_string(gRandom->Integer(0x100000));
-      std::string profile_dir = std::string(gSystem->TempDirectory()) + "/"s + rnd_profile;
+      std::string profile_dir = gSystem->TempDirectory();
+
+#ifdef _MSC_VER
+      profile_dir += "\\"s + rnd_profile;
+#else
+      profile_dir += "/"s + rnd_profile;
+#endif
 
       profile_arg = "-profile "s + profile_dir;
 
@@ -509,7 +523,7 @@ std::string ROOT::Experimental::RWebDisplayHandle::FirefoxCreator::MakeProfile(s
 /// Returns RWebDisplayHandle, which holds information of running browser application
 /// Can be used fully independent from RWebWindow classes just to show any web page
 
-std::unique_ptr<ROOT::Experimental::RWebDisplayHandle> ROOT::Experimental::RWebDisplayHandle::Display(const RWebDisplayArgs &args)
+std::unique_ptr<RWebDisplayHandle> RWebDisplayHandle::Display(const RWebDisplayArgs &args)
 {
    std::unique_ptr<RWebDisplayHandle> handle;
 
@@ -573,7 +587,7 @@ std::unique_ptr<ROOT::Experimental::RWebDisplayHandle> ROOT::Experimental::RWebD
 ///     auto handle = RWebDisplayHandle::Display(args);
 /// ~~~
 
-bool ROOT::Experimental::RWebDisplayHandle::DisplayUrl(const std::string &url)
+bool RWebDisplayHandle::DisplayUrl(const std::string &url)
 {
    RWebDisplayArgs args;
    args.SetUrl(url);
@@ -589,7 +603,7 @@ bool ROOT::Experimental::RWebDisplayHandle::DisplayUrl(const std::string &url)
 /// Produce image file using JSON data as source
 /// Invokes JSROOT drawing functionality in headless browser - Google Chrome
 
-bool ROOT::Experimental::RWebDisplayHandle::ProduceImage(const std::string &fname, const std::string &json, int width, int height)
+bool RWebDisplayHandle::ProduceImage(const std::string &fname, const std::string &json, int width, int height)
 {
    if (json.empty())
       return false;
@@ -739,6 +753,7 @@ try_again:
 
    args.SetStandalone(true);
    args.SetHeadless(true);
+   args.SetBatchMode(true);
    args.SetSize(width, height);
 
    if (draw_kind == "draw") {
@@ -763,7 +778,7 @@ try_again:
    // remove target image file - we use it as detection when chrome is ready
    gSystem->Unlink(tgtfilename.Data());
 
-   auto handle = ROOT::Experimental::RWebDisplayHandle::Display(args);
+   auto handle = RWebDisplayHandle::Display(args);
 
    if (!handle) {
       R__LOG_DEBUG(0, WebGUILog()) << "Cannot start " << args.GetBrowserName() << " to produce image " << fname;
