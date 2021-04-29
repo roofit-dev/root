@@ -4,7 +4,11 @@
   <enum name="VecTestEnum" />
   <namespace name="VecTestEnumNS" />
   <enum name="VecTestEnumNS::VecTestEnum" />
-  <class pattern="stl_like_class<*>" />
+
+  <function name="vectest_ol1" />
+  <function name="vectest_ol2" />
+
+  <class pattern="stl_like_class*" />
 
   <class name="stringy_class_t" />
   <class name="wstringy_class_t" />
@@ -15,7 +19,19 @@
 
   <variable pattern="str_array_*" />
 
+  <namespace name="UnicodeAndSTL" />
+  <function pattern="UnicodeAndSTL::*" />
+
   <namespace name="StringViewTest" />
   <function pattern="StringViewTest::*" />
+
+  <class name="std::exception" />
+  <class name="MyError" />
+  <class name="YourError" />
+  <namespace name="ErrorNamespace" />
+  <class pattern="ErrorNamespace::*" />
+  <function pattern="ErrorNamespace::*" />
+
+  <function name="GetMyErrorCount" />
 
 </lcgdict>

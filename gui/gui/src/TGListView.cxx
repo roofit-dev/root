@@ -915,6 +915,7 @@ Bool_t TGLVContainer::HandleButton(Event_t* event)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Get list of selected items in container.
+/// Returned TList object should be deleted by the user
 
 TList *TGLVContainer::GetSelectedEntries()
 {
@@ -932,6 +933,8 @@ TList *TGLVContainer::GetSelectedEntries()
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Get list of selected items in container.
+/// Returned TList object and its content should be deleted
+//   lst->Delete(); delete lst;
 
 TList *TGLVContainer::GetSelectedItems()
 {
@@ -1141,6 +1144,23 @@ TGDimension TGLVContainer::GetPageDimension() const
    ret.fWidth = fViewPort->GetWidth();
    ret.fHeight = fViewPort->GetHeight();
    return ret;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Select the TGLVEntry given as argument and de-select the previous one if
+/// the container is not in multi-selection mode.
+
+void TGLVContainer::SelectEntry(TGLVEntry *item)
+{
+   // select (activate) the item passed as argument and deactivate the currently
+   // active one if not in multi-select mode
+
+   if ( !fMultiSelect ) {
+      TGFrameElement *old = fLastActiveEl;
+      if (old)
+         DeActivateItem(old);
+   }
+   ActivateItem(item->GetFrameElement());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
