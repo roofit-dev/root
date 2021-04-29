@@ -268,6 +268,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooHelpers.h
     RooSpan.h
     BatchData.h
+    RooVDTHeaders.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
