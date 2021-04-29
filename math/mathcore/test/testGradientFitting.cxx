@@ -270,7 +270,7 @@ typedef ::testing::Types<ScalarChi2, ScalarBinned, ScalarUnBinned> TestTypes;
 
 
 // Declare that the GradientFittingTest class should be instantiated with the types defined by TestTypes
-TYPED_TEST_CASE_P(GradientFittingTest);
+TYPED_TEST_SUITE_P(GradientFittingTest);
 
 // Test the fitting using the gradient is successful
 TYPED_TEST_P(GradientFittingTest, Sequential)
@@ -283,14 +283,14 @@ TYPED_TEST_P(GradientFittingTest, Multithread)
    EXPECT_TRUE(TestFixture::RunFit(ROOT::Fit::ExecutionPolicy::kMultithread));
 }
 
-REGISTER_TYPED_TEST_CASE_P(GradientFittingTest,Sequential,Multithread);
+REGISTER_TYPED_TEST_SUITE_P(GradientFittingTest,Sequential,Multithread);
 
-INSTANTIATE_TYPED_TEST_CASE_P(GradientFitting, GradientFittingTest, TestTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(GradientFitting, GradientFittingTest, TestTypes);
 
 int main(int argc, char** argv) {
 
-// Disables elapsed time by default.
-  //::testing::GTEST_FLAG(print_time) = false;
+   // Disables elapsed time by default.
+   //::testing::GTEST_FLAG(print_time) = false;
 
    // Parse command line arguments
    for (Int_t i = 1 ;  i < argc ; i++) {

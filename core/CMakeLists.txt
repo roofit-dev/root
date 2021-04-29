@@ -31,6 +31,8 @@ add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/include/RConfigure.h
     ${CMAKE_BINARY_DIR}/ginclude/RConfigure.h
 )
 
+add_custom_target(rconfigure ALL DEPENDS ${CMAKE_BINARY_DIR}/include/RConfigure.h)
+
 add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/ginclude/RGitCommit.h
   COMMAND
     ${CMAKE_COMMAND} -E copy_if_different
@@ -49,7 +51,7 @@ add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/include/RGitCommit.h
     ${CMAKE_BINARY_DIR}/RGitCommit.h.tmp
 )
 
-add_custom_target(gitcommit ALL DEPENDS ${CMAKE_BINARY_DIR}/RGitCommit.h.tmp ${CMAKE_BINARY_DIR}/ginclude/RGitCommit.h ${CMAKE_BINARY_DIR}/include/RGitCommit.h ${CMAKE_BINARY_DIR}/ginclude/RConfigure.h ${CMAKE_BINARY_DIR}/include/RConfigure.h)
+add_custom_target(gitcommit ALL DEPENDS ${CMAKE_BINARY_DIR}/include/RGitCommit.h)
 
 set_source_files_properties(${CMAKE_BINARY_DIR}/ginclude/RGitCommit.h
   PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE)
@@ -126,7 +128,7 @@ set(objectlibs $<TARGET_OBJECTS:Base>
                ${winnt_objects})
 
 ROOT_OBJECT_LIBRARY(BaseTROOT ${CMAKE_SOURCE_DIR}/core/base/src/TROOT.cxx ${CMAKE_BINARY_DIR}/ginclude/RGitCommit.h)
-target_include_directories(BaseTROOT PRIVATE 
+target_include_directories(BaseTROOT PRIVATE
    ${CMAKE_SOURCE_DIR}/core/foundation/res
    ${CMAKE_SOURCE_DIR}/core/base/inc
    ${CMAKE_SOURCE_DIR}/core/clib/inc
@@ -138,7 +140,7 @@ target_include_directories(BaseTROOT PRIVATE
    ${CMAKE_BINARY_DIR}/ginclude
 )
 
-add_dependencies(BaseTROOT gitcommit)
+add_dependencies(BaseTROOT gitcommit rconfigure)
 #----------------------------------------------------------------------------------------
 
 if(WIN32)
@@ -164,6 +166,14 @@ if (libcxx AND NOT APPLE)
   target_compile_definitions(Core PRIVATE __CORRECT_ISO_CPP_WCHAR_H_PROTO)
 endif()
 
+if(MSVC)
+  # Definitions of MATH Macros (required in MathCore) like M_PI are only  
+  # exposed on Windows after defining the _USE_MATH_DEFINES macro. By   
+  # specifying it as a property for Core, we ensure that the macros are 
+  # properly exposed when using Modules on Windows.
+  target_compile_definitions(Core PRIVATE _USE_MATH_DEFINES)
+endif()
+
 #while basic libs do not depend on Core, we have to add includes directly
 
 target_include_directories(Core PUBLIC
@@ -182,9 +192,10 @@ target_include_directories(Core PUBLIC
 
 target_include_directories(Core PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/core/clingutils/inc>)
 
-if(root7)
+if(root7 OR CMAKE_CXX_STANDARD GREATER 11)
   target_include_directories(Core PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/core/base/v7/inc>)
-endif(root7)
+  target_include_directories(Core PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/core/foundation/v7/inc>)
+endif()
 
 
 if(ROOT_ARCHITECTURE MATCHES macosx)
@@ -197,6 +208,17 @@ else()
   target_include_directories(Core PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/core/unix/inc>)
   target_include_directories(BaseTROOT PRIVATE ${CMAKE_SOURCE_DIR}/core/unix/inc)
 endif()
+
+if (runtime_cxxmodules)
+  if(MSVC)
+    list(APPEND core_implicit_modules "-mByproduct" "services")
+  endif()
+  # Force generation of _Builtin_intrinsics from Core.
+  list(APPEND core_implicit_modules "-m" "_Builtin_intrinsics" "-mByproduct" "_Builtin_intrinsics")
+  list(APPEND core_implicit_modules "-mByproduct" "ROOT_Foundation_Stage1_NoRTTI")
+  list(APPEND core_implicit_modules "-mByproduct" "ROOT_Foundation_C")
+  list(APPEND core_implicit_modules "-mByproduct" "ROOT_Rtypes")
+endif(runtime_cxxmodules)
 
 ROOT_GENERATE_DICTIONARY(G__Core
   ${Core_dict_headers}
@@ -215,6 +237,7 @@ ROOT_GENERATE_DICTIONARY(G__Core
     Core
   OPTIONS
     -writeEmptyRootPCM
+    ${core_implicit_modules}
   LINKDEF
     base/inc/LinkDef.h
 )

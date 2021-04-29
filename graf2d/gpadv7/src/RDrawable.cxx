@@ -44,7 +44,7 @@ void RDrawable::Execute(const std::string &exec)
 
    std::stringstream cmd;
    cmd << "((" << isA->GetName() << " *) " << std::hex << std::showbase << (size_t)this << ")->" << exec << ";";
-   R__DEBUG_HERE("drawable") << "RDrawable::Execute Obj " << this << " cmd " << exec;
+   R__LOG_DEBUG(0, GPadLog()) << "RDrawable::Execute Obj " << this << " cmd " << exec;
    gROOT->ProcessLine(cmd.str().c_str());
 }
 
@@ -65,9 +65,9 @@ bool RDrawable::MatchSelector(const std::string &selector) const
 /// Creates display item for drawable
 /// By default item contains drawable data itself
 
-std::unique_ptr<RDisplayItem> RDrawable::Display(const RPadBase &, Version_t vers) const
+std::unique_ptr<RDisplayItem> RDrawable::Display(const RDisplayContext &ctxt)
 {
-   if (GetVersion() > vers)
+   if (GetVersion() > ctxt.GetLastVersion())
       return std::make_unique<RDrawableDisplayItem>(*this);
 
    return nullptr;
