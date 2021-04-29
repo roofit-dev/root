@@ -33,7 +33,6 @@ integration is performed in the various implementations of the RooAbsIntegrator 
 #include "TClass.h"
 #include "RooMsgService.h"
 #include "Riostream.h"
-#include "TObjString.h"
 #include "TH1.h"
 #include "RooRealIntegral.h"
 #include "RooArgSet.h"
@@ -59,7 +58,6 @@ integration is performed in the various implementations of the RooAbsIntegrator 
 using namespace std;
 
 ClassImp(RooRealIntegral); 
-;
 
 
 Int_t RooRealIntegral::_cacheAllNDim(2) ;
@@ -69,7 +67,7 @@ Int_t RooRealIntegral::_cacheAllNDim(2) ;
 
 RooRealIntegral::RooRealIntegral() : 
   _valid(kFALSE),
-  _respectCompSelect(kFALSE),
+  _respectCompSelect(true),
   _funcNormSet(0),
   _iconfig(0),
   _sumCatIter(0),
@@ -103,8 +101,8 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
 				 const char* rangeName) :
   RooAbsReal(name,title), 
   _valid(kTRUE), 
-  _respectCompSelect(kFALSE),
-  _sumList("!sumList","Categories to be summed numerically",this,kFALSE,kFALSE),
+  _respectCompSelect(true),
+  _sumList("!sumList","Categories to be summed numerically",this,kFALSE,kFALSE), 
   _intList("!intList","Variables to be integrated numerically",this,kFALSE,kFALSE), 
   _anaList("!anaList","Variables to be integrated analytically",this,kFALSE,kFALSE), 
   _jacList("!jacList","Jacobian product term",this,kFALSE,kFALSE), 
@@ -858,20 +856,8 @@ Double_t RooRealIntegral::getValV(const RooArgSet* nset) const
 
 Double_t RooRealIntegral::evaluate() const 
 {
-  std::unique_ptr<RooWallTimer> timer;
-
-  if (_timeNumInt) {
-//    std::unique_ptr<RooWallTimer> timer_dummy(new RooWallTimer);
-//    timer = std::move(timer_dummy);
-    timer = std::make_unique<RooWallTimer>();
-    timer->start();
-  }
-
-  bool tmp = RooAbsReal::_globalSelectComp;
-  if(!_respectCompSelect){
-    RooAbsReal::_globalSelectComp = true ;
-  }
-
+  GlobalSelectComponentRAII selCompRAII(_globalSelectComp || !_respectCompSelect);
+  
   Double_t retVal(0) ;
   switch (_intOperMode) {    
     
@@ -898,7 +884,6 @@ Double_t RooRealIntegral::evaluate() const
         if(!(_valid= initNumIntegrator())) {
           coutE(Integration) << ClassName() << "::" << GetName()
                              << ":evaluate: cannot initialize numerical integrator" << endl;
-          RooAbsReal::_globalSelectComp = tmp ;
           return 0;
         }
 
@@ -975,17 +960,6 @@ Double_t RooRealIntegral::evaluate() const
 
     ccxcoutD(Tracing) << "raw*fact = " << retVal << endl ;
   }
-
-  RooAbsReal::_globalSelectComp = tmp ;
-
-  if (_timeNumInt) {
-    timer->stop();
-    timer->store_timing_in_RooTrace(GetName());
-  }
-//  } else {
-//    std::cout << "did not time integral " << GetName() << " at " << this << " with _function.absArg() " << _function.absArg() << " which is a " << ClassName()
-//              << " on process " << getpid() << ", boohoo" << std::endl;
-//  }
 
   return retVal ;
 }

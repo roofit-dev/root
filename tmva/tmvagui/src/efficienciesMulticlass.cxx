@@ -186,7 +186,7 @@ roccurvelist_t TMVA::getRocCurves(TDirectory *binDir, TString methodPrefix, TStr
 
             TGraph *h = (TGraph *)hkey2->ReadObj();
             TString hname = h->GetName();
-            if (hname.Contains(graphNameRef) && hname.BeginsWith(methodPrefix) && not hname.Contains("Train")) {
+            if (hname.Contains(graphNameRef) && hname.BeginsWith(methodPrefix) && !hname.Contains("Train")) {
 
                // Extract classname from plot name
                UInt_t index = hname.Last('_');
@@ -224,7 +224,7 @@ void TMVA::plotEfficienciesMulticlass(roccurvelist_t rocCurves, classcanvasmap_t
          EfficiencyPlotWrapper *plotWrapper = classCanvasMap.at(classname);
          plotWrapper->addGraph(h);
          plotWrapper->addLegendEntry(methodTitle, h);
-      } catch (const std::out_of_range &oor) {
+      } catch (const std::out_of_range &) {
          cout << Form("ERROR: Class %s discovered among plots but was not found by TMVAMulticlassGui. Skipping.",
                       classname.Data())
               << endl;

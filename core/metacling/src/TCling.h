@@ -2,7 +2,7 @@
 // Author: Axel Naumann, 2011-10-19
 
 /*************************************************************************
- * Copyright (C) 1995-2012, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -19,17 +19,19 @@
 //                                                                      //
 // This class defines an interface to the cling C++ interpreter.        //
 //                                                                      //
-// Cling is a full ANSI compliant C++-11 interpreter based on           //
+// Cling is a full ANSI compliant C++ interpreter based on              //
 // clang/LLVM technology.                                               //
 //                                                                      //
 //////////////////////////////////////////////////////////////////////////
 
 #include "TInterpreter.h"
 
-#include <set>
-#include <unordered_set>
-#include <unordered_map>
 #include <map>
+#include <memory>
+#include <set>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #ifndef WIN32
@@ -38,6 +40,7 @@
 
 namespace llvm {
    class GlobalValue;
+   class StringRef;
 }
 
 namespace clang {
@@ -46,7 +49,9 @@ namespace clang {
    class DeclContext;
    class EnumDecl;
    class FunctionDecl;
+   class NamedDecl;
    class NamespaceDecl;
+   class TagDecl;
    class Type;
    class QualType;
 }
@@ -59,10 +64,15 @@ namespace cling {
 
 class TClingCallbacks;
 class TEnv;
+class TFile;
 class THashTable;
 class TInterpreterValue;
 class TMethod;
 class TObjArray;
+class TListOfDataMembers;
+class TListOfFunctions;
+class TListOfFunctionTemplates;
+class TListOfEnums;
 
 namespace ROOT {
    namespace TMetaUtils {
@@ -75,6 +85,7 @@ extern "C" {
    void TCling__UpdateListsOnCommitted(const cling::Transaction&,
                                        cling::Interpreter*);
    void TCling__UpdateListsOnUnloaded(const cling::Transaction&);
+   void TCling__InvalidateGlobal(const clang::Decl*);
    void TCling__TransactionRollback(const cling::Transaction&);
    TObject* TCling__GetObjectAddress(const char *Name, void *&LookupCtx);
    const clang::Decl* TCling__GetObjectDecl(TObject *obj);
@@ -82,9 +93,10 @@ extern "C" {
                               const char* canonicalName);
    void TCling__LibraryUnloaded(const void* dyLibHandle,
                                 const char* canonicalName);
+   void TCling__RegisterRdictForLoadPCM(const std::string &pcmFileNameFullPath, llvm::StringRef *pcmContent);
 }
 
-class TCling : public TInterpreter {
+class TCling final : public TInterpreter {
 private: // Static Data Members
 
    static void* fgSetOfSpecials; // set of TObjects used in CINT variables
@@ -101,6 +113,7 @@ private: // Data Members
    TString         fIncludePath;      // Interpreter include path.
    TString         fRootmapLoadPath;  // Dynamic load path for rootmap files.
    TEnv*           fMapfile;          // Association of classes to libraries.
+   std::vector<std::string> fAutoLoadLibStorage; // A storage to return a const char* from GetClassSharedLibsForModule.
    std::map<size_t,std::vector<const char*>> fClassesHeadersMap; // Map of classes hashes and headers associated
    std::map<const cling::Transaction*,size_t> fTransactionHeadersMap; // Map which transaction contains which autoparse.
    std::set<size_t> fLookedUpClasses; // Set of classes for which headers were looked up already
@@ -110,11 +123,10 @@ private: // Data Members
    std::unordered_set<const clang::NamespaceDecl*> fNSFromRootmaps;   // Collection of namespaces fwd declared in the rootmaps
    TObjArray*      fRootmapFiles;     // Loaded rootmap files.
    Bool_t          fLockProcessLine;  // True if ProcessLine should lock gInterpreterMutex.
-   Bool_t          fAllowLibLoad;     // True if library load is allowed (i.e. not in rootcling)
    Bool_t          fCxxModulesEnabled;// True if C++ modules was enabled
 
-   cling::Interpreter*   fInterpreter;   // The interpreter.
-   cling::MetaProcessor* fMetaProcessor; // The metaprocessor.
+   std::unique_ptr<cling::Interpreter>   fInterpreter;   // The interpreter.
+   std::unique_ptr<cling::MetaProcessor> fMetaProcessor; // The metaprocessor.
 
    std::vector<cling::Value> *fTemporaries;    // Stack of temporaries
    ROOT::TMetaUtils::TNormalizedCtxt  *fNormalizedCtxt; // Which typedef to avoid stripping.
@@ -160,6 +172,8 @@ private: // Data Members
    UInt_t AutoParseImplRecurse(const char *cls, bool topLevel);
    constexpr static const char* kNullArgv[] = {nullptr};
 
+   bool fIsShuttingDown = false;
+
 protected:
    Bool_t SetSuspendAutoParsing(Bool_t value);
 
@@ -169,8 +183,6 @@ public: // Public Interface
    TCling(const char* name, const char* title, const char* const argv[]);
    TCling(const char* name, const char* title): TCling(name, title, kNullArgv) {}
 
-   cling::Interpreter *GetInterpreterImpl() { return fInterpreter; }
-
    void    AddIncludePath(const char* path);
    void   *GetAutoLoadCallBack() const { return fAutoLoadCallBack; }
    void   *SetAutoLoadCallBack(void* cb) { void* prev = fAutoLoadCallBack; fAutoLoadCallBack = cb; return prev; }
@@ -179,12 +191,10 @@ public: // Public Interface
    Int_t   AutoParse(const char* cls);
    void*   LazyFunctionCreatorAutoload(const std::string& mangled_name);
    bool   LibraryLoadingFailed(const std::string&, const std::string&, bool, bool);
-   Bool_t  IsAutoLoadNamespaceCandidate(const char* name);
    Bool_t  IsAutoLoadNamespaceCandidate(const clang::NamespaceDecl* nsDecl);
    void    ClearFileBusy();
    void    ClearStack(); // Delete existing temporary values
    Bool_t  Declare(const char* code);
-   void    EnableAutoLoading();
    void    EndOfLineAction();
    TClass *GetClass(const std::type_info& typeinfo, Bool_t load) const;
    Int_t   GetExitCode() const { return fExitCode; }
@@ -196,12 +206,13 @@ public: // Public Interface
    char*   GetPrompt() { return fPrompt; }
    const char* GetSharedLibs();
    const char* GetClassSharedLibs(const char* cls);
-   const char* GetSharedLibDeps(const char* lib);
+   const char* GetSharedLibDeps(const char* lib, bool tryDyld = false);
    const char* GetIncludePath();
    virtual const char* GetSTLIncludePath() const;
    TObjArray*  GetRootMapFiles() const { return fRootmapFiles; }
    unsigned long long GetInterpreterStateMarker() const { return fTransactionCount;}
    virtual void Initialize();
+   virtual void ShutDown();
    void    InspectMembers(TMemberInspector&, const void* obj, const TClass* cl, Bool_t isTransient);
    Bool_t  IsLoaded(const char* filename) const;
    Bool_t  IsLibraryLoaded(const char* libname) const;
@@ -217,6 +228,8 @@ public: // Public Interface
    Long_t  ProcessLineAsynch(const char* line, EErrorCode* error = 0);
    Long_t  ProcessLineSynch(const char* line, EErrorCode* error = 0);
    void    PrintIntro();
+   bool    RegisterPrebuiltModulePath(const std::string& FullPath,
+                                      const std::string& ModuleMapName = "module.modulemap") const;
    void    RegisterModule(const char* modulename,
                           const char** headers,
                           const char** includePaths,
@@ -277,6 +290,8 @@ public: // Public Interface
    void     GetFunctionOverloads(ClassInfo_t *cl, const char *funcname, std::vector<DeclId_t>& res) const;
    virtual void     LoadFunctionTemplates(TClass* cl) const;
 
+   virtual std::vector<std::string> GetUsingNamespaces(ClassInfo_t *cl) const;
+
    void    GetInterpreterTypeName(const char* name, std::string &output, Bool_t full = kFALSE);
    void    Execute(const char* function, const char* params, int* error = 0);
    void    Execute(TObject* obj, TClass* cl, const char* method, const char* params, int* error = 0);
@@ -303,7 +318,8 @@ public: // Public Interface
 
    static void  UpdateClassInfo(char* name, Long_t tagnum);
    static void  UpdateClassInfoWork(const char* name);
-          void  UpdateClassInfoWithDecl(const void* vTD);
+          void  RefreshClassInfo(TClass *cl, const clang::NamedDecl *def, bool alias);
+          void  UpdateClassInfoWithDecl(const clang::NamedDecl* ND);
    static void  UpdateAllCanvases();
 
    // Misc
@@ -320,7 +336,7 @@ public: // Public Interface
    virtual const char* MapCppName(const char*) const;
    virtual void   SetAlloclockfunc(void (*)()) const;
    virtual void   SetAllocunlockfunc(void (*)()) const;
-   virtual int    SetClassAutoloading(int) const;
+   virtual int    SetClassAutoLoading(int) const;
    virtual int    SetClassAutoparsing(int) ;
            Bool_t IsAutoParsingSuspended() const { return fIsAutoParsingSuspended; }
    virtual void   SetErrmsgcallback(void* p) const;
@@ -389,14 +405,17 @@ public: // Public Interface
    virtual ClassInfo_t*  ClassInfo_Factory(Bool_t all = kTRUE) const;
    virtual ClassInfo_t*  ClassInfo_Factory(ClassInfo_t* cl) const;
    virtual ClassInfo_t*  ClassInfo_Factory(const char* name) const;
+   virtual ClassInfo_t*  ClassInfo_Factory(DeclId_t declid) const;
    virtual Long_t   ClassInfo_GetBaseOffset(ClassInfo_t* fromDerived, ClassInfo_t* toBase, void * address, bool isDerivedObject) const;
    virtual int    ClassInfo_GetMethodNArg(ClassInfo_t* info, const char* method, const char* proto, Bool_t objectIsConst = false, ROOT::EFunctionMatchMode mode = ROOT::kConversionMatch) const;
-   virtual bool   ClassInfo_HasDefaultConstructor(ClassInfo_t* info) const;
+   virtual bool   ClassInfo_HasDefaultConstructor(ClassInfo_t* info, Bool_t testio = kFALSE) const;
    virtual bool   ClassInfo_HasMethod(ClassInfo_t* info, const char* name) const;
    virtual void   ClassInfo_Init(ClassInfo_t* info, const char* funcname) const;
    virtual void   ClassInfo_Init(ClassInfo_t* info, int tagnum) const;
    virtual bool   ClassInfo_IsBase(ClassInfo_t* info, const char* name) const;
    virtual bool   ClassInfo_IsEnum(const char* name) const;
+   virtual bool   ClassInfo_IsScopedEnum(ClassInfo_t* info) const;
+   virtual EDataType ClassInfo_GetUnderlyingType(ClassInfo_t* info) const;
    virtual bool   ClassInfo_IsLoaded(ClassInfo_t* info) const;
    virtual bool   ClassInfo_IsValid(ClassInfo_t* info) const;
    virtual bool   ClassInfo_IsValidMethod(ClassInfo_t* info, const char* method, const char* proto, Long_t* offset, ROOT::EFunctionMatchMode /* mode */ = ROOT::kConversionMatch) const;
@@ -461,6 +480,7 @@ public: // Public Interface
    virtual UInt_t FuncTempInfo_TemplateNargs(FuncTempInfo_t * /* ft_info */) const;
    virtual UInt_t FuncTempInfo_TemplateMinReqArgs(FuncTempInfo_t * /* ft_info */) const;
    virtual Long_t FuncTempInfo_Property(FuncTempInfo_t * /* ft_info */) const;
+   virtual Long_t FuncTempInfo_ExtraProperty(FuncTempInfo_t * /* ft_info */) const;
    virtual void FuncTempInfo_Name(FuncTempInfo_t * /* ft_info */, TString& name) const;
    virtual void FuncTempInfo_Title(FuncTempInfo_t * /* ft_info */, TString& name) const;
 
@@ -534,11 +554,32 @@ public: // Public Interface
    void HandleNewDecl(const void* DV, bool isDeserialized, std::set<TClass*>& modifiedClasses);
    void UpdateListsOnCommitted(const cling::Transaction &T);
    void UpdateListsOnUnloaded(const cling::Transaction &T);
+   void InvalidateGlobal(const clang::Decl *D);
    void TransactionRollback(const cling::Transaction &T);
    void LibraryLoaded(const void* dyLibHandle, const char* canonicalName);
    void LibraryUnloaded(const void* dyLibHandle, const char* canonicalName);
 
 private: // Private Utility Functions and Classes
+   template <typename List, typename Object>
+   static void RemoveAndInvalidateObject(List &L, Object *O) {
+      // Invalidate stored information by setting the `xxxInfo_t' to nullptr.
+      if (O && O->IsValid())
+         L.Unload(O), O->Update(nullptr);
+   }
+
+   void InvalidateCachedDecl(const std::tuple<TListOfDataMembers*,
+                                        TListOfFunctions*,
+                                        TListOfFunctionTemplates*,
+                                        TListOfEnums*> &Lists, const clang::Decl *D);
+
+   class SuspendAutoLoadingRAII {
+      TCling *fTCling = nullptr;
+      bool fOldValue;
+
+   public:
+      SuspendAutoLoadingRAII(TCling *tcling) : fTCling(tcling) { fOldValue = fTCling->SetClassAutoLoading(false); }
+      ~SuspendAutoLoadingRAII() { fTCling->SetClassAutoLoading(fOldValue); }
+   };
 
    class TUniqueString {
    public:
@@ -565,13 +606,21 @@ private: // Private Utility Functions and Classes
    void RegisterLoadedSharedLibrary(const char* name);
    void AddFriendToClass(clang::FunctionDecl*, clang::CXXRecordDecl*) const;
 
-   bool LoadPCM(TString pcmFileName, const char** headers,
-                void (*triggerFunc)()) const;
+   std::map<std::string, llvm::StringRef> fPendingRdicts;
+   void RegisterRdictForLoadPCM(const std::string &pcmFileNameFullPath, llvm::StringRef *pcmContent);
+   void LoadPCM(std::string pcmFileNameFullPath);
+   void LoadPCMImpl(TFile &pcmFile);
+
    void InitRootmapFile(const char *name);
    int  ReadRootmapFile(const char *rootmapfile, TUniqueString* uniqueString = nullptr);
    Bool_t HandleNewTransaction(const cling::Transaction &T);
-   void UnloadClassMembers(TClass* cl, const clang::DeclContext* DC);
+   bool IsClassAutoLoadingEnabled() const;
+   void ProcessClassesToUpdate();
+   cling::Interpreter *GetInterpreterImpl() const { return fInterpreter.get(); }
+   cling::MetaProcessor *GetMetaProcessorImpl() const { return fMetaProcessor.get(); }
 
+   friend void TCling__RegisterRdictForLoadPCM(const std::string &pcmFileNameFullPath, llvm::StringRef *pcmContent);
+   friend cling::Interpreter* TCling__GetInterpreter();
 };
 
 #endif

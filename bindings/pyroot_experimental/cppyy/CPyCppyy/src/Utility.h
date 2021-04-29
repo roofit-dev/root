@@ -2,7 +2,6 @@
 #define CPYCPPYY_UTILITY_H
 
 // Standard
-#include <map>
 #include <string>
 #include <vector>
 
@@ -26,18 +25,22 @@ bool AddToClass(PyObject* pyclass, const char* label, PyCFunction cfunc,
 bool AddToClass(PyObject* pyclass, const char* label, const char* func);
 bool AddToClass(PyObject* pyclass, const char* label, PyCallable* pyfunc);
 
-bool AddUsingToClass(PyObject* pyclass, const char* method);
-
-// helpers for dynamically constructing binary operators
-bool AddBinaryOperator(PyObject* left, PyObject* right, const char* op,
-    const char* label, const char* alt_label = nullptr, Cppyy::TCppScope_t scope = 0);
-bool AddBinaryOperator(PyObject* pyclass, const char* op,
-    const char* label, const char* alt_label = nullptr, Cppyy::TCppScope_t scope = 0);
-bool AddBinaryOperator(PyObject* pyclass, const std::string& lcname, const std::string& rcname,
-    const char* op, const char* label, const char* alt_label = nullptr, Cppyy::TCppScope_t scope = 0);
+// helpers for dynamically constructing operators
+PyCallable* FindUnaryOperator(PyObject* pyclass, const char* op);
+PyCallable* FindBinaryOperator(PyObject* left, PyObject* right,
+    const char* op, Cppyy::TCppScope_t scope = 0);
+PyCallable* FindBinaryOperator(const std::string& lcname, const std::string& rcname,
+    const char* op, Cppyy::TCppScope_t scope = 0, bool reverse = false);
 
 // helper for template classes and methods
-std::string ConstructTemplateArgs(PyObject* pyname, PyObject* tpArgs, PyObject* args, int argoff);
+enum ArgPreference { kNone, kPointer, kReference, kValue };
+std::string ConstructTemplateArgs(
+    PyObject* pyname, PyObject* tpArgs, PyObject* args = nullptr, ArgPreference = kNone, int argoff = 0, int* pcnt = nullptr);
+
+// helper for generating callbacks
+void ConstructCallbackPreamble(const std::string& retType,
+    const std::vector<std::string>& argtypes, std::ostringstream& code);
+void ConstructCallbackReturn(bool isVoid, int nArgs, std::ostringstream& code);
 
 // initialize proxy type objects
 bool InitProxy(PyObject* module, PyTypeObject* pytype, const char* name);
@@ -49,6 +52,20 @@ Py_ssize_t GetBuffer(PyObject* pyobject, char tc, int size, void*& buf, bool che
 
 // data/operator mappings
 std::string MapOperatorName(const std::string& name, bool bTakesParames);
+
+struct PyOperators {
+    PyOperators() : fEq(nullptr), fNe(nullptr), fLAdd(nullptr), fRAdd(nullptr),
+        fSub(nullptr), fLMul(nullptr), fRMul(nullptr), fDiv(nullptr), fHash(nullptr) {}
+    ~PyOperators();
+
+    PyObject* fEq;
+    PyObject* fNe;
+    PyObject *fLAdd, *fRAdd;
+    PyObject* fSub;
+    PyObject *fLMul, *fRMul;
+    PyObject* fDiv;
+    PyObject* fHash;
+};
 
 // meta information
 const std::string Compound(const std::string& name);
