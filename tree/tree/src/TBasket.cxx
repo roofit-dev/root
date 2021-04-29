@@ -17,7 +17,6 @@
 #include "TBranch.h"
 #include "TFile.h"
 #include "TLeaf.h"
-#include "TBufferFile.h"
 #include "TMath.h"
 #include "TROOT.h"
 #include "TTreeCache.h"
@@ -115,6 +114,11 @@ TBasket::~TBasket()
       delete fCompressedBufferRef;
       fCompressedBufferRef = 0;
    }
+   // TKey::~TKey will use fMotherDir to attempt to remove they key
+   // from the directory's list of key.  A basket is never in that list
+   // and in some cases (eg. f = new TFile(); TTree t; delete f;) the
+   // directory is gone before the TTree.
+   fMotherDir = nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
