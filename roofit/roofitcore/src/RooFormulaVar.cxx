@@ -49,7 +49,6 @@
 #include "Riostream.h"
 
 #include "RooFormulaVar.h"
-#include "RooFormulaVar.h"
 #include "RooStreamParser.h"
 #include "RooNLLVar.h"
 #include "RooChi2Var.h"
@@ -121,7 +120,7 @@ RooFormulaVar::RooFormulaVar(const RooFormulaVar& other, const char* name) :
   _formExpr(other._formExpr)
 {
   if (other._formula && other._formula->ok()) {
-    _formula.reset(new RooFormula(GetName(), _formExpr, _actualVars));
+    _formula.reset(new RooFormula(GetName(), _formExpr, _actualVars, /*checkVariables=*/false));
     _formExpr = _formula->formulaString().c_str();
   }
 }

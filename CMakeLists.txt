@@ -91,9 +91,9 @@ else()
     # GIT_DESCRIBE_ALWAYS: v6-16-00-rc1
     # GIT_DESCRIBE_ALL: tags/v6-16-00-rc1
     # tag might end on "-rc1" or similar; parse version number in front.
-    string(REGEX REPLACE "v([0-9]+)-.*" "\\1" ROOT_MAJOR_VERSION ${GIT_DESCRIBE_ALWAYS})
-    string(REGEX REPLACE "v[0-9]+-([0-9]+).*" "\\1" ROOT_MINOR_VERSION ${GIT_DESCRIBE_ALWAYS})
-    string(REGEX REPLACE "v[0-9]+-[0-9]+-([0-9]+).*" "\\1" ROOT_PATCH_VERSION ${GIT_DESCRIBE_ALWAYS})
+    string(REGEX REPLACE "^tags/v([0-9]+)-.*" "\\1" ROOT_MAJOR_VERSION ${GIT_DESCRIBE_ALL})
+    string(REGEX REPLACE "^tags/v[0-9]+-([0-9]+).*" "\\1" ROOT_MINOR_VERSION ${GIT_DESCRIBE_ALL})
+    string(REGEX REPLACE "^tags/v[0-9]+-[0-9]+-([0-9]+).*" "\\1" ROOT_PATCH_VERSION ${GIT_DESCRIBE_ALL})
   elseif("${GIT_DESCRIBE_ALL}" MATCHES "/v[0-9]+-[0-9]+.*-patches$")
     # GIT_DESCRIBE_ALWAYS: v6-16-00-rc1-47-g9ba56ef4a3
     # GIT_DESCRIBE_ALL: heads/v6-16-00-patches
@@ -107,6 +107,7 @@ else()
     set(ROOT_FULL_VERSION "${ROOT_MAJOR_VERSION}.${ROOT_MINOR_VERSION}.${ROOT_PATCH_VERSION}")
   endif()
   set(ROOT_VERSION "${ROOT_MAJOR_VERSION}.${ROOT_MINOR_VERSION}.${ROOT_PATCH_VERSION}")
+  message(STATUS "Detected ROOT_VERSION ${ROOT_VERSION}")
 endif()
 
 
@@ -156,6 +157,21 @@ if (build_timing)
   set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
   set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CMAKE_COMMAND} -E time")
   #set_property(GLOBAL PROPERTY RULE_LAUNCH_CUSTOM "${CMAKE_COMMAND} -E time")
+endif()
+
+#--- Set up address sanitizer builds ----------------------------------------------------------
+if(asan)
+  if(NOT CMAKE_COMPILER_IS_GNUCXX AND NOT CMAKE_CXX_COMPILER_ID MATCHES Clang)
+    message(WARNING "Address sanitizer builds only tested with gcc and Clang")
+  endif()
+
+  set(ASAN_EXTRA_LD_PRELOAD "${ASAN_RUNTIME_LIBRARY}:${CMAKE_BINARY_DIR}/lib/libROOTSanitizerConfig.so")
+
+  foreach(item IN LISTS ASAN_EXTRA_CXX_FLAGS)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:${item}>)
+  endforeach()
+  #add_link_options() not available in our CMake version:
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${ASAN_EXTRA_SHARED_LINKER_FLAGS}")
 endif()
 
 #---Enable CTest package -----------------------------------------------------------------------
@@ -371,7 +387,6 @@ if(runtime_cxxmodules)
     add_dependencies(onepcm ${target_dependency})
   endforeach()
   unset(ROOT_LIBRARY_TARGETS CACHE)
-  set(FIXME_TEMPORARILY_EXCLUDED_FOR_RUNTIME_CXXMODULES On)
 else()
   get_property(incdirs DIRECTORY PROPERTY INCLUDE_DIRECTORIES)
 
@@ -404,7 +419,7 @@ else()
     COMMAND
       ${CMAKE_COMMAND} -E env ROOTIGNOREPREFIX=1 ${PYTHON_EXECUTABLE}
       ${CMAKE_SOURCE_DIR}/etc/dictpch/makepch.py etc/allDict.cxx.pch
-      ${__allIncludes} -I${CMAKE_BINARY_DIR}/include
+      ${__allIncludes} -I${CMAKE_BINARY_DIR}/include -I${CMAKE_SOURCE_DIR}/core
     DEPENDS
       rootcling ${__pch_dependencies} ${__pch_dictionaries}
       ${CMAKE_SOURCE_DIR}/build/unix/makepchinput.py
