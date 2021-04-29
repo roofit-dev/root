@@ -11,7 +11,6 @@
 #include "TClass.h"
 #include "Riostream.h"
 #include "TSystem.h"
-#include "TGResourcePool.h"
 #include "TTreeTableInterface.h"
 #include "TTreeFormula.h"
 #include "TError.h"
@@ -19,7 +18,6 @@
 #include "TEntryList.h"
 #include "TSelectorDraw.h"
 #include "TTreeFormulaManager.h"
-#include "TTreeFormula.h"
 
 ClassImp(TTreeTableInterface);
 

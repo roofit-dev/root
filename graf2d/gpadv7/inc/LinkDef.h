@@ -29,12 +29,15 @@
 #pragma link C++ class ROOT::Experimental::RDrawable+;
 #pragma link C++ class ROOT::Experimental::RDisplayItem+;
 #pragma link C++ class ROOT::Experimental::RDrawableDisplayItem+;
+#pragma link C++ class ROOT::Experimental::RIndirectDisplayItem+;
 #pragma link C++ class ROOT::Experimental::RObjectDisplayItem+;
+#pragma link C++ class ROOT::Experimental::RDrawableReply+;
+#pragma link C++ class ROOT::Experimental::RDrawableRequest+;
+#pragma link C++ class ROOT::Experimental::RDrawableExecRequest+;
 
 #pragma link C++ class ROOT::Experimental::Internal::RIOSharedBase+;
 #pragma link C++ class ROOT::Experimental::Internal::RIOShared<TObject>+;
 #pragma link C++ class ROOT::Experimental::Internal::RIOShared<ROOT::Experimental::RDrawable>+;
-
 
 #pragma link C++ class ROOT::Experimental::Detail::RMenuItem+;
 #pragma link C++ class std::vector<ROOT::Experimental::Detail::RMenuItem*>+;
@@ -43,11 +46,13 @@
 #pragma link C++ class std::vector<ROOT::Experimental::Detail::RMenuArgument>+;
 #pragma link C++ class ROOT::Experimental::Detail::RArgsMenuItem+;
 #pragma link C++ class ROOT::Experimental::RMenuItems+;
+#pragma link C++ class ROOT::Experimental::RDrawableMenuRequest+;
 #pragma link C++ class ROOT::Experimental::RObjectDrawable+;
 #pragma link C++ class ROOT::Experimental::RPadUserAxisBase+;
 #pragma link C++ class ROOT::Experimental::RPadCartesianUserAxis+;
 #pragma link C++ class ROOT::Experimental::RPadExtent+;
 #pragma link C++ class ROOT::Experimental::RPadPos+;
+#pragma link C++ class ROOT::Experimental::RChangeAttrRequest+;
 #pragma link C++ class ROOT::Experimental::RPadBase+;
 #pragma link C++ class ROOT::Experimental::RPad+;
 #pragma link C++ class ROOT::Experimental::RCanvas+;
