@@ -1,10 +1,16 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT graf2d/win32gdk package
 # @author Pere Mato, CERN
 ############################################################################
 include_directories(${FREETYPE_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/gdk/src 
 					${CMAKE_CURRENT_SOURCE_DIR}/gdk/src/gdk
-					${CMAKE_CURRENT_BINARY_DIR}/gdk/src/glib)
+					${CMAKE_CURRENT_SOURCE_DIR}/gdk/src/glib)
 
 set(iconvlib  ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/iconv-1.3.lib)
 set(iconvdll  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/iconv-1.3.dll)

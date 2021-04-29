@@ -29,7 +29,6 @@ to database server.
 #include "TStreamerInfo.h"
 #include "TStreamerElement.h"
 #include "TObjString.h"
-#include "TClonesArray.h"
 
 #include "TSQLFile.h"
 #include "TSQLClassInfo.h"
@@ -155,13 +154,6 @@ Long64_t sqlio::atol64(const char *value)
 ClassImp(TSQLColumnData);
 
 ////////////////////////////////////////////////////////////////////////////////
-/// default constructor
-
-TSQLColumnData::TSQLColumnData() : TObject(), fName(), fType(), fValue(), fNumeric(kFALSE)
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
 /// normal constructor of TSQLColumnData class
 /// specifies name, type and value for one column
 
@@ -179,20 +171,13 @@ TSQLColumnData::TSQLColumnData(const char *name, Long64_t value)
    fValue.Form("%lld", value);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// TSQLColumnData destructor
-
-TSQLColumnData::~TSQLColumnData()
-{
-}
-
 ClassImp(TSQLTableData);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// normal constructor
 
 TSQLTableData::TSQLTableData(TSQLFile *f, TSQLClassInfo *info)
-   : TObject(), fFile(f), fInfo(info), fColumns(), fColInfos(0)
+   : TObject(), fFile(f), fInfo(info)
 {
    if (info && !info->IsClassTableExist())
       fColInfos = new TObjArray;
@@ -204,7 +189,7 @@ TSQLTableData::TSQLTableData(TSQLFile *f, TSQLClassInfo *info)
 TSQLTableData::~TSQLTableData()
 {
    fColumns.Delete();
-   if (fColInfos != 0) {
+   if (fColInfos) {
       fColInfos->Delete();
       delete fColInfos;
    }
@@ -222,7 +207,7 @@ void TSQLTableData::AddColumn(const char *name, Long64_t value)
    //   TSQLColumnData* col = new TSQLColumnData(name, value);
    //   fColumns.Add(col);
 
-   if (fColInfos != 0)
+   if (fColInfos)
       fColInfos->Add(new TSQLClassColumnInfo(name, DefineSQLName(name), "INT"));
 }
 
@@ -289,9 +274,9 @@ Bool_t TSQLTableData::HasSQLName(const char *sqlname)
 {
    TIter next(fColInfos);
 
-   TSQLClassColumnInfo *col = 0;
+   TSQLClassColumnInfo *col = nullptr;
 
-   while ((col = (TSQLClassColumnInfo *)next()) != 0) {
+   while ((col = (TSQLClassColumnInfo *)next()) != nullptr) {
       const char *colname = col->GetSQLName();
       if (strcmp(colname, sqlname) == 0)
          return kTRUE;
@@ -330,19 +315,13 @@ Bool_t TSQLTableData::IsNumeric(Int_t n)
 TObjArray *TSQLTableData::TakeColInfos()
 {
    TObjArray *res = fColInfos;
-   fColInfos = 0;
+   fColInfos = nullptr;
    return res;
 }
 
 //________________________________________________________________________
 
 ClassImp(TSQLStructure);
-
-TSQLStructure::TSQLStructure()
-   : TObject(), fParent(0), fType(0), fPointer(0), fValue(), fArrayIndex(-1), fRepeatCnt(0), fChilds()
-{
-   // default constructor
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// destructor
@@ -507,7 +486,7 @@ void TSQLStructure::SetArray(Int_t sz)
 
 TClass *TSQLStructure::GetObjectClass() const
 {
-   return (fType == kSqlObject) ? (TClass *)fPointer : 0;
+   return (fType == kSqlObject) ? (TClass *)fPointer : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -515,7 +494,7 @@ TClass *TSQLStructure::GetObjectClass() const
 
 TClass *TSQLStructure::GetVersionClass() const
 {
-   return (fType == kSqlVersion) ? (TClass *)fPointer : 0;
+   return (fType == kSqlVersion) ? (TClass *)fPointer : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -523,7 +502,7 @@ TClass *TSQLStructure::GetVersionClass() const
 
 TStreamerInfo *TSQLStructure::GetStreamerInfo() const
 {
-   return (fType == kSqlStreamerInfo) ? (TStreamerInfo *)fPointer : 0;
+   return (fType == kSqlStreamerInfo) ? (TStreamerInfo *)fPointer : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -531,7 +510,7 @@ TStreamerInfo *TSQLStructure::GetStreamerInfo() const
 
 TStreamerElement *TSQLStructure::GetElement() const
 {
-   return (fType == kSqlElement) || (fType == kSqlCustomElement) ? (TStreamerElement *)fPointer : 0;
+   return (fType == kSqlElement) || (fType == kSqlCustomElement) ? (TStreamerElement *)fPointer : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -547,19 +526,19 @@ Int_t TSQLStructure::GetElementNumber() const
 
 const char *TSQLStructure::GetValueType() const
 {
-   return (fType == kSqlValue) ? (const char *)fPointer : 0;
+   return (fType == kSqlValue) ? (const char *)fPointer : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// return element custom class if strutures is kSqlCustomClass
+/// return element custom class if structures is kSqlCustomClass
 
 TClass *TSQLStructure::GetCustomClass() const
 {
-   return (fType == kSqlCustomClass) ? (TClass *)fPointer : 0;
+   return (fType == kSqlCustomClass) ? (TClass *)fPointer : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// return custom class version if strutures is kSqlCustomClass
+/// return custom class version if structures is kSqlCustomClass
 
 Version_t TSQLStructure::GetCustomClassVersion() const
 {
@@ -573,7 +552,7 @@ Bool_t TSQLStructure::GetClassInfo(TClass *&cl, Version_t &version)
 {
    if (GetType() == kSqlStreamerInfo) {
       TStreamerInfo *info = GetStreamerInfo();
-      if (info == 0)
+      if (!info)
          return kFALSE;
       cl = info->GetClass();
       version = info->GetClassVersion();
@@ -600,7 +579,7 @@ const char *TSQLStructure::GetValue() const
 
 void TSQLStructure::Add(TSQLStructure *child)
 {
-   if (child != 0) {
+   if (child) {
       child->SetParent(this);
       fChilds.Add(child);
    }
@@ -634,17 +613,17 @@ void TSQLStructure::AddValue(const char *value, const char *tname)
 Long64_t TSQLStructure::DefineObjectId(Bool_t recursive)
 {
    TSQLStructure *curr = this;
-   while (curr != 0) {
+   while (curr) {
       if ((curr->GetType() == kSqlObject) || (curr->GetType() == kSqlPointer) ||
           // workaround to store object id in element structure
           (curr->GetType() == kSqlElement) || (curr->GetType() == kSqlCustomElement) ||
           (curr->GetType() == kSqlCustomClass) || (curr->GetType() == kSqlStreamerInfo)) {
          const char *value = curr->GetValue();
-         if ((value != 0) && (strlen(value) > 0))
+         if (value && (strlen(value) > 0))
             return sqlio::atol64(value);
       }
 
-      curr = recursive ? curr->GetParent() : 0;
+      curr = recursive ? curr->GetParent() : nullptr;
    }
    return -1;
 }
@@ -676,7 +655,7 @@ TSQLObjectData *TSQLStructure::GetObjectData(Bool_t search)
    TSQLStructure *child = GetChild(0);
    if ((child != 0) && (child->GetType() == kSqlObjectData))
       return (TSQLObjectData *)child->fPointer;
-   if (search && (GetParent() != 0))
+   if (search && GetParent())
       return GetParent()->GetObjectData(search);
    return 0;
 }
