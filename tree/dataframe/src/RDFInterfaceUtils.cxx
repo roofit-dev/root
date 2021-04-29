@@ -70,7 +70,11 @@ namespace RDF {
 std::set<std::string> GetPotentialColumnNames(const std::string &expr)
 {
    lexertk::generator generator;
-   generator.process(expr);
+   const auto ok = generator.process(expr);
+   if (!ok) {
+      const auto msg = "Failed to tokenize expression:\n" + expr + "\n\nMake sure it is valid C++.";
+      throw std::runtime_error(msg);
+   }
 
    std::set<std::string> potCols;
    const auto nToks = generator.size();
@@ -114,18 +118,6 @@ std::set<std::string> GetPotentialColumnNames(const std::string &expr)
 // the one in the vector
 class RActionBase;
 
-bool InterpreterDeclare(const std::string &code)
-{
-   return gInterpreter->Declare(code.c_str());
-}
-
-std::pair<Long64_t, int> InterpreterCalc(const std::string &code)
-{
-   TInterpreter::EErrorCode errorCode(TInterpreter::kNoError);
-   auto res = gInterpreter->Calc(code.c_str(), &errorCode);
-   return std::make_pair(res, errorCode);
-}
-
 HeadNode_t CreateSnaphotRDF(const ColumnNames_t &validCols,
                             std::string_view treeName,
                             std::string_view fileName,
@@ -150,7 +142,7 @@ std::string DemangleTypeIdName(const std::type_info &typeInfo)
    return TClassEdit::DemangleTypeIdName(typeInfo, dummy);
 }
 
-ColumnNames_t ConvertRegexToColumns(RDFInternal::RBookedCustomColumns & customColumns,
+ColumnNames_t ConvertRegexToColumns(const RDFInternal::RBookedCustomColumns & customColumns,
                                     TTree *tree,
                                     ROOT::RDF::RDataSource *dataSource,
                                     std::string_view columnNameRegexp,
@@ -273,7 +265,7 @@ bool IsValidCppVarName(const std::string &var)
 }
 
 void CheckCustomColumn(std::string_view definedCol, TTree *treePtr, const ColumnNames_t &customCols,
-                       const ColumnNames_t &dataSourceColumns)
+                       const std::map<std::string, std::string> &aliasMap, const ColumnNames_t &dataSourceColumns)
 {
    const std::string definedColStr(definedCol);
 
@@ -295,6 +287,15 @@ void CheckCustomColumn(std::string_view definedCol, TTree *treePtr, const Column
       const auto msg = "Redefinition of column \"" + definedColStr + "\"";
       throw std::runtime_error(msg);
    }
+
+   // Check if the definedCol is an alias
+   const auto aliasColNameIt = aliasMap.find(definedColStr);
+   if (aliasColNameIt != aliasMap.end()) {
+      const auto msg = "An alias with name " + definedColStr + " pointing to column " +
+      aliasColNameIt->second + " is already existing.";
+      throw std::runtime_error(msg);
+   }
+
    // check if definedCol is already present in the DataSource (but has not yet been `Define`d)
    if (!dataSourceColumns.empty()) {
       if (std::find(dataSourceColumns.begin(), dataSourceColumns.end(), definedCol) != dataSourceColumns.end()) {
@@ -468,7 +469,7 @@ std::vector<std::string> ReplaceDots(const ColumnNames_t &colNames)
       const bool hasDot = c.find_first_of('.') != std::string::npos;
       if (hasDot) {
          std::replace(c.begin(), c.end(), '.', '_');
-         c.insert(0u, "__tdf_arg_");
+         c.insert(0u, "__rdf_arg_");
       }
    }
    return dotlessNames;
@@ -520,7 +521,7 @@ std::vector<std::string> ColumnTypesAsString(ColumnNames_t &colNames, ColumnName
       const auto &realColName = aliasMapEnd == aliasMapIt ? colName : aliasMapIt->second;
       // The map is a const reference, so no operator[]
       const auto isCustomCol = customCols.HasName(realColName);
-      const auto customColID = isCustomCol ? customCols.GetColumns()[realColName]->GetID() : 0;
+      const auto customColID = isCustomCol ? customCols.GetColumns().at(realColName)->GetID() : 0;
       const auto colTypeName =
          ColumnName2ColumnTypeName(realColName, namespaceID, tree, ds, isCustomCol, /*vector2rvec=*/true, customColID);
       colTypes.emplace_back(colTypeName);
@@ -539,14 +540,14 @@ void TryToJitExpression(const std::string &expression, const ColumnNames_t &colN
 
    static unsigned int iNs = 0U;
    std::stringstream dummyDecl;
-   dummyDecl << "namespace __tdf_" << std::to_string(iNs++) << "{ auto tdf_f = []() {";
+   dummyDecl << "namespace __rdf_" << std::to_string(iNs++) << "{ auto rdf_f = []() {";
 
    for (auto col = colNames.begin(), type = colTypes.begin(); col != colNames.end(); ++col, ++type) {
       dummyDecl << *type << " " << *col << ";\n";
    }
 
    // Now that branches are declared as variables, put the body of the
-   // lambda in dummyDecl and close scopes of f and namespace __tdf_N
+   // lambda in dummyDecl and close scopes of f and namespace __rdf_N
    if (hasReturnStmt)
       dummyDecl << expression << "\n;};}";
    else
@@ -576,9 +577,10 @@ BuildLambdaString(const std::string &expr, const ColumnNames_t &vars, const Colu
       ss.seekp(-2, ss.cur);
 
    if (hasReturnStmt)
-      ss << "){\n" << expr << "\n}";
+      ss << "){";
    else
-      ss << "){return " << expr << "\n;}";
+      ss << "){return ";
+   ss << expr << "\n;}";
 
    return ss.str();
 }
@@ -608,10 +610,12 @@ void BookFilterJit(RJittedFilter *jittedFilter, void *prevNodeOnHeap, std::strin
    const auto usedColTypes =
       ColumnTypesAsString(usedBranches, varNames, aliasMap, tree, ds, dotlessExpr, namespaceID, customCols);
 
-   TRegexp re("[^a-zA-Z0-9_]return[^a-zA-Z0-9_]");
+   TRegexp re("[^a-zA-Z0-9_]?return[^a-zA-Z0-9_]");
    Ssiz_t matchedLen;
    const bool hasReturnStmt = re.Index(dotlessExpr, &matchedLen) != -1;
 
+   auto lm = jittedFilter->GetLoopManagerUnchecked();
+   lm->JitDeclarations(); // TryToJitExpression might need some of the Define'd column type aliases
    TryToJitExpression(dotlessExpr, varNames, usedColTypes, hasReturnStmt);
 
    const auto filterLambda = BuildLambdaString(dotlessExpr, varNames, usedColTypes, hasReturnStmt);
@@ -641,7 +645,7 @@ void BookFilterJit(RJittedFilter *jittedFilter, void *prevNodeOnHeap, std::strin
                     << "reinterpret_cast<ROOT::Internal::RDF::RBookedCustomColumns*>(" << columnsOnHeapAddr << ")"
                     << ");";
 
-   jittedFilter->GetLoopManagerUnchecked()->ToJit(filterInvocation.str());
+   lm->ToJitExec(filterInvocation.str());
 }
 
 // Jit a Define call
@@ -661,27 +665,28 @@ void BookDefineJit(std::string_view name, std::string_view expression, RLoopMana
    const auto usedColTypes =
       ColumnTypesAsString(usedBranches, varNames, aliasMap, tree, ds, dotlessExpr, namespaceID, customCols);
 
-   TRegexp re("[^a-zA-Z0-9_]return[^a-zA-Z0-9_]");
+   TRegexp re("[^a-zA-Z0-9_]?return[^a-zA-Z0-9_]");
    Ssiz_t matchedLen;
    const bool hasReturnStmt = re.Index(dotlessExpr, &matchedLen) != -1;
 
+   lm.JitDeclarations(); // TryToJitExpression might need some of the Define'd column type aliases
    TryToJitExpression(dotlessExpr, varNames, usedColTypes, hasReturnStmt);
 
    const auto definelambda = BuildLambdaString(dotlessExpr, varNames, usedColTypes, hasReturnStmt);
    const auto customColID = std::to_string(jittedCustomColumn->GetID());
    const auto lambdaName = "eval_" + std::string(name) + customColID;
-   const auto ns = "__tdf" + std::to_string(namespaceID);
+   const auto ns = "__rdf" + std::to_string(namespaceID);
 
    auto customColumnsCopy = new RDFInternal::RBookedCustomColumns(customCols);
    auto customColumnsAddr = PrettyPrintAddr(customColumnsCopy);
 
-   // Declare the lambda variable and an alias for the type of the defined column in namespace __tdf
+   // Declare the lambda variable and an alias for the type of the defined column in namespace __rdf
    // This assumes that a given variable is Define'd once per RDataFrame -- we might want to relax this requirement
    // to let python users execute a Define cell multiple times
    const auto defineDeclaration =
       "namespace " + ns + " { auto " + lambdaName + " = " + definelambda + ";\n" + "using " + std::string(name) +
       customColID + "_type = typename ROOT::TypeTraits::CallableTraits<decltype(" + lambdaName + " )>::ret_type;  }\n";
-   gInterpreter->Declare(defineDeclaration.c_str());
+   lm.ToJitDeclare(defineDeclaration);
 
    std::stringstream defineInvocation;
    defineInvocation << "ROOT::Internal::RDF::JitDefineHelper(" << definelambda << ", {";
@@ -699,7 +704,7 @@ void BookDefineJit(std::string_view name, std::string_view expression, RLoopMana
                     << "reinterpret_cast<ROOT::Internal::RDF::RBookedCustomColumns*>(" << customColumnsAddr << ")"
                     << ");";
 
-   lm.ToJit(defineInvocation.str());
+   lm.ToJitExec(defineInvocation.str());
 }
 
 // Jit and call something equivalent to "this->BuildAndBook<BranchTypes...>(params...)"
@@ -715,7 +720,7 @@ std::string JitBuildAction(const ColumnNames_t &bl, void *prevNode, const std::t
    std::vector<std::string> columnTypeNames(nBranches);
    for (auto i = 0u; i < nBranches; ++i) {
       const auto isCustomCol = customCols.HasName(bl[i]);
-      const auto customColID = isCustomCol ? customCols.GetColumns()[bl[i]]->GetID() : 0;
+      const auto customColID = isCustomCol ? customCols.GetColumns().at(bl[i])->GetID() : 0;
       const auto columnTypeName =
          ColumnName2ColumnTypeName(bl[i], namespaceID, tree, ds, isCustomCol, /*vector2rvec=*/true, customColID);
       if (columnTypeName.empty()) {

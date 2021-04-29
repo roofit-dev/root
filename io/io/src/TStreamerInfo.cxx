@@ -623,6 +623,7 @@ void TStreamerInfo::Build()
             fElements->Add(element);
             writecopy->SetBit(TStreamerElement::kWrite);
             writecopy->SetNewType( writecopy->GetType() );
+            writecopy->SetOffset( element->GetOffset() );
             // Put the write element after the read element (that does caching).
             element = writecopy;
          }
@@ -643,8 +644,12 @@ void TStreamerInfo::Build()
       } else {
          // Tell clone we should rerun BuildOld
          infoalloc->SetBit(kBuildOldUsed,false);
+         // Temporarily mark it as built to avoid the BuildCheck from removing
+         // Technically we only need to do this for the 'current' StreamerInfo
+         fIsBuilt = kTRUE;
          infoalloc->BuildCheck();
          infoalloc->BuildOld();
+         fIsBuilt = kFALSE;
          TClass *allocClass = infoalloc->GetClass();
 
          {
@@ -748,6 +753,13 @@ void TStreamerInfo::BuildCheck(TFile *file /* = 0 */)
             return;
          }
       }
+
+      if (0 == strcmp("string",fClass->GetName())) {
+         // We know we do not need any offset check for a string
+         SetBit(kCanDelete);
+         return;
+      }
+
       const TObjArray *array = fClass->GetStreamerInfos();
       TStreamerInfo* info = 0;
 
@@ -2443,8 +2455,7 @@ void TStreamerInfo::BuildOld()
                next(); // move the cursor passed the insert object.
                writecopy->SetBit(TStreamerElement::kWrite);
                writecopy->SetNewType( writecopy->GetType() );
-               writecopy->SetBit(TStreamerElement::kCache);
-               writecopy->SetOffset(infoalloc ? infoalloc->GetOffset(element->GetName()) : 0);
+               writecopy->SetOffset(element->GetOffset());
             }
             element->SetBit(TStreamerElement::kCache);
             element->SetNewType( element->GetType() );
@@ -3318,6 +3329,25 @@ static void R__WriteConstructorBody(FILE *file, TIter &next)
    }
 }
 
+static constexpr int str_length(const char* str)
+{
+    return *str ? 1 + str_length(str + 1) : 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return true if the element is auto_ptr or unique_ptr
+
+static bool R__IsUniquePtr(TStreamerElement *element) {
+
+   constexpr auto auto_ptr_len = str_length("auto_ptr<");
+   constexpr auto unique_ptr_len = str_length("unique_ptr<");
+
+   const char *name = element->GetTypeNameBasic();
+
+   return ((strncmp(name, "auto_ptr<", auto_ptr_len) == 0)
+           || (strncmp(name, "unique_ptr<", unique_ptr_len) == 0));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Write down the body of the 'move' constructor.
 
@@ -3335,7 +3365,11 @@ static void R__WriteMoveConstructorBody(FILE *file, const TString &protoname, TI
          if (element->GetArrayLength() <= 1) {
             if (atstart) { fprintf(file,"   : "); atstart = kFALSE; }
             else fprintf(file,"   , ");
-            fprintf(file, "%s(const_cast<%s &>( rhs ).%s)\n",element->GetName(),protoname.Data(),element->GetName());
+            if (R__IsUniquePtr(element)) {
+               fprintf(file, "%s(const_cast<%s &>( rhs ).%s.release() )\n",element->GetName(),protoname.Data(),element->GetName());
+            } else {
+               fprintf(file, "%s(const_cast<%s &>( rhs ).%s)\n",element->GetName(),protoname.Data(),element->GetName());
+            }
          }
       }
    }
@@ -3665,6 +3699,8 @@ void TStreamerInfo::GenerateDeclaration(FILE *fp, FILE *sfp, const TList *subCla
                   // nothing to do.
                   break;
             }
+         } else if (strncmp(enamebasic.Data(), "auto_ptr<", strlen("auto_ptr<")) == 0) {
+            enamebasic = TMakeProject::UpdateAssociativeToVector(enamebasic);
          }
 
          lt = enamebasic.Length();
@@ -3691,6 +3727,7 @@ void TStreamerInfo::GenerateDeclaration(FILE *fp, FILE *sfp, const TList *subCla
       fprintf(fp,"\n   %s() {\n",protoname.Data());
       R__WriteConstructorBody(fp,next);
       fprintf(fp,"   }\n");
+      fprintf(fp,"   %s(%s && ) = default;\n",protoname.Data(),protoname.Data());
       fprintf(fp,"   %s(const %s & rhs )\n",protoname.Data(),protoname.Data());
       R__WriteMoveConstructorBody(fp,protoname,next);
       fprintf(fp,"   }\n");
@@ -3701,6 +3738,7 @@ void TStreamerInfo::GenerateDeclaration(FILE *fp, FILE *sfp, const TList *subCla
    } else {
       // Generate default functions, ClassDef and trailer.
       fprintf(fp,"\n   %s();\n",protoname.Data());
+      fprintf(fp,"   %s(%s && ) = default;\n",protoname.Data(),protoname.Data());
       fprintf(fp,"   %s(const %s & );\n",protoname.Data(),protoname.Data());
       fprintf(fp,"   virtual ~%s();\n\n",protoname.Data());
 
