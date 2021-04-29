@@ -2,8 +2,7 @@
 /// \ingroup tutorial_v7
 ///
 /// This macro generates a small V7 TH1D, fills it and draw it in a V7 canvas.
-/// The canvas is display in the web browser and the corresponding png picture
-/// is generated.
+/// The canvas is display in the web browser
 ///
 /// \macro_code
 ///

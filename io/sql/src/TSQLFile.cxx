@@ -163,9 +163,7 @@ Author: S.Linev, GSI Darmstadt,   S.Linev@gsi.de
 
 #include "TROOT.h"
 #include "TSystem.h"
-#include "TList.h"
 #include "TObjArray.h"
-#include "TObjString.h"
 #include "TList.h"
 #include "TArrayC.h"
 #include "TVirtualStreamerInfo.h"

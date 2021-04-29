@@ -19,7 +19,6 @@
 #include "TF1.h"
 #include "TStyle.h"
 #include "TMath.h"
-#include "TVector.h"
 #include "TVectorD.h"
 #include "Foption.h"
 #include "TRandom.h"
@@ -28,7 +27,6 @@
 #include "TVirtualPad.h"
 #include "TVirtualGraphPainter.h"
 #include "TBrowser.h"
-#include "TClass.h"
 #include "TSystem.h"
 #include "TPluginManager.h"
 #include <stdlib.h>
@@ -1799,9 +1797,14 @@ void TGraph::InsertPointBefore(Int_t ipoint, Double_t x, Double_t y)
       return;
    }
 
-   if (ipoint > fNpoints-1) {
-      Error("TGraph", "Inserted point index should be <= %d", fNpoints-1);
+   if (ipoint > fNpoints) {
+      Error("TGraph", "Inserted point index should be <= %d", fNpoints);
       return;
+   }
+
+   if (ipoint == fNpoints) {
+       SetPoint(ipoint, x, y);
+       return;
    }
 
    Double_t **ps = ExpandAndCopy(fNpoints + 1, ipoint);
