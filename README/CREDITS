@@ -183,6 +183,10 @@ D: updates in PDG codes and eventgenerator interface classes
 D: TSpline, TComplex classes
 D: Support for gcc option -weffc++
 
+N: James Carroll
+E: eloquism@gmail.com
+D: Original maintainer of the ROOT Snap
+
 N: Gian Paolo Ciceri
 E: gp.ciceri@acm.org
 D: PostgreSQL interface
@@ -418,6 +422,10 @@ D: Reimplement in C++ the original chi2test of Nikolai Gagunashvili
 N: Stephan Hageboeck
 E: stephan.hageboeck@cern.ch
 D: Roofit support and developments
+
+N: Jonas Hahnfeld
+E: jonas.hahnfeld@cern.ch
+D: Portable implementation of RANLUX++
 
 N: Andy Hanushevsky
 E: abh@slac.stanford.edu

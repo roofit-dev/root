@@ -1,9 +1,6 @@
-/// \file RWebWindowWSHandler.hxx
-/// \ingroup WebGui ROOT7
-/// \author Sergey Linev <s.linev@gsi.de>
-/// \date 2018-08-20
-/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
-/// is welcome!
+// Author: Sergey Linev <s.linev@gsi.de>
+// Date: 2018-08-20
+// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 /*************************************************************************
  * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
@@ -18,6 +15,7 @@
 
 #include "THttpWSHandler.h"
 #include "TEnv.h"
+#include "TUrl.h"
 
 #include <ROOT/RWebWindow.hxx>
 
@@ -40,6 +38,19 @@ protected:
 
    void VerifyDefaultPageContent(std::shared_ptr<THttpCallArg> &arg) override
    {
+      auto token = fWindow.GetConnToken();
+      if (!token.empty()) {
+         TUrl url;
+         url.SetOptions(arg->GetQuery());
+         // refuse connection which does not provide proper token
+         if (!url.HasOption("token") || (token != url.GetValueFromOptions("token"))) {
+            // refuce loading of default web page without token
+            arg->SetContent("refused");
+            arg->Set404();
+            return;
+         }
+      }
+
       auto version = fWindow.GetClientVersion();
       if (!version.empty()) {
          std::string search = "jsrootsys/scripts/JSRoot.core."s;
@@ -50,6 +61,15 @@ protected:
       }
 
       std::string more_args;
+
+      std::string wskind = arg->GetWSKind();
+      if ((wskind == "websocket") && (GetBoolEnv("WebGui.WSLongpoll") == 1))
+         wskind = "longpoll";
+      if (!wskind.empty() && (wskind != "websocket"))
+         more_args.append("socket_kind: \""s + wskind + "\","s);
+      std::string wsplatform = arg->GetWSPlatform();
+      if (!wsplatform.empty() && (wsplatform != "http"))
+         more_args.append("platform: \""s + wsplatform + "\","s);
       const char *ui5source = gEnv->GetValue("WebGui.openui5src","");
       if (ui5source && *ui5source)
          more_args.append("openui5src: \""s + ui5source + "\","s);
@@ -103,6 +123,8 @@ public:
 
    /// React on completion of multi-threaded send operation
    void CompleteWSSend(UInt_t wsid) override { if (!IsDisabled()) fWindow.CompleteWSSend(wsid); }
+
+   static int GetBoolEnv(const std::string &name, int dfl = -1);
 };
 
 } // namespace Experimental

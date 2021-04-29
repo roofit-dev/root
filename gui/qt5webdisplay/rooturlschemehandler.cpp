@@ -1,9 +1,7 @@
-/// \file rooturlschemehandler.cpp
-/// \ingroup WebGui
-/// \author Sergey Linev <S.Linev@gsi.de>
-/// \date 2017-06-29
-/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
-/// is welcome!
+// Author: Sergey Linev <S.Linev@gsi.de>
+// Date: 2017-06-29
+// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
+
 
 /*************************************************************************
  * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
@@ -29,14 +27,15 @@
 #include "THttpCallArg.h"
 #include "TBase64.h"
 
+/** \class UrlRequestJobHolder
+\ingroup qt5webdisplay
 
-/////////////////////////////////////////////////////////////////////////////////////
-/// Class UrlRequestJobHolder
-/// Required to monitor state of QWebEngineUrlRequestJob
-/// Qt can delete object at any time, therefore one connects destroy signal
-/// from the request to clear pointer
-////////////////////////////////////////////////////////////////////////////////////
+Class UrlRequestJobHolder
+Required to monitor state of QWebEngineUrlRequestJob
+Qt can delete object at any time, therefore one connects destroy signal
+from the request to clear pointer
 
+*/
 
 /////////////////////////////////////////////////////////////////
 /// Constructor
@@ -78,18 +77,16 @@ class TWebGuiCallArg : public THttpCallArg {
 protected:
    UrlRequestJobHolder fRequest;
 
-   void CheckWSPageContent(THttpWSHandler *) override
-   {
-      std::string search = "JSROOT.connectWebWindow({";
-      std::string replace = search + "platform:\"qt5\",socket_kind:\"rawlongpoll\",";
-
-      ReplaceAllinContent(search, replace, true);
-   }
-
 public:
    explicit TWebGuiCallArg(QWebEngineUrlRequestJob *req = nullptr) : THttpCallArg(), fRequest(req) {}
 
    virtual ~TWebGuiCallArg() {}
+
+   /** provide WS kind  */
+   const char *GetWSKind() const override { return "rawlongpoll"; }
+
+   /** provide WS platform */
+   const char *GetWSPlatform() const override { return "qt5"; }
 
    void SendFile(const char *fname)
    {
