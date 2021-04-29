@@ -269,6 +269,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooSpan.h
     BatchData.h
     RooVDTHeaders.h
+    RooWrapperPdf.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -502,7 +503,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/MultiProcess/util.cxx
     src/RooHelpers.cxx
     src/BatchData.cxx
-  DICTIONARY_OPTIONS
+    src/RooWrapperPdf.cxx
+    DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
     -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
   DEPENDENCIES
