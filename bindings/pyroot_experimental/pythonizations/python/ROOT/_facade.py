@@ -56,13 +56,12 @@ class ROOTFacade(types.ModuleType):
         self.gROOT = _gROOTWrapper(self)
 
         # Expose some functionality from CPyCppyy extension module
-        self._cppyy_exports = [ 'nullptr', 'bind_object', 'as_cobject',
+        self._cppyy_exports = [ 'nullptr', 'bind_object', 'as_cobject', 'addressof',
                                 'SetMemoryPolicy', 'kMemoryHeuristics', 'kMemoryStrict',
                                 'SetOwnership' ]
         for name in self._cppyy_exports:
             setattr(self, name, getattr(cppyy_backend, name))
         # For backwards compatibility
-        self.AddressOf = cppyy_backend.addressof
         self.MakeNullPointer = partial(self.bind_object, 0)
         self.BindObject = self.bind_object
         self.AsCObject = self.as_cobject
@@ -81,6 +80,14 @@ class ROOTFacade(types.ModuleType):
 
         # Setup import hook
         self._set_import_hook()
+
+    def AddressOf(self, *args):
+        # Return a bytearray that can fit a long long, which is what addressof
+        # returns (wrapped in a Python integer). The bytes of the bytearray
+        # correspond to the address of the object in args
+        import struct
+        ad = self.addressof(*args)
+        return bytearray(struct.pack('q', ad))
 
     def _set_import_hook(self):
         # This hook allows to write e.g:
@@ -179,3 +186,43 @@ class ROOTFacade(types.ModuleType):
     @property
     def __version__(self):
         return self.gROOT.GetVersion()
+
+    # Overload VecOps namespace
+    # The property gets the C++ namespace, adds the pythonizations and
+    # eventually deletes itself so that following calls go directly
+    # to the C++ namespace. This mechanic ensures that we pythonize the
+    # namespace lazily.
+    @property
+    def VecOps(self):
+        ns = self._fallback_getattr('VecOps')
+        try:
+            from libROOTPythonizations import AsRVec
+            ns.AsRVec = AsRVec
+        except:
+            raise Exception('Failed to pythonize the namespace VecOps')
+        del type(self).VecOps
+        return ns
+
+    # Overload RDF namespace
+    @property
+    def RDF(self):
+        ns = self._fallback_getattr('RDF')
+        try:
+            from libROOTPythonizations import MakeNumpyDataFrame
+            ns.MakeNumpyDataFrame = MakeNumpyDataFrame
+        except:
+            raise Exception('Failed to pythonize the namespace RDF')
+        del type(self).RDF
+        return ns
+
+    # Overload TMVA namespace
+    @property
+    def TMVA(self):
+        ns = self._fallback_getattr('TMVA')
+        try:
+            from libROOTPythonizations import AsRTensor
+            ns.Experimental.AsRTensor = AsRTensor
+        except:
+            raise Exception('Failed to pythonize the namespace TMVA')
+        del type(self).TMVA
+        return ns

@@ -570,11 +570,11 @@ void MethodDL::CreateDeepNet(DNN::TDeepNet<Architecture_t, Layer_t> &deepNet,
       } else if (strLayerType == "BNORM") {
          ParseBatchNormLayer(deepNet, nets, layerString->GetString(), subDelimiter);
       } else if (strLayerType == "RNN") {
-         ParseRnnLayer(deepNet, nets, layerString->GetString(), subDelimiter);
-      // } else if (strLayerType == "LSTM") {
-      //    Log() << kError << "LSTM Layer is not yet fully implemented" << Endl;
-      //    //ParseLstmLayer(deepNet, nets, layerString->GetString(), subDelimiter);
-      //    break;
+         ParseRecurrentLayer(kLayerRNN, deepNet, nets, layerString->GetString(), subDelimiter);
+      } else if (strLayerType == "LSTM") {
+         ParseRecurrentLayer(kLayerLSTM, deepNet, nets, layerString->GetString(), subDelimiter);
+      } else if (strLayerType == "GRU") {
+         ParseRecurrentLayer(kLayerGRU, deepNet, nets, layerString->GetString(), subDelimiter);
       } else {
          // no type of layer specified - assume is dense layer as in old DNN interface
          ParseDenseLayer(deepNet, nets, layerString->GetString(), subDelimiter);
@@ -617,6 +617,8 @@ void MethodDL::ParseDenseLayer(DNN::TDeepNet<Architecture_t, Layer_t> &deepNet,
          activationFunction = DNN::EActivationFunction::kRelu;
       } else if (strActFnc == "TANH") {
          activationFunction = DNN::EActivationFunction::kTanh;
+      } else if (strActFnc == "FTANH") {
+         activationFunction = DNN::EActivationFunction::kFastTanh;
       } else if (strActFnc == "SYMMRELU") {
          activationFunction = DNN::EActivationFunction::kSymmRelu;
       } else if (strActFnc == "SOFTSIGN") {
@@ -639,7 +641,6 @@ void MethodDL::ParseDenseLayer(DNN::TDeepNet<Architecture_t, Layer_t> &deepNet,
          TFormula fml("tmp", strNumNodes);
          width = fml.Eval(inputSize);
       }
-
    }
    // avoid zero width. assume is 1
    if (width == 0) width = 1;
@@ -927,7 +928,7 @@ void MethodDL::ParseBatchNormLayer(DNN::TDeepNet<Architecture_t, Layer_t> &deepN
 ////////////////////////////////////////////////////////////////////////////////
 /// Pases the layer string and creates the appropriate rnn layer
 template <typename Architecture_t, typename Layer_t>
-void MethodDL::ParseRnnLayer(DNN::TDeepNet<Architecture_t, Layer_t> & deepNet,
+void MethodDL::ParseRecurrentLayer(ERecurrentLayerType rnnType, DNN::TDeepNet<Architecture_t, Layer_t> & deepNet,
                              std::vector<DNN::TDeepNet<Architecture_t, Layer_t>> & /*nets */, TString layerString,
                              TString delim)
 {
@@ -936,6 +937,8 @@ void MethodDL::ParseRnnLayer(DNN::TDeepNet<Architecture_t, Layer_t> & deepNet,
    int inputSize = 0;
    int timeSteps = 0;
    bool rememberState = false;
+   bool returnSequence = false;
+   bool resetGateAfter = false;
 
    // Split layer details
    TObjArray *subStrings = layerString.Tokenize(delim);
@@ -949,59 +952,65 @@ void MethodDL::ParseRnnLayer(DNN::TDeepNet<Architecture_t, Layer_t> & deepNet,
          {
             TString strstateSize(token->GetString());
             stateSize = strstateSize.Atoi();
-         } break;
+            break;
+         }
          case 2:  // input size
          {
             TString strinputSize(token->GetString());
             inputSize = strinputSize.Atoi();
-         } break;
+            break;
+         }
          case 3:  // time steps
          {
             TString strtimeSteps(token->GetString());
             timeSteps = strtimeSteps.Atoi();
+            break;
          }
-         case 4: // remember state (1 or 0)
+         case 4: // returnSequence (option stateful in Keras)
          {
             TString strrememberState(token->GetString());
             rememberState = (bool) strrememberState.Atoi();
-         } break;
+            break;
+         }
+         case 5: // return full output sequence (1 or 0)
+         {
+            TString str(token->GetString());
+            returnSequence = (bool)str.Atoi();
+            break;
+         }
+         case 6: // resetGate after option (only for GRU)
+         {
+            TString str(token->GetString());
+            resetGateAfter = (bool)str.Atoi();
+         }
       }
       ++idxToken;
    }
 
    // Add the recurrent layer, initialize the weights and biases and copy
-   TBasicRNNLayer<Architecture_t> *basicRNNLayer = deepNet.AddBasicRNNLayer(stateSize, inputSize,
-                                                                        timeSteps, rememberState);
-   basicRNNLayer->Initialize();
-
-   // Add same layer to fNet
-   if (fBuildNet) fNet->AddBasicRNNLayer(stateSize, inputSize, timeSteps, rememberState);
-
-   //TBasicRNNLayer<Architecture_t> *copyRNNLayer = new TBasicRNNLayer<Architecture_t>(*basicRNNLayer);
-
-   //// add the copy to all slave nets
-   //for (size_t i = 0; i < nets.size(); i++) {
-   //   nets[i].AddBasicRNNLayer(copyRNNLayer);
-   //}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Pases the layer string and creates the appropriate lstm layer
-template <typename Architecture_t, typename Layer_t>
-void MethodDL::ParseLstmLayer(DNN::TDeepNet<Architecture_t, Layer_t> & /*deepNet*/,
-                              std::vector<DNN::TDeepNet<Architecture_t, Layer_t>> & /*nets*/, TString layerString,
-                              TString delim)
-{
-   // Split layer details
-   TObjArray *subStrings = layerString.Tokenize(delim);
-   TIter nextToken(subStrings);
-   TObjString *token = (TObjString *)nextToken();
-   int idxToken = 0;
-
-   for (; token != nullptr; token = (TObjString *)nextToken()) {
-      switch (idxToken) {
-      }
-      ++idxToken;
+   if (rnnType == kLayerRNN) {
+      auto  * recurrentLayer = deepNet.AddBasicRNNLayer(stateSize, inputSize, timeSteps, rememberState, returnSequence);
+      recurrentLayer->Initialize();
+      // Add same layer to fNet
+      if (fBuildNet) fNet->AddBasicRNNLayer(stateSize, inputSize, timeSteps, rememberState, returnSequence);
+   }
+   else if (rnnType == kLayerLSTM ) {
+      auto *recurrentLayer = deepNet.AddBasicLSTMLayer(stateSize, inputSize, timeSteps, rememberState, returnSequence);
+      recurrentLayer->Initialize();
+      // Add same layer to fNet
+      if (fBuildNet)
+         fNet->AddBasicLSTMLayer(stateSize, inputSize, timeSteps, rememberState, returnSequence);
+   }
+   else if (rnnType == kLayerGRU) {
+      if (Architecture_t::IsCudnn()) resetGateAfter = true; // needed for Cudnn
+      auto *recurrentLayer = deepNet.AddBasicGRULayer(stateSize, inputSize, timeSteps, rememberState, returnSequence, resetGateAfter);
+      recurrentLayer->Initialize();
+      // Add same layer to fNet
+      if (fBuildNet)
+         fNet->AddBasicGRULayer(stateSize, inputSize, timeSteps, rememberState, returnSequence, resetGateAfter);
+   }
+   else {
+      Log() << kFATAL << "Invalid Recurrent layer type " << Endl;
    }
 }
 
@@ -2243,6 +2252,7 @@ void MethodDL::ReadWeightsFromXML(void * rootXML)
 
          fNet->AddMaxPoolLayer(filterHeight, filterWidth, strideRows, strideCols);
       }
+      // Reshape Layer
       else if (layerName == "ReshapeLayer") {
 
          // read reshape layer info
@@ -2256,26 +2266,61 @@ void MethodDL::ReadWeightsFromXML(void * rootXML)
          fNet->AddReshapeLayer(depth, height, width, flattening);
 
       }
+      // RNN Layer
       else if (layerName == "RNNLayer") {
 
          // read RNN layer info
          size_t  stateSize,inputSize, timeSteps = 0;
          int rememberState= 0;
+         int returnSequence = 0;
          gTools().ReadAttr(layerXML, "StateSize", stateSize);
          gTools().ReadAttr(layerXML, "InputSize", inputSize);
          gTools().ReadAttr(layerXML, "TimeSteps", timeSteps);
          gTools().ReadAttr(layerXML, "RememberState", rememberState );
+         gTools().ReadAttr(layerXML, "ReturnSequence", returnSequence);
 
-         fNet->AddBasicRNNLayer(stateSize, inputSize, timeSteps, rememberState);
+         fNet->AddBasicRNNLayer(stateSize, inputSize, timeSteps, rememberState, returnSequence);
 
       }
-       // BatchNorm Layer
+      // LSTM Layer
+      else if (layerName == "LSTMLayer") {
+
+         // read RNN layer info
+         size_t  stateSize,inputSize, timeSteps = 0;
+         int rememberState, returnSequence = 0;
+         gTools().ReadAttr(layerXML, "StateSize", stateSize);
+         gTools().ReadAttr(layerXML, "InputSize", inputSize);
+         gTools().ReadAttr(layerXML, "TimeSteps", timeSteps);
+         gTools().ReadAttr(layerXML, "RememberState", rememberState );
+         gTools().ReadAttr(layerXML, "ReturnSequence", returnSequence);
+
+         fNet->AddBasicLSTMLayer(stateSize, inputSize, timeSteps, rememberState, returnSequence);
+
+      }
+      // GRU Layer
+      else if (layerName == "GRULayer") {
+
+         // read RNN layer info
+         size_t  stateSize,inputSize, timeSteps = 0;
+         int rememberState, returnSequence, resetGateAfter = 0;
+         gTools().ReadAttr(layerXML, "StateSize", stateSize);
+         gTools().ReadAttr(layerXML, "InputSize", inputSize);
+         gTools().ReadAttr(layerXML, "TimeSteps", timeSteps);
+         gTools().ReadAttr(layerXML, "RememberState", rememberState );
+         gTools().ReadAttr(layerXML, "ReturnSequence", returnSequence);
+         gTools().ReadAttr(layerXML, "ResetGateAfter", resetGateAfter);
+
+         if (!resetGateAfter && ArchitectureImpl_t::IsCudnn())
+            Warning("ReadWeightsFromXML",
+                    "Cannot use a reset gate after to false with CudNN - use implementation with resetgate=true");
+
+         fNet->AddBasicGRULayer(stateSize, inputSize, timeSteps, rememberState, returnSequence, resetGateAfter);
+      }
+      // BatchNorm Layer
       else if (layerName == "BatchNormLayer") {
          // use some dammy value which will be overwrittem in BatchNormLayer::ReadWeightsFromXML
          fNet->AddBatchNormLayer(0., 0.0);
       }
-
-
       // read eventually weights and biases
       fNet->GetLayers().back()->ReadWeightsFromXML(layerXML);
 
