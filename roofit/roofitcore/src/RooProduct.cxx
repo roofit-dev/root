@@ -19,9 +19,7 @@
 \class RooProduct
 \ingroup Roofitcore
 
-
-RooProduct a RooAbsReal implementation that represent the product
-of a given set of other RooAbsReal objects
+A RooProduct represents the product of a given set of RooAbsReal objects.
 
 **/
 
@@ -365,16 +363,16 @@ Double_t RooProduct::evaluate() const
 {
   Double_t prod(1) ;
 
-  RooFIter compRIter = _compRSet.fwdIterator() ;
-  RooAbsReal* rcomp ;
   const RooArgSet* nset = _compRSet.nset() ;
-  while((rcomp=(RooAbsReal*)compRIter.next())) {
+  for (const auto item : _compRSet) {
+    auto rcomp = static_cast<const RooAbsReal*>(item);
+
     prod *= rcomp->getVal(nset) ;
   }
   
-  RooFIter compCIter = _compCSet.fwdIterator() ;
-  RooAbsCategory* ccomp ;
-  while((ccomp=(RooAbsCategory*)compCIter.next())) {
+  for (const auto item : _compCSet) {
+    auto ccomp = static_cast<const RooAbsCategory*>(item);
+
     prod *= ccomp->getIndex() ;
   }
   
@@ -388,9 +386,9 @@ Double_t RooProduct::evaluate() const
 
 std::list<Double_t>* RooProduct::binBoundaries(RooAbsRealLValue& obs, Double_t xlo, Double_t xhi) const
 {
-  RooFIter iter = _compRSet.fwdIterator() ;
-  RooAbsReal* func ;
-  while((func=(RooAbsReal*)iter.next())) {
+  for (const auto item : _compRSet) {
+    auto func = static_cast<const RooAbsReal*>(item);
+
     list<Double_t>* binb = func->binBoundaries(obs,xlo,xhi) ;      
     if (binb) {
       return binb ;
@@ -406,9 +404,9 @@ Bool_t RooProduct::isBinnedDistribution(const RooArgSet& obs) const
 {
   // If all components that depend on obs are binned that so is the product
   
-  RooFIter iter = _compRSet.fwdIterator() ;
-  RooAbsReal* func ;
-  while((func=(RooAbsReal*)iter.next())) {
+  for (const auto item : _compRSet) {
+    auto func = static_cast<const RooAbsReal*>(item);
+
     if (func->dependsOn(obs) && !func->isBinnedDistribution(obs)) {
       return kFALSE ;
     }
@@ -424,9 +422,9 @@ Bool_t RooProduct::isBinnedDistribution(const RooArgSet& obs) const
 
 std::list<Double_t>* RooProduct::plotSamplingHint(RooAbsRealLValue& obs, Double_t xlo, Double_t xhi) const
 {
-  RooFIter iter = _compRSet.fwdIterator() ;
-  RooAbsReal* func ;
-  while((func=(RooAbsReal*)iter.next())) {
+  for (const auto item : _compRSet) {
+    auto func = static_cast<const RooAbsReal*>(item);
+
     list<Double_t>* hint = func->plotSamplingHint(obs,xlo,xhi) ;      
     if (hint) {
       return hint ;
@@ -464,12 +462,10 @@ RooArgList RooProduct::CacheElem::containedArgs(Action)
 void RooProduct::setCacheAndTrackHints(RooArgSet& trackNodes) 
 {
   RooArgSet comp(components()) ;
-  RooFIter piter = comp.fwdIterator() ;
-  RooAbsArg* parg ;
-  while ((parg=piter.next())) {
+  for (const auto parg : comp) {
     if (parg->isDerived()) {
       if (parg->canNodeBeCached()==Always) {
-	trackNodes.add(*parg) ;
+        trackNodes.add(*parg) ;
 	//cout << "tracking node RooProduct component " << parg->IsA()->GetName() << "::" << parg->GetName() << endl ;
       }
     }
@@ -488,16 +484,14 @@ void RooProduct::printMetaArgs(ostream& os) const
 {
   Bool_t first(kTRUE) ;
 
-  RooFIter compRIter = _compRSet.fwdIterator();
-  RooAbsReal* rcomp ;
-  while((rcomp=(RooAbsReal*) compRIter.next())) {
+  for (const auto rcomp : _compRSet) {
     if (!first) {  os << " * " ; } else {  first = kFALSE ; }
     os << rcomp->GetName() ;
   }
   
-  RooFIter compCIter = _compCSet.fwdIterator() ;
-  RooAbsCategory* ccomp ;
-  while((ccomp=(RooAbsCategory*) compCIter.next())) {
+  for (const auto item : _compCSet) {
+    auto ccomp = static_cast<const RooAbsCategory*>(item);
+
     if (!first) {  os << " * " ; } else {  first = kFALSE ; }
     os << ccomp->GetName() ;
   }

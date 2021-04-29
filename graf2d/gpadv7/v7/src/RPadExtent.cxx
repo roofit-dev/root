@@ -15,7 +15,8 @@
 
 #include "ROOT/RPadExtent.hxx"
 
-#include <ROOT/TLogger.hxx>
+#include <ROOT/RLogger.hxx>
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Initialize a RPadExtent from a style string.
@@ -25,10 +26,22 @@
 /// user or normal coordinates. Spaces between any part is allowed.
 /// Example: `100 px + 0.1 user, 0.5 normal` is a `RPadExtent{100_px + 0.1_user, 0.5_normal}`.
 
-void ROOT::Experimental::InitializeAttrFromString(const std::string &name, const std::string &attrStrVal,
-                                                  ROOT::Experimental::RPadExtent &val)
+ROOT::Experimental::RPadExtent ROOT::Experimental::FromAttributeString(const std::string &val, const std::string &name, RPadExtent*)
 {
-   val.SetFromAttrString(name, attrStrVal);
+   RPadExtent ret;
+   ret.SetFromAttrString(val, name);
+   return ret;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Convert a RPadExtent to a style string, matching what ExtentFromString can parse.
+
+std::string ROOT::Experimental::ToAttributeString(const RPadExtent &extent)
+{
+   std::string ret = ToAttributeString(extent.fHoriz);
+   ret += ", ";
+   ret += ToAttributeString(extent.fVert);
+   return ret;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,24 +52,24 @@ void ROOT::Experimental::InitializeAttrFromString(const std::string &name, const
 /// user or normal coordinates. Spaces between any part is allowed.
 /// Example: `100 px + 0.1 user, 0.5 normal` is a `RPadExtent{100_px + 0.1_user, 0.5_normal}`.
 
-void ROOT::Experimental::Internal::RPadHorizVert::SetFromAttrString(const std::string &name,
-                                                                    const std::string &attrStrVal)
+void ROOT::Experimental::Internal::RPadHorizVert::SetFromAttrString(const std::string &val, const std::string &name)
 {
-   if (attrStrVal.empty()) {
+   if (val.empty()) {
       // Leave it at its default value.
       return;
    }
-   auto posComma = attrStrVal.find(',');
+
+   auto posComma = val.find(',');
    if (posComma == std::string::npos) {
       R__ERROR_HERE("Gpad") << "Parsing attribute for " << name << ": "
-         << "expected two coordinate dimensions but found only one in " << attrStrVal;
+         << "expected two coordinate dimensions but found only one in " << val;
       return;
    }
-   if (attrStrVal.find(',', posComma + 1) != std::string::npos) {
+   if (val.find(',', posComma + 1) != std::string::npos) {
       R__ERROR_HERE("Gpad") << "Parsing attribute for " << name << ": "
-         << "found more than the expected two coordinate dimensions in " << attrStrVal;
+         << "found more than the expected two coordinate dimensions in " << val;
       return;
    }
-   fHoriz.SetFromAttrString(name, attrStrVal.substr(0, posComma));
-   fVert.SetFromAttrString(name, attrStrVal.substr(posComma + 1));
+   fHoriz.SetFromAttrString(val.substr(0, posComma), name);
+   fVert.SetFromAttrString(val.substr(posComma + 1), name);
 }

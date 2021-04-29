@@ -180,12 +180,45 @@ class RPadDrawable;
   */
 
 class RPad: public RPadBase {
+public:
+   /** \class DrawingOpts
+      Drawing options for a RPad
+   */
+
+   class DrawingOpts: public RDrawingOptsBase, public RDrawingAttrBase {
+   public:
+      DrawingOpts() = default;
+
+      DrawingOpts(const RPadPos &pos, const RPadExtent &size):
+         DrawingOpts()
+      {
+         SetPos(pos);
+         SetSize(size);
+      }
+
+      RAttrBox Border() { return {FromOption, "border", *this}; }
+
+      /// The position (offset) of the pad.
+      DrawingOpts &SetPos(const RPadPos &pos) { Set("pos", pos); return *this; }
+      RPadPos GetPos() const { return Get<RPadPos>("pos"); }
+
+      /// The size of the pad.
+      DrawingOpts &SetSize(const RPadExtent &size) { Set("size", size); return *this; }
+      RPadExtent GetSize() const { return Get<RPadExtent>("size"); }
+   };
+
 private:
    /// Pad containing this pad as a sub-pad.
    RPadBase *fParent = nullptr; /// The parent pad, if this pad has one.
 
+   /// Drawing options, containing the size (in parent coordinates!)
+   DrawingOpts fOpts;
+
+   /// Position of the pad in the parent's (!) coordinate system.
+   RPadPos fPos = fOpts.GetPos();
+
    /// Size of the pad in the parent's (!) coordinate system.
-   RPadExtent fSize = {1._normal, 1._normal}; // {640_px, 400_px};
+   RPadExtent fSize = fOpts.GetSize(); // {640_px, 400_px};
 
 public:
    friend std::unique_ptr<RPadDrawable> GetDrawable(std::unique_ptr<RPad> &&pad);
@@ -194,7 +227,7 @@ public:
    RPad() = default;
 
    /// Create a child pad.
-   RPad(RPadBase &parent, const RPadExtent &size): fParent(&parent), fSize(size) {}
+   RPad(RPadBase &parent, const RPadPos &pos, const RPadExtent &size): fParent(&parent), fPos(pos), fSize(size) {}
 
    /// Destructor to have a vtable.
    virtual ~RPad();
@@ -211,8 +244,14 @@ public:
    /// Access to the top-most canvas (non-const version).
    RCanvas *GetCanvas() override { return fParent ? fParent->GetCanvas() : nullptr; }
 
+   /// Get the position of the pad in parent (!) coordinates.
+   const RPadPos &GetPos() const { return fPos; }
+
    /// Get the size of the pad in parent (!) coordinates.
    const RPadExtent &GetSize() const { return fSize; }
+
+   /// Drawing options.
+   DrawingOpts &GetDrawingOpts() { return fOpts; }
 
    /// Convert a `Pixel` position to Canvas-normalized positions.
    std::array<RPadLength::Normal, 2> PixelsToNormal(const std::array<RPadLength::Pixel, 2> &pos) const override
@@ -238,41 +277,16 @@ public:
    }
 };
 
-/** \class RPadDrawingOpts
- Drawing options for a RPad
- */
-
-class RPadDrawingOpts: public RDrawingOptsBase {
-   RDrawingAttr<RPadPos> fPos{*this, "PadOffset"}; ///< Offset with respect to parent RPad.
-
-public:
-   RPadDrawingOpts() = default;
-
-   /// Construct the drawing options.
-   RPadDrawingOpts(const RPadPos& pos): fPos(*this, "PadOffset", pos) {}
-
-   /// Set the position of this pad with respect to the parent pad.
-   RPadDrawingOpts &At(const RPadPos &pos)
-   {
-      fPos = pos;
-      return *this;
-   }
-
-   RDrawingAttr<RPadPos> &GetOffset() { return fPos; }
-   const RDrawingAttr<RPadPos> &GetOffset() const { return fPos; }
-};
-
 /** \class RPadDrawable
    Draw a RPad, by drawing its contained graphical elements at the pad offset in the parent pad.'
    */
 class RPadDrawable: public RDrawableBase<RPadDrawable> {
 private:
    const std::shared_ptr<RPad> fPad; ///< The pad to be painted
-   RPadDrawingOpts fOpts;            ///< The drawing options.
 
 public:
    /// Move a sub-pad into this (i.e. parent's) list of drawables.
-   RPadDrawable(std::shared_ptr<RPad> pPad, const RPadDrawingOpts& opts = {});
+   RPadDrawable(const std::shared_ptr<RPad> &pPad, const RPad::DrawingOpts& opts = {});
 
    /// Paint primitives from the pad.
    void Paint(Internal::RPadPainter &) final;
@@ -280,19 +294,19 @@ public:
    RPad *Get() const { return fPad.get(); }
 
    /// Drawing options.
-   RPadDrawingOpts &GetOptions() { return fOpts; }
+   RPad::DrawingOpts &GetOptions() { return fPad->GetDrawingOpts(); }
 };
 
 template <class... ARGS>
 inline std::shared_ptr<RPadDrawable> GetDrawable(std::unique_ptr<RPad> &&pad, ARGS... args)
 {
-   return std::make_shared<RPadDrawable>(std::move(pad), RPadDrawingOpts(args...));
+   return std::make_shared<RPadDrawable>(std::move(pad), RPad::DrawingOpts(args...));
 }
 
 template <class... ARGS>
 inline std::shared_ptr<RPadDrawable> GetDrawable(const std::shared_ptr<RPad> &pad, ARGS... args)
 {
-   return std::make_shared<RPadDrawable>(pad, RPadDrawingOpts(args...));
+   return std::make_shared<RPadDrawable>(pad, RPad::DrawingOpts(args...));
 }
 
 } // namespace Experimental
