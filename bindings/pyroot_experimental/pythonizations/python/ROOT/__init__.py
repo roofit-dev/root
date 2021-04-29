@@ -26,10 +26,19 @@ environ['CPPYY_API_PATH'] = 'none'
 environ['CPPYY_NO_ROOT_FILTER'] = '1'
 
 import cppyy
+
+# import libROOTPythonizations with Python version number
+import sys, importlib
+major, minor = sys.version_info[0:2]
+librootpyz_mod_name = 'libROOTPythonizations{}_{}'.format(major, minor)
+importlib.import_module(librootpyz_mod_name)
+
+# ensure 'import libROOTPythonizations' will find the versioned module
+sys.modules['libROOTPythonizations'] = sys.modules[librootpyz_mod_name]
+
 import ROOT.pythonization as pyz
 
 import functools
-import importlib
 import pkgutil
 
 def pythonization(lazy = True):
@@ -57,8 +66,10 @@ def pythonization(lazy = True):
     return pythonization_impl
 
 # Trigger the addition of the pythonizations
+exclude = [ '_rdf_utils' ]
 for _, module_name, _ in  pkgutil.walk_packages(pyz.__path__):
-    module = importlib.import_module(pyz.__name__ + '.' + module_name)
+    if module_name not in exclude:
+        module = importlib.import_module(pyz.__name__ + '.' + module_name)
 
 # Check if we are in the IPython shell
 try:
