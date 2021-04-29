@@ -62,7 +62,9 @@ protected:
 
    void CollectShared(Internal::RIOSharedVector_t &) override;
 
-   void DisplayPrimitives(RPadBaseDisplayItem &paditem) const;
+   void DisplayPrimitives(RPadBaseDisplayItem &paditem, RDisplayContext &ctxt);
+
+   void SetDrawableVersion(Version_t vers) override;
 
 public:
 
@@ -131,6 +133,8 @@ public:
    std::shared_ptr<RDrawable> FindPrimitive(const std::string &id) const;
 
    std::shared_ptr<RDrawable> FindPrimitiveByDisplayId(const std::string &display_id) const;
+
+   const RPadBase *FindPadForPrimitiveWithDisplayId(const std::string &display_id) const;
 
    /// Get all primitives contained in the pad.
    auto GetPrimitives() const
@@ -211,7 +215,6 @@ public:
    std::array<RPadLength::Normal, 2> UserToNormal(const std::array<RPadLength::User, 2> &pos) const;
 
    void AssignAutoColors();
-
 };
 
 } // namespace Experimental

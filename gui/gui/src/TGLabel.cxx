@@ -20,22 +20,24 @@
 
 **************************************************************************/
 
-//////////////////////////////////////////////////////////////////////////
-//                                                                      //
-// TGLabel                                                              //
-//                                                                      //
-// This class handles GUI labels.                                       //
-//                                                                      //
-//////////////////////////////////////////////////////////////////////////
+
+/** \class TGLabel
+    \ingroup guiwidgets
+
+This class handles GUI labels.
+
+*/
+
 
 #include "TGLabel.h"
 #include "TGString.h"
 #include "TGWidget.h"
 #include "TGResourcePool.h"
-#include "Riostream.h"
 #include "TColor.h"
 #include "TClass.h"
 #include "TVirtualX.h"
+
+#include <iostream>
 
 
 const TGFont *TGLabel::fgDefaultFont = nullptr;

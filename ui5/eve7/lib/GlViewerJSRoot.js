@@ -22,9 +22,18 @@ sap.ui.define([
          //super.init(controller);
 
          this.creator = new EveElements(controller);
-         this.creator.useIndexAsIs = (JSROOT.GetUrlOption('useindx') !== null);
+         this.creator.useIndexAsIs = JSROOT.decodeUrl().has('useindx');
 
          this.createGeoPainter();
+      },
+
+      cleanup: function() {
+         if (this.geo_painter) {
+            this.geo_painter.cleanup();
+            delete this.geo_painter;
+         }
+
+         GlViewer.prototype.cleanup.call(this);
       },
 
       //==============================================================================
@@ -49,9 +58,10 @@ sap.ui.define([
          if (this.controller.kind != "3D") options += ", ortho_camera";
 
          // TODO: should be specified somehow in XML file
+         // MT-RCORE - why have I removed this ???
          this.get_view().$().css("overflow", "hidden").css("width", "100%").css("height", "100%");
 
-         this.geo_painter = JSROOT.Painter.CreateGeoPainter(this.get_view().getDomRef(), null, options);
+         this.geo_painter = JSROOT.Painter.createGeoPainter(this.get_view().getDomRef(), null, options);
 
          this.geo_painter._geom_viewer = true; // disable several JSROOT features
 
@@ -78,16 +88,14 @@ sap.ui.define([
             this.fxaa_pass.uniforms[ 'resolution' ].value.set( 1 / w, 1 / h );
             this.fxaa_pass.renderToScreen = true;
             this._effectComposer.addPass( this.fxaa_pass );
-         }
-
-         // assign callback function - when needed
-         this.geo_painter.WhenReady(this.onGeoPainterReady.bind(this));
+         };
 
          this.geo_painter.setMouseTmout(this.controller.htimeout);
 
-         this.geo_painter.AssignObject(null);
+         this.geo_painter.assignObject(null);
 
-         this.geo_painter.prepareObjectDraw(null); // and now start everything
+         this.geo_painter.prepareObjectDraw(null) // and now start everything
+             .then(() => this.onGeoPainterReady(this.geo_painter));
       },
 
       onGeoPainterReady: function(painter)
@@ -119,11 +127,11 @@ sap.ui.define([
                var c = intersect.object.get_ctrl();
                c.elementSelected(c.extractIndex(intersect));
             }
-         }
+         };
 
          /** Handler of mouse double click - either ignore or reset camera position */
          if (this.controller.dblclick_action != "Reset")
-            painter._controls.ProcessDblClick = function(evnt) { }
+            painter._controls.processDblClick = function() { }
 
          painter._controls.ProcessMouseMove = function(intersects)
          {
@@ -135,11 +143,11 @@ sap.ui.define([
                var obj = intersects[k].object, info = null;
                if (!obj) continue;
                if (obj.geo_object) info = obj.geo_name; else
-                  if (obj.stack) info = painter.GetStackFullName(obj.stack);
+                  if (obj.stack) info = painter.getStackFullName(obj.stack);
                if (info===null) continue;
 
                if (info.indexOf("<prnt>")==0)
-                  info = painter.GetItemName() + info.substr(6);
+                  info = painter.getItemName() + info.substr(6);
 
                names.push(info);
 
@@ -151,11 +159,11 @@ sap.ui.define([
                      geo_index = obj.get_ctrl().extractIndex(intersects[k]);
                      if ((geo_index !== undefined) && (typeof tooltip == "string")) tooltip += " indx:" + JSON.stringify(geo_index);
                   }
-                  if (active_mesh.stack) resolve = painter.ResolveStack(active_mesh.stack);
+                  if (active_mesh.stack) resolve = painter.resolveStack(active_mesh.stack);
                }
             }
 
-            // painter.HighlightMesh(active_mesh, undefined, geo_object, geo_index); AMT override
+            // painter.highlightMesh(active_mesh, undefined, geo_object, geo_index); AMT override
             if (active_mesh && active_mesh.get_ctrl())
             {
                active_mesh.get_ctrl().elementHighlighted(geo_index);
@@ -169,7 +177,7 @@ sap.ui.define([
 
             if (painter.options.update_browser) {
                if (painter.options.highlight && tooltip) names = [ tooltip ];
-               painter.ActivateInBrowser(names);
+               painter.activateInBrowser(names);
             }
 
             if (!resolve || !resolve.obj) return tooltip;
@@ -186,11 +194,11 @@ sap.ui.define([
          // outline_pass passthrough
          this.outline_pass = this.geo_painter.outline_pass;
 
-         var sz = this.geo_painter.size_for_3d();
+         var sz = this.geo_painter.getSizeFor3d();
          this.geo_painter._effectComposer.setSize( sz.width, sz.height);
          this.geo_painter.fxaa_pass.uniforms[ 'resolution' ].value.set( 1 / sz.width, 1 / sz.height );
 
-         this.geo_painter._controls.ContextMenu = this.jsrootOrbitContext.bind(this);
+         this.geo_painter._controls.contextMenu = this.jsrootOrbitContext.bind(this);
 
          // create only when geo painter is ready
          this.controller.createScenes();
@@ -198,22 +206,24 @@ sap.ui.define([
 
          this.geo_painter.adjustCameraPosition(true);
          this.render();
+
+         this.controller.glViewerInitDone();
       },
 
-      /** Used together with the geo painter for processing context menu */
+      /** @summary Used together with the geo painter for processing context menu */
       jsrootOrbitContext: function(evnt, intersects) {
 
          var browseHandler = this.controller.invokeBrowseOf.bind(this.controller);
 
-         JSROOT.Painter.createMenu(this.geo_painter, function(menu) {
-            var numitems = 0, cnt = 0;
+         JSROOT.Painter.createMenu(evnt, this.geo_painter).then(menu => {
+            var numitems = 0;
             if (intersects)
                for (var n=0;n<intersects.length;++n)
                   if (intersects[n].object.geo_name) numitems++;
 
             if (numitems === 0) {
                // default JSROOT context menu
-               menu.painter.FillContextMenu(menu);
+               menu.painter.fillContextMenu(menu);
             } else {
                var many = numitems > 1;
 
@@ -233,7 +243,7 @@ sap.ui.define([
                      menu.addchk(wireframe, "Wireframe", n, function(indx) {
                         var m = intersects[indx].object.material;
                         m.wireframe = !m.wireframe;
-                        this.Render3D();
+                        this.render3D();
                      });
 
 
@@ -245,22 +255,28 @@ sap.ui.define([
             }
 
             // show menu
-            menu.show(evnt);
+            menu.show();
          });
+      },
+
+      //==============================================================================
+      remoteToolTip: function ()
+      {
+         // to be implemented
       },
 
       //==============================================================================
 
       render: function()
       {
-         this.geo_painter.Render3D();
+         this.geo_painter.render3D();
       },
 
       //==============================================================================
 
       onResizeTimeout: function()
       {
-         this.geo_painter.CheckResize();
+         this.geo_painter.checkResize();
          if (this.geo_painter.fxaa_pass)
             this.geo_painter.fxaa_pass.uniforms[ 'resolution' ].value.set( 1 / this.geo_painter._scene_width, 1 / this.geo_painter._scene_height );
       },
