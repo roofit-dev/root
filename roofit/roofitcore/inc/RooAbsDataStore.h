@@ -77,7 +77,7 @@ public:
   virtual void attachBuffers(const RooArgSet& extObs) = 0 ; 
   virtual void resetBuffers() = 0 ;
 
-  virtual void setExternalWeightArray(Double_t* /*arrayWgt*/, Double_t* /*arrayWgtErrLo*/, Double_t* /*arrayWgtErrHi*/, Double_t* /*arraySumW2*/) {} ;
+  virtual void setExternalWeightArray(const Double_t* /*arrayWgt*/, const Double_t* /*arrayWgtErrLo*/, const Double_t* /*arrayWgtErrHi*/, const Double_t* /*arraySumW2*/) {} ;
 
   // Printing interface (human readable)
   inline virtual void Print(Option_t *options= 0) const {
@@ -120,10 +120,8 @@ public:
   
  protected:
 
-  RooArgSet _vars ;
-  RooArgSet _cachedVars ;
-  TIterator *_iterator;    //! Iterator over dimension variables
-  TIterator *_cacheIter ;  //! Iterator over cached variables
+  RooArgSet _vars;
+  RooArgSet _cachedVars;
 
   Bool_t _doDirtyProp ;    // Switch do (de)activate dirty state propagation when loading a data point
 

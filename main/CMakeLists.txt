@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT main package
 # @author Pere Mato, CERN
@@ -5,7 +11,7 @@
 
 if(NOT WIN32)
   ROOT_EXECUTABLE(rootn.exe rmain.cxx LIBRARIES New Core MathCore Rint)
-  if(ROOT_PLATFORM MATCHES linux)
+  if(CMAKE_SYSTEM_NAME STREQUAL Linux)
     SET_TARGET_PROPERTIES(rootn.exe PROPERTIES LINK_FLAGS "-Wl,--no-as-needed")
   endif()
   ROOT_EXECUTABLE(roots.exe roots.cxx LIBRARIES Core MathCore)
@@ -27,7 +33,10 @@ endif()
 ROOT_EXECUTABLE(rootnb.exe nbmain.cxx LIBRARIES Core)
 
 #---CreateHaddCommandLineOptions------------------------------------------------------------------
-generateHeaders(${CMAKE_SOURCE_DIR}/main/src/hadd-argparse.py ${CMAKE_BINARY_DIR}/include/haddCommandLineOptionsHelp.h hadd)
+generateHeader(hadd
+  ${CMAKE_SOURCE_DIR}/main/src/hadd-argparse.py
+  ${CMAKE_BINARY_DIR}/include/haddCommandLineOptionsHelp.h
+)
 
 if(fortran AND CMAKE_Fortran_COMPILER)
   ROOT_EXECUTABLE(g2root g2root.f LIBRARIES minicern)

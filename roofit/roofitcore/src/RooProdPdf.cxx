@@ -20,24 +20,25 @@
 \ingroup Roofitcore
 
 RooProdPdf is an efficient implementation of a product of PDFs of the form
+\f[ \prod_{i=1}^{N} \mathrm{PDF}_i (x, \ldots) \f]
 
-\f[PDF_1 * PDF_2 * ... * PDF_N  \f]
+PDFs may share observables. If that is the case any irreducible subset
+of PDFs that share observables will be normalised with explicit numeric
+integration as any built-in normalisation will no longer be valid.
 
-PDFs may share observables. If that is the case any irreducable subset
-of PDFS that share observables will be normalized with explicit numeric
-integration as any built-in normalization will no longer be valid.
-Alternatively, products using conditional PDFs can be defined, e.g.
+Alternatively, products using conditional PDFs can be defined, *e.g.*
 
-\f[F(x|y) * G(y) \f]
+\f[ F(x|y) \cdot G(y), \f]
 
-meaning a pdf F(x) _given_ y and a PDF G(y). In this contruction F is only
-normalized w.r.t x and G is normalized w.r.t y. The product in this construction
-is properly normalized.
+meaning a PDF \f$ F(x) \f$ **given** \f$ y \f$ and a PDF \f$ G(y) \f$.
+In this construction, \f$ F \f$ is only
+normalised w.r.t \f$ x\f$, and \f$ G \f$ is normalised w.r.t \f$ y \f$. The product in this construction
+is properly normalised.
+
 If exactly one of the component PDFs supports extended likelihood fits, the
 product will also be usable in extended mode, returning the number of expected
 events from the extendable component PDF. The extendable component does not
 have to appear in any specific place in the list.
-
 **/
 
 #include "RooProdPdf.h"
@@ -170,7 +171,7 @@ RooProdPdf::RooProdPdf(const char *name, const char *title,
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Constructor from a list of PDFs
+/// Constructor from a list of PDFs.
 ///
 /// The optional cutOff parameter can be used as a speed optimization if
 /// one or more of the PDF have sizable regions with very small values,
@@ -462,9 +463,7 @@ Double_t RooProdPdf::evaluate() const
 
   // If cache doesn't have our configuration, recalculate here
   if (!cache) {
-    RooArgList *plist(0) ;
-    RooLinkedList *nlist(0) ;
-    getPartIntList(_curNormSet,0,plist,nlist,code) ;
+    code = getPartIntList(_curNormSet, nullptr) ;
     cache = (CacheElem*) _cacheMgr.getObj(_curNormSet,0,&code) ;
   }
 
@@ -519,16 +518,14 @@ Double_t RooProdPdf::calculate(const RooProdPdf::CacheElem& cache, Bool_t /*verb
 
     return cache._rearrangedNum->getVal() / cache._rearrangedDen->getVal();
   } else {
-    RooAbsReal* partInt;
-    RooArgSet* normSet;
-    RooFIter plIter = cache._partList.fwdIterator();
-    RooFIter nlIter = cache._normList.fwdIterator();
+
     Double_t value = 1.0;
-    for (partInt = (RooAbsReal*) plIter.next(),
-	normSet = (RooArgSet*) nlIter.next(); partInt && normSet;
-      partInt = (RooAbsReal*) plIter.next(),
-      normSet = (RooArgSet*) nlIter.next()) {
-      const Double_t piVal = partInt->getVal(normSet->getSize() > 0 ? normSet : 0);
+    assert(cache._normList.size() == cache._partList.size());
+    for (std::size_t i = 0; i < cache._partList.size(); ++i) {
+      const auto& partInt = static_cast<const RooAbsReal&>(cache._partList[i]);
+      const auto normSet = cache._normList[i].get();
+
+      const Double_t piVal = partInt.getVal(normSet->getSize() > 0 ? normSet : nullptr);
       value *= piVal ;
       if (value <= _cutOff) break;
     }
@@ -727,9 +724,7 @@ void RooProdPdf::factorizeProduct(const RooArgSet& normSet, const RooArgSet& int
 /// Also return list of normalization sets to be used to evaluate
 /// each component in the list correctly.
 
-void RooProdPdf::getPartIntList(const RooArgSet* nset, const RooArgSet* iset,
-				pRooArgList& partList, pRooLinkedList& nsetList,
-				Int_t& code, const char* isetRangeName) const
+Int_t RooProdPdf::getPartIntList(const RooArgSet* nset, const RooArgSet* iset, const char* isetRangeName) const
 {
 //    cout << "   FOLKERT::RooProdPdf::getPartIntList(" << GetName() <<")  nset = " << (nset?*nset:RooArgSet()) << endl
 //         << "   _normRange = " << _normRange << endl
@@ -741,10 +736,7 @@ void RooProdPdf::getPartIntList(const RooArgSet* nset, const RooArgSet* iset,
 
   CacheElem* cache = (CacheElem*) _cacheMgr.getObj(nset,iset,&sterileIdx,isetRangeName);
   if (cache) {
-    code = _cacheMgr.lastIndex();
-    partList = &cache->_partList;
-    nsetList = &cache->_normList;
-    return;
+    return _cacheMgr.lastIndex();
   }
 
   // Create containers for partial integral components to be generated
@@ -939,7 +931,7 @@ void RooProdPdf::getPartIntList(const RooArgSet* nset, const RooArgSet* iset,
 	cache->_partList.add(*func[0]);
 	if (isOwned) cache->_ownedList.addOwned(*func[0]);
 
-	cache->_normList.Add(norm->snapshot(kFALSE));
+	cache->_normList.emplace_back(norm->snapshot(kFALSE));
 
 	cache->_numList.addOwned(*func[1]);
 	cache->_denList.addOwned(*func[2]);
@@ -975,7 +967,7 @@ void RooProdPdf::getPartIntList(const RooArgSet* nset, const RooArgSet* iset,
 //   	cout << GetName() << ": termXSet = " << termXSet << endl;
 //   	cout << GetName() << ": termImpSet = " << termImpSet << endl;
 
-	Bool_t isOwned;
+	Bool_t isOwned = false;
 	vector<RooAbsReal*> func = processProductTerm(nset, iset, isetRangeName, term, termNSet, termISet, isOwned, kTRUE);
 //    	cout << GetName() << ": created composite term component " << func[0]->GetName() << endl;
 	if (func[0]) {
@@ -1036,16 +1028,12 @@ void RooProdPdf::getPartIntList(const RooArgSet* nset, const RooArgSet* iset,
 
       cache->_numList.addOwned(*numtmp);
       cache->_denList.addOwned(*(RooAbsArg*)RooFit::RooConst(1).clone("1"));
-      cache->_normList.Add(compTermNorm.snapshot(kFALSE));
+      cache->_normList.emplace_back(compTermNorm.snapshot(kFALSE));
     }
   }
 
   // Store the partial integral list and return the assigned code
-  code = _cacheMgr.setObj(nset, iset, (RooAbsCacheElement*)cache, RooNameReg::ptr(isetRangeName));
-
-  // Fill references to be returned
-  partList = &cache->_partList;
-  nsetList = &cache->_normList;
+  Int_t returnCode = _cacheMgr.setObj(nset, iset, (RooAbsCacheElement*)cache, RooNameReg::ptr(isetRangeName));
 
   // WVE DEBUG PRINTING
 //   cout << "RooProdPdf::getPartIntList(" << GetName() << ") made cache " << cache << " with the following nset pointers ";
@@ -1064,7 +1052,7 @@ void RooProdPdf::getPartIntList(const RooArgSet* nset, const RooArgSet* iset,
 //   if(partListPointer) partListPointer->Print();
 //   cout << "   nsetList = ";
 //   if(nsetListPointer) nsetListPointer->Print("");
-//   cout << "   code = " << code << endl
+//   cout << "   code = " << returnCode << endl
 //        << "   isetRangeName = " << (isetRangeName?isetRangeName:"<null>") << endl;
 
 
@@ -1080,6 +1068,8 @@ void RooProdPdf::getPartIntList(const RooArgSet* nset, const RooArgSet* iset,
   imp.Delete();
   norms.Delete();
   cross.Delete();
+
+  return returnCode;
 }
 
 
@@ -1133,10 +1123,8 @@ void RooProdPdf::rearrangeProduct(RooProdPdf::CacheElem& cache) const
   RooFIter iterp = cache._partList.fwdIterator() ;
   RooFIter iter1 = cache._numList.fwdIterator() ;
   RooFIter iter2 = cache._denList.fwdIterator() ;
-  RooFIter itern = cache._normList.fwdIterator() ;
   while((part=(RooAbsReal*)iterp.next())) {
 
-    itern.next() ;
     num = (RooAbsReal*) iter1.next() ;
     den = (RooAbsReal*) iter2.next() ;
 
@@ -1368,8 +1356,8 @@ void RooProdPdf::rearrangeProduct(RooProdPdf::CacheElem& cache) const
   // WVE DEBUG
   //RooMsgService::instance().debugWorkspace()->import(RooArgSet(*numerator,*norm)) ;
 
-  cache._rearrangedNum = numerator ;
-  cache._rearrangedDen = norm ;
+  cache._rearrangedNum.reset(numerator);
+  cache._rearrangedDen.reset(norm);
   cache._isRearranged = kTRUE ;
 
 }
@@ -1764,10 +1752,7 @@ Int_t RooProdPdf::getAnalyticalIntegralWN(RooArgSet& allVars, RooArgSet& analVar
   analVars.add(allVars) ;
 
   // Retrieve (or create) the required partial integral list
-  Int_t code ;
-  RooArgList *plist(0) ;
-  RooLinkedList *nlist(0) ;
-  getPartIntList(normSet,&allVars,plist,nlist,code,rangeName) ;
+  Int_t code = getPartIntList(normSet,&allVars,rangeName);
 
   return code+1 ;
 }
@@ -1791,17 +1776,13 @@ Double_t RooProdPdf::analyticalIntegralWN(Int_t code, const RooArgSet* normSet, 
   // Partial integration scenarios
   CacheElem* cache = (CacheElem*) _cacheMgr.getObjByIndex(code-1) ;
 
-  RooArgList* partIntList(0) ;
-  RooLinkedList* normList(0) ;
-
   // If cache has been sterilized, revive this slot
   if (cache==0) {
     RooArgSet* vars = getParameters(RooArgSet()) ;
     RooArgSet* nset = _cacheMgr.nameSet1ByIndex(code-1)->select(*vars) ;
     RooArgSet* iset = _cacheMgr.nameSet2ByIndex(code-1)->select(*vars) ;
 
-    Int_t code2(-1) ;
-    getPartIntList(nset,iset,partIntList,normList,code2,rangeName) ;
+    Int_t code2 = getPartIntList(nset, iset, rangeName) ;
 
     delete vars ;
 
@@ -1812,14 +1793,7 @@ Double_t RooProdPdf::analyticalIntegralWN(Int_t code, const RooArgSet* normSet, 
     delete nset ;
     delete iset ;
 
-  } else {
-
-    partIntList = &cache->_partList ;
-    normList = &cache->_normList ;
-
   }
-
-//   Double_t val = calculate(partIntList,normList) ;
 
   Double_t val = calculate(*cache,kTRUE) ;
 //   cout << "RPP::aIWN(" << GetName() << ") ,code = " << code << ", value = " << val << endl ;
@@ -1964,19 +1938,6 @@ void RooProdPdf::generateEvent(Int_t code)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooProdPdf::CacheElem::~CacheElem()
-{
-  _normList.Delete() ; //WVE THIS IS AN INTENTIAL LEAK -- MUST FIX LATER
-  if (_rearrangedNum) delete _rearrangedNum ;
-  if (_rearrangedDen) delete _rearrangedDen ;
-//   cout << "RooProdPdf::CacheElem dtor, this = " << this << endl ;
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
 /// Return RooAbsArg components contained in the cache
 
 RooArgList RooProdPdf::CacheElem::containedArgs(Action)
@@ -2059,7 +2020,7 @@ RooArgSet* RooProdPdf::findPdfNSet(RooAbsPdf& pdf) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return all parameter constraint p.d.f.s on parameters listed in constrainedParams
+/// Return all parameter constraint p.d.f.s on parameters listed in constrainedParams.
 /// The observables set is required to distinguish unambiguously p.d.f in terms
 /// of observables and parameters, which are not constraints, and p.d.fs in terms
 /// of parameters only, which can serve as constraints p.d.f.s
@@ -2147,21 +2108,16 @@ void RooProdPdf::getParametersHook(const RooArgSet* nset, RooArgSet* params, Boo
   if (!nset || nset->getSize()==0) return ;
 
   // Get/create appropriate term list for this normalization set
-  RooArgList *plist(0) ;
-  RooLinkedList *nlist(0) ;
-  Int_t code ;
-  getPartIntList(nset,0,plist,nlist,code) ;
+  Int_t code = getPartIntList(nset, nullptr);
+  RooArgList & plist = static_cast<CacheElem*>(_cacheMgr.getObj(nset, &code))->_partList;
 
   // Strip any terms from params that do not depend on any term
-  RooFIter piter = params->fwdIterator() ;
-  RooAbsReal* term, *param ;
   RooArgSet tostrip ;
-  while((param=(RooAbsReal*)piter.next())) {
+  for (auto param : *params) {
     Bool_t anyDep(kFALSE) ;
-    RooFIter titer = plist->fwdIterator() ;
-    while((term=(RooAbsReal*)titer.next())) {
+    for (auto term : plist) {
       if (term->dependsOnValue(*param)) {
-	anyDep=kTRUE ;
+        anyDep=kTRUE ;
       }
     }
     if (!anyDep) {

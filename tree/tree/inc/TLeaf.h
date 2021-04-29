@@ -18,8 +18,25 @@
 // TLeaf                                                                //
 //                                                                      //
 // A TTree object is a list of TBranch.                                 //
-// A TBranch object is a list of TLeaf.                                 //
-// A TLeaf describes the branch data types.                             //
+// A TBranch object is a list of TLeaf.  In most cases, the TBranch     //
+// will have one TLeaf.                                                 //
+// A TLeaf describes the branch data types and holds the data.          //
+//                                                                      //
+// A few notes about the data held by the leaf.  It can contain:        //
+//   1 a single object or primitive (e.g., one float),                  //
+//   2 a fixed-number of objects (e.g., each entry has two floats).     //
+//     The number of elements per entry is saved in `fLen`.             //
+//   3 a dynamic number of primitives.  The number of objects in each   //
+//     entry is saved in the `fLeafCount` branch.                       //
+//                                                                      //
+// Note options (2) and (3) can combined - if fLeafCount says an entry  //
+// has 3 elements and fLen is 2, then there will be 6 objects in that   //
+// entry.                                                               //
+//                                                                      //
+// Additionally, `fNdata` is transient and generated on read to         //
+// determine the necessary size of a buffer to hold event data;         //
+// depending on the call-site, it may be sized larger than the number   //
+// of elements                                                          //
 //                                                                      //
 //////////////////////////////////////////////////////////////////////////
 
@@ -37,8 +54,8 @@ private:
 
 protected:
 
-   Int_t       fNdata;           ///<! Number of elements in fAddress data buffer
-   Int_t       fLen;             ///<  Number of fixed length elements
+   Int_t       fNdata;           ///<! Number of elements in fAddress data buffer.
+   Int_t       fLen;             ///<  Number of fixed length elements in the leaf's data.
    Int_t       fLenType;         ///<  Number of bytes for this data type
    Int_t       fOffset;          ///<  Offset in ClonesArray object (if one)
    Bool_t      fIsRange;         ///<  (=kTRUE if leaf has a range, kFALSE otherwise)
@@ -63,6 +80,13 @@ public:
       kNewValue = BIT(12)         ///< Set if we own the value buffer and so must delete it ourselves.
    };
 
+   enum class DeserializeType {
+      kInvalid = 0,      // Invalid deserialization information.
+      kDestructive,      // Deserialization of this Leaf requires a separate output buffer.
+      kInPlace,          // Deserialization can be done directly in the input buffer.
+      kZeroCopy,         // In-memory and on-disk representation of this object are identical.
+   };
+
    TLeaf();
    TLeaf(TBranch *parent, const char *name, const char *type);
    virtual ~TLeaf();
@@ -73,6 +97,7 @@ public:
    virtual void     FillBasket(TBuffer &b);
    virtual Int_t   *GenerateOffsetArray(Int_t base, Int_t events) { return GenerateOffsetArrayBase(base, events); }
    TBranch         *GetBranch() const { return fBranch; }
+   virtual DeserializeType GetDeserializeType() const { return DeserializeType::kDestructive; }
    ///  If this leaf stores a variable-sized array or a multi-dimensional array whose last dimension has variable size,
    ///  return a pointer to the TLeaf that stores such size. Return a nullptr otherwise.
    virtual TLeaf   *GetLeafCount() const { return fLeafCount; }
@@ -105,6 +130,8 @@ public:
    virtual void     PrintValue(Int_t i = 0) const;
    virtual void     ReadBasket(TBuffer &) {}
    virtual void     ReadBasketExport(TBuffer &, TClonesArray *, Int_t) {}
+   virtual bool     ReadBasketFast(TBuffer&, Long64_t) { return false; }  // Read contents of leaf into a user-provided buffer.
+   virtual bool     ReadBasketSerialized(TBuffer&, Long64_t) { return false; }  // Read contents of leaf into a user-provided buffer
    virtual void     ReadValue(std::istream & /*s*/, Char_t /*delim*/ = ' ') {
       Error("ReadValue", "Not implemented!");
    }

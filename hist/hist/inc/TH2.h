@@ -75,8 +75,6 @@ public:
    virtual void     FillN(Int_t ntimes, const Double_t *x, const Double_t *y, const Double_t *w, Int_t stride=1);
    virtual void     FillRandom(const char *fname, Int_t ntimes=5000);
    virtual void     FillRandom(TH1 *h, Int_t ntimes=5000);
-   virtual Int_t    FindFirstBinAbove(Double_t threshold=0, Int_t axis=1) const;
-   virtual Int_t    FindLastBinAbove (Double_t threshold=0, Int_t axis=1) const;
    virtual void     FitSlicesX(TF1 *f1=0,Int_t firstybin=0, Int_t lastybin=-1, Int_t cut=0, Option_t *option="QNR", TObjArray* arr = 0);
    virtual void     FitSlicesY(TF1 *f1=0,Int_t firstxbin=0, Int_t lastxbin=-1, Int_t cut=0, Option_t *option="QNR", TObjArray* arr = 0);
    virtual Int_t    GetBin(Int_t binx, Int_t biny, Int_t binz = 0) const;
@@ -124,7 +122,7 @@ public:
    virtual Int_t    ShowPeaks(Double_t sigma=2, Option_t *option="", Double_t threshold=0.05); // *MENU*
    virtual void     Smooth(Int_t ntimes=1, Option_t *option=""); // *MENU*
 
-   ClassDef(TH2,4)  //2-Dim histogram base class
+   ClassDef(TH2,5)  //2-Dim histogram base class
 };
 
 
@@ -163,7 +161,7 @@ protected:
    virtual Double_t RetrieveBinContent(Int_t bin) const { return Double_t (fArray[bin]); }
    virtual void     UpdateBinContent(Int_t bin, Double_t content) { fArray[bin] = Char_t (content); }
 
-   ClassDef(TH2C,3)  //2-Dim histograms (one char per channel)
+   ClassDef(TH2C,4)  //2-Dim histograms (one char per channel)
 };
 
 
@@ -202,7 +200,7 @@ protected:
    virtual Double_t RetrieveBinContent(Int_t bin) const { return Double_t (fArray[bin]); }
    virtual void     UpdateBinContent(Int_t bin, Double_t content) { fArray[bin] = Short_t (content); }
 
-   ClassDef(TH2S,3)  //2-Dim histograms (one short per channel)
+   ClassDef(TH2S,4)  //2-Dim histograms (one short per channel)
 };
 
 
@@ -241,7 +239,7 @@ protected:
    virtual Double_t RetrieveBinContent(Int_t bin) const { return Double_t (fArray[bin]); }
    virtual void     UpdateBinContent(Int_t bin, Double_t content) { fArray[bin] = Int_t (content); }
 
-   ClassDef(TH2I,3)  //2-Dim histograms (one 32 bits integer per channel)
+   ClassDef(TH2I,4)  //2-Dim histograms (one 32 bits integer per channel)
 };
 
 
@@ -282,7 +280,7 @@ protected:
    virtual Double_t RetrieveBinContent(Int_t bin) const { return Double_t (fArray[bin]); }
    virtual void     UpdateBinContent(Int_t bin, Double_t content) { fArray[bin] = Float_t (content); }
 
-   ClassDef(TH2F,3)  //2-Dim histograms (one float per channel)
+   ClassDef(TH2F,4)  //2-Dim histograms (one float per channel)
 };
 
 
@@ -323,7 +321,7 @@ protected:
    virtual Double_t RetrieveBinContent(Int_t bin) const { return fArray[bin]; }
    virtual void     UpdateBinContent(Int_t bin, Double_t content) { fArray[bin] = content; }
 
-   ClassDef(TH2D,3)  //2-Dim histograms (one double per channel)
+   ClassDef(TH2D,4)  //2-Dim histograms (one double per channel)
 };
 
 #endif
