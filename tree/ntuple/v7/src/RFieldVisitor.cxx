@@ -73,7 +73,9 @@ void ROOT::Experimental::RPrintSchemaVisitor::VisitField(const Detail::RFieldBas
    fOutput << RNTupleFormatter::FitString(key, fAvailableSpaceKeyString);
    fOutput << " : ";
 
-   std::string value = field.GetName() + " (" + field.GetType() + ")";
+   std::string value = field.GetName();
+   if (!field.GetType().empty())
+      value += " (" + field.GetType() + ")";
    fOutput << RNTupleFormatter::FitString(value, fAvailableSpaceValueString);
    fOutput << fFrameSymbol << std::endl;
 
@@ -228,6 +230,36 @@ void ROOT::Experimental::RPrintValueVisitor::VisitArrayField(const RArrayField &
 
 
 void ROOT::Experimental::RPrintValueVisitor::VisitClassField(const RClassField &field)
+{
+   PrintIndent();
+   PrintName(field);
+   fOutput << "{";
+   auto elems = field.SplitValue(fValue);
+   for (auto iValue = elems.begin(); iValue != elems.end(); ) {
+      if (!fPrintOptions.fPrintSingleLine)
+         fOutput << std::endl;
+
+      RPrintOptions options;
+      options.fPrintSingleLine = fPrintOptions.fPrintSingleLine;
+      RPrintValueVisitor visitor(*iValue, fOutput, fLevel + 1, options);
+      iValue->GetField()->AcceptVisitor(visitor);
+
+      if (++iValue == elems.end()) {
+         if (!fPrintOptions.fPrintSingleLine)
+            fOutput << std::endl;
+         break;
+      } else {
+         fOutput << ",";
+         if (fPrintOptions.fPrintSingleLine)
+           fOutput << " ";
+      }
+   }
+   PrintIndent();
+   fOutput << "}";
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitRecordField(const RRecordField &field)
 {
    PrintIndent();
    PrintName(field);
