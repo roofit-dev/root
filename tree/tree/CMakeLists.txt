@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT tree/tree package
 # @author Pere Mato, CERN
@@ -29,8 +35,10 @@ ROOT_STANDARD_LIBRARY_PACKAGE(Tree
     TLeafB.h
     TLeafC.h
     TLeafD.h
+    TLeafD32.h
     TLeafElement.h
     TLeafF.h
+    TLeafF16.h
     TLeaf.h
     TLeafI.h
     TLeafL.h
@@ -54,6 +62,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(Tree
     TVirtualIndex.h
     TVirtualTreePlayer.h
     ROOT/TIOFeatures.hxx
+    ROOT/TBulkBranchRead.hxx
+    ROOT/TBulkBranchRead.icc
   SOURCES
     src/TBasket.cxx
     src/TBasketSQL.cxx
@@ -80,8 +90,10 @@ ROOT_STANDARD_LIBRARY_PACKAGE(Tree
     src/TLeafC.cxx
     src/TLeaf.cxx
     src/TLeafD.cxx
+    src/TLeafD32.cxx
     src/TLeafElement.cxx
     src/TLeafF.cxx
+    src/TLeafF16.cxx
     src/TLeafI.cxx
     src/TLeafL.cxx
     src/TLeafObject.cxx

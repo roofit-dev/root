@@ -10,9 +10,12 @@ typedef long long          Long64_t; //Portable signed long integer 8 bytes
 typedef unsigned long long ULong64_t;//Portable unsigned long integer 8 bytes
 #endif
 #endif
+#include <cstdint>
 #include <complex>
+#include <functional>
 #include <vector>
 #include <wchar.h>
+#include <sys/types.h>
 
 const int N = 5;
 
@@ -30,6 +33,8 @@ extern std::vector<EFruit> vecFruits;
 
 
 //===========================================================================
+enum class NamedClassEnum { E1 = 42 };
+
 namespace EnumSpace {
     enum E {E1 = 1, E2};
     class EnumClass {
@@ -39,6 +44,8 @@ namespace EnumSpace {
     };
 
     typedef enum { AA = 1, BB, CC, DD } letter_code;
+
+    enum class NamedClassEnum { E1 = -42 };
 }
 
 
@@ -92,6 +99,8 @@ public:
     signed char          get_schar();
     unsigned char        get_uchar();
     wchar_t              get_wchar();
+    int8_t               get_int8();
+    uint8_t              get_uint8();
     short                get_short();
     unsigned short       get_ushort();
     int                  get_int();
@@ -148,6 +157,8 @@ public:
     const signed char&        get_schar_cr();
     const unsigned char&      get_uchar_cr();
     const wchar_t&            get_wchar_cr();
+    const int8_t&             get_int8_cr();
+    const uint8_t&            get_uint8_cr();
     const short&              get_short_cr();
     const unsigned short&     get_ushort_cr();
     const int&                get_int_cr();
@@ -171,6 +182,8 @@ public:
     signed char&        get_schar_r();
     unsigned char&      get_uchar_r();
     wchar_t&            get_wchar_r();
+    int8_t&             get_int8_r();
+    uint8_t&            get_uint8_r();
     short&              get_short_r();
     unsigned short&     get_ushort_r();
     int&                get_int_r();
@@ -194,6 +207,8 @@ public:
     void set_schar(signed char);
     void set_uchar(unsigned char);
     void set_wchar(wchar_t);
+    void set_int8(int8_t);
+    void set_uint8(uint8_t);
     void set_short(short);
     void set_ushort(unsigned short);
     void set_int(int);
@@ -229,6 +244,8 @@ public:
     void set_schar_cr(const signed char&);
     void set_uchar_cr(const unsigned char&);
     void set_wchar_cr(const wchar_t&);
+    void set_int8_cr(const int8_t&);
+    void set_uint8_cr(const uint8_t&);
     void set_short_cr(const short&);
     void set_ushort_cr(const unsigned short&);
     void set_int_cr(const int&);
@@ -245,6 +262,31 @@ public:
     void set_complex_cr(const complex_t&);
     void set_icomplex_cr(const icomplex_t&);
     void set_enum_cr(const EWhat&);
+
+// setters r-value
+    void set_bool_rv(bool&&);
+    void set_char_rv(char&&);
+    void set_schar_rv(signed char&&);
+    void set_uchar_rv(unsigned char&&);
+    void set_wchar_rv(wchar_t&&);
+    void set_int8_rv(int8_t&&);
+    void set_uint8_rv(uint8_t&&);
+    void set_short_rv(short&&);
+    void set_ushort_rv(unsigned short&&);
+    void set_int_rv(int&&);
+    void set_uint_rv(unsigned int&&);
+    void set_long_rv(long&&);
+    void set_ulong_rv(unsigned long&&);
+    void set_llong_rv(long long&&);
+    void set_ullong_rv(unsigned long long&&);
+    void set_long64_rv(Long64_t&&);
+    void set_ulong64_rv(ULong64_t&&);
+    void set_float_rv(float&&);
+    void set_double_rv(double&&);
+    void set_ldouble_rv(long double&&);
+    void set_complex_rv(complex_t&&);
+    void set_icomplex_rv(icomplex_t&&);
+    void set_enum_rv(EWhat&&);
 
 // passers
     unsigned char*  pass_array(unsigned char*);
@@ -282,6 +324,8 @@ public:
     signed char          m_schar;
     unsigned char        m_uchar;
     wchar_t              m_wchar;
+    int8_t               m_int8;
+    uint8_t              m_uint8;
     short                m_short;
     unsigned short       m_ushort;
     int                  m_int;
@@ -338,6 +382,8 @@ public:
     static signed char             s_schar;
     static unsigned char           s_uchar;
     static wchar_t                 s_wchar;
+    static int8_t                  s_int8;
+    static uint8_t                 s_uint8;
     static short                   s_short;
     static unsigned short          s_ushort;
     static int                     s_int;
@@ -362,9 +408,9 @@ private:
 
 
 //= global functions ========================================================
-long get_pod_address(CppyyTestData& c);
-long get_int_address(CppyyTestData& c);
-long get_double_address(CppyyTestData& c);
+intptr_t get_pod_address(CppyyTestData& c);
+intptr_t get_int_address(CppyyTestData& c);
+intptr_t get_double_address(CppyyTestData& c);
 
 
 //= global variables/pointers ===============================================
@@ -373,6 +419,8 @@ extern char               g_char;
 extern signed char        g_schar;
 extern unsigned char      g_uchar;
 extern wchar_t            g_wchar;
+extern int8_t             g_int8;
+extern uint8_t            g_uint8;
 extern short              g_short;
 extern unsigned short     g_ushort;
 extern int                g_int;
@@ -396,6 +444,8 @@ static const char               g_c_char    = 'z';
 static const signed char        g_c_schar   = 'y';
 static const unsigned char      g_c_uchar   = 'x';
 static const wchar_t            g_c_wchar   = L'U';
+static const int8_t             g_c_int8    =  -12;
+static const uint8_t            g_c_uint8   =   12;
 static const short              g_c_short   =  -99;
 static const unsigned short     g_c_ushort  =   99u;
 static const int                g_c_int     = -199;
@@ -425,20 +475,56 @@ void set_global_pod(CppyyTestPod* t);
 CppyyTestPod* get_global_pod();
 CppyyTestPod* get_null_pod();
 
+extern std::string g_some_global_string;
+std::string get_some_global_string();
+extern std::string g_some_global_string2;
+std::string get_some_global_string2();
+
+namespace SomeStaticDataNS {
+    extern std::string s_some_static_string;
+    std::string get_some_static_string();
+    extern std::string s_some_static_string2;
+    std::string get_some_static_string2();
+}
+
 
 //= function pointer passing ================================================
 int sum_of_int(int i1, int i2);
+extern int (*sum_of_int_ptr)(int, int);
+
 double sum_of_double(double d1, double d2);
 double call_double_double(double (*d)(double, double), double d1, double d2);
 
 
 //= callable passing ========================================================
 int call_int_int(int (*)(int, int), int, int);
+void call_void(void (*f)(int), int i);
+int call_refi(void (*fcn)(int&));
+int call_refl(void (*fcn)(long&));
+int call_refd(void (*fcn)(double&));
 
 class StoreCallable {
     double (*fF)(double, double);
 public:
     StoreCallable(double (*)(double, double));
     void set_callable(double (*)(double, double));
+    double operator()(double, double);
+};
+
+
+//= callable through std::function ==========================================
+double call_double_double_sf(const std::function<double(double, double)>&, double d1, double d2);
+
+int call_int_int_sf(const std::function<int(int, int)>&, int, int);
+void call_void_sf(const std::function<void(int)>&, int i);
+int call_refi_sf(const std::function<void(int&)>&);
+int call_refl_sf(const std::function<void(long&)>&);
+int call_refd_sf(const std::function<void(double&)>&);
+
+class StoreCallable_sf {
+    std::function<double(double, double)> fF;
+public:
+    StoreCallable_sf(const std::function<double(double, double)>&);
+    void set_callable(const std::function<double(double, double)>&);
     double operator()(double, double);
 };

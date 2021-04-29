@@ -179,6 +179,7 @@ namespace RooFit {
   RooCmdArg EventRange(Int_t nStart, Int_t nStop) { return RooCmdArg("EventRange",nStart,nStop,0,0,0,0,0,0) ; }
   
   // RooAbsPdf::fitTo arguments
+  RooCmdArg PrefitDataFraction(Double_t data_ratio)  { return RooCmdArg("Prefit",0,0,data_ratio,0,nullptr,nullptr,nullptr,nullptr) ; }
   RooCmdArg FitOptions(const char* opts) { return RooCmdArg("FitOptions",0,0,0,0,opts,0,0,0) ; }
   RooCmdArg Optimize(Int_t flag)         { return RooCmdArg("Optimize",flag,0,0,0,0,0,0,0) ; }
   RooCmdArg Verbose(Bool_t flag)         { return RooCmdArg("Verbose",flag,0,0,0,0,0,0,0) ; }
@@ -198,7 +199,7 @@ namespace RooFit {
   RooCmdArg Constrain(const RooArgSet& params)           { return RooCmdArg("Constrain",0,0,0,0,0,0,0,0,0,0,&params) ; }
   RooCmdArg GlobalObservables(const RooArgSet& globs)    { return RooCmdArg("GlobalObservables",0,0,0,0,0,0,0,0,0,0,&globs) ; }
   RooCmdArg GlobalObservablesTag(const char* tagName)    { return RooCmdArg("GlobalObservablesTag",0,0,0,0,tagName,0,0,0) ; }
-  RooCmdArg Constrained()                                { return RooCmdArg("Constrained",kTRUE,0,0,0,0,0,0,0) ; }
+//  RooCmdArg Constrained()                                { return RooCmdArg("Constrained",kTRUE,0,0,0,0,0,0,0) ; }
   RooCmdArg ExternalConstraints(const RooArgSet& cpdfs)  { return RooCmdArg("ExternalConstraints",0,0,0,0,0,0,&cpdfs,0,0,0,&cpdfs) ; }
   RooCmdArg PrintEvalErrors(Int_t numErrors)             { return RooCmdArg("PrintEvalErrors",numErrors,0,0,0,0,0,0,0) ; }
   RooCmdArg EvalErrorWall(Bool_t flag)                   { return RooCmdArg("EvalErrorWall",flag,0,0,0,0,0,0,0) ; }
