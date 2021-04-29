@@ -4,6 +4,7 @@
 # For the licensing terms see $ROOTSYS/LICENSE.
 # For the list of contributors see $ROOTSYS/README/CREDITS.
 
+add_subdirectory(batchcompute)
 add_subdirectory(roofitZMQ)
 add_subdirectory(roofitcore)
 add_subdirectory(roofit)
@@ -14,3 +15,5 @@ add_subdirectory(roostats)
 if(xml)
   add_subdirectory(histfactory)
 endif()
+add_subdirectory(RDataFrameHelpers)
+

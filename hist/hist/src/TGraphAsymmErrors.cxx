@@ -9,11 +9,10 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <string.h>
 
-#include "Riostream.h"
 #include "TEfficiency.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TGraphAsymmErrors.h"
 #include "TGraphErrors.h"
 #include "TStyle.h"
@@ -25,6 +24,12 @@
 #include "TVectorD.h"
 #include "TSystem.h"
 #include "Math/QuantFuncMathCore.h"
+#include "strtok.h"
+
+#include <cstring>
+#include <iostream>
+#include <fstream>
+
 
 ClassImp(TGraphAsymmErrors);
 
@@ -89,7 +94,7 @@ TGraphAsymmErrors::TGraphAsymmErrors(const TGraphAsymmErrors &gr)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// TGraphAsymmErrors assignment operator
+/// TGraphAsymmErrors assignment operator.
 
 TGraphAsymmErrors& TGraphAsymmErrors::operator=(const TGraphAsymmErrors &gr)
 {
@@ -443,14 +448,15 @@ Double_t** TGraphAsymmErrors::Allocate(Int_t size) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Apply a function to all data points `y = f(x,y)`
+/// Apply a function to all data points \f$ y = f(x,y) \f$
 ///
-/// Errors are calculated as `eyh = f(x,y+eyh)-f(x,y)` and
-/// `eyl = f(x,y)-f(x,y-eyl)`
+/// Errors are calculated as \f$ eyh = f(x,y+eyh)-f(x,y) \f$ and
+/// \f$ eyl = f(x,y)-f(x,y-eyl) \f$
 ///
 /// Special treatment has to be applied for the functions where the
 /// role of "up" and "down" is reversed.
-/// function suggested/implemented by Miroslav Helbich <helbich@mail.desy.de>
+///
+/// Function suggested/implemented by Miroslav Helbich <helbich@mail.desy.de>
 
 void TGraphAsymmErrors::Apply(TF1 *f)
 {
@@ -960,7 +966,7 @@ void TGraphAsymmErrors::Divide(const TH1* pass, const TH1* total, Option_t *opt)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Compute Range
+/// Compute Range.
 
 void TGraphAsymmErrors::ComputeRange(Double_t &xmin, Double_t &ymin, Double_t &xmax, Double_t &ymax) const
 {
@@ -1015,8 +1021,8 @@ void TGraphAsymmErrors::CopyAndRelease(Double_t **newarrays,
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Copy errors from fE*** to arrays[***]
-/// or to f*** Copy points.
+/// Copy errors from `fE***` to `arrays[***]`
+/// or to `f***` Copy points.
 
 Bool_t TGraphAsymmErrors::CopyPoints(Double_t **arrays,
                                      Int_t ibegin, Int_t iend, Int_t obegin)
@@ -1042,7 +1048,7 @@ Bool_t TGraphAsymmErrors::CopyPoints(Double_t **arrays,
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Should be called from ctors after fNpoints has been set
+/// Should be called from ctors after `fNpoints` has been set.
 /// Note: This function should be called only from the constructor
 /// since it does not delete previously existing arrays
 
@@ -1060,7 +1066,7 @@ Bool_t TGraphAsymmErrors::CtorAllocate(void)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///  protected function to perform the merge operation of a graph with asymmetric errors
+/// Protected function to perform the merge operation of a graph with asymmetric errors.
 
 Bool_t TGraphAsymmErrors::DoMerge(const TGraph *g)
 {
@@ -1087,7 +1093,7 @@ Bool_t TGraphAsymmErrors::DoMerge(const TGraph *g)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Set zero values for point arrays in the range [begin, end)
+/// Set zero values for point arrays in the range `[begin, end]`
 
 void TGraphAsymmErrors::FillZero(Int_t begin, Int_t end,
                                  Bool_t from_ctor)
@@ -1179,7 +1185,7 @@ Double_t TGraphAsymmErrors::GetErrorYlow(Int_t i) const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Adds all graphs with asymmetric errors from the collection to this graph.
-/// Returns the total number of poins in the result or -1 in case of an error.
+/// Returns the total number of points in the result or -1 in case of an error.
 
 Int_t TGraphAsymmErrors::Merge(TCollection* li)
 {
@@ -1224,7 +1230,7 @@ void TGraphAsymmErrors::Print(Option_t *) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Save primitive as a C++ statement(s) on output stream out
+/// Save primitive as a C++ statement(s) on output stream out.
 
 void TGraphAsymmErrors::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 {
@@ -1355,7 +1361,7 @@ void TGraphAsymmErrors::SetPointError(Int_t i, Double_t exl, Double_t exh, Doubl
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Set EXlow for point i
+/// Set EXlow for point `i`.
 
 void TGraphAsymmErrors::SetPointEXlow(Int_t i, Double_t exl)
 {
@@ -1369,7 +1375,7 @@ void TGraphAsymmErrors::SetPointEXlow(Int_t i, Double_t exl)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Set EXhigh for point i
+/// Set EXhigh for point `i`.
 
 void TGraphAsymmErrors::SetPointEXhigh(Int_t i, Double_t exh)
 {
@@ -1383,7 +1389,7 @@ void TGraphAsymmErrors::SetPointEXhigh(Int_t i, Double_t exh)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Set EYlow for point i
+/// Set EYlow for point `i`.
 
 void TGraphAsymmErrors::SetPointEYlow(Int_t i, Double_t eyl)
 {
@@ -1397,7 +1403,7 @@ void TGraphAsymmErrors::SetPointEYlow(Int_t i, Double_t eyl)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Set EYhigh for point i
+/// Set EYhigh for point `i`.
 
 void TGraphAsymmErrors::SetPointEYhigh(Int_t i, Double_t eyh)
 {
