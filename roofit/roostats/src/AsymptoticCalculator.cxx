@@ -39,7 +39,6 @@ The calculator can generate Asimov datasets from two kinds of PDFs:
 
 
 #include "RooStats/AsymptoticCalculator.h"
-#include "RooStats/ToyMCSampler.h"
 #include "RooStats/ModelConfig.h"
 #include "RooStats/ProfileLikelihoodTestStat.h"
 #include "RooStats/RooStatsUtils.h"
@@ -307,7 +306,9 @@ Double_t AsymptoticCalculator::EvaluateNLL(RooAbsPdf & pdf, RooAbsData& data,   
     if (globObs) globalObs.add(*globObs);
 
     // need to call constrain for RooSimultaneous until stripDisconnected problem fixed
-    RooAbsReal* nll = pdf.createNLL(data, RooFit::CloneData(kFALSE),RooFit::Constrain(*allParams),RooFit::ConditionalObservables(conditionalObs), RooFit::GlobalObservables(globalObs), RooFit::Offset(RooStats::IsNLLOffset()));
+    auto& config = GetGlobalRooStatsConfig();
+    RooAbsReal* nll = pdf.createNLL(data, RooFit::CloneData(kFALSE),RooFit::Constrain(*allParams),RooFit::ConditionalObservables(conditionalObs), RooFit::GlobalObservables(globalObs),
+        RooFit::Offset(config.useLikelihoodOffset));
 
     RooArgSet* attachedSet = nll->getVariables();
 
@@ -364,6 +365,7 @@ Double_t AsymptoticCalculator::EvaluateNLL(RooAbsPdf & pdf, RooAbsData& data,   
        RooMinimizer minim(*nll);
        int strategy = ROOT::Math::MinimizerOptions::DefaultStrategy();
        minim.setStrategy( strategy);
+       minim.setEvalErrorWall(config.useEvalErrorWall);
        // use tolerance - but never smaller than 1 (default in RooMinimizer)
        double tol =  ROOT::Math::MinimizerOptions::DefaultTolerance();
        tol = std::max(tol,1.0); // 1.0 is the minimum value used in RooMinimizer
@@ -1035,7 +1037,7 @@ RooAbsData * AsymptoticCalculator::GenerateCountingAsimovData(RooAbsPdf & pdf, c
     if (!r) return 0;
     int icat = 0;
     if (channelCat) {
-       icat = channelCat->getIndex();
+       icat = channelCat->getCurrentIndex();
     }
 
     RooDataSet *ret = new RooDataSet(TString::Format("CountingAsimovData%d",icat),TString::Format("CountingAsimovData%d",icat), obs);
@@ -1065,7 +1067,7 @@ RooAbsData * AsymptoticCalculator::GenerateAsimovDataSinglePdf(const RooAbsPdf &
 
    RooDataSet* asimovData = 0;
    if (channelCat) {
-      int icat = channelCat->getIndex();
+      int icat = channelCat->getCurrentIndex();
       asimovData = new RooDataSet(TString::Format("AsimovData%d",icat),TString::Format("combAsimovData%d",icat),
                                   RooArgSet(obsAndWeight,*channelCat),RooFit::WeightVar(weightVar));
    }
@@ -1144,7 +1146,7 @@ RooAbsData * AsymptoticCalculator::GenerateAsimovData(const RooAbsPdf & pdf, con
    std::map<std::string, RooDataSet*> asimovDataMap;
 
   //look at category of simpdf
-  RooCategory& channelCat = (RooCategory&)simPdf->indexCat();
+  RooCategory& channelCat = const_cast<RooCategory&>(dynamic_cast<const RooCategory&>(simPdf->indexCat()));
   int nrIndices = channelCat.numTypes();
   if( nrIndices == 0 ) {
     oocoutW((TObject*)0,Generation) << "Simultaneous pdf does not contain any categories." << endl;
@@ -1153,12 +1155,12 @@ RooAbsData * AsymptoticCalculator::GenerateAsimovData(const RooAbsPdf & pdf, con
     channelCat.setIndex(i);
     //iFrame++;
     // Get pdf associated with state from simpdf
-    RooAbsPdf* pdftmp = simPdf->getPdf(channelCat.getLabel()) ;
+    RooAbsPdf* pdftmp = simPdf->getPdf(channelCat.getCurrentLabel()) ;
     assert(pdftmp != 0);
 
     if (printLevel > 1)
     {
-      cout << "on type " << channelCat.getLabel() << " " << channelCat.getIndex() << endl;
+      cout << "on type " << channelCat.getCurrentLabel() << " " << channelCat.getCurrentIndex() << endl;
     }
 
     RooAbsData * dataSinglePdf = GenerateAsimovDataSinglePdf( *pdftmp, observables, *weightVar, &channelCat);
@@ -1169,17 +1171,17 @@ RooAbsData * AsymptoticCalculator::GenerateAsimovData(const RooAbsPdf & pdf, con
        return 0;
     }
 
-    if (asimovDataMap.count(string(channelCat.getLabel())) != 0) {
-      oocoutE((TObject*)0,Generation) << "AsymptoticCalculator::GenerateAsimovData(): The PDF for " << channelCat.getLabel()
+    if (asimovDataMap.count(string(channelCat.getCurrentLabel())) != 0) {
+      oocoutE((TObject*)0,Generation) << "AsymptoticCalculator::GenerateAsimovData(): The PDF for " << channelCat.getCurrentLabel()
           << " was already defined. It will be overridden. The faulty category definitions follow:" << endl;
       channelCat.Print("V");
     }
 
-    asimovDataMap[string(channelCat.getLabel())] = (RooDataSet*) dataSinglePdf;
+    asimovDataMap[string(channelCat.getCurrentLabel())] = (RooDataSet*) dataSinglePdf;
 
     if (printLevel > 1)
     {
-      cout << "channel: " << channelCat.getLabel() << ", data: ";
+      cout << "channel: " << channelCat.getCurrentLabel() << ", data: ";
       dataSinglePdf->Print();
       cout << endl;
     }
@@ -1192,7 +1194,7 @@ RooAbsData * AsymptoticCalculator::GenerateAsimovData(const RooAbsPdf & pdf, con
   RooDataSet* asimovData = new RooDataSet("asimovDataFullModel","asimovDataFullModel",RooArgSet(obsAndWeight,channelCat),
                                           RooFit::Index(channelCat),RooFit::Import(asimovDataMap),RooFit::WeightVar(*weightVar));
 
-  for (auto element : asimovDataMap) {
+  for (auto &element : asimovDataMap) {
     delete element.second;
   }
 
@@ -1274,11 +1276,22 @@ RooAbsData * AsymptoticCalculator::MakeAsimovData(RooAbsData & realData, const M
 
       std::string minimizerType = ROOT::Math::MinimizerOptions::DefaultMinimizerType();
       std::string minimizerAlgo = ROOT::Math::MinimizerOptions::DefaultMinimizerAlgo();
-      model.GetPdf()->fitTo(realData, RooFit::Minimizer(minimizerType.c_str(),minimizerAlgo.c_str()),
-                            RooFit::Strategy(ROOT::Math::MinimizerOptions::DefaultStrategy()),
-                            RooFit::PrintLevel(minimPrintLevel-1), RooFit::Hesse(false),
-                            RooFit::Constrain(constrainParams),RooFit::GlobalObservables(globalObs),
-                            RooFit::ConditionalObservables(conditionalObs), RooFit::Offset(RooStats::IsNLLOffset()));
+      std::vector<RooCmdArg> args;
+      args.push_back(RooFit::Minimizer(minimizerType.c_str(),minimizerAlgo.c_str()));
+      args.push_back(RooFit::Strategy(ROOT::Math::MinimizerOptions::DefaultStrategy()));
+      args.push_back(RooFit::PrintLevel(minimPrintLevel-1));
+      args.push_back(RooFit::Hesse(false));
+      args.push_back(RooFit::Constrain(constrainParams));
+      args.push_back(RooFit::GlobalObservables(globalObs));
+      args.push_back(RooFit::ConditionalObservables(conditionalObs));
+      args.push_back(RooFit::Offset(GetGlobalRooStatsConfig().useLikelihoodOffset));
+      args.push_back(RooFit::EvalErrorWall(GetGlobalRooStatsConfig().useEvalErrorWall));
+
+      RooLinkedList argList;
+      for (auto& arg : args) {
+        argList.Add(&arg);
+      }
+      model.GetPdf()->fitTo(realData, argList);
       if (verbose>0) { std::cout << "fit time "; tw2.Print();}
       if (verbose > 1) {
          // after the fit the nuisance parameters will have their best fit value
