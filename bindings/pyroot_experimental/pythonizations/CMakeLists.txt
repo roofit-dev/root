@@ -10,8 +10,7 @@
 
 if(dataframe)
     list(APPEND PYROOT_EXTRA_PYSOURCE
-        ROOT/pythonization/utils/__init__.py
-        ROOT/pythonization/utils/_rdf_utils.py
+        ROOT/pythonization/_rdf_utils.py
         ROOT/pythonization/_rdataframe.py
         ROOT/pythonization/_rtensor.py)
     list(APPEND PYROOT_EXTRA_SOURCE
@@ -31,6 +30,7 @@ set(py_sources
   ROOT/pythonization/_rooabscollection.py
   ROOT/pythonization/_roodatahist.py
   ROOT/pythonization/_roodataset.py
+  ROOT/pythonization/_rooworkspace.py
   ROOT/pythonization/_rvec.py
   ROOT/pythonization/_stl_vector.py
   ROOT/pythonization/_tarray.py
@@ -77,8 +77,15 @@ set(cpp_sources
     ${PYROOT_EXTRA_SOURCE}
 )
 
-set(ROOTDirName python/ROOT)
-set(ROOT_headers inc)
+set(ROOTPySrcDir python/ROOT)
+set(ROOT_headers_dir inc)
+
+file(COPY ${ROOTPySrcDir} DESTINATION ${localruntimedir})
+# Copy headers inside build_dir/include/ROOT
+file(COPY ${ROOT_headers_dir}/ DESTINATION ${CMAKE_BINARY_DIR}/include/ROOT)
+
+# Install .py source files
+install(DIRECTORY ${ROOTPySrcDir} DESTINATION ${runtimedir})
 
 foreach(val RANGE ${how_many_pythons})
   list(GET python_under_version_strings ${val} python_under_version_string)
@@ -89,7 +96,7 @@ foreach(val RANGE ${how_many_pythons})
 
   ROOT_LINKER_LIBRARY(${libname} ${cpp_sources} DEPENDENCIES Core Tree cppyy${python_under_version_string} CMAKENOEXPORT)
 
-  target_include_directories(${libname} PRIVATE ${ROOT_headers} ${python_include_dir})
+  target_include_directories(${libname} PRIVATE ${ROOT_headers_dir} ${python_include_dir})
 
   # Disables warnings caused by Py_RETURN_TRUE/Py_RETURN_FALSE
   if(NOT MSVC)
@@ -105,16 +112,12 @@ foreach(val RANGE ${how_many_pythons})
     target_compile_options(${libname} PRIVATE -Wno-deprecated-register)
   endif()
 
+  # Install compiled .py files
   foreach(py_source ${py_sources})
     install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${d}/${py_source})")
     install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${d}/${py_source})")
   endforeach()
 
 endforeach()
-
-file(COPY ${ROOTDirName} DESTINATION ${localruntimedir})
-# Copy headers inside build_dir/include/Pythonizations
-file(COPY ${ROOT_headers}/ DESTINATION ${CMAKE_BINARY_DIR}/include/ROOT)
-install(DIRECTORY ${ROOTDirName} DESTINATION ${runtimedir})
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

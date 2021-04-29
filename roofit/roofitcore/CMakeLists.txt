@@ -517,9 +517,10 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
 #        RooFitZMQ
 #        ZeroMQ # as noted above, this doesn't work here, so we instead list it as a library below
   LIBRARIES
-        ${RT_LIBRARY}
-#        ${ZeroMQ_LIBRARY}
-  LINKDEF inc/LinkDef.h
+    ${RT_LIBRARY}
+#    ${ZeroMQ_LIBRARY}
+  LINKDEF
+    inc/LinkDef.h
 )
 
 #target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
@@ -528,6 +529,13 @@ if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)
 endif()
 
-if(vdt AND NOT builtin_vdt)
-  target_include_directories(RooFitCore PRIVATE ${VDT_INCLUDE_DIR})
+list(APPEND fitcore_incl ${CMAKE_SOURCE_DIR}/roofit/roofitcore/inc)
+
+if(vdt OR builtin_vdt)
+   target_include_directories(RooFitCore PRIVATE ${VDT_INCLUDE_DIRS})
+   list(APPEND fitcore_incl ${VDT_INCLUDE_DIRS})
 endif()
+
+foreach(inlc ${fitcore_incl})
+   target_include_directories(RooFitCore PUBLIC $<BUILD_INTERFACE:${incl}>)
+endforeach()
