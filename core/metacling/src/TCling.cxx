@@ -50,7 +50,6 @@ clang/LLVM technology.
 #include "TObjString.h"
 #include "TString.h"
 #include "THashList.h"
-#include "TOrdCollection.h"
 #include "TVirtualPad.h"
 #include "TSystem.h"
 #include "TVirtualMutex.h"
@@ -95,9 +94,11 @@ clang/LLVM technology.
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Lex/PreprocessorOptions.h"
+#include "clang/Parse/Parser.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
-#include "clang/Parse/Parser.h"
+#include "clang/Serialization/ASTReader.h"
+#include "clang/Serialization/GlobalModuleIndex.h"
 
 #include "cling/Interpreter/ClangInternalState.h"
 #include "cling/Interpreter/DynamicLibraryManager.h"
@@ -1055,6 +1056,10 @@ static bool LoadModule(const std::string &ModuleName, cling::Interpreter &interp
    std::string currentDir = gSystem->WorkingDirectory();
    assert(!currentDir.empty());
    gCling->RegisterPrebuiltModulePath(currentDir);
+   if (gDebug > 2)
+      ::Info("TCling::__LoadModule", "Preloading module %s. \n",
+             ModuleName.c_str());
+
    return interp.loadModule(ModuleName, /*Complain=*/true);
 }
 
@@ -1073,7 +1078,8 @@ static bool IsFromRootCling() {
   return foundSymbol;
 }
 
-static std::string GetModuleNameAsString(clang::Module *M, const clang::Preprocessor &PP)
+/// Checks if there is an ASTFile on disk for the given module \c M.
+static bool HasASTFileOnDisk(clang::Module *M, const clang::Preprocessor &PP, std::string *FullFileName = nullptr)
 {
    const HeaderSearchOptions &HSOpts = PP.getHeaderSearchInfo().getHeaderSearchOpts();
 
@@ -1081,11 +1087,52 @@ static std::string GetModuleNameAsString(clang::Module *M, const clang::Preproce
    if (!HSOpts.PrebuiltModulePaths.empty())
       // Load the module from *only* in the prebuilt module path.
       ModuleFileName = PP.getHeaderSearchInfo().getModuleFileName(M->Name, /*ModuleMapPath*/"", /*UsePrebuiltPath*/ true);
-   if (ModuleFileName.empty()) return "";
+   if (FullFileName)
+      *FullFileName = ModuleFileName;
 
-   std::string ModuleName = llvm::sys::path::filename(ModuleFileName);
-   // Return stem of the filename
-   return std::string(llvm::sys::path::stem(ModuleName));
+   return !ModuleFileName.empty();
+}
+
+static bool HaveFullGlobalModuleIndex = false;
+static GlobalModuleIndex *loadGlobalModuleIndex(SourceLocation TriggerLoc, cling::Interpreter &interp)
+{
+   CompilerInstance &CI = *interp.getCI();
+   Preprocessor &PP = CI.getPreprocessor();
+   auto ModuleManager = CI.getModuleManager();
+   assert(ModuleManager);
+   // StringRef ModuleIndexPath = HSI.getModuleCachePath();
+   // HeaderSearch& HSI = PP.getHeaderSearchInfo();
+   // HSI.setModuleCachePath(TROOT::GetLibDir().Data());
+   std::string ModuleIndexPath = TROOT::GetLibDir().Data();
+   if (ModuleIndexPath.empty())
+      return nullptr;
+   // Get an existing global index. This loads it if not already loaded.
+   ModuleManager->resetForReload();
+   ModuleManager->loadGlobalIndex();
+   GlobalModuleIndex *GlobalIndex = ModuleManager->getGlobalIndex();
+
+   // For finding modules needing to be imported for fixit messages,
+   // we need to make the global index cover all modules, so we do that here.
+   if (!GlobalIndex && !HaveFullGlobalModuleIndex) {
+      ModuleMap &MMap = PP.getHeaderSearchInfo().getModuleMap();
+      bool RecreateIndex = false;
+      for (ModuleMap::module_iterator I = MMap.module_begin(), E = MMap.module_end(); I != E; ++I) {
+         Module *TheModule = I->second;
+         // We want the index only of the prebuilt modules.
+         if (!HasASTFileOnDisk(TheModule, PP))
+            continue;
+         LoadModule(TheModule->Name, interp);
+         RecreateIndex = true;
+      }
+      if (RecreateIndex) {
+         GlobalModuleIndex::writeIndex(CI.getFileManager(), CI.getPCHContainerReader(), ModuleIndexPath);
+         ModuleManager->resetForReload();
+         ModuleManager->loadGlobalIndex();
+         GlobalIndex = ModuleManager->getGlobalIndex();
+      }
+      HaveFullGlobalModuleIndex = true;
+   }
+   return GlobalIndex;
 }
 
 static void RegisterCxxModules(cling::Interpreter &clingInterp)
@@ -1113,35 +1160,73 @@ static void RegisterCxxModules(cling::Interpreter &clingInterp)
                                            "Core",
                                            "RIO"};
 
+   LoadModules(CoreModules, clingInterp);
+
    // FIXME: Reducing those will let us be less dependent on rootmap files
    static constexpr std::array<const char *, 3> ExcludeModules = {
       {"Rtools", "RSQLite", "RInterface"}};
 
-   LoadModules(CoreModules, clingInterp);
-
    // Take this branch only from ROOT because we don't need to preload modules in rootcling
    if (!IsFromRootCling()) {
-      // Dynamically get all the modules and load them if they are not in core modules
+      std::vector<std::string> CommonModules = {"MathCore"};
+      LoadModules(CommonModules, clingInterp);
+
+      // These modules should not be preloaded but they fix issues.
+      std::vector<std::string> FIXMEModules = {"Hist", "Gpad", "Graf",
+                                               "GenVector", "Smatrix", "Tree",
+                                               "TreePlayer", "Physics",
+                                               "Proof", "Geom"};
+      LoadModules(FIXMEModules, clingInterp);
+
       clang::CompilerInstance &CI = *clingInterp.getCI();
-      clang::ModuleMap &moduleMap = CI.getPreprocessor().getHeaderSearchInfo().getModuleMap();
+      GlobalModuleIndex *GlobalIndex = nullptr;
+      if (gSystem->Getenv("ROOT_EXPERIMENTAL_GMI")) {
+         loadGlobalModuleIndex(SourceLocation(), clingInterp);
+         GlobalIndex = CI.getModuleManager()->getGlobalIndex();
+      }
+      llvm::StringSet<> KnownModuleFileNames;
+      if (GlobalIndex)
+         GlobalIndex->getKnownModuleFileNames(KnownModuleFileNames);
+
       clang::Preprocessor &PP = CI.getPreprocessor();
-      std::vector<std::string> ModulesPreloaded;
-      for (auto I = moduleMap.module_begin(), E = moduleMap.module_end(); I != E; ++I) {
+      std::vector<std::string> PendingModules;
+      PendingModules.reserve(256);
+      ModuleMap &MMap = PP.getHeaderSearchInfo().getModuleMap();
+      for (auto I = MMap.module_begin(), E = MMap.module_end(); I != E; ++I) {
          clang::Module *M = I->second;
          assert(M);
 
-         std::string ModuleName = GetModuleNameAsString(M, PP);
-         if (!ModuleName.empty() &&
-             std::find(CoreModules.begin(), CoreModules.end(), ModuleName) == CoreModules.end() &&
-             std::find(ExcludeModules.begin(), ExcludeModules.end(), ModuleName) ==
-                ExcludeModules.end()) {
-            if (M->IsSystem && !M->IsMissingRequirement)
-               LoadModule(ModuleName, clingInterp);
-            else if (!M->IsSystem && !M->IsMissingRequirement)
-               ModulesPreloaded.push_back(ModuleName);
+         // We want to load only already created modules.
+         std::string FullASTFilePath;
+         if (!HasASTFileOnDisk(M, PP, &FullASTFilePath))
+            continue;
+
+         if (GlobalIndex && KnownModuleFileNames.count(FullASTFilePath))
+            continue;
+
+         if (M->IsMissingRequirement)
+            continue;
+
+         if (GlobalIndex)
+            LoadModule(M->Name, clingInterp);
+         else {
+            // FIXME: We may be able to remove those checks as cling::loadModule
+            // checks if a module was alredy loaded.
+            if (std::find(CoreModules.begin(), CoreModules.end(), M->Name) != CoreModules.end())
+               continue; // This is a core module which was already loaded.
+
+            if (std::find(ExcludeModules.begin(), ExcludeModules.end(), M->Name) != ExcludeModules.end())
+               continue;
+
+            // Load system modules now and delay the other modules after we have
+            // loaded all system ones.
+            if (M->IsSystem)
+               LoadModule(M->Name, clingInterp);
+            else
+               PendingModules.push_back(M->Name);
          }
       }
-      LoadModules(ModulesPreloaded, clingInterp);
+      LoadModules(PendingModules, clingInterp);
    }
 
    // Check that the gROOT macro was exported by any core module.
@@ -1325,6 +1410,17 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
 
          clingArgsStorage.push_back("-fmodule-map-file=" + ModuleMapLoc);
       }
+      std::string ModulesCachePath;
+      EnvOpt = llvm::sys::Process::GetEnv("CLING_MODULES_CACHE_PATH");
+      if (EnvOpt.hasValue()){
+         StringRef Env(*EnvOpt);
+         assert(llvm::sys::fs::exists(Env) && "Path does not exist!");
+         ModulesCachePath = Env.str();
+      } else {
+         ModulesCachePath = TROOT::GetLibDir();
+      }
+
+      clingArgsStorage.push_back("-fmodules-cache-path=" + ModulesCachePath);
    }
 
    std::vector<const char*> interpArgs;
@@ -7994,10 +8090,10 @@ int TCling::ClassInfo_GetMethodNArg(ClassInfo_t* cinfo, const char* method, cons
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TCling::ClassInfo_HasDefaultConstructor(ClassInfo_t* cinfo) const
+bool TCling::ClassInfo_HasDefaultConstructor(ClassInfo_t* cinfo, Bool_t testio) const
 {
-   TClingClassInfo* TClinginfo = (TClingClassInfo*) cinfo;
-   return TClinginfo->HasDefaultConstructor();
+   TClingClassInfo *TClinginfo = (TClingClassInfo *) cinfo;
+   return TClinginfo->HasDefaultConstructor(testio) != ROOT::TMetaUtils::EIOCtorCategory::kAbsent;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

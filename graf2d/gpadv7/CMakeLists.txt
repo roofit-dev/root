@@ -19,12 +19,16 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTGpadv7
     ROOT/RDisplayItem.hxx
     ROOT/RAttrMap.hxx
     ROOT/RAttrBase.hxx
+    ROOT/RAttrAxis.hxx
     ROOT/RAttrBox.hxx
+    ROOT/RAttrColor.hxx
     ROOT/RAttrLine.hxx
     ROOT/RAttrFill.hxx
     ROOT/RAttrMarker.hxx
+    ROOT/RAttrMargins.hxx
     ROOT/RAttrText.hxx
     ROOT/RPalette.hxx
+    ROOT/RPaletteDrawable.hxx
     ROOT/RDrawable.hxx
     ROOT/RStyle.hxx
     ROOT/RPadDisplayItem.hxx
