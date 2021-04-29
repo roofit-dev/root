@@ -16,10 +16,8 @@
 #ifndef ROOT7_RFrame
 #define ROOT7_RFrame
 
-#include "ROOT/RDrawingAttr.hxx"
+#include "ROOT/RAttrBox.hxx"
 #include "ROOT/RDrawingOptsBase.hxx"
-#include "ROOT/RPadExtent.hxx"
-#include "ROOT/RPadPos.hxx"
 #include "ROOT/RPadUserAxis.hxx"
 #include "ROOT/RPalette.hxx"
 
@@ -36,10 +34,7 @@ class RFrame {
 public:
    class DrawingOpts: public RDrawingOptsBase {
    public:
-      /// Position of the frame in parent RPad coordinates.
-      RDrawingAttr<RPadPos> fPos{*this, "frame.pos", 0.1_normal, 0.1_normal};
-      /// Size of the frame in parent RPad coordinates.
-      RDrawingAttr<RPadExtent> fSize{*this, "frame.size", 0.8_normal, 0.8_normal};
+      RAttrBox Frame() { return {"frame", *this}; }
    };
 
 private:
@@ -49,17 +44,14 @@ private:
    /// Palette used to visualize user coordinates.
    RPalette fPalette;
 
-   /// Offset with respect to parent RPad.
-   RPadPos fPos;
-
-   /// Size of the frame, in parent RPad coordinates.
-   RPadExtent fSize;
+   /// Drawing options.
+   DrawingOpts fOpts;
 
 public:
    // Default constructor
    RFrame()
    {
-         GrowToDimensions(2);
+      GrowToDimensions(2);
    }
 
    /// Constructor taking user coordinate system, position and extent.
@@ -69,6 +61,8 @@ public:
    explicit RFrame(const DrawingOpts &opts)
       : RFrame({}, opts)
    {}
+
+   DrawingOpts &GetDrawingOpts() { return fOpts; }
 
    /// Create `nDimensions` default axes for the user coordinate system.
    void GrowToDimensions(size_t nDimensions);

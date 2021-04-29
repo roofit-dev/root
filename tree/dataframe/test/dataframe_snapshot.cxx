@@ -157,14 +157,11 @@ TEST_F(RDFSnapshot, Snapshot_nocolumnmatch)
 {
    const auto fname = "snapshotnocolumnmatch.root";
    RDataFrame d(1);
-   int ret(1);
-   try {
+   auto op = [&](){
       testing::internal::CaptureStderr();
       d.Snapshot("t", fname, "x");
-   } catch (const std::runtime_error &) {
-      ret = 0;
-   }
-   EXPECT_EQ(0, ret);
+   };
+   EXPECT_ANY_THROW(op());
    gSystem->Unlink(fname);
 }
 
@@ -198,8 +195,8 @@ void test_snapshot_update(RInterface<RLoopManager> &tdf)
 
    // check that the output file contains both trees
    std::unique_ptr<TFile> f(TFile::Open(outfile));
-   EXPECT_NE(nullptr, f->Get("t"));
-   EXPECT_NE(nullptr, f->Get("t2"));
+   EXPECT_NE(nullptr, f->Get<TTree>("t"));
+   EXPECT_NE(nullptr, f->Get<TTree>("t2"));
 
    // clean-up
    gSystem->Unlink(outfile);
@@ -597,6 +594,8 @@ TEST(RDFSnapshotMore, Lazy)
    const auto treename = "t";
    const auto fname0 = "lazy0.root";
    const auto fname1 = "lazy1.root";
+   // make sure the file is not here beforehand
+   gSystem->Unlink(fname0);
    RDataFrame d(1);
    auto v = 0U;
    auto genf = [&v](){++v;return 42;};
@@ -641,6 +640,8 @@ TEST(RDFSnapshotMore, ManyTasksPerThread)
 {
    const auto nSlots = 4u;
    ROOT::EnableImplicitMT(nSlots);
+   // make sure the file is not here beforehand
+   gSystem->Unlink("snapshot_manytasks_out.root");
 
    // easiest way to be sure reading requires spawning of several tasks: create several input files
    const std::string inputFilePrefix = "snapshot_manytasks_";
@@ -744,9 +745,9 @@ TEST(RDFSnapshotMore, TreeWithFriendsMT)
    RDataFrame(10).Define("x", []() { return 0; }).Snapshot<int>("t", fname, {"x"});
 
    TFile file(fname);
-   auto tree = static_cast<TTree *>(file.Get("t"));
+   auto tree = file.Get<TTree>("t");
    TFile file2(fname);
-   auto tree2 = static_cast<TTree *>(file2.Get("t"));
+   auto tree2 = file2.Get<TTree>("t");
    tree->AddFriend(tree2);
 
    const auto outfname = "out_treewithfriendsmt.root";
@@ -808,8 +809,7 @@ TEST(RDFSnapshotMore, EmptyBuffersMT)
 
    // check result
    TFile f(fname);
-   TTree *t = nullptr;
-   f.GetObject(treename, t);
+   auto t = f.Get<TTree>(treename);
    EXPECT_EQ(t->GetListOfBranches()->GetEntries(), 1);
    EXPECT_EQ(t->GetEntries(), Long64_t(passed));
 

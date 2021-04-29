@@ -364,7 +364,7 @@ void TPainter3dAlgorithms::ClearRaster()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Set correspondance between function and color levels
+/// Set correspondence between function and color levels
 ///
 /// \param[in] nl   number of levels
 /// \param[in] fl   function levels
@@ -498,7 +498,7 @@ void TPainter3dAlgorithms::DrawFaceMode1(Int_t *, Double_t *xyz, Int_t np, Int_t
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Draw face - 2nd option (fill in correspondance with function levels)
+/// Draw face - 2nd option (fill in correspondence with function levels)
 ///
 /// \param[in] icodes   set of codes for the line (not used in this method)
 /// \param[in] xyz   coordinates of nodes
@@ -2191,12 +2191,12 @@ void TPainter3dAlgorithms::LegoFunction(Int_t ia, Int_t ib, Int_t &nv, Double_t 
    vv[2] = Hparam.factor*gCurrentHist->GetBinContent(ixt, iyt);
 
    // In linear scale, 3D boxes all start from 0.
-   if (Hparam.zmin<0 && !Hoption.Logz && gStyle->GetHistMinimumZero()) {
+   if (Hparam.zmin<0 && !Hoption.Logz && Hoption.MinimumZero) {
       if (vv[2]<0) {
          vv[1] = vv[2];
          vv[2] = 0;
       } else {
-         vv[1]=0;
+         vv[1] = 0;
       }
    }
 

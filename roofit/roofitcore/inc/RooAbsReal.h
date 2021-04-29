@@ -60,19 +60,35 @@ public:
   RooAbsReal(const RooAbsReal& other, const char* name=0);
   virtual ~RooAbsReal();
 
+
+
+
+  //////////////////////////////////////////////////////////////////////////////////
   /// Evaluate object. Returns either cached value or triggers a recalculation.
-  inline Double_t getVal(const RooArgSet* set=0) const { 
+  /// The recalculation happens by calling getValV(), which in the end calls the
+  /// virtual evaluate() functions of the respective PDFs.
+  /// \param[in] normalisationSet getValV() reacts differently depending on the value of the normalisation set.
+  /// If the set is `nullptr`, an unnormalised value is returned.
+  /// \note The normalisation is arbitrary, because it is up to the implementation
+  /// of the PDF to e.g. leave out normalisation constants for speed reasons. The range
+  /// of the variables is also ignored.
+  ///
+  /// To normalise the result properly, a RooArgSet has to be passed, which contains
+  /// the variables to normalise over.
+  /// These are integrated over their current ranges to compute the normalisation constant,
+  /// and the unnormalised result is divided by this value.
+  inline Double_t getVal(const RooArgSet* normalisationSet = nullptr) const {
 /*     if (_fast && !_inhibitDirty && std::string("RooHistFunc")==IsA()->GetName()) std::cout << "RooAbsReal::getVal(" << GetName() << ") CLEAN value = " << _value << std::endl ;  */
 #ifndef _WIN32
-    return (_fast && !_inhibitDirty) ? _value : getValV(set) ; 
+    return (_fast && !_inhibitDirty) ? _value : getValV(normalisationSet) ;
 #else
-    return (_fast && !inhibitDirty()) ? _value : getValV(set) ;     
+    return (_fast && !inhibitDirty()) ? _value : getValV(normalisationSet) ;
 #endif
   }
-  /// Evaluate object. Returns either cached value or triggers a recalculation.
-  inline  Double_t getVal(const RooArgSet& set) const { return _fast ? _value : getValV(&set) ; }
+  /// Like getVal(const RooArgSet*), but always requires an argument for normalisation.
+  inline  Double_t getVal(const RooArgSet& normalisationSet) const { return _fast ? _value : getValV(&normalisationSet) ; }
 
-  virtual Double_t getValV(const RooArgSet* set=0) const ;
+  virtual Double_t getValV(const RooArgSet* normalisationSet = nullptr) const ;
 
   Double_t getPropagatedError(const RooFitResult &fr, const RooArgSet &nset = RooArgSet());
 
@@ -481,6 +497,23 @@ protected:
   static void globalSelectComp(Bool_t flag) ;
   Bool_t _selectComp ;               //! Component selection flag for RooAbsPdf::plotCompOn
   static Bool_t _globalSelectComp ;  // Global activation switch for component selection
+  // This struct can be used to flip the global switch to select components.
+  // Doing this with RAII prevents forgetting to reset the state.
+  struct GlobalSelectComponentRAII {
+      GlobalSelectComponentRAII(bool state) :
+      _oldState{_globalSelectComp} {
+        if (state != RooAbsReal::_globalSelectComp)
+          RooAbsReal::_globalSelectComp = state;
+      }
+
+      ~GlobalSelectComponentRAII() {
+        if (RooAbsReal::_globalSelectComp != _oldState)
+          RooAbsReal::_globalSelectComp = _oldState;
+      }
+
+      bool _oldState;
+  };
+
 
   mutable RooArgSet* _lastNSet ; //!
   static Bool_t _hideOffset ; // Offset hiding flag

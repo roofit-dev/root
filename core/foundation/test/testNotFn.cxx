@@ -1,6 +1,8 @@
-#if __cplusplus < 201703L && !defined(_MSC_VER)
-
 #include "ROOT/RNotFn.hxx"
+
+// libc++ does not define __cpp_lib_not_fn.
+// Assume we have not_fn if
+#if defined(R__NOTFN_BACKPORT)
 
 #include "gtest/gtest.h"
 

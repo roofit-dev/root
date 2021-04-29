@@ -15,13 +15,12 @@
 
 #include "ROOT/RVirtualCanvasPainter.hxx"
 #include "ROOT/RCanvas.hxx"
-#include <ROOT/TLogger.hxx>
+#include <ROOT/RLogger.hxx>
 #include <ROOT/RDisplayItem.hxx>
 #include <ROOT/RPadDisplayItem.hxx>
 #include <ROOT/RMenuItem.hxx>
 
 #include <ROOT/RWebWindow.hxx>
-#include <ROOT/RWebWindowsManager.hxx>
 
 #include <memory>
 #include <string>
@@ -33,6 +32,7 @@
 #include <algorithm>
 
 #include "TList.h"
+#include "TEnv.h"
 #include "TROOT.h"
 #include "TClass.h"
 #include "TBufferJSON.h"
@@ -107,6 +107,7 @@ private:
    std::list<WebUpdate> fUpdatesLst; ///<! list of callbacks for canvas update
 
    std::string fNextDumpName;     ///<! next filename for dumping JSON
+   int fJsonComp{23};             ///<! json compression for data send to client
 
    /// Disable copy construction.
    TCanvasPainter(const TCanvasPainter &) = delete;
@@ -133,7 +134,7 @@ private:
    void FrontCommandReplied(const std::string &reply);
 
 public:
-   TCanvasPainter(const RCanvas &canv) : fCanvas(canv) {}
+   TCanvasPainter(const RCanvas &canv);
 
    virtual ~TCanvasPainter();
 
@@ -196,6 +197,16 @@ struct TNewCanvasPainterReg {
 } // namespace Experimental
 } // namespace ROOT
 
+
+/////////////////////////////////////////////////////////////////////////////////////////////
+/// constructor
+
+ROOT::Experimental::TCanvasPainter::TCanvasPainter(const RCanvas &canv) : fCanvas(canv)
+{
+   auto comp = gEnv->GetValue("WebGui.JsonComp", -1);
+   if (comp >= 0) fJsonComp = comp;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////
 /// destructor
 
@@ -213,7 +224,7 @@ ROOT::Experimental::TCanvasPainter::~TCanvasPainter()
 void ROOT::Experimental::TCanvasPainter::CancelUpdates()
 {
    fSnapshotDelivered = 0;
-   for (auto &&item: fUpdatesLst)
+   for (auto &item: fUpdatesLst)
       item.fCallback(false);
    fUpdatesLst.clear();
 }
@@ -244,7 +255,7 @@ void ROOT::Experimental::TCanvasPainter::CheckDataToSend()
 {
    uint64_t min_delivered = 0;
 
-   for (auto &&conn : fWebConn) {
+   for (auto &conn : fWebConn) {
 
       if (conn.fDelivered && (!min_delivered || (min_delivered < conn.fDelivered)))
          min_delivered = conn.fDelivered;
@@ -432,39 +443,20 @@ void ROOT::Experimental::TCanvasPainter::DoWhenReady(const std::string &name, co
 
 void ROOT::Experimental::TCanvasPainter::ProcessData(unsigned connid, const std::string &arg)
 {
-   if (arg == "CONN_READY") {
-      // special argument from RWebWindow itself
-      // indication that new connection appeared
+   auto conn =
+      std::find_if(fWebConn.begin(), fWebConn.end(), [connid](WebConn &item) { return item.fConnId == connid; });
 
-      fWebConn.emplace_back(connid);
-
-      CheckDataToSend();
-      return;
-   }
+   if (conn == fWebConn.end())
+      return; // no connection found
 
    auto check_header = [arg](const std::string &header) {
       return arg.compare(0, header.length(), header) == 0;
    };
 
-   auto conn =
-      std::find_if(fWebConn.begin(), fWebConn.begin(), [connid](WebConn &item) { return item.fConnId == connid; });
-
-   if (conn == fWebConn.end())
-      return; // no connection found
-
    // R__DEBUG_HERE("CanvasPainter") << "from client " << connid << " got data len:" << arg.length() << " val:" <<
    // arg.substr(0,30);
 
-   if (arg == "CONN_CLOSED") {
-      // special argument from RWebWindow itself
-      // connection is closed
-
-      fWebConn.erase(conn);
-
-      // if there are no other connections - cancel all submitted commands
-      CancelCommands(connid);
-
-   } else if (check_header("READY")) {
+   if (check_header("READY")) {
 
    } else if (check_header("SNAPDONE:")) {
       std::string cdata = arg;
@@ -475,8 +467,8 @@ void ROOT::Experimental::TCanvasPainter::ProcessData(unsigned connid, const std:
       cdata.erase(0, 8);
       conn->fGetMenu = cdata;
    } else if (arg == "QUIT") {
-      // use window manager to correctly terminate http server
-      RWebWindowsManager::Instance()->Terminate();
+      // use window manager to correctly terminate http server and ROOT session
+      fWindow->TerminateROOT();
       return;
    } else if (arg == "RELOAD") {
       conn->fSend = 0; // reset send version, causes new data sending
@@ -530,10 +522,27 @@ void ROOT::Experimental::TCanvasPainter::CreateWindow()
 {
    if (fWindow) return;
 
-   fWindow = RWebWindowsManager::Instance()->CreateWindow();
+   fWindow = RWebWindow::Create();
    fWindow->SetConnLimit(0); // allow any number of connections
-   fWindow->SetDefaultPage("file:$jsrootsys/files/canvas.htm");
-   fWindow->SetDataCallBack([this](unsigned connid, const std::string &arg) { ProcessData(connid, arg); });
+   fWindow->SetDefaultPage("file:rootui5sys/canv/canvas.html");
+   fWindow->SetCallBacks(
+      // connect
+      [this](unsigned connid) {
+         fWebConn.emplace_back(connid);
+         CheckDataToSend();
+      },
+      // data
+      [this](unsigned connid, const std::string &arg) { ProcessData(connid, arg); },
+      // disconnect
+      [this](unsigned connid) {
+         auto conn =
+            std::find_if(fWebConn.begin(), fWebConn.end(), [connid](WebConn &item) { return item.fConnId == connid; });
+
+         if (conn != fWebConn.end()) {
+            fWebConn.erase(conn);
+            CancelCommands(connid);
+         }
+      });
    // fWindow->SetGeometry(500,300);
 }
 
@@ -546,7 +555,17 @@ void ROOT::Experimental::TCanvasPainter::NewDisplay(const std::string &where)
 {
    CreateWindow();
 
-   fWindow->Show(where);
+   auto sz = fCanvas.GetSize();
+
+   RWebDisplayArgs args(where);
+
+   if ((sz[0].fVal > 10) && (sz[1].fVal > 10)) {
+      // extra size of browser window header + ui5 menu
+      args.SetWidth((int) sz[0].fVal + 1);
+      args.SetHeight((int) sz[1].fVal + 40);
+   }
+
+   fWindow->Show(args);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -610,7 +629,7 @@ std::string ROOT::Experimental::TCanvasPainter::CreateSnapshot(const ROOT::Exper
    fPadDisplayItem->SetTitle(can.GetTitle());
    fPadDisplayItem->SetWindowSize(can.GetSize());
 
-   TString res = TBufferJSON::ToJSON(fPadDisplayItem.get(), 23);
+   TString res = TBufferJSON::ToJSON(fPadDisplayItem.get(), fJsonComp);
 
    if (!fNextDumpName.empty()) {
       TBufferJSON::ExportToFile(fNextDumpName.c_str(), fPadDisplayItem.get(),
