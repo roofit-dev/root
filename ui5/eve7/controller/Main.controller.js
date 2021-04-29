@@ -6,9 +6,8 @@ sap.ui.define(['sap/ui/core/Component',
                'sap/m/library',
                'sap/m/Button',
                'sap/m/MenuItem',
-               'sap/m/MessageStrip',
                'rootui5/eve7/lib/EveManager'
-              ], function(Component, UIComponent, Controller, Splitter, SplitterLayoutData, MobileLibrary, mButton, mMenuItem, mMessageStrip, EveManager) {
+], function(Component, UIComponent, Controller, Splitter, SplitterLayoutData, MobileLibrary, mButton, mMenuItem, EveManager) {
 
    "use strict";
 
@@ -35,6 +34,12 @@ sap.ui.define(['sap/ui/core/Component',
          t.setHtmlText("<strong style=\"color: red;\">Client Disconnected !</strong>");
       },
 
+      /** called when relative number of possible send operation below or over the threshold  */
+      onSendThresholdChanged: function(below, value) {
+         var t = this.byId("centerTitle");
+         t.$().css('color', below ? 'yellow' : '')
+      },
+
 
       UpdateCommandsButtons: function(cmds) {
          if (!cmds || this.commands) return;
@@ -45,7 +50,7 @@ sap.ui.define(['sap/ui/core/Component',
          for (var k = cmds.length-1; k>=0; --k) {
             var btn = new mButton({
                icon: cmds[k].icon,
-               tooltip: cmds[k].name,
+               text: cmds[k].name,
                press: this.executeCommand.bind(this, cmds[k])
             });
             toolbar.insertContentLeft(btn, 0);
@@ -57,13 +62,15 @@ sap.ui.define(['sap/ui/core/Component',
          console.log('item pressed', item.getText(), elem);
 
          var name = item.getText();
-         if (name.indexOf(" ")>0) name = name.substr(0, name.indexOf(" "));
-
+         if (name.indexOf(" ") > 0) name = name.substr(0, name.indexOf(" "));
          // FIXME: one need better way to deliver parameters to the selected view
          JSROOT.$eve7tmp = { mgr: this.mgr, eveViewerId: elem.fElementId, kind: elem.view_kind };
 
          var oRouter = UIComponent.getRouterFor(this);
-         oRouter.navTo("View", { viewName: name });
+         if (name == "Table")
+            oRouter.navTo("Table", { viewName: name });
+         else
+            oRouter.navTo("View", { viewName: name });
       },
 
       updateViewers: function(loading_done) {
@@ -132,7 +139,7 @@ sap.ui.define(['sap/ui/core/Component',
          }
       },
 
-      OnEveManagerInit: function() {
+      onEveManagerInit: function() {
          console.log("manager updated");
          this.UpdateCommandsButtons(this.mgr.commands);
          this.updateViewers();
@@ -141,7 +148,7 @@ sap.ui.define(['sap/ui/core/Component',
       /*
        * processWaitingMsg: function() { for ( var i = 0; i <
        * msgToWait.length; ++i ) {
-       * this.OnWebsocketMsg(handleToWait, msgToWait[i]); }
+       * this.onWebsocketMsg(handleToWait, msgToWait[i]); }
        * handleToWait = 0; msgToWait = []; },
        */
       event: function() {
@@ -185,6 +192,50 @@ sap.ui.define(['sap/ui/core/Component',
 
       showHelp : function(oEvent) {
          alert("User support: root-webgui@cern.ch");
+      },
+
+      showLog: function (oEvent) {
+         let oPopover = sap.ui.getCore().byId("logView");
+         if (!oPopover)
+         {
+            let oFT = new sap.m.FormattedText("EveConsoleText", {
+               convertLinksToAnchorTags: sap.m.LinkConversion.All,
+               width: "100%",
+               height: "auto"
+            });
+
+            oPopover = new sap.m.Popover("logView", {
+               placement: sap.m.PlacementType.Auto,
+               title: "Console log",
+               content: [
+                  oFT
+               ]
+            });
+
+            // footer
+            let fa = new sap.m.OverflowToolbar();
+            let btnDebug = new sap.m.CheckBox({ text: "Debug", selected: JSROOT.EVE.gDebug ? false : JSROOT.EVE.gDebug });
+            btnDebug.attachSelect(
+               function (oEvent) {
+                  JSROOT.EVE.gDebug = this.getSelected();
+               }
+            );
+            fa.addContent(btnDebug);
+            let cBtn = new sap.m.Button({ text: "Close", icon: "sap-icon://sys-cancel", press: function () { oPopover.close(); }});
+            fa.addContent(cBtn);
+            oPopover.setFooter(fa);
+
+            // set callback function
+            JSROOT.EVE.console.refresh = this.loadLog;
+         }
+
+         this.loadLog();
+         oPopover.openBy(this.getView().byId("logButton"));
+      },
+
+      loadLog: function () {
+         let oFT = sap.ui.getCore().byId("EveConsoleText");
+         oFT.setHtmlText(JSROOT.EVE.console.txt);
       },
 
       showUserURL : function(oEvent) {
