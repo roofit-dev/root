@@ -25,7 +25,7 @@
 #include "RVersion.h"
 #include "TMatrixFfwd.h"
 #include "TMatrixDSym.h"
-#include "TRootIOCtor.h"
+#include "TList.h"
 
 #include <vector>
 #include <string>
