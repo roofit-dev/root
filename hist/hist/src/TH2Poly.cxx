@@ -13,7 +13,7 @@
 #include "TH2Poly.h"
 #include "TMultiGraph.h"
 #include "TGraph.h"
-#include "TClass.h"
+#include "Riostream.h"
 #include "TList.h"
 #include "TMath.h"
 #include <cassert>
@@ -359,24 +359,6 @@ Bool_t TH2Poly::Add(const TH1 *h1, Double_t c1)
       SetEntries(entries);
    }
    return kTRUE;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Performs the operation: this = this + c1*f1.
-
-Bool_t TH2Poly::Add(TF1 *, Double_t, Option_t *)
-{
-   Warning("Add","Not implement for TH2Poly");
-   return kFALSE;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Replace contents of this histogram by the addition of h1 and h2.
-
-Bool_t TH2Poly::Add(const TH1 *, const TH1 *, Double_t, Double_t)
-{
-   Warning("Add","Not implement for TH2Poly");
-   return kFALSE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -745,23 +727,27 @@ Double_t TH2Poly::Integral(Option_t* option) const
    TString opt = option;
    opt.ToLower();
 
+   Double_t w;
+   Double_t integral = 0.;
+
+   TIter next(fBins);
+   TObject *obj;
+   TH2PolyBin *bin;
    if ((opt.Contains("width")) || (opt.Contains("area"))) {
-      Double_t w;
-      Double_t integral = 0.;
-
-      TIter    next(fBins);
-      TObject *obj;
-      TH2PolyBin *bin;
-      while ((obj=next())) {
-         bin       = (TH2PolyBin*) obj;
-         w         = bin->GetArea();
-         integral += w*(bin->GetContent());
+      while ((obj = next())) {
+         bin = (TH2PolyBin *)obj;
+         w = bin->GetArea();
+         integral += w * (bin->GetContent());
       }
-
-      return integral;
    } else {
-      return fTsumw;
+      // need to recompute integral in case SetBinContent was called.
+      // fTsumw cannot be used since it is not updated in that case
+      while ((obj = next())) {
+         bin = (TH2PolyBin *)obj;
+         integral += (bin->GetContent());
+      }
    }
+   return integral;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1572,4 +1558,69 @@ Bool_t TH2PolyBin::IsInside(Double_t x, Double_t y) const
    }
 
    return in;
+}
+
+////////////////////////////////////////////////////////////////////////
+/// RE-implement dummy functions to avoid users calling the
+/// corresponding implementations in TH1 or TH2
+//////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+/// Performs the operation: this = this + c1*f1. NOT IMPLEMENTED for TH2Poly
+Bool_t TH2Poly::Add(TF1 *, Double_t, Option_t *)
+{
+   Error("Add","Not implement for TH2Poly");
+   return kFALSE;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Replace contents of this histogram by the addition of h1 and h2. NOT IMPLEMENTED for TH2Poly
+Bool_t TH2Poly::Add(const TH1 *, const TH1 *, Double_t, Double_t)
+{
+   Error("Add","Not implement for TH2Poly");
+   return kFALSE;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Performs the operation: this = this / c1*f1. NOT IMPLEMENTED for TH2Poly
+Bool_t TH2Poly::Divide(TF1 *, Double_t)
+{
+   Error("Divide","Not implement for TH2Poly");
+   return kFALSE;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// NOT IMPLEMENTED for TH2Poly
+Bool_t TH2Poly::Multiply(TF1 *, Double_t)
+{
+   Error("Multiply","Not implement for TH2Poly");
+   return kFALSE;
+}
+////////////////////////////////////////////////////////////////////////////////
+/// NOT IMPLEMENTED for TH2Poly
+Double_t TH2Poly::ComputeIntegral(Bool_t )
+{
+   Error("ComputeIntegral","Not implement for TH2Poly");
+   return TMath::QuietNaN();
+}
+////////////////////////////////////////////////////////////////////////////////
+/// NOT IMPLEMENTED for TH2Poly
+TH1 * TH2Poly::FFT(TH1*, Option_t * )
+{
+   Error("FFT","Not implement for TH2Poly");
+   return nullptr;
+}
+////////////////////////////////////////////////////////////////////////////////
+/// NOT IMPLEMENTED for TH2Poly
+TH1 * TH2Poly::GetAsymmetry(TH1* , Double_t,  Double_t)
+{
+   Error("GetAsymmetry","Not implement for TH2Poly");
+   return nullptr;
+}
+////////////////////////////////////////////////////////////////////////////////
+/// NOT IMPLEMENTED for TH2Poly
+Double_t TH2Poly::Interpolate(Double_t, Double_t)
+{
+   Error("Interpolate","Not implement for TH2Poly");
+   return TMath::QuietNaN();
 }

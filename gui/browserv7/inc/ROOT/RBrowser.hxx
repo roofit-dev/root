@@ -1,12 +1,9 @@
-/// \file ROOT/RBrowser.hxx
-/// \ingroup WebGui ROOT7
-/// \author Bertrand Bellenot <bertrand.bellenot@cern.ch>
-/// \date 2019-02-28
-/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
-/// is welcome!
+// Authors: Bertrand Bellenot <bertrand.bellenot@cern.ch> Sergey Linev <S.Linev@gsi.de>
+// Date: 2019-02-28
+// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 /*************************************************************************
- * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2021, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -17,75 +14,57 @@
 #define ROOT7_RBrowser
 
 #include <ROOT/RWebWindow.hxx>
-
-#include <ROOT/RBrowserItem.hxx>
+#include <ROOT/RBrowserData.hxx>
 
 #include <vector>
-#include <stdint.h>
-
-class TString;
+#include <memory>
 
 namespace ROOT {
 namespace Experimental {
 
-/** Representation of single item in the file browser */
-class RRootFileItem : public RBrowserItem {
-public:
-   // internal data, used for generate directory list
-   int type{0};             ///<! file type
-   int uid{0};              ///<! file uid
-   int gid{0};              ///<! file gid
-   bool islink{false};      ///<! true if symbolic link
-   bool isdir{false};       ///<! true if directory
-   long modtime{0};         ///<! modification time
-   int64_t size{0};         ///<! file size
-
-   // this is part for browser, visible for I/O
-   std::string icon;     ///< icon name
-   std::string fsize;    ///< file size
-   std::string mtime;    ///< modification time
-   std::string ftype;    ///< file attributes
-   std::string fuid;     ///< user id
-   std::string fgid;     ///< group id
-
-   RRootFileItem() = default;
-
-   RRootFileItem(const std::string &_name, int _nchilds) : RBrowserItem(_name, _nchilds) {}
-
-   // should be here, one needs virtual table for correct streaming of RRootBrowserReply
-   virtual ~RRootFileItem() = default;
-};
-
-/** Web-based ROOT file browser */
+class RBrowserWidget;
 
 class RBrowser {
 
 protected:
 
    std::string fTitle;  ///<! title
-   unsigned fConnId{0}; ///<! connection id
+   unsigned fConnId{0}; ///<! default connection id
 
-   std::string fDescPath;                ///<! last scanned directory
-   std::vector<RRootFileItem> fDesc;     ///<! plain list of current directory
-   std::vector<RRootFileItem *> fSorted; ///<! current sorted list (no ownership)
+   bool fUseRCanvas{false};             ///<!  which canvas should be used
+   std::string fActiveWidgetName;        ///<! name of active widget
+   std::vector<std::shared_ptr<RBrowserWidget>> fWidgets; ///<!  all browser widgets
+   int fWidgetCnt{0};                                     ///<! counter for created widgets
 
-   std::shared_ptr<RWebWindow> fWebWindow;   ///<! web window to show geometry
+   std::shared_ptr<RWebWindow> fWebWindow;   ///<! web window to browser
 
-   void AddFolder(const char *name);
-   void AddFile(const char *name);
-   void Browse(const std::string &path);
-   void Build(const std::string &path);
-   std::string GetClassIcon(std::string &classname);
-   std::string GetFileIcon(TString &name);
+   RBrowserData  fBrowsable;                   ///<! central browsing element
+
+   std::shared_ptr<RBrowserWidget> AddWidget(const std::string &kind);
+   std::shared_ptr<RBrowserWidget> FindWidget(const std::string &name) const;
+   std::shared_ptr<RBrowserWidget> GetActiveWidget() const { return FindWidget(fActiveWidgetName); }
+
+   void CloseTab(const std::string &name);
+
    std::string ProcessBrowserRequest(const std::string &msg);
+   std::string ProcessDblClick(std::vector<std::string> &args);
+   std::string NewWidgetMsg(std::shared_ptr<RBrowserWidget> &widget);
+   long ProcessRunMacro(const std::string &file_path);
+   void ProcessSaveFile(const std::string &fname, const std::string &content);
+   std::string GetCurrentWorkingDirectory();
 
-   bool IsBuild() const { return fDesc.size() > 0; }
+   std::vector<std::string> GetRootHistory();
+   std::vector<std::string> GetRootLogs();
 
-   void WebWindowCallback(unsigned connid, const std::string &arg);
+   void SendInitMsg(unsigned connid);
+   void ProcessMsg(unsigned connid, const std::string &arg);
 
 public:
-   RBrowser();
+   RBrowser(bool use_rcanvas = true);
    virtual ~RBrowser();
+
+   bool GetUseRCanvas() const { return fUseRCanvas; }
+   void SetUseRCanvas(bool on = true) { fUseRCanvas = on; }
 
    /// show Browser in specified place
    void Show(const RWebDisplayArgs &args = "", bool always_start_new_browser = false);

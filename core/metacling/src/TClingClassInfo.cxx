@@ -79,7 +79,7 @@ TClingClassInfo::TClingClassInfo(cling::Interpreter *interp, Bool_t all)
    fType = 0;
 }
 
-TClingClassInfo::TClingClassInfo(cling::Interpreter *interp, const char *name)
+TClingClassInfo::TClingClassInfo(cling::Interpreter *interp, const char *name, bool intantiateTemplate /* = true */)
    : TClingDeclInfo(nullptr), fInterp(interp), fFirstTime(true), fDescend(false), fIterAll(kTRUE), fIsIter(false),
      fType(0), fTitle(""), fOffsetCache(0)
 {
@@ -88,14 +88,14 @@ TClingClassInfo::TClingClassInfo(cling::Interpreter *interp, const char *name)
    const Decl *decl = lh.findScope(name,
                                    gDebug > 5 ? cling::LookupHelper::WithDiagnostics
                                    : cling::LookupHelper::NoDiagnostics,
-                                   &type, /* intantiateTemplate= */ true );
+                                   &type, intantiateTemplate);
    if (!decl) {
       std::string buf = TClassEdit::InsertStd(name);
       if (buf != name) {
          decl = lh.findScope(buf,
                              gDebug > 5 ? cling::LookupHelper::WithDiagnostics
                              : cling::LookupHelper::NoDiagnostics,
-                             &type, /* intantiateTemplate= */ true );
+                             &type, intantiateTemplate);
       }
    }
    if (!decl && type) {
@@ -135,6 +135,7 @@ void TClingClassInfo::AddBaseOffsetValue(const clang::Decl* decl, ptrdiff_t offs
    // determined by the parameter decl.
 
    OffsetPtrFunc_t executableFunc = 0;
+   std::unique_lock<std::mutex> lock(fOffsetCacheMutex);
    fOffsetCache[decl] = std::make_pair(offset, executableFunc);
 }
 
@@ -145,6 +146,10 @@ long TClingClassInfo::ClassProperty() const
    }
    long property = 0L;
    const RecordDecl *RD = llvm::dyn_cast<RecordDecl>(GetDecl());
+
+   // isAbstract and other calls can trigger deserialization
+   cling::Interpreter::PushTransactionRAII RAII(fInterp);
+
    if (!RD) {
       // We are an enum or namespace.
       // The cint interface always returns 0L for these guys.
@@ -157,6 +162,8 @@ long TClingClassInfo::ClassProperty() const
    // We now have a class or a struct.
    const CXXRecordDecl *CRD =
       llvm::dyn_cast<CXXRecordDecl>(GetDecl());
+   if (!CRD)
+      return property;
    property |= kClassIsValid;
    if (CRD->isAbstract()) {
       property |= kClassIsAbstract;
@@ -324,7 +331,7 @@ TClingMethodInfo TClingClassInfo::GetMethod(const char *fname) const
 }
 
 TClingMethodInfo TClingClassInfo::GetMethod(const char *fname,
-      const char *proto, long *poffset, EFunctionMatchMode mode /*= kConversionMatch*/,
+      const char *proto, Longptr_t *poffset, EFunctionMatchMode mode /*= kConversionMatch*/,
       EInheritanceMode imode /*= kWithInheritance*/) const
 {
    return GetMethod(fname,proto,false,poffset,mode,imode);
@@ -332,7 +339,7 @@ TClingMethodInfo TClingClassInfo::GetMethod(const char *fname,
 
 TClingMethodInfo TClingClassInfo::GetMethod(const char *fname,
       const char *proto, bool objectIsConst,
-      long *poffset, EFunctionMatchMode mode /*= kConversionMatch*/,
+      Longptr_t *poffset, EFunctionMatchMode mode /*= kConversionMatch*/,
       EInheritanceMode imode /*= kWithInheritance*/) const
 {
    if (poffset) {
@@ -418,7 +425,7 @@ TClingMethodInfo TClingClassInfo::GetMethod(const char *fname,
 
 TClingMethodInfo TClingClassInfo::GetMethod(const char *fname,
                                             const llvm::SmallVectorImpl<clang::QualType> &proto,
-                                            long *poffset, EFunctionMatchMode mode /*= kConversionMatch*/,
+                                            Longptr_t *poffset, EFunctionMatchMode mode /*= kConversionMatch*/,
                                             EInheritanceMode imode /*= kWithInheritance*/) const
 {
    return GetMethod(fname,proto,false,poffset,mode,imode);
@@ -426,7 +433,7 @@ TClingMethodInfo TClingClassInfo::GetMethod(const char *fname,
 
 TClingMethodInfo TClingClassInfo::GetMethod(const char *fname,
                                             const llvm::SmallVectorImpl<clang::QualType> &proto, bool objectIsConst,
-                                            long *poffset, EFunctionMatchMode mode /*= kConversionMatch*/,
+                                            Longptr_t *poffset, EFunctionMatchMode mode /*= kConversionMatch*/,
                                             EInheritanceMode imode /*= kWithInheritance*/) const
 {
    if (poffset) {
@@ -491,7 +498,7 @@ TClingMethodInfo TClingClassInfo::GetMethod(const char *fname,
 }
 
 TClingMethodInfo TClingClassInfo::GetMethodWithArgs(const char *fname,
-      const char *arglist, long *poffset, EFunctionMatchMode mode /* = kConversionMatch*/,
+      const char *arglist, Longptr_t *poffset, EFunctionMatchMode mode /* = kConversionMatch*/,
       EInheritanceMode imode /* = kWithInheritance*/) const
 {
    return GetMethodWithArgs(fname,arglist,false,poffset,mode,imode);
@@ -499,7 +506,7 @@ TClingMethodInfo TClingClassInfo::GetMethodWithArgs(const char *fname,
 
 TClingMethodInfo TClingClassInfo::GetMethodWithArgs(const char *fname,
       const char *arglist, bool objectIsConst,
-      long *poffset, EFunctionMatchMode /*mode = kConversionMatch*/,
+      Longptr_t *poffset, EFunctionMatchMode /*mode = kConversionMatch*/,
       EInheritanceMode /* imode = kWithInheritance*/) const
 {
 
@@ -570,18 +577,18 @@ int TClingClassInfo::GetMethodNArg(const char *method, const char *proto,
    TClingMethodInfo mi = GetMethod(method, proto, objectIsConst, 0, mode);
    int clang_val = -1;
    if (mi.IsValid()) {
-      unsigned num_params = mi.GetMethodDecl()->getNumParams();
+      unsigned num_params = mi.GetTargetFunctionDecl()->getNumParams();
       clang_val = static_cast<int>(num_params);
    }
    return clang_val;
 }
 
-long TClingClassInfo::GetOffset(const CXXMethodDecl* md) const
+Longptr_t TClingClassInfo::GetOffset(const CXXMethodDecl* md) const
 {
 
    R__LOCKGUARD(gInterpreterMutex);
 
-   long offset = 0L;
+   Longptr_t offset = 0L;
    const CXXRecordDecl* definer = md->getParent();
    const CXXRecordDecl* accessor =
       llvm::cast<CXXRecordDecl>(GetDecl());
@@ -607,7 +614,7 @@ ptrdiff_t TClingClassInfo::GetBaseOffset(TClingClassInfo* base, void* address, b
 {
 
    {
-      R__READ_LOCKGUARD(ROOT::gCoreMutex);
+      std::unique_lock<std::mutex> lock(fOffsetCacheMutex);
 
       // Check for the offset in the cache.
       auto iter = fOffsetCache.find(base->GetDecl());
@@ -663,7 +670,7 @@ std::vector<std::string> TClingClassInfo::GetUsingNamespaces()
    return res;
 }
 
-bool TClingClassInfo::HasDefaultConstructor() const
+ROOT::TMetaUtils::EIOCtorCategory TClingClassInfo::HasDefaultConstructor(bool checkio, std::string *type_name) const
 {
    // Return true if there a constructor taking no arguments (including
    // a constructor that has defaults for all of its arguments) which
@@ -673,17 +680,32 @@ bool TClingClassInfo::HasDefaultConstructor() const
    // Note: This is could enhanced to also know about the ROOT ioctor
    // but this was not the case in CINT.
    //
-   if (!IsLoaded()) {
-      return false;
+
+   using namespace ROOT::TMetaUtils;
+
+   if (!IsLoaded())
+      return EIOCtorCategory::kAbsent;
+
+   auto CRD = llvm::dyn_cast<CXXRecordDecl>(GetDecl());
+   // Namespaces do not have constructors.
+   if (!CRD)
+      return EIOCtorCategory::kAbsent;
+
+   if (checkio) {
+      auto kind = CheckIOConstructor(CRD, "TRootIOCtor", nullptr, *fInterp);
+      if ((kind == EIOCtorCategory::kIORefType) || (kind == EIOCtorCategory::kIOPtrType)) {
+         if (type_name) *type_name = "TRootIOCtor";
+         return kind;
+      }
+
+      kind = CheckIOConstructor(CRD, "__void__", nullptr, *fInterp);
+      if (kind == EIOCtorCategory::kIORefType) {
+         if (type_name) *type_name = "__void__";
+         return kind;
+      }
    }
-   const CXXRecordDecl* CRD = llvm::dyn_cast<CXXRecordDecl>(GetDecl());
-   if (!CRD) {
-      // Namespaces do not have constructors.
-      return false;
-   }
-   using namespace TMetaUtils;
-   const RConstructorType ioctortype("",*fInterp);
-   return EIOCtorCategory::kAbsent != CheckConstructor(CRD,ioctortype,*fInterp);
+
+   return CheckDefaultConstructor(CRD, *fInterp) ? EIOCtorCategory::kDefault : EIOCtorCategory::kAbsent;
 }
 
 bool TClingClassInfo::HasMethod(const char *name) const
@@ -818,7 +840,7 @@ EDataType TClingClassInfo::GetUnderlyingType() const
    if (auto ED = llvm::dyn_cast<EnumDecl>(GetDecl())) {
       R__LOCKGUARD(gInterpreterMutex);
       auto Ty = ED->getIntegerType().getTypePtrOrNull();
-      if (auto BTy = llvm::dyn_cast<BuiltinType>(Ty)) {
+      if (auto BTy = llvm::dyn_cast_or_null<BuiltinType>(Ty)) {
          switch (BTy->getKind()) {
          case BuiltinType::Bool:
             return kBool_t;
@@ -888,7 +910,7 @@ bool TClingClassInfo::IsLoaded() const
 
 bool TClingClassInfo::IsValidMethod(const char *method, const char *proto,
                                     Bool_t objectIsConst,
-                                    long *offset,
+                                    Longptr_t *offset,
                                     EFunctionMatchMode mode /*= kConversionMatch*/) const
 {
    // Check if the method with the given prototype exist.
@@ -1041,36 +1063,44 @@ void *TClingClassInfo::New(const ROOT::TMetaUtils::TNormalizedCtxt &normCtxt) co
    // that takes no arguments to create an object of this class type.
    if (!IsValid()) {
       Error("TClingClassInfo::New()", "Called while invalid!");
-      return 0;
+      return nullptr;
    }
    if (!IsLoaded()) {
       Error("TClingClassInfo::New()", "Class is not loaded: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
+
+   ROOT::TMetaUtils::EIOCtorCategory kind;
+   std::string type_name;
+
    {
       R__LOCKGUARD(gInterpreterMutex);
-      const CXXRecordDecl* RD = dyn_cast<CXXRecordDecl>(GetDecl());
+      auto RD = dyn_cast<CXXRecordDecl>(GetDecl());
       if (!RD) {
          Error("TClingClassInfo::New()", "This is a namespace!: %s",
                FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
-      if (!HasDefaultConstructor()) {
+
+      kind = HasDefaultConstructor(true, &type_name);
+
+      if (kind == ROOT::TMetaUtils::EIOCtorCategory::kAbsent) {
          // FIXME: We fail roottest root/io/newdelete if we issue this message!
-         //Error("TClingClassInfo::New()", "Class has no default constructor: %s",
-         //      FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         // Error("TClingClassInfo::New()", "Class has no default constructor: %s",
+         //       FullyQualifiedName(GetDecl()).c_str());
+         return nullptr;
       }
    } // End of Lock section.
-   void* obj = 0;
+   void* obj = nullptr;
    TClingCallFunc cf(fInterp,normCtxt);
-   obj = cf.ExecDefaultConstructor(this, /*address=*/0, /*nary=*/0);
+   obj = cf.ExecDefaultConstructor(this, kind, type_name,
+                                   /*address=*/nullptr, /*nary=*/0);
    if (!obj) {
       Error("TClingClassInfo::New()", "Call of default constructor "
             "failed to return an object for class: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
    return obj;
 }
@@ -1082,40 +1112,45 @@ void *TClingClassInfo::New(int n, const ROOT::TMetaUtils::TNormalizedCtxt &normC
    // of this class type.
    if (!IsValid()) {
       Error("TClingClassInfo::New(n)", "Called while invalid!");
-      return 0;
+      return nullptr;
    }
    if (!IsLoaded()) {
       Error("TClingClassInfo::New(n)", "Class is not loaded: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
+
+   ROOT::TMetaUtils::EIOCtorCategory kind;
+   std::string type_name;
 
    {
       R__LOCKGUARD(gInterpreterMutex);
 
-      const CXXRecordDecl* RD = dyn_cast<CXXRecordDecl>(GetDecl());
+      auto RD = dyn_cast<CXXRecordDecl>(GetDecl());
       if (!RD) {
          Error("TClingClassInfo::New(n)", "This is a namespace!: %s",
                FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
-      if (!HasDefaultConstructor()) {
+
+      kind = HasDefaultConstructor(true, &type_name);
+      if (kind == ROOT::TMetaUtils::EIOCtorCategory::kAbsent) {
          // FIXME: We fail roottest root/io/newdelete if we issue this message!
          //Error("TClingClassInfo::New(n)",
          //      "Class has no default constructor: %s",
          //      FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
    } // End of Lock section.
-   void* obj = 0;
+   void* obj = nullptr;
    TClingCallFunc cf(fInterp,normCtxt);
-   obj = cf.ExecDefaultConstructor(this, /*address=*/0,
-                                   /*nary=*/(unsigned long)n);
+   obj = cf.ExecDefaultConstructor(this, kind, type_name,
+                                   /*address=*/nullptr, /*nary=*/(unsigned long)n);
    if (!obj) {
       Error("TClingClassInfo::New(n)", "Call of default constructor "
             "failed to return an array of class: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
    return obj;
 }
@@ -1128,35 +1163,41 @@ void *TClingClassInfo::New(int n, void *arena, const ROOT::TMetaUtils::TNormaliz
    // memory arena.
    if (!IsValid()) {
       Error("TClingClassInfo::New(n, arena)", "Called while invalid!");
-      return 0;
+      return nullptr;
    }
    if (!IsLoaded()) {
       Error("TClingClassInfo::New(n, arena)", "Class is not loaded: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
+
+   ROOT::TMetaUtils::EIOCtorCategory kind;
+   std::string type_name;
+
    {
       R__LOCKGUARD(gInterpreterMutex);
 
-      const CXXRecordDecl* RD = dyn_cast<CXXRecordDecl>(GetDecl());
+      auto RD = dyn_cast<CXXRecordDecl>(GetDecl());
       if (!RD) {
          Error("TClingClassInfo::New(n, arena)", "This is a namespace!: %s",
                FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
-      if (!HasDefaultConstructor()) {
+
+      kind = HasDefaultConstructor(true, &type_name);
+      if (kind == ROOT::TMetaUtils::EIOCtorCategory::kAbsent) {
          // FIXME: We fail roottest root/io/newdelete if we issue this message!
          //Error("TClingClassInfo::New(n, arena)",
          //      "Class has no default constructor: %s",
          //      FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
    } // End of Lock section
-   void* obj = 0;
+   void* obj = nullptr;
    TClingCallFunc cf(fInterp,normCtxt);
    // Note: This will always return arena.
-   obj = cf.ExecDefaultConstructor(this, /*address=*/arena,
-                                   /*nary=*/(unsigned long)n);
+   obj = cf.ExecDefaultConstructor(this, kind, type_name,
+                                   /*address=*/arena, /*nary=*/(unsigned long)n);
    return obj;
 }
 
@@ -1167,34 +1208,41 @@ void *TClingClassInfo::New(void *arena, const ROOT::TMetaUtils::TNormalizedCtxt 
    // object of this class type in the given memory arena.
    if (!IsValid()) {
       Error("TClingClassInfo::New(arena)", "Called while invalid!");
-      return 0;
+      return nullptr;
    }
    if (!IsLoaded()) {
       Error("TClingClassInfo::New(arena)", "Class is not loaded: %s",
             FullyQualifiedName(GetDecl()).c_str());
-      return 0;
+      return nullptr;
    }
+
+   ROOT::TMetaUtils::EIOCtorCategory kind;
+   std::string type_name;
+
    {
       R__LOCKGUARD(gInterpreterMutex);
 
-      const CXXRecordDecl* RD = dyn_cast<CXXRecordDecl>(GetDecl());
+      auto RD = dyn_cast<CXXRecordDecl>(GetDecl());
       if (!RD) {
          Error("TClingClassInfo::New(arena)", "This is a namespace!: %s",
                FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
-      if (!HasDefaultConstructor()) {
+
+      kind = HasDefaultConstructor(true, &type_name);
+      if (kind == ROOT::TMetaUtils::EIOCtorCategory::kAbsent) {
          // FIXME: We fail roottest root/io/newdelete if we issue this message!
          //Error("TClingClassInfo::New(arena)",
          //      "Class has no default constructor: %s",
          //      FullyQualifiedName(GetDecl()).c_str());
-         return 0;
+         return nullptr;
       }
    } // End of Locked section.
-   void* obj = 0;
+   void* obj = nullptr;
    TClingCallFunc cf(fInterp,normCtxt);
    // Note: This will always return arena.
-   obj = cf.ExecDefaultConstructor(this, /*address=*/arena, /*nary=*/0);
+   obj = cf.ExecDefaultConstructor(this, kind, type_name,
+                                    /*address=*/arena, /*nary=*/0);
    return obj;
 }
 
@@ -1238,13 +1286,14 @@ long TClingClassInfo::Property() const
    // Note: Now we have class, struct, union only.
    const CXXRecordDecl *CRD =
       llvm::dyn_cast<CXXRecordDecl>(GetDecl());
+   if (!CRD)
+      return property;
+
    if (CRD->isClass()) {
       property |= kIsClass;
-   }
-   else if (CRD->isStruct()) {
+   } else if (CRD->isStruct()) {
       property |= kIsStruct;
-   }
-   else if (CRD->isUnion()) {
+   } else if (CRD->isUnion()) {
       property |= kIsUnion;
    }
    if (CRD->hasDefinition() && CRD->isAbstract()) {
@@ -1300,12 +1349,12 @@ int TClingClassInfo::Size() const
    return clang_size;
 }
 
-long TClingClassInfo::Tagnum() const
+Longptr_t TClingClassInfo::Tagnum() const
 {
    if (!IsValid()) {
       return -1L;
    }
-   return reinterpret_cast<long>(GetDecl());
+   return reinterpret_cast<Longptr_t>(GetDecl());
 }
 
 const char *TClingClassInfo::FileName()
@@ -1395,6 +1444,6 @@ const char *TClingClassInfo::TmpltName() const
       // Note: This does *not* include the template arguments!
       buf = ND->getNameAsString();
    }
-   return buf.c_str();
+   return buf.c_str();  // NOLINT
 }
 

@@ -1,5 +1,6 @@
-# roottest is its own repo
+# roottest & rootbench are their own repos
 roottest
+rootbench
 
 # MacOS Xcode
 xcuserdata
@@ -9,6 +10,7 @@ project.xcworkspace
 .DS_Store
 
 # Visual Code
+.vs/
 .vscode
 .build
 
@@ -24,9 +26,12 @@ CMakeLists.txt.user
 .settings/*
 .cproject
 .project
+.externalToolBuilders
+.pydevproject
 
 # Vim
 *.swp
 
 # Other Stuff
 tags
+*.d
