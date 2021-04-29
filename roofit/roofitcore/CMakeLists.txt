@@ -232,7 +232,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooSuperCategory.h
     RooTable.h
     RooTFoamBinding.h
-    RooThreshEntry.h
     RooThresholdCategory.h
     RooTObjWrap.h
     RooTrace.h
@@ -472,7 +471,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooSuperCategory.cxx
     src/RooTable.cxx
     src/RooTFoamBinding.cxx
-    src/RooThreshEntry.cxx
     src/RooThresholdCategory.cxx
     src/RooTObjWrap.cxx
     src/RooTrace.cxx
