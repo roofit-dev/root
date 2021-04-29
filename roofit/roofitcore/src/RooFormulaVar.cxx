@@ -49,7 +49,6 @@
 #include "Riostream.h"
 
 #include "RooFormulaVar.h"
-#include "RooFormulaVar.h"
 #include "RooStreamParser.h"
 #include "RooNLLVar.h"
 #include "RooChi2Var.h"
@@ -64,9 +63,14 @@ ClassImp(RooFormulaVar);
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Constructor with formula expression and list of input variables
-
-RooFormulaVar::RooFormulaVar(const char *name, const char *title, const char* inFormula, const RooArgList& dependents) : 
+/// Constructor with formula expression and list of input variables.
+/// \param[in] name Name of the formula.
+/// \param[in] title Title of the formula.
+/// \param[in] inFormula Expression to be evaluated.
+/// \param[in] dependents Variables that should be passed to the formula.
+/// \param[in] checkVariables Check that all variables from `dependents` are used in the expression.
+RooFormulaVar::RooFormulaVar(const char *name, const char *title, const char* inFormula, const RooArgList& dependents,
+    bool checkVariables) :
   RooAbsReal(name,title), 
   _actualVars("actualVars","Variables used by formula expression",this),
   _formExpr(inFormula)
@@ -76,16 +80,21 @@ RooFormulaVar::RooFormulaVar(const char *name, const char *title, const char* in
   if (_actualVars.getSize()==0) {
     _value = traceEval(0);
   } else {
-    _formula.reset(new RooFormula(GetName(), _formExpr, _actualVars));
+    _formula.reset(new RooFormula(GetName(), _formExpr, _actualVars, checkVariables));
+    _formExpr = _formula->formulaString().c_str();
   }
 }
 
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Constructor with formula expression, title and list of input variables
-
-RooFormulaVar::RooFormulaVar(const char *name, const char *title, const RooArgList& dependents) : 
+/// Constructor with formula expression, title and list of input variables.
+/// \param[in] name Name of the formula.
+/// \param[in] title Formula expression. Will also be used as the title.
+/// \param[in] dependents Variables that should be passed to the formula.
+/// \param[in] checkVariables Check that all variables from `dependents` are used in the expression.
+RooFormulaVar::RooFormulaVar(const char *name, const char *title, const RooArgList& dependents,
+    bool checkVariables) :
   RooAbsReal(name,title),
   _actualVars("actualVars","Variables used by formula expression",this),
   _formExpr(title)
@@ -95,7 +104,8 @@ RooFormulaVar::RooFormulaVar(const char *name, const char *title, const RooArgLi
   if (_actualVars.getSize()==0) {
     _value = traceEval(0);
   } else {
-    _formula.reset(new RooFormula(GetName(), _formExpr, _actualVars));
+    _formula.reset(new RooFormula(GetName(), _formExpr, _actualVars, checkVariables));
+    _formExpr = _formula->formulaString().c_str();
   }
 }
 
@@ -109,19 +119,23 @@ RooFormulaVar::RooFormulaVar(const RooFormulaVar& other, const char* name) :
   _actualVars("actualVars",this,other._actualVars),
   _formExpr(other._formExpr)
 {
-  if (other._formula && other._formula->ok())
-    _formula.reset(new RooFormula(GetName(), _formExpr, _actualVars));
+  if (other._formula && other._formula->ok()) {
+    _formula.reset(new RooFormula(GetName(), _formExpr, _actualVars, /*checkVariables=*/false));
+    _formExpr = _formula->formulaString().c_str();
+  }
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Return reference to internal RooFormula object.
-RooFormula& RooFormulaVar::formula() const
+/// If it doesn't exist, create it on the fly.
+RooFormula& RooFormulaVar::getFormula() const
 {
   if (!_formula) {
     // After being read from file, the formula object might not exist, yet:
     auto theFormula = new RooFormula(GetName(), _formExpr, _actualVars);
     const_cast<std::unique_ptr<RooFormula>&>(this->_formula).reset(theFormula);
+    const_cast<TString&>(_formExpr) = _formula->formulaString().c_str();
   }
 
   return *_formula;
@@ -134,7 +148,25 @@ RooFormula& RooFormulaVar::formula() const
 
 Double_t RooFormulaVar::evaluate() const
 {
-  return formula().eval(_lastNSet);
+  return getFormula().eval(_lastNSet);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Evaluate the formula for all entries of our servers found in `inputData`.
+RooSpan<double> RooFormulaVar::evaluateSpan(RooBatchCompute::RunContext& inputData, const RooArgSet* normSet) const {
+  if (normSet != _lastNSet) {
+    // TODO: Remove dependence on _lastNSet
+    // See also comment in RooAbsReal::getValBatch().
+    std::cerr << "Formula " << GetName() << " " << GetTitle() << "\n\tBeing evaluated with normSet " << normSet << "\n";
+    normSet->Print("V");
+    std::cerr << "\tHowever, _lastNSet = " << _lastNSet << "\n";
+    if (_lastNSet) _lastNSet->Print("V");
+
+    throw std::logic_error("Got conflicting norm sets. This shouldn't happen.");
+  }
+
+  return formula().evaluateSpan(this, inputData, normSet);
 }
 
 
@@ -143,7 +175,10 @@ Double_t RooFormulaVar::evaluate() const
 
 Bool_t RooFormulaVar::redirectServersHook(const RooAbsCollection& newServerList, Bool_t mustReplaceAll, Bool_t nameChange, Bool_t /*isRecursive*/)
 {
-  return formula().changeDependents(newServerList,mustReplaceAll,nameChange) ;
+  bool success = getFormula().changeDependents(newServerList,mustReplaceAll,nameChange);
+
+  _formExpr = getFormula().GetTitle();
+  return success;
 }
 
 
@@ -157,7 +192,7 @@ void RooFormulaVar::printMultiline(ostream& os, Int_t contents, Bool_t verbose, 
   if(verbose) {
     indent.Append("  ");
     os << indent;
-    formula().printMultiline(os,contents,verbose,indent);
+    getFormula().printMultiline(os,contents,verbose,indent);
   }
 }
 
@@ -205,15 +240,15 @@ void RooFormulaVar::writeToStream(ostream& os, Bool_t compact) const
 std::list<Double_t>* RooFormulaVar::binBoundaries(RooAbsRealLValue& obs, Double_t xlo, Double_t xhi) const
 {
   for (const auto par : _actualVars) {
-    assert(dynamic_cast<const RooAbsReal*>(par));
     auto func = static_cast<const RooAbsReal*>(par);
-    list<Double_t>* binb = func->binBoundaries(obs,xlo,xhi) ;      
-    if (binb) {
-      return binb ;
+    list<Double_t>* binb = nullptr;
+
+    if (func && (binb = func->binBoundaries(obs,xlo,xhi)) ) {
+      return binb;
     }
   }
   
-  return 0 ;  
+  return nullptr;
 }
 
 
@@ -224,16 +259,15 @@ std::list<Double_t>* RooFormulaVar::binBoundaries(RooAbsRealLValue& obs, Double_
 std::list<Double_t>* RooFormulaVar::plotSamplingHint(RooAbsRealLValue& obs, Double_t xlo, Double_t xhi) const
 {
   for (const auto par : _actualVars) {
-    assert(dynamic_cast<const RooAbsReal*>(par));
-    auto func = static_cast<const RooAbsReal*>(par);
+    auto func = dynamic_cast<const RooAbsReal*>(par);
+    list<Double_t>* hint = nullptr;
 
-    list<Double_t>* hint = func->plotSamplingHint(obs,xlo,xhi) ;      
-    if (hint) {
-      return hint ;
+    if (func && (hint = func->plotSamplingHint(obs,xlo,xhi)) ) {
+      return hint;
     }
   }
 
-  return 0 ;
+  return nullptr;
 }
 
 
