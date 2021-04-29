@@ -150,12 +150,14 @@ namespace RooFit {
   }
  
 
-  // RooChi2Var::ctor arguments
+  // RooChi2Var::ctor / RooNLLVar arguments
   RooCmdArg Extended(Bool_t flag) { return RooCmdArg("Extended",flag,0,0,0,0,0,0,0) ; }
   RooCmdArg DataError(Int_t etype) { return RooCmdArg("DataError",(Int_t)etype,0,0,0,0,0,0,0) ; }
   RooCmdArg NumCPU(Int_t nCPU, Int_t interleave)   { return RooCmdArg("NumCPU",nCPU,interleave,0,0,0,0,0,0) ; }
   RooCmdArg CPUAffinity(Bool_t flag) { return RooCmdArg("CPUAffinity",flag,0,0,0,0,0,0,0); }
 
+  RooCmdArg BatchMode(bool flag) { return RooCmdArg("BatchMode", flag); }
+  
   // RooAbsCollection::printLatex arguments
   RooCmdArg Columns(Int_t ncol)                           { return RooCmdArg("Columns",ncol,0,0,0,0,0,0,0) ; }
   RooCmdArg OutputFile(const char* fileName)              { return RooCmdArg("OutputFile",0,0,0,0,fileName,0,0,0) ; }
