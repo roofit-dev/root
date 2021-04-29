@@ -43,8 +43,6 @@
 #include "TH1.h"
 
 #include "Riostream.h"
-#include "Riostream.h"
-
 
 #include "RooFit.h"
 #include "RooStats/HistFactory/ParamHistFunc.h"
@@ -125,15 +123,17 @@ ParamHistFunc::ParamHistFunc(const char* name, const char* title,
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a function which returns bin-wise values.
-/// This class contains N RooRealVars, one for each
-/// bin from the given RooRealVar.
+/// This class allows to multiply bin contents of histograms
+/// with the values of a set of RooRealVars.
 ///
 /// The value of the function in the ith bin is 
 /// given by:
+/// \f[
+///   F(i) = \gamma_{i} * \mathrm{nominal}(i)
+/// \f]
 ///
-/// F(i) = gamma_i * nominal(i)
-///
-/// Where the nominal values are taken from the histogram.
+/// Where the nominal values are taken from the histogram,
+/// and the \f$ \gamma_{i} \f$ can be set from the outside.
 ParamHistFunc::ParamHistFunc(const char* name, const char* title, 
 			     const RooArgList& vars, const RooArgList& paramSet,
 			     const TH1* Hist ) :
@@ -435,33 +435,31 @@ RooArgList ParamHistFunc::createParamSet(RooWorkspace& w, const std::string& Pre
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Create the list of RooRealVar
-/// parameters which represent the
-/// height of the histogram bins.
-/// The list 'vars' represents the 
-/// observables (corresponding to histogram bins)
-/// that these newly created parameters will 
-/// be mapped to. (ie, we create one parameter
-/// per observable in vars and per bin in each observable)
-
-/// Store them in a list using:
+/// Create the list of RooRealVar parameters which scale the
+/// height of histogram bins.
+/// The list `vars` represents the observables (corresponding to histogram bins)
+/// that these newly created parameters will
+/// be mapped to. *I.e.*, we create one parameter
+/// per observable in `vars` and per bin in each observable.
+///
+/// The new parameters are initialised to 1 with an uncertainty of +/- 1.,
+/// their range is set to the function arguments.
+///
+/// Store the parameters in a list using:
+/// ```
 /// _paramSet.add( createParamSet() );
-/// This list is stored in the "TH1" index order
+/// ```
+/// This list is stored in the "TH1" index order.
 RooArgList ParamHistFunc::createParamSet(RooWorkspace& w, const std::string& Prefix, 
 					 const RooArgList& vars, 
 					 Double_t gamma_min, Double_t gamma_max) {
 
 
-  // Get the number of bins
-  // in the nominal histogram
-
-  // We also set the parameters to have nominal min and max values
 
   RooArgList params = ParamHistFunc::createParamSet( w, Prefix, vars );
 
   for (auto comp : params) {
-    
-    RooRealVar* var = (RooRealVar*) comp;
+    auto var = static_cast<RooRealVar*>(comp);
 
     var->setMin( gamma_min );
     var->setMax( gamma_max );
@@ -753,12 +751,9 @@ Double_t ParamHistFunc::analyticalIntegralWN(Int_t /*code*/, const RooArgSet* /*
 /// as the recursive division strategy of RooCurve cannot deal efficiently
 /// with the vertical lines that occur in a non-interpolated histogram
 
-std::list<Double_t>* ParamHistFunc::plotSamplingHint(RooAbsRealLValue& /*obs*/, Double_t /*xlo*/, 
-						Double_t /*xhi*/) const
+std::list<Double_t>* ParamHistFunc::plotSamplingHint(RooAbsRealLValue& obs, Double_t xlo, 
+						Double_t xhi) const
 {
-  return 0;
-
-  /*
   // copied and edited from RooHistFunc
   RooAbsLValue* lvarg = &obs;
 
@@ -766,7 +761,7 @@ std::list<Double_t>* ParamHistFunc::plotSamplingHint(RooAbsRealLValue& /*obs*/, 
   const RooAbsBinning* binning = lvarg->getBinningPtr(0) ;
   Double_t* boundaries = binning->array() ;
 
-  list<Double_t>* hint = new list<Double_t> ;
+  std::list<Double_t>* hint = new std::list<Double_t> ;
 
   // Widen range slighty
   xlo = xlo - 0.01*(xhi-xlo) ;
@@ -782,9 +777,7 @@ std::list<Double_t>* ParamHistFunc::plotSamplingHint(RooAbsRealLValue& /*obs*/, 
       hint->push_back(boundaries[i]+delta) ;
     }
   }
-
   return hint ;
-  */
 }
 
 
@@ -793,12 +786,9 @@ std::list<Double_t>* ParamHistFunc::plotSamplingHint(RooAbsRealLValue& /*obs*/, 
 /// as the recursive division strategy of RooCurve cannot deal efficiently
 /// with the vertical lines that occur in a non-interpolated histogram
 
-std::list<Double_t>* ParamHistFunc::binBoundaries(RooAbsRealLValue& /*obs*/, Double_t /*xlo*/, 
-						  Double_t /*xhi*/) const 
+std::list<Double_t>* ParamHistFunc::binBoundaries(RooAbsRealLValue& obs, Double_t xlo, 
+						  Double_t xhi) const 
 {
-  return 0;
-
-  /*
   // copied and edited from RooHistFunc
   RooAbsLValue* lvarg = &obs;
 
@@ -806,7 +796,7 @@ std::list<Double_t>* ParamHistFunc::binBoundaries(RooAbsRealLValue& /*obs*/, Dou
   const RooAbsBinning* binning = lvarg->getBinningPtr(0) ;
   Double_t* boundaries = binning->array() ;
 
-  list<Double_t>* hint = new list<Double_t> ;
+  std::list<Double_t>* hint = new std::list<Double_t> ;
 
   // Construct array with pairs of points positioned epsilon to the left and
   // right of the bin boundaries
@@ -817,5 +807,4 @@ std::list<Double_t>* ParamHistFunc::binBoundaries(RooAbsRealLValue& /*obs*/, Dou
   }
 
   return hint ;
-  */
 }

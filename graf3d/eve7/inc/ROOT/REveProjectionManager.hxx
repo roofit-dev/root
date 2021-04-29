@@ -29,8 +29,8 @@ class REveProjectionManager : public REveElement,
                               public TAttBBox
 {
 private:
-   REveProjectionManager(const REveProjectionManager &);            // Not implemented
-   REveProjectionManager &operator=(const REveProjectionManager &); // Not implemented
+   REveProjectionManager(const REveProjectionManager &) = delete;
+   REveProjectionManager &operator=(const REveProjectionManager &) = delete;
 
 protected:
    REveProjection *fProjections[REveProjection::kPT_End];
@@ -66,8 +66,6 @@ public:
 
    void SetImportEmpty(Bool_t ie) { fImportEmpty = ie; }
    Bool_t GetImportEmpty() const { return fImportEmpty; }
-
-   Bool_t HandleElementPaste(REveElement *el) override;
 
    virtual REveElement *ImportElementsRecurse(REveElement *el, REveElement *parent);
    virtual REveElement *ImportElements(REveElement *el, REveElement *ext_list = nullptr);

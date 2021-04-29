@@ -19,10 +19,11 @@
 \class RooRealVar
 \ingroup Roofitcore
 
-RooRealVar represents a fundamental (non-derived) real valued object
+RooRealVar represents a variable that can be changed by e.g. the fitter.
 
-This class also holds an (asymmetic) error, a default range and
-a optionally series of alternate named ranges.
+It can be written into datasets, can hold a (possibly asymmetric) error, and
+can have several ranges. These can be accessed with names, to e.g. limit fits
+or integrals to sub ranges. The range without any name is used as default range.
 **/
 
 
@@ -31,7 +32,6 @@ a optionally series of alternate named ranges.
 #include "RooTrace.h"
 
 #include <math.h>
-#include "TObjString.h"
 #include "TTree.h"
 #include "RooRealVar.h"
 #include "RooStreamParser.h"
@@ -46,7 +46,7 @@ a optionally series of alternate named ranges.
 using namespace std;
 
 ClassImp(RooRealVar);
-;
+
 
 Bool_t RooRealVar::_printScientific(kFALSE) ;
 Int_t  RooRealVar::_printSigDigits(5) ;
@@ -55,7 +55,7 @@ RooRealVarSharedProperties RooRealVar::_nullProp("00000000-0000-0000-0000-000000
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Default constructor
+/// Default constructor.
 
 RooRealVar::RooRealVar()  :  _error(0), _asymErrLo(0), _asymErrHi(0), _binning(0), _sharedProp(0)
 {
@@ -66,8 +66,7 @@ RooRealVar::RooRealVar()  :  _error(0), _asymErrLo(0), _asymErrHi(0), _binning(0
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Constructor with value and unit
-
+/// Create a constant variable with a value and optional unit.
 RooRealVar::RooRealVar(const char *name, const char *title,
 		       Double_t value, const char *unit) :
   RooAbsRealLValue(name, title, unit), _error(-1), _asymErrLo(1), _asymErrHi(-1), _sharedProp(0)
@@ -83,8 +82,8 @@ RooRealVar::RooRealVar(const char *name, const char *title,
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Constructor with range and unit. Initial value is center of range
-
+/// Create a variable allowed to float in the given range.
+/// The initial value will be set to the center of the range.
 RooRealVar::RooRealVar(const char *name, const char *title,
 		       Double_t minValue, Double_t maxValue,
 		       const char *unit) :
@@ -118,8 +117,8 @@ RooRealVar::RooRealVar(const char *name, const char *title,
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Constructor with value, range and unit
-
+/// Create a variable with the given starting value. It is allowed to float
+/// within the defined range. Optionally, a unit can be specified for axis labels.
 RooRealVar::RooRealVar(const char *name, const char *title,
 		       Double_t value, Double_t minValue, Double_t maxValue,
 		       const char *unit) :
@@ -146,7 +145,7 @@ RooRealVar::RooRealVar(const RooRealVar& other, const char* name) :
   _asymErrLo(other._asymErrLo),
   _asymErrHi(other._asymErrHi)
 {
-  _sharedProp =  (RooRealVarSharedProperties*) _sharedPropList.registerProperties(other.sharedProp()) ;
+  _sharedProp = (RooRealVarSharedProperties*) _sharedPropList.registerProperties(other.sharedProp()) ;
   if (other._binning) {
      _binning = other._binning->clone() ;
      _binning->insertHook(*this) ;
@@ -167,6 +166,35 @@ RooRealVar::RooRealVar(const RooRealVar& other, const char* name) :
 
   TRACE_CREATE
 
+}
+
+/// Assign the values of another RooRealVar to this instance.
+RooRealVar& RooRealVar::operator=(const RooRealVar& other) {
+  RooAbsRealLValue::operator=(other);
+
+  _error = other._error;
+  _asymErrLo = other._asymErrLo;
+  _asymErrHi = other._asymErrHi;
+
+  delete _binning;
+  _binning = nullptr;
+  if (other._binning) {
+    _binning = other._binning->clone() ;
+    _binning->insertHook(*this) ;
+  }
+
+  _altNonSharedBinning.Clear();
+  RooAbsBinning* ab ;
+  std::unique_ptr<TIterator> iter(other._altNonSharedBinning.MakeIterator());
+  while((ab=(RooAbsBinning*)iter->Next())) {
+    RooAbsBinning* abc = ab->clone() ;
+    _altNonSharedBinning.Add(abc) ;
+    abc->insertHook(*this) ;
+  }
+
+  _sharedProp = (RooRealVarSharedProperties*) _sharedPropList.registerProperties(other.sharedProp());
+
+  return *this;
 }
 
 
@@ -281,6 +309,11 @@ RooAbsBinning& RooRealVar::getBinning(const char* name, Bool_t verbose, Bool_t c
   // Return default (normalization) binning and range if no name is specified
   if (name==0) {
     return *_binning ;
+  }
+
+  if (strchr(name, ',')) {
+    coutW(InputArguments) << "Asking variable " << GetName() << "for binning '" << name
+        << "', but comma in binning names is not supported." << std::endl;
   }
 
   // Check if non-shared binning with this name has been created already
@@ -995,7 +1028,9 @@ void RooRealVar::attachToVStore(RooVectorDataStore& vstore)
   if (getAttribute("StoreError") || getAttribute("StoreAsymError") || vstore.isFullReal(this) ) {
 
     RooVectorDataStore::RealFullVector* rfv = vstore.addRealFull(this) ;
-    rfv->setBuffer(this,&_value) ;
+    rfv->setBuffer(this,&_value);
+
+    _batchData.attachForeignStorage(rfv->data());
 
     // Attach/create additional branch for error
     if (getAttribute("StoreError") || vstore.hasError(this) ) {

@@ -9,6 +9,7 @@ project.xcworkspace
 .DS_Store
 
 # Visual Code
+.vs/
 .vscode
 .build
 
@@ -24,9 +25,11 @@ CMakeLists.txt.user
 .settings/*
 .cproject
 .project
+.externalToolBuilders
 
 # Vim
 *.swp
 
 # Other Stuff
 tags
+*.d

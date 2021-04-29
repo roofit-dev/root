@@ -389,7 +389,7 @@ RooAbsData* RooAbsData::reduce(const RooCmdArg& arg1,const RooCmdArg& arg2,const
   pc.defineString("cutSpec","CutSpec",0,"") ;
   pc.defineObject("cutVar","CutVar",0,0) ;
   pc.defineInt("evtStart","EventRange",0,0) ;
-  pc.defineInt("evtStop","EventRange",1,2000000000) ;
+  pc.defineInt("evtStop","EventRange",1,std::numeric_limits<int>::max()) ;
   pc.defineObject("varSel","SelectVars",0,0) ;
   pc.defineMutex("CutVar","CutSpec") ;
 
@@ -404,7 +404,7 @@ RooAbsData* RooAbsData::reduce(const RooCmdArg& arg1,const RooCmdArg& arg2,const
   const char* cutSpec = pc.getString("cutSpec",0,kTRUE) ;
   RooFormulaVar* cutVar = static_cast<RooFormulaVar*>(pc.getObject("cutVar",0)) ;
   Int_t nStart = pc.getInt("evtStart",0) ;
-  Int_t nStop = pc.getInt("evtStop",2000000000) ;
+  Int_t nStop = pc.getInt("evtStop",std::numeric_limits<int>::max()) ;
   RooArgSet* varSet = static_cast<RooArgSet*>(pc.getObject("varSel")) ;
   const char* name = pc.getString("name",0,kTRUE) ;
   const char* title = pc.getString("title",0,kTRUE) ;
@@ -413,16 +413,13 @@ RooAbsData* RooAbsData::reduce(const RooCmdArg& arg1,const RooCmdArg& arg2,const
   RooArgSet varSubset ;
   if (varSet) {
     varSubset.add(*varSet) ;
-    TIterator* iter = varSubset.createIterator() ;
-    RooAbsArg* arg ;
-    while((arg=(RooAbsArg*)iter->Next())) {
+    for (const auto arg : varSubset) {
       if (!_vars.find(arg->GetName())) {
-   coutW(InputArguments) << "RooAbsData::reduce(" << GetName() << ") WARNING: variable "
-               << arg->GetName() << " not in dataset, ignored" << endl ;
-   varSubset.remove(*arg) ;
+        coutW(InputArguments) << "RooAbsData::reduce(" << GetName() << ") WARNING: variable "
+            << arg->GetName() << " not in dataset, ignored" << endl ;
+        varSubset.remove(*arg) ;
       }
     }
-    delete iter ;
   } else {
     varSubset.add(*get()) ;
   }
@@ -464,7 +461,7 @@ RooAbsData* RooAbsData::reduce(const RooCmdArg& arg1,const RooCmdArg& arg2,const
 RooAbsData* RooAbsData::reduce(const char* cut)
 {
   RooFormulaVar cutVar(cut,cut,*get()) ;
-  return reduceEng(*get(),&cutVar,0,0,2000000000,kFALSE) ;
+  return reduceEng(*get(),&cutVar,0,0,std::numeric_limits<std::size_t>::max(),kFALSE) ;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -474,7 +471,7 @@ RooAbsData* RooAbsData::reduce(const char* cut)
 
 RooAbsData* RooAbsData::reduce(const RooFormulaVar& cutVar)
 {
-  return reduceEng(*get(),&cutVar,0,0,2000000000,kFALSE) ;
+  return reduceEng(*get(),&cutVar,0,0,std::numeric_limits<std::size_t>::max(),kFALSE) ;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -489,22 +486,19 @@ RooAbsData* RooAbsData::reduce(const RooArgSet& varSubset, const char* cut)
 {
   // Make sure varSubset doesn't contain any variable not in this dataset
   RooArgSet varSubset2(varSubset) ;
-  TIterator* iter = varSubset.createIterator() ;
-  RooAbsArg* arg ;
-  while((arg=(RooAbsArg*)iter->Next())) {
+  for (const auto arg : varSubset) {
     if (!_vars.find(arg->GetName())) {
       coutW(InputArguments) << "RooAbsData::reduce(" << GetName() << ") WARNING: variable "
              << arg->GetName() << " not in dataset, ignored" << endl ;
       varSubset2.remove(*arg) ;
     }
   }
-  delete iter ;
 
   if (cut && strlen(cut)>0) {
-    RooFormulaVar cutVar(cut,cut,*get()) ;
-    return reduceEng(varSubset2,&cutVar,0,0,2000000000,kFALSE) ;
+    RooFormulaVar cutVar(cut, cut, *get(), false);
+    return reduceEng(varSubset2,&cutVar,0,0,std::numeric_limits<std::size_t>::max(),kFALSE) ;
   }
-  return reduceEng(varSubset2,0,0,0,2000000000,kFALSE) ;
+  return reduceEng(varSubset2,0,0,0,std::numeric_limits<std::size_t>::max(),kFALSE) ;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -529,7 +523,7 @@ RooAbsData* RooAbsData::reduce(const RooArgSet& varSubset, const RooFormulaVar& 
   }
   delete iter ;
 
-  return reduceEng(varSubset2,&cutVar,0,0,2000000000,kFALSE) ;
+  return reduceEng(varSubset2,&cutVar,0,0,std::numeric_limits<std::size_t>::max(),kFALSE) ;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -826,7 +820,7 @@ Int_t RooAbsData::defaultPrintContents(Option_t* /*opt*/) const
 /// \param[in] cutRange If specified, calculate inside the range named 'cutRange' (also applies cut spec)
 /// \return \f$ \frac{\left< \left( X - \left< X \right> \right)^n \right>}{\sigma^n} \f$,  where n = order.
 
-Double_t RooAbsData::standMoment(RooRealVar &var, Double_t order, const char* cutSpec, const char* cutRange) const
+Double_t RooAbsData::standMoment(const RooRealVar &var, Double_t order, const char* cutSpec, const char* cutRange) const
 {
   // Hardwire invariant answer for first and second moment
   if (order==1) return 0 ;
@@ -845,7 +839,7 @@ Double_t RooAbsData::standMoment(RooRealVar &var, Double_t order, const char* cu
 /// \return \f$ \left< \left( X - \left< X \right> \right)^n \right> \f$ of order \f$n\f$.
 ///
 
-Double_t RooAbsData::moment(RooRealVar &var, Double_t order, const char* cutSpec, const char* cutRange) const
+Double_t RooAbsData::moment(const RooRealVar& var, Double_t order, const char* cutSpec, const char* cutRange) const
 {
   Double_t offset = order>1 ? moment(var,1,cutSpec,cutRange) : 0 ;
   return moment(var,order,offset,cutSpec,cutRange) ;
@@ -858,17 +852,18 @@ Double_t RooAbsData::moment(RooRealVar &var, Double_t order, const char* cutSpec
 /// the moment is calculated on the subset of the data which pass the C++ cut specification expression 'cutSpec'
 /// and/or are inside the range named 'cutRange'
 
-Double_t RooAbsData::moment(RooRealVar &var, Double_t order, Double_t offset, const char* cutSpec, const char* cutRange) const
+Double_t RooAbsData::moment(const RooRealVar& var, Double_t order, Double_t offset, const char* cutSpec, const char* cutRange) const
 {
   // Lookup variable in dataset
-  RooRealVar *varPtr= (RooRealVar*) _vars.find(var.GetName());
-  if(0 == varPtr) {
+  auto arg = _vars.find(var.GetName());
+  if (!arg) {
     coutE(InputArguments) << "RooDataSet::moment(" << GetName() << ") ERROR: unknown variable: " << var.GetName() << endl ;
     return 0;
   }
 
+  auto varPtr = dynamic_cast<const RooRealVar*>(arg);
   // Check if found variable is of type RooRealVar
-  if (!dynamic_cast<RooRealVar*>(varPtr)) {
+  if (!varPtr) {
     coutE(InputArguments) << "RooDataSet::moment(" << GetName() << ") ERROR: variable " << var.GetName() << " is not of type RooRealVar" << endl ;
     return 0;
   }
@@ -902,7 +897,7 @@ Double_t RooAbsData::moment(RooRealVar &var, Double_t order, Double_t offset, co
 ////////////////////////////////////////////////////////////////////////////////
 /// Internal method to check if given RooRealVar maps to a RooRealVar in this dataset
 
-RooRealVar* RooAbsData::dataRealVar(const char* methodname, RooRealVar& extVar) const
+RooRealVar* RooAbsData::dataRealVar(const char* methodname, const RooRealVar& extVar) const
 {
   // Lookup variable in dataset
   RooRealVar *xdata = (RooRealVar*) _vars.find(extVar.GetName());
@@ -921,7 +916,7 @@ RooRealVar* RooAbsData::dataRealVar(const char* methodname, RooRealVar& extVar) 
 ////////////////////////////////////////////////////////////////////////////////
 /// Internal method to calculate single correlation and covariance elements
 
-Double_t RooAbsData::corrcov(RooRealVar &x,RooRealVar &y, const char* cutSpec, const char* cutRange, Bool_t corr) const
+Double_t RooAbsData::corrcov(const RooRealVar &x, const RooRealVar &y, const char* cutSpec, const char* cutRange, Bool_t corr) const
 {
   // Lookup variable in dataset
   RooRealVar *xdata = dataRealVar(corr?"correlation":"covariance",x) ;
@@ -1073,7 +1068,7 @@ TMatrixDSym* RooAbsData::corrcovMatrix(const RooArgList& vars, const char* cutSp
 /// cut specification expression 'cutSpec' and/or are inside the
 /// range named 'cutRange'
 
-RooRealVar* RooAbsData::meanVar(RooRealVar &var, const char* cutSpec, const char* cutRange) const
+RooRealVar* RooAbsData::meanVar(const RooRealVar &var, const char* cutSpec, const char* cutRange) const
 {
   // Create a new variable with appropriate strings. The error is calculated as
   // RMS/Sqrt(N) which is generally valid.
@@ -1109,7 +1104,7 @@ RooRealVar* RooAbsData::meanVar(RooRealVar &var, const char* cutSpec, const char
 /// cut specification expression 'cutSpec' and/or are inside the
 /// range named 'cutRange'
 
-RooRealVar* RooAbsData::rmsVar(RooRealVar &var, const char* cutSpec, const char* cutRange) const
+RooRealVar* RooAbsData::rmsVar(const RooRealVar &var, const char* cutSpec, const char* cutRange) const
 {
   // Create a new variable with appropriate strings. The error is calculated as
   // RMS/(2*Sqrt(N)) which is only valid if the variable has a Gaussian distribution.
@@ -1337,12 +1332,11 @@ TH1 *RooAbsData::fillHistogram(TH1 *hist, const RooArgList &plotVars, const char
   }
 
   // Create selection formula if selection cuts are specified
-  RooFormula* select = 0;
-  if(0 != cuts && strlen(cuts)) {
-    select=new RooFormula(cuts,cuts,_vars);
+  std::unique_ptr<RooFormula> select;
+  if (cuts != nullptr && strlen(cuts) > 0) {
+    select.reset(new RooFormula(cuts, cuts, _vars, false));
     if (!select || !select->ok()) {
       coutE(InputArguments) << ClassName() << "::" << GetName() << ":fillHistogram: invalid cuts \"" << cuts << "\"" << endl;
-      delete select;
       return 0 ;
     }
   }
@@ -1469,8 +1463,6 @@ TH1 *RooAbsData::fillHistogram(TH1 *hist, const RooArgList &plotVars, const char
     //cout << "RooTreeData::fillHistogram() bin = " << bin << " weight() = " << weight() << " we = " << we << endl ;
 
   }
-
-  if(0 != select) delete select;
 
   return hist;
 }
@@ -2122,17 +2114,18 @@ Roo1DTable* RooAbsData::table(const RooAbsCategory& cat, const char* cuts, const
 /// observable 'var' in this dataset. If the return value is kTRUE and error
 /// occurred
 
-Bool_t RooAbsData::getRange(RooRealVar& var, Double_t& lowest, Double_t& highest, Double_t marginFrac, Bool_t symMode) const
+Bool_t RooAbsData::getRange(const RooAbsRealLValue& var, Double_t& lowest, Double_t& highest, Double_t marginFrac, Bool_t symMode) const
 {
   // Lookup variable in dataset
-  RooRealVar *varPtr= (RooRealVar*) _vars.find(var.GetName());
-  if(0 == varPtr) {
+  const auto arg = _vars.find(var.GetName());
+  if (!arg) {
     coutE(InputArguments) << "RooDataSet::getRange(" << GetName() << ") ERROR: unknown variable: " << var.GetName() << endl ;
     return kTRUE;
   }
 
+  auto varPtr = dynamic_cast<const RooRealVar*>(arg);
   // Check if found variable is of type RooRealVar
-  if (!dynamic_cast<RooRealVar*>(varPtr)) {
+  if (!varPtr) {
     coutE(InputArguments) << "RooDataSet::getRange(" << GetName() << ") ERROR: variable " << var.GetName() << " is not of type RooRealVar" << endl ;
     return kTRUE;
   }
@@ -2167,7 +2160,7 @@ Bool_t RooAbsData::getRange(RooRealVar& var, Double_t& lowest, Double_t& highest
 
     } else {
 
-      Double_t mom1 = moment(var,1) ;
+      Double_t mom1 = moment(*varPtr,1) ;
       Double_t delta = ((highest-mom1)>(mom1-lowest)?(highest-mom1):(mom1-lowest))*(1+marginFrac) ;
       lowest = mom1-delta ;
       highest = mom1+delta ;
@@ -2385,7 +2378,7 @@ TTree *RooAbsData::GetClonedTree() const
 void RooAbsData::convertToTreeStore()
 {
    if (storageType != RooAbsData::Tree) {
-      RooTreeDataStore *newStore = new RooTreeDataStore(GetName(), GetTitle(), *get(), *_dstore);
+      RooTreeDataStore *newStore = new RooTreeDataStore(GetName(), GetTitle(), _vars, *_dstore);
       delete _dstore;
       _dstore = newStore;
       storageType = RooAbsData::Tree;

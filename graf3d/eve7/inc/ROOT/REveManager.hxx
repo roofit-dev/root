@@ -42,14 +42,14 @@ class REveGeomViewer;
 
 class REveManager
 {
-   REveManager(const REveManager&);            // Not implemented
-   REveManager& operator=(const REveManager&); // Not implemented
+   REveManager(const REveManager&) = delete;
+   REveManager& operator=(const REveManager&) = delete;
 
 public:
    class RRedrawDisabler {
    private:
-      RRedrawDisabler(const RRedrawDisabler &);            // Not implemented
-      RRedrawDisabler &operator=(const RRedrawDisabler &); // Not implemented
+      RRedrawDisabler(const RRedrawDisabler &) = delete;
+      RRedrawDisabler &operator=(const RRedrawDisabler &) = delete;
 
       REveManager *fMgr{nullptr};
 
@@ -153,8 +153,6 @@ public:
    TFolder *GetMacroFolder() const { return fMacroFolder; }
    TMacro *GetMacro(const char *name) const;
 
-   void EditElement(REveElement *element);
-
    void DisableRedraw() { ++fRedrawDisabled; }
    void EnableRedraw()  { --fRedrawDisabled; if (fRedrawDisabled <= 0) Redraw3D(); }
 
@@ -168,29 +166,26 @@ public:
    void DoRedraw3D();
    void FullRedraw3D(Bool_t resetCameras = kFALSE, Bool_t dropLogicals = kFALSE);
 
+   void ClearAllSelections();
+
    Bool_t GetKeepEmptyCont() const   { return fKeepEmptyCont; }
    void   SetKeepEmptyCont(Bool_t k) { fKeepEmptyCont = k; }
 
-   void ElementChanged(REveElement* element, Bool_t update_scenes=kTRUE, Bool_t redraw=kFALSE);
-   void ScenesChanged(REveElement::List_t& scenes);
+   void AddElement(REveElement *element, REveElement *parent = nullptr);
+   void AddGlobalElement(REveElement *element, REveElement *parent = nullptr);
 
-   void AddElement(REveElement *element, REveElement* parent = nullptr);
-   void AddGlobalElement(REveElement *element, REveElement* parent = nullptr);
+   void RemoveElement(REveElement* element, REveElement *parent);
 
-   void RemoveElement(REveElement* element, REveElement* parent);
-
-   REveElement* FindElementById (ElementId_t id) const;
+   REveElement *FindElementById (ElementId_t id) const;
    void         AssignElementId (REveElement* element);
    void         PreDeleteElement(REveElement* element);
-
-   void   ElementSelect(REveElement* element);
-   Bool_t ElementPaste(REveElement* element);
+   void         BrowseElement(ElementId_t id);
 
    // VizDB - Visualization-parameter data-base.
    Bool_t       InsertVizDBEntry(const TString& tag, REveElement* model,
                                  Bool_t replace, Bool_t update);
    Bool_t       InsertVizDBEntry(const TString& tag, REveElement* model);
-   REveElement* FindVizDBEntry  (const TString& tag);
+   REveElement *FindVizDBEntry  (const TString& tag);
 
    void         LoadVizDB(const TString& filename, Bool_t replace, Bool_t update);
    void         LoadVizDB(const TString& filename);
@@ -203,9 +198,9 @@ public:
 
 
    // Geometry management.
-   TGeoManager* GetGeometry(const TString& filename);
-   TGeoManager* GetGeometryByAlias(const TString& alias);
-   TGeoManager* GetDefaultGeometry();
+   TGeoManager *GetGeometry(const TString& filename);
+   TGeoManager *GetGeometryByAlias(const TString& alias);
+   TGeoManager *GetDefaultGeometry();
    void         RegisterGeometryAlias(const TString& alias, const TString& filename);
 
    void ClearROOTClassSaved();
@@ -213,7 +208,7 @@ public:
    void AddLocation(const std::string& name, const std::string& path);
    void SetDefaultHtmlPage(const std::string& path);
    void SetClientVersion(const std::string& version);
-   
+
    static REveManager* Create();
    static void         Terminate();
 

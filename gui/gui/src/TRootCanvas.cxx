@@ -34,7 +34,6 @@
 #include "TClass.h"
 #include "TSystem.h"
 #include "TCanvas.h"
-#include "TPadPainter.h"
 #include "TBrowser.h"
 #include "TClassTree.h"
 #include "TMarker.h"
@@ -836,7 +835,7 @@ Bool_t TRootCanvas::ProcessMessage(Long_t msg, Long_t parm1, Long_t)
                         static TString dir(".");
                         TGFileInfo fi;
                         fi.fFileTypes = gOpenTypes;
-                        fi.fIniDir    = StrDup(dir);
+                        fi.SetIniDir(dir);
                         new TGFileDialog(fClient->GetDefaultRoot(), this, kFDOpen,&fi);
                         if (!fi.fFilename) return kTRUE;
                         dir = fi.fIniDir;
@@ -861,7 +860,7 @@ Bool_t TRootCanvas::ProcessMessage(Long_t msg, Long_t parm1, Long_t)
                            }
                         }
                         fi.fFileTypes   = gSaveAsTypes;
-                        fi.fIniDir      = StrDup(dir);
+                        fi.SetIniDir(dir);
                         fi.fFileTypeIdx = typeidx;
                         fi.fOverwrite = overwr;
                         new TGFileDialog(fClient->GetDefaultRoot(), this, kFDSave, &fi);

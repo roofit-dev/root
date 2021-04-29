@@ -72,17 +72,18 @@
 #include "TQConnection.h"
 #include "TParameter.h"
 #include "RConfigure.h"
+#include "TVirtualX.h"
 #include "TEnv.h"
 
-const TGGC   *TGPopupMenu::fgDefaultGC = 0;
-const TGGC   *TGPopupMenu::fgDefaultSelectedGC = 0;
-const TGGC   *TGPopupMenu::fgDefaultSelectedBackgroundGC = 0;
-const TGFont *TGPopupMenu::fgDefaultFont = 0;
-const TGFont *TGPopupMenu::fgHilightFont = 0;
+const TGGC   *TGPopupMenu::fgDefaultGC = nullptr;
+const TGGC   *TGPopupMenu::fgDefaultSelectedGC = nullptr;
+const TGGC   *TGPopupMenu::fgDefaultSelectedBackgroundGC = nullptr;
+const TGFont *TGPopupMenu::fgDefaultFont = nullptr;
+const TGFont *TGPopupMenu::fgHilightFont = nullptr;
 
-const TGGC   *TGMenuTitle::fgDefaultGC = 0;
-const TGGC   *TGMenuTitle::fgDefaultSelectedGC = 0;
-const TGFont *TGMenuTitle::fgDefaultFont = 0;
+const TGGC   *TGMenuTitle::fgDefaultGC = nullptr;
+const TGGC   *TGMenuTitle::fgDefaultSelectedGC = nullptr;
+const TGFont *TGMenuTitle::fgDefaultFont = nullptr;
 
 
 ClassImp(TGMenuBar);
@@ -2207,22 +2208,25 @@ void TGPopupMenu::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
             outext[i]=0;
             if (mentry->fShortcut) {
                snprintf(shortcut, 80, "\\t%s", mentry->GetShortcutText());
-            }
-            else {
+            } else {
                memset(shortcut, 0, 80);
             }
 
-            out << "   " << GetName() << "->AddEntry(" << quote
-                << gSystem->ExpandPathName(gSystem->UnixPathName(outext)) // can be a file name
-                << shortcut
-                << quote << "," << mentry->GetEntryId();
+            {
+               TString entrytext = gSystem->UnixPathName(outext);
+               gSystem->ExpandPathName(entrytext);
+               out << "   " << GetName() << "->AddEntry(" << quote
+                   << entrytext // can be a file name
+                   << shortcut
+                   << quote << "," << mentry->GetEntryId();
+            }
             if (mentry->fUserData) {
                out << "," << mentry->fUserData;
             }
             if (mentry->fPic) {
-               out << ",gClient->GetPicture(" << quote
-                   << gSystem->ExpandPathName(gSystem->UnixPathName(mentry->fPic->GetName()))
-                   << quote << ")";
+               TString picname = gSystem->UnixPathName(mentry->fPic->GetName());
+               gSystem->ExpandPathName(picname);
+               out << ",gClient->GetPicture(" << quote << picname << quote << ")";
             }
             out << ");" << std::endl;
             delete [] outext;

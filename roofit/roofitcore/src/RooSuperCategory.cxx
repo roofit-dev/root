@@ -33,7 +33,6 @@ category modifies its list of states.
 #include "RooFit.h"
 
 #include "Riostream.h"
-#include "Riostream.h"
 #include <stdlib.h>
 #include "TString.h"
 #include "TClass.h"
@@ -47,7 +46,7 @@ category modifies its list of states.
 using namespace std;
 
 ClassImp(RooSuperCategory);
-;
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +68,6 @@ RooSuperCategory::RooSuperCategory(const char *name, const char *title, const Ro
     _catSet.add(*arg) ;
   }
   delete iter ;
-  _catIter = _catSet.createIterator() ;
   
   updateIndexList() ;
 }
@@ -82,7 +80,6 @@ RooSuperCategory::RooSuperCategory(const char *name, const char *title, const Ro
 RooSuperCategory::RooSuperCategory(const RooSuperCategory& other, const char *name) :
   RooAbsCategoryLValue(other,name), _catSet("input",this,other._catSet)
 {
-  _catIter = _catSet.createIterator() ;
   updateIndexList() ;
   setIndex(other.getIndex()) ;
 }
@@ -94,7 +91,7 @@ RooSuperCategory::RooSuperCategory(const RooSuperCategory& other, const char *na
 
 RooSuperCategory::~RooSuperCategory() 
 {
-  delete _catIter ;
+
 }
 
 
@@ -137,13 +134,13 @@ void RooSuperCategory::updateIndexList()
 
 TString RooSuperCategory::currentLabel() const
 {
-  _catIter->Reset() ;
 
   // Construct composite label name
   TString label ;
-  RooAbsCategory* cat ;
   Bool_t first(kTRUE) ;
-  while((cat=(RooAbsCategory*) _catIter->Next())) {
+  for (const auto c : _catSet) {
+    auto cat = static_cast<RooAbsCategory*>(c);
+
     label.Append(first?"{":";") ;
     label.Append(cat->getLabel()) ;      
     first=kFALSE ;
@@ -209,14 +206,13 @@ Bool_t RooSuperCategory::setType(const RooCatType* type, Bool_t /*printError*/)
   char buf[1024] ;
   strlcpy(buf,type->GetName(),1024) ;
 
-  RooAbsCategoryLValue* arg ;
   Bool_t error(kFALSE) ;
 
   // Parse composite label and set label of components to their values  
   char* ptr=buf+1 ;
   char* token = ptr ;
-  _catIter->Reset() ;
-  while ((arg=(RooAbsCategoryLValue*)_catIter->Next())) {
+  for (const auto c : _catSet) {
+    auto arg = static_cast<RooAbsCategoryLValue*>(c);
 
     // Delimit name token for this category
     if (*ptr=='{') {
@@ -290,9 +286,8 @@ void RooSuperCategory::writeToStream(ostream& os, Bool_t compact) const
 
 Bool_t RooSuperCategory::inRange(const char* rangeName) const 
 {
-  _catIter->Reset() ;
-  RooAbsCategoryLValue* cat ;
-  while((cat = (RooAbsCategoryLValue*)_catIter->Next())) {
+  for (const auto c : _catSet) {
+    auto cat = static_cast<RooAbsCategoryLValue*>(c);
     if (!cat->inRange(rangeName)) {
       return kFALSE ;
     }
@@ -308,9 +303,8 @@ Bool_t RooSuperCategory::inRange(const char* rangeName) const
 
 Bool_t RooSuperCategory::hasRange(const char* rangeName) const 
 {
-  _catIter->Reset() ;
-  RooAbsCategoryLValue* cat ;
-  while((cat = (RooAbsCategoryLValue*)_catIter->Next())) {
+  for (const auto c : _catSet) {
+    auto cat = static_cast<RooAbsCategoryLValue*>(c);
     if (cat->hasRange(rangeName)) return kTRUE ;
   }
 

@@ -64,7 +64,6 @@
 #include "TGStatusBar.h"
 #include "Varargs.h"
 #include "TInterpreter.h"
-#include "TBrowser.h"
 #include "TGFileDialog.h"
 #include "TObjString.h"
 #include "TVirtualPad.h"
@@ -80,6 +79,8 @@
 #include "TVirtualPadEditor.h"
 #include "HelpText.h"
 #include "Getline.h"
+#include "TVirtualX.h"
+
 
 #ifdef WIN32
 #include <TWin32SplashThread.h>
@@ -688,7 +689,7 @@ void TRootBrowser::HandleMenu(Int_t id)
             static TString dir(".");
             TGFileInfo fi;
             fi.fFileTypes = gOpenFileTypes;
-            fi.fIniDir    = StrDup(dir);
+            fi.SetIniDir(dir);
             new TGFileDialog(gClient->GetDefaultRoot(), this,
                              kFDOpen,&fi);
             dir = fi.fIniDir;
@@ -790,7 +791,7 @@ void TRootBrowser::HandleMenu(Int_t id)
             static TString dir(".");
             TGFileInfo fi;
             fi.fFileTypes = gPluginFileTypes;
-            fi.fIniDir    = StrDup(dir);
+            fi.SetIniDir(dir);
             new TGFileDialog(gClient->GetDefaultRoot(), this,
                              kFDOpen,&fi);
             dir = fi.fIniDir;

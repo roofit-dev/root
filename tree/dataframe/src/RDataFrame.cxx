@@ -119,6 +119,7 @@ produce several different results in one event loop. Instant actions trigger the
 | [GetFilterNames](classROOT_1_1RDF_1_1RInterface.html#a25026681111897058299161a70ad9bb2) | Get all the filters defined. If called on a root node, all filters will be returned. For any other node, only the filters upstream of that node. |
 | [Display](classROOT_1_1RDF_1_1RInterface.html#a652f9ab3e8d2da9335b347b540a9a941) | Provides an ASCII representation of the columns types and contents of the dataset printable by the user. |
 | [SaveGraph](namespaceROOT_1_1RDF.html#adc17882b283c3d3ba85b1a236197c533) | Store the computation graph of an RDataFrame in graphviz format for easy inspection. |
+| [GetNRuns](classROOT_1_1RDF_1_1RInterface.html#adfb0562a9f7732c3afb123aefa07e0df) | Get the number of event loops run by this RDataFrame instance. |
 
 
 ## <a name="introduction"></a>Introduction
@@ -513,7 +514,7 @@ We can take advantage of `ForeachSlot` to evaluate a thread-safe root mean squar
 ~~~{.cpp}
 // Thread-safe evaluation of RMS of branch "b" using ForeachSlot
 ROOT::EnableImplicitMT();
-const unsigned int nSlots = ROOT::GetImplicitMTPoolSize();
+const unsigned int nSlots = ROOT::GetThreadPoolSize();
 std::vector<double> sumSqs(nSlots, 0.);
 std::vector<unsigned int> ns(nSlots, 0);
 
@@ -734,7 +735,7 @@ from the names of the variables specified by the user.
 It is possible to create custom columns also as a function of the processing slot and entry numbers. The methods that can
 be invoked are:
 - `DefineSlot(name, f, columnList)`. In this case the callable f has this signature `R(unsigned int, T1, T2, ...)`: the
-first parameter is the slot number which ranges from 0 to ROOT::GetImplicitMTPoolSize() - 1.
+first parameter is the slot number which ranges from 0 to ROOT::GetThreadPoolSize() - 1.
 - `DefineSlotEntry(name, f, columnList)`. In this case the callable f has this signature `R(unsigned int, ULong64_t,
 T1, T2, ...)`: the first parameter is the slot number while the second one the number of the entry being processed.
 
@@ -754,6 +755,14 @@ processing of these batches. There are no guarantees on the order the batches ar
 order entries of the dataset are processed. Note that this in turn means that, for multi-thread event loops, there is no
 guarantee on the order in which `Snapshot` will _write_ entries: they could be scrambled with respect to the input dataset.
 
+\warning RDataFrame will by default start as many threads as the hardware supports, using up **all** the resources on
+a machine. On a worker node of *e.g.* a batch cluster, this might not be desired if the machine is shared with other
+users. Therefore, **when running on shared computing resources**, use
+```
+ROOT::EnableImplicitMT(i)
+```
+replacing `i` with the number of CPUs/slots that were allocated for this job.
+
 ### Thread-safety of user-defined expressions
 RDataFrame operations such as `Histo1D` or `Snapshot` are guaranteed to work correctly in multi-thread event loops.
 User-defined expressions, such as strings or lambdas passed to `Filter`, `Define`, `Foreach`, `Reduce` or `Aggregate`
@@ -767,7 +776,7 @@ In order to facilitate writing of thread-safe operations, some RDataFrame featur
 offer thread-aware counterparts (`ForeachSlot`, `DefineSlot`, `OnPartialResultSlot`): their only difference is that they
 will pass an extra `slot` argument (an unsigned integer) to the user-defined expression. When calling user-defined code
 concurrently, `RDataFrame` guarantees that different threads will employ different values of the `slot` parameter,
-where `slot` will be a number between 0 and `ROOT::GetImplicitMTPoolSize() - 1`.
+where `slot` will be a number between 0 and `ROOT::GetThreadPoolSize() - 1`.
 In other words, within a slot, computation runs sequentially and events are processed sequentially.
 Note that the same slot might be associated to different threads over the course of a single event loop, but two threads
 will never receive the same slot at the same time.
@@ -785,7 +794,7 @@ class RCustomColumnBase;
 }
 } // namespace Detail
 
-using ColumnNames_t = ROOT::Detail::RDF::ColumnNames_t;
+using ROOT::Detail::RDF::ColumnNames_t;
 using ColumnNamesPtr_t = std::shared_ptr<const ColumnNames_t>;
 
 namespace RDFInternal = ROOT::Internal::RDF;

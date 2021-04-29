@@ -67,7 +67,7 @@ namespace TTraits = ROOT::TypeTraits;
 namespace RDFInternal = ROOT::Internal::RDF;
 
 using HeadNode_t = ::ROOT::RDF::RResultPtr<RInterface<RLoopManager, void>>;
-HeadNode_t CreateSnaphotRDF(const ColumnNames_t &validCols,
+HeadNode_t CreateSnapshotRDF(const ColumnNames_t &validCols,
                             std::string_view treeName,
                             std::string_view fileName,
                             bool isLazy,
@@ -285,7 +285,7 @@ ColumnNames_t GetValidatedColumnNames(RLoopManager &lm, const unsigned int nColu
 
 std::vector<bool> FindUndefinedDSColumns(const ColumnNames_t &requestedCols, const ColumnNames_t &definedDSCols);
 
-using ColumnNames_t = ROOT::Detail::RDF::ColumnNames_t;
+using ROOT::Detail::RDF::ColumnNames_t;
 
 template <typename T>
 void AddDSColumnsHelper(RLoopManager &lm, std::string_view name, RDFInternal::RBookedCustomColumns &currentCols,
@@ -373,8 +373,9 @@ void JitDefineHelper(F &&f, const ColumnNames_t &cols, std::string_view name, RL
    // share data after it has lazily compiled the code. Here the data has been used and the memory can be freed.
    delete customColumns;
 
+   // use unique_ptr<RCustomColumnBase> instead of make_unique<NewCol_t> to reduce jit/compile-times
    jittedCustomCol.SetCustomColumn(
-      std::make_unique<NewCol_t>(lm, name, std::move(f), cols, lm->GetNSlots(), newColumns));
+      std::unique_ptr<RCustomColumnBase>(new NewCol_t(lm, name, std::move(f), cols, lm->GetNSlots(), newColumns)));
 }
 
 /// Convenience function invoked by jitted code to build action nodes at runtime
@@ -408,7 +409,7 @@ void CallBuildAction(std::shared_ptr<PrevNodeType> *prevNodeOnHeap, const Column
 }
 
 /// The contained `type` alias is `double` if `T == RInferredType`, `U` if `T == std::container<U>`, `T` otherwise.
-template <typename T, bool Container = TTraits::IsContainer<T>::value && !std::is_same<T, std::string>::value>
+template <typename T, bool Container = RDFInternal::IsDataContainer<T>::value && !std::is_same<T, std::string>::value>
 struct TMinReturnType {
    using type = T;
 };

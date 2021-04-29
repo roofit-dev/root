@@ -131,7 +131,8 @@ set(x11libdir -L${X11_LIBRARY_DIR})
 set(xpmlibdir -L${X11_LIBRARY_DIR})
 set(xpmlib ${X11_Xpm_LIB})
 
-set(enable_thread ${value${thread}})
+set(thread yes)
+set(enable_thread yes)
 set(threadflag ${CMAKE_THREAD_FLAG})
 set(threadlibdir)
 set(threadlib ${CMAKE_THREAD_LIBS_INIT})
@@ -273,7 +274,7 @@ set(gvizlib ${GVIZ_LIBRARY})
 set(gvizincdir ${GVIZ_INCLUDE_DIR})
 set(gvizcflags)
 
-set(buildpython ${value${python}})
+set(buildpython ${value${pyroot}})
 set(pythonlibdir ${PYTHON_LIBRARY_DIR})
 set(pythonlib ${PYTHON_LIBRARY})
 set(pythonincdir ${PYTHON_INCLUDE_DIR})
@@ -339,15 +340,13 @@ find_program(PERL_EXECUTABLE perl)
 set(perl ${PERL_EXECUTABLE})
 
 find_program(CHROME_EXECUTABLE NAMES chrome.exe chromium chromium-browser chrome chrome-browser Google\ Chrome
-             PATHS "$ENV{PROGRAMFILES}/Google/Chrome/Application"
-             "$ENV{PROGRAMFILES\(X86\)}/Google/Chrome/Application")
+             PATH_SUFFIXES "Google/Chrome/Application")
 if(CHROME_EXECUTABLE)
   set(chromeexe ${CHROME_EXECUTABLE})
 endif()
 
 find_program(FIREFOX_EXECUTABLE NAMES firefox firefox.exe
-             PATHS "$ENV{PROGRAMFILES}/Mozilla Firefox"
-             "$ENV{PROGRAMFILES\(X86\)}/Mozilla Firefox")
+             PATH_SUFFIXES "Mozilla Firefox")
 if(FIREFOX_EXECUTABLE)
   set(firefoxexe ${FIREFOX_EXECUTABLE})
 endif()
@@ -418,20 +417,18 @@ if(veccore)
 else()
   set(hasveccore undef)
 endif()
-
-if(compression_default STREQUAL "lz4")
-  set(uselz4 define)
-  set(usezlib undef)
-  set(uselzma undef)
-elseif(compression_default STREQUAL "zlib")
-  set(uselz4 undef)
-  set(usezlib define)
-  set(uselzma undef)
-elseif(compression_default STREQUAL "lzma")
-  set(uselz4 undef)
-  set(usezlib undef)
-  set(uselzma define)
+if(dataframe)
+  set(hasdataframe define)
+else()
+  set(hasdataframe undef)
 endif()
+
+set(uselz4 undef)
+set(usezlib undef)
+set(uselzma undef)
+set(usezstd undef)
+set(use${compression_default} define)
+
 # cloudflare zlib is available only on x86 and aarch64 platforms with Linux
 # for other platforms we have available builtin zlib 1.2.8
 if(ZLIB_CF)
@@ -479,6 +476,11 @@ if (tmva-gpu)
 else()
   set(hastmvagpu undef)
 endif()
+if (tmva-cudnn)
+   set(hastmvacudnn define)
+else()
+   set(hastmvacudnn undef)
+endif()
 
 # clear cache to allow reconfiguring
 # with a different CMAKE_CXX_STANDARD
@@ -520,6 +522,24 @@ if(found_stod_stringview)
   set(hasstodstringview define)
 else()
   set(hasstodstringview undef)
+endif()
+
+if(found_stdstringview)
+  CHECK_CXX_SOURCE_COMPILES("#include <string>
+     #include <string_view>
+     int main() { std::string s; std::string_view v; s += v; return 0;}" found_opplusequal_stringview)
+elseif(found_stdexpstringview)
+  CHECK_CXX_SOURCE_COMPILES("#include <string>
+     #include <experimental/string_view>
+     int main() { std::string s; std::experimental::string_view v; s += v; return 0;}" found_opplusequal_stringview)
+else()
+  set(found_opplusequal_stringview false)
+endif()
+
+if(found_opplusequal_stringview)
+  set(hasopplusequalstringview define)
+else()
+  set(hasopplusequalstringview undef)
 endif()
 
 CHECK_CXX_SOURCE_COMPILES("#include <tuple>
@@ -598,6 +618,9 @@ configure_file(${CMAKE_SOURCE_DIR}/config/RConfigOptions.in include/RConfigOptio
 configure_file(${CMAKE_SOURCE_DIR}/config/Makefile-comp.in config/Makefile.comp NEWLINE_STYLE UNIX)
 configure_file(${CMAKE_SOURCE_DIR}/config/Makefile.in config/Makefile.config NEWLINE_STYLE UNIX)
 configure_file(${CMAKE_SOURCE_DIR}/config/mimes.unix.in ${CMAKE_BINARY_DIR}/etc/root.mimes NEWLINE_STYLE UNIX)
+# We need to have class.rules during configuration time to avoid silent error during generation of dictionary:
+# Error in <TClass::ReadRules()>: Cannot find rules
+configure_file(${CMAKE_SOURCE_DIR}/etc/class.rules ${CMAKE_BINARY_DIR}/etc/class.rules COPYONLY)
 
 #---Generate the ROOTConfig files to be used by CMake projects-----------------------------------------------
 ROOT_GET_OPTIONS(ROOT_ALL_OPTIONS)
@@ -660,22 +683,30 @@ file(RELATIVE_PATH ROOT_CMAKE_TO_INCLUDE_DIR "${CMAKE_INSTALL_FULL_CMAKEDIR}" "$
 file(RELATIVE_PATH ROOT_CMAKE_TO_LIB_DIR "${CMAKE_INSTALL_FULL_CMAKEDIR}" "${CMAKE_INSTALL_FULL_LIBDIR}")
 file(RELATIVE_PATH ROOT_CMAKE_TO_BIN_DIR "${CMAKE_INSTALL_FULL_CMAKEDIR}" "${CMAKE_INSTALL_FULL_BINDIR}")
 
+# '_' prefixed variables are used to construct the paths,
+# while the normal variants evaluate to full paths at runtime
 set(ROOT_INCLUDE_DIR_SETUP "
 # ROOT configured for the install with relative paths, so use these
-get_filename_component(ROOT_INCLUDE_DIRS \"\${_thisdir}/${ROOT_CMAKE_TO_INCLUDE_DIR}\" ABSOLUTE)
+get_filename_component(_ROOT_INCLUDE_DIRS \"\${_thisdir}/${ROOT_CMAKE_TO_INCLUDE_DIR}\" REALPATH)
+# resolve relative paths to absolute system paths
+get_filename_component(ROOT_INCLUDE_DIRS \"\${_ROOT_INCLUDE_DIRS}\" REALPATH)
 ")
 set(ROOT_LIBRARY_DIR_SETUP "
 # ROOT configured for the install with relative paths, so use these
-get_filename_component(ROOT_LIBRARY_DIR \"\${_thisdir}/${ROOT_CMAKE_TO_LIB_DIR}\" ABSOLUTE)
+get_filename_component(_ROOT_LIBRARY_DIR \"\${_thisdir}/${ROOT_CMAKE_TO_LIB_DIR}\" REALPATH)
+# resolve relative paths to absolute system paths
+get_filename_component(ROOT_LIBRARY_DIR \"\${_ROOT_LIBRARY_DIR}\" REALPATH)
 ")
 set(ROOT_BINDIR_SETUP "
 # ROOT configured for the install with relative paths, so use these
-get_filename_component(ROOT_BINDIR \"\${_thisdir}/${ROOT_CMAKE_TO_BIN_DIR}\" ABSOLUTE)
+get_filename_component(_ROOT_BINDIR \"\${_thisdir}/${ROOT_CMAKE_TO_BIN_DIR}\" REALPATH)
+# resolve relative paths to absolute system paths
+get_filename_component(ROOT_BINDIR \"\${_ROOT_BINDIR}\" REALPATH)
 ")
 # Deprecated value ROOT_BINARY_DIR
 set(ROOT_BINARY_DIR_SETUP "
 # Deprecated value, please don't use it and use ROOT_BINDIR instead.
-get_filename_component(ROOT_BINARY_DIR \"\${ROOT_BINDIR}\" ABSOLUTE)
+get_filename_component(ROOT_BINARY_DIR \"\${ROOT_BINDIR}\" REALPATH)
 ")
 
 # used by ROOTConfig.cmake from the build directory
@@ -705,6 +736,12 @@ endif()
 
 
 #---compiledata.h--------------------------------------------------------------------------------------------
+
+if(APPLE AND runtime_cxxmodules)
+  # Modules have superior dynamic linker and they can resolve undefined symbols upon library loading.
+  set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS} -undefined dynamic_lookup")
+  set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS} -undefined dynamic_lookup")
+endif()
 
 if(WIN32)
   # We cannot use the compiledata.sh script for windows

@@ -150,7 +150,6 @@ Bool_t   TFile::fgCacheFileDisconnected = kTRUE;
 UInt_t   TFile::fgOpenTimeout = TFile::kEternalTimeout;
 Bool_t   TFile::fgOnlyStaged = kFALSE;
 #ifdef R__USE_IMT
-ROOT::TRWSpinLock TFile::fgRwLock;
 ROOT::Internal::RConcurrentHashColl TFile::fgTsSIHashes;
 #endif
 
@@ -652,6 +651,7 @@ void TFile::Init(Bool_t create)
          // humm fBEGIN is wrong ....
          Error("Init","file %s has an incorrect header length (%lld) or incorrect end of file length (%lld)",
                GetName(),fBEGIN,fEND);
+         delete [] header;
          goto zombie;
       }
       fSeekDir = fBEGIN;
@@ -673,6 +673,7 @@ void TFile::Init(Bool_t create)
          // humm fBEGIN is wrong ....
          Error("Init","file %s has an incorrect header length (%lld) or incorrect end of file length (%lld)",
               GetName(),fBEGIN+nbytes,fEND);
+         delete [] header;
          goto zombie;
       }
       if (nbytes+fBEGIN > kBEGIN+200) {
@@ -812,7 +813,9 @@ void TFile::Init(Bool_t create)
          } else if (fVersion != gROOT->GetVersionInt() && fVersion > 30000) {
             // Don't complain about missing streamer info for empty files.
             if (fKeys->GetSize()) {
-               Warning("Init","no StreamerInfo found in %s therefore preventing schema evolution when reading this file.",GetName());
+               Warning("Init","no StreamerInfo found in %s therefore preventing schema evolution when reading this file."
+                              " The file was produced with version %d.%02d/%02d of ROOT.",
+                              GetName(),  fVersion / 10000, (fVersion / 100) % (100), fVersion  % 100);
             }
          }
       }
@@ -1081,7 +1084,12 @@ Int_t TFile::GetBestBuffer() const
    if (!fWritten) return TBuffer::kInitialSize;
    Double_t mean = fSumBuffer/fWritten;
    Double_t rms2 = TMath::Abs(fSum2Buffer/fSumBuffer -mean*mean);
-   return (Int_t)(mean + sqrt(rms2));
+   Double_t result = mean + sqrt(rms2);
+   if (result >= (double)std::numeric_limits<Int_t>::max()) {
+      return std::numeric_limits<Int_t>::max() -1;
+   } else {
+      return (Int_t)result;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1814,14 +1822,16 @@ TProcessID  *TFile::ReadProcessID(UShort_t pidf)
    TIter next(pidslist);
    TProcessID *p;
    bool found = false;
-   R__RWLOCK_ACQUIRE_READ(fgRwLock);
-   while ((p = (TProcessID*)next())) {
-      if (!strcmp(p->GetTitle(),pid->GetTitle())) {
-         found = true;
-         break;
+
+   {
+      R__READ_LOCKGUARD(ROOT::gCoreMutex);
+      while ((p = (TProcessID*)next())) {
+         if (!strcmp(p->GetTitle(),pid->GetTitle())) {
+            found = true;
+            break;
+         }
       }
    }
-   R__RWLOCK_RELEASE_READ(fgRwLock);
 
    if (found) {
       delete pid;
@@ -1833,11 +1843,12 @@ TProcessID  *TFile::ReadProcessID(UShort_t pidf)
    pids->AddAtAndExpand(pid,pidf);
    pid->IncrementCount();
 
-   R__RWLOCK_ACQUIRE_WRITE(fgRwLock);
-   pidslist->Add(pid);
-   Int_t ind = pidslist->IndexOf(pid);
-   pid->SetUniqueID((UInt_t)ind);
-   R__RWLOCK_RELEASE_WRITE(fgRwLock);
+   {
+      R__WRITE_LOCKGUARD(ROOT::gCoreMutex);
+      pidslist->Add(pid);
+      Int_t ind = pidslist->IndexOf(pid);
+      pid->SetUniqueID((UInt_t)ind);
+   }
 
    return pid;
 }
@@ -2028,10 +2039,8 @@ Int_t TFile::ReOpen(Option_t *mode)
          FlushWriteCache();
 
          // delete free segments from free list
-         if (fFree) {
-            fFree->Delete();
-            SafeDelete(fFree);
-         }
+         fFree->Delete();
+         SafeDelete(fFree);
 
          SysClose(fD);
          fD = -1;
@@ -2571,7 +2580,7 @@ void TFile::MakeProject(const char *dirname, const char * /*classes*/,
       // Create a PAR file
       parname = gSystem->BaseName(dirname);
       if (parname.EndsWith(".par")) parname.ReplaceAll(".par","");
-      pardir = gSystem->DirName(dirname);
+      pardir = gSystem->GetDirName(dirname);
       // Cleanup or prepare the dirs
       TString path, filepath;
       void *dir = gSystem->OpenDirectory(pardir);
@@ -3534,7 +3543,7 @@ void TFile::ReadStreamerInfo()
             Int_t asize = fClassIndex->GetSize();
             if (uid >= asize && uid <100000) fClassIndex->Set(2*asize);
             if (uid >= 0 && uid < fClassIndex->GetSize()) fClassIndex->fArray[uid] = 1;
-            else {
+            else if (!isstl) {
                printf("ReadStreamerInfo, class:%s, illegal uid=%d\n",info->GetName(),uid);
             }
             if (gDebug > 0) printf(" -class: %s version: %d info read at slot %d\n",info->GetName(), info->GetClassVersion(),uid);
@@ -3734,7 +3743,7 @@ TFile *TFile::OpenFromCache(const char *name, Option_t *, const char *ftitle,
          TString cachefilepathbasedir;
          cachefilepath = fgCacheFileDir;
          cachefilepath += fileurl.GetFile();
-         cachefilepathbasedir = gSystem->DirName(cachefilepath);
+         cachefilepathbasedir = gSystem->GetDirName(cachefilepath);
          if ((gSystem->mkdir(cachefilepathbasedir, kTRUE) < 0) &&
                (gSystem->AccessPathName(cachefilepathbasedir, kFileExists))) {
             ::Warning("TFile::OpenFromCache","you want to read through a cache, but I "
@@ -3953,7 +3962,7 @@ TFile *TFile::Open(const char *url, Option_t *options, const char *ftitle,
          TFile::EAsyncOpenStatus aos = TFile::kAOSNotAsync;
          aos = TFile::GetAsyncOpenStatus(fh);
          Int_t xtms = toms;
-         while (aos != TFile::kAOSNotAsync && aos == TFile::kAOSInProgress && xtms > 0) {
+         while (aos == TFile::kAOSInProgress && xtms > 0) {
             gSystem->Sleep(1);
             xtms -= 1;
             aos = TFile::GetAsyncOpenStatus(fh);
@@ -4438,7 +4447,7 @@ void TFile::IncrementFileCounter() { fgFileCounter++; }
 Bool_t TFile::SetCacheFileDir(std::string_view cachedir, Bool_t operatedisconnected,
                               Bool_t forcecacheread )
 {
-   TString cached = cachedir;
+   TString cached{cachedir};
    if (!cached.EndsWith("/"))
       cached += "/";
 
@@ -4514,9 +4523,9 @@ Bool_t TFile::ShrinkCacheFileDir(Long64_t shrinksize, Long_t cleanupinterval)
 #if defined(R__WIN32)
    cmd = "echo <TFile::ShrinkCacheFileDir>: cleanup to be implemented";
 #elif defined(R__MACOSX)
-   cmd.Format("perl -e 'my $cachepath = \"%s\"; my $cachesize = %lld;my $findcommand=\"find $cachepath -type f -exec stat -f \\\"\\%%a::\\%%N::\\%%z\\\" \\{\\} \\\\\\;\";my $totalsize=0;open FIND, \"$findcommand | sort -k 1 |\";while (<FIND>) { my ($accesstime, $filename, $filesize) = split \"::\",$_; $totalsize += $filesize;if ($totalsize > $cachesize) {if ( ( -e \"${filename}.ROOT.cachefile\" ) && ( -e \"${filename}\" ) ) {unlink \"$filename.ROOT.cachefile\";unlink \"$filename\";}}}close FIND;' ", fgCacheFileDir.Data(),shrinksize);
+   cmd.Form("perl -e 'my $cachepath = \"%s\"; my $cachesize = %lld;my $findcommand=\"find $cachepath -type f -exec stat -f \\\"\\%%a::\\%%N::\\%%z\\\" \\{\\} \\\\\\;\";my $totalsize=0;open FIND, \"$findcommand | sort -k 1 |\";while (<FIND>) { my ($accesstime, $filename, $filesize) = split \"::\",$_; $totalsize += $filesize;if ($totalsize > $cachesize) {if ( ( -e \"${filename}.ROOT.cachefile\" ) || ( -e \"${filename}\" ) ) {unlink \"$filename.ROOT.cachefile\";unlink \"$filename\";}}}close FIND;' ", fgCacheFileDir.Data(),shrinksize);
 #else
-   cmd.Format("perl -e 'my $cachepath = \"%s\"; my $cachesize = %lld;my $findcommand=\"find $cachepath -type f -exec stat -c \\\"\\%%x::\\%%n::\\%%s\\\" \\{\\} \\\\\\;\";my $totalsize=0;open FIND, \"$findcommand | sort -k 1 |\";while (<FIND>) { my ($accesstime, $filename, $filesize) = split \"::\",$_; $totalsize += $filesize;if ($totalsize > $cachesize) {if ( ( -e \"${filename}.ROOT.cachefile\" ) && ( -e \"${filename}\" ) ) {unlink \"$filename.ROOT.cachefile\";unlink \"$filename\";}}}close FIND;' ", fgCacheFileDir.Data(),shrinksize);
+   cmd.Form("perl -e 'my $cachepath = \"%s\"; my $cachesize = %lld;my $findcommand=\"find $cachepath -type f -exec stat -c \\\"\\%%x::\\%%n::\\%%s\\\" \\{\\} \\\\\\;\";my $totalsize=0;open FIND, \"$findcommand | sort -k 1 |\";while (<FIND>) { my ($accesstime, $filename, $filesize) = split \"::\",$_; $totalsize += $filesize;if ($totalsize > $cachesize) {if ( ( -e \"${filename}.ROOT.cachefile\" ) || ( -e \"${filename}\" ) ) {unlink \"$filename.ROOT.cachefile\";unlink \"$filename\";}}}close FIND;' ", fgCacheFileDir.Data(),shrinksize);
 #endif
 
    tagfile->WriteBuffer(cmd, 4096);

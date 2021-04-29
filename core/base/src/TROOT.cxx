@@ -71,7 +71,6 @@ of a main program creating an interactive version is shown below:
 #include "RConfigOptions.h"
 #include "RVersion.h"
 #include "RGitCommit.h"
-
 #include <string>
 #include <map>
 #include <stdlib.h>
@@ -114,6 +113,7 @@ FARPROC dlsym(void *library, const char *function_name)
 #endif
 
 #include "Riostream.h"
+#include "ROOT/FoundationUtils.hxx"
 #include "TROOT.h"
 #include "TClass.h"
 #include "TClassEdit.h"
@@ -143,7 +143,6 @@ FARPROC dlsym(void *library, const char *function_name)
 #include "TProcessUUID.h"
 #include "TPluginManager.h"
 #include "TMap.h"
-#include "TObjString.h"
 #include "TVirtualMutex.h"
 #include "TInterpreter.h"
 #include "TListOfTypes.h"
@@ -154,9 +153,9 @@ FARPROC dlsym(void *library, const char *function_name)
 #include "TFunctionTemplate.h"
 #include "ThreadLocalStorage.h"
 #include "TVirtualRWMutex.h"
+#include "TVirtualX.h"
 
 #include <string>
-namespace std {} using namespace std;
 
 #if defined(R__UNIX)
 #if defined(R__HAS_COCOA)
@@ -416,8 +415,6 @@ namespace Internal {
    void EnableParBranchProcessing()
    {
 #ifdef R__USE_IMT
-      if (!IsImplicitMTEnabled())
-         EnableImplicitMT();
       static void (*sym)() = (void(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_EnableParBranchProcessing");
       if (sym)
          sym();
@@ -446,55 +443,6 @@ namespace Internal {
    {
 #ifdef R__USE_IMT
       static Bool_t (*sym)() = (Bool_t(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_IsParBranchProcessingEnabled");
-      if (sym)
-         return sym();
-      else
-         return kFALSE;
-#else
-      return kFALSE;
-#endif
-   }
-
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Globally enables the parallel tree processing, which is a case of
-   /// implicit multi-threading in ROOT, activating the required locks.
-   /// This IMT use case, implemented in TTreeProcessor::Process, receives a user
-   /// function and applies it to subranges of the tree, which correspond to its
-   /// clusters. Hence, for every cluster, a task is spawned to potentially
-   /// process it in parallel with the other clusters.
-   void EnableParTreeProcessing()
-   {
-#ifdef R__USE_IMT
-      if (!IsImplicitMTEnabled())
-         EnableImplicitMT();
-      static void (*sym)() = (void(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_EnableParTreeProcessing");
-      if (sym)
-         sym();
-#else
-      ::Warning("EnableParTreeProcessing", "Cannot enable parallel tree processing, please build ROOT with -Dimt=ON");
-#endif
-   }
-
-   //////////////////////////////////////////////////////////////////////////////
-   /// Globally disables the IMT use case of parallel branch processing,
-   /// deactivating the corresponding locks.
-   void DisableParTreeProcessing()
-   {
-#ifdef R__USE_IMT
-      static void (*sym)() = (void(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_DisableParTreeProcessing");
-      if (sym)
-         sym();
-#else
-      ::Warning("DisableParTreeProcessing", "Cannot disable parallel tree processing, please build ROOT with -Dimt=ON");
-#endif
-   }
-
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Returns true if parallel tree processing is enabled.
-   Bool_t IsParTreeProcessingEnabled()
-   {
-#ifdef R__USE_IMT
-      static Bool_t (*sym)() = (Bool_t(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_IsParTreeProcessingEnabled");
       if (sym)
          return sym();
       else
@@ -613,11 +561,11 @@ namespace Internal {
    }
 
    ////////////////////////////////////////////////////////////////////////////////
-   /// Returns the size of the pool used for implicit multi-threading.
-   UInt_t GetImplicitMTPoolSize()
+   /// Returns the size of ROOT's thread pool
+   UInt_t GetThreadPoolSize()
    {
 #ifdef R__USE_IMT
-      static UInt_t (*sym)() = (UInt_t(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_GetImplicitMTPoolSize");
+      static UInt_t (*sym)() = (UInt_t(*)())Internal::GetSymInLibImt("ROOT_MT_GetThreadPoolSize");
       if (sym)
          return sym();
       else
@@ -627,7 +575,13 @@ namespace Internal {
 #endif
    }
 
-}
+   ////////////////////////////////////////////////////////////////////////////////
+   /// Returns the size of the pool used for implicit multi-threading.
+   UInt_t GetImplicitMTPoolSize()
+   {
+      return GetThreadPoolSize();
+   }
+} // end of ROOT namespace
 
 TROOT *ROOT::Internal::gROOTLocal = ROOT::GetROOT();
 
@@ -923,14 +877,15 @@ TROOT::~TROOT()
 
       // ATTENTION!!! Order is important!
 
-#ifdef R__COMPLETE_MEM_TERMINATION
       SafeDelete(fBrowsables);
 
       // FIXME: Causes rootcling to deadlock, debug and uncomment
       // SafeDelete(fRootFolder);
 
+#ifdef R__COMPLETE_MEM_TERMINATION
       fSpecials->Delete();   SafeDelete(fSpecials);    // delete special objects : PostScript, Minuit, Html
 #endif
+
       fClosedObjects->Delete("slow"); // and closed files
       fFiles->Delete("slow");       // and files
       SafeDelete(fFiles);
@@ -947,9 +902,7 @@ TROOT::~TROOT()
       fFunctions->Delete();  SafeDelete(fFunctions);   // etc..
       fGeometries->Delete(); SafeDelete(fGeometries);
       fBrowsers->Delete();   SafeDelete(fBrowsers);
-#ifdef R__COMPLETE_MEM_TERMINATION
       SafeDelete(fCanvases);
-#endif
       fColors->Delete();     SafeDelete(fColors);
       fStyles->Delete();     SafeDelete(fStyles);
 
@@ -1018,16 +971,14 @@ TROOT::~TROOT()
       //
       //    delete fInterpreter;
 
+      // We cannot delete fCleanups because of the logic in atexit which needs it.
       SafeDelete(fCleanups);
 #endif
 
-      // llvm::TimingGroup used for measuring the timing relies the destructors.
-      // In order to make use of this feature we have to call the destructor of
-      // TCling which will shut down clang, cling and llvm.
-      // gSystem->Getenv is not available anymore.
-      if (::getenv("ROOT_CLING_TIMING"))
-         delete fInterpreter;
-
+#ifndef _MSC_VER
+      // deleting the interpreter makes things crash at exit in some cases
+      delete fInterpreter;
+#endif
 
       // Prints memory stats
       TStorage::PrintStatistics();
@@ -1250,7 +1201,7 @@ void TROOT::EndOfProcessCleanups()
    CloseFiles();
 
    if (gInterpreter) {
-      gInterpreter->ShutDown();
+      gInterpreter->ResetGlobals();
    }
 
    // Now delete the objects 'held' by the TFiles so that it
@@ -1267,6 +1218,12 @@ void TROOT::EndOfProcessCleanups()
    fCanvases->Delete("slow");
    fColors->Delete();
    fStyles->Delete();
+
+   TQObject::BlockAllSignals(kTRUE);
+
+   if (gInterpreter) {
+      gInterpreter->ShutDown();
+   }
 }
 
 
@@ -2036,22 +1993,6 @@ void TROOT::InitInterpreter()
    // rootcling.
    if (!dlsym(RTLD_DEFAULT, "usedToIdentifyRootClingByDlSym")
        && !dlsym(RTLD_DEFAULT, "usedToIdentifyStaticRoot")) {
-      // Make sure no llvm symbols are visible before loading libCling. If they
-      // exist libCling will use those and not ours, causing havoc in the
-      // interpreter. Look for an extern "C" symbol to avoid mangling; look for a
-      // symbol from llvm because clang builds on top, so users would likely
-      // have also their own llvm symbols when providing their own clang.
-      void *LLVMEnablePrettyStackTraceAddr = 0;
-      // Can't use gSystem->DynFindSymbol() because that iterates over all *known*
-      // libraries which is not the same!
-      LLVMEnablePrettyStackTraceAddr = dlsym(RTLD_DEFAULT, "LLVMEnablePrettyStackTrace");
-      // FIXME: When we configure with -Dclingtest=On we intentionally export the symbols. Silence this error.
-      if (LLVMEnablePrettyStackTraceAddr) {
-         Error("InitInterpreter()", "LLVM SYMBOLS ARE EXPOSED TO CLING! "
-               "This will cause problems; please hide them or dlopen() them "
-               "after the call to TROOT::InitInterpreter()!");
-      }
-
       char *libRIO = gSystem->DynamicPathName("libRIO");
       void *libRIOHandle = dlopen(libRIO, RTLD_NOW|RTLD_GLOBAL);
       delete [] libRIO;
@@ -2138,11 +2079,6 @@ void TROOT::InitInterpreter()
    GetModuleHeaderInfoBuffer().clear();
 
    fInterpreter->Initialize();
-
-   // Read the rules before enabling the auto loading to not inadvertently
-   // load the libraries for the classes concerned even-though the user is
-   // *not* using them.
-   TClass::ReadRules(); // Read the default customization rules ...
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2597,7 +2533,7 @@ void TROOT::RegisterModule(const char* modulename,
    atexit(CallCloseFiles);
 
    // Now register with TCling.
-   if (gCling) {
+   if (TROOT::Initialized()) {
       gCling->RegisterModule(modulename, headers, includePaths, payloadCode, fwdDeclCode, triggerFunc,
                              fwdDeclsArgToSkip, classesHeaders, false, hasCxxModule);
    } else {
@@ -2849,6 +2785,13 @@ void TROOT::IndentLevel()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Initialize ROOT explicitly.
+
+void TROOT::Initialize() {
+   (void) gROOT;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Return kTRUE if the TROOT object has been initialized.
 
 Bool_t TROOT::Initialized()
@@ -2933,21 +2876,10 @@ static Bool_t IgnorePrefix() {
 /// Get the rootsys directory in the installation. Static utility function.
 
 const TString& TROOT::GetRootSys() {
-#ifdef ROOTPREFIX
-   if (IgnorePrefix()) {
-#endif
-      static TString rootsys;
-      if (rootsys.IsNull())
-         rootsys = gSystem->UnixPathName(gSystem->Getenv("ROOTSYS"));
-      if (rootsys.IsNull())
-         rootsys = gRootDir;
-      return rootsys;
-#ifdef ROOTPREFIX
-   } else {
-      const static TString rootsys = ROOTPREFIX;
-      return rootsys;
-   }
-#endif
+   // Avoid returning a reference to a temporary because of the conversion
+   // between std::string and TString.
+   const static TString rootsys = ROOT::FoundationUtils::GetRootSys();
+   return rootsys;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2996,42 +2928,20 @@ const TString& TROOT::GetLibDir() {
 /// Get the include directory in the installation. Static utility function.
 
 const TString& TROOT::GetIncludeDir() {
-#ifdef ROOTINCDIR
-   if (IgnorePrefix()) {
-#endif
-      static TString rootincdir;
-      if (rootincdir.IsNull()) {
-         rootincdir = "include";
-         gSystem->PrependPathName(GetRootSys(), rootincdir);
-      }
-      return rootincdir;
-#ifdef ROOTINCDIR
-   } else {
-      const static TString rootincdir = ROOTINCDIR;
-      return rootincdir;
-   }
-#endif
+   // Avoid returning a reference to a temporary because of the conversion
+   // between std::string and TString.
+   const static TString includedir = ROOT::FoundationUtils::GetIncludeDir();
+   return includedir;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Get the sysconfig directory in the installation. Static utility function.
 
 const TString& TROOT::GetEtcDir() {
-#ifdef ROOTETCDIR
-   if (IgnorePrefix()) {
-#endif
-      static TString rootetcdir;
-      if (rootetcdir.IsNull()) {
-         rootetcdir = "etc";
-         gSystem->PrependPathName(GetRootSys(), rootetcdir);
-      }
-      return rootetcdir;
-#ifdef ROOTETCDIR
-   } else {
-      const static TString rootetcdir = ROOTETCDIR;
-      return rootetcdir;
-   }
-#endif
+   // Avoid returning a reference to a temporary because of the conversion
+   // between std::string and TString.
+   const static TString etcdir = ROOT::FoundationUtils::GetEtcDir();
+   return etcdir;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -12,9 +12,15 @@
 #ifndef ROOT_TThreadedObject
 #define ROOT_TThreadedObject
 
-#include "TList.h"
+#include "ROOT/TSpinMutex.hxx"
+#include "TDirectory.h"
 #include "TError.h"
+#include "TList.h"
+#include "TROOT.h"
 
+
+#include <algorithm>
+#include <exception>
 #include <functional>
 #include <map>
 #include <memory>
@@ -23,12 +29,21 @@
 #include <thread>
 #include <vector>
 
-#include "ROOT/TSpinMutex.hxx"
-#include "TROOT.h"
-
 class TH1;
 
 namespace ROOT {
+
+   /**
+    * \class ROOT::TNumSlots
+    * \brief Defines the number of threads in some of ROOT's interfaces.
+    */
+   struct TNumSlots {
+      int fVal; // number of slots
+      friend bool operator==(TNumSlots lhs, TNumSlots rhs) { return lhs.fVal == rhs.fVal; }
+      friend bool operator!=(TNumSlots lhs, TNumSlots rhs) { return lhs.fVal != rhs.fVal; }
+   };
+
+   static constexpr const TNumSlots kIMTPoolSize{-1}; // Whatever the IMT pool size is.
 
    namespace Internal {
 
@@ -108,8 +123,19 @@ namespace ROOT {
             }
          };
 
+         struct MaxSlots_t {
+            unsigned fVal;
+            operator unsigned() const { return fVal; }
+            MaxSlots_t &operator=(unsigned val)
+               R__DEPRECATED(6, 24, "Superior interface exists: construct TThreadedObject using TNumSlots instead.")
+            {
+               fVal = val;
+               return *this;
+            }
+         };
+
       } // End of namespace TThreadedObjectUtils
-   } // End of namespace Internals
+   } // End of namespace Internal
 
    namespace TThreadedObjectUtils {
 
@@ -143,30 +169,49 @@ namespace ROOT {
     * In case an elaborate thread management is in place, e.g. in presence of
     * stream of operations or "processing slots", it is also possible to
     * manually select the correct object pointer explicitly.
-    * The default size of the threaded objects is 64. This size can be extended
-    * manually via the fgMaxSlots parameter. The size of individual instances
-    * is automatically extended if the size of the implicit MT pool is bigger
-    * than 64.
-    *
     */
    template<class T>
    class TThreadedObject {
    public:
-      static unsigned fgMaxSlots; ///< The maximum number of processing slots (distinct threads) which the instances can manage
+      /// The maximum number of processing slots (distinct threads) which the instances can manage.
+      /// Deprecated; please use the `TNumSlots` constructor instead.
+      static Internal::TThreadedObjectUtils::MaxSlots_t fgMaxSlots;
+
       TThreadedObject(const TThreadedObject&) = delete;
+
       /// Construct the TThreaded object and the "model" of the thread private
-      /// objects.
+      /// objects. This is the preferred constructor.
+      /// \param nslotsTag - set the number of slots (traditionally one per thread) of the
+      ///   TThreadedObject: each slot will hold one `T`. If `kIMTPoolSize` is passed, the
+      ///   number of slots is defined by ROOT's implicit MT pool size; IMT must be enabled.
       /// \tparam ARGS Arguments of the constructor of T
       template<class ...ARGS>
-      TThreadedObject(ARGS&&... args)
+      TThreadedObject(TNumSlots nslotsTag, ARGS&&... args) : fIsMerged(false)
       {
-         const auto imtPoolSize = ROOT::GetImplicitMTPoolSize();
-         fMaxSlots = (64 > imtPoolSize) ? fgMaxSlots : imtPoolSize;
-         fObjPointers = std::vector<std::shared_ptr<T>>(fMaxSlots, nullptr);
-         fDirectories = Internal::TThreadedObjectUtils::DirCreator<T>::Create(fMaxSlots);
+         auto nslots = nslotsTag.fVal;
+         if (nslotsTag == kIMTPoolSize) {
+            nslots = ROOT::GetThreadPoolSize();
+            if (nslots == 0) {
+               throw std::logic_error("Must enable IMT before constructing TThreadedObject(kIMT)!");
+            }
+         }
 
-         TDirectory::TContext ctxt(fDirectories[0]);
-         fModel.reset(Internal::TThreadedObjectUtils::Detacher<T>::Detach(new T(std::forward<ARGS>(args)...)));
+         Create(nslots, args...);
+      }
+
+      /// Construct the TThreaded object and the "model" of the thread private
+      /// objects, assuming IMT usage. This constructor is equivalent to `TThreadedObject(kIMTPoolSize,...)`
+      /// \tparam ARGS Arguments of the constructor of T
+      template<class ...ARGS>
+      TThreadedObject(ARGS&&... args) : fIsMerged(false)
+      {
+         const auto imtPoolSize = ROOT::GetThreadPoolSize();
+         if (!imtPoolSize) {
+            Warning("TThreadedObject()",
+               "Use without IMT is deprecated, either enable IMT first, or use constructor overload taking TNumSlots!");
+         }
+         auto nslots = std::max((unsigned)fgMaxSlots, imtPoolSize);
+         Create(nslots, args...);
       }
 
       /// Access a particular processing slot. This
@@ -269,14 +314,13 @@ namespace ROOT {
       }
 
    private:
-      unsigned fMaxSlots;                                ///< The size of the instance
       std::unique_ptr<T> fModel;                         ///< Use to store a "model" of the object
       std::vector<std::shared_ptr<T>> fObjPointers;      ///< A pointer per thread is kept.
       std::vector<TDirectory*> fDirectories;             ///< A TDirectory per thread is kept.
       std::map<std::thread::id, unsigned> fThrIDSlotMap; ///< A mapping between the thread IDs and the slots
       unsigned fCurrMaxSlotIndex = 0;                    ///< The maximum slot index
-      bool fIsMerged = false;                            ///< Remember if the objects have been merged already
       ROOT::TSpinMutex fThrIDSlotMutex;                  ///< Mutex to protect the ID-slot map access
+      bool fIsMerged : 1;                                ///< Remember if the objects have been merged already
 
       /// Get the slot number for this threadID.
       unsigned GetThisSlotNumber()
@@ -293,9 +337,17 @@ namespace ROOT {
          return thisIndex;
       }
 
+      template<class ...ARGS>
+      void Create(int nslots, ARGS&&... args) {
+         fObjPointers = std::vector<std::shared_ptr<T>>(nslots, nullptr);
+         fDirectories = Internal::TThreadedObjectUtils::DirCreator<T>::Create(nslots);
+
+         TDirectory::TContext ctxt(fDirectories[0]);
+         fModel.reset(Internal::TThreadedObjectUtils::Detacher<T>::Detach(new T(std::forward<ARGS>(args)...)));
+      }
    };
 
-   template<class T> unsigned TThreadedObject<T>::fgMaxSlots = 64;
+   template<class T> Internal::TThreadedObjectUtils::MaxSlots_t TThreadedObject<T>::fgMaxSlots{64};
 
 } // End ROOT namespace
 

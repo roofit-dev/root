@@ -36,16 +36,52 @@ __author__ = 'Wim Lavrijsen <WLavrijsen@lbl.gov>'
 __all__ = [
     'cppdef',                 # declare C++ source to Cling
     'include',                # load and jit a header file
+    'c_include',              # load and jit a C header file
     'load_library',           # load a shared library
-    'sizeof',                 #  size of a C++ type
+    'nullptr',                # unique pointer representing NULL
+    'sizeof',                 # size of a C++ type
     'typeid',                 # typeid of a C++ type
     'add_include_path',       # add a path to search for headers
+    'add_library_path',       # add a path to search for headers
     'add_autoload_map',       # explicitly include an autoload map
     ]
 
 from ._version import __version__
 
 import os, sys, sysconfig, warnings
+import importlib
+
+# import libcppyy with Python version number
+major, minor = sys.version_info[0:2]
+py_version_str = '{}_{}'.format(major, minor)
+libcppyy_mod_name = 'libcppyy' + py_version_str
+importlib.import_module(libcppyy_mod_name)
+
+# ensure 'import libcppyy' will find the versioned module
+sys.modules['libcppyy'] = sys.modules[libcppyy_mod_name]
+
+# tell cppyy that libcppyy_backend is versioned
+if 'CPPYY_BACKEND_LIBRARY' in os.environ:
+    cbl_var = os.environ['CPPYY_BACKEND_LIBRARY']
+    start = 0
+    last_sep = cbl_var.rfind(os.path.sep)
+    if last_sep >= 0:
+        start = last_sep + 1
+    first_dot = cbl_var.find('.', start)
+    if first_dot >= 0:
+        # lib_name = [/path/to/]libcppyy_backend[py_version_str]
+        # suffix = so | ...
+        lib_name = cbl_var[:first_dot]
+        suff = cbl_var[first_dot+1:]
+        if lib_name.find(py_version_str, start) < 0:
+            lib_name += py_version_str
+        os.environ['CPPYY_BACKEND_LIBRARY'] = '.'.join([
+            lib_name, suff])
+    else:
+        if cbl_var.find(py_version_str, start) < 0:
+            os.environ['CPPYY_BACKEND_LIBRARY'] += py_version_str
+else:
+    os.environ['CPPYY_BACKEND_LIBRARY'] = 'libcppyy_backend' + py_version_str
 
 if not 'CLING_STANDARD_PCH' in os.environ:
     local_pch = os.path.join(os.path.dirname(__file__), 'allDict.cxx.pch')
@@ -71,11 +107,6 @@ else:
 #- allow importing from gbl --------------------------------------------------
 sys.modules['cppyy.gbl'] = gbl
 sys.modules['cppyy.gbl.std'] = gbl.std
-
-
-#- enable auto-loading -------------------------------------------------------
-try:    gbl.gInterpreter.EnableAutoLoading()
-except: pass
 
 
 #- external typemap ----------------------------------------------------------
@@ -136,11 +167,12 @@ def cppdef(src):
 
 def load_library(name):
     """Explicitly load a shared library."""
+    gSystem = gbl.gSystem
     if name[:3] != 'lib':
-        if not gbl.gSystem.FindDynamicLibrary(gbl.TString(name), True) and\
-               gbl.gSystem.FindDynamicLibrary(gbl.TString('lib'+name), True):
+        if not gSystem.FindDynamicLibrary(gbl.TString(name), True) and\
+               gSystem.FindDynamicLibrary(gbl.TString('lib'+name), True):
             name = 'lib'+name
-    sc = gbl.gSystem.Load(name)
+    sc = gSystem.Load(name)
     if sc == -1:
         raise RuntimeError("Unable to load library "+name)
 
@@ -160,6 +192,12 @@ def add_include_path(path):
         raise OSError("no such directory: %s" % path)
     gbl.gInterpreter.AddIncludePath(path)
 
+def add_library_path(path):
+    """Add a path to the library search paths available to Cling."""
+    if not os.path.isdir(path):
+        raise OSError("no such directory: %s" % path)
+    gbl.gSystem.AddDynamicPath(path)
+
 # add access to Python C-API headers
 apipath = sysconfig.get_path('include', 'posix_prefix' if os.name == 'posix' else os.name)
 if os.path.exists(apipath):
@@ -175,9 +213,9 @@ if not ispypy:
     if 'CPPYY_API_PATH' in os.environ:
         apipath_extra = os.environ['CPPYY_API_PATH']
     else:
-        apipath_extra = os.path.join(os.path.dirname(apipath), 'site', os.path.basename(apipath))
+        apipath_extra = os.path.join(os.path.dirname(apipath), 'site', 'python'+sys.version[:3])
         if not os.path.exists(os.path.join(apipath_extra, 'CPyCppyy')):
-            import libcppyy
+            import glob, libcppyy
             apipath_extra = os.path.dirname(libcppyy.__file__)
           # a "normal" structure finds the include directory 3 levels up,
           # ie. from lib/pythonx.y/site-packages
@@ -187,10 +225,11 @@ if not ispypy:
 
             apipath_extra = os.path.join(apipath_extra, 'include')
           # add back pythonx.y or site/pythonx.y if available
-            if os.path.exists(os.path.join(apipath_extra, 'python'+sys.version[:3], 'CPyCppyy')):
-                apipath_extra = os.path.join(apipath_extra, 'python'+sys.version[:3])
-            elif os.path.exists(os.path.join(apipath_extra, 'site', 'python'+sys.version[:3], 'CPyCppyy')):
-                apipath_extra = os.path.join(apipath_extra, 'site', 'python'+sys.version[:3])
+            for p in glob.glob(os.path.join(apipath_extra, 'python'+sys.version[:3]+'*'))+\
+                     glob.glob(os.path.join(apipath_extra, '*', 'python'+sys.version[:3]+'*')):
+                if os.path.exists(os.path.join(p, 'CPyCppyy')):
+                    apipath_extra = p
+                    break
 
     cpycppyy_path = os.path.join(apipath_extra, 'CPyCppyy')
     if apipath_extra.lower() != 'none':
@@ -199,7 +238,20 @@ if not ispypy:
         else:
             add_include_path(apipath_extra)
 
-del ispypy, apipath
+if os.getenv('CONDA_PREFIX'):
+  # MacOS, Linux
+    include_path = os.path.join(os.getenv('CONDA_PREFIX'), 'include')
+    if os.path.exists(include_path): add_include_path(include_path)
+
+  # Windows
+    include_path = os.path.join(os.getenv('CONDA_PREFIX'), 'Library', 'include')
+    if os.path.exists(include_path): add_include_path(include_path)
+
+# assuming that we are in PREFIX/lib/python/site-packages/cppyy, add PREFIX/include to the search path
+include_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir, os.path.pardir, os.path.pardir, os.path.pardir, 'include'))
+if os.path.exists(include_path): add_include_path(include_path)
+
+del include_path, apipath, ispypy
 
 def add_autoload_map(fname):
     """Add the entries from a autoload (.rootmap) file to Cling."""

@@ -21,6 +21,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include <memory>
 #include <utility>
 
@@ -45,6 +46,7 @@ namespace serialization {
 using llvm::SmallVector;
 using llvm::SmallVectorImpl;
 using llvm::StringRef;
+using llvm::StringSet;
 using serialization::ModuleFile;
 
 /// \brief A global index for a set of module files, providing information about
@@ -160,6 +162,8 @@ public:
   /// have been indexed.
   void getKnownModules(SmallVectorImpl<ModuleFile *> &ModuleFiles);
 
+  void getKnownModuleFileNames(StringSet<> &ModuleFiles);
+
   /// \brief Retrieve the set of module files on which the given module file
   /// directly depends.
   void getModuleDependencies(ModuleFile *File,
@@ -178,6 +182,9 @@ public:
   ///
   /// \returns true if the identifier is known to the index, false otherwise.
   bool lookupIdentifier(StringRef Name, HitSet &Hits);
+
+  typedef llvm::SmallPtrSet<std::string *, 4> FileNameHitSet;
+  bool lookupIdentifier(StringRef Name, FileNameHitSet &Hits);
 
   /// \brief Note that the given module file has been loaded.
   ///

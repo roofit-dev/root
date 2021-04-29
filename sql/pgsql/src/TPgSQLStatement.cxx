@@ -25,6 +25,11 @@
 
 #include <stdlib.h>
 
+#define pgsql_success(x) (((x) == PGRES_EMPTY_QUERY) \
+                        || ((x) == PGRES_COMMAND_OK) \
+                        || ((x) == PGRES_TUPLES_OK))
+
+
 ClassImp(TPgSQLStatement);
 
 #ifdef PG_VERSION_NUM
@@ -85,14 +90,14 @@ void TPgSQLStatement::Close(Option_t *)
    if (fStmt->fRes)
       PQclear(fStmt->fRes);
 
-   fStmt->fRes = 0;
+   fStmt->fRes = nullptr;
 
    PGresult *res=PQexec(fStmt->fConn,"DEALLOCATE preparedstmt;");
    PQclear(res);
 
    FreeBuffers();
    //TPgSQLServers responsibility to free connection
-   fStmt->fConn=0;
+   fStmt->fConn = nullptr;
    delete fStmt;
 }
 
@@ -312,11 +317,11 @@ void TPgSQLStatement::FreeBuffers()
    if (fParamFormats)
       delete [] fParamFormats;
 
-   fFieldName = 0;
-   fBind = 0;
+   fFieldName = nullptr;
+   fBind = nullptr;
    fNumBuffers = 0;
-   fParamLengths = 0;
-   fParamFormats = 0;
+   fParamLengths = nullptr;
+   fParamFormats = nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

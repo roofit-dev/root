@@ -9,9 +9,105 @@ level packages, which have their own releases.
 See :doc:`packages <packages>`, for details on the package structure.
 PyPy support lags CPython support.
 
-master: 1.5.1
+
+Master: 1.6.2
 -------------
 
+* Respect __len__ when using bound C++ objects in boolean expressions
+* Support UTF-8 encoded unicode through std::string
+* Support for std::byte
+* Enable assignment to function pointer variable
+* Allow passing cppyy.nullptr where are function pointer is expected
+* Disable copy construction into constructed object (use ``__assign__`` instead)
+* Lower priority of implicit conversion to temporary with initializer_list ctor
+* Remove '-isystem' from makepch flags
+* Extended documentation
+
+
+2020-01-04: 1.6.1
+-----------------
+
+* Mapped C++ exception reporting detailing
+* Mapped C++ exception cleanup bug fix
+* STL vector constructor passes the CPython sequence construction
+* STL vector slicing passes the CPython sequence slicing tests
+* Extended documentation
+
+
+2019-12-23: 1.6.0
+-----------------
+
+* Classes derived from std::exception can be used as Python exceptions
+* Template handling detailing (for Eigen)
+* Support keyword arguments
+* Added add_library_path at module level
+* Extended documentation
+* Fix regression bugs: #176, #179, #180, #182
+
+
+2019-11-07: 1.5.7
+-----------------
+
+* Allow implicit converions for move arguments
+* Choose vector over initializer_list if part of the template argument list
+
+
+2019-11-03: 1.5.6
+-----------------
+
+* Added public C++ API for some CPyCppyy core functions (CPython only)
+* Support for char16_t/char16_t* and char32_t/char32_t*
+* Respect std::hash in __hash__
+* Fix iteration over vector of shared_ptr
+* Length checking on global variables of type 'signed char[N]'
+* Properly support overloaded templated with non-templated __setitem__
+* Support for array of const char* as C-strings
+* Enable type resolution of clang's builtin __type_pack_element
+* Fix for inner class type naming when it directly declares a variable
+
+
+2019-10-16: 1.5.5
+-----------------
+
+* Added signal -> exception support in cppyy.ll
+* Support for lazily combining overloads of operator*/+-
+* No longer call trivial destructors
+* Support for free function unary operators
+* Refactored and optimized operator==/!= usage
+* Refactored converters/executors for lower memory usage
+* Bug fixes in rootcling and _cppyy_generator.py
+
+
+2019-09-25: 1.5.4
+-----------------
+
+* operator+/* now respect C++-side associativity
+* Fix potential crash if modules are reloaded
+* Fix some portability issues on Mac/Windows of cppyy-cling
+
+
+2019-09-15: 1.5.3
+-----------------
+
+* Performance improvements
+* Support for anonymous/unnamed/nested unions
+* Extended documentation
+
+
+2019-09-06: 1.5.2
+-----------------
+
+* Added a "low level" interface (cppyy.ll) for hard-casting and ll types
+* Extened support for passing ctypes arguments through ptr, ref, ptr-ptr
+* Fixed crash when creating an array of instances of a scoped inner struct
+* Extended documentation
+
+
+2019-08-26: 1.5.1
+-----------------
+
+* Upgrade cppyy-cling to 6.18.2
+* Various patches to upstream's pre-compiled header generation and use
 * Instantiate templates with larger integer types if argument values require
 * Improve cppyy.interactive and partially enable it on PyPy, IPython, etc.
 * Let __overload__ be more flexible in signature matching
@@ -22,7 +118,7 @@ master: 1.5.1
 2019-08-18: 1.5.0
 -----------------
 
-* Upgrade cppyy-cling to 6.18
+* Upgrade cppyy-cling to 6.18.0
 * Allow python-derived classes to be used in templates
 * Stricter template resolution and better caching/performance
 * Detailed memory management for make_shared and shared_ptr

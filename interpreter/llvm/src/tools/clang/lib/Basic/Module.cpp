@@ -58,10 +58,41 @@ Module::~Module() {
   }
 }
 
+static bool isPlatformEnvironment(const TargetInfo &Target, StringRef Feature) {
+  StringRef Platform = Target.getPlatformName();
+  StringRef Env = Target.getTriple().getEnvironmentName();
+
+  // Attempt to match platform and environment.
+  if (Platform == Feature || Target.getTriple().getOSName() == Feature ||
+      Env == Feature)
+    return true;
+
+  auto CmpPlatformEnv = [](StringRef LHS, StringRef RHS) {
+    auto Pos = LHS.find("-");
+    if (Pos == StringRef::npos)
+      return false;
+    SmallString<128> NewLHS = LHS.slice(0, Pos);
+    NewLHS += LHS.slice(Pos+1, LHS.size());
+    return NewLHS == RHS;
+  };
+
+  SmallString<128> PlatformEnv = Target.getTriple().getOSAndEnvironmentName();
+  // Darwin has different but equivalent variants for simulators, example:
+  //   1. x86_64-apple-ios-simulator
+  //   2. x86_64-apple-iossimulator
+  // where both are valid examples of the same platform+environment but in the
+  // variant (2) the simulator is hardcoded as part of the platform name. Both
+  // forms above should match for "iossimulator" requirement.
+  if (Target.getTriple().isOSDarwin() && PlatformEnv.endswith("simulator"))
+    return PlatformEnv == Feature || CmpPlatformEnv(PlatformEnv, Feature);
+
+  return PlatformEnv == Feature;
+}
+
 /// \brief Determine whether a translation unit built using the current
 /// language options has the given feature.
 static bool hasFeature(StringRef Feature, const LangOptions &LangOpts,
-                       const TargetInfo &Target) {
+                       const TargetInfo &Target, bool HasMissingHeaders) {
   bool HasFeature = llvm::StringSwitch<bool>(Feature)
                         .Case("altivec", LangOpts.AltiVec)
                         .Case("blocks", LangOpts.Blocks)
@@ -73,9 +104,11 @@ static bool hasFeature(StringRef Feature, const LangOptions &LangOpts,
                         .Case("objc", LangOpts.ObjC1)
                         .Case("objc_arc", LangOpts.ObjCAutoRefCount)
                         .Case("opencl", LangOpts.OpenCL)
+                        .Case("header_existence", !HasMissingHeaders)
                         .Case("tls", Target.isTLSSupported())
                         .Case("zvector", LangOpts.ZVector)
-                        .Default(Target.hasFeature(Feature));
+                        .Default(Target.hasFeature(Feature) ||
+                                 isPlatformEnvironment(Target, Feature));
   if (!HasFeature)
     HasFeature = std::find(LangOpts.ModuleFeatures.begin(),
                            LangOpts.ModuleFeatures.end(),
@@ -90,14 +123,16 @@ bool Module::isAvailable(const LangOptions &LangOpts, const TargetInfo &Target,
     return true;
 
   for (const Module *Current = this; Current; Current = Current->Parent) {
+    bool HasMissingHeaders = !Current->MissingHeaders.empty();
     for (unsigned I = 0, N = Current->Requirements.size(); I != N; ++I) {
-      if (hasFeature(Current->Requirements[I].first, LangOpts, Target) !=
-              Current->Requirements[I].second) {
+      if (hasFeature(Current->Requirements[I].first, LangOpts, Target,
+                     HasMissingHeaders) !=
+          Current->Requirements[I].second) {
         Req = Current->Requirements[I];
         return false;
       }
     }
-    if (!Current->MissingHeaders.empty()) {
+    if (HasMissingHeaders) {
       MissingHeader = Current->MissingHeaders.front();
       return false;
     }
@@ -224,7 +259,8 @@ void Module::addRequirement(StringRef Feature, bool RequiredState,
   Requirements.push_back(Requirement(Feature, RequiredState));
 
   // If this feature is currently available, we're done.
-  if (hasFeature(Feature, LangOpts, Target) == RequiredState)
+  if (hasFeature(Feature, LangOpts, Target, !MissingHeaders.empty()) ==
+      RequiredState)
     return;
 
   markUnavailable(/*MissingRequirement*/true);

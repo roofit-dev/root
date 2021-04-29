@@ -291,6 +291,11 @@ Bool_t PyROOT::TLongRefConverter::SetArg(
    if ( TCustomInt_CheckExact( pyobject ) ) {
       para.fValue.fVoidp = (void*)&((PyIntObject*)pyobject)->ob_ival;
       para.fTypeCode = 'V';
+      if (PyErr_WarnEx(PyExc_FutureWarning,
+                       "ROOT.Long is deprecated and will disappear in a future version of ROOT. "
+                       "Instead, use ctypes.c_long for pass-by-ref of longs", 1) < 0) {
+         return kFALSE;
+      }
       return kTRUE;
    }
 #endif
@@ -337,6 +342,11 @@ Bool_t PyROOT::TIntRefConverter::SetArg(
    if ( TCustomInt_CheckExact( pyobject ) ) {
       para.fValue.fVoidp = (void*)&((PyIntObject*)pyobject)->ob_ival;
       para.fTypeCode = 'V';
+      if (PyErr_WarnEx(PyExc_FutureWarning,
+                       "ROOT.Long is deprecated and will disappear in a future version of ROOT. "
+                       "Instead, use ctypes.c_int for pass-by-ref of ints", 1) < 0) {
+         return kFALSE;
+      }
       return kTRUE;
    }
 #endif
@@ -452,6 +462,11 @@ Bool_t PyROOT::TDoubleRefConverter::SetArg(
    if ( TCustomFloat_CheckExact( pyobject ) ) {
       para.fValue.fVoidp = (void*)&((PyFloatObject*)pyobject)->ob_fval;
       para.fTypeCode = 'V';
+      if (PyErr_WarnEx(PyExc_FutureWarning,
+                       "ROOT.Double is deprecated and will disappear in a future version of ROOT. "
+                       "Instead, use ctypes.c_double for pass-by-ref of doubles", 1) < 0) {
+         return kFALSE;
+      }
       return kTRUE;
    }
 
@@ -462,7 +477,7 @@ Bool_t PyROOT::TDoubleRefConverter::SetArg(
       return kTRUE;
    }
 
-   PyErr_SetString( PyExc_TypeError, "use ROOT.Double for pass-by-ref of doubles" );
+   PyErr_SetString( PyExc_TypeError, "use ctypes.c_double for pass-by-ref of doubles" );
    return kFALSE;
 }
 
@@ -549,14 +564,35 @@ Bool_t PyROOT::TULongLongConverter::ToMemory( PyObject* value, void* address )
 ////////////////////////////////////////////////////////////////////////////////
 /// construct a new string and copy it in new memory
 
+static std::tuple<const char*,Py_ssize_t> getStringAndSizeCString(PyObject* pyobject) {
+#if PY_VERSION_HEX >= 0x03030000
+   // Support non-ASCII strings (get the right length in bytes)
+   Py_ssize_t size = 0;
+   auto charArr = PyROOT_PyUnicode_AsStringAndSize(pyobject, &size);
+#else
+   auto size = PyROOT_PyUnicode_GET_SIZE(pyobject);
+   auto charArr = PyROOT_PyUnicode_AsStringChecked(pyobject);
+#endif
+   return std::tuple<const char*,Py_ssize_t>(charArr, size);
+}
+
 Bool_t PyROOT::TCStringConverter::SetArg(
       PyObject* pyobject, TParameter& para, TCallContext* /* ctxt */ )
 {
-   const char* s = PyROOT_PyUnicode_AsStringChecked( pyobject );
-   if ( PyErr_Occurred() )
+   if (PyROOT_PyUnicode_Check(pyobject)
+#if PY_VERSION_HEX < 0x03000000
+       || PyUnicode_Check(pyobject)
+#endif
+   ) {
+      auto strAndSize = getStringAndSizeCString(pyobject);
+      fBuffer = std::string(std::get<0>(strAndSize), std::get<1>(strAndSize));
+   } else if (PyBytes_Check(pyobject)) {
+      auto s = PyBytes_AsString(pyobject);                                    \
+      auto size = PyBytes_GET_SIZE(pyobject);
+      fBuffer = std::string(s, size);
+   } else {
       return kFALSE;
-
-   fBuffer = std::string( s, PyROOT_PyUnicode_GET_SIZE( pyobject ) );
+   }
 
 // verify (too long string will cause truncation, no crash)
    if ( fMaxSize < (UInt_t)fBuffer.size() )
@@ -675,6 +711,16 @@ Bool_t PyROOT::TNonConstUCStringConverter::SetArg(
 Bool_t PyROOT::TVoidArrayConverter::GetAddressSpecialCase( PyObject* pyobject, void*& address )
 {
    if ( pyobject == Py_None || pyobject == gNullPtrObject ) {
+
+      if (pyobject == Py_None) {
+         if (PyErr_WarnEx(PyExc_FutureWarning,
+                          "The conversion from None to null pointer is deprecated "
+                          "and will not be allowed anymore in a future version of ROOT. "
+                          "Instead, use ROOT.nullptr or 0", 1) < 0) {
+            return kFALSE;
+         }
+      }
+
       address = (void*)0;
       return kTRUE;
    }
@@ -848,7 +894,7 @@ Bool_t PyROOT::TLongLongArrayConverter::SetArg(
 
 //- converters for special cases ----------------------------------------------
 
-static std::tuple<const char*,Py_ssize_t> getStringAndSize(PyObject* pyobject) {
+static std::tuple<const char*,Py_ssize_t> getStringAndSizeSTLString(PyObject* pyobject) {
 #if PY_VERSION_HEX >= 0x03030000
    // Support non-ASCII strings (get the right length in bytes)
    Py_ssize_t size = 0;
@@ -868,8 +914,17 @@ Bool_t PyROOT::T##name##Converter::SetArg(                                    \
       PyObject* pyobject, TParameter& para, TCallContext* ctxt )              \
 {                                                                             \
    if ( PyROOT_PyUnicode_Check( pyobject ) ) {                                \
-      auto strAndSize = getStringAndSize(pyobject);                           \
+      auto strAndSize = getStringAndSizeSTLString(pyobject);                  \
       fBuffer = type(std::get<0>(strAndSize), std::get<1>(strAndSize));       \
+      para.fValue.fVoidp = &fBuffer;                                          \
+      para.fTypeCode = 'V';                                                   \
+      return kTRUE;                                                           \
+   }                                                                          \
+                                                                              \
+   if (PyBytes_Check(pyobject)) {                                             \
+      auto s = PyBytes_AsString(pyobject);                                    \
+      auto size = PyBytes_GET_SIZE(pyobject);                                 \
+      fBuffer = type(s, size);                                                \
       para.fValue.fVoidp = &fBuffer;                                          \
       para.fTypeCode = 'V';                                                   \
       return kTRUE;                                                           \

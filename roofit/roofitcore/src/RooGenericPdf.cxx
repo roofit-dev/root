@@ -65,10 +65,10 @@ ClassImp(RooGenericPdf);
 RooGenericPdf::RooGenericPdf(const char *name, const char *title, const RooArgList& dependents) : 
   RooAbsPdf(name,title), 
   _actualVars("actualVars","Variables used by PDF expression",this),
-  _formula(nullptr),
   _formExpr(title)
 {  
   _actualVars.add(dependents) ; 
+  formula();
 
   if (_actualVars.getSize()==0) _value = traceEval(0) ;
 }
@@ -82,10 +82,10 @@ RooGenericPdf::RooGenericPdf(const char *name, const char *title,
 			     const char* inFormula, const RooArgList& dependents) : 
   RooAbsPdf(name,title), 
   _actualVars("actualVars","Variables used by PDF expression",this),
-  _formula(nullptr),
   _formExpr(inFormula)
 {  
-  _actualVars.add(dependents) ; 
+  _actualVars.add(dependents) ;
+  formula();
 
   if (_actualVars.getSize()==0) _value = traceEval(0) ;
 }
@@ -98,9 +98,9 @@ RooGenericPdf::RooGenericPdf(const char *name, const char *title,
 RooGenericPdf::RooGenericPdf(const RooGenericPdf& other, const char* name) : 
   RooAbsPdf(other, name), 
   _actualVars("actualVars",this,other._actualVars),
-  _formula(nullptr),
   _formExpr(other._formExpr)
 {
+  formula();
 }
 
 
@@ -111,7 +111,8 @@ RooFormula& RooGenericPdf::formula() const
   if (!_formula) {
     const_cast<std::unique_ptr<RooFormula>&>(_formula).reset(
         new RooFormula(GetName(),_formExpr.Data(),_actualVars));
-  } 
+    const_cast<TString&>(_formExpr) = _formula->formulaString().c_str();
+  }
   return *_formula ;
 }
 
@@ -157,7 +158,7 @@ Bool_t RooGenericPdf::isValidReal(Double_t /*value*/, Bool_t /*printError*/) con
 Bool_t RooGenericPdf::redirectServersHook(const RooAbsCollection& newServerList, Bool_t mustReplaceAll, Bool_t nameChange, Bool_t /*isRecursive*/)
 {
   if (_formula) {
-     return _formula->changeDependents(newServerList,mustReplaceAll,nameChange) ;
+     return _formula->changeDependents(newServerList,mustReplaceAll,nameChange);
   } else {
     return kTRUE ;
   }

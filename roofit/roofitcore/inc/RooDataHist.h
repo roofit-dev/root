@@ -16,16 +16,16 @@
 #ifndef ROO_DATA_HIST
 #define ROO_DATA_HIST
 
-#include <map>
-#include <vector>
-#include <string>
-#include <utility>
-
 #include "RooAbsData.h"
 #include "RooDirItem.h"
 #include "RooArgSet.h"
 #include "RooNameSet.h"
 #include "RooCacheManager.h"
+
+#include <map>
+#include <vector>
+#include <string>
+#include <utility>
 
 class TObject ;
 class RooAbsArg;
@@ -53,7 +53,7 @@ public:
   RooDataHist& operator=(const RooDataHist&) = delete;
 
   RooDataHist(const RooDataHist& other, const char* newname = 0) ;
-  virtual TObject* Clone(const char* newname) const {
+  virtual TObject* Clone(const char* newname="") const {
     return new RooDataHist(*this, newname && newname[0] != '\0' ? newname : GetName());
   }
   virtual ~RooDataHist() ;
@@ -90,6 +90,14 @@ public:
     return kTRUE ;     
   }
   virtual Bool_t isNonPoissonWeighted() const ;
+
+  virtual RooSpan<const double> getWeightBatch(std::size_t, std::size_t) const {
+    //TODO
+    std::cerr << "Retrieving weights in batches not yet implemented for RooDataHist." << std::endl;
+    assert(false);
+
+    return {};
+  }
 
   Double_t sum(Bool_t correctForBinSize, Bool_t inverseCorr=kFALSE) const ;
   Double_t sum(const RooArgSet& sumSet, const RooArgSet& sliceSet, Bool_t correctForBinSize, Bool_t inverseCorr=kFALSE) ;
@@ -148,7 +156,7 @@ protected:
   RooDataHist(const char* name, const char* title, RooDataHist* h, const RooArgSet& varSubset, 
 	      const RooFormulaVar* cutVar, const char* cutRange, Int_t nStart, Int_t nStop, Bool_t copyCache) ;
   RooAbsData* reduceEng(const RooArgSet& varSubset, const RooFormulaVar* cutVar, const char* cutRange=0, 
-	                Int_t nStart=0, Int_t nStop=2000000000, Bool_t copyCache=kTRUE) ;
+	                std::size_t nStart=0, std::size_t nStop=std::numeric_limits<std::size_t>::max(), Bool_t copyCache=kTRUE) ;
   Double_t interpolateDim(RooRealVar& dim, const RooAbsBinning* binning, Double_t xval, Int_t intOrder, Bool_t correctForBinSize, Bool_t cdfBoundaries) ;
   void calculatePartialBinVolume(const RooArgSet& dimSet) const ;
   void checkBinBounds() const;

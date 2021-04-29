@@ -33,13 +33,13 @@ public:
   inline RooAbsRealLValue() { }
   RooAbsRealLValue(const char *name, const char *title, const char *unit= "") ;
   RooAbsRealLValue(const RooAbsRealLValue& other, const char* name=0);
+  RooAbsRealLValue& operator=(const RooAbsRealLValue&) = default;
   virtual ~RooAbsRealLValue();
 
   // Parameter value and error accessors
   virtual void setVal(Double_t value)=0;
   virtual RooAbsArg& operator=(const RooAbsReal& other) ;
   virtual RooAbsArg& operator=(Double_t newValue);
-  virtual RooAbsArg& operator=(Int_t ival) { return operator=((Double_t)ival) ; }
 
   // Implementation of RooAbsLValue
   virtual void setBin(Int_t ibin, const char* rangeName=0) ;
@@ -84,7 +84,8 @@ public:
   /// \param name Optional range name. If not given, the default range will be used.
   /// \return A pair with [lowerBound, upperBound]
   std::pair<double, double> getRange(const char* name = 0) const {
-    return {getMin(name), getMax(name)};
+    const auto& binning = getBinning(name);
+    return {binning.lowBound(), binning.highBound()};
   }
   /// Check if variable has a lower bound.
   inline Bool_t hasMin(const char* name=0) const { return !RooNumber::isInfinite(getMin(name)); }

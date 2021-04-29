@@ -171,15 +171,28 @@ void MethodPyKeras::ProcessOptions() {
       Log() << kINFO << "Using TensorFlow backend - setting special configuration options "  << Endl;
       PyRunString("import tensorflow as tf");
       PyRunString("from keras.backend import tensorflow_backend as K");
+
+      // check tensorflow version
+      PyRunString("tf_major_version = int(tf.__version__.split('.')[0])");
+      //PyRunString("print(tf.__version__,'major is ',tf_major_version)");
+      PyObject *pyTfVersion = PyDict_GetItemString(fLocalNS, "tf_major_version");
+      int tfVersion = PyLong_AsLong(pyTfVersion);
+      Log() << kINFO << "Using Tensorflow version " << tfVersion << Endl;
+
+      // use different naming in tf2 for ConfigProto and Session
+      TString configProto = (tfVersion >= 2) ? "tf.compat.v1.ConfigProto" : "tf.ConfigProto";
+      TString session = (tfVersion >= 2) ? "tf.compat.v1.Session" : "tf.Session";
+
       // in case specify number of threads
       int num_threads = fNumThreads;
       if (num_threads > 0) {
          Log() << kINFO << "Setting the CPU number of threads =  "  << num_threads << Endl;
-         PyRunString(TString::Format("session_conf = tf.ConfigProto(intra_op_parallelism_threads=%d,inter_op_parallelism_threads=%d)",
-                                     num_threads,num_threads));
+
+         PyRunString(TString::Format("session_conf = %s(intra_op_parallelism_threads=%d,inter_op_parallelism_threads=%d)",
+                                        configProto.Data(), num_threads,num_threads));
       }
       else
-         PyRunString("session_conf = tf.ConfigProto()");
+         PyRunString(TString::Format("session_conf = %s()",configProto.Data()));
 
       // applying GPU options such as allow_growth=True to avoid allocating all memory on GPU
       // that prevents running later TMVA-GPU
@@ -191,8 +204,13 @@ void MethodPyKeras::ProcessOptions() {
             PyRunString(TString::Format("session_conf.gpu_options.%s", optlist->At(item)->GetName()));
          }
       }
-      PyRunString("sess = tf.Session(config=session_conf)");
-      PyRunString("K.set_session(sess)");
+      PyRunString(TString::Format("sess = %s(config=session_conf)", session.Data()));
+
+      if (tfVersion < 2) {
+         PyRunString("K.set_session(sess)");
+      } else {
+         PyRunString("tf.compat.v1.keras.backend.set_session(sess)");
+      }
    }
    else {
       if (fNumThreads > 0)
@@ -224,6 +242,7 @@ void MethodPyKeras::SetupKerasModel(bool loadTrainedModel) {
    PyRunString("model = keras.models.load_model('"+filenameLoadModel+"')",
                "Failed to load Keras model from file: "+filenameLoadModel);
    Log() << kINFO << "Load model from file: " << filenameLoadModel << Endl;
+
 
    /*
     * Init variables and weights
@@ -278,7 +297,7 @@ void MethodPyKeras::Train() {
    UInt_t nAllEvents = Data()->GetNTrainingEvents();
    UInt_t nValEvents = GetNumValidationSamples();
    UInt_t nTrainingEvents = nAllEvents - nValEvents;
-   
+
    Log() << kINFO << "Split TMVA training data in " << nTrainingEvents << " training events and "
          << nValEvents << " validation events" << Endl;
 
@@ -334,7 +353,7 @@ void MethodPyKeras::Train() {
    float* valDataWeights = new float[nValEvents];
    //validation events follows the trainig one in the TMVA training vector
    for (UInt_t i=0; i< nValEvents ; i++) {
-      UInt_t ievt = nTrainingEvents + i; // TMVA event index 
+      UInt_t ievt = nTrainingEvents + i; // TMVA event index
       const TMVA::Event* e = GetTrainingEvent(ievt);
       // Fill variables
       for (UInt_t j=0; j<fNVars; j++) {
@@ -370,6 +389,8 @@ void MethodPyKeras::Train() {
    /*
     * Train Keras model
     */
+   Log() << kINFO << "Training Model Summary" << Endl;
+   PyRunString("model.summary()");
 
    // Setup parameters
 
@@ -432,6 +453,44 @@ void MethodPyKeras::Train() {
    // Train model
    PyRunString("history = model.fit(trainX, trainY, sample_weight=trainWeights, batch_size=batchSize, epochs=numEpochs, verbose=verbose, validation_data=(valX, valY, valWeights), callbacks=callbacks)",
                "Failed to train model");
+
+
+   std::vector<float> fHistory; // Hold training history  (val_acc or loss etc)
+   fHistory.resize(fNumEpochs); // holds training loss or accuracy output
+   npy_intp dimsHistory[1] = { (npy_intp)fNumEpochs};
+   PyArrayObject* pHistory = (PyArrayObject*)PyArray_SimpleNewFromData(1, dimsHistory, NPY_FLOAT, (void*)&fHistory[0]);
+   PyDict_SetItemString(fLocalNS, "HistoryOutput", (PyObject*)pHistory);
+
+   // Store training history data
+   Int_t iHis=0;
+   PyRunString("number_of_keys=len(history.history.keys())");
+   PyObject* PyNkeys=PyDict_GetItemString(fLocalNS, "number_of_keys");
+   int nkeys=PyLong_AsLong(PyNkeys);
+   for (iHis=0; iHis<nkeys; iHis++) {
+
+      PyRunString(TString::Format("copy_string=str(list(history.history.keys())[%d])",iHis));
+      //PyRunString("print (copy_string)");
+      PyObject* stra=PyDict_GetItemString(fLocalNS, "copy_string");
+      if(!stra) break;
+#if PY_MAJOR_VERSION < 3   // for Python2
+      const char *stra_name = PyBytes_AsString(stra);
+      // need to add string delimiter for Python2
+      TString sname = TString::Format("'%s'",stra_name);
+      const char * name = sname.Data();
+#else   // for Python3
+      PyObject* repr = PyObject_Repr(stra);
+      PyObject* str = PyUnicode_AsEncodedString(repr, "utf-8", "~E~");
+      const char *name = PyBytes_AsString(str);
+#endif
+
+      Log() << kINFO << "Getting training history for item:" << iHis << " name = " << name << Endl;
+      PyRunString(TString::Format("for i,p in enumerate(history.history[%s]):\n   HistoryOutput[i]=p\n",name),
+                  TString::Format("Failed to get %s from training history",name));
+      for (size_t i=0; i<fHistory.size(); i++)
+         fTrainHistory.AddValue(name,i+1,fHistory[i]);
+
+   }
+//#endif
 
    /*
     * Store trained model to file (only if option 'SaveBestOnly' is NOT activated,

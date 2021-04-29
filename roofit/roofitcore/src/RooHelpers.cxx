@@ -15,8 +15,41 @@
  *****************************************************************************/
 
 #include "RooHelpers.h"
+#include "RooAbsRealLValue.h"
 
 namespace RooHelpers {
+
+LocalChangeMsgLevel::LocalChangeMsgLevel(RooFit::MsgLevel lvl,
+    unsigned int extraTopics, unsigned int removeTopics, bool overrideExternalLevel) {
+  auto& msg = RooMsgService::instance();
+  fOldKillBelow = msg.globalKillBelow();
+  if (overrideExternalLevel) msg.setGlobalKillBelow(lvl);
+
+  for (int i = 0; i < msg.numStreams(); ++i) {
+    fOldConf.push_back(msg.getStream(i));
+    if (overrideExternalLevel) msg.getStream(i).minLevel = lvl;
+    msg.getStream(i).removeTopic(static_cast<RooFit::MsgTopic>(removeTopics));
+    msg.setStreamStatus(i, true);
+  }
+
+  if (extraTopics != 0) {
+    fExtraStream = msg.addStream(lvl);
+    msg.getStream(fExtraStream).addTopic(static_cast<RooFit::MsgTopic>(extraTopics));
+  }
+}
+
+LocalChangeMsgLevel::~LocalChangeMsgLevel() {
+  auto& msg = RooMsgService::instance();
+  msg.setGlobalKillBelow(fOldKillBelow);
+  for (int i=0; i < msg.numStreams(); ++i) {
+    if (i < static_cast<int>(fOldConf.size()))
+      msg.getStream(i) = fOldConf[i];
+  }
+
+  if (fExtraStream > 0)
+    msg.deleteStream(fExtraStream);
+}
+
 
 /// Tokenise the string by splitting at the characters in delims.
 /// Consecutive delimiters are collapsed, so that no delimiters will appear in the
@@ -65,6 +98,40 @@ HijackMessageStream::~HijackMessageStream() {
 }
 
 
+/// \param[in] callingClass Class that's calling. Needed to include name and type name of the class in error message.
+/// \param[in] pars List of all parameters to be checked.
+/// \param[in] min Minimum of allowed range. `min` itself counts as disallowed.
+/// \param[in] max Maximum of allowed range. `max` itself counts as disallowed.
+/// \param[in] limitsInAllowedRange If true, the limits passed as parameters are part of the allowed range.
+/// \param[in] extraMessage Message that should be appended to the warning.
+void checkRangeOfParameters(const RooAbsReal* callingClass, std::initializer_list<const RooAbsReal*> pars,
+    double min, double max, bool limitsInAllowedRange, std::string extraMessage) {
+  const char openBr = limitsInAllowedRange ? '[' : '(';
+  const char closeBr = limitsInAllowedRange ? ']' : ')';
 
+  for (auto parameter : pars) {
+    auto par = dynamic_cast<const RooAbsRealLValue*>(parameter);
+    if (par && (
+        (par->getMin() < min || par->getMax() > max)
+        || (!limitsInAllowedRange && (par->getMin() == min || par->getMax() == max)) )) {
+      std::stringstream rangeMsg;
+      rangeMsg << openBr;
+      if (min > -std::numeric_limits<double>::max())
+        rangeMsg << min << ", ";
+      else
+        rangeMsg << "-inf, ";
+
+      if (max < std::numeric_limits<double>::max())
+        rangeMsg << max << closeBr;
+      else
+        rangeMsg << "inf" << closeBr;
+
+      oocoutW(callingClass, InputArguments) << "The parameter '" << par->GetName() << "' with range [" << par->getMin("") << ", "
+          << par->getMax() << "] of the " << callingClass->IsA()->GetName() << " '" << callingClass->GetName()
+          << "' exceeds the safe range of " << rangeMsg.str() << ". Advise to limit its range."
+          << (!extraMessage.empty() ? "\n" : "") << extraMessage << std::endl;
+    }
+  }
+}
 
 }

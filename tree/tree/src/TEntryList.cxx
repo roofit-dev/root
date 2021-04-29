@@ -614,7 +614,9 @@ Bool_t TEntryList::Enter(Long64_t entry, TTree *tree)
 
 Bool_t TEntryList::Remove(Long64_t entry, TTree *tree)
 {
-   if (!tree){
+   if (entry < 0)
+     return kFALSE;
+   if (!tree) {
       if (!fLists) {
          if (!fBlocks) return 0;
          TEntryListBlock *block = 0;
@@ -740,11 +742,17 @@ Long64_t TEntryList::GetEntryAndTree(Int_t index, Int_t &treenum)
 //third sublist will be returned
 
    Long64_t result = GetEntry(index);
-   if (fLists)
+   if (result < 0) {
+      treenum = -1;
+      return result;
+   }
+   R__ASSERT(fLists == nullptr || (fLists != nullptr && fCurrent != nullptr));
+   if (fCurrent)
       treenum = fCurrent->fTreeNumber;
    else
       treenum = fTreeNumber;
-   if (treenum<0) return -1;
+   if (treenum < 0)
+      return -1;
 
    return result;
 }
@@ -1452,8 +1460,8 @@ Int_t TEntryList::ScanPaths(TList *roots, Bool_t notify)
    }
    // Apply to ourselves
    Bool_t newobjs = kTRUE;
-   TString path = gSystem->DirName(fFileName), com;
-   TObjString *objs = 0;
+   TString path = gSystem->GetDirName(fFileName), com;
+   TObjString *objs = nullptr;
    TIter nxr(xrl);
    while ((objs = (TObjString *) nxr())) {
       Int_t rc = 0;

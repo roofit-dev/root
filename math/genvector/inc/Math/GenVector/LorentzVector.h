@@ -46,8 +46,9 @@ namespace ROOT {
         - ROOT::Math::PtEtaPhiMVector based on pt (rho),eta,phi and M (t) coordinates in double precision
         - ROOT::Math::PtEtaPhiEVector based on pt (rho),eta,phi and E (t) coordinates in double precision
         - ROOT::Math::PxPyPzMVector based on px,py,pz and M (mass) coordinates in double precision
-        - ROOT::Math::XYZTVector based on x,y,z,t coordinates (cartesian) in double precision
-        - ROOT::Math::XYZTVectorF based on x,y,z,t coordinates (cartesian) in float precision
+        - ROOT::Math::PxPyPzEVector based on px,py,pz and E (energy) coordinates in double precision
+        - ROOT::Math::XYZTVector based on x,y,z,t coordinates (cartesian) in double precision (same as PxPyPzEVector)
+        - ROOT::Math::XYZTVectorF based on x,y,z,t coordinates (cartesian) in float precision (same as PxPyPzEVector but float)
 
 More details about the GenVector package can be found [here](Vector.html).
 
@@ -181,18 +182,10 @@ More details about the GenVector package can be found [here](Vector.html).
        /**
           Set internal data based on 4 Scalars at *begin to *end
        */
-//#ifdef NDEBUG
-          //this does not compile in CINT
-//        template< class IT >
-//        LorentzVector<CoordSystem>& SetCoordinates( IT begin, IT /* end */  ) {
-// #endif
        template< class IT >
-#ifndef NDEBUG
        LorentzVector<CoordSystem>& SetCoordinates( IT begin, IT end  ) {
-#else
-       LorentzVector<CoordSystem>& SetCoordinates( IT begin, IT /* end */  ) {
-#endif
           IT a = begin; IT b = ++begin; IT c = ++begin; IT d = ++begin;
+          (void)end;
           assert (++begin==end);
           SetCoordinates (*a,*b,*c,*d);
           return *this;
@@ -214,12 +207,9 @@ More details about the GenVector package can be found [here](Vector.html).
           get internal data into 4 Scalars at *begin to *end
        */
        template <class IT>
-#ifndef NDEBUG
        void GetCoordinates( IT begin, IT end ) const
-#else
-       void GetCoordinates( IT begin, IT /* end */ ) const
-#endif
        { IT a = begin; IT b = ++begin; IT c = ++begin; IT d = ++begin;
+       (void)end;
        assert (++begin==end);
        GetCoordinates (*a,*b,*c,*d);
        }

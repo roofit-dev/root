@@ -1,7 +1,7 @@
 .. _basic_types:
 
 
-Basic Types
+Basic types
 ===========
 
 C++ has a far richer set of builtin types than Python.
@@ -66,7 +66,7 @@ For example, string comparison work directly, and ``std::complex`` has
     <class cppyy.gbl.std.string at 0x7fa75edbf8a0>
     >>> s == "aap"
     True
-    >>> 
+    >>>
 
 To pass an argument through a C++ ``char`` (signed or unsigned) use a Python
 string of size 1.
@@ -82,6 +82,7 @@ These datatypes have completely different memory layouts, however, and the
 out consecutively in memory.
 Conversion thus requires type checks, memory allocation, and copies.
 This can be rather expensive.
+See the section on :ref:`STL <stl>`.
 
 
 `Arrays`

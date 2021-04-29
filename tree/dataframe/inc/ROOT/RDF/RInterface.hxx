@@ -310,7 +310,7 @@ public:
    /// The expression must be a callable of signature R(unsigned int, T1, T2, ...) where `T1, T2...` are the types
    /// of the columns that the expression takes as input. The first parameter is reserved for an unsigned integer
    /// representing a "slot number". RDataFrame guarantees that different threads will invoke the expression with
-   /// different slot numbers - slot numbers will range from zero to ROOT::GetImplicitMTPoolSize()-1.
+   /// different slot numbers - slot numbers will range from zero to ROOT::GetThreadPoolSize()-1.
    ///
    /// The following two calls are equivalent, although `DefineSlot` is slightly more performant:
    /// ~~~{.cpp}
@@ -339,7 +339,7 @@ public:
    /// columns. The expression must be a callable of signature R(unsigned int, ULong64_t, T1, T2, ...) where `T1, T2...`
    /// are the types of the columns that the expression takes as input. The first parameter is reserved for an unsigned
    /// integer representing a "slot number". RDataFrame guarantees that different threads will invoke the expression with
-   /// different slot numbers - slot numbers will range from zero to ROOT::GetImplicitMTPoolSize()-1. The second parameter
+   /// different slot numbers - slot numbers will range from zero to ROOT::GetThreadPoolSize()-1. The second parameter
    /// is reserved for a `ULong64_t` representing the current entry being processed by the current thread.
    ///
    /// The following two `Define`s are equivalent, although `DefineSlotEntry` is slightly more performant:
@@ -645,7 +645,8 @@ public:
                 << RDFInternal::PrettyPrintAddr(&upcastInterface) << ")->Cache<";
 
       const auto &customCols = fCustomColumns.GetNames();
-      for (auto &c : columnList) {
+      const auto validColumnNames = GetValidatedColumnNames(columnList.size(), columnList);
+      for (auto &c : validColumnNames) {
          const auto isCustom = std::find(customCols.begin(), customCols.end(), c) != customCols.end();
          const auto customColID = isCustom ? fCustomColumns.GetColumns().at(c)->GetID() : 0;
          cacheCall << RDFInternal::ColumnName2ColumnTypeName(c, nsID, tree, fDataSource, isCustom,
@@ -1989,6 +1990,22 @@ public:
    /// ~~~
    unsigned int GetNSlots() const { return fLoopManager->GetNSlots(); }
 
+   /// \brief Gets the number of event loops run
+   /// \return The number of event loops run by this RDataFrame instance
+   ///
+   /// This method returns the number of events loops run so far by this RDataFrame instance.
+   ///
+   /// Example usage:
+   /// ~~~{.cpp}
+   /// ROOT::RDataFrame df(1);
+   /// std::cout << df.GetNRuns() << std::endl; // prints "0"
+   /// df.Sum("rdfentry_").GetValue(); // trigger the event loop
+   /// std::cout << df.GetNRuns() << std::endl; // prints "1"
+   /// df.Sum("rdfentry_").GetValue(); // trigger another event loop
+   /// std::cout << df.GetNRuns() << std::endl; // prints "2"
+   /// ~~~
+   unsigned int GetNRuns() const { return fLoopManager->GetNRuns(); }
+
    // clang-format off
    ////////////////////////////////////////////////////////////////////////////
    /// \brief Execute a user-defined accumulation operation on the processed column values in each processing slot
@@ -2451,7 +2468,7 @@ private:
 
       fLoopManager->Book(actionPtr.get());
 
-      return RDFInternal::CreateSnaphotRDF(validCols, fullTreename, filename, options.fLazy, *fLoopManager,
+      return RDFInternal::CreateSnapshotRDF(validCols, fullTreename, filename, options.fLazy, *fLoopManager,
                                            std::move(actionPtr));
    }
 

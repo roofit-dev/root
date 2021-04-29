@@ -29,6 +29,11 @@ static std::shared_ptr<ROOT::Internal::TPoolManager> &R__GetPoolManagerMT()
    return schedMT;
 }
 
+extern "C" UInt_t ROOT_MT_GetThreadPoolSize()
+{
+   return ROOT::Internal::TPoolManager::GetPoolSize();
+};
+
 static bool &GetImplicitMTFlag()
 {
    static bool enabled = false;
@@ -36,12 +41,6 @@ static bool &GetImplicitMTFlag()
 }
 
 static std::atomic_int &GetParBranchProcessingCount()
-{
-   static std::atomic_int count(0);
-   return count;
-}
-
-static std::atomic_int &GetParTreeProcessingCount()
 {
    static std::atomic_int count(0);
    return count;
@@ -70,12 +69,6 @@ extern "C" void ROOT_TImplicitMT_DisableImplicitMT()
    }
 };
 
-extern "C" UInt_t ROOT_TImplicitMT_GetImplicitMTPoolSize()
-{
-   return ROOT::Internal::TPoolManager::GetPoolSize();
-};
-
-
 extern "C" void ROOT_TImplicitMT_EnableParBranchProcessing()
 {
    ++GetParBranchProcessingCount();
@@ -89,19 +82,4 @@ extern "C" void ROOT_TImplicitMT_DisableParBranchProcessing()
 extern "C" bool ROOT_TImplicitMT_IsParBranchProcessingEnabled()
 {
    return GetParBranchProcessingCount() > 0;
-};
-
-extern "C" void ROOT_TImplicitMT_EnableParTreeProcessing()
-{
-   ++GetParTreeProcessingCount();
-};
-
-extern "C" void ROOT_TImplicitMT_DisableParTreeProcessing()
-{
-   --GetParTreeProcessingCount();
-};
-
-extern "C" bool ROOT_TImplicitMT_IsParTreeProcessingEnabled()
-{
-   return GetParTreeProcessingCount() > 0;
 };

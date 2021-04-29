@@ -861,10 +861,7 @@
 
       var creator = faces_limit ? new JSROOT.GEO.PolygonsCreator : new JSROOT.GEO.GeometryCreator(numfaces);
 
-      // var creator = new JSROOT.GEO.GeometryCreator(numfaces);
-
       var calcZ;
-
       if (shape._typename == "TGeoCtub")
          calcZ = function(x,y,z) {
             var arr = (z<0) ? shape.fNlow : shape.fNhigh;
@@ -913,7 +910,7 @@
          var d1 = side, d2 = 1- side,
              sign = (side == 0) ? 1 : -1,
              reduce = (innerR[side] <= 0) ? 2 : 0;
-         if ((reduce==2) && (thetaLength === 360) && !calcZ ) creator.StartPolygon(side===0);
+         if ((reduce==2) && (thetaLength === 360) && !calcZ) creator.StartPolygon(side===0);
          for (var seg=0;seg<radiusSegments;++seg) {
             creator.AddFace4(
                   innerR[side] * _cos[seg+d1], innerR[side] * _sin[seg+d1], sign*shape.fDZ,
@@ -1496,6 +1493,38 @@
       return creator.Create();
    }
 
+   /** @memberOf JSROOT.GEO */
+   JSROOT.GEO.createTessellatedBuffer = function( shape, faces_limit) {
+      var numfaces = 0;
+
+      for (var i = 0; i < shape.fFacets.length; ++i) {
+         var f = shape.fFacets[i];
+         if (f.fNvert == 4) numfaces += 2;
+                       else numfaces += 1;
+      }
+
+      if (faces_limit < 0) return numfaces;
+
+      var creator = faces_limit ? new JSROOT.GEO.PolygonsCreator : new JSROOT.GEO.GeometryCreator(numfaces);
+
+      for (var i = 0; i < shape.fFacets.length; ++i) {
+         var f = shape.fFacets[i],
+             v0 = shape.fVertices[f.fIvert[0]].fVec,
+             v1 = shape.fVertices[f.fIvert[1]].fVec,
+             v2 = shape.fVertices[f.fIvert[2]].fVec;
+
+         if (f.fNvert == 4) {
+            var v3 = shape.fVertices[f.fIvert[3]].fVec;
+            creator.AddFace4(v0[0], v0[1], v0[2], v1[0], v1[1], v1[2], v2[0], v2[1], v2[2], v3[0], v3[1], v3[2]);
+            creator.CalcNormal();
+         } else {
+            creator.AddFace3(v0[0], v0[1], v0[2], v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]);
+            creator.CalcNormal();
+         }
+      }
+
+      return creator.Create();
+   }
 
    /** @memberOf JSROOT.GEO */
    JSROOT.GEO.createMatrix = function(matrix) {
@@ -1791,6 +1820,7 @@
             case "TGeoXtru": return JSROOT.GEO.createXtruBuffer( shape, limit );
             case "TGeoParaboloid": return JSROOT.GEO.createParaboloidBuffer( shape, limit );
             case "TGeoHype": return JSROOT.GEO.createHypeBuffer( shape, limit );
+            case "TGeoTessellated": return JSROOT.GEO.createTessellatedBuffer( shape, limit );
             case "TGeoCompositeShape": return JSROOT.GEO.createComposite( shape, limit );
             case "TGeoShapeAssembly": break;
             case "TGeoScaledShape": {
@@ -2482,8 +2512,6 @@
       return res;
    }
 
-
-
    /** Scan visible nodes in hierarchy, starting from nodeid
      * Each entry in hierarchy get its unique id, which is not changed with visibility flags
      * @private */
@@ -2949,9 +2977,10 @@
       if (this.plain_shape)
          return { lst: [ { nodeid: 0, seqid: 0, stack: [], factor: 1, shapeid: 0, server_shape: this.plain_shape } ], complete: true };
 
-      var total = 0, arg = {
+      var arg = {
          facecnt: 0,
          viscnt: new Array(this.nodes.length), // counter for each node
+         vislvl: this.GetVisLevel(),
          reset: function() {
             this.total = 0;
             this.facecnt = 0;
@@ -2966,12 +2995,10 @@
          }
       };
 
-      arg.vislvl = this.GetVisLevel();
-
       arg.reset();
-      total = this.ScanVisible(arg);
 
-      var maxnumnodes = this.GetMaxVisNodes();
+      var total = this.ScanVisible(arg),
+          maxnumnodes = this.GetMaxVisNodes();
 
       if (maxnumnodes > 0) {
          while ((total > maxnumnodes) && (arg.vislvl > 1)) {

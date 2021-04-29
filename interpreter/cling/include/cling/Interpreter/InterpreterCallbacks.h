@@ -141,6 +141,20 @@ namespace cling {
     ///
     virtual void TransactionCommitted(const Transaction&) {}
 
+    /// This callback is invoked whenever interpreter has started code
+    /// generation for the transaction.
+    ///
+    ///\param[in] - The transaction that is being codegen-ed.
+    ///
+    virtual void TransactionCodeGenStarted(const Transaction&) {}
+
+    /// This callback is invoked whenever interpreter has finished code
+    /// generation for the transaction.
+    ///
+    ///\param[in] - The transaction that is being codegen-ed.
+    ///
+    virtual void TransactionCodeGenFinished(const Transaction&) {}
+
     ///\brief This callback is invoked whenever interpreter has reverted a
     /// transaction that has been fully committed.
     ///
@@ -153,6 +167,11 @@ namespace cling {
     ///\param[in] - The transaction that was reverted.
     ///
     virtual void TransactionRollback(const Transaction&) {}
+
+    /// \brief This callback is invoked if a previous definition has been shadowed.
+    ///
+    ///\param[in] - The declaration that has been shadowed.
+    virtual void DefinitionShadowed(const clang::NamedDecl*) {}
 
     /// \brief Used to inform client about a new decl read by the ASTReader.
     ///

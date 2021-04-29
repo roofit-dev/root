@@ -4,5 +4,11 @@
 # For the licensing terms see $ROOTSYS/LICENSE.
 # For the list of contributors see $ROOTSYS/README/CREDITS.
 
+if(IS_ABSOLUTE ${runtimedir})
+  set(d $ENV{DESTDIR}/${runtimedir})
+else()
+  set(d $ENV{DESTDIR}/${CMAKE_INSTALL_PREFIX}/${runtimedir})
+endif()
+
 add_subdirectory(cppyy)
-add_subdirectory(PyROOT)
+add_subdirectory(pythonizations)

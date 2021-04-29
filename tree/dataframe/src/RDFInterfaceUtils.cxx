@@ -38,7 +38,6 @@
 #pragma GCC diagnostic pop
 #endif
 
-#include <iosfwd>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -118,7 +117,7 @@ std::set<std::string> GetPotentialColumnNames(const std::string &expr)
 // the one in the vector
 class RActionBase;
 
-HeadNode_t CreateSnaphotRDF(const ColumnNames_t &validCols,
+HeadNode_t CreateSnapshotRDF(const ColumnNames_t &validCols,
                             std::string_view treeName,
                             std::string_view fileName,
                             bool isLazy,
@@ -593,9 +592,6 @@ std::string PrettyPrintAddr(const void *const addr)
    return s.str();
 }
 
-// Jit a string filter expression and jit-and-call this->Filter with the appropriate arguments
-// Return pointer to the new functional chain node returned by the call, cast to Long_t
-
 void BookFilterJit(RJittedFilter *jittedFilter, void *prevNodeOnHeap, std::string_view name,
                    std::string_view expression, const std::map<std::string, std::string> &aliasMap,
                    const ColumnNames_t &branches, const RDFInternal::RBookedCustomColumns &customCols, TTree *tree,
@@ -793,6 +789,7 @@ std::shared_ptr<RNodeBase> UpcastNode(std::shared_ptr<RNodeBase> ptr)
 /// Given the desired number of columns and the user-provided list of columns:
 /// * fallback to using the first nColumns default columns if needed (or throw if nColumns > nDefaultColumns)
 /// * check that selected column names refer to valid branches, custom columns or datasource columns (throw if not)
+/// * replace column names from aliases by the actual column name
 /// Return the list of selected column names.
 ColumnNames_t GetValidatedColumnNames(RLoopManager &lm, const unsigned int nColumns, const ColumnNames_t &columns,
                                       const ColumnNames_t &validCustomColumns, RDataSource *ds)

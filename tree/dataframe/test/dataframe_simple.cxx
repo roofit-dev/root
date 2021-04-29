@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <ROOT/RDataFrame.hxx>
 #include <ROOT/TSeq.hxx>
+#include <TChain.h>
 #include <TFile.h>
 #include <TGraph.h>
 #include <TInterpreter.h>
@@ -422,6 +423,20 @@ TEST_P(RDFSimpleTests, GetNSlots)
    EXPECT_EQ(NSLOTS, ROOT::Internal::RDF::GetNSlots());
 }
 
+TEST_P(RDFSimpleTests, GetNRuns)
+{
+   RDataFrame df(3);
+   EXPECT_EQ(df.GetNRuns(), 0u);
+
+   auto sum1 = df.Sum("rdfentry_");
+   sum1.GetValue();
+   EXPECT_EQ(df.GetNRuns(), 1u);
+
+   auto sum2 = df.Sum("rdfentry_");
+   sum2.GetValue();
+   EXPECT_EQ(df.GetNRuns(), 2u);
+}
+
 TEST_P(RDFSimpleTests, CArraysFromTree)
 {
    auto filename = "dataframe_simple_3.root";
@@ -609,7 +624,7 @@ public:
 TEST_P(RDFSimpleTests, BookCustomAction)
 {
    RDataFrame d(1);
-   const auto nWorkers = std::max(1u, ROOT::GetImplicitMTPoolSize());
+   const auto nWorkers = std::max(1u, ROOT::GetThreadPoolSize());
    const auto expected = nWorkers-1;
 
    auto maxSlot0 = d.Book<unsigned int>(MaxSlotHelper(nWorkers), {"tdfslot_"});
@@ -728,153 +743,6 @@ TEST_P(RDFSimpleTests, StandardDeviationEmpty)
    EXPECT_DOUBLE_EQ(*stdDev, 0);
 }
 
-static const std::string DisplayPrintDefaultRows(
-   "b1 | b2  | b3        | \n0  | 1   | 2.0000000 | \n   | ... |           | \n   | 3   |           | \n0  | 1   | "
-   "2.0000000 | \n   | ... |           | \n   | 3   |           | \n0  | 1   | 2.0000000 | \n   | ... |           | \n "
-   "  | 3   |           | \n0  | 1   | 2.0000000 | \n   | ... |           | \n   | 3   |           | \n0  | 1   | "
-   "2.0000000 | \n   | ... |           | \n   | 3   |           | \n");
-
-static const std::string DisplayAsStringDefaultRows(
-   "b1 | b2  | b3        | \n0  | 1   | 2.0000000 | \n   | 2   |           | \n   | 3   |           | \n0  | 1   | "
-   "2.0000000 | \n   | 2   |           | \n   | 3   |           | \n0  | 1   | 2.0000000 | \n   | 2   |           | \n "
-   "  | 3   |           | \n0  | 1   | 2.0000000 | \n   | 2   |           | \n   | 3   |           | \n0  | 1   | "
-   "2.0000000 | \n   | 2   |           | \n   | 3   |           | \n   |     |           | \n");
-
-TEST(RDFSimpleTests, DisplayNoJitDefaultRows)
-{
-   RDataFrame rd1(10);
-   auto dd = rd1.Define("b1", []() { return 0; })
-                .Define("b2",
-                        []() {
-                           return std::vector<int>({1, 2, 3});
-                        })
-                .Define("b3", []() { return 2.; })
-                .Display<int, std::vector<int>, double>({"b1", "b2", "b3"});
-
-   // Testing the std output printing
-   std::cout << std::flush;
-   // Redirect cout.
-   std::streambuf *oldCoutStreamBuf = std::cout.rdbuf();
-   std::ostringstream strCout;
-   std::cout.rdbuf(strCout.rdbuf());
-   dd->Print();
-   // Restore old cout.
-   std::cout.rdbuf(oldCoutStreamBuf);
-
-   EXPECT_EQ(strCout.str(), DisplayPrintDefaultRows);
-
-   // Testing the string returned
-   EXPECT_EQ(dd->AsString(), DisplayAsStringDefaultRows);
-}
-
-TEST(RDFSimpleTests, DisplayJitDefaultRows)
-{
-   RDataFrame rd1(10);
-   auto dd = rd1.Define("b1", []() { return 0; })
-                .Define("b2",
-                        []() {
-                           return std::vector<int>({1, 2, 3});
-                        })
-                .Define("b3", []() { return 2.; })
-                .Display({"b1", "b2", "b3"});
-
-   // Testing the std output printing
-   std::cout << std::flush;
-   // Redirect cout.
-   std::streambuf *oldCoutStreamBuf = std::cout.rdbuf();
-   std::ostringstream strCout;
-   std::cout.rdbuf(strCout.rdbuf());
-   dd->Print();
-   // Restore old cout.
-   std::cout.rdbuf(oldCoutStreamBuf);
-
-   EXPECT_EQ(strCout.str(), DisplayPrintDefaultRows);
-
-   // Testing the string returned
-   EXPECT_EQ(dd->AsString(), DisplayAsStringDefaultRows);
-}
-
-TEST(RDFSimpleTests, DisplayRegexDefaultRows)
-{
-   RDataFrame rd1(10);
-   auto dd = rd1.Define("b1", []() { return 0; })
-                .Define("b2",
-                        []() {
-                           return std::vector<int>({1, 2, 3});
-                        })
-                .Define("b3", []() { return 2.; })
-                .Display("");
-
-   // Testing the std output printing
-   std::cout << std::flush;
-   // Redirect cout.
-   std::streambuf *oldCoutStreamBuf = std::cout.rdbuf();
-   std::ostringstream strCout;
-   std::cout.rdbuf(strCout.rdbuf());
-   dd->Print();
-   // Restore old cout.
-   std::cout.rdbuf(oldCoutStreamBuf);
-
-   EXPECT_EQ(strCout.str(), DisplayPrintDefaultRows);
-
-   // Testing the string returned
-   EXPECT_EQ(dd->AsString(), DisplayAsStringDefaultRows);
-}
-
-static const std::string
-   DisplayPrintTwoRows("b1 | b2  | b3        | \n0  | 1   | 2.0000000 | \n   | ... |           | \n   | 3   |          "
-                       " | \n0  | 1   | 2.0000000 | \n   | ... |           | \n   | 3   |           | \n");
-
-static const std::string DisplayAsStringTwoRows(
-   "b1 | b2  | b3        | \n0  | 1   | 2.0000000 | \n   | 2   |           | \n   | 3   |           | \n0  | 1   | "
-   "2.0000000 | \n   | 2   |           | \n   | 3   |           | \n   |     |           | \n");
-
-TEST(RDFSimpleTests, DisplayJitTwoRows)
-{
-   RDataFrame rd1(10);
-   auto dd = rd1.Define("b1", []() { return 0; })
-                .Define("b2",
-                        []() {
-                           return std::vector<int>({1, 2, 3});
-                        })
-                .Define("b3", []() { return 2.; })
-                .Display({"b1", "b2", "b3"}, 2);
-
-   // Testing the std output printing
-   std::cout << std::flush;
-   // Redirect cout.
-   std::streambuf *oldCoutStreamBuf = std::cout.rdbuf();
-   std::ostringstream strCout;
-   std::cout.rdbuf(strCout.rdbuf());
-   dd->Print();
-   // Restore old cout.
-   std::cout.rdbuf(oldCoutStreamBuf);
-
-   EXPECT_EQ(strCout.str(), DisplayPrintTwoRows);
-
-   // Testing the string returned
-   EXPECT_EQ(dd->AsString(), DisplayAsStringTwoRows);
-}
-
-static const std::string DisplayAsStringOneColumn("b1 | \n0  | \n0  | \n0  | \n0  | \n0  | \n   | \n");
-static const std::string DisplayAsStringTwoColumns(
-   "b1 | b2  | \n0  | 1   | \n   | 2   | \n   | 3   | \n0  | 1   | \n   | 2   | \n   | 3   | \n0  | 1   | \n   | 2   | "
-   "\n   | 3   | \n0  | 1   | \n   | 2   | \n   | 3   | \n0  | 1   | \n   | 2   | \n   | 3   | \n   |     | \n");
-
-TEST(RDFSimpleTests, DisplayAmbiguity)
-{
-   // This test verifies that the correct method is called and there is no ambiguity between the JIT call to Display
-   // using a column list as a parameter and the JIT call to Display using the Regexp.
-   RDataFrame rd1(10);
-   auto dd = rd1.Define("b1", []() { return 0; }).Define("b2", []() { return std::vector<int>({1, 2, 3}); });
-
-   auto display_1 = dd.Display({"b1"});
-   auto display_2 = dd.Display({"b1", "b2"});
-
-   EXPECT_EQ(display_1->AsString(), DisplayAsStringOneColumn);
-   EXPECT_EQ(display_2->AsString(), DisplayAsStringTwoColumns);
-}
-
 TEST(RDFSimpleTests, SumOfStrings)
 {
    auto df = RDataFrame(2).Define("str", []() -> std::string { return "bla"; });
@@ -884,8 +752,9 @@ TEST(RDFSimpleTests, SumOfStrings)
 
 TEST(RDFSimpleTests, GenVector)
 {
+   // The leading underscore of "_hh" tests against ROOT-10305.
    ROOT::RDataFrame t(1);
-   auto aa = t.Define("hh", "ROOT::Math::PtEtaPhiMVector(1,1,1,1)").Define("h", "hh.Rapidity()");
+   auto aa = t.Define("_hh", "ROOT::Math::PtEtaPhiMVector(1,1,1,1)").Define("h", "_hh.Rapidity()");
    auto m = aa.Mean("h");
    EXPECT_TRUE(0 != *m);
 }
@@ -942,7 +811,7 @@ TEST_P(RDFSimpleTests, HistosOneWeightPerEvent)
               .Define("v1", [](){floats v({4,5,6});return v;})
               .Define("v2", [](){floats v({7,8,9});return v;})
               .Define("w",[](){return 3;});
-   
+
    auto h1 = d.Histo1D<floats, int>("v0","w");
    EXPECT_DOUBLE_EQ(h1->GetMean(), 2.);
    auto h2 = d.Histo2D<floats, floats, int>({"","",16,0,16,16,0,16}, "v0", "v1", "w");
@@ -963,12 +832,36 @@ TEST_P(RDFSimpleTests, ManyRangesPerWorker)
 }
 
 // ROOT-9736
-TEST(RDFSimpleTests, NonExistingFile)
+TEST_P(RDFSimpleTests, NonExistingFile)
 {
    ROOT::RDataFrame r("myTree", "nonexistingfile.root");
-   
+
    // We try to use the tree for jitting: an exception is thrown
    EXPECT_ANY_THROW(r.Filter("inventedVar > 0"));
+}
+
+// ROOT-10549: check we throw if a file is unreadable
+TEST_P(RDFSimpleTests, NonExistingFileInChain)
+{
+   const auto filename = "rdf_nonexistingfileinchain.root";
+   ROOT::RDataFrame(1).Define("x", [] { return 10; }).Snapshot<int>("t", filename, {"x"});
+
+   ROOT::RDataFrame df("t", {filename, "doesnotexist.root"});
+
+   bool exceptionCaught = false;
+   try {
+      df.Count().GetValue();
+   } catch (const std::runtime_error &e) {
+      const std::string expected_msg =
+         ROOT::IsImplicitMTEnabled()
+            ? "TTreeProcessorMT::Process: an error occurred while opening file \"doesnotexist.root\""
+            : "An error was encountered while processing the data. TTreeReader status code is: 5";
+      EXPECT_EQ(e.what(), expected_msg);
+      exceptionCaught = true;
+   }
+   EXPECT_TRUE(exceptionCaught);
+
+   gSystem->Unlink(filename);
 }
 
 TEST_P(RDFSimpleTests, Stats)
@@ -980,7 +873,7 @@ TEST_P(RDFSimpleTests, Stats)
               .Define("vec_w", [](double w){return std::vector<double>({w, w+1, w+2});}, {"w"})
               .Define("one", [](){return 1.;})
               .Define("ones", [](){return std::vector<double>({1.,1.,1.});});
-   
+
    auto s0 = rr.Stats("v");
    auto s0c = rr.Stats<ULong64_t>("v");
    auto m0 = rr.Mean<ULong64_t>("v");
@@ -1030,9 +923,31 @@ TEST(RDFSimpleTests, ScalarValuesCollectionWeights)
    auto h = r.Define("x", [](){return 10;})
              .Define("y", [](){return ROOT::RVec<int>{1,2,3}; })
              .Histo1D<int, ROOT::RVec<int>>("x","y");
-   
+
    // Check that the exception is thrown
    EXPECT_ANY_THROW(*h);
+}
+
+TEST_P(RDFSimpleTests, ChainWithDifferentTreeNames)
+{
+	const auto fname1 = "test_chainwithdifferenttreenames_1.root";
+	const auto fname2 = "test_chainwithdifferenttreenames_2.root";
+	{
+		ROOT::RDataFrame(10).Define("x", [] { return 1; }).Snapshot<int>("t1", fname1, {"x"});
+		ROOT::RDataFrame(10).Define("x", [] { return 3; }).Snapshot<int>("t2", fname2, {"x"});
+	}
+
+   // add trees to chain
+   TChain c("t1");
+   c.Add(fname1);
+   c.Add((std::string(fname2) + "/t2").c_str());
+
+   // pass chain to RDF and process trees with different names
+   ROOT::RDataFrame df2(c);
+   EXPECT_DOUBLE_EQ(*df2.Mean("x"), 2);
+
+   gSystem->Unlink(fname1);
+   gSystem->Unlink(fname2);
 }
 
 // run single-thread tests

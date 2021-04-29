@@ -588,7 +588,7 @@ next:
       lastnl = kTRUE;
    }
 
-   if (!finished && tbuf && strlen(tbuf))
+   if (!finished && strlen(tbuf))
       goto next;
 
    delete [] buf;
@@ -1247,7 +1247,9 @@ TString TGText::AsString()
          fColCount = travel->fLength;
          fLongestLine = line_count;
       }
-      ret += travel->GetText();
+      char *txt = travel->GetText();
+      ret += txt;
+      delete [] txt;
       travel = travel->fNext;
       if (travel) ret += '\n';
       line_count++;

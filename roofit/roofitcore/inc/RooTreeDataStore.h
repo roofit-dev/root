@@ -66,6 +66,15 @@ public:
   virtual Double_t weight(Int_t index) const ;
   virtual Bool_t isWeighted() const { return (_wgtVar!=0||_extWgtArray!=0) ; }
 
+  virtual std::vector<RooSpan<const double>> getBatch(std::size_t first, std::size_t last) const {
+    //TODO
+    std::cerr << "This functionality is not yet implemented for tree data stores." << std::endl;
+    assert(false);
+
+    std::vector<double> vec(first, last);
+    return {RooSpan<const double>(vec)};
+  }
+
   // Change observable name
   virtual Bool_t changeObservableName(const char* from, const char* to) ;
   
@@ -109,7 +118,8 @@ public:
   virtual void resetCache() ;
 
   void loadValues(const TTree *t, const RooFormulaVar* select=0, const char* rangeName=0, Int_t nStart=0, Int_t nStop=2000000000)  ;
-  void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=0, const char* rangeName=0, Int_t nStart=0, Int_t nStop=2000000000)  ;
+  void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=0, const char* rangeName=0,
+      std::size_t nStart=0, std::size_t nStop = std::numeric_limits<std::size_t>::max());
 
   virtual void checkInit() const;
 

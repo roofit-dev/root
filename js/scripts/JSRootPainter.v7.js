@@ -21,40 +21,147 @@
 
    JSROOT.sources.push("v7");
 
-   JSROOT.v7 = {}; // placeholder for all v7-relevant code
+   JSROOT.v7 = {}; // placeholder for v7-relevant code
 
-   JSROOT.TObjectPainter.prototype.GetCoordinate = function(pnt) {
-      var res = { x: 0, y: 0 };
+   /** Evalue attributes using fAttr storage and configured RStyle */
+   JSROOT.TObjectPainter.prototype.v7EvalAttr = function(name, dflt) {
+      var obj = this.GetObject();
+      if (!obj) return dflt;
 
-      if (!pnt) return res;
-
-      var w = this.pad_width(),
-          h = this.pad_height(),
-          pp = this.pad_painter();
-
-      function CalcCoord(val, coord, grsize) {
-         var res = val.fNormal.fVal * grsize + val.fPixel.fVal;
-
-         if (val.fUser.fVal)
-            res += (val.fUser.fVal - coord.fBegin) / (coord.fEnd - coord.fBegin) * grsize;
-
-         return res;
+      if (obj.fAttr && obj.fAttr.m) {
+         var value = obj.fAttr.m[name];
+         if (value) return value.v; // found value direct in attributes
       }
 
-      if (!pp.pad_frame) {
-         res.x = pnt.fHoriz.fNormal.fVal*w;
-         res.y = h - pnt.fVert.fNormal.fVal*h;
-      } else {
-         res.x = CalcCoord(pnt.fHoriz, pp.pad_frame.fUserCoord[0], w);
-         res.y = h - CalcCoord(pnt.fVert, pp.pad_frame.fUserCoord[1], h);
+      if (this.rstyle && this.rstyle.fBlocks) {
+         var blks = this.rstyle.fBlocks;
+         for (var k=0;k<blks.length;++k) {
+            var block = blks[k];
+
+            var match = (this.csstype && (block.selector == this.csstype)) ||
+                        (obj.fId && (block.selector == ("#" + obj.fId))) ||
+                        (obj.fCssClass && (block.selector == ("." + obj.fCssClass)));
+
+            if (match && block.map && block.map.m) {
+               var value = block.map.m[name];
+               if (value) return value.v;
+            }
+         }
       }
-      return res;
+
+      return dflt;
    }
 
-   function TAxisPainter(axis, embedded) {
-      JSROOT.TObjectPainter.call(this, axis);
+   JSROOT.TObjectPainter.prototype.v7SetAttr = function(name, value) {
+      var obj = this.GetObject();
+
+      if (obj && obj.fAttr && obj.fAttr.m)
+         obj.fAttr.m[name] = { v: value };
+   }
+
+   /** Decode pad length from string, return pixel value */
+   JSROOT.TObjectPainter.prototype.v7EvalLength = function(name, sizepx, dflt) {
+      if (sizepx <= 0) sizepx = 1;
+
+      var value = this.v7EvalAttr(name);
+
+      if (value === undefined)
+         return Math.round(dflt*sizepx);
+
+      if (typeof value == "number")
+         return Math.round(value*sizepx);
+
+      var norm = 0, px = 0, val = value, operand = 0, pos = 0;
+
+      while (val.length > 0) {
+         // skip empty spaces
+         while ((pos < val.length) && ((val[pos] == ' ') || (val[pos] == '\t')))
+            ++pos;
+
+         if (pos >= val.length)
+            break;
+
+         if ((val[pos] == '-') || (val[pos] == '+')) {
+            if (operand) {
+               console.log("Fail to parse RPadLength " + value);
+               return dflt;
+            }
+            operand = (val[pos] == '-') ? -1 : 1;
+            pos++;
+            continue;
+         }
+
+         if (pos > 0) { val = val.substr(pos); pos = 0; }
+
+         while ((pos < val.length) && (((val[pos]>='0') && (val[pos]<='9')) || (val[pos]=='.'))) pos++;
+
+         var v = parseFloat(val.substr(0, pos));
+         if (isNaN(v)) {
+            console.log("Fail to parse RPadLength " + value);
+            return Math.round(dflt*sizepx);
+         }
+
+         val = val.substr(pos);
+         pos = 0;
+         if (!operand) operand = 1;
+         if ((val.length > 0) && (val[0] == '%')) {
+            val = val.substr(1);
+            norm += operand*v*0.01;
+         } else if ((val.length > 1) && (val[0] == 'p') && (val[1] == 'x')) {
+            val = val.substr(2);
+            px += operand*v;
+         } else {
+            norm += operand*v;
+         }
+
+         operand = 0;
+      }
+
+      return Math.round(norm*sizepx + px);
+   }
+
+
+   /** Evalue RColor using attribute storage and configured RStyle */
+   JSROOT.TObjectPainter.prototype.v7EvalColor = function(name, dflt) {
+      var rgb = this.v7EvalAttr(name + "_rgb", "");
+
+      if (rgb)
+         return "#" + rgb + this.v7EvalAttr(name + "_a", "");
+
+      return this.v7EvalAttr(name + "_name", "") || dflt;
+   }
+
+   /** Create this.fillatt object based on v7 fill attributes */
+   JSROOT.TObjectPainter.prototype.createv7AttFill = function(prefix) {
+      if (!prefix || (typeof prefix != "string")) prefix = "fill_";
+
+      var fill_color = this.v7EvalColor(prefix + "color", "white");
+
+      this.createAttFill({ pattern: 1001, color: 0 });
+
+      this.fillatt.SetSolidColor(fill_color);
+   }
+
+   /** Create this.lineatt object based on v7 line attributes */
+   JSROOT.TObjectPainter.prototype.createv7AttLine = function(prefix) {
+      if (!prefix || (typeof prefix != "string")) prefix = "line_";
+
+      var line_color = this.v7EvalColor(prefix + "color", "black"),
+          line_width = this.v7EvalAttr(prefix + "width", 1),
+          line_style = this.v7EvalAttr(prefix + "style", 1);
+
+      this.createAttLine({ color: line_color, width: line_width, style: line_style });
+   }
+
+
+   function TAxisPainter(embedded, cssprefix) {
+      var dummy = JSROOT.Create("TAxis"); // just dummy before all attributes are implemented
+
+      JSROOT.TObjectPainter.call(this, dummy);
 
       this.embedded = embedded; // indicate that painter embedded into the histo painter
+      this.csstype = "frame"; // for the moment only via frame one can set axis attributes
+      this.cssprefix = cssprefix;
 
       this.name = "yaxis";
       this.kind = "normal";
@@ -466,7 +573,7 @@
       // function draws  TAxis or TGaxis object
 
       var axis = this.GetObject(), chOpt = "",
-          is_gaxis = (axis && axis._typename === 'TGaxis'),
+          is_gaxis = false,
           axis_g = layer, tickSize = 0.03,
           scaling_size = 100, draw_lines = true,
           pad_w = this.pad_width() || 10,
@@ -480,18 +587,11 @@
       if (!second_shift) second_shift = 0; else
       if (this.invert_side) second_shift = -second_shift;
 
-      if (is_gaxis) {
-         this.createAttLine({ attr: axis });
-         draw_lines = axis.fLineColor != 0;
-         chOpt = axis.fChopt;
-         tickSize = axis.fTickSize;
-         scaling_size = (vertical ? 1.7*h : 0.6*w);
-      } else {
-         this.createAttLine({ color: axis.fAxisColor, width: 1, style: 1 });
-         chOpt = myXor(vertical, this.invert_side) ? "-S" : "+S";
-         tickSize = axis.fTickLength;
-         scaling_size = (vertical ? pad_w : pad_h);
-      }
+      this.createv7AttLine(this.cssprefix + "line_");
+
+      chOpt = myXor(vertical, this.invert_side) ? "-S" : "+S";
+      tickSize = axis.fTickLength;
+      scaling_size = (vertical ? pad_w : pad_h);
 
       if (!is_gaxis || (this.name === "zaxis")) {
          axis_g = layer.select("." + this.name + "_container");
@@ -837,6 +937,7 @@
 
    function TFramePainter(tframe) {
       JSROOT.TooltipHandler.call(this, tframe);
+      this.csstype = "frame";
       this.mode3d = false;
       this.shrink_frame_left = 0.;
       this.x_kind = 'normal'; // 'normal', 'log', 'time', 'labels'
@@ -885,24 +986,19 @@
       var tframe = this.GetObject();
 
       if ((this.fX1NDC === undefined) || (force && !this.modified_NDC)) {
-         JSROOT.extend(this, JSROOT.gStyle.FrameNDC);
 
-         if (tframe && tframe.fPos && tframe.fSize) {
-            this.fX1NDC = tframe.fPos.fHoriz.fNormal.fVal;
-            this.fX2NDC = this.fX1NDC + tframe.fSize.fHoriz.fNormal.fVal;
-            this.fY1NDC = tframe.fPos.fVert.fNormal.fVal;
-            this.fY2NDC = this.fY1NDC + tframe.fSize.fVert.fNormal.fVal;
-         }
+         var padw = this.pad_width(), padh = this.pad_height();
+
+         this.fX1NDC = this.v7EvalLength("margin_left", padw, JSROOT.gStyle.FrameNDC.fX1NDC)/padw;
+         this.fY1NDC = this.v7EvalLength("margin_bottom", padh, JSROOT.gStyle.FrameNDC.fY1NDC)/padh;
+         this.fX2NDC = 1 - this.v7EvalLength("margin_right", padw, 1-JSROOT.gStyle.FrameNDC.fX2NDC)/padw;
+         this.fY2NDC = 1 - this.v7EvalLength("margin_top", padh, 1-JSROOT.gStyle.FrameNDC.fY2NDC)/padh;
       }
 
-      if (this.fillatt === undefined) {
-         this.createAttFill({ pattern: 1001, color: 0 });
+      if (!this.fillatt)
+         this.createv7AttFill("fill_");
 
-         // TODO: provide real fill color
-         this.fillatt.SetSolidColor('white');
-      }
-
-      this.createAttLine({ color: 'black' });
+      this.createv7AttLine("border_");
    }
 
    TFramePainter.prototype.ProjectAitoff2xy = function(l, b) {
@@ -1080,17 +1176,82 @@
       return value.toPrecision(4);
    }
 
-   TFramePainter.prototype.SetAxesRanges = function(xmin, xmax, ymin, ymax) {
+
+   /* Set axes ranges for drawing, check configured attributes if range already specified */
+   TFramePainter.prototype.SetAxesRanges = function(xmin, xmax, ymin, ymax, zmin, zmax) {
       if (this.axes_drawn) return;
 
-      if ((this.xmin == this.xmax) && (xmin!==xmax)) {
-         this.xmin = xmin;
-         this.xmax = xmax;
+      var min, max;
+
+      if (this.xmin == this.xmax) {
+         min = this.v7EvalAttr("x_min");
+         max = this.v7EvalAttr("x_max");
+
+         if (min !== undefined) xmin = min;
+         if (max !== undefined) xmax = max;
+
+         if (xmin < xmax) {
+            this.xmin = xmin;
+            this.xmax = xmax;
+         }
+
+         if ((this.zoom_xmin == this.zoom_xmax) && !this.zoom_changed_interactive) {
+            min = this.v7EvalAttr("x_zoommin");
+            max = this.v7EvalAttr("x_zoommax");
+
+            if ((min !== undefined) || (max !== undefined)) {
+               this.zoom_xmin = (min === undefined) ? this.xmin : min;
+               this.zoom_xmax = (max === undefined) ? this.xmax : max;
+            }
+         }
       }
-      if ((this.ymin == this.ymax) && (ymin!==ymax)) {
-         this.ymin = ymin;
-         this.ymax = ymax;
+
+      if (this.ymin == this.ymax) {
+         min = this.v7EvalAttr("y_min");
+         max = this.v7EvalAttr("y_max");
+
+         if (min !== undefined) ymin = min;
+         if (max !== undefined) ymax = max;
+
+         if (ymin < ymax) {
+            this.ymin = ymin;
+            this.ymax = ymax;
+         }
+
+         if ((this.zoom_ymin == this.zoom_ymax) && !this.zoom_changed_interactive) {
+            min = this.v7EvalAttr("y_zoommin");
+            max = this.v7EvalAttr("y_zoommax");
+
+            if ((min !== undefined) || (max !== undefined)) {
+               this.zoom_ymin = (min === undefined) ? this.ymin : min;
+               this.zoom_ymax = (max === undefined) ? this.ymax : max;
+            }
+         }
       }
+
+      if (this.zmin == this.zmax) {
+         min = this.v7EvalAttr("z_min");
+         max = this.v7EvalAttr("z_max");
+
+         if (min !== undefined) zmin = min;
+         if (max !== undefined) zmax = max;
+
+         if (zmin < zmax) {
+            this.zmin = zmin;
+            this.zmax = zmax;
+         }
+
+         if ((this.zoom_zmin == this.zoom_zmax) && !this.zoom_changed_interactive) {
+            min = this.v7EvalAttr("z_zoommin");
+            max = this.v7EvalAttr("z_zoommax");
+
+            if ((min !== undefined) || (max !== undefined)) {
+               this.zoom_zmin = (min === undefined) ? this.zmin : min;
+               this.zoom_zmax = (max === undefined) ? this.zmax : max;
+            }
+         }
+      }
+
    }
 
    TFramePainter.prototype.DrawAxes = function(shrink_forbidden) {
@@ -1106,14 +1267,12 @@
       this.CreateXY();
 
       var layer = this.svg_frame().select(".axis_layer"),
-          w = this.frame_width(),
-          h = this.frame_height(),
-          axisx = JSROOT.Create("TAxis"), // temporary object for different attributes
-          axisy = JSROOT.Create("TAxis");
+          w = this.frame_width(), h = this.frame_height();
 
-      this.x_handle = new JSROOT.TAxisPainter(axisx, true);
+      this.x_handle = new TAxisPainter(true, "x_");
       this.x_handle.SetDivId(this.divid, -1);
       this.x_handle.pad_name = this.pad_name;
+      this.x_handle.rstyle = this.rstyle;
 
       this.x_handle.SetAxisConfig("xaxis",
                                   (this.logx && (this.x_kind !== "time")) ? "log" : this.x_kind,
@@ -1122,9 +1281,10 @@
       this.x_handle.lbls_both_sides = false;
       this.x_handle.has_obstacle = false;
 
-      this.y_handle = new JSROOT.TAxisPainter(axisy, true);
+      this.y_handle = new TAxisPainter(true, "y_");
       this.y_handle.SetDivId(this.divid, -1);
       this.y_handle.pad_name = this.pad_name;
+      this.y_handle.rstyle = this.rstyle;
 
       this.y_handle.SetAxisConfig("yaxis",
                                   (this.logy && this.y_kind !== "time") ? "log" : this.y_kind,
@@ -1228,7 +1388,8 @@
       this.axes_drawn = false;
    }
 
-   TFramePainter.prototype.CleanDrawings = function() {
+   /** Removes all drawn elements of the frame @private */
+   TFramePainter.prototype.CleanFrameDrawings = function() {
       // cleanup all 3D drawings if any
       if (typeof this.Create3DScene === 'function')
          this.Create3DScene(-1);
@@ -1256,7 +1417,7 @@
 
    TFramePainter.prototype.Cleanup = function() {
 
-      this.CleanDrawings();
+      this.CleanFrameDrawings();
 
       if (this.draw_g) {
          this.draw_g.selectAll("*").remove();
@@ -1418,9 +1579,8 @@
          setTimeout(this.ProcessTooltipEvent.bind(this, hintsg.property('last_point')), 10);
    }
 
+   /** Returns frame rectangle plus extra info for hint display */
    TFramePainter.prototype.GetFrameRect = function() {
-      // returns frame rectangle plus extra info for hint display
-
       return {
          x: this.frame_x(),
          y: this.frame_y(),
@@ -1432,9 +1592,36 @@
       }
    }
 
+   /** Returns palette associated with frame. Either from existing palette painter or just default palette */
+   TFramePainter.prototype.GetPalette = function(force) {
+      var pp = this.FindPainterFor(undefined, undefined, "ROOT::Experimental::RPaletteDrawable");
+
+      if (pp) return pp.GetPalette();
+
+      if (!this.fDfltPalette) {
+         this.fDfltPalette = {
+            _typename : "ROOT::Experimental::RPalette",
+            fColors : [{ fOrdinal : 0,     fColor : { fRGBA : [53, 42, 135] } },
+                       { fOrdinal : 0.125, fColor : { fRGBA : [15, 92, 221] } },
+                       { fOrdinal : 0.25,  fColor : { fRGBA : [20, 129, 214] } },
+                       { fOrdinal : 0.375, fColor : { fRGBA : [6, 164, 202] } },
+                       { fOrdinal : 0.5,   fColor : { fRGBA : [46, 183, 164] } },
+                       { fOrdinal : 0.625, fColor : { fRGBA : [135, 191, 119] } },
+                       { fOrdinal : 0.75,  fColor : { fRGBA : [209, 187, 89] } },
+                       { fOrdinal : 0.875, fColor : { fRGBA : [254, 200, 50] } },
+                       { fOrdinal : 1,     fColor : { fRGBA : [249, 251, 14] } }],
+             fInterpolate : true,
+             fNormalized : true
+         };
+         JSROOT.addMethods(this.fDfltPalette, "ROOT::Experimental::RPalette");
+      }
+
+      return this.fDfltPalette;
+   }
+
+   /** Function called when frame is clicked and object selection can be performed
+     * such event can be used to select objects */
    TFramePainter.prototype.ProcessFrameClick = function(pnt, dblckick) {
-      // function called when frame is clicked and object selection can be performed
-      // such event can be used to select
 
       var pp = this.pad_painter();
       if (!pp) return;
@@ -1971,6 +2158,7 @@
       menu_painter.ctx_menu_evnt = evnt;
 
       JSROOT.Painter.createMenu(menu_painter, function(menu) {
+
          var domenu = menu.painter.FillContextMenu(menu, kind, obj);
 
          // fill frame menu by default - or append frame elements when activated in the frame corner
@@ -1979,12 +2167,27 @@
 
          if (domenu)
             menu.painter.FillObjectExecMenu(menu, kind, function() {
-                // suppress any running zooming
-                menu.painter.SwitchTooltip(false);
-                menu.show(menu.painter.ctx_menu_evnt, menu.painter.SwitchTooltip.bind(menu.painter, true) );
+               if ((menu.size() == 0) && (typeof menu.painter.FillObjectOfflineMenu == 'function'))
+                   menu.painter.FillObjectOfflineMenu(menu, kind);
+
+               // suppress any running zooming
+               menu.painter.SwitchTooltip(false);
+               menu.show(menu.painter.ctx_menu_evnt, menu.painter.SwitchTooltip.bind(menu.painter, true));
             });
 
       });  // end menu creation
+   }
+
+   /** Fill menu for frame when server is not there */
+   TFramePainter.prototype.FillObjectOfflineMenu = function(menu, kind) {
+      if ((kind!="x") && (kind!="y")) return;
+
+      menu.add("Unzoom", this.Unzoom.bind(this, kind));
+
+      if (this[kind+"_kind"] == "normal")
+         menu.addchk(this["log"+kind], "SetLog"+kind, this.ToggleLog.bind(this, kind));
+
+      // here should be all axes attributes in offline
    }
 
    TFramePainter.prototype.FillContextMenu = function(menu, kind, obj) {
@@ -1993,59 +2196,7 @@
       this.clearInteractiveElements();
 
       if ((kind=="x") || (kind=="y")) {
-         var faxis = null;
-         //this.histo.fXaxis;
-         //if (kind=="y") faxis = this.histo.fYaxis;  else
-         //if (kind=="z") faxis = obj ? obj : this.histo.fZaxis;
          menu.add("header: " + kind.toUpperCase() + " axis");
-         menu.add("Unzoom", this.Unzoom.bind(this, kind));
-
-         if (this[kind+"_kind"] == "normal")
-           menu.addchk(this["log"+kind], "SetLog"+kind, this.ToggleLog.bind(this, kind) );
-
-         // if ((kind === "z") && this.options.Zscale)
-         //   if (this.FillPaletteMenu) this.FillPaletteMenu(menu);
-
-         if (faxis) {
-            menu.addchk(faxis.TestBit(JSROOT.EAxisBits.kMoreLogLabels), "More log",
-                  function() { faxis.InvertBit(JSROOT.EAxisBits.kMoreLogLabels); this.RedrawPad(); });
-            menu.addchk(faxis.TestBit(JSROOT.EAxisBits.kNoExponent), "No exponent",
-                  function() { faxis.InvertBit(JSROOT.EAxisBits.kNoExponent); this.RedrawPad(); });
-            menu.add("sub:Labels");
-            menu.addchk(faxis.TestBit(JSROOT.EAxisBits.kCenterLabels), "Center",
-                  function() { faxis.InvertBit(JSROOT.EAxisBits.kCenterLabels); this.RedrawPad(); });
-            menu.addchk(faxis.TestBit(JSROOT.EAxisBits.kLabelsVert), "Rotate",
-                  function() { faxis.InvertBit(JSROOT.EAxisBits.kLabelsVert); this.RedrawPad(); });
-            this.AddColorMenuEntry(menu, "Color", faxis.fLabelColor,
-                  function(arg) { faxis.fLabelColor = parseInt(arg); this.RedrawPad(); });
-            this.AddSizeMenuEntry(menu,"Offset", 0, 0.1, 0.01, faxis.fLabelOffset,
-                  function(arg) { faxis.fLabelOffset = parseFloat(arg); this.RedrawPad(); } );
-            this.AddSizeMenuEntry(menu,"Size", 0.02, 0.11, 0.01, faxis.fLabelSize,
-                  function(arg) { faxis.fLabelSize = parseFloat(arg); this.RedrawPad(); } );
-            menu.add("endsub:");
-            menu.add("sub:Title");
-            menu.add("SetTitle", function() {
-               var t = prompt("Enter axis title", faxis.fTitle);
-               if (t!==null) { faxis.fTitle = t; this.RedrawPad(); }
-            });
-            menu.addchk(faxis.TestBit(JSROOT.EAxisBits.kCenterTitle), "Center",
-                  function() { faxis.InvertBit(JSROOT.EAxisBits.kCenterTitle); this.RedrawPad(); });
-            menu.addchk(faxis.TestBit(JSROOT.EAxisBits.kRotateTitle), "Rotate",
-                  function() { faxis.InvertBit(JSROOT.EAxisBits.kRotateTitle); this.RedrawPad(); });
-            this.AddColorMenuEntry(menu, "Color", faxis.fTitleColor,
-                  function(arg) { faxis.fTitleColor = parseInt(arg); this.RedrawPad(); });
-            this.AddSizeMenuEntry(menu,"Offset", 0, 3, 0.2, faxis.fTitleOffset,
-                                  function(arg) { faxis.fTitleOffset = parseFloat(arg); this.RedrawPad(); } );
-            this.AddSizeMenuEntry(menu,"Size", 0.02, 0.11, 0.01, faxis.fTitleSize,
-                  function(arg) { faxis.fTitleSize = parseFloat(arg); this.RedrawPad(); } );
-            menu.add("endsub:");
-            menu.add("sub:Ticks");
-            this.AddColorMenuEntry(menu, "Color", faxis.fAxisColor,
-                        function(arg) { faxis.fAxisColor = parseInt(arg); this.RedrawPad(); });
-            this.AddSizeMenuEntry(menu, "Size", -0.05, 0.055, 0.01, faxis.fTickLength,
-                      function(arg) { faxis.fTickLength = parseFloat(arg); this.RedrawPad(); } );
-            menu.add("endsub:");
-         }
          return true;
       }
 
@@ -2079,32 +2230,31 @@
       menu.add("Save as frame.png", function() { this.pad_painter().SaveAs("png", 'frame', 'frame.png'); });
       menu.add("Save as frame.svg", function() { this.pad_painter().SaveAs("svg", 'frame', 'frame.svg'); });
 
-
       return true;
    }
 
+   /** @summary Show axis status message
+   *
+   * @desc method called normally when mouse enter main object element
+   * @private
+   */
    TFramePainter.prototype.ShowAxisStatus = function(axis_name) {
       // method called normally when mouse enter main object element
 
       var status_func = this.GetShowStatusFunc();
 
-      if (!status_func) return;
+      if (typeof status_func != "function") return;
 
-      var taxis = null;
-
-      var hint_name = axis_name, hint_title = "TAxis";
+      var taxis = null, hint_name = axis_name, hint_title = "TAxis",
+          m = d3.mouse(this.svg_frame().node()), id = (axis_name=="x") ? 0 : 1;
 
       if (taxis) { hint_name = taxis.fName; hint_title = taxis.fTitle || "histogram TAxis object"; }
 
-      var m = d3.mouse(this.svg_frame().node());
-
-      var id = (axis_name=="x") ? 0 : 1;
       if (this.swap_xy) id = 1-id;
 
       var axis_value = (axis_name=="x") ? this.RevertX(m[id]) : this.RevertY(m[id]);
 
-      status_func(hint_name, hint_title, axis_name + " : " + this.AxisAsText(axis_name, axis_value),
-                  m[0].toFixed(0)+","+ m[1].toFixed(0));
+      status_func(hint_name, hint_title, axis_name + " : " + this.AxisAsText(axis_name, axis_value), m[0]+","+m[1]);
    }
 
    TFramePainter.prototype.AddInteractive = function() {
@@ -2168,8 +2318,8 @@
       d3.event.preventDefault();
       this.clearInteractiveElements();
 
-      var itemx = { name: "x", ignore: false },
-          itemy = { name: "y", ignore: !this.AllowDefaultYZooming() },
+      var itemx = { name: "x", reverse: this.reverse_x, ignore: false },
+          itemy = { name: "y", reverse: this.reverse_y, ignore: !this.AllowDefaultYZooming() },
           cur = d3.mouse(this.svg_frame().node()),
           w = this.frame_width(), h = this.frame_height();
 
@@ -2239,6 +2389,8 @@
       }
 
       if (item.min >= item.max) return;
+
+      if (item.reverse) dmin = 1 - dmin;
 
       if ((dmin>0) && (dmin<1)) {
          if (this['log'+item.name]) {
@@ -2352,7 +2504,11 @@
       this.reverse_y = false;
 
       // if (this.options.BarStyle>=20) this.swap_xy = true;
-      this.logx = this.logy = false;
+      this.logx = this.logy = this.logz = false;
+
+      this.logx = !!this.v7EvalAttr("x_log");
+      this.logy = !!this.v7EvalAttr("y_log");
+      this.logz = !!this.v7EvalAttr("z_log");
 
       var w = this.frame_width(), h = this.frame_height();
 
@@ -2375,7 +2531,7 @@
 
       if (this._xaxis_timedisplay) {
          this.x_kind = 'time';
-         this.timeoffsetx = JSROOT.Painter.getTimeOffset(this.histo.fXaxis);
+         this.timeoffsetx = JSROOT.Painter.getTimeOffset(/*this.histo.fXaxis*/);
          this.ConvertX = function(x) { return new Date(this.timeoffsetx + x*1000); };
          this.RevertX = function(grx) { return (this.x.invert(grx) - this.timeoffsetx) / 1000; };
       } else {
@@ -2423,7 +2579,7 @@
 
       if (this._yaxis_timedisplay) {
          this.y_kind = 'time';
-         this.timeoffsety = JSROOT.Painter.getTimeOffset(this.histo.fYaxis);
+         this.timeoffsety = JSROOT.Painter.getTimeOffset(/*this.histo.fYaxis*/);
          this.ConvertY = function(y) { return new Date(this.timeoffsety + y*1000); };
          this.RevertY = function(gry) { return (this.y.invert(gry) - this.timeoffsety) / 1000; };
       } else {
@@ -2505,9 +2661,9 @@
    }
 
    TFramePainter.prototype.ToggleLog = function(axis) {
-      var painter = this.main_painter() || this,
-          pad = this.root_pad();
-      var curr = pad["fLog" + axis];
+
+      var curr  = this["log" + axis];
+
       // do not allow log scale for labels
       if (!curr) {
          var kind = this[axis+"_kind"];
@@ -2516,13 +2672,12 @@
          if (kind === "labels") return;
       }
 
-      var pp = this.pad_painter(), canp = this.canv_painter();
-      if (pp && pp.snapid && canp && canp._websocket) {
-         console.warn('Change log scale on server here!!!!');
-         // canp.SendWebsocket("OBJEXEC:" + pp.snapid + ":SetLog" + axis + (curr ? "(0)" : "(1)"));
+      var canp = this.canv_painter();
+      if (this.snapid && canp && canp._websocket) {
+         canp.SendWebsocket("OBJEXEC:" + this.snapid + ":Attr" + axis.toUpperCase() + "().SetLog" + (curr ? "(false)" : "(true)"));
       } else {
-         pad["fLog" + axis] = curr ? 0 : 1;
-         painter.RedrawPad();
+         this.v7SetAttr(axis + "_log", !curr);
+         this.RedrawPad();
       }
    }
 
@@ -2538,6 +2693,7 @@
 
    function TPadPainter(pad, iscan) {
       JSROOT.TObjectPainter.call(this, pad);
+      this.csstype = "pad";
       this.pad = pad;
       this.iscan = iscan; // indicate if working with canvas
       this.this_pad_name = "";
@@ -2692,24 +2848,24 @@
                                    .property('leftside', JSROOT.gStyle.ToolBarSide == 'left')
                                    .property('vertical', JSROOT.gStyle.ToolBarVert);
 
-         if (JSROOT.gStyle.ContextMenu)
+         if (JSROOT.gStyle.ContextMenu && !JSROOT.BatchMode)
             svg.select(".canvas_fillrect").on("contextmenu", this.ShowContextMenu.bind(this));
 
          factor = 0.66;
-         if (this.pad && this.pad.fCw && this.pad.fCh && (this.pad.fCw > 0)) {
-            factor = this.pad.fCh / this.pad.fCw;
+         if (this.pad && this.pad.fWinSize[0] && this.pad.fWinSize[1]) {
+            factor = this.pad.fWinSize[1] / this.pad.fWinSize[0];
             if ((factor < 0.1) || (factor > 10)) factor = 0.66;
          }
 
          if (this._fixed_size) {
             render_to.style("overflow","auto");
-            rect = { width: this.pad.fCw, height: this.pad.fCh };
+            rect = { width: this.pad.fWinSize[0], height: this.pad.fWinSize[1] };
          } else {
             rect = this.check_main_resize(2, new_size, factor);
          }
       }
 
-      // this.createAttFill({ attr: this.pad });
+      this.createAttFill({ pattern: 1001, color: 0 });
 
       if ((rect.width<=lmt) || (rect.height<=lmt)) {
          svg.style("display", "none");
@@ -2747,10 +2903,10 @@
          .property('draw_width', rect.width)
          .property('draw_height', rect.height);
 
-      //svg.select(".canvas_fillrect")
-      //   .attr("width", rect.width)
-      //   .attr("height", rect.height)
-      //   .call(this.fillatt.func);
+      svg.select(".canvas_fillrect")
+         .attr("width", rect.width)
+         .attr("height", rect.height)
+         .call(this.fillatt.func);
 
       this._fast_drawing = JSROOT.gStyle.SmallPad && ((rect.width < JSROOT.gStyle.SmallPad.width) || (rect.height < JSROOT.gStyle.SmallPad.height));
 
@@ -2808,11 +2964,11 @@
           w = width, h = height, x = 0, y = 0,
           svg_pad = null, svg_rect = null, btns = null;
 
-      if (this.pad && this.pad.fDrawOpts && this.pad.fSize) {
-         x = Math.round(width * this.pad.fPos.fHoriz.fNormal.fVal);
-         y = Math.round(height * this.pad.fPos.fVert.fNormal.fVal);
-         w = Math.round(width * this.pad.fSize.fHoriz.fNormal.fVal);
-         h = Math.round(height * this.pad.fSize.fVert.fNormal.fVal);
+      if (this.pad && this.pad.fPos && this.pad.fSize) {
+         x = Math.round(width * this.pad.fPos.fHoriz.fArr[0]);
+         y = Math.round(height * this.pad.fPos.fVert.fArr[0]);
+         w = Math.round(width * this.pad.fSize.fHoriz.fArr[0]);
+         h = Math.round(height * this.pad.fSize.fVert.fArr[0]);
       }
 
       if (pad_enlarged === this.pad) { w = width; h = height; x = y = 0; }
@@ -3146,9 +3302,16 @@
    TPadPainter.prototype.UpdateObject = function(obj) {
       if (!obj) return false;
 
-      this.pad.fCw = obj.fCw;
-      this.pad.fCh = obj.fCh;
-      this.pad.fTitle = obj.fTitle;
+      this.pad.fStyle = obj.fStyle;
+      this.pad.fAttr = obj.fAttr;
+
+      if (this.iscan) {
+         this.pad.fTitle = obj.fTitle;
+         this.pad.fWinSize = obj.fWinSize;
+      } else {
+         this.pad.fPos = obj.fPos;
+         this.pad.fSize = obj.fSize;
+      }
 
       return true;
    }
@@ -3169,11 +3332,14 @@
 
       while (true) {
 
-         if (objpainter && lst && lst[indx] && objpainter.snapid === undefined) {
+         if (objpainter && lst && lst[indx] && (objpainter.snapid === undefined)) {
             // keep snap id in painter, will be used for the
             if (this.painters.indexOf(objpainter)<0) this.painters.push(objpainter);
             objpainter.snapid = lst[indx].fObjectID;
+            if (!objpainter.rstyle) objpainter.rstyle = lst[indx].fStyle || this.rstyle;
          }
+
+         delete this.next_rstyle;
 
          objpainter = null;
 
@@ -3210,7 +3376,8 @@
             if (snap._typename == "ROOT::Experimental::RPadDisplayItem")  // subpad
                return objpainter.RedrawPadSnap(snap, draw_callback);
 
-            if (objpainter.UpdateObject(snap.fObject, snap.fOption || "")) objpainter.Redraw();
+            if (objpainter.UpdateObject(snap.fDrawable || snap.fObject, snap.fOption || ""))
+               objpainter.Redraw();
 
             continue; // call next
          }
@@ -3223,6 +3390,7 @@
             padpainter.DecodeOptions("");
             padpainter.SetDivId(this.divid); // pad painter will be registered in the canvas painters list
             padpainter.snapid = snap.fObjectID;
+            padpainter.rstyle = snap.fStyle;
 
             padpainter.CreatePadSvg();
 
@@ -3236,12 +3404,16 @@
 
             // we select current pad, where all drawing is performed
             var prev_name = padpainter.CurrentPadName(padpainter.this_pad_name);
+
             padpainter.DrawNextSnap(snap.fPrimitives, -1, function() {
                padpainter.CurrentPadName(prev_name);
                draw_callback(padpainter);
             });
             return;
          }
+
+         // will be used in SetDivId to assign style to painter
+         this.next_rstyle = lst[indx].fStyle || this.rstyle;
 
          var handle = { func: draw_callback };
 
@@ -3251,8 +3423,9 @@
                   handle.func("workaround"); // call function with "workaround" as argument
                });
 
-         // here the case of normal drawing, can be improved
-         objpainter = JSROOT.draw(this.divid, snap.fObject, snap.fOption || "", handle);
+
+         // TODO - fDrawable is v7, fObject from v6, maybe use same data member?
+         objpainter = JSROOT.draw(this.divid, snap.fDrawable || snap.fObject, snap.fOption || "", handle);
 
          if (!handle.completed) return; // if callback will be invoked, break while loop
       }
@@ -3291,10 +3464,10 @@
       if (!snap || !snap.fPrimitives) return;
 
       // for the moment only window size attributes are provided
-      var padattr = { fCw: snap.fWinSize[0].fVal, fCh: snap.fWinSize[1].fVal, fTitle: snap.fTitle };
+      // var padattr = { fCw: snap.fWinSize[0], fCh: snap.fWinSize[1], fTitle: snap.fTitle };
 
       // if canvas size not specified in batch mode, temporary use 900x700 size
-      if (this.batch_mode && this.iscan && (!padattr.fCw || !padattr.fCh)) { padattr.fCw = 900; padattr.fCh = 700; }
+      // if (this.batch_mode && this.iscan && (!padattr.fCw || !padattr.fCh)) { padattr.fCw = 900; padattr.fCh = 700; }
 
       if (this.iscan && snap.fTitle && document)
          document.title = snap.fTitle;
@@ -3307,9 +3480,8 @@
 
          this.snapid = snap.fObjectID;
 
-         this.draw_object = padattr;
-         this.pad = padattr;
-         this.pad_frame = snap.fFrame;
+         this.draw_object = snap;
+         this.pad = snap;
 
          if (this.batch_mode && this.iscan)
              this._fixed_size = true;
@@ -3324,7 +3496,7 @@
       }
 
       // update only pad/canvas attributes
-      this.UpdateObject(padattr);
+      this.UpdateObject(snap);
 
       // apply all changes in the object (pad or canvas)
       if (this.iscan) {
@@ -3366,7 +3538,7 @@
          this.painters = [];
          if (fp) {
             this.painters.push(fp);
-            fp.CleanDrawings();
+            fp.CleanFrameDrawings();
          }
          this.RemoveButtons();
          this.AddOnlineButtons();
@@ -3730,7 +3902,7 @@
    }
 
    TPadPainter.prototype.AddButton = function(_btn, _tooltip, _funcname, _keyname) {
-      if (!JSROOT.gStyle.ToolBar) return;
+      if (!JSROOT.gStyle.ToolBar || JSROOT.BatchMode) return;
 
       if (!this._buttons) this._buttons = [];
       // check if there are duplications
@@ -3818,6 +3990,40 @@
 
       btns.attr("transform","translate("+btns_x+","+btns_y+")");
    }
+
+   TPadPainter.prototype.GetCoordinate = function(pos) {
+      var res = { x: 0, y: 0 };
+
+      if (!pos) return res;
+
+      function GetV(len, indx, dflt) {
+         return (len.fArr && (len.fArr.length>indx)) ? len.fArr[indx] : dflt;
+      }
+
+      var w = this.pad_width(this.this_pad_name),
+          h = this.pad_height(this.this_pad_name),
+          h_norm = GetV(pos.fHoriz, 0, 0),
+          h_pixel = GetV(pos.fHoriz, 1, 0),
+          h_user = GetV(pos.fHoriz, 2),
+          v_norm = GetV(pos.fVert, 0, 0),
+          v_pixel = GetV(pos.fVert, 1, 0),
+          v_user = GetV(pos.fVert, 2);
+
+      if (!this.pad_frame || (h_user === undefined)) {
+         res.x = h_norm * w + h_pixel;
+      } else {
+         // TO DO - user coordiantes
+      }
+
+      if (!this.pad_frame || (v_user === undefined)) {
+         res.y = h - v_norm * h - v_pixel;
+      } else {
+         //  TO DO - user coordiantes
+      }
+
+      return res;
+   }
+
 
 //   TPadPainter.prototype.DrawingReady = function(res_painter) {
 //      var main = this.main_painter();
@@ -4063,13 +4269,13 @@
       this._websocket.Connect();
    }
 
-   TCanvasPainter.prototype.UseWebsocket = function(handle) {
+   TCanvasPainter.prototype.UseWebsocket = function(handle, href) {
       this.CloseWebsocket();
 
       this._websocket = handle;
       console.log('Use websocket', this._websocket.key);
       this._websocket.SetReceiver(this);
-      this._websocket.Connect();
+      this._websocket.Connect(href);
    }
 
    TCanvasPainter.prototype.WindowBeforeUnloadHanlder = function() {
@@ -4226,24 +4432,6 @@
       return this.has_event_status;
    }
 
-   TCanvasPainter.prototype.GetNewOpt = function(opts, name, dflt) {
-      if (!opts || !opts.fHolderIO || !name) return dflt;
-
-      var map = opts.fHolderIO.fAttrNameVals;
-      if (!map || !map.length) return dflt;
-
-      for (var i=0; i<map.length; ++i)
-         if (map[i].first === name)
-            return map[i].second;
-      return dflt;
-   }
-
-   TCanvasPainter.prototype.GetNewColor = function(opts, name, dflt) {
-      var val = this.GetNewOpt(opts,name,dflt);
-      // can convert color, but also can be used as is
-      return val;
-   }
-
    function drawCanvas(divid, can, opt) {
       var nocanvas = !can;
       if (nocanvas) {
@@ -4276,22 +4464,395 @@
       return painter;
    }
 
+   function drawPadSnapshot(divid, snap, opt) {
+      var painter = new TCanvasPainter(null);
+      painter.normal_canvas = false;
+      painter.batch_mode = true;
+      painter.SetDivId(divid, -1); // just assign id
+      painter.RedrawPadSnap(snap, function() { painter.ShowButtons(); painter.DrawingReady(); });
+      return painter;
+   }
+
+   // =================================================================================
+
+   function drawFrameTitle() {
+      var fp = this.frame_painter();
+      if (!fp)
+         return console.log('no frame painter - no title');
+
+      var fx = this.frame_x(),
+          fy = this.frame_y(),
+          fw = this.frame_width(),
+          fh = this.frame_height(),
+          ph = this.pad_height(),
+          title        = this.GetObject(),
+          pp           = this.pad_painter(),
+          use_frame    = false,
+          title_margin = this.v7EvalLength( "margin", ph, 0.02),
+          title_height = this.v7EvalLength( "height", ph, 0.05),
+          text_size    = this.v7EvalAttr( "text_size", 16),
+          text_angle   = -1 * this.v7EvalAttr( "text_angle", 0),
+          text_align   = this.v7EvalAttr( "text_align", 22),
+          text_color   = this.v7EvalColor( "text_color", "black"),
+          text_font    = this.v7EvalAttr( "text_font", 41);
+
+      this.CreateG(false).attr("transform","translate(" + fx + "," + Math.round(fy-title_margin-title_height) + ")");
+
+      var arg = { align: 22, x: fw/2, y: title_height/2, text: title.fText, rotate: text_angle, color: text_color, latex: 1 };
+
+      this.StartTextDrawing(text_font, text_size);
+
+      this.DrawText(arg);
+
+      this.FinishTextDrawing();
+   }
+
+   ////////////////////////////////////////////////////////////////////////////////////////////
+
+   JSROOT.v7.ExtractRColor = function(rcolor) {
+      if (rcolor.fName)
+         return rcolor.fName;
+
+      if (rcolor.fRGBA.length == 3)
+         return "rgb(" + rcolor.fRGBA[0] + "," + rcolor.fRGBA[1] + "," + rcolor.fRGBA[2] + ")";
+
+      if (rcolor.fRGBA.length == 4)
+         return "rgba(" + rcolor.fRGBA[0] + "," + rcolor.fRGBA[1] + "," + rcolor.fRGBA[2] + "," + rcolor.fRGBA[3] + ")";
+
+      return "black";
+   }
+
+   JSROOT.registerMethods("ROOT::Experimental::RPalette", {
+
+      getColor: function(indx) {
+         return this.palette[indx];
+      },
+
+      getContourIndex: function(zc) {
+         var cntr = this.fContour, l = 0, r = cntr.length-1, mid;
+
+         if (zc < cntr[0]) return -1;
+         if (zc >= cntr[r]) return r-1;
+
+         if (this.fCustomContour) {
+            while (l < r-1) {
+               mid = Math.round((l+r)/2);
+               if (cntr[mid] > zc) r = mid; else l = mid;
+            }
+            return l;
+         }
+
+         // last color in pallette starts from level cntr[r-1]
+         return Math.floor((zc-cntr[0]) / (cntr[r-1] - cntr[0]) * (r-1));
+      },
+
+      getContourColor: function(zc) {
+         var zindx = this.getContourIndex(zc);
+         return (zindx < 0) ? "" : this.getColor(zindx);
+      },
+
+      GetContour: function() {
+         return this.fContour && (this.fContour.length > 1) ? this.fContour : null;
+      },
+
+      DeleteContour: function() {
+         delete this.fContour;
+      },
+
+      CreatePaletteColors: function(len) {
+         var arr = [], indx = 0;
+
+         while (arr.length < len) {
+            var value = arr.length / (len-1);
+
+            var entry = this.fColors[indx];
+
+            if ((Math.abs(entry.fOrdinal - value)<0.0001) || (indx == this.fColors.length-1)) {
+               arr.push(JSROOT.v7.ExtractRColor(entry.fColor));
+               continue;
+            }
+
+            var next = this.fColors[indx+1];
+            if (next.fOrdinal <= value) {
+               indx++;
+               continue;
+            }
+
+            var dist = next.fOrdinal - entry.fOrdinal,
+                r1 = (next.fOrdinal - value) / dist,
+                r2 = (value - entry.fOrdinal) / dist;
+
+            // interpolate
+            var col1 = d3.rgb(JSROOT.v7.ExtractRColor(entry.fColor));
+            var col2 = d3.rgb(JSROOT.v7.ExtractRColor(next.fColor));
+
+            var color = d3.rgb(Math.round(col1.r*r1 + col2.r*r2), Math.round(col1.g*r1 + col2.g*r2), Math.round(col1.b*r1 + col2.b*r2));
+
+            arr.push(color.toString());
+         }
+
+         return arr;
+      },
+
+      CreateContour: function(logz, nlevels, zmin, zmax, zminpositive) {
+         this.fContour = [];
+         delete this.fCustomContour;
+         this.colzmin = zmin;
+         this.colzmax = zmax;
+
+         if (logz) {
+            if (this.colzmax <= 0) this.colzmax = 1.;
+            if (this.colzmin <= 0)
+               if ((zminpositive===undefined) || (zminpositive <= 0))
+                  this.colzmin = 0.0001*this.colzmax;
+               else
+                  this.colzmin = ((zminpositive < 3) || (zminpositive>100)) ? 0.3*zminpositive : 1;
+            if (this.colzmin >= this.colzmax) this.colzmin = 0.0001*this.colzmax;
+
+            var logmin = Math.log(this.colzmin)/Math.log(10),
+                logmax = Math.log(this.colzmax)/Math.log(10),
+                dz = (logmax-logmin)/nlevels;
+            this.fContour.push(this.colzmin);
+            for (var level=1; level<nlevels; level++)
+               this.fContour.push(Math.exp((logmin + dz*level)*Math.log(10)));
+            this.fContour.push(this.colzmax);
+            this.fCustomContour = true;
+         } else {
+            if ((this.colzmin === this.colzmax) && (this.colzmin !== 0)) {
+               this.colzmax += 0.01*Math.abs(this.colzmax);
+               this.colzmin -= 0.01*Math.abs(this.colzmin);
+            }
+            var dz = (this.colzmax-this.colzmin)/nlevels;
+            for (var level=0; level<=nlevels; level++)
+               this.fContour.push(this.colzmin + dz*level);
+         }
+
+         if (!this.palette || (this.palette.length != nlevels))
+            this.palette = this.CreatePaletteColors(nlevels);
+      }
+
+   });
+
+
+   function RPalettePainter(palette) {
+      JSROOT.TObjectPainter.call(this, palette);
+      this.csstype = "palette";
+   }
+
+   RPalettePainter.prototype = Object.create(JSROOT.TObjectPainter.prototype);
+
+   RPalettePainter.prototype.GetPalette = function()
+   {
+      var drawable = this.GetObject();
+      var pal = drawable ? drawable.fPalette : null;
+
+      if (pal && !pal.getColor)
+         JSROOT.addMethods(pal, "ROOT::Experimental::RPalette");
+
+      return pal;
+   }
+
+   RPalettePainter.prototype.DrawPalette = function() {
+
+      var pthis = this,
+          palette = this.GetPalette(),
+          contour = palette.GetContour(),
+          can_move = false,
+          nbr1 = 8,
+          framep = this.frame_painter(),
+          zmin = contour[0],
+          zmax = contour[contour.length-1];
+
+      // frame painter must  be there
+      if (!framep)
+         return console.log('no frame painter - no palette');
+
+      // zmin = Math.min(contour[0], framep.zmin);
+      // zmax = Math.max(contour[contour.length-1], framep.zmax);
+
+
+
+      var fx = this.frame_x(),
+          fy = this.frame_y(),
+          fw = this.frame_width(),
+          fh = this.frame_height(),
+          pw = this.pad_width(),
+          obj          = this.GetObject(),
+          pp           = this.pad_painter(),
+          use_frame    = false,
+          visible        = this.v7EvalAttr("visible", true),
+          palette_margin = this.v7EvalLength("margin", pw, 0.02),
+          palette_width = this.v7EvalLength("size", pw, 0.05),
+          palette_height = fh;
+
+      this.draw_g.selectAll("rect").remove();
+
+      if (!visible) return;
+
+      this.draw_g.attr("transform","translate(" + Math.round(fx + fw + palette_margin) +  "," + fy + ")");
+
+
+      var g_btns = this.draw_g.select(".colbtns");
+      if (g_btns.empty())
+         g_btns = this.draw_g.append("svg:g").attr("class", "colbtns");
+      else
+         g_btns.selectAll().remove();
+
+      g_btns.append("svg:rect")
+          .attr("x", 0)
+          .attr("width", palette_width)
+          .attr("y", 0)
+          .attr("height", palette_height)
+          .style("stroke", "black")
+          .attr("fill", "none");
+
+      var z = null, z_kind = "normal";
+
+      if (framep && framep.logz) {
+         z = d3.scaleLog();
+         z_kind = "log";
+      } else {
+         z = d3.scaleLinear();
+      }
+      z.domain([zmin, zmax]).range([palette_height,0]);
+
+      for (var i=0;i<contour.length-1;++i) {
+         var z0 = z(contour[i]),
+             z1 = z(contour[i+1]),
+             col = palette.getContourColor((contour[i]+contour[i+1])/2);
+
+         var r = g_btns.append("svg:rect")
+                     .attr("x", 0)
+                     .attr("y",  Math.round(z1))
+                     .attr("width", palette_width)
+                     .attr("height", Math.round(z0) - Math.round(z1))
+                     .style("fill", col)
+                     .style("stroke", col)
+                     .property("fill0", col)
+                     .property("fill1", d3.rgb(col).darker(0.5).toString())
+
+         if (this.IsTooltipAllowed())
+            r.on('mouseover', function() {
+               d3.select(this).transition().duration(100).style("fill", d3.select(this).property('fill1'));
+            }).on('mouseout', function() {
+               d3.select(this).transition().duration(100).style("fill", d3.select(this).property('fill0'));
+            }).append("svg:title").text(contour[i].toFixed(2) + " - " + contour[i+1].toFixed(2));
+
+         if (JSROOT.gStyle.Zooming)
+            r.on("dblclick", function() { framep.Unzoom("z"); });
+      }
+
+      this.z_handle.SetAxisConfig("zaxis", z_kind, z, zmin, zmax, zmin, zmax);
+
+      this.z_handle.max_tick_size = Math.round(palette_width*0.3);
+
+      this.z_handle.DrawAxis(true, this.draw_g, palette_width, palette_height, "translate(" + palette_width + ", 0)");
+
+      if (!JSROOT.gStyle.Zooming) return;
+
+      var evnt = null, doing_zoom = false, sel1 = 0, sel2 = 0, zoom_rect = null;
+
+      function moveRectSel() {
+
+         if (!doing_zoom) return;
+
+         d3.event.preventDefault();
+         var m = d3.mouse(evnt);
+
+         if (m[1] < sel1) sel1 = m[1]; else sel2 = m[1];
+
+         zoom_rect.attr("y", sel1)
+                 .attr("height", Math.abs(sel2-sel1));
+      }
+
+      function endRectSel() {
+         if (!doing_zoom) return;
+
+         d3.event.preventDefault();
+         d3.select(window).on("mousemove.colzoomRect", null)
+                          .on("mouseup.colzoomRect", null);
+         zoom_rect.remove();
+         zoom_rect = null;
+         doing_zoom = false;
+
+         var zmin = Math.min(z.invert(sel1), z.invert(sel2)),
+             zmax = Math.max(z.invert(sel1), z.invert(sel2));
+
+         framep.Zoom("z", zmin, zmax);
+      }
+
+      function startRectSel() {
+         // ignore when touch selection is activated
+         if (doing_zoom) return;
+         doing_zoom = true;
+
+         d3.event.preventDefault();
+
+         evnt = this;
+         var origin = d3.mouse(evnt);
+
+         sel1 = sel2 = origin[1];
+
+         zoom_rect = g_btns
+              .append("svg:rect")
+              .attr("class", "zoom")
+              .attr("id", "colzoomRect")
+              .attr("x", "0")
+              .attr("width", palette_width)
+              .attr("y", sel1)
+              .attr("height", 5);
+
+         d3.select(window).on("mousemove.colzoomRect", moveRectSel)
+                          .on("mouseup.colzoomRect", endRectSel, true);
+
+         d3.event.stopPropagation();
+      }
+
+      this.draw_g.select(".axis_zoom")
+                 .on("mousedown", startRectSel)
+                 .on("dblclick", function() { framep.Unzoom("z"); });
+   }
+
+   function drawPalette(divid, palette, opt) {
+      var painter = new RPalettePainter(palette, opt);
+
+      painter.SetDivId(divid);
+
+      painter.CreateG(false);
+
+      painter.z_handle = new JSROOT.v7.TAxisPainter(true, "z_");
+      painter.z_handle.SetDivId(divid, -1);
+      painter.z_handle.pad_name = painter.pad_name;
+      painter.z_handle.invert_side = true;
+      painter.z_handle.rstyle = painter.rstyle;
+
+      return painter.DrawingReady();
+   }
+
+
    // JSROOT.addDrawFunc({ name: "ROOT::Experimental::RPadDisplayItem", icon: "img_canvas", func: drawPad, opt: "" });
 
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHistDrawable<1>", icon: "img_histo1d", prereq: "v7hist", func: "JSROOT.v7.drawHist1", opt: "" });
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHistDrawable<2>", icon: "img_histo2d", prereq: "v7hist", func: "JSROOT.v7.drawHist2", opt: "" });
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RText", icon: "img_text", prereq: "v7more", func: "JSROOT.v7.drawText", opt: "", direct: true });
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RLine", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawLine", opt: "", direct: true });
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RBox", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawBox", opt: "", direct: true });
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RMarker", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawMarker", opt: "", direct: true });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHist1Drawable", icon: "img_histo1d", prereq: "v7hist", func: "JSROOT.v7.drawHist1", opt: "" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RHist2Drawable", icon: "img_histo2d", prereq: "v7hist", func: "JSROOT.v7.drawHist2", opt: "" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RText", icon: "img_text", prereq: "v7more", func: "JSROOT.v7.drawText", opt: "", direct: true, csstype: "text" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RFrameTitle", icon: "img_text", func: drawFrameTitle, opt: "", direct: true, csstype: "title" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RPaletteDrawable", icon: "img_text", func: drawPalette, opt: "" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RLine", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawLine", opt: "", direct: true, csstype: "line" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RBox", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawBox", opt: "", direct: true, csstype: "box" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RMarker", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawMarker", opt: "", direct: true, csstype: "marker" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RLegend", icon: "img_graph", prereq: "v7more", func: "JSROOT.v7.drawLegend", opt: "", direct: true, csstype: "legend" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RFrame", icon: "img_frame", func: "JSROOT.v7.drawFrame", opt: "" });
 
    JSROOT.v7.TAxisPainter = TAxisPainter;
    JSROOT.v7.TFramePainter = TFramePainter;
+   JSROOT.v7.RPalettePainter = RPalettePainter;
    JSROOT.v7.TPadPainter = TPadPainter;
    JSROOT.v7.TCanvasPainter = TCanvasPainter;
    JSROOT.v7.drawFrame = drawFrame;
    JSROOT.v7.drawPad = drawPad;
    JSROOT.v7.drawCanvas = drawCanvas;
+   JSROOT.v7.drawPadSnapshot = drawPadSnapshot;
+   JSROOT.v7.drawFrameTitle = drawFrameTitle;
 
    return JSROOT;
 

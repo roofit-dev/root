@@ -19,7 +19,7 @@ def is_manylinux():
     _is_manylinux = False
     try:
         for line in open('/etc/redhat-release').readlines():
-            if 'CentOS release 5.11' in line:
+            if 'CentOS release 6.10 (Final)' in line:
                 _is_manylinux = True
                 break
     except (OSError, IOError):
@@ -333,22 +333,6 @@ for dir_to_remove in ROOT_EXPLICIT_REMOVE:
 
 
 # special fixes
-inp = os.path.join('core', 'base', 'src', 'TVirtualPad.cxx')
-outp = inp+'.new'
-new_cml = open(outp, 'w')
-for line in open(inp):
-    if '#include "X3DBuffer.h"' == line[0:22]:
-        line = """//#include "X3DBuffer.h"
-typedef struct _x3d_sizeof_ {
-   int  numPoints;
-   int  numSegs;
-   int  numPolys;
-} Size3D;
-"""
-    new_cml.write(line)
-new_cml.close()
-rename(outp, inp)
-
 for inp in [os.path.join('core', 'unix', 'src', 'TUnixSystem.cxx'),
             os.path.join('core', 'winnt', 'src', 'TWinNTSystem.cxx')]:
     outp = inp+'.new'
@@ -381,17 +365,6 @@ enum ESendRecvOptions {
     rename(outp, inp)
 
 print('trimming mathcore')
-inp = os.path.join('math', 'mathcore', 'src', 'Fitter.cxx')
-if os.path.exists(inp):
-    outp = inp+'.new'
-    new_cml = open(outp, 'w')
-    for line in open(inp):
-        if '#include "TF1.h"' in line:
-            continue
-        new_cml.write(line)
-    new_cml.close()
-    rename(outp, inp)
-
 os.remove(os.path.join('math', 'mathcore', 'src', 'triangle.h'))
 os.remove(os.path.join('math', 'mathcore', 'src', 'triangle.c'))
 os.remove(os.path.join('math', 'mathcore', 'inc', 'Math', 'Delaunay2D.h'))
@@ -462,15 +435,17 @@ except ImportError:
             res = os.system('patch -p1 < ' + self.fdiff)
             return res == 0
 
-for fdiff in ('scanner', 'scanner_2', 'faux_typedef', 'classrules', 'template_fwd', 'dep_template',
-              'no_long64_t', 'using_decls', 'sfinae', 'typedef_of_private', 'optlevel2_forced',
-              'silence', 'explicit_template', 'alias_template', 'lambda', 'templ_ops', 'templ_ctor',
-              'private_type_args', 'incomplete_types', 'helpers', 'clang_printing', 'resolution',
-              'stdfunc_printhack', 'pch', 'strip_lz4_lzma', 'msvc', 'win64rtti', 'win64', 'win64s2'):
+for fdiff in ('cleanup_tstring', 'scanner', 'scanner_2', 'faux_typedef', 'classrules', 'template_fwd',
+              'dep_template', 'no_long64_t', 'using_decls', 'sfinae', 'typedef_of_private',
+              'optlevel2_forced', 'silence', 'explicit_template', 'alias_template', 'lambda', 'templ_ops',
+              'private_type_args', 'incomplete_types', 'clang_printing', 'resolution',
+              'stdfunc_printhack', 'anon_union', 'no_inet', 'signaltrycatch', 'nofastmath', 'pch',
+              'stackoverflow', 'stdvalue_type', 'strip_lz4_lzma',
+              'msvc', 'win64rtti', 'win64', 'win64s2'):
     fpatch = os.path.join('patches', fdiff+'.diff')
     print(' ==> applying patch:', fpatch)
     pset = patch.fromfile(fpatch)
-    if not pset.apply():
+    if not pset or not pset.apply():
         print("Failed to apply patch:", fdiff)
         sys.exit(2)
 
@@ -478,6 +453,7 @@ for fdiff in ('scanner', 'scanner_2', 'faux_typedef', 'classrules', 'template_fw
 ## manylinux1 specific patch, as there a different, older, compiler is used
 #
 if is_manylinux():
+    print(' ==> applying patch:', 'manylinux1')
     patch.fromfile(os.path.join('patches', 'manylinux1.diff')).apply()
 
 #

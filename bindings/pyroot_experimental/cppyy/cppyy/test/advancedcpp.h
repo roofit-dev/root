@@ -280,6 +280,7 @@ extern double my_global_array[500];
 extern double* my_global_ptr;
 static const char my_global_string1[] = "aap " " noot " " mies";
 extern const char my_global_string2[];
+extern const char* my_global_string3[3];
 
 class some_int_holder {
 public:
@@ -434,7 +435,7 @@ public:
 //===========================================================================
 class UsingBase1 {                 // using declaration testing
 public:
-    UsingBase1(int n = 13) : m_int(n) {} 
+    UsingBase1(int n = 13) : m_int(n) {}
     virtual ~UsingBase1() {}
     virtual char vcheck() { return 'A'; }
     int m_int;
@@ -501,6 +502,13 @@ class Printable5 : public PrintableBase1<int> {};
 
 template <typename T>
 std::ostream& operator<<(std::ostream& os, const PrintableBase1<T>& y) { return os << "Ok."; }
+
+class Printable6 {
+public:
+    Printable6& operator<<(int);
+};
+
+std::ostream& operator<<(std::ostream& os, const Printable6& y);
 
 
 //===========================================================================

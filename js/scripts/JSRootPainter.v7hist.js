@@ -21,11 +21,11 @@
 
    JSROOT.sources.push("v7hist");
 
-
    // =============================================================
 
    function THistPainter(histo) {
       JSROOT.TObjectPainter.call(this, histo);
+      this.csstype = "hist";
       this.draw_content = true;
       this.nbinsx = 0;
       this.nbinsy = 0;
@@ -40,18 +40,15 @@
    THistPainter.prototype.PrepareFrame = function(divid) {
       this.SetDivId(divid, -1);
 
-      if (!this.frame_painter()) {
-         var pad = this.root_pad(),
-             fr = pad ? pad.fFrame : null;
-         JSROOT.v7.drawFrame(divid, fr);
-      }
+      if (!this.frame_painter())
+         JSROOT.v7.drawFrame(divid, null);
 
-      this.SetDivId(divid, 1);
+      return this.SetDivId(divid, 1);
    }
 
    THistPainter.prototype.GetHImpl = function(obj) {
       if (obj && obj.fHistImpl)
-         return obj.fHistImpl.fIsWeak ? obj.fHistImpl.fWeakForIO : obj.fHistImpl.fUnique;
+         return obj.fHistImpl.fIO;
       return null;
    }
 
@@ -59,8 +56,9 @@
       var obj = this.GetObject(), histo = this.GetHImpl(obj);
 
       if (histo && !histo.getBinContent) {
+         console.log('histo type', histo._typename);
          if (histo.fAxes._1) {
-            histo.getBin = function(x, y) { return (x + this.fAxes._0.fNBins * y); }
+            histo.getBin = function(x, y) { return (x + (this.fAxes._0.GetNumBins() + 2) * y); }
             histo.getBinContent = function(x, y) { return this.fStatistics.fBinContent[this.getBin(x, y)]; }
             histo.getBinError = function(x,y) {
                var bin = this.getBin(x,y);
@@ -112,8 +110,6 @@
       // clear all 3D buffers
       this.Clear3DScene();
 
-      delete this.fPalette;
-      delete this.fContour;
       delete this.options;
 
       JSROOT.TObjectPainter.prototype.Cleanup.call(this);
@@ -142,7 +138,7 @@
          main.xmin = main.xmax = 0;
          main.ymin = main.ymax = 0;
          main.zmin = main.zmax = 0;
-         main.SetAxesRanges(this.xmin, this.xmax, this.ymin, this.ymax);
+         main.SetAxesRanges(this.xmin, this.xmax, this.ymin, this.ymax, this.zmin, this.zmax);
       }
 
       return main.DrawAxes(true);
@@ -167,14 +163,10 @@
       }
 */
 
-      var opts = this.GetObject().fOpts,
-          pp   = this.canv_painter();
-
       this.createAttFill( { pattern: 0, color: 0 });
 
-      var lcol = pp.GetNewColor(opts, "contentLine.color");
-      var lwidth = pp.GetNewOpt(opts, "contentLine.width");
-      // console.log("new color lcol", lcol, lwidth);
+      var lcol = this.v7EvalColor( "line_color", "black"),
+          lwidth = this.v7EvalAttr( "line_width", 1);
 
       this.createAttLine({ color: lcol || 'black', width : parseInt(lwidth) || 1 });
    }
@@ -224,18 +216,20 @@
 
       if (axis._typename == "ROOT::Experimental::RAxisEquidistant") {
          axis.min = axis.fLow;
-         axis.max = axis.fLow + (axis.fNBins-2)/axis.fInvBinWidth;
+         axis.max = axis.fLow + axis.fNBinsNoOver/axis.fInvBinWidth;
 
+         axis.GetNumBins = function() { return this.fNBinsNoOver; }
          axis.GetBinCoord = function(bin) { return this.fLow + bin/this.fInvBinWidth; };
          axis.FindBin = function(x,add) { return Math.floor((x - this.fLow)*this.fInvBinWidth + add); };
 
       } else {
          axis.min = axis.fBinBorders[0];
-         axis.max = axis.fBinBorders[axis.fNBins - 2];
+         axis.max = axis.fBinBorders[axis.fBinBorders.length - 1];
+         axis.GetNumBins = function() { return this.fBinBorders.length-1; }
          axis.GetBinCoord = function(bin) {
             var indx = Math.round(bin);
             if (indx <= 0) return this.fBinBorders[0];
-            if (indx > this.fNBins - 2) return this.fBinBorders[this.fNBins - 2];
+            if (indx >= this.fBinBorders.length) return this.fBinBorders[this.fBinBorders.length - 1];
             if (indx==bin) return this.fBinBorders[indx];
             var indx2 = (bin < indx) ? indx - 1 : indx + 1;
             return this.fBinBorders[indx] * Math.abs(bin-indx2) + this.fBinBorders[indx2] * Math.abs(bin-indx);
@@ -243,7 +237,7 @@
          axis.FindBin = function(x,add) {
             for (var k = 1; k < this.fBinBorders.length; ++k)
                if (x < this.fBinBorders[k]) return Math.floor(k-1+add);
-            return this.fNBins - 2;
+            return this.fBinBorders.length - 1;
          };
       }
 
@@ -262,12 +256,11 @@
       this.xmax = axis.max;
 
       if (!with_y_axis || !this.nbinsy) return;
-
       axis = this.GetAxis("y");
       this.ymin = axis.min;
       this.ymax = axis.max;
-      if (!with_z_axis || !this.nbinsz) return;
 
+      if (!with_z_axis || !this.nbinsz) return;
       axis = this.GetAxis("z");
       this.zmin = axis.min;
       this.zmax = axis.max;
@@ -400,98 +393,31 @@
       return tip;
    }
 
-   THistPainter.prototype.CreateContour = function(nlevels, zmin, zmax, zminpositive) {
+   /** Create contour levels for currently selected Z range @private */
+   THistPainter.prototype.CreateContour = function(main, palette, scatter_plot) {
+      if (!main || !palette) return;
 
-      if (nlevels<1) nlevels = JSROOT.gStyle.fNumberContours;
-      this.fContour = [];
-      this.colzmin = zmin;
-      this.colzmax = zmax;
-
-      if (this.root_pad().fLogz) {
-         if (this.colzmax <= 0) this.colzmax = 1.;
-         if (this.colzmin <= 0)
-            if ((zminpositive===undefined) || (zminpositive <= 0))
-               this.colzmin = 0.0001*this.colzmax;
-            else
-               this.colzmin = ((zminpositive < 3) || (zminpositive>100)) ? 0.3*zminpositive : 1;
-         if (this.colzmin >= this.colzmax) this.colzmin = 0.0001*this.colzmax;
-
-         var logmin = Math.log(this.colzmin)/Math.log(10),
-             logmax = Math.log(this.colzmax)/Math.log(10),
-             dz = (logmax-logmin)/nlevels;
-         this.fContour.push(this.colzmin);
-         for (var level=1; level<nlevels; level++)
-            this.fContour.push(Math.exp((logmin + dz*level)*Math.log(10)));
-         this.fContour.push(this.colzmax);
-         this.fCustomContour = true;
-      } else {
-         if ((this.colzmin === this.colzmax) && (this.colzmin !== 0)) {
-            this.colzmax += 0.01*Math.abs(this.colzmax);
-            this.colzmin -= 0.01*Math.abs(this.colzmin);
-         }
-         var dz = (this.colzmax-this.colzmin)/nlevels;
-         for (var level=0; level<=nlevels; level++)
-            this.fContour.push(this.colzmin + dz*level);
-      }
-
-      var main = this.frame_painter();
-
-      if (this.Dimension() < 3) {
-         main.zmin = this.zmin = this.colzmin;
-         main.zmax = this.zmax = this.colzmax;
-      }
-
-      main.fContour = this.fContour;
-      main.fCustomContour = this.fCustomContour;
-      main.colzmin = this.colzmin;
-      main.colzmax = this.colzmax;
-
-      return this.fContour;
-   }
-
-   THistPainter.prototype.GetContour = function() {
-      if (this.fContour) return this.fContour;
-
-      var main = this.frame_painter();
-      if (main && main.fContour) {
-         this.fContour = main.fContour;
-         this.fCustomContour = main.fCustomContour;
-         this.colzmin = main.colzmin;
-         this.colzmax = main.colzmax;
-         return this.fContour;
-      }
-
-      // if not initialized, first create contour array
-      // difference from ROOT - fContour includes also last element with maxbin, which makes easier to build logz
-      var histo = this.GetHisto(), nlevels = JSROOT.gStyle.fNumberContours,
+      var nlevels = JSROOT.gStyle.fNumberContours,
           zmin = this.minbin, zmax = this.maxbin, zminpos = this.minposbin;
+
+      if (scatter_plot) {
+         if (nlevels > 50) nlevels = 50;
+         zmin = this.minposbin;
+      }
+
       if (zmin === zmax) { zmin = this.gminbin; zmax = this.gmaxbin; zminpos = this.gminposbin }
-      //if (histo.fContour) nlevels = histo.fContour.length;
-      //if ((this.options.minimum !== -1111) && (this.options.maximum != -1111)) {
-      //   zmin = this.options.minimum;
-      //   zmax = this.options.maximum;
-      //}
-      if (main.zoom_zmin != main.zoom_zmax) {
+
+      if (main.zoom_zmin !== main.zoom_zmax) {
          zmin = main.zoom_zmin;
          zmax = main.zoom_zmax;
       }
 
-      //if (histo.fContour && (histo.fContour.length>1) && histo.TestBit(JSROOT.TH1StatusBits.kUserContour)) {
-      //   this.fContour = JSROOT.clone(histo.fContour);
-      //   this.fCustomContour = true;
-      //   this.colzmin = zmin;
-      //   this.colzmax = zmax;
-      //   if (zmax > this.fContour[this.fContour.length-1]) this.fContour.push(zmax);
-      //   if (this.Dimension()<3) {
-      //      this.zmin = this.colzmin;
-      //      this.zmax = this.colzmax;
-      //   }
-      //   return this.fContour;
-      //}
+      palette.CreateContour(main.logz, nlevels, zmin, zmax, zminpos);
 
-      this.fCustomContour = false;
-
-      return this.CreateContour(nlevels, zmin, zmax, zminpos);
+      if (this.Dimension() < 3) {
+         main.scale_zmin = palette.colzmin;
+         main.scale_zmax = palette.colzmax;
+      }
    }
 
    THistPainter.prototype.FillContextMenu = function(menu) {
@@ -567,49 +493,9 @@
       return true;
    }
 
-
-   /// return index from contours array, which corresponds to the content value **zc**
-   THistPainter.prototype.getContourIndex = function(zc) {
-
-      var cntr = this.GetContour();
-
-      if (this.fCustomContour) {
-         var l = 0, r = cntr.length-1, mid;
-         if (zc < cntr[0]) return -1;
-         if (zc >= cntr[r]) return r;
-         while (l < r-1) {
-            mid = Math.round((l+r)/2);
-            if (cntr[mid] > zc) r = mid; else l = mid;
-         }
-         return l;
-      }
-
-      // bins less than zmin not drawn
-      if (zc < this.colzmin) return this.options.Zero ? -1 : 0;
-
-      // if bin content exactly zmin, draw it when col0 specified or when content is positive
-      if (zc===this.colzmin) return ((this.colzmin != 0) || !this.options.Zero || this.IsTH2Poly()) ? 0 : -1;
-
-      return Math.floor(0.01+(zc-this.colzmin)*(cntr.length-1)/(this.colzmax-this.colzmin));
-   }
-
-   /// return color from the palette, which corresponds given controur value
-   /// optionally one can return color index of the palette
-   THistPainter.prototype.getContourColor = function(zc, asindx) {
-      var zindx = this.getContourIndex(zc);
-      if (zindx < 0) return null;
-
-      var cntr = this.GetContour(),
-          palette = this.GetPalette(),
-          indx = palette.calcColorIndex(zindx, cntr.length);
-
-      return asindx ? indx : palette.getColor(indx);
-   }
-
-   THistPainter.prototype.GetPalette = function(force) {
-      if (!this.fPalette || force)
-         this.fPalette = this.get_palette(true, this.options.Palette);
-      return this.fPalette;
+   THistPainter.prototype.UpdatePaletteDraw = function() {
+      var pp = this.FindPainterFor(undefined, undefined, "ROOT::Experimental::RPaletteDrawable");
+      if (pp) pp.DrawPalette();
    }
 
    THistPainter.prototype.FillPaletteMenu = function(menu) {
@@ -619,7 +505,6 @@
 
       function change(arg) {
          hpainter.options.Palette = parseInt(arg);
-         hpainter.GetPalette(true);
          hpainter.Redraw(); // redraw histogram
       };
 
@@ -771,9 +656,10 @@
          }
       }
 
-      // force recalculation of z levels
-      this.fContour = null;
-      this.fCustomContour = false;
+      res.palette = pmain.GetPalette();
+
+      if (res.palette)
+         this.CreateContour(pmain, res.palette, args.scatter_plot);
 
       return res;
    }
@@ -809,7 +695,7 @@
       if (!this.nbinsx && when_axis_changed) when_axis_changed = false;
 
       if (!when_axis_changed) {
-         this.nbinsx = this.GetAxis("x").fNBins - 2;
+         this.nbinsx = this.GetAxis("x").GetNumBins();
          this.nbinsy = 0;
          this.CreateAxisFuncs(false);
       }
@@ -1755,7 +1641,7 @@
       // create painter and add it to canvas
       var painter = new TH1Painter(histo);
 
-      painter.PrepareFrame(divid);
+      if (!painter.PrepareFrame(divid)) return null;
 
       painter.options = { Hist: true, Bar: false, Error: false, ErrorKind: -1, errorX: 0, Zero: false, Mark: false,
                           Line: false, Fill: false, Lego: 0, Surf: 0,
@@ -1782,16 +1668,12 @@
 
    function TH2Painter(histo) {
       THistPainter.call(this, histo);
-      this.fContour = null; // contour levels
-      this.fCustomContour = false; // are this user-defined levels (can be irregular)
-      this.fPalette = null;
       this.wheel_zoomy = true;
    }
 
    TH2Painter.prototype = Object.create(THistPainter.prototype);
 
    TH2Painter.prototype.Cleanup = function() {
-      delete this.fCustomContour;
       delete this.tt_handle;
 
       THistPainter.prototype.Cleanup.call(this);
@@ -1978,8 +1860,8 @@
 
       var i, j, histo = this.GetHisto();
 
-      this.nbinsx = this.GetAxis("x").fNBins - 2;
-      this.nbinsy = this.GetAxis("y").fNBins - 2;
+      this.nbinsx = this.GetAxis("x").GetNumBins();
+      this.nbinsy = this.GetAxis("y").GetNumBins();
 
       // used in CreateXY method
 
@@ -2013,6 +1895,9 @@
             }
          }
       }
+
+      this.zmin = this.gminbin;
+      this.zmax = this.gmaxbin;
 
       // this value used for logz scale drawing
       if (this.gminposbin === null) this.gminposbin = this.gmaxbin*1e-4;
@@ -2218,7 +2103,7 @@
       for (i = handle.i1; i < handle.i2; ++i) {
          for (j = handle.j1; j < handle.j2; ++j) {
             binz = histo.getBinContent(i + 1, j + 1);
-            colindx = this.getContourColor(binz, true);
+            colindx = handle.palette.getContourIndex(binz);
             if (binz===0) {
                if (!this.options.Zero) continue;
                if ((colindx === null) && this._show_empty_bins) colindx = 0;
@@ -2247,8 +2132,11 @@
            this.draw_g
                .append("svg:path")
                .attr("palette-index", colindx)
-               .attr("fill", this.fPalette.getColor(colindx))
+               .attr("fill", handle.palette.getColor(colindx))
                .attr("d", colPaths[colindx]);
+
+      if (this.is_main_painter())
+         this.UpdatePaletteDraw();
 
       return handle;
    }
@@ -2285,7 +2173,6 @@
              xlen, pdif, diff, elev;
 
          while (n <= icont2 && ii <= maxii) {
-//          elev = fH->GetContourLevel(n);
             elev = levels[n];
             diff = elev - elev1;
             pdif = diff/tdif;
@@ -2420,7 +2307,7 @@
          poly = polys[ipoly];
          if (!poly) continue;
 
-         var colindx = palette.calcColorIndex(ipoly, levels.length),
+         var colindx = ipoly,
              xx = poly.fX, yy = poly.fY, np = poly.fLastPoint+1,
              istart = 0, iminus, iplus, xmin = 0, ymin = 0, nadd;
 
@@ -2471,9 +2358,10 @@
 
    TH2Painter.prototype.DrawBinsContour = function(frame_w,frame_h) {
       var handle = this.PrepareColorDraw({ rounding: false, extra: 100, original: this.options.Proj != 0 }),
-          levels = this.GetContour(),
-          palette = this.GetPalette(),
-          painter = this, main = this.frame_painter();
+          main = this.frame_painter(),
+          palette = main.GetPalette(),
+          levels = palette.GetContour(),
+          painter = this;
 
       function BuildPath(xp,yp,iminus,iplus) {
          var cmd = "", last = null, pnt = null, i;
@@ -2519,7 +2407,7 @@
              .append("svg:path")
              .attr("d", dd + "z")
              .style('stroke','none')
-             .style("fill", palette.calcColor(0, levels.length));
+             .style("fill", palette.getColor(0));
       }
 
       this.BuildContour(handle, levels, palette,
@@ -2618,20 +2506,20 @@
           pmain = this.frame_painter(),
           colPaths = [], textbins = [],
           colindx, cmd, bin, item,
-          i, len = histo.fBins.arr.length;
+          i, len = histo.fBins.arr.length,
+          palette = pmain.GetPalette();
 
       // force recalculations of contours
-      this.fContour = null;
-      this.fCustomContour = false;
-
       // use global coordinates
       this.maxbin = this.gmaxbin;
       this.minbin = this.gminbin;
       this.minposbin = this.gminposbin;
 
+      this.CreateContour(pmain, palette);
+
       for (i = 0; i < len; ++ i) {
          bin = histo.fBins.arr[i];
-         colindx = this.getContourColor(bin.fContent, true);
+         colindx = palette.getContourIndex(bin.fContent);
          if (colindx === null) continue;
          if (bin.fContent === 0) {
             if (!this.options.Zero || !this.options.Line) continue;
@@ -2657,7 +2545,7 @@
             item = this.draw_g
                      .append("svg:path")
                      .attr("palette-index", colindx)
-                     .attr("fill", colindx ? this.fPalette.getColor(colindx) : "none")
+                     .attr("fill", colindx ? palette.getColor(colindx) : "none")
                      .attr("d", colPaths[colindx]);
             if (this.options.Line)
                item.call(this.lineatt.func);
@@ -3043,7 +2931,8 @@
 
    TH2Painter.prototype.DrawBinsScatter = function(w,h) {
       var histo = this.GetHisto(),
-          handle = this.PrepareColorDraw({ rounding: true, pixel_density: true }),
+          fp = this.frame_painter(),
+          handle = this.PrepareColorDraw({ rounding: true, pixel_density: true, scatter_plot: true }),
           colPaths = [], currx = [], curry = [], cell_w = [], cell_h = [],
           colindx, cmd1, cmd2, i, j, binz, cw, ch, factor = 1.,
           scale = this.options.ScatCoef * ((this.gmaxbin) > 2000 ? 2000. / this.gmaxbin : 1.);
@@ -3086,7 +2975,6 @@
       if (this.maxbin > 0.7) factor = 0.7/this.maxbin;
 
       var nlevels = Math.round(handle.max - handle.min);
-      this.CreateContour((nlevels > 50) ? 50 : nlevels, this.minposbin, this.maxbin, this.minposbin);
 
       // now start build
       for (i = handle.i1; i < handle.i2; ++i) {
@@ -3098,7 +2986,7 @@
             ch = handle.gry[j] - handle.gry[j+1];
             if (cw*ch <= 0) continue;
 
-            colindx = this.getContourIndex(binz/cw/ch);
+            colindx = handle.palette.getContourIndex(binz/cw/ch);
             if (colindx < 0) continue;
 
             cmd1 = "M"+handle.grx[i]+","+handle.gry[j+1];
@@ -3127,8 +3015,10 @@
 
       this.createAttMarker({ attr: histo });
 
+      var cntr = handle.palette.GetCountour();
+
       for (colindx=0;colindx<colPaths.length;++colindx)
-        if ((colPaths[colindx] !== undefined) && (colindx<this.fContour.length)) {
+        if ((colPaths[colindx] !== undefined) && (colindx<cntr.length)) {
            var pattern_class = "scatter_" + colindx,
                pattern = defs.select('.' + pattern_class);
            if (pattern.empty())
@@ -3139,7 +3029,7 @@
            else
               pattern.selectAll("*").remove();
 
-           var npix = Math.round(factor*this.fContour[colindx]*cell_w[colindx]*cell_h[colindx]);
+           var npix = Math.round(factor*cntr[colindx]*cell_w[colindx]*cell_h[colindx]);
            if (npix<1) npix = 1;
 
            var arrx = new Float32Array(npix), arry = new Float32Array(npix);
@@ -3459,7 +3349,7 @@
          } else if (h.hide_only_zeros) {
             colindx = (binz === 0) && !this._show_empty_bins ? null : 0;
          } else {
-            colindx = this.getContourColor(binz, true);
+            colindx = h.palette.getContourIndex(binz);
             if ((colindx === null) && (binz === 0) && this._show_empty_bins) colindx = 0;
          }
       }
@@ -3475,7 +3365,7 @@
                   color2: this.fillatt ? this.fillatt.fillcoloralt('blue') : 'blue',
                   lines: this.GetBinTips(i, j), exact: true, menu: true };
 
-      if (this.options.Color) res.color2 = this.GetPalette().getColor(colindx);
+      if (this.options.Color) res.color2 = h.palette.getColor(colindx);
 
       if (pnt.disabled && !this.is_projection) {
          ttrect.remove();
@@ -3595,7 +3485,7 @@
       // create painter and add it to canvas
       var painter = new TH2Painter(obj);
 
-      painter.PrepareFrame(divid);
+      if (!painter.PrepareFrame(divid)) return null;
 
       painter.options = { Hist: false, Bar: false, Error: false, ErrorKind: -1, errorX: 0, Zero: false, Mark: false,
                           Line: false, Fill: false, Lego: 0, Surf: 0,

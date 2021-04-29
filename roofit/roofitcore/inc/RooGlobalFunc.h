@@ -66,11 +66,21 @@ enum MsgLevel { DEBUG=0, INFO=1, PROGRESS=2, WARNING=3, ERROR=4, FATAL=5 } ;
 /// Topics for a RooMsgService::StreamConfig in RooMsgService
 enum MsgTopic { Generation=1, Minimization=2, Plotting=4, Fitting=8, Integration=16, LinkStateMgmt=32, 
 	 Eval=64, Caching=128, Optimization=256, ObjectHandling=512, InputArguments=1024, Tracing=2048, 
-	 Contents=4096, DataHandling=8192, NumIntegration=16384, Benchmarking1=NumIntegration*2,
-	 Benchmarking2=Benchmarking1*2, Benchmarking3=Benchmarking2*2, Benchmarking4=Benchmarking3*2 } ;
+	 Contents=4096, DataHandling=8192, NumIntegration=16384, FastEvaluations=1<<15, HistFactory=1<<16,
+     Benchmarking1=1<<17, Benchmarking2=1<<18, Benchmarking3=1<<19, Benchmarking4=1<<20 } ;
 enum MPSplit { BulkPartition=0, Interleave=1, SimComponents=2, Hybrid=3 } ;
 
-// RooAbsReal::plotOn arguments
+/**
+ * \defgroup CmdArgs RooFit command arguments.
+ * These arguments can be passed to functions of RooFit objects.
+ * \ingroup CmdArgs
+ * @{
+ */
+
+/**
+ * \defgroup Plotting Arguments for plotOn functions
+ * @{
+ */
 RooCmdArg DrawOption(const char* opt) ;
 RooCmdArg Normalization(Double_t scaleFactor) ;
 RooCmdArg Slice(const RooArgSet& sliceSet) ;
@@ -92,7 +102,7 @@ RooCmdArg FillColor(Color_t color) ;
 RooCmdArg FillStyle(Style_t style) ;
 RooCmdArg ProjectionRange(const char* rangeName) ;
 RooCmdArg Name(const char* name) ;
-RooCmdArg Invisible() ;
+RooCmdArg Invisible(bool inv=true) ;
 RooCmdArg AddTo(const char* name, double wgtSel=1.0, double wgtOther=1.0) ;
 RooCmdArg EvalErrorValue(Double_t value) ;
 RooCmdArg MoveToBack()  ;
@@ -121,6 +131,12 @@ RooCmdArg RefreshNorm() ;
 RooCmdArg Efficiency(const RooCategory& cat) ;
 RooCmdArg Rescale(Double_t factor) ;
 
+/** @} */
+
+/**
+ * \defgroup ConstructorArgs Arguments for various constructors
+ * @{
+ */
 // RooDataHist::ctor arguments
 RooCmdArg Weight(Double_t wgt) ;
 RooCmdArg Index(RooCategory& icat) ;
@@ -144,11 +160,7 @@ RooCmdArg StoreError(const RooArgSet& aset) ;
 RooCmdArg StoreAsymError(const RooArgSet& aset) ; 
 RooCmdArg OwnLinked() ;
 
-// RooChi2Var::ctor arguments
-RooCmdArg Extended(Bool_t flag=kTRUE) ;
-RooCmdArg DataError(Int_t) ;
-RooCmdArg NumCPU(Int_t nCPU, Int_t interleave=0) ;
-RooCmdArg CPUAffinity(Bool_t flag=kTRUE);
+/** @} */
 
 // RooAbsPdf::printLatex arguments
 RooCmdArg Columns(Int_t ncol) ;
@@ -177,6 +189,18 @@ RooCmdArg IntegratedObservables(const RooArgSet& intObs) ;
 RooCmdArg SelectVars(const RooArgSet& vars) ;
 RooCmdArg EventRange(Int_t nStart, Int_t nStop) ;
 
+
+/**
+ * \defgroup Fitting Arguments for fitting
+ * @{
+ */
+// RooChi2Var::ctor / RooNLLVar arguments
+RooCmdArg Extended(Bool_t flag=kTRUE) ;
+RooCmdArg DataError(Int_t) ;
+RooCmdArg NumCPU(Int_t nCPU, Int_t interleave=0) ;
+RooCmdArg CPUAffinity(Bool_t flag=kTRUE);
+RooCmdArg BatchMode(bool flag=true);
+
 // RooAbsPdf::fitTo arguments
 RooCmdArg PrefitDataFraction(Double_t data_ratio = 0.0) ;
 RooCmdArg FitOptions(const char* opts) ;
@@ -203,10 +227,13 @@ RooCmdArg ExternalConstraints(const RooArgSet& constraintPdfs) ;
 RooCmdArg PrintEvalErrors(Int_t numErrors) ;
 RooCmdArg EvalErrorWall(Bool_t flag) ;
 RooCmdArg SumW2Error(Bool_t flag) ;
+RooCmdArg AsymptoticError(Bool_t flag) ;
 RooCmdArg CloneData(Bool_t flag) ;
 RooCmdArg Integrate(Bool_t flag) ;
 RooCmdArg Minimizer(const char* type, const char* alg=0) ;
 RooCmdArg Offset(Bool_t flag=kTRUE) ;
+
+/** @} */
 
 // RooAbsPdf::paramOn arguments
 RooCmdArg Label(const char* str) ;
@@ -220,6 +247,10 @@ RooCmdArg What(const char* str) ;
 // RooProdPdf::ctor arguments
 RooCmdArg Conditional(const RooArgSet& pdfSet, const RooArgSet& depSet, Bool_t depsAreCond=kFALSE) ;
 
+/**
+ * \defgroup Generating Arguments for generating data
+ * @{
+ */
 // RooAbsPdf::generate arguments
 RooCmdArg ProtoData(const RooDataSet& protoData, Bool_t randomizeOrder=kFALSE, Bool_t resample=kFALSE) ;
 RooCmdArg NumEvents(Int_t numEvents) ;
@@ -229,6 +260,8 @@ RooCmdArg GenBinned(const char* tag) ;
 RooCmdArg AllBinned() ;
 RooCmdArg ExpectedData(Bool_t flag=kTRUE) ; 
 RooCmdArg Asimov(Bool_t flag=kTRUE) ; 
+
+/** @} */
 
 // RooAbsRealLValue::createHistogram arguments
 RooCmdArg YVar(const RooAbsRealLValue& var, const RooCmdArg& arg=RooCmdArg::none()) ;
@@ -311,6 +344,9 @@ RooCmdArg MultiArg(const RooCmdArg& arg1, const RooCmdArg& arg2,
  
 RooConstVar& RooConst(Double_t val) ; 
 
+/**
+ * @}
+ */
 
 }
 

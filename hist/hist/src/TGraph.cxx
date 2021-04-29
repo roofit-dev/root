@@ -19,7 +19,6 @@
 #include "TF1.h"
 #include "TStyle.h"
 #include "TMath.h"
-#include "TVector.h"
 #include "TVectorD.h"
 #include "Foption.h"
 #include "TRandom.h"
@@ -28,7 +27,6 @@
 #include "TVirtualPad.h"
 #include "TVirtualGraphPainter.h"
 #include "TBrowser.h"
-#include "TClass.h"
 #include "TSystem.h"
 #include "TPluginManager.h"
 #include <stdlib.h>
@@ -47,7 +45,7 @@ ClassImp(TGraph);
 
 /** \class TGraph
     \ingroup Hist
-A Graph is a graphics object made of two arrays X and Y with npoints each.
+A TGraph is an object made of two arrays X and Y with npoints each.
 The TGraph painting is performed thanks to the TGraphPainter
 class. All details about the various painting options are given in this class.
 
@@ -522,6 +520,13 @@ TGraph::~TGraph()
       fFunctions = 0; //to avoid accessing a deleted object in RecursiveRemove
    }
    delete fHistogram;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Allocate internal data structures for `newsize` points.
+
+Double_t **TGraph::Allocate(Int_t newsize) {
+   return AllocateArrays(2, newsize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1074,7 +1079,7 @@ TFitResultPtr TGraph::Fit(const char *fname, Option_t *option, Option_t *, Axis_
 ///
 /// option | description
 /// -------|------------
-/// "W" | Set all weights to 1; ignore error bars
+/// "W" | Ignore all point errors when fitting a TGraphErrors or TGraphAsymmErrors
 /// "U" | Use a User specified fitting algorithm (via SetFCN)
 /// "Q" | Quiet mode (minimum printing)
 /// "V" | Verbose mode (default is between Q and V)
@@ -1087,7 +1092,7 @@ TFitResultPtr TGraph::Fit(const char *fname, Option_t *option, Option_t *, Axis_
 /// "+" | Add this new fitted function to the list of fitted functions (by default, any previous function is deleted)
 /// "C" | In case of linear fitting, do not calculate the chisquare (saves time)
 /// "F" | If fitting a polN, use the minuit fitter
-/// "EX0" | When fitting a TGraphErrors or TGraphAsymErrors do not consider errors in the coordinate
+/// "EX0" | When fitting a TGraphErrors or TGraphAsymErrors do not consider errors in the X coordinates
 /// "ROB" | In case of linear fitting, compute the LTS regression coefficients (robust (resistant) regression), using the default fraction of good points "ROB=0.x" - compute the LTS regression coefficients, using 0.x as a fraction of good points
 /// "S" |  The result of the fit is returned in the TFitResultPtr (see below Access to the Fit Result)
 ///
@@ -1585,6 +1590,28 @@ Int_t TGraph::GetPoint(Int_t i, Double_t &x, Double_t &y) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Get x value for point i.
+
+Double_t TGraph::GetPointX(Int_t i) const
+{
+   if (i < 0 || i >= fNpoints || !fX)
+      return -1.;
+
+   return fX[i];
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get y value for point i.
+
+Double_t TGraph::GetPointY(Int_t i) const
+{
+   if (i < 0 || i >= fNpoints || !fY)
+      return -1.;
+
+   return fY[i];
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Get x axis of the graph.
 
 TAxis *TGraph::GetXaxis() const
@@ -1602,6 +1629,38 @@ TAxis *TGraph::GetYaxis() const
    TH1 *h = GetHistogram();
    if (!h) return 0;
    return h->GetYaxis();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Implementation to get information on point of graph at cursor position
+/// Adapted from class TH1
+
+char *TGraph::GetObjectInfo(Int_t px, Int_t py) const
+{
+   // localize point
+   Int_t ipoint = -2;
+   Int_t i;
+   // start with a small window (in case the mouse is very close to one point)
+   for (i = 0; i < fNpoints; i++) {
+      Int_t dpx = px - gPad->XtoAbsPixel(gPad->XtoPad(fX[i]));
+      Int_t dpy = py - gPad->YtoAbsPixel(gPad->YtoPad(fY[i]));
+
+      if (dpx * dpx + dpy * dpy < 25) {
+         ipoint = i;
+         break;
+      }
+   }
+
+   Double_t x = gPad->PadtoX(gPad->AbsPixeltoX(px));
+   Double_t y = gPad->PadtoY(gPad->AbsPixeltoY(py));
+
+   if (ipoint == -2)
+      return Form("x=%g, y=%g", x, y);
+
+   Double_t xval = fX[ipoint];
+   Double_t yval = fY[ipoint];
+
+   return Form("x=%g, y=%g, point=%d, xval=%g, yval=%g", x, y, ipoint, xval, yval);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1738,9 +1797,14 @@ void TGraph::InsertPointBefore(Int_t ipoint, Double_t x, Double_t y)
       return;
    }
 
-   if (ipoint > fNpoints-1) {
-      Error("TGraph", "Inserted point index should be <= %d", fNpoints-1);
+   if (ipoint > fNpoints) {
+      Error("TGraph", "Inserted point index should be <= %d", fNpoints);
       return;
+   }
+
+   if (ipoint == fNpoints) {
+       SetPoint(ipoint, x, y);
+       return;
    }
 
    Double_t **ps = ExpandAndCopy(fNpoints + 1, ipoint);
@@ -2212,6 +2276,22 @@ void TGraph::SetPoint(Int_t i, Double_t x, Double_t y)
    fX[i] = x;
    fY[i] = y;
    if (gPad) gPad->Modified();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Set x value for point i.
+
+void TGraph::SetPointX(Int_t i, Double_t x)
+{
+    SetPoint(i, x, GetPointY(i));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Set y value for point i.
+
+void TGraph::SetPointY(Int_t i, Double_t y)
+{
+    SetPoint(i, GetPointX(i), y);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

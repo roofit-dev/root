@@ -13,12 +13,21 @@ set(py_sources
   cppyy/_typemap.py
   cppyy/_version.py
   cppyy/interactive.py
+  cppyy/ll.py
 )
 
-set(d $ENV{DESTDIR}/${CMAKE_INSTALL_PREFIX}/${runtimedir})
+set(cppyyDirName python/cppyy)
+
+foreach(val RANGE ${how_many_pythons})
+  list(GET python_executables ${val} python_executable)
+
+  foreach(py_source ${py_sources})
+    install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${d}/${py_source})")
+    install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${d}/${py_source})")
+  endforeach()
+endforeach()
+
+file(COPY ${cppyyDirName} DESTINATION ${localruntimedir})
 foreach(py_source ${py_sources})
-  file(COPY python/${py_source} DESTINATION ${localruntimedir}/cppyy)
   install(FILES python/${py_source} DESTINATION ${runtimedir}/cppyy)
-  install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -m py_compile ${d}/${py_source})")
-  install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -O -m py_compile ${d}/${py_source})")
 endforeach()

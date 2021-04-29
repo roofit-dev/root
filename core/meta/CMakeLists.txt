@@ -12,7 +12,6 @@ set(Meta_dict_headers
   TBaseClass.h
   TClassGenerator.h
   TClass.h
-  TClassMenuItem.h
   TClassRef.h
   TClassStreamer.h
   TDataMember.h
@@ -46,11 +45,11 @@ set(Meta_dict_headers
   TStatusBitsChecker.h
   TStreamerElement.h
   TStreamer.h
-  TToggleGroup.h
-  TToggle.h
   TVirtualIsAProxy.h
   TVirtualRefProxy.h
   TVirtualStreamerInfo.h
+  TVirtualArray.h
+  TVirtualObject.h
   PARENT_SCOPE
 )
 
@@ -58,7 +57,6 @@ ROOT_OBJECT_LIBRARY(Meta
   src/TBaseClass.cxx
   src/TClass.cxx
   src/TClassGenerator.cxx
-  src/TClassMenuItem.cxx
   src/TClassRef.cxx
   src/TDataMember.cxx
   src/TDataType.cxx
@@ -86,8 +84,6 @@ ROOT_OBJECT_LIBRARY(Meta
   src/TSchemaRuleSet.cxx
   src/TStatusBitsChecker.cxx
   src/TStreamerElement.cxx
-  src/TToggle.cxx
-  src/TToggleGroup.cxx
   src/TViewPubDataMembers.cxx
   src/TViewPubFunctions.cxx
   src/TVirtualStreamerInfo.cxx

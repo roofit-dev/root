@@ -75,16 +75,6 @@ namespace Internal {
       TParBranchProcessingRAII()  { EnableParBranchProcessing();  }
       ~TParBranchProcessingRAII() { DisableParBranchProcessing(); }
    };
-
-   // Manage parallel tree processing
-   void EnableParTreeProcessing();
-   void DisableParTreeProcessing();
-   Bool_t IsParTreeProcessingEnabled();
-   class TParTreeProcessingRAII {
-   public:
-      TParTreeProcessingRAII()  { EnableParTreeProcessing();  }
-      ~TParTreeProcessingRAII() { DisableParTreeProcessing(); }
-   };
 } } // End ROOT::Internal
 
 namespace ROOT {
@@ -96,7 +86,8 @@ namespace ROOT {
    void EnableImplicitMT(UInt_t numthreads = 0);
    void DisableImplicitMT();
    Bool_t IsImplicitMTEnabled();
-   UInt_t GetImplicitMTPoolSize();
+   UInt_t GetImplicitMTPoolSize() _R__DEPRECATED_624("Please use ROOT::GetThreadPoolSize() instead");
+   UInt_t GetThreadPoolSize();
 }
 
 class TROOT : public TDirectory {
@@ -351,6 +342,7 @@ public:
    static void        SetMacroPath(const char *newpath);
    static Int_t       IncreaseDirLevel();
    static void        IndentLevel();
+   static void        Initialize();
    static Bool_t      Initialized();
    static Bool_t      MemCheck();
    static void        SetDirLevel(Int_t level = 0);

@@ -51,8 +51,10 @@ public:
   virtual void weightError(Double_t& lo, Double_t& hi, RooAbsData::ErrorType etype=RooAbsData::Poisson) const = 0 ; 
 
   virtual Double_t weight(Int_t index) const = 0 ;
-
   virtual Bool_t isWeighted() const = 0 ;
+
+  virtual std::vector<RooSpan<const double>> getBatch(std::size_t first, std::size_t len) const = 0;
+  virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t len) const;
 
   // Change observable name
   virtual Bool_t changeObservableName(const char* from, const char* to) =0 ;
@@ -114,7 +116,8 @@ public:
   virtual const TTree* tree() const { return 0 ; }
   virtual void dump() {} 
 
-  virtual void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=0, const char* rangeName=0, Int_t nStart=0, Int_t nStop=2000000000) = 0 ;
+  virtual void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=0, const char* rangeName=0,
+      std::size_t nStart=0, std::size_t nStop = std::numeric_limits<std::size_t>::max()) = 0 ;
 
   virtual void forceCacheUpdate() {} ;
   

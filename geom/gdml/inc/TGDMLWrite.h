@@ -33,12 +33,12 @@
 #include "TGeoBoolNode.h"
 #include "TGeoCompositeShape.h"
 #include "TGeoScaledShape.h"
+#include "TGeoTessellated.h"
 #include "TGeoManager.h"
 #include "TGDMLMatrix.h"
 
 #include <map>
 #include <set>
-#include <vector>
 #include <iostream>
 
 ////////////////////////////////////////////////////////////////////////////
@@ -116,7 +116,7 @@ private:
    SurfaceList fSurfaceList;  //list of optical surfaces
    VolList     fVolumeList;   //list of volumes
    NodeList    fNodeList;     //list of placed volumes
-  
+
    NameLst *fNameList; //list of names (pointer mapped)
 
    //Data members
@@ -193,6 +193,7 @@ private:
    XMLNodePointer_t CreateXtrusionN(TGeoXtru * geoShape);
    XMLNodePointer_t CreateEllipsoidN(TGeoCompositeShape * geoShape, TString elName);
    XMLNodePointer_t CreateElConeN(TGeoScaledShape * geoShape);
+   XMLNodePointer_t CreateTessellatedN(TGeoTessellated * geoShape);
    XMLNodePointer_t CreateOpticalSurfaceN(TGeoOpticalSurface * geoSurf);
    XMLNodePointer_t CreateSkinSurfaceN(TGeoSkinSurface * geoSurf);
    XMLNodePointer_t CreateBorderSurfaceN(TGeoBorderSurface * geoSurf);
@@ -240,7 +241,7 @@ private:
    // Backwards compatibility (to be removed in the future): Combined implementation to extract GDML information from the geometry tree
    void WriteGDMLfile(TGeoManager * geomanager, TGeoVolume* top_vol, TList* materialsLst, const char* filename, TString option);
    void ExtractVolumes(TGeoVolume* topVolume);    //result <volume> node...  + corresp. shape
-  
+
    ClassDef(TGDMLWrite, 0)    //imports GDML using DOM and binds it to ROOT
 };
 

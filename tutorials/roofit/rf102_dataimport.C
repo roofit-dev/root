@@ -1,12 +1,15 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook -js
+///
 /// Basic functionality: importing data from ROOT TTrees and THx histograms
 ///
 /// \macro_image
 /// \macro_output
 /// \macro_code
-/// \author 07/2008 - Wouter Verkerke
+///
+/// \date 07/2008
+/// \author Wouter Verkerke
 
 #include "RooRealVar.h"
 #include "RooDataSet.h"
@@ -97,7 +100,7 @@ void rf102_dataimport()
    // ------------------------------------------------------------------------------------
    {
       // Write data to output stream
-      std::ofstream outstream("/tmp/rf102_testData.txt");
+      std::ofstream outstream("rf102_testData.txt");
       // Optionally, adjust the stream here (e.g. std::setprecision)
       ds.write(outstream);
       outstream.close();
@@ -107,7 +110,7 @@ void rf102_dataimport()
    // to the RooDataSet::read() function.
    std::cout << "\n-----------------------\nReading data from ASCII\n";
    RooDataSet *dataReadBack =
-      RooDataSet::read("/tmp/rf102_testData.txt",
+      RooDataSet::read("rf102_testData.txt",
                        RooArgList(x, y), // variables to be read. If the file has more fields, these are ignored.
                        "D"); // Prints if a RooFit message stream listens for debug messages. Use Q for quiet.
 

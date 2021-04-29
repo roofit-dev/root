@@ -148,17 +148,17 @@ static void SetRootSys()
    }
 }
 
-
+#ifndef IS_RPATH_BUILD
 static void SetLibraryPath()
 {
-#ifdef ROOTPREFIX
+# ifdef ROOTPREFIX
    if (getenv("ROOTIGNOREPREFIX")) {
-#endif
+# endif
    // Set library path for the different platforms.
 
    char *msg;
 
-#  if defined(__hpux)  || defined(_HIUX_SOURCE)
+# if defined(__hpux)  || defined(_HIUX_SOURCE)
    if (getenv("SHLIB_PATH")) {
       msg = new char [strlen(getenv("ROOTSYS"))+strlen(getenv("SHLIB_PATH"))+100];
       sprintf(msg, "SHLIB_PATH=%s/lib:%s", getenv("ROOTSYS"),
@@ -167,7 +167,7 @@ static void SetLibraryPath()
       msg = new char [strlen(getenv("ROOTSYS"))+100];
       sprintf(msg, "SHLIB_PATH=%s/lib", getenv("ROOTSYS"));
    }
-#  elif defined(_AIX)
+# elif defined(_AIX)
    if (getenv("LIBPATH")) {
       msg = new char [strlen(getenv("ROOTSYS"))+strlen(getenv("LIBPATH"))+100];
       sprintf(msg, "LIBPATH=%s/lib:%s", getenv("ROOTSYS"),
@@ -176,7 +176,7 @@ static void SetLibraryPath()
       msg = new char [strlen(getenv("ROOTSYS"))+100];
       sprintf(msg, "LIBPATH=%s/lib:/lib:/usr/lib", getenv("ROOTSYS"));
    }
-#  elif defined(__APPLE__)
+# elif defined(__APPLE__)
    if (getenv("DYLD_LIBRARY_PATH")) {
       msg = new char [strlen(getenv("ROOTSYS"))+strlen(getenv("DYLD_LIBRARY_PATH"))+100];
       sprintf(msg, "DYLD_LIBRARY_PATH=%s/lib:%s", getenv("ROOTSYS"),
@@ -185,7 +185,7 @@ static void SetLibraryPath()
       msg = new char [strlen(getenv("ROOTSYS"))+100];
       sprintf(msg, "DYLD_LIBRARY_PATH=%s/lib", getenv("ROOTSYS"));
    }
-#  else
+# else
    if (getenv("LD_LIBRARY_PATH")) {
       msg = new char [strlen(getenv("ROOTSYS"))+strlen(getenv("LD_LIBRARY_PATH"))+100];
       sprintf(msg, "LD_LIBRARY_PATH=%s/lib:%s", getenv("ROOTSYS"),
@@ -198,12 +198,19 @@ static void SetLibraryPath()
       sprintf(msg, "LD_LIBRARY_PATH=%s/lib", getenv("ROOTSYS"));
 #  endif
    }
-#  endif
+# endif
    putenv(msg);
-#ifdef ROOTPREFIX
+# ifdef ROOTPREFIX
+   } else /* if (getenv("ROOTIGNOREPREFIX")) */ {
+      std::string ldLibPath = "LD_LIBRARY_PATH=" ROOTLIBDIR;
+      if (const char *oldLdLibPath = getenv("LD_LIBRARY_PATH"))
+         ldLibPath += std::string(":") + oldLdLibPath;
+      char *msg = strdup(ldLibPath.c_str());
+      putenv(msg);
    }
-#endif
+# endif
 }
+#endif
 
 extern "C" {
    static void SigUsr1(int);
@@ -300,7 +307,7 @@ int main(int argc, char **argv)
    // In batch mode don't show splash screen, idem for no logo mode,
    // in about mode show always splash screen
    bool batch = false, about = false;
-   bool notebook = false;
+   int notebook = 0; // index of --notebook args, all other args will be re-directed to nbmain
    int i;
    for (i = 1; i < argc; i++) {
       if (!strcmp(argv[i], "-?") || !strncmp(argv[i], "-h", 2) ||
@@ -314,10 +321,10 @@ int main(int argc, char **argv)
       if (!strcmp(argv[i], "-a"))         about    = true;
       if (!strcmp(argv[i], "-config"))    gNoLogo  = true;
       if (!strcmp(argv[i], "--version"))  gNoLogo  = true;
-      if (!strcmp(argv[i], "--notebook")) notebook = true;
+      if (!strcmp(argv[i], "--notebook")) { notebook = i; break; }
    }
 
-   if (notebook) {
+   if (notebook > 0) {
       // Build command
 #ifdef ROOTBINDIR
       if (getenv("ROOTIGNOREPREFIX"))
@@ -328,8 +335,16 @@ int main(int argc, char **argv)
          snprintf(arg0, sizeof(arg0), "%s/%s", ROOTBINDIR, ROOTNBBINARY);
 #endif
 
+      int numnbargs = 1 + (argc - notebook);
+
+      argvv = new char* [numnbargs+1];
+      argvv[0] = arg0;
+      for (i = 1; i < numnbargs; i++)
+         argvv[i] = argv[notebook + i];
+      argvv[numnbargs] = nullptr;
+
       // Execute ROOT notebook binary
-      execl(arg0, arg0, NULL);
+      execv(arg0, argvv);
 
       // Exec failed
       fprintf(stderr, "%s: can't start ROOT notebook -- this option is only available when building with CMake, please check that %s exists\n",
@@ -440,8 +455,10 @@ int main(int argc, char **argv)
       argvv[1+i] = argv[i];
    argvv[1+i] = 0;
 
+#ifndef IS_RPATH_BUILD
    // Make sure library path is set
    SetLibraryPath();
+#endif
 
    // Execute actual ROOT module
    execv(arg0, argvv);

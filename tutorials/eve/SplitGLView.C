@@ -50,7 +50,6 @@
 #include "TGShapedFrame.h"
 #include "TGButton.h"
 #include "TGTab.h"
-#include "TEnv.h"
 
 #include "TCanvas.h"
 #include "TFormula.h"
@@ -926,7 +925,7 @@ void SplitGLView::HandleMenu(Int_t id)
             static TString dir(".");
             TGFileInfo fi;
             fi.fFileTypes = filetypes;
-            fi.fIniDir    = StrDup(dir);
+            fi.SetIniDir(dir);
             new TGFileDialog(gClient->GetRoot(), this, kFDOpen, &fi);
             if (fi.fFilename)
                OpenFile(fi.fFilename);
@@ -938,8 +937,8 @@ void SplitGLView::HandleMenu(Int_t id)
          {
             TGFileInfo fi;
             fi.fFileTypes = rcfiletypes;
-            fi.fIniDir    = StrDup(rcdir);
-            fi.fFilename  = StrDup(rcfile);
+            fi.SetIniDir(rcdir);
+            fi.SetFilename(rcfile);
             new TGFileDialog(gClient->GetRoot(), this, kFDOpen, &fi);
             if (fi.fFilename) {
                rcfile = fi.fFilename;
@@ -953,8 +952,8 @@ void SplitGLView::HandleMenu(Int_t id)
          {
             TGFileInfo fi;
             fi.fFileTypes = rcfiletypes;
-            fi.fIniDir    = StrDup(rcdir);
-            fi.fFilename  = StrDup(rcfile);
+            fi.SetIniDir(rcdir);
+            fi.SetFilename(rcfile);
             new TGFileDialog(gClient->GetRoot(), this, kFDSave, &fi);
             if (fi.fFilename) {
                rcfile = fi.fFilename;

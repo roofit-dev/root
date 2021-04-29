@@ -68,6 +68,14 @@ static inline PyObject* add_template(PyObject* pyclass,
     return nullptr;       // so that caller caches the method on full name
 }
 
+//----------------------------------------------------------------------------
+static int enum_setattro(PyObject* /* pyclass */, PyObject* /* pyname */, PyObject* /* pyval */)
+{
+// Helper to make enums read-only.
+    PyErr_SetString(PyExc_TypeError, "enum values are read-only");
+    return -1;
+}
+
 
 //= CPyCppyy type proxy construction/destruction =============================
 static PyObject* meta_alloc(PyTypeObject* meta, Py_ssize_t nitems)
@@ -85,9 +93,9 @@ static void meta_dealloc(CPPScope* scope)
             delete scope->fImp.fUsing; scope->fImp.fUsing = nullptr;
         }
     } else {
-        for (auto& pp : *scope->fImp.fCppObjects) Py_DECREF(pp.second);
         delete scope->fImp.fCppObjects; scope->fImp.fCppObjects = nullptr;
     }
+    delete scope->fOperators;
     free(scope->fModuleName);
     return PyType_Type.tp_dealloc((PyObject*)scope);
 }
@@ -213,6 +221,7 @@ static PyObject* pt_new(PyTypeObject* subtype, PyObject* args, PyObject* kwds)
         return nullptr;
 
     result->fFlags      = CPPScope::kNone;
+    result->fOperators  = nullptr;
     result->fModuleName = nullptr;
 
     if (raw && deref) {
@@ -263,9 +272,12 @@ static PyObject* pt_new(PyTypeObject* subtype, PyObject* args, PyObject* kwds)
     }
 
 // maps for using namespaces and tracking objects
-    if (!Cppyy::IsNamespace(result->fCppType))
+    if (!Cppyy::IsNamespace(result->fCppType)) {
+        static Cppyy::TCppType_t exc_type = (Cppyy::TCppType_t)Cppyy::GetScope("std::exception");
+        if (Cppyy::IsSubtype(result->fCppType, exc_type))
+            result->fFlags |= CPPScope::kIsException;
         result->fImp.fCppObjects = new CppToPyMap_t;
-    else {
+    } else {
         result->fImp.fUsing = nullptr;
         result->fFlags |= CPPScope::kIsNamespace;
     }
@@ -276,6 +288,7 @@ static PyObject* pt_new(PyTypeObject* subtype, PyObject* args, PyObject* kwds)
     }
     return (PyObject*)result;
 }
+
 
 //----------------------------------------------------------------------------
 static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname)
@@ -298,6 +311,10 @@ static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname)
     std::vector<Utility::PyError_t> errors;
     Utility::FetchError(errors);
     attr = CreateScopeProxy(name, pyclass);
+    if (CPPScope_Check(attr) && (((CPPScope*)attr)->fFlags & CPPScope::kIsException)) {
+    // Instead of the CPPScope, return a fresh exception class derived from CPPExcInstance.
+        return CreateExcScopeProxy(attr, pyname, pyclass);
+    }
 
     CPPScope* klass = ((CPPScope*)pyclass);
     if (!attr) {
@@ -372,6 +389,24 @@ static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname)
             // enum types (incl. named and class enums)
                 Cppyy::TCppEnum_t etype = Cppyy::GetEnum(scope, name);
                 if (etype) {
+                // create new enum type with labeled values in place, with a meta-class
+                // to make sure the enum values are read-only
+                    PyObject* pymetabases = PyTuple_New(1);
+                    PyObject* btype = (PyObject*)Py_TYPE(&PyInt_Type);
+                    Py_INCREF(btype);
+                    PyTuple_SET_ITEM(pymetabases, 0, btype);
+
+                    PyObject* args = Py_BuildValue((char*)"sO{}", (name+"_meta").c_str(), pymetabases);
+                    Py_DECREF(pymetabases);
+                    PyObject* pymeta = PyType_Type.tp_new(Py_TYPE(&PyInt_Type), args, nullptr);
+                    ((PyTypeObject*)pymeta)->tp_setattro = enum_setattro;
+                    Py_DECREF(args);
+
+                // prepare the base class
+                    PyObject* pybases = PyTuple_New(1);
+                    Py_INCREF(&PyInt_Type);
+                    PyTuple_SET_ITEM(pybases, 0, (PyObject*)&PyInt_Type);
+
                 // collect the enum values
                     Cppyy::TCppIndex_t ndata = Cppyy::GetNumEnumData(etype);
                     PyObject* dct = PyDict_New();
@@ -391,15 +426,15 @@ static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname)
                     PyDict_SetItem(dct, PyStrings::gCppName, cppname);
                     Py_DECREF(cppname);
 
-                // create new type with labeled values in place
-                    PyObject* pybases = PyTuple_New(1);
-                    Py_INCREF(&PyInt_Type);
-                    PyTuple_SET_ITEM(pybases, 0, (PyObject*)&PyInt_Type);
-                    PyObject* args = Py_BuildValue((char*)"sOO", name.c_str(), pybases, dct);
-                    attr = Py_TYPE(&PyInt_Type)->tp_new(Py_TYPE(&PyInt_Type), args, nullptr);
-                    Py_DECREF(args);
+                // create the actual enum class
+                    args = Py_BuildValue((char*)"sOO", name.c_str(), pybases, dct);
                     Py_DECREF(pybases);
                     Py_DECREF(dct);
+                    attr = ((PyTypeObject*)pymeta)->tp_new((PyTypeObject*)pymeta, args, nullptr);
+
+                // final cleanup
+                    Py_DECREF(args);
+                    Py_DECREF(pymeta);
 
                 } else {
                 // presumably not a class enum; simply pretend int
@@ -459,13 +494,15 @@ static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname)
             if (pyuscope) {
                 attr = PyObject_GetAttr(pyuscope, pyname);
                 if (attr) break;
+                PyErr_Clear();
             }
         }
     }
 
-    if (attr)
+    if (attr) {
         std::for_each(errors.begin(), errors.end(), Utility::PyError_t::Clear);
-    else {
+        PyErr_Clear();
+    } else {
     // not found: prepare a full error report
         PyObject* topmsg = nullptr;
         PyObject* sklass = PyObject_Str(pyclass);
@@ -583,7 +620,11 @@ PyTypeObject CPPScope_Type = {
     (getattrofunc)meta_getattro,   // tp_getattro
     (setattrofunc)meta_setattro,   // tp_setattro
     0,                             // tp_as_buffer
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,     // tp_flags
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE
+#if PY_VERSION_HEX >= 0x03040000
+        | Py_TPFLAGS_TYPE_SUBCLASS
+#endif
+        ,                          // tp_flags
     (char*)"CPyCppyy metatype (internal)",        // tp_doc
     0,                             // tp_traverse
     0,                             // tp_clear

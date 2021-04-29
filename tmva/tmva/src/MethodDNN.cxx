@@ -664,8 +664,8 @@ void TMVA::MethodDNN::Train()
       size_t nTrainingSamples = GetEventCollection(Types::kTraining).size() - nValidationSamples;
       size_t nTestSamples = nValidationSamples;
 
-      if (nTrainingSamples < settings.batchSize or
-          nValidationSamples < settings.batchSize or
+      if (nTrainingSamples < settings.batchSize ||
+          nValidationSamples < settings.batchSize ||
           nTestSamples < settings.batchSize) {
          Log() << kFATAL << "Number of samples in the datasets are train: "
                          << nTrainingSamples << " valid: " << nValidationSamples
@@ -774,6 +774,7 @@ void TMVA::MethodDNN::Train()
          case EActivationFunction::kRelu:     g = EnumFunction::RELU;     break;
          case EActivationFunction::kSigmoid:  g = EnumFunction::SIGMOID;  break;
          case EActivationFunction::kTanh:     g = EnumFunction::TANH;     break;
+         case EActivationFunction::kFastTanh: g = EnumFunction::TANH;     break;
          case EActivationFunction::kSymmRelu: g = EnumFunction::SYMMRELU; break;
          case EActivationFunction::kSoftSign: g = EnumFunction::SOFTSIGN; break;
          case EActivationFunction::kGauss:    g = EnumFunction::GAUSS;    break;
@@ -1024,6 +1025,9 @@ void TMVA::MethodDNN::TrainGpu()
             }
             testError /= (Double_t) (nTestSamples / settings.batchSize);
 
+            //Log the loss value
+            fTrainHistory.AddValue("testError",stepCount,testError);
+
             end   = std::chrono::system_clock::now();
 
             // Compute training error.
@@ -1034,6 +1038,8 @@ void TMVA::MethodDNN::TrainGpu()
                trainingError += net.Loss(inputMatrix, outputMatrix);
             }
             trainingError /= (Double_t) (nTrainingSamples / settings.batchSize);
+            //Log the loss value
+            fTrainHistory.AddValue("trainingError",stepCount,trainingError);
 
             // Compute numerical throughput.
             std::chrono::duration<double> elapsed_seconds = end - start;
@@ -1208,6 +1214,9 @@ void TMVA::MethodDNN::TrainCpu()
             }
             testError /= (Double_t) (nTestSamples / settings.batchSize);
 
+            //Log the loss value
+            fTrainHistory.AddValue("testError",stepCount,testError);
+
             end   = std::chrono::system_clock::now();
 
             // Compute training error.
@@ -1219,6 +1228,9 @@ void TMVA::MethodDNN::TrainCpu()
                trainingError += net.Loss(inputMatrix, outputMatrix, weightMatrix);
             }
             trainingError /= (Double_t) (nTrainingSamples / settings.batchSize);
+
+            //Log the loss value
+            fTrainHistory.AddValue("trainingError",stepCount,trainingError);
 
             if (fInteractive){
                fInteractive->AddPoint(stepCount, trainingError, testError);

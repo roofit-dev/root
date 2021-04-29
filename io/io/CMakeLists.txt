@@ -54,6 +54,7 @@ ROOT_LINKER_LIBRARY(RIO
   $<TARGET_OBJECTS:RootPcmObjs>
   LIBRARIES
     ${CMAKE_DL_LIBS}
+    ${ROOT_ATOMIC_LIBS}
   DEPENDENCIES
     Core
     Thread
@@ -98,8 +99,6 @@ ROOT_GENERATE_DICTIONARY(G__RIO
   TStreamerInfoActions.h
   TVirtualCollectionIterators.h
   TStreamerInfo.h
-  TVirtualObject.h
-  TVirtualArray.h
   TZIPFile.h
   ${RIO_EXTRA_HEADERS}
   STAGE1

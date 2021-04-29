@@ -9,35 +9,44 @@
    <SplitApp id="geomViewerApp" initialMaster="geomHierarchy"
       initialDetail="geomDraw" orientationChange="onOrientationChange">
       <masterPages>
-         <Page id="geomHierarchy" title="Hierarchy" showNavButton="false"
+         <Page id="geomHierarchy" title="Hierarchy" showNavButton="false" enableScrolling="false"
             showFooter="false" showSubHeader="false" showHeader="true" icon="sap-icon://action" class="sapUiStdPage">
             <headerContent>
                <Button icon="sap-icon://settings" type="Transparent"
                         tooltip="Show control page" press="showControl" />
             </headerContent>
             <content>
-               <Toolbar>
-                  <Button icon="sap-icon://log" type="Transparent" visible="{= !${/standalone} }"
-                          tooltip="Quit ROOT session" press="onQuitRootPress" />
-                  <Button icon="sap-icon://save" type="Transparent"
-                          tooltip="Save drawing as png image" press="pressSaveButton" />
-                  <Button icon="sap-icon://synchronize" type="Transparent"
-                          tooltip="Reload geometry drawing" press="onRealoadPress" />
-                  <Button icon="sap-icon://show" type="Transparent"
-                     tooltip="Toggle with info page" press="onInfoPress" />
-                  <ToolbarSpacer />
-                  <SearchField liveChange="onSearch" />
-               </Toolbar>
-               <t:TreeTable id="treeTable"
-                  columnHeaderVisible="false" editable="false"
-                  enableSelectAll="false" selectionBehavior="RowOnly"
-                  selectionMode="Single" visibleRowCountMode="Auto"
-                  cellClick="onCellClick"
-                  rows="{/nodes}">
-               </t:TreeTable>
+               <FlexBox height="100%" direction="Column">
+                  <Toolbar>
+                     <layoutData>
+                        <FlexItemData baseSize="35px"/>
+                     </layoutData>
+
+                     <Button icon="sap-icon://log" type="Transparent" visible="{= !${/standalone} }"
+                             tooltip="Quit ROOT session" press="onQuitRootPress" />
+                     <Button icon="sap-icon://save" type="Transparent"
+                             tooltip="Save drawing as png image" press="pressSaveButton" />
+                     <Button icon="sap-icon://synchronize" type="Transparent"
+                             tooltip="Reload geometry drawing" press="onRealoadPress" />
+                     <Button icon="sap-icon://show" type="Transparent"
+                        tooltip="Toggle with info page" press="onInfoPress" />
+                     <ToolbarSpacer />
+                     <SearchField liveChange="onSearch" />
+                  </Toolbar>
+                  <t:TreeTable id="treeTable"
+                     columnHeaderVisible="false" editable="false"
+                     enableSelectAll="false" selectionBehavior="RowOnly"
+                     selectionMode="Single" visibleRowCountMode="Auto"
+                     cellClick="onCellClick"
+                     rows="{/nodes}">
+                     <t:layoutData>
+                        <FlexItemData growFactor="1"/>
+                     </t:layoutData>
+                  </t:TreeTable>
+               </FlexBox>
             </content>
          </Page>
-         <Page id="geomControl" title="Control" showHeader="true" showFooter="false" showSubHeader="false"
+         <Page id="geomControl" title="Control" showHeader="true" showFooter="false" showSubHeader="false" enableScrolling="true"
                 showNavButton="true" navButtonText="Back to hierarchy" navButtonPress="onPressMasterBack"
                 class="sapUiStdPage">
             <content>
@@ -72,18 +81,26 @@
 
                   <IconTabFilter text="Light">
                     <VBox>
-                       <HBox class="sapUiTinyMargin" justifyContent="SpaceBetween" alignItems="Center">
+                       <ComboBox selectedKey="{/light/kind}" change="lightChanged">
+                           <core:Item key="points" text="Points"/>
+                           <core:Item key="ambient" text="Ambient"/>
+                           <core:Item key="hemisphere" text="Hemisphere"/>
+                       </ComboBox>
+                       <HBox class="sapUiTinyMargin" justifyContent="SpaceBetween" alignItems="Center" visible="{= ${/light/kind} === &apos;points&apos;}">
                           <CheckBox text="Top" selected="{/light/top}" select="lightChanged"/>
                           <CheckBox text="Bottom" selected="{/light/bottom}" select="lightChanged"/>
                        </HBox>
-                       <HBox class="sapUiTinyMargin" justifyContent="SpaceBetween" alignItems="Center">
+                       <HBox class="sapUiTinyMargin" justifyContent="SpaceBetween" alignItems="Center" visible="{= ${/light/kind} === &apos;points&apos;}">
                           <CheckBox text="Left" selected="{/light/left}" select="lightChanged"/>
                           <CheckBox text="Right" selected="{/light/right}" select="lightChanged"/>
                        </HBox>
-                       <HBox class="sapUiTinyMargin" justifyContent="SpaceBetween" alignItems="Center">
+                       <HBox class="sapUiTinyMargin" justifyContent="SpaceBetween" alignItems="Center" visible="{= ${/light/kind} === &apos;points&apos;}">
                           <CheckBox text="Front" selected="{/light/front}" select="lightChanged"/>
                           <CheckBox text="Specular" selected="{/light/specular}" select="lightChanged"/>
                        </HBox>
+                       <Slider min="0" max="3" step="0.01" value="{/light/power}" width="100%"
+                               showAdvancedTooltip="true" showHandleTooltip="false" inputsAsTooltips="true"
+                               change="lightChanged" liveChange="lightChanged"/>
                     </VBox>
                   </IconTabFilter>
 

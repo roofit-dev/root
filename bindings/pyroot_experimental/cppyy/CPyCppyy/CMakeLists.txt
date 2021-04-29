@@ -5,18 +5,22 @@
 # For the list of contributors see $ROOTSYS/README/CREDITS.
 
 set(headers
+    inc/CPyCppyy/API.h
+    inc/CPyCppyy/PyResult.h
+    inc/CPyCppyy/TPyArg.h
     inc/CPyCppyy/CommonDefs.h
-    inc/CPyCppyy/TPyException.h
+    inc/CPyCppyy/PyException.h
     inc/CPyCppyy/DispatchPtr.h
-    inc/CPyCppyy/PyObjectPtr.h
 )
 
 set(sources
+    src/API.cxx
     src/CallContext.cxx
     src/Converters.cxx
     src/CPPClassMethod.cxx
     src/CPPConstructor.cxx
     src/CPPDataMember.cxx
+    src/CPPExcInstance.cxx
     src/CPPFunction.cxx
     src/CPPInstance.cxx
     src/CPPMethod.cxx
@@ -34,42 +38,64 @@ set(sources
     src/PyStrings.cxx
     src/Pythonize.cxx
     src/TemplateProxy.cxx
-    src/TPyException.cxx
+    src/PyException.cxx
+    src/PyResult.cxx
+    src/TPyArg.cxx
     src/TupleOfInstances.cxx
     src/TypeManip.cxx
     src/Utility.cxx
 )
 
-add_library(cppyy SHARED ${headers} ${sources})
+foreach(val RANGE ${how_many_pythons})
+  list(GET python_include_dirs ${val} python_include_dir)
+  list(GET python_under_version_strings ${val} python_under_version_string)
+  list(GET python_version_strings ${val} python_version_string)
+  list(GET python_libraries ${val} python_library)
 
-if(NOT MSVC)
-  target_compile_options(cppyy PRIVATE
-    -Wno-shadow -Wno-strict-aliasing -Wno-unused-but-set-parameter)
-endif()
+  set(libname cppyy${python_under_version_string})
 
-# Disables warnings coming from PyCFunction casts
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 8)
-  target_compile_options(cppyy PRIVATE -Wno-cast-function-type)
-endif()
+  add_library(${libname} SHARED ${headers} ${sources})
 
-# Disables warnings originating from deprecated register keyword in Python
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_STANDARD GREATER_EQUAL 11)
-    target_compile_options(cppyy PRIVATE -Wno-register)
-endif()
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang" AND CMAKE_CXX_STANDARD GREATER_EQUAL 11)
-    target_compile_options(cppyy PRIVATE -Wno-deprecated-register)
-endif()
+  if(NOT MSVC)
+    target_compile_options(${libname} PRIVATE
+      -Wno-shadow -Wno-strict-aliasing)
+  endif()
+  if(NOT "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+    target_compile_options(${libname} PRIVATE
+      -Wno-unused-but-set-parameter)
+  endif()
 
-target_include_directories(cppyy PRIVATE ${CMAKE_BINARY_DIR}/include) # needed for string_view backport
+  # Disables warnings coming from PyCFunction casts
+  if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 8)
+    target_compile_options(${libname} PRIVATE -Wno-cast-function-type)
+  endif()
 
-target_include_directories(cppyy PUBLIC ${PYTHON_INCLUDE_DIRS}
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
-target_link_libraries(cppyy cppyy_backend ${PYTHON_LIBRARIES})
+  # Disables warnings originating from deprecated register keyword in Python
+  if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_STANDARD GREATER_EQUAL 11)
+    target_compile_options(${libname} PRIVATE -Wno-register)
+  endif()
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" AND CMAKE_CXX_STANDARD GREATER_EQUAL 11)
+    target_compile_options(${libname} PRIVATE -Wno-register)
+    target_compile_options(${libname} PRIVATE -Wno-deprecated-register)
+  endif()
 
-set_property(GLOBAL APPEND PROPERTY ROOT_EXPORTED_TARGETS cppyy)
-install(TARGETS cppyy EXPORT ${CMAKE_PROJECT_NAME}Exports DESTINATION ${runtimedir})
+  # Disables warnings due to new field tp_vectorcall in Python 3.8
+  if(NOT MSVC AND ${python_version_string} VERSION_GREATER_EQUAL "3.8")
+    target_compile_options(${libname} PRIVATE -Wno-missing-field-initializers)
+  endif()
+
+  target_include_directories(${libname} PRIVATE ${CMAKE_BINARY_DIR}/include) # needed for string_view backport
+
+  target_include_directories(${libname} PUBLIC ${python_include_dir}
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
+  target_link_libraries(${libname} cppyy_backend${python_under_version_string} ${python_library})
+
+  set_property(GLOBAL APPEND PROPERTY ROOT_EXPORTED_TARGETS ${libname})
+
+  # Installation
+  install(TARGETS ${libname} EXPORT ${CMAKE_PROJECT_NAME}Exports DESTINATION ${runtimedir})
+endforeach()
 
 file(COPY ${headers} DESTINATION ${CMAKE_BINARY_DIR}/include/CPyCppyy)
 install(FILES ${headers} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/CPyCppyy)
-

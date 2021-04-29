@@ -607,7 +607,7 @@ void TH2::FillRandom(const char *fname, Int_t ntimes)
 
    TAxis & xAxis = fXaxis;
    TAxis & yAxis = fYaxis;
-   
+
    // in case axes of histogram are not defined use the function axis
    if (fXaxis.GetXmax() <= fXaxis.GetXmin()  || fYaxis.GetXmax() <= fYaxis.GetXmin()) {
       Double_t xmin,xmax,ymin,ymax;
@@ -697,10 +697,33 @@ void TH2::DoFitSlices(bool onX,
    TAxis& innerAxis = (onX ? fXaxis : fYaxis);
 
    Int_t nbins  = outerAxis.GetNbins();
+   // get correct first last bins for outer axis
+   // when using default values (0,-1) check if an axis range is set in outer axis
+   // do same as in DoProjection for inner axis
+   if ( lastbin < firstbin && outerAxis.TestBit(TAxis::kAxisRange) ) {
+      firstbin = outerAxis.GetFirst();
+      lastbin = outerAxis.GetLast();
+      // For special case of TAxis::SetRange, when first == 1 and last
+      // = N and the range bit has been set, the TAxis will return 0
+      // for both.
+      if (firstbin == 0 && lastbin == 0)  {
+         firstbin = 1;
+         lastbin = nbins;
+      }
+   }
    if (firstbin < 0) firstbin = 0;
    if (lastbin < 0 || lastbin > nbins + 1) lastbin = nbins + 1;
    if (lastbin < firstbin) {firstbin = 0; lastbin = nbins + 1;}
+
+   
    TString opt = option;
+   TString proj_opt = "e";
+   Int_t i1 = opt.Index("[");
+   Int_t i2 = opt.Index("]");
+   if (i1>=0 && i2>i1) {
+      proj_opt += opt(i1,i2-i1+1);
+      opt.Remove(i1, i2-i1+1);
+   }
    opt.ToLower();
    Int_t ngroup = 1;
    if (opt.Contains("g2")) {ngroup = 2; opt.ReplaceAll("g2","");}
@@ -734,14 +757,21 @@ void TH2::DoFitSlices(bool onX,
    char *name   = new char[2000];
    char *title  = new char[2000];
    const TArrayD *bins = outerAxis.GetXbins();
+   // outer axis boudaries used for creating reported histograms are different
+   // than the limits used in the projection loop (firstbin,lastbin)
+   Int_t firstOutBin = outerAxis.TestBit(TAxis::kAxisRange) ? std::max(firstbin,1) : 1; 
+   Int_t lastOutBin = outerAxis.TestBit(TAxis::kAxisRange) ?  std::min(lastbin,outerAxis.GetNbins() ) : outerAxis.GetNbins();
+   Int_t nOutBins = lastOutBin-firstOutBin+1;
+   // merge bins if use nstep > 1 and fixed bins
+   if (bins->fN == 0) nOutBins /= nstep;  
    for (ipar=0;ipar<npar;ipar++) {
       snprintf(name,2000,"%s_%d",GetName(),ipar);
       snprintf(title,2000,"Fitted value of par[%d]=%s",ipar,f1->GetParName(ipar));
       delete gDirectory->FindObject(name);
       if (bins->fN == 0) {
-         hlist[ipar] = new TH1D(name,title, nbins, outerAxis.GetXmin(), outerAxis.GetXmax());
+         hlist[ipar] = new TH1D(name,title, nOutBins, outerAxis.GetBinLowEdge(firstOutBin), outerAxis.GetBinUpEdge(lastOutBin));
       } else {
-         hlist[ipar] = new TH1D(name,title, nbins,bins->fArray);
+         hlist[ipar] = new TH1D(name,title, nOutBins, &bins->fArray[firstOutBin-1]);
       }
       hlist[ipar]->GetXaxis()->SetTitle(outerAxis.GetTitle());
       if (arr)
@@ -751,9 +781,9 @@ void TH2::DoFitSlices(bool onX,
    delete gDirectory->FindObject(name);
    TH1D *hchi2 = 0;
    if (bins->fN == 0) {
-      hchi2 = new TH1D(name,"chisquare", nbins, outerAxis.GetXmin(), outerAxis.GetXmax());
+      hchi2 = new TH1D(name,"chisquare", nOutBins, outerAxis.GetBinLowEdge(firstOutBin), outerAxis.GetBinUpEdge(lastOutBin));
    } else {
-      hchi2 = new TH1D(name,"chisquare", nbins, bins->fArray);
+      hchi2 = new TH1D(name,"chisquare", nOutBins, &bins->fArray[firstOutBin-1]);
    }
    hchi2->GetXaxis()->SetTitle(outerAxis.GetTitle());
    if (arr)
@@ -761,31 +791,45 @@ void TH2::DoFitSlices(bool onX,
 
    //Loop on all bins in Y, generate a projection along X
    Int_t bin;
-   Long64_t nentries;
    // in case of sliding merge nstep=1, i.e. do slices starting for every bin
    // now do not slices case with overflow (makes more sense)
+   // when fitting add the option "N". We don;t want to display and store the function
+   // for the temporary histograms that are created and fitted
+   opt += " n ";
+   TH1D *hp = nullptr;
    for (bin=firstbin;bin+ngroup-1<=lastbin;bin += nstep) {
-      TH1D *hp;
       if (onX)
-         hp= ProjectionX("_temp",bin,bin+ngroup-1,"e");
+         hp= ProjectionX("_temp",bin,bin+ngroup-1,proj_opt);
       else
-         hp= ProjectionY("_temp",bin,bin+ngroup-1,"e");
+         hp= ProjectionY("_temp",bin,bin+ngroup-1,proj_opt);
       if (hp == 0) continue;
-      nentries = Long64_t(hp->GetEntries());
-      if (nentries == 0 || nentries < cut) {delete hp; continue;}
+      // nentries can be the effective entries and it could be a very small number but not zero!
+      Double_t nentries = hp->GetEntries();
+      if ( nentries <= 0 || nentries < cut) {
+         if (!opt.Contains("Q"))
+               Info("DoFitSlices","Slice %d skipped, the number of entries is zero or smaller than the given cut value, n=%f",bin,nentries);
+         continue;
+      }
       f1->SetParameters(parsave);
+      Int_t binOn = hlist[0]->FindBin(outerAxis.GetBinCenter(bin+ngroup/2));
+      if (!opt.Contains("Q"))
+         Info("DoFitSlices","Slice fit %d (%f,%f)",binOn,hlist[0]->GetXaxis()->GetBinLowEdge(binOn),hlist[0]->GetXaxis()->GetBinUpEdge(binOn));
       hp->Fit(f1,opt.Data());
       Int_t npfits = f1->GetNumberFitPoints();
       if (npfits > npar && npfits >= cut) {
-         Int_t binOn = bin + ngroup/2;
          for (ipar=0;ipar<npar;ipar++) {
-            hlist[ipar]->Fill(outerAxis.GetBinCenter(binOn),f1->GetParameter(ipar));
+            hlist[ipar]->SetBinContent(binOn,f1->GetParameter(ipar));
             hlist[ipar]->SetBinError(binOn,f1->GetParError(ipar));
          }
          hchi2->SetBinContent(binOn,f1->GetChisquare()/(npfits-npar));
       }
-      delete hp;
+      else {
+         if (!opt.Contains("Q"))
+            Info("DoFitSlices","Fitted slice %d skipped, the number of fitted points is too small, n=%d",bin,npfits);
+      }
+      // don't need to delete hp. If histogram has the same name it is re-used in TH2::Projection
    }
+   delete hp; 
    delete [] parsave;
    delete [] name;
    delete [] title;
@@ -1159,7 +1203,6 @@ Double_t TH2::Integral(Int_t firstxbin, Int_t lastxbin, Int_t firstybin, Int_t l
    return DoIntegral(firstxbin,lastxbin,firstybin,lastybin,-1,0,err,option);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Return integral of bin contents in range [firstxbin,lastxbin],[firstybin,lastybin]
 /// for a 2-D histogram. Calculates also the integral error using error propagation
@@ -1173,16 +1216,14 @@ Double_t TH2::IntegralAndError(Int_t firstxbin, Int_t lastxbin, Int_t firstybin,
    return DoIntegral(firstxbin,lastxbin,firstybin,lastybin,-1,0,error,option,kTRUE);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 ///illegal for a TH2
 
-Double_t TH2::Interpolate(Double_t)
+Double_t TH2::Interpolate(Double_t) const
 {
    Error("Interpolate","This function must be called with 2 arguments for a TH2");
    return 0;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Given a point P(x,y), Interpolate approximates the value via bilinear
@@ -1191,13 +1232,13 @@ Double_t TH2::Interpolate(Double_t)
 /// Andy Mastbaum 10/8/2008
 /// vaguely based on R.Raja 6-Sep-2008
 
- Double_t TH2::Interpolate(Double_t x, Double_t y)
+ Double_t TH2::Interpolate(Double_t x, Double_t y) const
 {
    Double_t f=0;
    Double_t x1=0,x2=0,y1=0,y2=0;
    Double_t dx,dy;
-   Int_t bin_x = fXaxis.FindBin(x);
-   Int_t bin_y = fYaxis.FindBin(y);
+   Int_t bin_x = fXaxis.FindFixBin(x);
+   Int_t bin_y = fYaxis.FindFixBin(y);
    if(bin_x<1 || bin_x>GetNbinsX() || bin_y<1 || bin_y>GetNbinsY()) {
       Error("Interpolate","Cannot interpolate outside histogram domain.");
       return 0;
@@ -1240,13 +1281,13 @@ Double_t TH2::Interpolate(Double_t)
       y2 = fYaxis.GetBinCenter(bin_y);
       break;
    }
-   Int_t bin_x1 = fXaxis.FindBin(x1);
+   Int_t bin_x1 = fXaxis.FindFixBin(x1);
    if(bin_x1<1) bin_x1=1;
-   Int_t bin_x2 = fXaxis.FindBin(x2);
+   Int_t bin_x2 = fXaxis.FindFixBin(x2);
    if(bin_x2>GetNbinsX()) bin_x2=GetNbinsX();
-   Int_t bin_y1 = fYaxis.FindBin(y1);
+   Int_t bin_y1 = fYaxis.FindFixBin(y1);
    if(bin_y1<1) bin_y1=1;
-   Int_t bin_y2 = fYaxis.FindBin(y2);
+   Int_t bin_y2 = fYaxis.FindFixBin(y2);
    if(bin_y2>GetNbinsY()) bin_y2=GetNbinsY();
    Int_t bin_q22 = GetBin(bin_x2,bin_y2);
    Int_t bin_q12 = GetBin(bin_x1,bin_y2);
@@ -1265,7 +1306,7 @@ Double_t TH2::Interpolate(Double_t)
 ////////////////////////////////////////////////////////////////////////////////
 ///illegal for a TH2
 
-Double_t TH2::Interpolate(Double_t, Double_t, Double_t)
+Double_t TH2::Interpolate(Double_t, Double_t, Double_t) const
 {
    Error("Interpolate","This function must be called with 2 arguments for a TH2");
    return 0;
@@ -1492,10 +1533,10 @@ TH2 * TH2::Rebin( Int_t ngroup, const char*newname, const Double_t *xbins)
 {
    if (xbins != nullptr) {
       Error("Rebin","Rebinning a 2-d histogram into variable bins is not supported (it is possible only for 1-d histograms). Return a nullptr");
-      return nullptr; 
+      return nullptr;
    }
    Info("Rebin","Rebinning only the x-axis. Use Rebin2D for rebinning both axes");
-   return RebinX(ngroup, newname); 
+   return RebinX(ngroup, newname);
 }
 ////////////////////////////////////////////////////////////////////////////////
 /// Rebin this histogram grouping nxgroup/nygroup bins along the xaxis/yaxis together.
@@ -2348,13 +2389,10 @@ TH1D* TH2::QuantilesY( Double_t prob, const char * name) const
 TH1D* TH2::DoQuantiles(bool onX, const char * name, Double_t prob) const
 {
    const TAxis *outAxis = 0;
-   const TAxis *inAxis = 0;
    if ( onX )   {
       outAxis = GetXaxis();
-      inAxis = GetYaxis();
    }  else {
       outAxis = GetYaxis();
-      inAxis = GetXaxis();
    }
 
    // build first name of returned histogram
@@ -2394,7 +2432,7 @@ TH1D* TH2::DoQuantiles(bool onX, const char * name, Double_t prob) const
   pp[0] = prob;
 
   TH1D * slice = 0;
-  for (int ibin = inAxis->GetFirst() ; ibin <= inAxis->GetLast() ; ++ibin) {
+  for (int ibin = outAxis->GetFirst() ; ibin <= outAxis->GetLast() ; ++ibin) {
     Double_t qq[1];
     // do a projection on the opposite axis
     slice = DoProjection(!onX, "tmp",ibin,ibin,"");
