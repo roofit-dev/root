@@ -16,3 +16,5 @@ add_subdirectory(roostats)
 if(xml)
   add_subdirectory(histfactory)
 endif()
+add_subdirectory(RDataFrameHelpers)
+
