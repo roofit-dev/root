@@ -226,14 +226,12 @@ RooNLLVar::RooNLLVar(const RooNLLVar& other, const char* name) :
 RooAbsTestStatistic* RooNLLVar::create(const char *name, const char *title, RooAbsReal& pdf, RooAbsData& adata,
             const RooArgSet& projDeps, const char* rangeName, const char* addCoefRangeName,
             Int_t nCPU, RooFit::MPSplit interleave, Bool_t CPUAffinity, bool verbose, bool splitRange, bool binnedL) {
-  auto testStat = new RooNLLVar(name, title,
-      dynamic_cast<RooAbsPdf&>(pdf), adata,
-<<<<<<< HEAD
-      projDeps, _extended, rangeName, addCoefRangeName, nCPU, interleave, CPUAffinity, verbose, splitRange, false, binnedL);
-=======
-      projDeps, _extended, rangeName, addCoefRangeName, nCPU, interleave, verbose, splitRange, false, binnedL,
+  RooAbsPdf & thePdf = dynamic_cast<RooAbsPdf&>(pdf);
+  // check if pdf can be extended
+  bool extendedPdf = _extended && thePdf.canBeExtended();
+  auto testStat = new RooNLLVar(name, title, thePdf, adata,
+      projDeps, extendedPdf , rangeName, addCoefRangeName, nCPU, interleave, CPUAffinity, verbose, splitRange, false, binnedL,
       _integrateBinsPrecision);
->>>>>>> 53df5b2fe91baa00b91e5ede4fa99d76aa24cd22
   testStat->batchMode(_batchEvaluations);
   return testStat;
 }
