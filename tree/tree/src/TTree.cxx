@@ -69,7 +69,7 @@ In the following, the details about the creation of different types of branches 
 
 ## <a name="addcolumnoffundamentaltypes"></a>Add a column (`branch`) of fundamental types and arrays thereof
 This strategy works also for lists of variables, e.g. to describe simple structures.
-It is strongly reccomended to persistify those as objects rather than lists of leaves.
+It is strongly recommended to persistify those as objects rather than lists of leaves.
 
 ~~~ {.cpp}
     auto branch = tree.Branch(branchname, address, leaflist, bufsize)
@@ -98,6 +98,8 @@ It is strongly reccomended to persistify those as objects rather than lists of l
    - `d` : a 24 bit truncated floating point (`Double32_t`)
    - `L` : a 64 bit signed integer (`Long64_t`)
    - `l` : a 64 bit unsigned integer (`ULong64_t`)
+   - `G` : a long signed integer, stored as 64 bit (`Long_t`)
+   - `g` : a long unsigned integer, stored as 64 bit (`ULong_t`)
    - `O` : [the letter `o`, not a zero] a boolean (`Bool_t`)
 
   Examples:
@@ -392,9 +394,11 @@ End_Macro
 #include "TLeafS.h"
 #include "TList.h"
 #include "TMath.h"
+#include "TMemFile.h"
 #include "TROOT.h"
 #include "TRealData.h"
 #include "TRegexp.h"
+#include "TRefTable.h"
 #include "TStreamerElement.h"
 #include "TStreamerInfo.h"
 #include "TStyle.h"
@@ -412,6 +416,8 @@ End_Macro
 #include "TFileMergeInfo.h"
 #include "ROOT/StringConv.hxx"
 #include "TVirtualMutex.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 #include "TBranchIMTHelper.h"
 #include "TNotifyLink.h"
@@ -422,9 +428,10 @@ End_Macro
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <stdio.h>
-#include <limits.h>
+#include <cstdio>
+#include <climits>
 #include <algorithm>
+#include <set>
 
 #ifdef R__USE_IMT
 #include "ROOT/TThreadExecutor.hxx"
@@ -460,8 +467,8 @@ static char DataTypeToChar(EDataType datatype)
    case kDouble32_t: return 'd';
    case kFloat_t:    return 'F';
    case kFloat16_t:  return 'f';
-   case kLong_t:     return 0; // unsupported
-   case kULong_t:    return 0; // unsupported?
+   case kLong_t:     return 'G';
+   case kULong_t:    return 'g';
    case kchar:       return 0; // unsupported
    case kLong64_t:   return 'L';
    case kULong64_t:  return 'l';
@@ -601,6 +608,8 @@ Long64_t TTree::TClusterIterator::GetEstimatedClusterSize()
    Long64_t zipBytes = fTree->GetZipBytes();
    if (zipBytes == 0) {
       fEstimatedSize = fTree->GetEntries() - 1;
+      if (fEstimatedSize <= 0)
+         fEstimatedSize = 1;
    } else {
       Long64_t clusterEstimate = 1;
       Long64_t cacheSize = fTree->GetCacheSize();
@@ -1924,6 +1933,8 @@ Int_t TTree::Branch(const char* foldername, Int_t bufsize /* = 32000 */, Int_t s
 ///         - `d` : a 24 bit truncated floating point (`Double32_t`)
 ///         - `L` : a 64 bit signed integer (`Long64_t`)
 ///         - `l` : a 64 bit unsigned integer (`ULong64_t`)
+///         - `G` : a long signed integer, stored as 64 bit (`Long_t`)
+///         - `g` : a long unsigned integer, stored as 64 bit (`ULong_t`)
 ///         - `O` : [the letter `o`, not a zero] a boolean (`Bool_t`)
 ///
 ///      Arrays of values are supported with the following syntax:
@@ -2672,27 +2683,26 @@ TStreamerInfo* TTree::BuildStreamerInfo(TClass* cl, void* pointer /* = 0 */, Boo
 /// If the current file contains other objects like TH1 and TTree,
 /// these objects are automatically moved to the new file.
 ///
-/// IMPORTANT NOTE:
-///
-/// Be careful when writing the final Tree header to the file!
-///
-/// Don't do:
+/// \warning Be careful when writing the final Tree header to the file!
+///      Don't do:
 /// ~~~ {.cpp}
 ///     TFile *file = new TFile("myfile.root","recreate");
 ///     TTree *T = new TTree("T","title");
-///     T->Fill(); //loop
+///     T->Fill(); // Loop
 ///     file->Write();
 ///     file->Close();
 /// ~~~
-/// but do the following:
+/// \warning but do the following:
 /// ~~~ {.cpp}
 ///     TFile *file = new TFile("myfile.root","recreate");
 ///     TTree *T = new TTree("T","title");
-///     T->Fill(); //loop
-///     file = T->GetCurrentFile(); //to get the pointer to the current file
+///     T->Fill(); // Loop
+///     file = T->GetCurrentFile(); // To get the pointer to the current file
 ///     file->Write();
 ///     file->Close();
 /// ~~~
+///
+/// \note This method is never called if the input file is a `TMemFile` or derivate.
 
 TFile* TTree::ChangeFile(TFile* file)
 {
@@ -2783,7 +2793,7 @@ TFile* TTree::ChangeFile(TFile* file)
       if (newfile) newfile->Append(obj);
       file->Remove(obj);
    }
-   delete file;
+   file->TObject::Delete();
    file = 0;
    delete[] fname;
    fname = 0;
@@ -2807,6 +2817,10 @@ TFile* TTree::ChangeFile(TFile* file)
 /// - kMakeClass (3) : MakeClass mode so we can not check.
 /// - kVoidPtr (4) : void* passed so no check was made.
 /// - kNoCheck (5) : Underlying TBranch not yet available so no check was made.
+/// In addition this can be multiplexed with the two bits:
+/// - kNeedEnableDecomposedObj : in order for the address (type) to be 'usable' the branch needs to be in Decomposed Object (aka MakeClass) mode.
+/// - kNeedDisableDecomposedObj : in order for the address (type) to be 'usable' the branch needs to not be in Decomposed Object (aka MakeClass) mode.
+/// This bits can be masked out by using kDecomposedObjMask
 
 Int_t TTree::CheckBranchAddressType(TBranch* branch, TClass* ptrClass, EDataType datatype, Bool_t isptr)
 {
@@ -2819,11 +2833,12 @@ Int_t TTree::CheckBranchAddressType(TBranch* branch, TClass* ptrClass, EDataType
    TClass* expectedClass = 0;
    EDataType expectedType = kOther_t;
    if (0 != branch->GetExpectedType(expectedClass,expectedType) ) {
-      // Something went wrong, the warning message has already be issued.
+      // Something went wrong, the warning message has already been issued.
       return kInternalError;
    }
+   bool isBranchElement = branch->InheritsFrom( TBranchElement::Class() );
    if (expectedClass && datatype == kOther_t && ptrClass == 0) {
-      if (branch->InheritsFrom( TBranchElement::Class() )) {
+      if (isBranchElement) {
          TBranchElement* bEl = (TBranchElement*)branch;
          bEl->SetTargetClass( expectedClass->GetName() );
       }
@@ -2872,7 +2887,7 @@ Int_t TTree::CheckBranchAddressType(TBranch* branch, TClass* ptrClass, EDataType
 
    if( expectedClass && ptrClass &&
        expectedClass != ptrClass &&
-       branch->InheritsFrom( TBranchElement::Class() ) &&
+       isBranchElement &&
        ptrClass->GetSchemaRules() &&
        ptrClass->GetSchemaRules()->HasRuleWithSourceClass( expectedClass->GetName() ) ) {
       TBranchElement* bEl = (TBranchElement*)branch;
@@ -2901,7 +2916,7 @@ Int_t TTree::CheckBranchAddressType(TBranch* branch, TClass* ptrClass, EDataType
    } else if (expectedClass && ptrClass && !expectedClass->InheritsFrom(ptrClass)) {
 
       if (expectedClass->GetCollectionProxy() && ptrClass->GetCollectionProxy() &&
-          branch->InheritsFrom( TBranchElement::Class() ) &&
+          isBranchElement &&
           expectedClass->GetCollectionProxy()->GetValueClass() &&
           ptrClass->GetCollectionProxy()->GetValueClass() )
       {
@@ -2921,7 +2936,7 @@ Int_t TTree::CheckBranchAddressType(TBranch* branch, TClass* ptrClass, EDataType
       }
 
       Error("SetBranchAddress", "The pointer type given (%s) does not correspond to the class needed (%s) by the branch: %s", ptrClass->GetName(), expectedClass->GetName(), branch->GetName());
-      if (branch->InheritsFrom( TBranchElement::Class() )) {
+      if (isBranchElement) {
          TBranchElement* bEl = (TBranchElement*)branch;
          bEl->SetTargetClass( expectedClass->GetName() );
       }
@@ -2940,7 +2955,7 @@ Int_t TTree::CheckBranchAddressType(TBranch* branch, TClass* ptrClass, EDataType
       if (expectedClass) {
          Error("SetBranchAddress", "The pointer type given \"%s\" (%d) does not correspond to the type needed \"%s\" by the branch: %s",
                TDataType::GetTypeName(datatype), datatype, expectedClass->GetName(), branch->GetName());
-         if (branch->InheritsFrom( TBranchElement::Class() )) {
+         if (isBranchElement) {
             TBranchElement* bEl = (TBranchElement*)branch;
             bEl->SetTargetClass( expectedClass->GetName() );
          }
@@ -2995,15 +3010,19 @@ Int_t TTree::CheckBranchAddressType(TBranch* branch, TClass* ptrClass, EDataType
    if (expectedClass && expectedClass->GetCollectionProxy() && dynamic_cast<TEmulatedCollectionProxy*>(expectedClass->GetCollectionProxy())) {
       Error("SetBranchAddress", writeStlWithoutProxyMsg,
             expectedClass->GetName(), branch->GetName(), expectedClass->GetName());
-      if (branch->InheritsFrom( TBranchElement::Class() )) {
+      if (isBranchElement) {
          TBranchElement* bEl = (TBranchElement*)branch;
          bEl->SetTargetClass( expectedClass->GetName() );
       }
       return kMissingCompiledCollectionProxy;
    }
-   if (expectedClass && branch->InheritsFrom( TBranchElement::Class() )) {
-      TBranchElement* bEl = (TBranchElement*)branch;
-      bEl->SetTargetClass( expectedClass->GetName() );
+   if (isBranchElement) {
+      if (expectedClass) {
+         TBranchElement* bEl = (TBranchElement*)branch;
+         bEl->SetTargetClass( expectedClass->GetName() );
+      } else if (expectedType != kNoType_t && expectedType != kOther_t) {
+         return kMatch | kNeedEnableDecomposedObj;
+      }
    }
    return kMatch;
 }
@@ -3263,10 +3282,10 @@ void TTree::CopyAddresses(TTree* tree, Bool_t undo)
             branch->SetAddress(0);
             addr = branch->GetAddress();
          }
-         // FIXME: The GetBranch() function is braindead and may
-         //        not find the branch!
-         TBranch* br = tree->GetBranch(branch->GetName());
+         TBranch* br = tree->GetBranch(branch->GetFullName());
          if (br) {
+            if (br->GetMakeClass() != branch->GetMakeClass())
+               br->SetMakeClass(branch->GetMakeClass());
             br->SetAddress(addr);
             // The copy does not own any object allocated by SetAddress().
             if (br->InheritsFrom(TBranchElement::Class())) {
@@ -3281,6 +3300,7 @@ void TTree::CopyAddresses(TTree* tree, Bool_t undo)
    // Copy branch addresses starting from leaves.
    TObjArray* tleaves = tree->GetListOfLeaves();
    Int_t ntleaves = tleaves->GetEntriesFast();
+   std::set<TLeaf*> updatedLeafCount;
    for (Int_t i = 0; i < ntleaves; ++i) {
       TLeaf* tleaf = (TLeaf*) tleaves->UncheckedAt(i);
       TBranch* tbranch = tleaf->GetBranch();
@@ -3300,25 +3320,30 @@ void TTree::CopyAddresses(TTree* tree, Bool_t undo)
          tree->ResetBranchAddress(tbranch);
       } else {
          TBranchElement *mother = dynamic_cast<TBranchElement*>(leaf->GetBranch()->GetMother());
+         bool needAddressReset = false;
          if (leaf->GetLeafCount() && (leaf->TestBit(TLeaf::kNewValue) || !leaf->GetValuePointer() || (mother && mother->IsObjectOwner())) && tleaf->GetLeafCount())
          {
             // If it is an array and it was allocated by the leaf itself,
             // let's make sure it is large enough for the incoming data.
             if (leaf->GetLeafCount()->GetMaximum() < tleaf->GetLeafCount()->GetMaximum()) {
                leaf->GetLeafCount()->IncludeRange( tleaf->GetLeafCount() );
-               if (leaf->GetValuePointer()) {
-                  if (leaf->IsA() == TLeafElement::Class() && mother)
-                     mother->ResetAddress();
-                  else
-                     leaf->SetAddress(nullptr);
-               }
-            }
+               updatedLeafCount.insert(leaf->GetLeafCount());
+               needAddressReset = true;
+             } else {
+               needAddressReset = (updatedLeafCount.find(leaf->GetLeafCount()) != updatedLeafCount.end());
+             }
+         }
+         if (needAddressReset && leaf->GetValuePointer()) {
+            if (leaf->IsA() == TLeafElement::Class() && mother)
+               mother->ResetAddress();
+            else
+               leaf->SetAddress(nullptr);
          }
          if (!branch->GetAddress() && !leaf->GetValuePointer()) {
             // We should attempts to set the address of the branch.
             // something like:
             //(TBranchElement*)branch->GetMother()->SetAddress(0)
-            //plus a few more subtilities (see TBranchElement::GetEntry).
+            //plus a few more subtleties (see TBranchElement::GetEntry).
             //but for now we go the simplest route:
             //
             // Note: This may result in the allocation of an object.
@@ -3803,7 +3828,7 @@ Long64_t TTree::Draw(const char* varexp, const TCut& selection, Option_t* option
 ///   arguments. For example:
 ///   ~~~ {.cpp}
 ///       TMath::BreitWigner(fPx,3,2)
-///       event.GetHistogram().GetXaxis().GetXmax()
+///       event.GetHistogram()->GetXaxis()->GetXmax()
 ///   ~~~
 ///   Note: You can only pass expression that depend on the TTree's data
 ///   to static functions and you can only call non-static member function
@@ -3941,28 +3966,57 @@ Long64_t TTree::Draw(const char* varexp, const TCut& selection, Option_t* option
 /// ~~~
 /// ### Retrieving the result of Draw
 ///
-/// By default the temporary histogram created is called "htemp", but only in
-/// the one dimensional Draw("e1") it contains the TTree's data points. For
-/// a two dimensional Draw, the data is filled into a TGraph which is named
-/// "Graph". They can be retrieved by calling
-/// ~~~ {.cpp}
-///     TH1F *htemp = (TH1F*)gPad->GetPrimitive("htemp"); // 1D
-///     TGraph *graph = (TGraph*)gPad->GetPrimitive("Graph"); // 2D
-/// ~~~
-/// For a three and four dimensional Draw the TPolyMarker3D is unnamed, and
-/// cannot be retrieved.
+/// By default a temporary histogram called `htemp` is created. It will be:
 ///
-/// gPad always contains a TH1 derived object called "htemp" which allows to
-/// access the axes:
-/// ~~~ {.cpp}
-///     TGraph *graph = (TGraph*)gPad->GetPrimitive("Graph"); // 2D
-///     TH2F   *htemp = (TH2F*)gPad->GetPrimitive("htemp"); // empty, but has axes
-///     TAxis  *xaxis = htemp->GetXaxis();
-/// ~~~
-/// ### Saving the result of Draw to an histogram
+///  - A TH1F* in case of a mono-dimensional distribution: `Draw("e1")`,
+///  - A TH2F* in case of a bi-dimensional distribution: `Draw("e1:e2")`,
+///  - A TH3F* in case of a three-dimensional distribution: `Draw("e1:e2:e3")`.
 ///
-/// If varexp0 contains >>hnew (following the variable(s) name(s),
-/// the new histogram created is called hnew and it is kept in the current
+/// In the one dimensional case the `htemp` is filled and drawn whatever the drawing
+/// option is.
+///
+/// In the two and three dimensional cases, with the default drawing option (`""`),
+/// a cloud of points is drawn and the histogram `htemp` is not filled. For all the other
+/// drawing options `htemp` will be filled.
+///
+/// In all cases `htemp` can be retrieved by calling:
+///
+/// ~~~ {.cpp}
+///     auto htemp = (TH1F*)gPad->GetPrimitive("htemp"); // 1D
+///     auto htemp = (TH2F*)gPad->GetPrimitive("htemp"); // 2D
+///     auto htemp = (TH3F*)gPad->GetPrimitive("htemp"); // 3D
+/// ~~~
+///
+/// In the two dimensional case (`Draw("e1;e2")`), with the default drawing option, the
+/// data is filled into a TGraph named `Graph`. This TGraph can be retrieved by
+/// calling
+///
+/// ~~~ {.cpp}
+///     auto graph = (TGraph*)gPad->GetPrimitive("Graph");
+/// ~~~
+///
+/// For the three and four dimensional cases, with the default drawing option, an unnamed
+/// TPolyMarker3D is produced, and therefore cannot be retrieved.
+///
+/// In all cases `htemp` can be used to access the axes. For instance in the 2D case:
+///
+/// ~~~ {.cpp}
+///     auto htemp = (TH2F*)gPad->GetPrimitive("htemp");
+///     auto xaxis = htemp->GetXaxis();
+/// ~~~
+///
+/// When the option `"A"` is used (with TGraph painting option) to draw a 2D
+/// distribution:
+/// ~~~ {.cpp}
+///     tree.Draw("e1:e2","","A*");
+/// ~~~
+/// a scatter plot is produced (with stars in that case) but the axis creation is
+/// delegated to TGraph and `htemp` is not created.
+///
+/// ### Saving the result of Draw to a histogram
+///
+/// If `varexp` contains `>>hnew` (following the variable(s) name(s)),
+/// the new histogram called `hnew` is created and it is kept in the current
 /// directory (and also the current pad). This works for all dimensions.
 ///
 /// Example:
@@ -4471,9 +4525,14 @@ void TTree::DropBuffers(Int_t)
 /// Note that the user can decide to call FlushBaskets and AutoSave in her event loop
 /// base on the number of events written instead of the number of bytes written.
 ///
-/// Note that calling FlushBaskets too often increases the IO time.
+/// \note Calling `TTree::FlushBaskets` too often increases the IO time. 
+/// 
+/// \note Calling `TTree::AutoSave` too often increases the IO time and also the
+///       file size.
 ///
-/// Note that calling AutoSave too often increases the IO time and also the file size.
+/// \note This method calls `TTree::ChangeFile` when the tree reaches a size
+///       greater than `TTree::fgMaxTreeSize`. This doesn't happen if the tree is
+///       attached to a `TMemFile` or derivate.
 
 Int_t TTree::Fill()
 {
@@ -4653,8 +4712,10 @@ Int_t TTree::Fill()
    // to the case where the tree is in the top level directory.
    if (fDirectory)
       if (TFile *file = fDirectory->GetFile())
-         if ((TDirectory *)file == fDirectory && (file->GetEND() > fgMaxTreeSize))
-            ChangeFile(file);
+         if (static_cast<TDirectory *>(file) == fDirectory && (file->GetEND() > fgMaxTreeSize))
+            // Changing file clashes with the design of TMemFile and derivates, see #6523.
+            if (!(dynamic_cast<TMemFile *>(file)))
+               ChangeFile(file);
 
    return nerror == 0 ? nbytes : -1;
 }
@@ -5128,8 +5189,35 @@ const char* TTree::GetAlias(const char* aliasName) const
    return 0;
 }
 
+namespace {
+/// Do a breadth first search through the implied hierarchy
+/// of branches.
+/// To avoid scanning through the list multiple time
+/// we also remember the 'depth-first' match.
+TBranch *R__GetBranch(const TObjArray &branches, const char *name)
+{
+   TBranch *result = nullptr;
+   Int_t nb = branches.GetEntriesFast();
+   for (Int_t i = 0; i < nb; i++) {
+      TBranch* b = (TBranch*)branches.UncheckedAt(i);
+      if (!b)
+          continue;
+      if (!strcmp(b->GetName(), name)) {
+         return b;
+      }
+      if (!strcmp(b->GetFullName(), name)) {
+         return b;
+      }
+      if (!result)
+         result = R__GetBranch(*(b->GetListOfBranches()), name);
+   }
+   return result;
+}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Return pointer to the branch with the given name in this tree or its friends.
+/// The search is done breadth first.
 
 TBranch* TTree::GetBranch(const char* name)
 {
@@ -5141,33 +5229,10 @@ TBranch* TTree::GetBranch(const char* name)
       return 0;
    }
 
-   // Search using branches.
-   Int_t nb = fBranches.GetEntriesFast();
-   for (Int_t i = 0; i < nb; i++) {
-      TBranch* branch = (TBranch*) fBranches.UncheckedAt(i);
-      if (!branch) {
-         continue;
-      }
-      if (!strcmp(branch->GetName(), name)) {
-         return branch;
-      }
-      TObjArray* lb = branch->GetListOfBranches();
-      Int_t nb1 = lb->GetEntriesFast();
-      for (Int_t j = 0; j < nb1; j++) {
-         TBranch* b1 = (TBranch*) lb->UncheckedAt(j);
-         if (!strcmp(b1->GetName(), name)) {
-            return b1;
-         }
-         TObjArray* lb1 = b1->GetListOfBranches();
-         Int_t nb2 = lb1->GetEntriesFast();
-         for (Int_t k = 0; k < nb2; k++) {
-            TBranch* b2 = (TBranch*) lb1->UncheckedAt(k);
-            if (!strcmp(b2->GetName(), name)) {
-               return b2;
-            }
-         }
-      }
-   }
+   // Search using branches, breadth first.
+   TBranch *result = R__GetBranch(fBranches, name);
+   if (result)
+     return result;
 
    // Search using leaves.
    TObjArray* leaves = GetListOfLeaves();
@@ -5176,6 +5241,9 @@ TBranch* TTree::GetBranch(const char* name)
       TLeaf* leaf = (TLeaf*) leaves->UncheckedAt(i);
       TBranch* branch = leaf->GetBranch();
       if (!strcmp(branch->GetName(), name)) {
+         return branch;
+      }
+      if (!strcmp(branch->GetFullName(), name)) {
          return branch;
       }
    }
@@ -5814,7 +5882,7 @@ Int_t TTree::GetEntryWithIndex(Int_t major, Int_t minor)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return a pointer to the TTree friend whose name or alias is 'friendname.
+/// Return a pointer to the TTree friend whose name or alias is `friendname`.
 
 TTree* TTree::GetFriend(const char *friendname) const
 {
@@ -5953,17 +6021,24 @@ TLeaf* TTree::GetLeafImpl(const char* branchname, const char *leafname)
    }
    TIter nextl(GetListOfLeaves());
    while ((leaf = (TLeaf*)nextl())) {
-      if (strcmp(leaf->GetName(),leafname)) continue;
+      if (strcmp(leaf->GetFullName(), leafname) != 0 && strcmp(leaf->GetName(), leafname) != 0)
+         continue; // leafname does not match GetName() nor GetFullName(), this is not the right leaf
       if (branchname) {
-         UInt_t nbch = strlen(branchname);
+         // check the branchname is also a match
          TBranch *br = leaf->GetBranch();
+         // if a quick comparison with the branch full name is a match, we are done
+         if (!strcmp(br->GetFullName(), branchname))
+            return leaf;
+         UInt_t nbch = strlen(branchname);
          const char* brname = br->GetName();
          TBranch *mother = br->GetMother();
          if (strncmp(brname,branchname,nbch)) {
             if (mother != br) {
                const char *mothername = mother->GetName();
                UInt_t motherlen = strlen(mothername);
-               if (nbch > motherlen && strncmp(mothername,branchname,motherlen)==0 && (mothername[motherlen-1]=='.' || branchname[motherlen]=='.')) {
+               if (!strcmp(mothername, branchname)) {
+                  return leaf;
+               } else if (nbch > motherlen && strncmp(mothername,branchname,motherlen)==0 && (mothername[motherlen-1]=='.' || branchname[motherlen]=='.')) {
                   // The left part of the requested name match the name of the mother, let's see if the right part match the name of the branch.
                   if (strncmp(brname,branchname+motherlen+1,nbch-motherlen-1)) {
                      // No it does not
@@ -5994,7 +6069,7 @@ TLeaf* TTree::GetLeafImpl(const char* branchname, const char *leafname)
    while ((fe = (TFriendElement*)next())) {
       TTree *t = fe->GetTree();
       if (t) {
-         leaf = t->GetLeaf(leafname);
+         leaf = t->GetLeaf(branchname, leafname);
          if (leaf) return leaf;
       }
    }
@@ -6154,8 +6229,8 @@ TVirtualTreePlayer* TTree::GetPlayer()
 
 TTreeCache *TTree::GetReadCache(TFile *file) const
 {
-   TTreeCache *pe = dynamic_cast<TTreeCache*>(file->GetCacheRead(this));
-   if (pe && pe->GetTree() != this)
+   TTreeCache *pe = dynamic_cast<TTreeCache*>(file->GetCacheRead(GetTree()));
+   if (pe && pe->GetTree() != GetTree())
       pe = nullptr;
    return pe;
 }
@@ -6171,8 +6246,8 @@ TTreeCache *TTree::GetReadCache(TFile *file, Bool_t create)
    if (create && !pe) {
       if (fCacheDoAutoInit)
          SetCacheSizeAux(kTRUE, -1);
-      pe = dynamic_cast<TTreeCache*>(file->GetCacheRead(this));
-      if (pe && pe->GetTree() != this) pe = 0;
+      pe = dynamic_cast<TTreeCache*>(file->GetCacheRead(GetTree()));
+      if (pe && pe->GetTree() != GetTree()) pe = 0;
    }
    return pe;
 }
@@ -6302,7 +6377,7 @@ Int_t TTree::LoadBaskets(Long64_t maxmemory)
 /// Set current entry.
 ///
 /// Returns -2 if entry does not exist (just as TChain::LoadTree()).
-/// Returns -6 if an error occours in the notification callback (just as TChain::LoadTree()).
+/// Returns -6 if an error occurs in the notification callback (just as TChain::LoadTree()).
 ///
 /// Note: This function is overloaded in TChain.
 ///
@@ -7767,6 +7842,16 @@ void TTree::RegisterExternalFriend(TFriendElement *fe)
    fExternalFriends->Add(fe);
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// Removes external friend
+
+void TTree::RemoveExternalFriend(TFriendElement *fe)
+{
+   if (fExternalFriends) fExternalFriends->Remove((TObject*)fe);
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Remove a friend from the list of friends.
 
@@ -8176,9 +8261,12 @@ Int_t TTree::SetBranchAddress(const char* bname, void* addr, TBranch** ptr, TCla
    }
 
    Int_t res = CheckBranchAddressType(branch, ptrClass, datatype, isptr);
+
    // This will set the value of *ptr to branch.
    if (res >= 0) {
       // The check succeeded.
+      if ((res & kNeedEnableDecomposedObj) && !branch->GetMakeClass())
+         branch->SetMakeClass(kTRUE);
       SetBranchAddressImp(branch,addr,ptr);
    } else {
       if (ptr) *ptr = 0;
@@ -8242,7 +8330,7 @@ Int_t TTree::SetBranchAddressImp(TBranch *branch, void* addr, TBranch** ptr)
 ///     T.setBranchStatus("e",1);
 ///     T.GetEntry(i);
 /// ~~~
-/// bname is interpreted as a wildcarded TRegexp (see TRegexp::MakeWildcard).
+/// bname is interpreted as a wild-carded TRegexp (see TRegexp::MakeWildcard).
 /// Thus, "a*b" or "a.*b" matches branches starting with "a" and ending with
 /// "b", but not any other branch with an "a" followed at some point by a
 /// "b". For this second behavior, use "*a*b*". Note that TRegExp does not

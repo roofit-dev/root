@@ -52,21 +52,20 @@ as an identifier of the modifier method.
 General purpose message signal
 */
 
-#include "Varargs.h"
 #include "TQObject.h"
 #include "TQConnection.h"
 #include "THashList.h"
 #include "TPRegexp.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TClass.h"
-#include "TSystem.h"
 #include "TMethod.h"
 #include "TBaseClass.h"
 #include "TDataType.h"
 #include "TInterpreter.h"
 #include "TQClass.h"
 #include "TError.h"
-#include "Riostream.h"
+#include <iostream>
 #include "RQ_OBJECT.h"
 #include "TVirtualMutex.h"
 #include "RConfigure.h"
@@ -474,6 +473,7 @@ void TQObject::CollectClassSignalLists(TList& list, TClass* cls)
 
 void TQObject::HighPriority(const char *signal_name, const char *slot_name)
 {
+   if (!fListOfSignals) return;
    TQConnectionList *clist = (TQConnectionList*)
       fListOfSignals->FindObject(signal_name);
 
@@ -500,6 +500,7 @@ void TQObject::HighPriority(const char *signal_name, const char *slot_name)
 
 void TQObject::LowPriority(const char *signal_name, const char *slot_name)
 {
+   if (!fListOfSignals) return;
    TQConnectionList *clist = (TQConnectionList*)
       fListOfSignals->FindObject(signal_name);
 

@@ -16,6 +16,7 @@
 #include "TBranchElement.h"
 #include "TBranchRef.h"
 #include "TBranchSTL.h"
+#include "TBranchObject.h"
 #include "TBranchProxyDirector.h"
 #include "TClassEdit.h"
 #include "TFriendElement.h"
@@ -452,6 +453,8 @@ void ROOT::Internal::TTreeReaderValueBase::CreateProxy() {
    }
 
    auto branchFromFullName = fTreeReader->GetTree()->GetBranch(fBranchName);
+   if (branchFromFullName == nullptr) // use the slower but more thorough FindBranch as fallback
+      branchFromFullName = fTreeReader->GetTree()->FindBranch(fBranchName);
 
    if (!fDict) {
       const char* brDataType = "{UNDETERMINED}";
