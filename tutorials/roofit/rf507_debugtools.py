@@ -1,7 +1,6 @@
 ## \file
 ## \ingroup tutorial_roofit
 ## \notebook -nodraw
-##
 ## Organization and simultaneous fits: RooFit memory tracing debug tool
 ##
 ## \macro_code

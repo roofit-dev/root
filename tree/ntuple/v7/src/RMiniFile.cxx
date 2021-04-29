@@ -13,6 +13,8 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
+#include <ROOT/RConfig.hxx>
+
 #include "ROOT/RMiniFile.hxx"
 
 #include <ROOT/RRawFile.hxx>
@@ -842,6 +844,22 @@ struct RTFNTuple {
       ntuple.fReserved     = fReserved;
       return ntuple;
    }
+   void Print(std::ostream& output) {
+      output << "RTFNTuple {\n";
+      output << "    fByteCount: " << fByteCount << ",\n";
+      output << "    fVersionClass: " << fVersionClass << ",\n";
+      output << "    fChecksum: " << fChecksum << ",\n";
+      output << "    fVersionInternal: " << fVersionInternal << ",\n";
+      output << "    fSize: " << fSize << ",\n";
+      output << "    fSeekHeader: " << fSeekHeader << ",\n";
+      output << "    fNBytesHeader: " << fNBytesHeader << ",\n";
+      output << "    fLenHeader: " << fLenHeader << ",\n";
+      output << "    fSeekFooter: " << fSeekFooter << ",\n";
+      output << "    fNBytesFooter: " << fNBytesFooter << ",\n";
+      output << "    fLenFooter: " << fLenFooter << ",\n";
+      output << "    fReserved: " << fReserved << ",\n";
+      output << "}";
+   }
 };
 
 /// The bare file global header
@@ -901,7 +919,8 @@ ROOT::Experimental::Internal::RMiniFileReader::RMiniFileReader(ROOT::Internal::R
 {
 }
 
-ROOT::Experimental::RNTuple ROOT::Experimental::Internal::RMiniFileReader::GetNTuple(std::string_view ntupleName)
+ROOT::Experimental::RResult<ROOT::Experimental::RNTuple>
+ROOT::Experimental::Internal::RMiniFileReader::GetNTuple(std::string_view ntupleName)
 {
    char ident[4];
    ReadBuffer(ident, 4, 0);
@@ -912,7 +931,8 @@ ROOT::Experimental::RNTuple ROOT::Experimental::Internal::RMiniFileReader::GetNT
 }
 
 
-ROOT::Experimental::RNTuple ROOT::Experimental::Internal::RMiniFileReader::GetNTupleProper(std::string_view ntupleName)
+ROOT::Experimental::RResult<ROOT::Experimental::RNTuple>
+ROOT::Experimental::Internal::RMiniFileReader::GetNTupleProper(std::string_view ntupleName)
 {
    RTFHeader fileHeader;
    ReadBuffer(&fileHeader, sizeof(fileHeader), 0);
@@ -950,7 +970,10 @@ ROOT::Experimental::RNTuple ROOT::Experimental::Internal::RMiniFileReader::GetNT
       }
       offset = offsetNextKey;
    }
-   R__ASSERT(found);
+   if (!found) {
+      return R__FAIL("no RNTuple named '" + std::string(ntupleName)
+         + "' in file '" + fRawFile->GetUrl() + "'");
+   }
 
    ReadBuffer(&key, sizeof(key), key.GetSeekKey());
    offset = key.GetSeekKey() + key.fKeyLen;
@@ -959,7 +982,8 @@ ROOT::Experimental::RNTuple ROOT::Experimental::Internal::RMiniFileReader::GetNT
    return ntuple.ToRNTuple();
 }
 
-ROOT::Experimental::RNTuple ROOT::Experimental::Internal::RMiniFileReader::GetNTupleBare(std::string_view ntupleName)
+ROOT::Experimental::RResult<ROOT::Experimental::RNTuple>
+ROOT::Experimental::Internal::RMiniFileReader::GetNTupleBare(std::string_view ntupleName)
 {
    RBareFileHeader fileHeader;
    ReadBuffer(&fileHeader, sizeof(fileHeader), 0);
@@ -967,7 +991,12 @@ ROOT::Experimental::RNTuple ROOT::Experimental::Internal::RMiniFileReader::GetNT
    auto offset = sizeof(fileHeader);
    ReadBuffer(&name, 1, offset);
    ReadBuffer(&name, name.GetSize(), offset);
-   R__ASSERT(std::string_view(name.fData, name.fLName) == ntupleName);
+   std::string_view foundName(name.fData, name.fLName);
+   if (foundName != ntupleName) {
+      return R__FAIL("expected RNTuple named '" + std::string(ntupleName)
+         + "' but instead found '" + std::string(foundName)
+         + "' in file '" + fRawFile->GetUrl() + "'");
+   }
    offset += name.GetSize();
 
    RTFNTuple ntuple;
@@ -999,7 +1028,11 @@ void ROOT::Experimental::Internal::RNTupleFileWriter::RFileSimple::Write(
    R__ASSERT(fFile);
    size_t retval;
    if ((offset >= 0) && (static_cast<std::uint64_t>(offset) != fFilePos)) {
+#ifdef R__SEEK64
+      retval = fseeko64(fFile, offset, SEEK_SET);
+#else
       retval = fseek(fFile, offset, SEEK_SET);
+#endif
       R__ASSERT(retval == 0);
       fFilePos = offset;
    }
@@ -1099,7 +1132,11 @@ ROOT::Experimental::Internal::RNTupleFileWriter *ROOT::Experimental::Internal::R
    if (idxDirSep != std::string::npos) {
       fileName.erase(0, idxDirSep + 1);
    }
+#ifdef R__SEEK64
+   FILE *fileStream = fopen64(std::string(path.data(), path.size()).c_str(), "wb");
+#else
    FILE *fileStream = fopen(std::string(path.data(), path.size()).c_str(), "wb");
+#endif
    R__ASSERT(fileStream);
 
    auto writer = new RNTupleFileWriter(ntupleName);
@@ -1319,7 +1356,11 @@ void ROOT::Experimental::Internal::RNTupleFileWriter::WriteTFileSkeleton(int def
    fFileSimple.Write(&strEmpty, strEmpty.GetSize());
    fFileSimple.Write(&fileRoot, fileRoot.GetSize());
    fFileSimple.fFilePos = tail;
+#ifdef R__SEEK64
+   auto retval = fseeko64(fFileSimple.fFile, tail, SEEK_SET);
+#else
    auto retval = fseek(fFileSimple.fFile, tail, SEEK_SET);
+#endif
    R__ASSERT(retval == 0);
    fFileSimple.fFilePos = tail;
 }

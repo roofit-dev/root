@@ -1,4 +1,4 @@
-# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# Copyright (C) 1995-2020, Rene Brun and Fons Rademakers.
 # All rights reserved.
 #
 # For the licensing terms see $ROOTSYS/LICENSE.
@@ -9,7 +9,7 @@ include(ExternalProject)
 include(FindPackageHandleStandardArgs)
 
 set(lcgpackages http://lcgpackages.web.cern.ch/lcgpackages/tarFiles/sources)
-string(REPLACE "-Werror" "" ROOT_EXTERNAL_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+string(REPLACE "-Werror " "" ROOT_EXTERNAL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ")
 
 macro(find_package)
   if(NOT "${ARGV0}" IN_LIST ROOT_BUILTINS)
@@ -64,6 +64,25 @@ if(builtin_zlib)
   list(APPEND ROOT_BUILTINS ZLIB)
   add_subdirectory(builtins/zlib)
 endif()
+
+#---Check for nlohmann/json.hpp---------------------------------------------------------
+if(NOT builtin_nlohmannjson)
+  message(STATUS "Looking for nlohmann/json.hpp")
+  if(fail-on-missing)
+    find_package(nlohmann_json REQUIRED)
+  else()
+    find_package(nlohmann_json)
+    if(NOT nlohmann_json_FOUND)
+      message(STATUS "nlohmann/json.hpp not found. Switching on builtin_nlohmannjson option")
+      set(builtin_nlohmannjson ON CACHE BOOL "Enabled because nlohmann/json.hpp not found" FORCE)
+    endif()
+  endif()
+endif()
+
+if(builtin_nlohmannjson)
+  add_subdirectory(builtins/nlohmann)
+endif()
+
 
 #---Check for Unuran ------------------------------------------------------------------
 if(unuran AND NOT builtin_unuran)
@@ -190,15 +209,13 @@ if(builtin_lzma)
     ExternalProject_Add(
       LZMA
       URL ${CMAKE_SOURCE_DIR}/core/lzma/src/xz-${lzma_version}-win32.tar.gz
-      URL_HASH SHA256=c5910475aa8c7b4ed322f3e043c9cc9214e997f2a85b6b32f7702ac6d47364f8
+      URL_HASH SHA256=a923ee68d836de5492d8de0fec467b9536f2543c8579ca11f4b5e6f46a8cda8c
       PREFIX LZMA
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       CONFIGURE_COMMAND ""
-      BUILD_COMMAND ${CMAKE_COMMAND} -E copy lib/liblzma.lib <INSTALL_DIR>/lib
-      INSTALL_COMMAND ${CMAKE_COMMAND} -E copy lib/liblzma.dll <INSTALL_DIR>/bin
-      LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1 BUILD_IN_SOURCE 1
-      BUILD_BYPRODUCTS ${LIBLZMA_LIBRARIES})
-    install(FILES ${CMAKE_BINARY_DIR}/bin/liblzma.dll DESTINATION ${CMAKE_INSTALL_BINDIR})
+      BUILD_COMMAND ""
+      INSTALL_COMMAND ""
+      LOG_DOWNLOAD 1)
     set(LIBLZMA_INCLUDE_DIR ${CMAKE_BINARY_DIR}/LZMA/src/LZMA/include)
   else()
     if(CMAKE_CXX_COMPILER_ID MATCHES Clang)
@@ -211,6 +228,7 @@ if(builtin_lzma)
       set(LIBLZMA_CFLAGS "${LIBLZMA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
     endif()
     set(LIBLZMA_LIBRARIES ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}lzma${CMAKE_STATIC_LIBRARY_SUFFIX})
+    set(LIBLZMA_CFLAGS "${LIBLZMA_CFLAGS} -O3")
     ExternalProject_Add(
       LZMA
       URL ${CMAKE_SOURCE_DIR}/core/lzma/src/xz-${lzma_version}.tar.gz
@@ -356,6 +374,9 @@ if(asimage)
   find_Package(PNG)
   if(PNG_FOUND)
     set(ASEXTRA_LIBRARIES ${ASEXTRA_LIBRARIES} ${PNG_LIBRARIES})
+    # Some missing variables needed for external PNG build
+    set(PNG_LIBRARY_RELEASE ${PNG_LIBRARY})
+    # apparently there will be two set of includes here (needs to be selected only last that was passed: PNG_INCLUDE_DIR)
     list(GET PNG_INCLUDE_DIRS 0 PNG_INCLUDE_DIR)
   endif()
   find_Package(JPEG)
@@ -406,7 +427,7 @@ if(builtin_afterimage)
       set(_jpeginclude --with-builtin-jpeg)
     endif()
     if(PNG_FOUND)
-      set(_pnginclude  --with-png-includes=${PNG_PNG_INCLUDE_DIR})
+      set(_pnginclude  --with-png-includes=${PNG_INCLUDE_DIR})
     else()
        set(_pnginclude  --with-builtin-png)
     endif()
@@ -470,14 +491,17 @@ if(mathmore OR builtin_gsl)
     foreach(l gsl gslcblas)
       list(APPEND GSL_LIBRARIES ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}${l}${CMAKE_STATIC_LIBRARY_SUFFIX})
     endforeach()
+    set(GSL_CBLAS_LIBRARY ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gslcblas${CMAKE_STATIC_LIBRARY_SUFFIX})
     if(CMAKE_OSX_SYSROOT)
       set(_gsl_cppflags "-isysroot ${CMAKE_OSX_SYSROOT}")
+      set(_gsl_ldflags  "-isysroot ${CMAKE_OSX_SYSROOT}")
     endif()
     ExternalProject_Add(
       GSL
       # http://mirror.switch.ch/ftp/mirror/gnu/gsl/gsl-${gsl_version}.tar.gz
       URL ${lcgpackages}/gsl-${gsl_version}.tar.gz
       URL_HASH SHA256=0460ad7c2542caaddc6729762952d345374784100223995eb14d614861f2258d
+      SOURCE_DIR GSL-src # prevent "<gsl/...>" vs GSL/ macOS warning
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
                         --libdir=<INSTALL_DIR>/lib
@@ -485,6 +509,7 @@ if(mathmore OR builtin_gsl)
                         CC=${CMAKE_C_COMPILER}
                         CFLAGS=${CMAKE_C_FLAGS}
                         CPPFLAGS=${_gsl_cppflags}
+                        LDFLAGS=${_gsl_ldflags}
       LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1
       BUILD_BYPRODUCTS ${GSL_LIBRARIES}
     )
@@ -509,25 +534,45 @@ if(opengl)
     endif()
   endif()
 endif()
+# OpenGL should be working only with x11 (Linux),
+# in case when -Dall=ON -Dx11=OFF, we will just disable opengl.
+if(NOT WIN32 AND NOT APPLE)
+  if(opengl AND NOT x11)
+    message(STATUS "OpenGL was disabled, since it is requires x11 on Linux")
+    set(opengl OFF CACHE BOOL "OpenGL requires x11" FORCE)
+  endif()
+endif()
 
 #---Check for GLEW -------------------------------------------------------------------
+# Opengl is "must" requirement for Glew.
 if(opengl AND NOT builtin_glew)
   message(STATUS "Looking for GLEW")
   if(fail-on-missing)
-    find_Package(GLEW REQUIRED)
+    find_package(GLEW REQUIRED)
   else()
-    find_Package(GLEW)
+    find_package(GLEW)
+    # Bug was reported on newer version of CMake on Mac OS X:
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/19662
+    # https://github.com/microsoft/vcpkg/pull/7967
+    if(GLEW_FOUND AND APPLE AND CMAKE_VERSION VERSION_GREATER 3.15)
+      message(FATAL_ERROR "Please enable builtin Glew due bug in latest CMake (use cmake option -Dbuiltin_glew=ON).")
+      unset(GLEW_FOUND)
+    elseif(GLEW_FOUND AND NOT TARGET GLEW::GLEW)
+      add_library(GLEW::GLEW UNKNOWN IMPORTED)
+      set_target_properties(GLEW::GLEW PROPERTIES
+      IMPORTED_LOCATION "${GLEW_LIBRARIES}"
+      INTERFACE_INCLUDE_DIRECTORIES "${GLEW_INCLUDE_DIRS}")
+    endif()
     if(NOT GLEW_FOUND)
-      # set variables to emulate find_package(GLEW)
-      set(GLEW_FOUND TRUE CACHE INTERNAL "" FORCE)
-      set(GLEW_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/graf3d/glew/inc CACHE INTERNAL "" FORCE)
-      set(GLEW_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/graf3d/glew/inc CACHE INTERNAL "" FORCE)
-      set(GLEW_LIBRARY GLEW CACHE INTERNAL "" FORCE)
-      set(GLEW_LIBRARIES GLEW CACHE INTERNAL "" FORCE)
       message(STATUS "GLEW not found. Switching on builtin_glew option")
       set(builtin_glew ON CACHE BOOL "Enabled because opengl requested and GLEW not found (${builtin_glew_description})" FORCE)
     endif()
   endif()
+endif()
+
+if(builtin_glew)
+  list(APPEND ROOT_BUILTINS GLEW)
+  add_subdirectory(builtins/glew)
 endif()
 
 #---Check for gl2ps ------------------------------------------------------------------
@@ -857,16 +902,12 @@ if(xrootd AND NOT builtin_xrootd)
 endif()
 
 if(builtin_xrootd)
-  set(XROOTD_VERSION 4.10.0)
-  set(XROOTD_VERSIONNUM 400100000)
+  set(XROOTD_VERSION 4.12.3)
+  set(XROOTD_VERSIONNUM 400120003)
   set(XROOTD_SRC_URI ${lcgpackages}/xrootd-${XROOTD_VERSION}.tar.gz)
   set(XROOTD_DESTDIR ${CMAKE_BINARY_DIR})
   set(XROOTD_ROOTDIR ${XROOTD_DESTDIR})
   message(STATUS "Downloading and building XROOTD version ${xrootd_version}")
-  string(REPLACE "-Wall " "" __cxxflags "${ROOT_EXTERNAL_CXX_FLAGS}")  # Otherwise it produces many warnings
-  string(REPLACE "-W " "" __cxxflags "${__cxxflags}")          # Otherwise it produces many warnings
-  string(REPLACE "-Wshadow" "" __cxxflags "${__cxxflags}")          # Otherwise it produces many warnings
-  string(REPLACE "-Woverloaded-virtual" "" __cxxflags "${__cxxflags}")  # Otherwise it produces manywarnings
 
   # Guess under which directory XRootD will install its libraires
   set(XROOTD_LIBDIR "lib")
@@ -881,17 +922,19 @@ if(builtin_xrootd)
   ExternalProject_Add(
     XROOTD
     URL ${XROOTD_SRC_URI}
-    URL_HASH SHA256=f07f85e27d72e9e8ff124173c7b53619aed8fcd36f9d6234c33f8f7fd511995b
+    URL_HASH SHA256=6f2ca1accc8d49d605706bb556777c753860bf46d845b1ee11393a5cb5987f15
     INSTALL_DIR ${XROOTD_ROOTDIR}
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+               -DCMAKE_BUILD_TYPE=Release
                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
                -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
                -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-               -DCMAKE_CXX_FLAGS=${__cxxflags}\ -w
+               -DCMAKE_CXX_FLAGS=${ROOT_EXTERNAL_CXX_FLAGS}
                -DCMAKE_OSX_SYSROOT=${CMAKE_OSX_SYSROOT}
                -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
                -DENABLE_PYTHON=OFF
                -DENABLE_CEPH=OFF
+               -DCMAKE_INSTALL_RPATH:STRING=${XROOTD_ROOTDIR}/${XROOTD_LIBDIR}
     INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install
             COMMAND ${CMAKE_COMMAND} -E copy_directory <INSTALL_DIR>/include/xrootd <INSTALL_DIR>/include
     LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1
@@ -904,6 +947,16 @@ if(builtin_xrootd)
   set(XROOTD_CFLAGS "-DROOTXRDVERS=${XROOTD_VERSIONNUM}")
   install(DIRECTORY ${XROOTD_ROOTDIR}/${XROOTD_LIBDIR}/ DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries FILES_MATCHING PATTERN "libXrd*")
   install(DIRECTORY ${XROOTD_ROOTDIR}/include/xrootd/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
+  if(APPLE)
+    # XRootD libraries on mac need the LC_RPATH variable set. The build process already takes care of setting
+    #   * BUILD_RPATH = build/XROOTD-prefix/../src
+    #   * INSTALL_RPATH = build/lib
+    # Since the install directory for the builtin_xrootd target corresponds to the build directory of the main project.
+    # Use a post install script to change the LC_RPATH variable of the libraries in the ROOT install folder.
+    install(SCRIPT ${CMAKE_CURRENT_LIST_DIR}/XROOTDApplePostInstall.cmake
+            CODE "xrootd_libs_change_rpath(${XROOTD_ROOTDIR}/${XROOTD_LIBDIR} ${CMAKE_INSTALL_FULL_LIBDIR})"
+    )
+  endif()
   set(XROOTD_TARGET XROOTD)
   set(xrootd ON CACHE BOOL "Enabled because builtin_xrootd requested (${xrootd_description})" FORCE)
 endif()
@@ -911,6 +964,21 @@ if(xrootd AND XROOTD_VERSIONNUM VERSION_GREATER 300030005)
   set(netxng ON)
 else()
   set(netxng OFF)
+endif()
+if(xrootd AND XROOTD_VERSIONNUM VERSION_LESS 500000000)
+  set(netx ON)
+else()
+  set(netx OFF)
+endif()
+if(xrootd AND XROOTD_VERSIONNUM VERSION_GREATER_EQUAL 500000000)
+  if(xproofd)
+    if(fail-on-missing)
+      message(FATAL_ERROR "XROOTD is version 5 or greater. The legacy xproofd servers can not be built with this version. Use -Dxproofd:BOOL=OFF to disable.")
+    else()
+      message(STATUS "XROOTD is version 5 or greater. The legacy xproofd servers can not be built with this version. Disabling 'xproofd' option.")
+      set(xproofd OFF CACHE BOOL "Disabled because xrootd version is 5 or greater" FORCE)
+    endif()
+  endif()
 endif()
 
 #---Alien support----------------------------------------------------------------
@@ -1102,6 +1170,25 @@ if (jemalloc)
   endif()
 endif()
 
+#---Check for liburing----------------------------------------------------------------
+if (uring)
+  if(NOT CMAKE_SYSTEM_NAME MATCHES Linux)
+    set(uring OFF CACHE BOOL "Disabled because liburing is only available on Linux" FORCE)
+    message(STATUS "liburing was disabled because it is only available on Linux")
+  else()
+    message(STATUS "Looking for liburing")
+    find_package(liburing)
+    if(NOT LIBURING_FOUND)
+      if(fail-on-missing)
+        message(FATAL_ERROR "liburing not found and uring option required")
+      else()
+        message(STATUS "liburing not found. Switching off uring option")
+        set(uring OFF CACHE BOOL "Disabled because liburing was not found (${uring_description})" FORCE)
+      endif()
+    endif()
+  endif()
+endif()
+
 #---Check for TBB---------------------------------------------------------------------
 if(imt AND NOT builtin_tbb)
   message(STATUS "Looking for TBB")
@@ -1160,6 +1247,7 @@ if(builtin_tbb)
     # it can happen that a "-isysroot" switch is added without an argument.
     if(APPLE AND CMAKE_OSX_SYSROOT)
       set(_tbb_cxxflags "${_tbb_cxxflags} -isysroot ${CMAKE_OSX_SYSROOT}")
+      set(_tbb_ldflags "${_tbb_ldflags} -isysroot ${CMAKE_OSX_SYSROOT}")
     endif()
     set(TBB_LIBRARIES ${CMAKE_BINARY_DIR}/lib/libtbb${CMAKE_SHARED_LIBRARY_SUFFIX})
     ExternalProject_Add(
@@ -1169,7 +1257,7 @@ if(builtin_tbb)
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       PATCH_COMMAND sed -i -e "/clang -v/s@-v@--version@" build/macos.inc
       CONFIGURE_COMMAND ""
-      BUILD_COMMAND make ${_tbb_compiler} cpp0x=1 "CXXFLAGS=${_tbb_cxxflags}" CPLUS=${CMAKE_CXX_COMPILER} CONLY=${CMAKE_C_COMPILER}
+      BUILD_COMMAND make ${_tbb_compiler} cpp0x=1 "CXXFLAGS=${_tbb_cxxflags}" CPLUS=${CMAKE_CXX_COMPILER} CONLY=${CMAKE_C_COMPILER} "LDFLAGS=${_tbb_ldflags}"
       INSTALL_COMMAND ${CMAKE_COMMAND} -Dinstall_dir=<INSTALL_DIR> -Dsource_dir=<SOURCE_DIR>
                                        -P ${CMAKE_SOURCE_DIR}/cmake/scripts/InstallTBB.cmake
       INSTALL_COMMAND ""
@@ -1179,7 +1267,12 @@ if(builtin_tbb)
     )
     install(DIRECTORY ${CMAKE_BINARY_DIR}/lib/ DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries FILES_MATCHING PATTERN "libtbb*")
   endif()
-  set(TBB_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/include)
+  ExternalProject_Add_Step(
+     TBB tbb2externals
+     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/include/tbb ${CMAKE_BINARY_DIR}/ginclude/tbb
+     DEPENDEES install
+  )
+  set(TBB_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/ginclude)
   set(TBB_CXXFLAGS "-DTBB_SUPPRESS_DEPRECATED_MESSAGES=1")
   set(TBB_TARGET TBB)
 endif()
@@ -1215,7 +1308,7 @@ if(vc AND NOT Vc_FOUND)
   set(Vc_LIBRARY "${Vc_ROOTDIR}/lib/${Vc_LIBNAME}")
 
   if(UNIX)
-    set(VC_PATCH_COMMAND patch -p1 < ${CMAKE_SOURCE_DIR}/cmake/patches/vc-bit-scan-forward.patch)
+    set(VC_PATCH_COMMAND patch -p1 < ${CMAKE_SOURCE_DIR}/cmake/patches/vc-deprecated-and-bit-scan-forward.patch)
   endif()
 
   ExternalProject_Add(VC
@@ -1394,8 +1487,13 @@ if(vdt OR builtin_vdt)
       LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1
       BUILD_BYPRODUCTS ${VDT_LIBRARIES}
     )
-    set(VDT_INCLUDE_DIR ${CMAKE_BINARY_DIR}/include)
-    set(VDT_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/include)
+    ExternalProject_Add_Step(
+       VDT copy2externals
+       COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/include/vdt ${CMAKE_BINARY_DIR}/ginclude/vdt
+       DEPENDEES install
+    )
+    set(VDT_INCLUDE_DIR ${CMAKE_BINARY_DIR}/ginclude)
+    set(VDT_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/ginclude)
     install(FILES ${CMAKE_BINARY_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vdt${CMAKE_SHARED_LIBRARY_SUFFIX}
             DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries)
     install(DIRECTORY ${CMAKE_BINARY_DIR}/include/vdt
@@ -1409,12 +1507,18 @@ endif()
 if (vecgeom)
   message(STATUS "Looking for VecGeom")
   find_package(VecGeom ${VecGeom_FIND_VERSION} CONFIG QUIET)
+  if(builtin_veccore)
+    message(WARNING "ROOT must be built against the VecCore installation that was used to build VecGeom; builtin_veccore cannot be used. Option VecGeom will be disabled.")
+    set(vecgeom OFF CACHE BOOL "Disabled because non-builtin VecGeom specified but its VecCore cannot be found" FORCE)
+  elseif(builtin_veccore AND fail-on-missing)
+    message(FATAL_ERROR "ROOT must be built against the VecCore installation that was used to build VecGeom; builtin_veccore cannot be used. Ensure that builtin_veccore option is OFF.")
+  endif()
   if(NOT VecGeom_FOUND )
     if(fail-on-missing)
       message(FATAL_ERROR "VecGeom not found. Ensure that the installation of VecGeom is in the CMAKE_PREFIX_PATH")
     else()
       message(STATUS "VecGeom not found. Ensure that the installation of VecGeom is in the CMAKE_PREFIX_PATH")
-      message(STATUS "              example: CMAKE_PREFIX_PATH=<VecGeom_install_path>/lib/CMake/VecGeom")
+      message(STATUS "              example: CMAKE_PREFIX_PATH=<VecGeom_install_path>/lib/cmake/VecGeom")
       message(STATUS "              For the time being switching OFF 'vecgeom' option")
       set(vecgeom OFF CACHE BOOL "Disabled because VecGeom not found (${vecgeom_description})" FORCE)
     endif()
@@ -1433,6 +1537,30 @@ if(cuda OR tmva-gpu)
     endif()
     enable_language(CUDA)
     set(cuda ON CACHE BOOL "Found Cuda for TMVA GPU" FORCE)
+    # CUDA_NVCC_EXECUTABLE
+    if(DEFINED ENV{CUDA_NVCC_EXECUTABLE})
+      set(CUDA_NVCC_EXECUTABLE "$ENV{CUDA_NVCC_EXECUTABLE}" CACHE FILEPATH "The CUDA compiler")
+    else()
+      find_program(CUDA_NVCC_EXECUTABLE
+        NAMES nvcc nvcc.exe
+        PATHS "${CUDA_TOOLKIT_ROOT_DIR}"
+          ENV CUDA_TOOKIT_ROOT
+          ENV CUDA_PATH
+          ENV CUDA_BIN_PATH
+        PATH_SUFFIXES bin bin64
+        DOC "The CUDA compiler"
+        NO_DEFAULT_PATH
+      )
+      find_program(CUDA_NVCC_EXECUTABLE
+        NAMES nvcc nvcc.exe
+        PATHS /opt/cuda/bin
+        PATH_SUFFIXES cuda/bin
+        DOC "The CUDA compiler"
+      )
+      # Search default search paths, after we search our own set of paths.
+      find_program(CUDA_NVCC_EXECUTABLE nvcc)
+    endif()
+    mark_as_advanced(CUDA_NVCC_EXECUTABLE)
     ###
     ### look for package CuDNN
     if (cudnn)
@@ -1484,13 +1612,17 @@ if(tmva)
     set(tmva-gpu OFF CACHE BOOL "Disabled because cuda not found" FORCE)
   endif()
   if(tmva-pymva)
-    if(fail-on-missing AND (NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND)))
+    if(fail-on-missing AND (NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND)))
       message(FATAL_ERROR "TMVA: numpy python package or Python development package not found and tmva-pymva component required"
                           " (python executable: ${PYTHON_EXECUTABLE})")
-    elseif(NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND))
+    elseif(NOT NUMPY_FOUND OR (NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND))
       message(STATUS "TMVA: Numpy or Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off tmva-pymva option")
       set(tmva-pymva OFF CACHE BOOL "Disabled because Numpy or Python development package were not found (${tmva-pymva_description})" FORCE)
     endif()
+  endif()
+  if (R_FOUND)
+    #Rmva is enable when r is found and tmva is on
+    set(tmva-rmva ON)
   endif()
   if(tmva-rmva AND NOT R_FOUND)
     set(tmva-rmva  OFF CACHE BOOL "Disabled because R was not found (${tmva-rmva_description})"  FORCE)
@@ -1502,26 +1634,45 @@ else()
   set(tmva-rmva  OFF CACHE BOOL "Disabled because 'tmva' is disabled (${tmva-rmva_description})"  FORCE)
 endif()
 
-#---Check for Pyroot---------------------------------------------------------------------
+#---Check for PyROOT---------------------------------------------------------------------
 if(pyroot)
-  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND))
+  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND))
     message(FATAL_ERROR "PyROOT: Python development package not found and pyroot component required"
                         " (python executable: ${PYTHON_EXECUTABLE})")
-  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND)
+  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND)
     message(STATUS "PyROOT: Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off pyroot option")
     set(pyroot OFF CACHE BOOL "Disabled because Python development package was not found" FORCE)
   endif()
+  mark_as_advanced(FORCE pyroot2 pyroot3)
+  if(fail-on-missing AND pyroot2 AND NOT Python2_Interpreter_Development_FOUND)
+    message(FATAL_ERROR "PyROOT2: Python2 development package not found and pyroot2 component required"
+                        " (python2 executable: ${Python2_EXECUTABLE})")
+  endif()
+  if(fail-on-missing AND pyroot3 AND NOT Python3_Interpreter_Development_FOUND)
+    message(FATAL_ERROR "PyROOT3: Python3 development package not found and pyroot3 component required"
+                        " (python3 executable: ${Python3_EXECUTABLE})")
+  endif()
 endif()
 
-#---Check for Pyroot Exp---------------------------------------------------------------------
-if(pyroot_experimental)
-  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND))
-    message(FATAL_ERROR "PyROOT: Python development package not found and pyroot component required"
-                        " (python executable: ${PYTHON_EXECUTABLE})")
-  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Development_FOUND AND NOT Python3_Development_FOUND)
-    message(STATUS "PyROOT: Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off pyroot_experimental option")
-    set(pyroot_experimental OFF CACHE BOOL "Disabled because Python development package was not found" FORCE)
+#---Check for PyROOT legacy---------------------------------------------------------------
+if(pyroot_legacy)
+  if(NOT pyroot)
+    message(FATAL_ERROR "pyroot_legacy is ON but pyroot is OFF. Please reconfigure with -Dpyroot=ON")
   endif()
+
+  if(fail-on-missing AND (NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND))
+    message(FATAL_ERROR "PyROOT: Python development package not found and pyroot legacy component required"
+                        " (python executable: ${PYTHON_EXECUTABLE})")
+  elseif(NOT PYTHONLIBS_FOUND AND NOT Python2_Interpreter_Development_FOUND AND NOT Python3_Interpreter_Development_FOUND)
+    message(STATUS "PyROOT: Python development package not found for python ${PYTHON_EXECUTABLE}. Switching off pyroot_legacy option")
+    set(pyroot_legacy OFF CACHE BOOL "Disabled because Python development package was not found" FORCE)
+  endif()
+endif()
+
+#---Check for deprecated PyROOT experimental ---------------------------------------------
+if(pyroot_experimental)
+  message(WARNING "pyroot_experimental is a deprecated flag from 6.22.00."
+                  "To build the new PyROOT, just configure with -Dpyroot=ON -Dpyroot_experimental=OFF.")
 endif()
 
 #---Check for MPI---------------------------------------------------------------------
@@ -1548,20 +1699,22 @@ if (testing)
   # http://stackoverflow.com/questions/9689183/cmake-googletest
 
   set(_gtest_byproduct_binary_dir
-    ${CMAKE_CURRENT_BINARY_DIR}/googletest-prefix/src/googletest-build/googlemock/)
+    ${CMAKE_CURRENT_BINARY_DIR}/googletest-prefix/src/googletest-build)
   set(_gtest_byproducts
-    ${_gtest_byproduct_binary_dir}/gtest/libgtest.a
-    ${_gtest_byproduct_binary_dir}/gtest/libgtest_main.a
-    ${_gtest_byproduct_binary_dir}/libgmock.a
-    ${_gtest_byproduct_binary_dir}/libgmock_main.a
+    ${_gtest_byproduct_binary_dir}/lib/libgtest.a
+    ${_gtest_byproduct_binary_dir}/lib/libgtest_main.a
+    ${_gtest_byproduct_binary_dir}/lib/libgmock.a
+    ${_gtest_byproduct_binary_dir}/lib/libgmock_main.a
     )
 
   if(MSVC)
     set(EXTRA_GTEST_OPTS
-      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG:PATH=\\\"\\\"
-      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL:PATH=\\\"\\\"
-      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE:PATH=\\\"\\\"
-      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO:PATH=\\\"\\\")
+      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG:PATH=${_gtest_byproduct_binary_dir}/lib/
+      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL:PATH=${_gtest_byproduct_binary_dir}/lib/
+      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE:PATH=${_gtest_byproduct_binary_dir}/lib/
+      -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO:PATH=${_gtest_byproduct_binary_dir}/lib/
+      -Dgtest_force_shared_crt=ON
+      BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config Release)
   endif()
   if(APPLE)
     set(EXTRA_GTEST_OPTS
@@ -1572,7 +1725,7 @@ if (testing)
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_SHALLOW 1
-    GIT_TAG release-1.8.0
+    GIT_TAG release-1.10.0
     UPDATE_COMMAND ""
     # TIMEOUT 10
     # # Force separate output paths for debug and release builds to allow easy
@@ -1581,7 +1734,7 @@ if (testing)
     #            -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE:PATH=ReleaseLibs
     #            -Dgtest_force_shared_crt=ON
     CMAKE_ARGS -G ${CMAKE_GENERATOR}
-                  -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                  -DCMAKE_BUILD_TYPE=Release
                   -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
                   -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
                   -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
@@ -1606,11 +1759,16 @@ if (testing)
 
   # Libraries
   ExternalProject_Get_Property(googletest binary_dir)
-  set(_G_LIBRARY_PATH ${binary_dir}/googlemock/)
+  set(_G_LIBRARY_PATH ${binary_dir}/lib/)
 
-  # Register gtest, gtest_main, gmock, gmock_main
-  foreach (lib gtest gtest_main gmock gmock_main)
+  # Use gmock_main instead of gtest_main because it initializes gtest as well.
+  # Note: The libraries are listed in reverse order of their dependancies.
+  foreach(lib gtest gtest_main gmock gmock_main)
     add_library(${lib} IMPORTED STATIC GLOBAL)
+    set_target_properties(${lib} PROPERTIES
+      IMPORTED_LOCATION "${_G_LIBRARY_PATH}${CMAKE_STATIC_LIBRARY_PREFIX}${lib}${CMAKE_STATIC_LIBRARY_SUFFIX}"
+      INTERFACE_INCLUDE_DIRECTORIES "${GTEST_INCLUDE_DIRS}"
+    )
     add_dependencies(${lib} googletest)
     if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND
         ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 9)
@@ -1625,8 +1783,8 @@ if (testing)
   #target_include_directories(gtest INTERFACE ${GTEST_INCLUDE_DIR})
   #target_include_directories(gmock INTERFACE ${GMOCK_INCLUDE_DIR})
 
-  set_property(TARGET gtest PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/gtest/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX})
-  set_property(TARGET gtest_main PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/gtest/${CMAKE_STATIC_LIBRARY_PREFIX}gtest_main${CMAKE_STATIC_LIBRARY_SUFFIX})
+  set_property(TARGET gtest PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX})
+  set_property(TARGET gtest_main PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/${CMAKE_STATIC_LIBRARY_PREFIX}gtest_main${CMAKE_STATIC_LIBRARY_SUFFIX})
   set_property(TARGET gmock PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/${CMAKE_STATIC_LIBRARY_PREFIX}gmock${CMAKE_STATIC_LIBRARY_SUFFIX})
   set_property(TARGET gmock_main PROPERTY IMPORTED_LOCATION ${_G_LIBRARY_PATH}/${CMAKE_STATIC_LIBRARY_PREFIX}gmock_main${CMAKE_STATIC_LIBRARY_SUFFIX})
 
@@ -1634,15 +1792,36 @@ endif()
 
 #------------------------------------------------------------------------------------
 if(webgui)
-  ExternalProject_Add(
-     OPENUI5
-     URL ${CMAKE_SOURCE_DIR}/gui/webdisplay/res/openui5.tar.gz
-     URL_HASH SHA256=b264661fb397906714b8253fc3a32ecb6ac0da575cc01ce61636354e6bfccf3c
-     CONFIGURE_COMMAND ""
-     BUILD_COMMAND ""
-     INSTALL_COMMAND ""
-     SOURCE_DIR ${CMAKE_BINARY_DIR}/ui5/distribution)
-  install(DIRECTORY ${CMAKE_BINARY_DIR}/ui5/distribution/ DESTINATION ${CMAKE_INSTALL_OPENUI5DIR}/distribution/ COMPONENT libraries FILES_MATCHING PATTERN "*")
+  if(NOT "$ENV{OPENUI5DIR}" STREQUAL "" AND EXISTS "$ENV{OPENUI5DIR}/resources/sap-ui-core-nojQuery.js")
+     # create symbolic link on existing openui5 installation
+     # should be used only for debug purposes to be able try different openui5 version
+     # cannot be used for installation purposes
+     message(STATUS "openui5 - use from $ENV{OPENUI5DIR}, only for debug purposes")
+     file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/ui5)
+     execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+        $ENV{OPENUI5DIR} ${CMAKE_BINARY_DIR}/ui5/distribution)
+  else()
+    if(builtin_openui5)
+      ExternalProject_Add(
+        OPENUI5
+        URL ${CMAKE_SOURCE_DIR}/builtins/openui5/openui5.tar.gz
+        URL_HASH SHA256=0cde25387047163fe2ed5f32eb7224628be10c3b6afa07d0b2a42002543909c2
+        CONFIGURE_COMMAND ""
+        BUILD_COMMAND ""
+        INSTALL_COMMAND ""
+        SOURCE_DIR ${CMAKE_BINARY_DIR}/ui5/distribution)
+    else()
+      ExternalProject_Add(
+        OPENUI5
+        URL https://github.com/SAP/openui5/releases/download/1.82.2/openui5-runtime-1.82.2.zip
+        URL_HASH SHA256=b405fa6a3a3621879e8efe80eb193c1071f2bdf37a8ecc8c057194a09635eaff
+        CONFIGURE_COMMAND ""
+        BUILD_COMMAND ""
+        INSTALL_COMMAND ""
+        SOURCE_DIR ${CMAKE_BINARY_DIR}/ui5/distribution)
+    endif()
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/ui5/distribution/ DESTINATION ${CMAKE_INSTALL_OPENUI5DIR}/distribution/ COMPONENT libraries FILES_MATCHING PATTERN "*")
+  endif()
 endif()
 
 #------------------------------------------------------------------------------------

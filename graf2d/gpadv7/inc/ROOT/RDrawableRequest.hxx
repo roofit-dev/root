@@ -13,12 +13,11 @@
 #include <cstdint>
 #include <memory>
 
+#include <ROOT/RDrawable.hxx>
+
 namespace ROOT {
 namespace Experimental {
 
-class RCanvas;
-class RPadBase;
-class RDrawable;
 
 /** \class RDrawableReply
 \ingroup GpadROOT7
@@ -52,28 +51,22 @@ class RDrawableRequest {
    std::string id; ///< drawable id
    uint64_t reqid{0}; ///< request id
 
-   const RCanvas *fCanvas{nullptr}; ///<! pointer on canvas, can be used in Process
-   const RPadBase *fPad{nullptr};   ///<! pointer on pad with drawable, can be used in Process
-   RDrawable *fDrawable{nullptr};   ///<! pointer on drawable, can be used in Process
+   RDrawable::RDisplayContext fContext; ///<! display context
 
-protected:
-
-   /// Returns canvas assign to request, should be accessed from Process method
-   const RCanvas *GetCanvas() const { return fCanvas; }
-
-   /// Returns canvas assign to request, should be accessed from Process method
-   const RPadBase *GetPad() const { return fPad; }
-
-   /// Returns drawable assign to request, should be accessed from Process method
-   RDrawable *GetDrawable() { return fDrawable; }
+   //const RCanvas *fCanvas{nullptr}; ///<! pointer on canvas, can be used in Process
+   //const RPadBase *fPad{nullptr};   ///<! pointer on pad with drawable, can be used in Process
+   //RDrawable *fDrawable{nullptr};   ///<! pointer on drawable, can be used in Process
 
 public:
    const std::string &GetId() const { return id; }
    uint64_t GetRequestId() const { return reqid; }
 
-   void SetCanvas(const RCanvas *canv) { fCanvas = canv; }
-   void SetPad(const RPadBase *pad) { fPad = pad; }
-   void SetDrawable(RDrawable *dr) { fDrawable = dr; }
+   const RDrawable::RDisplayContext &GetContext() const { return fContext; }
+   RDrawable::RDisplayContext &GetContext() { return fContext; }
+
+   //void SetCanvas(const RCanvas *canv) { fCanvas = canv; }
+   //void SetPad(const RPadBase *pad) { fPad = pad; }
+   //void SetDrawable(RDrawable *dr) { fDrawable = dr; }
 
    virtual ~RDrawableRequest();
 
@@ -87,7 +80,7 @@ public:
 
 /** \class RDrawableExecRequest
 \ingroup GpadROOT7
-\brief Base class for requests which can be submitted from the clients
+\brief Request execution of method of referenced drawable, no reply
 \author Sergey Linev <s.linev@gsi.de>
 \date 2020-04-14
 \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
@@ -95,13 +88,9 @@ public:
 
 class RDrawableExecRequest : public RDrawableRequest {
    std::string exec; ///< that to execute
-
 public:
-
    std::unique_ptr<RDrawableReply> Process() override;
-
 };
-
 
 } // namespace Experimental
 } // namespace ROOT
