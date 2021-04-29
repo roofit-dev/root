@@ -32,16 +32,16 @@
 #include "TError.h"
 #include "TGraph.h"
 #include "TBufferJSON.h"
-#include "Riostream.h"
 #include "TBase64.h"
 #include "TAtt3D.h"
 #include "TView.h"
 
 #include <ROOT/RMakeUnique.hxx>
 
-#include <stdio.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
 #include <sstream>
+#include <fstream>
 #include <iostream>
 
 using namespace std::string_literals;
@@ -98,7 +98,7 @@ Bool_t TWebCanvas::IsJSSupportedClass(TObject *obj)
                             {"TGaxis", false},
                             {"TPave", true},
                             {"TArrow", false},
-//                            {"TBox", false},  // in principle, can be handled via TWebPainter
+                            {"TBox", false},  // in principle, can be handled via TWebPainter
                             {"TWbox", false}, // some extra calls which cannot be handled via TWebPainter
                             {"TLine", false}, // also can be handler via TWebPainter
                             {"TText", false},
@@ -110,6 +110,7 @@ Bool_t TWebCanvas::IsJSSupportedClass(TObject *obj)
                             {"TPolyLine3D", false},
                             {"TGraph2D", false},
                             {"TGraph2DErrors", false},
+                            {"TASImage", false},
                             {nullptr, false}};
 
    // fast check of class name

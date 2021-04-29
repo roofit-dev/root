@@ -1,7 +1,6 @@
 ## \file
 ## \ingroup tutorial_roofit
 ## \notebook
-##
 ## Multidimensional models: utility functions classes available for use in tailoring of
 ## composite (multidimensional) pdfs
 ##

@@ -12,7 +12,7 @@
 #include "TPie.h"
 #include "TPieSlice.h"
 
-#include <Riostream.h>
+#include <iostream>
 #include <TROOT.h>
 #include <TVirtualPad.h>
 #include <TVirtualX.h>
@@ -24,6 +24,7 @@
 #include <TPaveText.h>
 #include <TH1.h>
 #include <TColor.h>
+#include <TLine.h>
 
 ClassImp(TPie);
 
