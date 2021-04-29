@@ -26,23 +26,23 @@ namespace {
 constexpr int kDefaultBlockSize = 4096; // Read files in 4k pages unless told otherwise
 } // anonymous namespace
 
-ROOT::Experimental::Detail::RRawFileWin::RRawFileWin(std::string_view url, ROptions options)
-   : ROOT::Experimental::Detail::RRawFile(url, options), fFilePtr(nullptr)
+ROOT::Internal::RRawFileWin::RRawFileWin(std::string_view url, ROptions options)
+   : RRawFile(url, options), fFilePtr(nullptr)
 {
 }
 
-ROOT::Experimental::Detail::RRawFileWin::~RRawFileWin()
+ROOT::Internal::RRawFileWin::~RRawFileWin()
 {
    if (fFilePtr != nullptr)
       fclose(fFilePtr);
 }
 
-std::unique_ptr<ROOT::Experimental::Detail::RRawFile> ROOT::Experimental::Detail::RRawFileWin::Clone() const
+std::unique_ptr<ROOT::Internal::RRawFile> ROOT::Internal::RRawFileWin::Clone() const
 {
    return std::make_unique<RRawFileWin>(fUrl, fOptions);
 }
 
-std::uint64_t ROOT::Experimental::Detail::RRawFileWin::DoGetSize()
+std::uint64_t ROOT::Internal::RRawFileWin::GetSizeImpl()
 {
    Seek(0L, SEEK_END);
    long size = ftell(fFilePtr);
@@ -53,9 +53,9 @@ std::uint64_t ROOT::Experimental::Detail::RRawFileWin::DoGetSize()
    return size;
 }
 
-void ROOT::Experimental::Detail::RRawFileWin::DoOpen()
+void ROOT::Internal::RRawFileWin::OpenImpl()
 {
-   fFilePtr = fopen(GetLocation(fUrl).c_str(), "r");
+   fFilePtr = fopen(GetLocation(fUrl).c_str(), "rb");
    if (fFilePtr == nullptr)
       throw std::runtime_error("Cannot open '" + fUrl + "', error: " + std::string(strerror(errno)));
    // Prevent double buffering
@@ -65,7 +65,7 @@ void ROOT::Experimental::Detail::RRawFileWin::DoOpen()
       fOptions.fBlockSize = kDefaultBlockSize;
 }
 
-size_t ROOT::Experimental::Detail::RRawFileWin::DoReadAt(void *buffer, size_t nbytes, std::uint64_t offset)
+size_t ROOT::Internal::RRawFileWin::ReadAtImpl(void *buffer, size_t nbytes, std::uint64_t offset)
 {
    Seek(offset, SEEK_SET);
    size_t res = fread(buffer, 1, nbytes, fFilePtr);
@@ -76,7 +76,7 @@ size_t ROOT::Experimental::Detail::RRawFileWin::DoReadAt(void *buffer, size_t nb
    return res;
 }
 
-void ROOT::Experimental::Detail::RRawFileWin::Seek(long offset, int whence)
+void ROOT::Internal::RRawFileWin::Seek(long offset, int whence)
 {
    int res = fseek(fFilePtr, offset, whence);
    if (res != 0)

@@ -56,6 +56,7 @@ TGeoPgon               ->           <polyhedra ...>
 TGeoEltu               ->           <eltube ...>
 TGeoHype               ->           <hype ...>
 TGeoXtru               ->           <xtru ...>
+TGeoTessellated        ->           <tessellated ...>
 TGeoCompositeShape     ->           <union ...>            or
 -                      ->           <subtraction ...>      or
 -                      ->           <intersection ...>
@@ -149,8 +150,6 @@ See that function for details.
 #include "TGeoEltu.h"
 #include "TGeoXtru.h"
 #include "TGeoScaledShape.h"
-#include "TGeoVolume.h"
-#include "TROOT.h"
 #include "TMath.h"
 #include "TGeoBoolNode.h"
 #include "TGeoMedium.h"
@@ -158,7 +157,7 @@ See that function for details.
 #include "TGeoShape.h"
 #include "TGeoCompositeShape.h"
 #include "TGeoOpticalSurface.h"
-#include <stdlib.h>
+#include <cstdlib>
 #include <string>
 #include <map>
 #include <set>
@@ -167,7 +166,7 @@ See that function for details.
 
 ClassImp(TGDMLWrite);
 
-TGDMLWrite *TGDMLWrite::fgGDMLWrite = 0;
+TGDMLWrite *TGDMLWrite::fgGDMLWrite = nullptr;
 
 namespace {
   struct MaterialExtractor  {
@@ -297,6 +296,18 @@ void TGDMLWrite::WriteGDMLfile(TGeoManager * geomanager,
    } else {
       SetNamingSpeed(kelegantButSlow);
       Info("WriteGDMLfile", "Potentially slow with incremental suffix naming convention set");
+   }
+   auto def_units = gGeoManager->GetDefaultUnits();
+   switch (def_units) {
+      case TGeoManager::kG4Units:
+         fDefault_lunit = "mm";
+         break;
+      case TGeoManager::kRootUnits:
+         fDefault_lunit = "cm";
+         break;
+      default: // G4 units
+         fDefault_lunit = "mm";
+         break;
    }
 
    //local variables
@@ -715,6 +726,7 @@ XMLNodePointer_t TGDMLWrite::CreateAtomN(Double_t atom, const char * unit)
 {
    const TString fltPrecision = TString::Format("%%.%dg", fFltPrecision);
    XMLNodePointer_t atomN = fGdmlE->NewChild(nullptr, nullptr, "atom", nullptr);
+   if ( gGeoManager->GetDefaultUnits() != TGeoManager::kRootUnits ) atom /= 1e19; // Correct for G4 unit system
    fGdmlE->NewAttr(atomN, nullptr, "unit", unit);
    fGdmlE->NewAttr(atomN, nullptr, "value", TString::Format(fltPrecision.Data(), atom));
    return atomN;
@@ -727,6 +739,7 @@ XMLNodePointer_t TGDMLWrite::CreateDN(Double_t density, const char * unit)
 {
    const TString fltPrecision = TString::Format("%%.%dg", fFltPrecision);
    XMLNodePointer_t densN = fGdmlE->NewChild(nullptr, nullptr, "D", nullptr);
+   if ( gGeoManager->GetDefaultUnits() != TGeoManager::kRootUnits ) density /= 1e16; // Correct for G4 unit system
    fGdmlE->NewAttr(densN, nullptr, "unit", unit);
    fGdmlE->NewAttr(densN, nullptr, "value", TString::Format(fltPrecision.Data(), density));
    return densN;
@@ -967,7 +980,7 @@ XMLNodePointer_t TGDMLWrite::CreateBoxN(TGeoBBox * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "y", TString::Format(fltPrecision.Data(), 2 * geoShape->GetDY()));
    fGdmlE->NewAttr(mainN, nullptr, "z", TString::Format(fltPrecision.Data(), 2 * geoShape->GetDZ()));
 
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -988,7 +1001,7 @@ XMLNodePointer_t TGDMLWrite::CreateParaboloidN(TGeoParaboloid * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "rhi", TString::Format(fltPrecision.Data(), geoShape->GetRhi()));
    fGdmlE->NewAttr(mainN, nullptr, "dz", TString::Format(fltPrecision.Data(), geoShape->GetDz()));
 
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1013,7 +1026,7 @@ XMLNodePointer_t TGDMLWrite::CreateSphereN(TGeoSphere * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "deltatheta", TString::Format(fltPrecision.Data(), geoShape->GetTheta2() - geoShape->GetTheta1()));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1048,7 +1061,7 @@ XMLNodePointer_t TGDMLWrite::CreateArb8N(TGeoArb8 * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "v8y", TString::Format(fltPrecision.Data(), geoShape->GetVertices()[15]));
    fGdmlE->NewAttr(mainN, nullptr, "dz", TString::Format(fltPrecision.Data(), geoShape->GetDz()));
 
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1074,7 +1087,7 @@ XMLNodePointer_t TGDMLWrite::CreateConeN(TGeoConeSeg * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "deltaphi", TString::Format(fltPrecision.Data(), geoShape->GetPhi2() - geoShape->GetPhi1()));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1100,7 +1113,7 @@ XMLNodePointer_t TGDMLWrite::CreateConeN(TGeoCone * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "deltaphi", TString::Format("%i", 360));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1121,7 +1134,7 @@ XMLNodePointer_t TGDMLWrite::CreateParaN(TGeoPara * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "phi", TString::Format(fltPrecision.Data(), geoShape->GetPhi()));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1167,7 +1180,7 @@ XMLNodePointer_t TGDMLWrite::CreateTrapN(TGeoTrap * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "alpha2", TString::Format(fltPrecision.Data(), geoShape->GetAlpha2()));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1227,7 +1240,7 @@ XMLNodePointer_t TGDMLWrite::CreateTwistedTrapN(TGeoGtra * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "PhiTwist", TString::Format(fltPrecision.Data(), geoShape->GetTwistAngle()));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1250,7 +1263,7 @@ XMLNodePointer_t TGDMLWrite::CreateTrdN(TGeoTrd1 * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "y2", TString::Format(fltPrecision.Data(), 2 * geoShape->GetDy()));
    fGdmlE->NewAttr(mainN, nullptr, "z", TString::Format(fltPrecision.Data(), 2 * geoShape->GetDz()));
 
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1273,7 +1286,7 @@ XMLNodePointer_t TGDMLWrite::CreateTrdN(TGeoTrd2 * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "y2", TString::Format(fltPrecision.Data(), 2 * geoShape->GetDy2()));
    fGdmlE->NewAttr(mainN, nullptr, "z", TString::Format(fltPrecision.Data(), 2 * geoShape->GetDz()));
 
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1298,7 +1311,7 @@ XMLNodePointer_t TGDMLWrite::CreateTubeN(TGeoTubeSeg * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "deltaphi", TString::Format(fltPrecision.Data(), geoShape->GetPhi2() - geoShape->GetPhi1()));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1342,7 +1355,7 @@ XMLNodePointer_t TGDMLWrite::CreateCutTubeN(TGeoCtub * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "highZ", TString::Format(fltPrecision.Data(), geoShape->GetNhigh()[2]));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
 
    return mainN;
 }
@@ -1368,7 +1381,7 @@ XMLNodePointer_t TGDMLWrite::CreateTubeN(TGeoTube * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "deltaphi", TString::Format("%i", 360));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    return mainN;
 }
 
@@ -1401,7 +1414,7 @@ XMLNodePointer_t TGDMLWrite::CreatePolyconeN(TGeoPcon * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "deltaphi", TString::Format(fltPrecision.Data(), geoShape->GetDphi()));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    Int_t nZPlns = geoShape->GetNz();
    for (Int_t it = 0; it < nZPlns; it++) {
       //add zplane child node
@@ -1460,7 +1473,7 @@ XMLNodePointer_t TGDMLWrite::CreateTorusN(TGeoTorus * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "deltaphi", TString::Format(fltPrecision.Data(), geoShape->GetDphi()));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
 
    return mainN;
 }
@@ -1479,7 +1492,7 @@ XMLNodePointer_t TGDMLWrite::CreatePolyhedraN(TGeoPgon * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "numsides", TString::Format("%i", geoShape->GetNedges()));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    for (Int_t it = 0; it < geoShape->GetNz(); it++) {
       //add zplane child node
       fGdmlE->AddChild(mainN, CreateZplaneN(geoShape->GetZ(it), geoShape->GetRmin(it), geoShape->GetRmax(it)));
@@ -1506,7 +1519,7 @@ XMLNodePointer_t TGDMLWrite::CreateEltubeN(TGeoEltu * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "dy", TString::Format(fltPrecision.Data(), geoShape->GetB()));
    fGdmlE->NewAttr(mainN, nullptr, "dz", TString::Format(fltPrecision.Data(), geoShape->GetDz()));
 
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
 
    return mainN;
 }
@@ -1532,7 +1545,7 @@ XMLNodePointer_t TGDMLWrite::CreateHypeN(TGeoHype * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "z", TString::Format(fltPrecision.Data(), 2 * geoShape->GetDz()));
 
    fGdmlE->NewAttr(mainN, nullptr, "aunit", "deg");
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
 
    return mainN;
 }
@@ -1547,7 +1560,7 @@ XMLNodePointer_t TGDMLWrite::CreateXtrusionN(TGeoXtru * geoShape)
    TString lname = GenName(geoShape->GetName(), TString::Format("%p", geoShape));
    fGdmlE->NewAttr(mainN, nullptr, "name", lname);
 
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
    XMLNodePointer_t childN;
    Int_t vertNum =  geoShape->GetNvert();
    Int_t secNum = geoShape->GetNz();
@@ -1612,7 +1625,7 @@ XMLNodePointer_t TGDMLWrite::CreateEllipsoidN(TGeoCompositeShape * geoShape, TSt
    fGdmlE->NewAttr(mainN, nullptr, "cz", TString::Format(fltPrecision.Data(), cz));
    fGdmlE->NewAttr(mainN, nullptr, "zcut1", TString::Format(fltPrecision.Data(), zcut1));
    fGdmlE->NewAttr(mainN, nullptr, "zcut2", TString::Format(fltPrecision.Data(), zcut2));
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
 
    return mainN;
 }
@@ -1641,8 +1654,47 @@ XMLNodePointer_t TGDMLWrite::CreateElConeN(TGeoScaledShape * geoShape)
    fGdmlE->NewAttr(mainN, nullptr, "dy", TString::Format(format.c_str(), ry1, z));
    fGdmlE->NewAttr(mainN, nullptr, "zmax", TString::Format(fltPrecision.Data(), zmax));
    fGdmlE->NewAttr(mainN, nullptr, "zcut", TString::Format(fltPrecision.Data(), zcut));
-   fGdmlE->NewAttr(mainN, nullptr, "lunit", "cm");
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
 
+   return mainN;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Creates "tessellated" (tessellated shape) node for GDML
+
+XMLNodePointer_t TGDMLWrite::CreateTessellatedN(TGeoTessellated * geoShape)
+{
+   // add all vertices to the define section
+   TString genname = GenName(geoShape->GetName(), TString::Format("%p", geoShape));
+   for (int i = 0; i < geoShape->GetNvertices(); ++i) {
+      auto vertex = geoShape->GetVertex(i);
+      TString posName = TString::Format("%s_%d", genname.Data(), i);
+      Xyz nodPos;
+      nodPos.x = vertex[0];
+      nodPos.y = vertex[1];
+      nodPos.z = vertex[2];
+      auto childN = CreatePositionN(posName.Data(), nodPos);
+      fGdmlE->AddChild(fDefineNode, childN); //adding node to <define> node
+   }
+   XMLNodePointer_t mainN = fGdmlE->NewChild(nullptr, nullptr, "tessellated", nullptr);
+   fGdmlE->NewAttr(mainN, nullptr, "name", genname.Data());
+   fGdmlE->NewAttr(mainN, nullptr, "lunit", fDefault_lunit);
+
+   XMLNodePointer_t childN;
+   for (Int_t it = 0; it < geoShape->GetNfacets(); it++) {
+      //add section child node
+      auto facet = geoShape->GetFacet(it);
+      bool triangular = facet.GetNvert() == 3;
+      TString ntype = (triangular) ? "triangular" : "quadrangular";
+      childN = fGdmlE->NewChild(nullptr, nullptr, ntype.Data(), nullptr);
+      fGdmlE->NewAttr(childN, nullptr, "vertex1", TString::Format("%s_%d", genname.Data(), facet.GetVertexIndex(0)));
+      fGdmlE->NewAttr(childN, nullptr, "vertex2", TString::Format("%s_%d", genname.Data(), facet.GetVertexIndex(1)));
+      fGdmlE->NewAttr(childN, nullptr, "vertex3", TString::Format("%s_%d", genname.Data(), facet.GetVertexIndex(2)));
+      if (!triangular)
+         fGdmlE->NewAttr(childN, nullptr, "vertex4", TString::Format("%s_%d", genname.Data(), facet.GetVertexIndex(3)));
+      fGdmlE->NewAttr(childN, nullptr, "type", "ABSOLUTE");
+      fGdmlE->AddChild(mainN, childN);
+   }
    return mainN;
 }
 
@@ -2055,6 +2107,8 @@ XMLNodePointer_t TGDMLWrite::ChooseObject(TGeoShape *geoShape)
       solidN = CreateHypeN((TGeoHype*) geoShape);
    } else if (strcmp(clsname, "TGeoXtru") == 0) {
       solidN = CreateXtrusionN((TGeoXtru*) geoShape);
+   } else if (strcmp(clsname, "TGeoTessellated") == 0) {
+      solidN = CreateTessellatedN((TGeoTessellated*) geoShape);
    } else if (strcmp(clsname, "TGeoScaledShape") == 0) {
       TGeoScaledShape * geoscale = (TGeoScaledShape *) geoShape;
       TString scaleObjClsName = geoscale->GetShape()->ClassName();
@@ -2298,7 +2352,7 @@ Bool_t TGDMLWrite::CanProcess(TObject *pointer)
 TString TGDMLWrite::GetPattAxis(Int_t divAxis, const char * pattName, TString& unit)
 {
    TString resaxis;
-   unit = "cm";
+   unit = fDefault_lunit;
    switch (divAxis) {
       case 1:
          if (strcmp(pattName, "TGeoPatternX") == 0) {

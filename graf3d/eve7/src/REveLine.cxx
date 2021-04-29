@@ -15,10 +15,9 @@
 
 #include "TClass.h"
 
-#include "json.hpp"
+#include <nlohmann/json.hpp>
 
 using namespace ROOT::Experimental;
-namespace REX = ROOT::Experimental;
 
 /** \class REveLine
 \ingroup REve
@@ -119,9 +118,10 @@ void REveLine::SetRnrLine(Bool_t r)
       if (l)
       {
          l->SetRnrLine(r);
-         l->ElementChanged();
+         l->StampObjProps();
       }
    }
+   StampObjProps();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -136,9 +136,10 @@ void REveLine::SetRnrPoints(Bool_t r)
       if (l)
       {
          l->SetRnrPoints(r);
-         l->ElementChanged();
+         l->StampObjProps();
       }
    }
+   StampObjProps();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -153,9 +154,10 @@ void REveLine::SetSmooth(Bool_t r)
       if (l)
       {
          l->SetSmooth(r);
-         l->ElementChanged();
+         l->StampObjProps();
       }
    }
+   StampObjProps();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

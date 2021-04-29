@@ -20,10 +20,16 @@
 #include "RooListProxy.h"
 #include "RooLinkedList.h"
 #include "RooAICRegistry.h"
-#include "RooCacheManager.h"
 #include "RooObjCacheManager.h"
 #include "RooCmdArg.h"
+
 #include <vector>
+#include <list>
+#include <string>
+
+namespace RooBatchCompute {
+struct RunContext;
+}
 
 typedef RooArgList* pRooArgList ;
 typedef RooLinkedList* pRooLinkedList ;
@@ -53,8 +59,6 @@ public:
   virtual TObject* clone(const char* newname) const { return new RooProdPdf(*this,newname) ; }
   virtual ~RooProdPdf() ;
 
-  virtual Double_t getValV(const RooArgSet* set=0) const ;
-  Double_t evaluate() const ;
   virtual Bool_t checkObservables(const RooArgSet* nset) const ;	
 
   virtual Bool_t forceAnalyticalInt(const RooAbsArg& dep) const ; 
@@ -95,8 +99,11 @@ public:
 
   RooArgSet* findPdfNSet(RooAbsPdf& pdf) const ; 
   
-protected:
 
+private:
+
+  Double_t evaluate() const ;
+  virtual RooSpan<double> evaluateSpan(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const;
 
   RooAbsReal* makeCondPdfRatioCorr(RooAbsReal& term, const RooArgSet& termNset, const RooArgSet& termImpSet, const char* normRange, const char* refRange) const ;
 
@@ -151,7 +158,6 @@ protected:
   RooAbsReal* specializeIntegral(RooAbsReal& orig, const char* targetRangeName) const ;
   RooAbsReal* specializeRatio(RooFormulaVar& input, const char* targetRangeName) const ;
   Double_t calculate(const RooProdPdf::CacheElem& cache, Bool_t verbose=kFALSE) const ;
-  Double_t calculate(const RooArgList* partIntList, const RooLinkedList* normSetList) const ;
 
  
   friend class RooProdGenContext ;
@@ -161,7 +167,6 @@ protected:
 
   mutable RooAICRegistry _genCode ; //! Registry of composite direct generator codes
 
-  mutable RooArgSet* _curNormSet = nullptr; //!
   Double_t _cutOff ;       //  Cutoff parameter for running product
   RooListProxy _pdfList ;  //  List of PDF components
   RooLinkedList _pdfNSetList ; // List of PDF component normalization sets
