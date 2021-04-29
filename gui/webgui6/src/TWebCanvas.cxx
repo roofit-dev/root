@@ -45,6 +45,15 @@
 #include <fstream>
 #include <iostream>
 
+/** \class TWebCanvas
+\ingroup webgui6
+
+Basic TCanvasImp ABI implementation for Web-based GUI
+Provides painting of main ROOT6 classes in web browsers
+Major interactive features implemented in TWebCanvasFull class.
+
+*/
+
 using namespace std::string_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,6 +122,7 @@ Bool_t TWebCanvas::IsJSSupportedClass(TObject *obj)
                             {"TGraph2D", false},
                             {"TGraph2DErrors", false},
                             {"TASImage", false},
+                            {"TRatioPlot", false},
                             {nullptr, false}};
 
    // fast check of class name
@@ -133,7 +143,7 @@ Bool_t TWebCanvas::IsJSSupportedClass(TObject *obj)
 /// Configures custom script for canvas.
 /// If started from "load:" or "assert:" prefix will be loaded with JSROOT.AssertPrerequisites function
 /// Script should implement custom user classes, which transferred as is to client
-/// In the script draw handler for appropriate classes whould be assigned
+/// In the script draw handler for appropriate classes would be assigned
 
 void TWebCanvas::SetCustomScripts(const std::string &src)
 {
@@ -303,7 +313,7 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
       }
    }
 
-   if (need_frame && !frame && CanCreateObject("TFrame")) {
+   if (need_frame && !frame && primitives && CanCreateObject("TFrame")) {
       frame = pad->GetFrame();
       primitives->AddFirst(frame);
    }
@@ -312,7 +322,7 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
       if (title) {
          auto line0 = title->GetLine(0);
          if (line0 && !IsReadOnly()) line0->SetTitle(need_title.c_str());
-      } else if (CanCreateObject("TPaveText")) {
+      } else if (primitives && CanCreateObject("TPaveText")) {
          title = new TPaveText(0, 0, 0, 0, "blNDC");
          title->SetFillColor(gStyle->GetTitleFillColor());
          title->SetFillStyle(gStyle->GetTitleStyle());
@@ -1195,7 +1205,7 @@ Int_t TWebCanvas::StoreCanvasJSON(TCanvas *c, const char *filename, const char *
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Create image using batch (headless) capability of Chrome browser
-/// Supported png, jpeg, svg, pdf folmats
+/// Supported png, jpeg, svg, pdf formats
 
 bool TWebCanvas::ProduceImage(TCanvas *c, const char *fileName, Int_t width, Int_t height)
 {
@@ -1360,7 +1370,7 @@ TObject *TWebCanvas::FindPrimitive(const std::string &sid, TPad *pad, TObjLink *
 
          if (!kind.empty() && (kind.compare(0,7,"member_") == 0)) {
             auto member = kind.substr(7);
-            auto offset = obj->IsA()->GetDataMemberOffset(member.c_str());
+            auto offset = obj->IsA() ? obj->IsA()->GetDataMemberOffset(member.c_str()) : 0;
             if (offset > 0) {
                TObject **mobj = (TObject **)((char*) obj + offset);
                return *mobj;
