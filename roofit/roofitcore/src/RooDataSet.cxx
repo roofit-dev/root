@@ -66,7 +66,6 @@ For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 #include "RooTreeDataStore.h"
 #include "RooVectorDataStore.h"
 #include "RooCompositeDataStore.h"
-#include "RooTreeData.h"
 #include "RooSentinel.h"
 #include "RooTrace.h"
 #include "RooHelpers.h"
@@ -803,7 +802,7 @@ RooDataSet::RooDataSet(RooDataSet const & other, const char* newname) :
 
 RooDataSet::RooDataSet(const char *name, const char *title, RooDataSet *dset, 
 		       const RooArgSet& vars, const RooFormulaVar* cutVar, const char* cutRange,
-		       Int_t nStart, Int_t nStop, Bool_t copyCache, const char* wgtVarName) :
+		       std::size_t nStart, std::size_t nStop, Bool_t copyCache, const char* wgtVarName) :
   RooAbsData(name,title,vars)
 {
    _dstore =
@@ -915,7 +914,7 @@ void RooDataSet::initialize(const char* wgtVarName)
 /// Implementation of RooAbsData virtual method that drives the RooAbsData::reduce() methods
 
 RooAbsData* RooDataSet::reduceEng(const RooArgSet& varSubset, const RooFormulaVar* cutVar, const char* cutRange, 
-				  Int_t nStart, Int_t nStop, Bool_t copyCache)
+				  std::size_t nStart, std::size_t nStop, Bool_t copyCache)
 {
   checkInit() ;
 
@@ -990,11 +989,9 @@ Double_t RooDataSet::weightSquared() const
 
 
 
-////////////////////////////////////////////////////////////////////////////////
-/// Return event weights of all events in range
-
-RooSpan<const double> RooDataSet::getWeightBatch(std::size_t first, std::size_t last) const {
-  return _dstore->getWeightBatch(first, last);
+// See base class.
+RooSpan<const double> RooDataSet::getWeightBatch(std::size_t first, std::size_t len) const {
+  return _dstore->getWeightBatch(first, len);
 }
 
 
@@ -2017,7 +2014,7 @@ void RooDataSet::Streamer(TBuffer &R__b)
        TTree* X_tree(0) ; R__b >> X_tree;
        RooArgSet X_truth ; X_truth.Streamer(R__b);
        TString X_blindString ; X_blindString.Streamer(R__b);
-       R__b.CheckByteCount(R__s1, R__c1, RooTreeData::Class());
+       R__b.CheckByteCount(R__s1, R__c1, TClass::GetClass("RooTreeData"));
        // --- End of RooTreeData-v1 streamer
        
        // Construct RooTreeDataStore from X_tree and complete initialization of new-style RooAbsData
