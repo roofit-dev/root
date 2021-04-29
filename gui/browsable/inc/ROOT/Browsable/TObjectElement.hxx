@@ -12,6 +12,7 @@
 #include <ROOT/Browsable/RElement.hxx>
 
 class TObject;
+class TCollection;
 
 namespace ROOT {
 namespace Experimental {
@@ -58,7 +59,14 @@ public:
    /** Return copy of TObject holder - if possible */
    std::unique_ptr<RHolder> GetObject() override;
 
-   std::string ClassName() const;
+   const TClass *GetClass() const;
+
+   EActionKind GetDefaultAction() const override;
+
+   bool IsCapable(EActionKind) const override;
+
+   static std::unique_ptr<RLevelIter> GetCollectionIter(const TCollection *);
+
 };
 
 } // namespace Browsable
