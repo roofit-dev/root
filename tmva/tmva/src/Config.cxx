@@ -38,8 +38,6 @@ Singleton class for global configuration settings used by TMVA.
 
 #include "Rtypes.h"
 #include "TString.h"
-#include "TSystem.h"
-#include "TROOT.h"
 
 ClassImp(TMVA::Config);
 
@@ -66,13 +64,16 @@ TMVA::Config::Config() :
    fVariablePlotting.fTimesRMS = 8.0;
    fVariablePlotting.fNbins1D  = 40;
    fVariablePlotting.fNbins2D  = 300;
+   fVariablePlotting.fMaxNumOfAllowedVariables = 200;
    fVariablePlotting.fMaxNumOfAllowedVariablesForScatterPlots = 20;
 
    fVariablePlotting.fNbinsMVAoutput   = 40;
    fVariablePlotting.fNbinsXOfROCCurve = 100;
    fVariablePlotting.fUsePaperStyle = 0;
+   fVariablePlotting.fPlotFormat = VariablePlotting::kPNG;  // format for plotting (use when fUsePaperStyle ==0)
 
    // IO names
+   fIONames.fWeightFileDirPrefix = "";
    fIONames.fWeightFileDir           = "weights";
    fIONames.fWeightFileExtension     = "weights";
    fIONames.fOptionsReferenceFileDir = "optionInfo";
@@ -118,4 +119,3 @@ TMVA::Config& TMVA::Config::Instance()
    return fgConfigPtr ? *fgConfigPtr :*(fgConfigPtr = new Config());
 #endif
 }
-

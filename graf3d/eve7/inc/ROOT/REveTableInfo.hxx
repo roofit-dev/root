@@ -13,7 +13,8 @@
 #define ROOT7_REveTableInfo
 
 #include <ROOT/REveElement.hxx>
-#include <ROOT/REveDataClasses.hxx>
+#include <ROOT/REveDataCollection.hxx>
+#include <ROOT/REveDataTable.hxx>
 
 namespace ROOT {
 namespace Experimental {
@@ -60,7 +61,7 @@ public:
    REveTableHandle&
    column(const std::string &name, int precision, const std::string &expression)
    {
-      fSpecs[fCollectionName].emplace_back(name, precision, expression);
+      fSpecs[fClassName].emplace_back(name, precision, expression);
       return *this;
    }
 
@@ -69,14 +70,13 @@ public:
       return column(label, precision, label);
    }
 
-   REveTableHandle(std::string collectionName, Specs_t &specs)
-      :fCollectionName(collectionName), fSpecs(specs)
+   REveTableHandle(std::string className, Specs_t &specs)
+      :fClassName(className), fSpecs(specs)
    {
-      fSpecs[collectionName].clear();
    }
 
 protected:
-   std::string  fCollectionName;
+   std::string  fClassName;
    Specs_t&  fSpecs;
 };
 
@@ -101,12 +101,12 @@ public:
    Int_t WriteCoreJson(nlohmann::json &j, Int_t rnr_offset) override;
 
    // read
-   REveTableHandle::Entries_t &RefTableEntries(std::string cname) { return fSpecs[cname]; }
+   REveTableHandle::Entries_t &RefTableEntries(std::string cname);
 
    // filling
-   REveTableHandle table(std::string collectionName)
+   REveTableHandle table(std::string className)
    {
-      REveTableHandle handle(collectionName, fSpecs);
+      REveTableHandle handle(className, fSpecs);
       return handle;
    }
 

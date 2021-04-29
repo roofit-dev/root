@@ -15,8 +15,9 @@
 // Functionality, interface, and data format is still subject to changes.
 // Do not use for real data!
 
-// The following line should disappear in a future version of RNTuple, when
-// the common template specializations of RField are part of the LinkDef.h
+// Until C++ runtime modules are universally used, we explicitly load the ntuple library.  Otherwise
+// triggering autoloading from the use of templated types would require an exhaustive enumeration
+// of "all" template instances in the LinkDef file.
 R__LOAD_LIBRARY(ROOTNTuple)
 
 #include <ROOT/RNTuple.hxx>
@@ -93,7 +94,10 @@ void Analyze() {
 
    // Quick overview of the ntuple and list of fields.
    ntuple->PrintInfo();
-   // In a future version of RNTuple, there will be support for ntuple->Show() and ntuple->Scan()
+
+   std::cout << "The first entry in JSON format:" << std::endl;
+   ntuple->Show(0);
+   // In a future version of RNTuple, there will be support for ntuple->Scan()
 
    auto c = new TCanvas("c", "", 200, 10, 700, 500);
    TH1I h("h", "Age Distribution CERN, 1988", 100, 0, 100);
