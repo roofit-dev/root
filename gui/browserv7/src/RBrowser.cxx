@@ -185,16 +185,19 @@ std::string RBrowser::ProcessDblClick(const std::string &item_path, const std::s
 
    if (drawingOptions == "$$$editor$$$") {
       auto code = elem->GetContent("text");
-      if (code.empty())
-         return ""s;
+      if (!code.empty()) {
+         auto fname = elem->GetContent("filename");
+         if (fname.empty())
+            fname = elem->GetName();
+         std::vector<std::string> args = { fname, code };
 
-      auto fname = elem->GetContent("filename");
-      if (fname.empty())
-         fname = elem->GetName();
+         return "FREAD:"s + TBufferJSON::ToJSON(&args).Data();
+      }
+      auto json = elem->GetContent("json");
+      if (!json.empty())
+         return "JSON:"s + elem->GetName() + "$$$"s + json;
 
-      std::vector<std::string> args = { fname, code };
-
-      return "FREAD:"s + TBufferJSON::ToJSON(&args).Data();
+      return ""s;
    }
 
    if (drawingOptions == "$$$execute$$$") {
@@ -365,13 +368,20 @@ std::shared_ptr<RCanvas> RBrowser::GetActiveRCanvas() const
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 /// Close and delete specified canvas
+/// Check both list of TCanvas and list of RCanvas
 
 void RBrowser::CloseCanvas(const std::string &name)
 {
    auto iter = std::find_if(fCanvases.begin(), fCanvases.end(), [name](std::unique_ptr<TCanvas> &canv) { return name == canv->GetName(); });
-
-   if (iter != fCanvases.end())
+   if (iter != fCanvases.end()) {
       fCanvases.erase(iter);
+   } else {
+      auto iter2 = std::find_if(fRCanvases.begin(), fRCanvases.end(), [name](const std::shared_ptr<RCanvas> &canv) { return name == canv->GetTitle(); });
+      if (iter2 != fRCanvases.end()) {
+         (*iter2)->Remove();
+         fRCanvases.erase(iter2);
+      }
+   }
 
    if (fActiveCanvas == name)
       fActiveCanvas.clear();
