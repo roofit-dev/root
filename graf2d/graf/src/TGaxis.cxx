@@ -9,13 +9,14 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <math.h>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <cmath>
+#include <iostream>
 
-#include "Riostream.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TGaxis.h"
 #include "TAxisModLab.h"
 #include "TVirtualPad.h"
@@ -30,9 +31,9 @@
 #include "TMath.h"
 #include "THLimitsFinder.h"
 #include "TColor.h"
-#include "TClass.h"
 #include "TTimeStamp.h"
-#include "TSystem.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 Int_t TGaxis::fgMaxDigits = 5;
 Float_t TGaxis::fXAxisExpXOffset = 0.; //Exponent X offset for the X axis
@@ -1077,8 +1078,9 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
    if (!gStyle->GetStripDecimals())   optionDecimals = 1;
    if (fAxis) {
       if (fAxis->GetLabels()) {
-         optionM    = 1;
-         optionText = 1;
+         optionM     = 1;
+         optionText  = 1;
+         optionNoopt = 1;
          ndiv = fAxis->GetLast()-fAxis->GetFirst()+1;
       }
       TList *ml = fAxis->GetModifiedLabels();
@@ -1487,7 +1489,8 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
                   UInt_t w,h;
                   textaxis->SetText(0.,0., fAxis->GetBinLabel(i));
                   textaxis->GetBoundingBox(w,h);
-                  toffset = TMath::Max(toffset,(double)w/((double)gPad->GetWw()*gPad->GetWNDC()));
+                  double scale=gPad->GetWw()*gPad->GetWNDC();
+                  if (scale>0.0) toffset = TMath::Max(toffset,(double)w/scale);
                }
                textaxis->PaintLatex(xmin + s*fAxis->GetLabelOffset()*(gPad->GetUxmax()-gPad->GetUxmin()),
                                     fAxis->GetBinCenter(i),
@@ -1976,7 +1979,8 @@ L110:
                         UInt_t w,h;
                         textaxis->SetText(0.,0., typolabel.Data());
                         textaxis->GetBoundingBox(w,h);
-                        toffset = TMath::Max(toffset,(double)w/((double)gPad->GetWw()*gPad->GetWNDC()));
+                        double scale=gPad->GetWw()*gPad->GetWNDC();
+                        if (scale>0.0) toffset = TMath::Max(toffset,(double)w/scale);
                      }
                      textaxis->PaintLatex(gPad->GetX1() + xx*(gPad->GetX2() - gPad->GetX1()),
                            gPad->GetY1() + yy*(gPad->GetY2() - gPad->GetY1()),
@@ -2182,7 +2186,8 @@ L110:
                   UInt_t w,h;
                   textaxis->SetText(0.,0., typolabel.Data());
                   textaxis->GetBoundingBox(w,h);
-                  toffset = TMath::Max(toffset,(double)w/((double)gPad->GetWw()*gPad->GetWNDC()));
+                  double scale=gPad->GetWw()*gPad->GetWNDC();
+                  if (scale>0.0) toffset = TMath::Max(toffset,(double)w/scale);
                }
                textaxis->PaintLatex(gPad->GetX1() + xx*(gPad->GetX2() - gPad->GetX1()),
                                     gPad->GetY1() + yy*(gPad->GetY2() - gPad->GetY1()),

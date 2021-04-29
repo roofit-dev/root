@@ -31,9 +31,11 @@
 #include "TGClient.h"
 #include "TEnv.h"
 #include "TList.h"
+#include "TObjArray.h"
 #include "TContextMenu.h"
 #include "TMethod.h"
 #include "TMethodArg.h"
+#include "TMethodCall.h"
 #include "TClass.h"
 #include "TVirtualX.h"
 #include "TCanvas.h"
@@ -48,6 +50,8 @@
 #include "TObjectSpy.h"
 #include "KeySymbols.h"
 #include "RConfigure.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 enum EContextMenu {
    kToggleStart       = 1000, // first id of toggle menu items

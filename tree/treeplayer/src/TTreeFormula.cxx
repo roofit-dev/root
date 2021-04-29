@@ -11,7 +11,9 @@
 
 #include "TROOT.h"
 #include "TTreeFormula.h"
+#include "TList.h"
 #include "TTree.h"
+#include "TBuffer.h"
 #include "TBranch.h"
 #include "TBranchObject.h"
 #include "TBranchElement.h"
@@ -32,7 +34,6 @@
 #include "TError.h"
 #include "TVirtualCollectionProxy.h"
 #include "TString.h"
-#include "TTimeStamp.h"
 #include "TMath.h"
 
 #include "TVirtualRefProxy.h"
@@ -40,13 +41,14 @@
 #include "TFormLeafInfo.h"
 #include "TMethod.h"
 #include "TFormLeafInfoReference.h"
-
+#include "strlcpy.h"
+#include "snprintf.h"
 #include "TEntryList.h"
 
-#include <ctype.h>
-#include <stdio.h>
-#include <math.h>
-#include <stdlib.h>
+#include <cctype>
+#include <cstdio>
+#include <cmath>
+#include <cstdlib>
 #include <typeinfo>
 #include <algorithm>
 
@@ -1181,6 +1183,12 @@ Int_t TTreeFormula::ParseWithLeaf(TLeaf* leaf, const char* subExpression, Bool_t
                return -1;
             }
          }
+      }
+   } else {
+      // Regular/old TLeaf, there should not be anything afterward ...
+      if (subExpression && subExpression[0]) {
+        Error("ParseWithLeaf", "Found a numerical leaf but the name has trailing characters: \"%s\"", subExpression);
+        return -1;
       }
    }
 

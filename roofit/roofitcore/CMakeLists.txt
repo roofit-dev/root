@@ -69,7 +69,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooArgList.h
     RooArgProxy.h
     RooArgSet.h
-    RooBanner.h
+    InitUtils.h
     RooBinIntegrator.h
     RooBinnedGenContext.h
     RooBinningCategory.h
@@ -80,8 +80,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooCacheManager.h
     RooCategory.h
     RooCategoryProxy.h
-    RooCategorySharedProperties.h
-    RooCatType.h
     RooChangeTracker.h
     RooChi2Var.h
     RooClassFactory.h
@@ -149,7 +147,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooLinTransBinning.h
     RooList.h
     RooListProxy.h
-    RooMapCatEntry.h
     RooMappedCategory.h
     RooMath.h
     RooMCIntegrator.h
@@ -161,7 +158,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooMPSentinel.h
     RooMsgService.h
     RooMultiCategory.h
-    RooMultiCatIter.h
     RooMultiGenFunction.h
     RooMultiVarGaussian.h
     RooNameReg.h
@@ -200,7 +196,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooRealConstant.h
     RooRealIntegral.h
     RooRealMPFE.h
-    RooProxy.h
+    RooTemplateProxy.h
     RooRealProxy.h
     RooRealSumFunc.h
     RooRealSumPdf.h
@@ -218,7 +214,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooSetPair.h
     RooSetProxy.h
     RooSharedProperties.h
-    RooSharedPropertiesList.h
     RooSimGenContext.h
     RooSimPdfBuilder.h
     RooSimSplitGenContext.h
@@ -234,7 +229,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooThresholdCategory.h
     RooTObjWrap.h
     RooTrace.h
-    RooTreeData.h
     RooTreeDataStore.h
     RooTruthModel.h
     RooUniformBinning.h
@@ -266,10 +260,15 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         MultiProcess/zmq.hxx
     RooHelpers.h
     RooSpan.h
-    BatchData.h
     BatchHelpers.h
     RooVDTHeaders.h
     RooWrapperPdf.h
+    RunContext.h
+    RooNaNPacker.h
+    RooBinSamplingPdf.h
+    RooFitLegacy/RooCatTypeLegacy.h
+    RooFitLegacy/RooCategorySharedProperties.h
+    RooFitLegacy/RooTreeData.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -312,7 +311,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooArgList.cxx
     src/RooArgProxy.cxx
     src/RooArgSet.cxx
-    src/RooBanner.cxx
+    src/InitUtils.cxx
     src/RooBinIntegrator.cxx
     src/RooBinnedGenContext.cxx
     src/RooBinningCategory.cxx
@@ -322,8 +321,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooCachedReal.cxx
     src/RooCacheManager.cxx
     src/RooCategory.cxx
-    src/RooCategorySharedProperties.cxx
-    src/RooCatType.cxx
     src/RooChangeTracker.cxx
     src/RooChi2Var.cxx
     src/RooClassFactory.cxx
@@ -388,7 +385,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooLinTransBinning.cxx
     src/RooList.cxx
     src/RooListProxy.cxx
-    src/RooMapCatEntry.cxx
     src/RooMappedCategory.cxx
     src/RooMath.cxx
     src/RooMCIntegrator.cxx
@@ -400,7 +396,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooMPSentinel.cxx
     src/RooMsgService.cxx
     src/RooMultiCategory.cxx
-    src/RooMultiCatIter.cxx
     src/RooMultiGenFunction.cxx
     src/RooMultiVarGaussian.cxx
     src/RooNameReg.cxx
@@ -455,7 +450,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooSetPair.cxx
     src/RooSetProxy.cxx
     src/RooSharedProperties.cxx
-    src/RooSharedPropertiesList.cxx
     src/RooSimGenContext.cxx
     src/RooSimPdfBuilder.cxx
     src/RooSimSplitGenContext.cxx
@@ -471,7 +465,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooThresholdCategory.cxx
     src/RooTObjWrap.cxx
     src/RooTrace.cxx
-    src/RooTreeData.cxx
     src/RooTreeDataStore.cxx
     src/RooTruthModel.cxx
     src/RooUniformBinning.cxx
@@ -497,9 +490,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
 #        src/MultiProcess/messages.cxx
 #        src/MultiProcess/util.cxx
     src/RooHelpers.cxx
-    src/BatchData.cxx
-    src/BatchHelpers.cxx
     src/RooWrapperPdf.cxx
+    src/RunContext.cxx
+    src/RooBinSamplingPdf.cxx
+    src/RooFitLegacy/RooCatTypeLegacy.cxx
+    src/RooFitLegacy/RooCategorySharedProperties.cxx
+    src/RooFitLegacy/RooMultiCatIter.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
 #    -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
@@ -514,6 +510,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RIO
     MathCore
     Foam
+    Smatrix
 #        RooFitZMQ
 #        ZeroMQ # as noted above, this doesn't work here, so we instead list it as a library below
   LIBRARIES
@@ -525,10 +522,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
 
 #target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
 
-if(testing)
-    ROOT_ADD_TEST_SUBDIRECTORY(test)
-endif()
-
 list(APPEND fitcore_incl ${CMAKE_SOURCE_DIR}/roofit/roofitcore/inc)
 
 if(vdt OR builtin_vdt)
@@ -536,6 +529,22 @@ if(vdt OR builtin_vdt)
    list(APPEND fitcore_incl ${VDT_INCLUDE_DIRS})
 endif()
 
-foreach(inlc ${fitcore_incl})
+foreach(incl ${fitcore_incl})
    target_include_directories(RooFitCore PUBLIC $<BUILD_INTERFACE:${incl}>)
 endforeach()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  # gcc has a bug in that it fails to put its internal -lgcc into the right place when linking.
+  # We need it to check cpu flags in src/InitUtils.cxx
+  # Here, we add an explicit link instruction according to the workaround posted here:
+  # https://bugs.launchpad.net/ubuntu/+source/gcc-5/+bug/1568899
+  target_link_libraries(RooFitCore PRIVATE -lgcc_s -lgcc)
+endif()
+
+if(roofit-arch-libs)
+  target_compile_options(RooFitCore PUBLIC -DR__RF_ARCHITECTURE_SPECIFIC_LIBS)
+endif()
+
+if(testing)
+    ROOT_ADD_TEST_SUBDIRECTORY(test)
+endif()

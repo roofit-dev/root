@@ -23,8 +23,9 @@ End_Macro
  The structure of a file is shown in TFile::TFile
 */
 
-#include "Riostream.h"
+#include <iostream>
 #include "Strlen.h"
+#include "strlcpy.h"
 #include "TDirectoryFile.h"
 #include "TFile.h"
 #include "TBufferFile.h"
@@ -864,10 +865,10 @@ TObject *TDirectoryFile::FindObjectAny(const char *aname) const
 ///   - cycle = "" or cycle = 9999 ==> apply to a memory object
 ///
 /// Examples:
-/// | Pattern | Explanation |
-/// |---------|-------------|
-/// |  foo    | get object named foo in memory if object is not in memory, try with highest cycle from file |
-/// |  foo;1  | get cycle 1 of foo on file |
+/// | %Pattern | Explanation |
+/// |----------|-------------|
+/// |   foo    | get object named foo in memory if object is not in memory, try with highest cycle from file |
+/// |   foo;1  | get cycle 1 of foo on file |
 ///
 /// The retrieved object should in principle derive from TObject.
 /// If not, the function TDirectoryFile::Get<T> should be called.
@@ -1163,13 +1164,23 @@ void TDirectoryFile::ls(Option_t *option) const
       }
    }
 
-   if (diskobj) {
-      TKey *key;
-      TIter next(GetListOfKeys());
-      while ((key = (TKey *) next())) {
+   if (diskobj && fKeys) {
+      //*-* Loop on all the keys
+      TObjLink *lnk = fKeys->FirstLink();
+      while (lnk) {
+         TKey *key = (TKey*)lnk->GetObject();
          TString s = key->GetName();
          if (s.Index(re) == kNPOS) continue;
-         key->ls();                 //*-* Loop on all the keys
+         bool first = (lnk->Prev() == nullptr) || (s != lnk->Prev()->GetObject()->GetName());
+         bool hasbackup = (lnk->Next() != nullptr) && (s == lnk->Next()->GetObject()->GetName());
+         if (first)
+            if (hasbackup)
+               key->ls(true);
+            else
+               key->ls();
+         else
+            key->ls(false);
+         lnk = lnk->Next();
       }
    }
    TROOT::DecreaseDirLevel();

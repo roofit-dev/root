@@ -79,7 +79,7 @@ TClingClassInfo::TClingClassInfo(cling::Interpreter *interp, Bool_t all)
    fType = 0;
 }
 
-TClingClassInfo::TClingClassInfo(cling::Interpreter *interp, const char *name)
+TClingClassInfo::TClingClassInfo(cling::Interpreter *interp, const char *name, bool intantiateTemplate /* = true */)
    : TClingDeclInfo(nullptr), fInterp(interp), fFirstTime(true), fDescend(false), fIterAll(kTRUE), fIsIter(false),
      fType(0), fTitle(""), fOffsetCache(0)
 {
@@ -88,14 +88,14 @@ TClingClassInfo::TClingClassInfo(cling::Interpreter *interp, const char *name)
    const Decl *decl = lh.findScope(name,
                                    gDebug > 5 ? cling::LookupHelper::WithDiagnostics
                                    : cling::LookupHelper::NoDiagnostics,
-                                   &type, /* intantiateTemplate= */ true );
+                                   &type, intantiateTemplate);
    if (!decl) {
       std::string buf = TClassEdit::InsertStd(name);
       if (buf != name) {
          decl = lh.findScope(buf,
                              gDebug > 5 ? cling::LookupHelper::WithDiagnostics
                              : cling::LookupHelper::NoDiagnostics,
-                             &type, /* intantiateTemplate= */ true );
+                             &type, intantiateTemplate);
       }
    }
    if (!decl && type) {
@@ -574,7 +574,7 @@ int TClingClassInfo::GetMethodNArg(const char *method, const char *proto,
    TClingMethodInfo mi = GetMethod(method, proto, objectIsConst, 0, mode);
    int clang_val = -1;
    if (mi.IsValid()) {
-      unsigned num_params = mi.GetMethodDecl()->getNumParams();
+      unsigned num_params = mi.GetTargetFunctionDecl()->getNumParams();
       clang_val = static_cast<int>(num_params);
    }
    return clang_val;

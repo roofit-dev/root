@@ -11,12 +11,15 @@
 #include "ROOT/RDrawable.hxx"
 
 #include "TString.h"
+#include "TObject.h"
+
+using namespace ROOT::Experimental;
 
 ////////////////////////////////////////////////////////////////////////////
 /// Assign id using arbitrary pointer value
 /// Typically drawable pointer should be used here
 
-void ROOT::Experimental::RDisplayItem::SetObjectIDAsPtr(const void *ptr)
+void RDisplayItem::SetObjectIDAsPtr(const void *ptr)
 {
    SetObjectID(ObjectIDFromPtr(ptr));
 }
@@ -24,7 +27,7 @@ void ROOT::Experimental::RDisplayItem::SetObjectIDAsPtr(const void *ptr)
 ////////////////////////////////////////////////////////////////////////////
 /// Build full id, including prefix and object index
 
-void ROOT::Experimental::RDisplayItem::BuildFullId(const std::string &prefix)
+void RDisplayItem::BuildFullId(const std::string &prefix)
 {
    SetObjectID(prefix + std::to_string(GetIndex()) + "_" + GetObjectID());
 }
@@ -32,19 +35,38 @@ void ROOT::Experimental::RDisplayItem::BuildFullId(const std::string &prefix)
 ////////////////////////////////////////////////////////////////////////////
 /// Construct fillid using pointer value
 
-std::string ROOT::Experimental::RDisplayItem::ObjectIDFromPtr(const void *ptr)
+std::string RDisplayItem::ObjectIDFromPtr(const void *ptr)
 {
    auto hash = TString::Hash(&ptr, sizeof(ptr));
    return std::to_string(hash);
 }
 
 ///////////////////////////////////////////////////////////
+/// destructor
+
+RDrawableDisplayItem::~RDrawableDisplayItem()
+{
+   if (fDrawable)
+      fDrawable->OnDisplayItemDestroyed(this);
+}
+
+
+///////////////////////////////////////////////////////////
 /// Constructor
 
-ROOT::Experimental::RIndirectDisplayItem::RIndirectDisplayItem(const RDrawable &dr)
+RIndirectDisplayItem::RIndirectDisplayItem(const RDrawable &dr)
 {
    fAttr = &dr.fAttr;
    fCssClass = &dr.fCssClass;
    fId = &dr.fId;
 }
+
+
+///////////////////////////////////////////////////////////
+/// destructor
+TObjectDisplayItem::~TObjectDisplayItem()
+{
+   if (fOwner) delete fObject;
+}
+
 

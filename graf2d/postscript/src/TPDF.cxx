@@ -53,12 +53,13 @@ the table of contents.
 #pragma optimize("",off)
 #endif
 
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <fstream>
 
-#include "Riostream.h"
 #include "TROOT.h"
+#include "TDatime.h"
 #include "TColor.h"
 #include "TVirtualPad.h"
 #include "TPoints.h"
@@ -69,8 +70,8 @@ the table of contents.
 #include "TText.h"
 #include "zlib.h"
 #include "TObjString.h"
-#include "TClass.h"
 #include "TObjArray.h"
+#include "snprintf.h"
 
 // To scale fonts to the same size as the old TT version
 const Float_t kScale = 0.93376068;

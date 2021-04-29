@@ -18,6 +18,7 @@
 
 #include <iostream>
 #include <vector>
+#include <string>
 
 #include "../Utility.h"
 #include "Math/Functor.h"
@@ -308,7 +309,7 @@ bool testGRUBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSize
    std::cout << "\rTesting weights reset gate gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights reset gate gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights reset gate gradients" << std::endl;
       failed = true;
    }
 
@@ -351,7 +352,7 @@ bool testGRUBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSize
    std::cout << "\rTesting weights reset gate-state gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights reset gate-state gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights reset gate-state gradients" << std::endl;
       failed = true;
    }
 
@@ -390,7 +391,7 @@ bool testGRUBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSize
    std::cout << "\rTesting weights update gate gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights update gate gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights update gate gradients" << std::endl;
       failed = true;
    }
 
@@ -429,7 +430,7 @@ bool testGRUBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSize
    std::cout << "\rTesting weights update gate-state gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights update gate-state gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights update gate-state gradients" << std::endl;
       failed = true;
    }
 
@@ -469,7 +470,7 @@ bool testGRUBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSize
    std::cout << "\rTesting weights candidate gate gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights candidate gate gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights candidate gate gradients" << std::endl;
       failed = true;
    }
 
@@ -509,7 +510,7 @@ bool testGRUBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSize
    std::cout << "\rTesting weights candidate gate-state gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights candidate gate-state gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights candidate gate-state gradients" << std::endl;
       failed = true;
    }
 
@@ -547,7 +548,7 @@ bool testGRUBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSize
    std::cout << "\rTesting reset gate bias gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in reset gate bias gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in reset gate bias gradients" << std::endl;
       failed = true;
    }
 
@@ -584,7 +585,7 @@ bool testGRUBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSize
    std::cout << "\rTesting Update gate bias gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in Update gate bias gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in Update gate bias gradients" << std::endl;
       failed = true;
    }
 
@@ -621,7 +622,7 @@ bool testGRUBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSize
    std::cout << "\rTesting candidate gate bias gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in candidate gate bias gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in candidate gate bias gradients" << std::endl;
       failed = true;
    }
 
