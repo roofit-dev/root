@@ -30,11 +30,29 @@ RDrawableRequest::~RDrawableRequest() = default;
 
 std::unique_ptr<RDrawableReply> RDrawableExecRequest::Process()
 {
-   if (!exec.empty() && GetDrawable())
-      GetDrawable()->Execute(exec);
+   if (!exec.empty() && GetContext().GetDrawable()) {
+      std::string buf = exec;
 
-   if (GetCanvas())
-      const_cast<RCanvas*>(GetCanvas())->Modified();
+      // many operations can be separated by ";;" string
+      // TODO: exclude potential mistake if such symbols appears inside quotes
+
+      while (!buf.empty()) {
+         std::string sub = buf;
+         auto pos = buf.find(";;");
+         if (pos == std::string::npos) {
+            sub = buf;
+            buf.clear();
+         } else {
+            sub = buf.substr(0,pos);
+            buf = buf.substr(pos+2);
+         }
+         if (!sub.empty())
+            GetContext().GetDrawable()->Execute(sub);
+      }
+   }
+
+   if (GetContext().GetCanvas())
+      GetContext().GetCanvas()->Modified();
 
    return nullptr;
 }

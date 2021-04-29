@@ -1,7 +1,6 @@
 ## \file
 ## \ingroup tutorial_roofit
 ## \notebook -nodraw
-##
 ## Data and categories: demonstration of discrete-discrete (invertable) functions
 ##
 ## \macro_code

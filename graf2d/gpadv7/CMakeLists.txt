@@ -14,7 +14,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTGpadv7
     ROOT/RCanvas.hxx
     ROOT/RFrame.hxx
     ROOT/RMenuItems.hxx
-    ROOT/RObjectDrawable.hxx
     ROOT/RColor.hxx
     ROOT/RDisplayItem.hxx
     ROOT/RAttrMap.hxx
@@ -27,6 +26,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTGpadv7
     ROOT/RAttrMarker.hxx
     ROOT/RAttrMargins.hxx
     ROOT/RAttrText.hxx
+    ROOT/RAttrValue.hxx
+    ROOT/RAxisDrawable.hxx
     ROOT/RPalette.hxx
     ROOT/RPaletteDrawable.hxx
     ROOT/RDrawable.hxx
@@ -39,12 +40,13 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTGpadv7
     ROOT/RPadLength.hxx
     ROOT/RPadPos.hxx
     ROOT/RPadUserAxis.hxx
+    ROOT/RPave.hxx
     ROOT/RVirtualCanvasPainter.hxx
+    ROOT/TObjectDrawable.hxx
   SOURCES
     src/RCanvas.cxx
     src/RFrame.cxx
     src/RMenuItems.cxx
-    src/RObjectDrawable.cxx
     src/RColor.cxx
     src/RDisplayItem.cxx
     src/RDrawable.cxx
@@ -60,6 +62,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTGpadv7
     src/RPadPos.cxx
     src/RPadUserAxis.cxx
     src/RVirtualCanvasPainter.cxx
+    src/TObjectDrawable.cxx
   DICTIONARY_OPTIONS
     -writeEmptyRootPCM
   DEPENDENCIES
