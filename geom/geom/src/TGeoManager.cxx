@@ -365,7 +365,6 @@ TGeoManager::TGeoManager()
       fNsegments = 20;
       fNLevel = 0;
       fUniqueVolumes = 0;
-      fNodeIdArray = 0;
       fClippingShape = 0;
       fMatrixTransform = kFALSE;
       fMatrixReflection = kFALSE;
@@ -472,7 +471,6 @@ void TGeoManager::Init()
    fNsegments = 20;
    fNLevel = 0;
    fUniqueVolumes = new TObjArray(256);
-   fNodeIdArray = 0;
    fClippingShape = 0;
    fMatrixTransform = kFALSE;
    fMatrixReflection = kFALSE;
@@ -492,178 +490,6 @@ void TGeoManager::Init()
    fUsePWNav = kFALSE;
    fParallelWorld = 0;
    ClearThreadsMap();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///copy constructor
-
-TGeoManager::TGeoManager(const TGeoManager& gm) :
-  TNamed(gm),
-  fPhimin(gm.fPhimin),
-  fPhimax(gm.fPhimax),
-  fTmin(gm.fTmin),
-  fTmax(gm.fTmax),
-  fNNodes(gm.fNNodes),
-  fParticleName(gm.fParticleName),
-  fVisDensity(gm.fVisDensity),
-  fExplodedView(gm.fExplodedView),
-  fVisOption(gm.fVisOption),
-  fVisLevel(gm.fVisLevel),
-  fNsegments(gm.fNsegments),
-  fNtracks(gm.fNtracks),
-  fMaxVisNodes(gm.fMaxVisNodes),
-  fCurrentTrack(gm.fCurrentTrack),
-  fNpdg(gm.fNpdg),
-  fClosed(gm.fClosed),
-  fLoopVolumes(gm.fLoopVolumes),
-  fStreamVoxels(gm.fStreamVoxels),
-  fIsGeomReading(gm.fIsGeomReading),
-  fIsGeomCleaning(kFALSE),
-  fPhiCut(gm.fPhiCut),
-  fTimeCut(gm.fTimeCut),
-  fDrawExtra(gm.fDrawExtra),
-  fMatrixTransform(gm.fMatrixTransform),
-  fMatrixReflection(gm.fMatrixReflection),
-  fActivity(gm.fActivity),
-  fIsNodeSelectable(gm.fIsNodeSelectable),
-  fPainter(gm.fPainter),
-  fMatrices(gm.fMatrices),
-  fShapes(gm.fShapes),
-  fVolumes(gm.fVolumes),
-  fPhysicalNodes(gm.fPhysicalNodes),
-  fGShapes(gm.fGShapes),
-  fGVolumes(gm.fGVolumes),
-  fTracks(gm.fTracks),
-  fPdgNames(gm.fPdgNames),
-  fGDMLMatrices(gm.fGDMLMatrices),
-  fOpticalSurfaces(gm.fOpticalSurfaces),
-  fSkinSurfaces(gm.fSkinSurfaces),
-  fBorderSurfaces(gm.fBorderSurfaces),
-  fMaterials(gm.fMaterials),
-  fMedia(gm.fMedia),
-  fNodes(gm.fNodes),
-  fOverlaps(gm.fOverlaps),
-  fRegions(gm.fRegions),
-  fBits(gm.fBits),
-  fCurrentNavigator(gm.fCurrentNavigator),
-  fCurrentVolume(gm.fCurrentVolume),
-  fTopVolume(gm.fTopVolume),
-  fTopNode(gm.fTopNode),
-  fMasterVolume(gm.fMasterVolume),
-  fGLMatrix(gm.fGLMatrix),
-  fUniqueVolumes(gm.fUniqueVolumes),
-  fClippingShape(gm.fClippingShape),
-  fElementTable(gm.fElementTable),
-  fNodeIdArray(gm.fNodeIdArray),
-  fNLevel(gm.fNLevel),
-  fPaintVolume(gm.fPaintVolume),
-  fUserPaintVolume(gm.fUserPaintVolume),
-  fHashVolumes(gm.fHashVolumes),
-  fHashGVolumes(gm.fHashGVolumes),
-  fHashPNE(gm.fHashPNE),
-  fArrayPNE(gm.fArrayPNE),
-  fSizePNEId(0),
-  fNPNEId(0),
-  fKeyPNEId(0),
-  fValuePNEId(0),
-  fMaxThreads(0),
-  fMultiThread(kFALSE),
-  fRaytraceMode(0),
-  fUsePWNav(kFALSE),
-  fParallelWorld(0)
-{
-   for(Int_t i=0; i<1024; i++)
-      fPdgId[i]=gm.fPdgId[i];
-   if (!fgThreadId) fgThreadId = new TGeoManager::ThreadsMap_t;
-   ClearThreadsMap();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///assignment operator
-
-TGeoManager& TGeoManager::operator=(const TGeoManager& gm)
-{
-   if (!fgThreadId) fgThreadId = new TGeoManager::ThreadsMap_t;
-   if(this!=&gm) {
-      TNamed::operator=(gm);
-      fPhimin=gm.fPhimin;
-      fPhimax=gm.fPhimax;
-      fTmin=gm.fTmin;
-      fTmax=gm.fTmax;
-      fNNodes=gm.fNNodes;
-      fParticleName=gm.fParticleName;
-      fVisDensity=gm.fVisDensity;
-      fExplodedView=gm.fExplodedView;
-      fVisOption=gm.fVisOption;
-      fVisLevel=gm.fVisLevel;
-      fNsegments=gm.fNsegments;
-      fNtracks=gm.fNtracks;
-      fMaxVisNodes=gm.fMaxVisNodes;
-      fCurrentTrack=gm.fCurrentTrack;
-      fNpdg=gm.fNpdg;
-      for(Int_t i=0; i<1024; i++)
-         fPdgId[i]=gm.fPdgId[i];
-      fClosed=gm.fClosed;
-      fLoopVolumes=gm.fLoopVolumes;
-      fStreamVoxels=gm.fStreamVoxels;
-      fIsGeomReading=gm.fIsGeomReading;
-      fIsGeomCleaning = kFALSE;
-      fPhiCut=gm.fPhiCut;
-      fTimeCut=gm.fTimeCut;
-      fDrawExtra=gm.fDrawExtra;
-      fMatrixTransform=gm.fMatrixTransform;
-      fMatrixReflection=gm.fMatrixReflection;
-      fActivity=gm.fActivity;
-      fIsNodeSelectable=gm.fIsNodeSelectable;
-      fPainter=gm.fPainter;
-      fMatrices=gm.fMatrices;
-      fShapes=gm.fShapes;
-      fVolumes=gm.fVolumes;
-      fPhysicalNodes=gm.fPhysicalNodes;
-      fGShapes=gm.fGShapes;
-      fGVolumes=gm.fGVolumes;
-      fTracks=gm.fTracks;
-      fPdgNames=gm.fPdgNames;
-      fGDMLMatrices=gm.fGDMLMatrices;
-      fOpticalSurfaces = gm.fOpticalSurfaces;
-      fSkinSurfaces = gm.fSkinSurfaces;
-      fBorderSurfaces = gm.fBorderSurfaces;
-      fMaterials=gm.fMaterials;
-      fMedia=gm.fMedia;
-      fNodes=gm.fNodes;
-      fOverlaps=gm.fOverlaps;
-      fRegions=gm.fRegions;
-      fBits=gm.fBits;
-      fCurrentNavigator=gm.fCurrentNavigator;
-      fCurrentVolume = gm.fCurrentVolume;
-      fTopVolume=gm.fTopVolume;
-      fTopNode=gm.fTopNode;
-      fMasterVolume=gm.fMasterVolume;
-      fGLMatrix=gm.fGLMatrix;
-      fUniqueVolumes=gm.fUniqueVolumes;
-      fClippingShape=gm.fClippingShape;
-      fElementTable=gm.fElementTable;
-      fNodeIdArray=gm.fNodeIdArray;
-      fNLevel=gm.fNLevel;
-      fPaintVolume=gm.fPaintVolume;
-      fUserPaintVolume=gm.fUserPaintVolume;
-      fHashVolumes=gm.fHashVolumes;
-      fHashGVolumes=gm.fHashGVolumes;
-      fHashPNE=gm.fHashPNE;
-      fArrayPNE=gm.fArrayPNE;
-      fSizePNEId = 0;
-      fNPNEId = 0;
-      fKeyPNEId = 0;
-      fValuePNEId = 0;
-      fMultiThread = kFALSE;
-      fRaytraceMode = 0;
-      fMaxThreads = 0;
-      fUsePWNav = kFALSE;
-      fParallelWorld = 0;
-      ClearThreadsMap();
-      ClearThreadData();
-   }
-   return *this;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -747,6 +573,51 @@ Int_t TGeoManager::AddRegion(TGeoRegion *region)
   Int_t size = fRegions->GetEntriesFast();
   fRegions->Add(region);
   return size;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Add a user-defined property. Returns true if added, false if existing.
+
+Bool_t TGeoManager::AddProperty(const char* property, Double_t value)
+{
+   auto pos = fProperties.insert(ConstPropMap_t::value_type(property, value));
+   if (!pos.second) {
+      Warning("AddProperty", "Property \"%s\" already exists with value %g", property, (pos.first)->second);
+      return false;
+   }
+   return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get a user-defined property
+
+Double_t TGeoManager::GetProperty(const char *property, Bool_t *error) const
+{
+   auto pos = fProperties.find(property);
+   if (pos == fProperties.end()) {
+      if (error) *error = kTRUE;
+      return 0.;
+   }
+   if (error) *error = kFALSE;
+   return pos->second;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get a user-defined property from a given index
+
+Double_t TGeoManager::GetProperty(size_t i, TString &name, Bool_t *error) const
+{
+   // This is a quite inefficient way to access map elements, but needed for the GDML writer to
+   if (i >= fProperties.size()) {
+      if (error) *error = kTRUE;
+      return 0.;
+   }
+   size_t pos = 0;
+   auto it = fProperties.begin();
+   while (pos < i) { ++it; ++pos; }
+   if (error) *error = kFALSE;
+   name = (*it).first;
+   return (*it).second;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2816,15 +2687,20 @@ Int_t TGeoManager::GetByteCount(Option_t * /*option*/)
 TVirtualGeoPainter *TGeoManager::GetGeomPainter()
 {
    if (!fPainter) {
-      TPluginHandler *h;
-      if ((h = gROOT->GetPluginManager()->FindHandler("TVirtualGeoPainter"))) {
-         if (h->LoadPlugin() == -1)
-            return 0;
+      const char *kind = "root";
+      if (gROOT->IsWebDisplay() && !gROOT->IsWebDisplayBatch()) kind = "web";
+      if (auto h = gROOT->GetPluginManager()->FindHandler("TVirtualGeoPainter", kind)) {
+         if (h->LoadPlugin() == -1) {
+            Error("GetGeomPainter", "could not load plugin for %s geo_painter", kind);
+            return nullptr;
+         }
          fPainter = (TVirtualGeoPainter*)h->ExecPlugin(1,this);
          if (!fPainter) {
-            Error("GetGeomPainter", "could not create painter");
-            return 0;
+            Error("GetGeomPainter", "could not create %s geo_painter", kind);
+            return nullptr;
          }
+      } else {
+         Error("GetGeomPainter", "not found plugin %s for geo_painter", kind);
       }
    }
    return fPainter;

@@ -18,6 +18,7 @@
 #include "TVirtualPad.h"
 #include "TError.h"
 #include "TClass.h"
+#include "TObjString.h"
 
 #include "TProfileHelper.h"
 
@@ -234,6 +235,12 @@ void TProfile::BuildOptions(Double_t ymin, Double_t ymax, Option_t *option)
 TProfile::TProfile(const TProfile &profile) : TH1D()
 {
    ((TProfile&)profile).Copy(*this);
+}
+
+TProfile &TProfile::operator=(const TProfile &profile)
+{
+   ((TProfile &)profile).Copy(*this);
+   return *this;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

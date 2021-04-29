@@ -5,7 +5,6 @@
 #include "PyCallable.h"
 
 // Standard
-#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -57,10 +56,11 @@ public:
 
 public:
     void Set(const std::string& name, std::vector<PyCallable*>& methods);
+    void AdoptMethod(PyCallable* pc);
+    void MergeOverload(CPPOverload* meth);
 
     const std::string& GetName() const { return fMethodInfo->fName; }
-    void AddMethod(PyCallable* pc);
-    void AddMethod(CPPOverload* meth);
+    bool HasMethods() const { return !fMethodInfo->fMethods.empty(); }
 
 public:                 // public, as the python C-API works with C structs
     PyObject_HEAD
@@ -73,7 +73,7 @@ private:
 
 
 //- method proxy type and type verification ----------------------------------
-extern PyTypeObject CPPOverload_Type;
+CPYCPPYY_IMPORT PyTypeObject CPPOverload_Type;
 
 template<typename T>
 inline bool CPPOverload_Check(T* object)

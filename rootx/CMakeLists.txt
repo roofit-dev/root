@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT rootx package
 # @author Pere Mato, CERN
@@ -45,6 +51,12 @@ elseif(cocoa)
 endif()
 
 if(x11 OR cocoa)
-  generateHeaders(${CMAKE_SOURCE_DIR}/core/base/src/root-argparse.py
-                  ${CMAKE_BINARY_DIR}/include/rootCommandLineOptionsHelp.h root)
+  generateHeader(root
+    ${CMAKE_SOURCE_DIR}/core/base/src/root-argparse.py
+    ${CMAKE_BINARY_DIR}/include/rootCommandLineOptionsHelp.h
+  )
+endif()
+
+if(rpath)
+  add_definitions(-DIS_RPATH_BUILD=1)
 endif()

@@ -19,20 +19,27 @@
 #include "TNamed.h"
 #include "RooPrintable.h"
 #include "RooArgSet.h"
-#include "RooFormulaVar.h"
-#include <cmath>
-#include "TMatrixDSym.h"
+#include "RooArgList.h"
+#include "RooSpan.h"
 
 class RooAbsArg;
 class RooAbsReal ;
+class RooRealVar;
+class RooAbsRealLValue;
 class RooAbsCategory ;
+class RooAbsCategoryLValue;
 class Roo1DTable ;
 class RooPlot;
 class RooArgList;
 class TH1;
+class TH2F;
 class RooAbsBinning ;
 class Roo1DTable ;
 class RooAbsDataStore ;
+template<typename T> class TMatrixTSym;
+using TMatrixDSym = TMatrixTSym<Double_t>;
+class RooFormulaVar;
+
 
 class RooAbsData : public TNamed, public RooPrintable {
 public:
@@ -41,6 +48,7 @@ public:
   RooAbsData() ; 
   RooAbsData(const char *name, const char *title, const RooArgSet& vars, RooAbsDataStore* store=0) ;
   RooAbsData(const RooAbsData& other, const char* newname = 0) ;
+  RooAbsData& operator=(const RooAbsData& other);
   virtual ~RooAbsData() ;
   virtual RooAbsData* emptyClone(const char* newName=0, const char* newTitle=0, const RooArgSet* vars=0, const char* wgtVarName=0) const = 0 ;
 
@@ -58,7 +66,7 @@ public:
   TTree *GetClonedTree() const;
 
   void convertToVectorStore() ;
-  void convertToTreeStore();
+  virtual void convertToTreeStore();
 
   void attachBuffers(const RooArgSet& extObs) ;
   void resetBuffers() ;
@@ -88,6 +96,12 @@ public:
   virtual void weightError(Double_t& lo, Double_t& hi, ErrorType etype=Poisson) const ; 
   virtual const RooArgSet* get(Int_t index) const ;
 
+  ////////////////////////////////////////////////////////////////////////////////
+  /// Return event weights of all events in range [first, first+len).
+  /// If no contiguous structure of weights is stored, an empty batch can be returned.
+  /// This indicates that the weight is constant. Use weight() to retrieve it.
+  virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t len) const = 0;
+
   virtual Int_t numEntries() const ;
   virtual Double_t sumEntries() const = 0 ;
   virtual Double_t sumEntries(const char* cutSpec, const char* cutRange=0) const = 0 ; // DERIVED
@@ -102,7 +116,7 @@ public:
   virtual void reset() ;
 
 
-  Bool_t getRange(RooRealVar& var, Double_t& lowest, Double_t& highest, Double_t marginFrac=0, Bool_t symMode=kFALSE) const ;
+  Bool_t getRange(const RooRealVar& var, double& lowest, double& highest, double marginFrac=0, bool symMode=kFALSE) const ;
 
   // Plot the distribution of a real valued arg
   virtual Roo1DTable* table(const RooArgSet& catSet, const char* cuts="", const char* opts="") const ;
@@ -172,14 +186,14 @@ public:
 
   void setDirtyProp(Bool_t flag) ;
   
-  Double_t moment(RooRealVar &var, Double_t order, const char* cutSpec=0, const char* cutRange=0) const ;
-  Double_t moment(RooRealVar &var, Double_t order, Double_t offset, const char* cutSpec=0, const char* cutRange=0) const ;
-  Double_t standMoment(RooRealVar &var, Double_t order, const char* cutSpec=0, const char* cutRange=0) const ;
+  Double_t moment(const RooRealVar& var, Double_t order, const char* cutSpec=0, const char* cutRange=0) const ;
+  Double_t moment(const RooRealVar& var, Double_t order, Double_t offset, const char* cutSpec=0, const char* cutRange=0) const ;
+  Double_t standMoment(const RooRealVar& var, Double_t order, const char* cutSpec=0, const char* cutRange=0) const ;
 
-  Double_t mean(RooRealVar& var, const char* cutSpec=0, const char* cutRange=0) const { return moment(var,1,0,cutSpec,cutRange) ; }
-  Double_t sigma(RooRealVar& var, const char* cutSpec=0, const char* cutRange=0) const { return sqrt(moment(var,2,cutSpec,cutRange)) ; }
-  Double_t skewness(RooRealVar& var, const char* cutSpec=0, const char* cutRange=0) const { return standMoment(var,3,cutSpec,cutRange) ; }
-  Double_t kurtosis(RooRealVar& var, const char* cutSpec=0, const char* cutRange=0) const { return standMoment(var,4,cutSpec,cutRange) ; }
+  Double_t mean(const RooRealVar& var, const char* cutSpec=0, const char* cutRange=0) const { return moment(var,1,0,cutSpec,cutRange) ; }
+  Double_t sigma(const RooRealVar& var, const char* cutSpec=0, const char* cutRange=0) const { return sqrt(moment(var,2,cutSpec,cutRange)) ; }
+  Double_t skewness(const RooRealVar& var, const char* cutSpec=0, const char* cutRange=0) const { return standMoment(var,3,cutSpec,cutRange) ; }
+  Double_t kurtosis(const RooRealVar& var, const char* cutSpec=0, const char* cutRange=0) const { return standMoment(var,4,cutSpec,cutRange) ; }
 
   Double_t covariance(RooRealVar &x,RooRealVar &y, const char* cutSpec=0, const char* cutRange=0) const { return corrcov(x,y,cutSpec,cutRange,kFALSE) ; }
   Double_t correlation(RooRealVar &x,RooRealVar &y, const char* cutSpec=0, const char* cutRange=0) const { return corrcov(x,y,cutSpec,cutRange,kTRUE) ; }
@@ -189,8 +203,8 @@ public:
   TMatrixDSym* covarianceMatrix(const RooArgList& vars, const char* cutSpec=0, const char* cutRange=0) const { return corrcovMatrix(vars,cutSpec,cutRange,kFALSE) ; }
   TMatrixDSym* correlationMatrix(const RooArgList& vars, const char* cutSpec=0, const char* cutRange=0) const { return corrcovMatrix(vars,cutSpec,cutRange,kTRUE) ; }
   
-  RooRealVar* meanVar(RooRealVar &var, const char* cutSpec=0, const char* cutRange=0) const ;
-  RooRealVar* rmsVar(RooRealVar &var, const char* cutSpec=0, const char* cutRange=0) const ;
+  RooRealVar* meanVar(const RooRealVar &var, const char* cutSpec=0, const char* cutRange=0) const ;
+  RooRealVar* rmsVar(const RooRealVar &var, const char* cutSpec=0, const char* cutRange=0) const ;
 
   virtual RooPlot* statOn(RooPlot* frame, 
                           const RooCmdArg& arg1=RooCmdArg::none(), const RooCmdArg& arg2=RooCmdArg::none(), 
@@ -225,7 +239,7 @@ protected:
 
   StorageType storageType;
 
-  Double_t corrcov(RooRealVar &x,RooRealVar &y, const char* cutSpec, const char* cutRange, Bool_t corr) const  ;
+  Double_t corrcov(const RooRealVar& x, const RooRealVar& y, const char* cutSpec, const char* cutRange, Bool_t corr) const  ;
   TMatrixDSym* corrcovMatrix(const RooArgList& vars, const char* cutSpec, const char* cutRange, Bool_t corr) const  ;
 
   virtual void optimizeReadingWithCaching(RooAbsArg& arg, const RooArgSet& cacheList, const RooArgSet& keepObsList) ;
@@ -253,14 +267,11 @@ protected:
   virtual RooAbsData* reduceEng(const RooArgSet& varSubset, const RooFormulaVar* cutVar, const char* cutRange=0, 
 	                        Int_t nStart=0, Int_t nStop=2000000000, Bool_t copyCache=kTRUE) = 0 ; // DERIVED
 
-  RooRealVar* dataRealVar(const char* methodname, RooRealVar& extVar) const ;
+  RooRealVar* dataRealVar(const char* methodname, const RooRealVar& extVar) const ;
 
   // Column structure definition
   RooArgSet _vars;         // Dimensions of this data set
   RooArgSet _cachedVars ;  //! External variables cached with this data set
-
-  TIterator *_iterator;    //! Iterator over dimension variables
-  TIterator *_cacheIter ;  //! Iterator over cached variables
 
   RooAbsDataStore* _dstore ; // Data storage implementation
 

@@ -5,7 +5,6 @@
 #define PYROOT_UTILITY_H
 
 // Standard
-#include <map>
 #include <string>
 #include <vector>
 
@@ -33,14 +32,16 @@ namespace PyROOT {
 
       // helpers for dynamically constructing binary operators
       Bool_t AddBinaryOperator( PyObject* left, PyObject* right,
-         const char* op, const char* label, const char* alt_label = NULL );
+         const char* op, const char* label, const char* alt_label = NULL, bool lazy = false );
       Bool_t AddBinaryOperator( PyObject* pyclass,
-         const char* op, const char* label, const char* alt_label = NULL );
+         const char* op, const char* label, const char* alt_label = NULL, bool lazy = false );
       Bool_t AddBinaryOperator( PyObject* pyclass, const std::string& lcname, const std::string& rcname,
-         const char* op, const char* label, const char* alt_label = NULL );
+         const char* op, const char* label, const char* alt_label = NULL, bool lazy = false );
 
    // helper for template classes and methods
-      PyObject* BuildTemplateName( PyObject* pyname, PyObject* args, int argoff );
+      enum ArgPreference { kNone, kPointer, kReference, kValue };
+      PyObject* BuildTemplateName( PyObject* pyname, PyObject* tpArgs, int argoff,
+         PyObject* args = nullptr, ArgPreference = kNone, int* pcnt = nullptr, bool inferredTypes = false );
 
    // initialize proxy type objects
       Bool_t InitProxy( PyObject* module, PyTypeObject* pytype, const char* name );

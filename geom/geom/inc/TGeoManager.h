@@ -57,8 +57,8 @@ protected:
    static UInt_t         fgExportPrecision; //! Precision to be used in ASCII exports
    static EDefaultUnits  fgDefaultUnits;    //! Default units in GDML if not explicit in some tags
 
-   TGeoManager(const TGeoManager&);
-   TGeoManager& operator=(const TGeoManager&);
+   TGeoManager(const TGeoManager&) = delete;
+   TGeoManager& operator=(const TGeoManager&) = delete;
 
 private :
    Double_t              fPhimin;           //! lowest range for phi cut
@@ -115,6 +115,8 @@ private :
    typedef NavigatorsMap_t::iterator                         NavigatorsMapIt_t;
    typedef std::map<std::thread::id, Int_t>                  ThreadsMap_t;
    typedef ThreadsMap_t::const_iterator                      ThreadsMapIt_t;
+   // Map of constant properties
+   typedef std::map<std::string, Double_t>                   ConstPropMap_t;
 
    NavigatorsMap_t       fNavigators;       //! Map between thread id's and navigator arrays
    static ThreadsMap_t  *fgThreadId;        //! Thread id's map
@@ -130,7 +132,6 @@ private :
    TGeoShape            *fClippingShape;    //! clipping shape for raytracing
    TGeoElementTable     *fElementTable;     //! table of elements
 
-   Int_t                *fNodeIdArray;      //! array of node id's
    Int_t                 fNLevel;           // maximum accepted level in geometry
    TGeoVolume           *fPaintVolume;      //! volume currently painted
    TGeoVolume           *fUserPaintVolume;  //!
@@ -147,6 +148,7 @@ private :
    Int_t                 fRaytraceMode;     //! Raytrace mode: 0=normal, 1=pass through, 2=transparent
    Bool_t                fUsePWNav;         // Activate usage of parallel world in navigation
    TGeoParallelWorld    *fParallelWorld;    // Parallel world
+   ConstPropMap_t        fProperties;       // Map of user-defined constant properties
 //--- private methods
    Bool_t                IsLoopingVolumes() const     {return fLoopVolumes;}
    void                  Init();
@@ -172,6 +174,10 @@ public:
    Int_t                  AddTrack(TVirtualGeoTrack *track);
    Int_t                  AddVolume(TGeoVolume *volume);
    TGeoNavigator         *AddNavigator();
+   Bool_t                 AddProperty(const char *property, Double_t value);
+   Double_t               GetProperty(const char *name, Bool_t *error = nullptr) const;
+   Double_t               GetProperty(size_t i, TString &name, Bool_t *error = nullptr) const;
+   Int_t                  GetNproperties() const { return fProperties.size(); }
    void                   ClearOverlaps();
    void                   RegisterMatrix(const TGeoMatrix *matrix);
    void                   SortOverlaps();
@@ -588,7 +594,7 @@ public:
    void                  SetUseParallelWorldNav(Bool_t flag);
    Bool_t                IsParallelWorldNav() const {return fUsePWNav;}
 
-   ClassDef(TGeoManager, 16)          // geometry manager
+   ClassDef(TGeoManager, 17)          // geometry manager
 };
 
 R__EXTERN TGeoManager *gGeoManager;
