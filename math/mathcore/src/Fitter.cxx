@@ -201,17 +201,15 @@ bool Fitter::SetFCN(const ROOT::Math::IMultiGenFunction & fcn, const double * pa
    fBinFit = chi2fit;
    fDataSize = dataSize;
 
-   auto get_time = [](){using namespace std::chrono; return duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count();};
-   decltype(get_time()) t1, t2;
-
    // keep also a copy of FCN function and set this in minimizer so they will be managed together
    // (remember that cloned copy will still depends on data and model function pointers)
-   t1 = get_time();
    fObjFunction = std::unique_ptr<ROOT::Math::IMultiGenFunction> ( fcn.Clone() );
-   t2 = get_time();
-//   std::cout << "Fitter::SetFCN timestamps: " << t1 << " " << t2 << std::endl;
 
-  return true;
+   // in case a model function and data exists from a previous fit - reset shared-ptr
+   if (fFunc && fResult->FittedFunction() == 0) fFunc.reset();
+   if (fData) fData.reset(); 
+
+   return true;
 }
 
 bool Fitter::SetFCN(const ROOT::Math::IMultiGradFunction & fcn, const double * params, unsigned int dataSize , bool chi2fit) {
@@ -300,15 +298,12 @@ bool Fitter::FitFCN(MinuitFCN_t fcn, int npar, const double * params , unsigned 
 bool Fitter::FitFCN() {
    // fit using the previously set  FCN function
 
-   // in case a model function exists from a previous fit - reset shared-ptr
-   if (fFunc && fResult->FittedFunction() == 0) fFunc.reset();
-
    if (!fObjFunction) {
       MATH_ERROR_MSG("Fitter::FitFCN","Objective function has not been set");
       return false;
    }
    // look if FCN s of a known type and we can get some modelfunction and data objects
-   ExamineFCN();
+   if (!fFunc || !fData) ExamineFCN();
    // init the minimizer
    if (!DoInitMinimizer() ) return false;
    // perform the minimization
