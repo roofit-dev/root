@@ -181,15 +181,12 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
   // Make internal copy of dependent list
   RooArgSet intDepList(depList) ;
 
-  RooAbsArg *arg ;
-
   // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
   // * A) Check that all dependents are lvalues and filter out any
   //      dependents that the PDF doesn't explicitly depend on
   // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
   
-  TIterator* depIter = intDepList.createIterator() ;
-  while((arg=(RooAbsArg*)depIter->Next())) {
+  for (auto arg : intDepList) {
     if(!arg->isLValue()) {
       coutE(InputArguments) << ClassName() << "::" << GetName() << ": cannot integrate non-lvalue ";
       arg->Print("1");
@@ -219,9 +216,7 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
   RooArgSet branchList,branchListVD ;
   function.branchNodeServerList(&branchList) ;
 
-  TIterator* bIter = branchList.createIterator() ;
-  RooAbsArg* branch ;
-  while((branch=(RooAbsArg*)bIter->Next())) {
+  for (auto branch: branchList) {
     RooAbsRealLValue    *realArgLV = dynamic_cast<RooAbsRealLValue*>(branch) ;
     RooAbsCategoryLValue *catArgLV = dynamic_cast<RooAbsCategoryLValue*>(branch) ;
     if ((realArgLV && (realArgLV->isJacobianOK(intDepList)!=0)) || catArgLV) {
@@ -235,7 +230,6 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
 //       cout << "value of self does not depend on branch " << branch->GetName() << endl ;
     }
   }
-  delete bIter ;
   exclLVBranches.remove(depList,kTRUE,kTRUE) ;
 //    cout << "exclLVBranches = " << exclLVBranches << endl ;
 
@@ -246,26 +240,23 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
 //    cout << "begin exclLVServers = " << exclLVServers << endl ;
   
   // Obtain mutual exclusive dependence by iterative reduction
-  TIterator *sIter = exclLVServers.createIterator() ;
-  bIter = exclLVBranches.createIterator() ;
-  RooAbsArg *server ;
   Bool_t converged(kFALSE) ;
   while(!converged) {
     converged=kTRUE ;
 
     // Reduce exclLVServers to only those serving exclusively exclLVBranches
-    sIter->Reset() ;
-    while ((server=(RooAbsArg*)sIter->Next())) {
+    std::vector<RooAbsArg*> toBeRemoved;
+    for (auto server : exclLVServers) {
       if (!servesExclusively(server,exclLVBranches,branchListVD)) {
-	exclLVServers.remove(*server) ;
-//  	cout << "removing " << server->GetName() << " from exclLVServers because servesExclusively(" << server->GetName() << "," << exclLVBranches << ") faile" << endl ;
-	converged=kFALSE ;
+        toBeRemoved.push_back(server);
+        //  	cout << "removing " << server->GetName() << " from exclLVServers because servesExclusively(" << server->GetName() << "," << exclLVBranches << ") faile" << endl ;
+        converged=kFALSE ;
       }
+      exclLVServers.remove(toBeRemoved.begin(), toBeRemoved.end());
     }
     
     // Reduce exclLVBranches to only those depending exclusisvely on exclLVservers
-    bIter->Reset() ;
-    while((branch=(RooAbsArg*)bIter->Next())) {
+    for (auto branch : exclLVBranches) {
       RooArgSet* brDepList = branch->getObservables(&intDepList) ;
       RooArgSet bsList(*brDepList,"bsList") ;
       delete brDepList ;
@@ -279,16 +270,12 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
   }
 
   // Eliminate exclLVBranches that do not depend on any LVServer
-  bIter->Reset() ;
-  while((branch=(RooAbsArg*)bIter->Next())) {    
+  for (auto branch : exclLVBranches) {
     if (!branch->dependsOnValue(exclLVServers)) {
       //cout << "LV branch " << branch->GetName() << " does not depend on any LVServer (" << exclLVServers << ") and will be removed" << endl ; 
       exclLVBranches.remove(*branch,kTRUE,kTRUE) ;
     }
-  } 
-
-  delete sIter ;
-  delete bIter ;
+  }
 
 //   cout << "end exclLVServers = " << exclLVServers << endl ;
      
@@ -311,13 +298,11 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
   // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
   RooArgSet anIntOKDepList ;
-  depIter->Reset() ;
-  while((arg=(RooAbsArg*)depIter->Next())) {
+  for (auto arg : intDepList) {
     if (function.forceAnalyticalInt(*arg)) {
       anIntOKDepList.add(*arg) ;
     }
   }
-  delete depIter ;
   
   if (anIntOKDepList.getSize()>0) {
     oocxcoutI(&function,Integration) << function.GetName() << ": Observables that function forcibly requires to be integrated internally " << anIntOKDepList << endl ;
@@ -329,7 +314,8 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
   //      Add all parameters/dependents as value/shape servers     *
   // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
-  sIter = function.serverIterator() ;
+  std::unique_ptr<TIterator> sIter(function.serverIterator());
+  RooAbsArg * arg;
   while((arg=(RooAbsArg*)sIter->Next())) {
 
     //cout << "considering server" << arg->GetName() << endl ;
@@ -518,8 +504,8 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
   //cout << "NUMINT intDepList = " << intDepList << endl ;
 
   // Loop again over function servers to add remaining numeric integrations
-  sIter->Reset() ;
-  while((arg=(RooAbsArg*)sIter->Next())) {
+  std::unique_ptr<TIterator> sIter3(function.serverIterator());
+  while((arg=(RooAbsArg*)sIter3->Next())) {
 
     //cout << "processing server for numeric integration " << arg->IsA()->GetName() << "::" << arg->GetName() << endl ;
 
@@ -554,7 +540,6 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
 
     }
   }
-  delete sIter ;
 
   // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
   // * G) Split numeric list in integration list and summation list  *
