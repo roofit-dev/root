@@ -1,6 +1,8 @@
 // Bindings
 #include "CPyCppyy.h"
-#include "TPyArg.h"
+#define CPYCPPYY_INTERNAL 1
+#include "CPyCppyy/TPyArg.h"
+#undef CPYCPPYY_INTERNAL
 
 
 //______________________________________________________________________________
@@ -90,7 +92,7 @@ TPyArg::TPyArg(double value)
 TPyArg::TPyArg(const char* value)
 {
 // Construct a TPyArg from a C-string.
-    fPyObject = CPyCppyy_PyUnicode_FromString(value);
+    fPyObject = CPyCppyy_PyText_FromString(value);
 }
 
 //----------------------------------------------------------------------------
