@@ -29,6 +29,8 @@
 #include "clang/Parse/Parser.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Scope.h"
+#include "clang/Serialization/ASTReader.h"
+#include "clang/Serialization/GlobalModuleIndex.h"
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
@@ -74,11 +76,8 @@ extern "C" {
                                     cling::Interpreter &interpreter, bool searchSystem);
 }
 
-TClingCallbacks::TClingCallbacks(cling::Interpreter* interp, bool hasCodeGen)
-   : InterpreterCallbacks(interp),
-     fLastLookupCtx(0), fROOTSpecialNamespace(0),
-     fFirstRun(true), fIsAutoLoading(false), fIsAutoLoadingRecursively(false),
-     fIsAutoParsingSuspended(false), fPPOldFlag(false), fPPChanged(false) {
+TClingCallbacks::TClingCallbacks(cling::Interpreter *interp, bool hasCodeGen) : InterpreterCallbacks(interp)
+{
    if (hasCodeGen) {
       Transaction* T = 0;
       m_Interpreter->declare("namespace __ROOT_SpecialObjects{}", &T);
@@ -285,17 +284,61 @@ bool TClingCallbacks::LookupObject(LookupResult &R, Scope *S) {
    return tryResolveAtRuntimeInternal(R, S);
 }
 
+bool TClingCallbacks::findInGlobalModuleIndex(DeclarationName Name, bool loadFirstMatchOnly /*=true*/)
+{
+   const CompilerInstance *CI = m_Interpreter->getCI();
+   const LangOptions &LangOpts = CI->getPreprocessor().getLangOpts();
+
+   if (!LangOpts.Modules)
+      return false;
+
+   // We are currently building a module, we should not import .
+   if (LangOpts.isCompilingModule())
+      return false;
+
+   if (fIsCodeGening)
+      return false;
+
+   GlobalModuleIndex *Index = CI->getModuleManager()->getGlobalIndex();
+   if (!Index)
+      return false;
+
+   // FIXME: We should load only the first available and rely on other callbacks
+   // such as RequireCompleteType and LookupUnqualified to load all.
+   GlobalModuleIndex::FileNameHitSet FoundModules;
+
+   // Find the modules that reference the identifier.
+   // Note that this only finds top-level modules.
+   if (Index->lookupIdentifier(Name.getAsString(), FoundModules)) {
+      for (auto FileName : FoundModules) {
+         StringRef ModuleName = llvm::sys::path::stem(*FileName);
+         fIsLoadingModule = true;
+         m_Interpreter->loadModule(ModuleName);
+         fIsLoadingModule = false;
+         if (loadFirstMatchOnly)
+            break;
+      }
+      return true;
+   }
+   return false;
+}
+
 bool TClingCallbacks::LookupObject(const DeclContext* DC, DeclarationName Name) {
    if (!fROOTSpecialNamespace) {
       // init error or rootcling
       return false;
    }
 
+   if (fIsLoadingModule)
+      return false;
+
    if (!IsAutoLoadingEnabled() || fIsAutoLoadingRecursively) return false;
 
-   if (Name.getNameKind() != DeclarationName::Identifier) return false;
+   if (findInGlobalModuleIndex(Name, /*loadFirstMatchOnly*/ false))
+      return true;
 
-
+   if (Name.getNameKind() != DeclarationName::Identifier)
+      return false;
 
    // Get the 'lookup' decl context.
    // We need to cast away the constness because we will lookup items of this
@@ -343,8 +386,14 @@ bool TClingCallbacks::LookupObject(clang::TagDecl* Tag) {
       return false;
    }
 
+   if (fIsLoadingModule)
+      return false;
+
    // Clang needs Tag's complete definition. Can we parse it?
    if (fIsAutoLoadingRecursively || fIsAutoParsingSuspended) return false;
+
+   // if (findInGlobalModuleIndex(Tag->getDeclName(), /*loadFirstMatchOnly*/false))
+   //    return true;
 
    Sema &SemaR = m_Interpreter->getSema();
 
