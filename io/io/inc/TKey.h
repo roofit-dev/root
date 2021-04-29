@@ -25,10 +25,11 @@ class TKey : public TNamed {
 
 private:
    enum EStatusBits {
-      kIsDirectoryFile = BIT(14)
+      kIsDirectoryFile = BIT(14),
+      kReproducible = BIT(15)
    };
-   TKey(const TKey&);            // TKey objects are not copiable.
-   TKey& operator=(const TKey&); // TKey objects are not copiable.
+   TKey(const TKey&) = delete;            // TKey objects are not copiable.
+   TKey& operator=(const TKey&) = delete; // TKey objects are not copiable.
 
 protected:
    Int_t       fVersion;     ///< Key version identifier
@@ -96,13 +97,13 @@ protected:
    /// This is more user friendly version of TKey::ReadObjectAny.
    /// See TKey::ReadObjectAny for more details.
    template <typename T> T *ReadObject() {
-      return reinterpret_cast<T*>(ReadObjectAny(TClass::GetClass(typeid(T))));
+      return reinterpret_cast<T*>(ReadObjectAny(TClass::GetClass<T>()));
    }
    virtual void       *ReadObjectAny(const TClass *expectedClass);
    virtual void        ReadBuffer(char *&buffer);
            void        ReadKeyBuffer(char *&buffer);
    virtual Bool_t      ReadFile();
-   virtual void        SetBuffer() { fBuffer = new char[fNbytes];}
+   virtual void        SetBuffer() { DeleteBuffer(); fBuffer = new char[fNbytes];}
    virtual void        SetParent(const TObject *parent);
            void        SetMotherDir(TDirectory* dir) { fMotherDir = dir; }
    virtual Int_t       Sizeof() const;

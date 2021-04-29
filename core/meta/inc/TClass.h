@@ -392,7 +392,7 @@ public:
    Int_t              GetClassSize() const { return Size(); }
    TDataMember       *GetDataMember(const char *datamember) const;
    Long_t             GetDataMemberOffset(const char *membername) const;
-   const char        *GetDeclFileName() const { return fDeclFileName; }
+   const char        *GetDeclFileName() const;
    Short_t            GetDeclFileLine() const { return fDeclFileLine; }
    ROOT::DelFunc_t    GetDelete() const;
    ROOT::DesFunc_t    GetDestructor() const;
@@ -600,15 +600,15 @@ TClass *TClass::GetClass(Bool_t load, Bool_t silent)
 
 namespace ROOT {
 
-template <typename T> TClass *GetClass(T * /* dummy */)       { return TClass::GetClass(typeid(T)); }
-template <typename T> TClass *GetClass(const T * /* dummy */) { return TClass::GetClass(typeid(T)); }
+template <typename T> TClass *GetClass(T * /* dummy */)       { return TClass::GetClass<T>(); }
+template <typename T> TClass *GetClass(const T * /* dummy */) { return TClass::GetClass<T>(); }
 
 #ifndef R__NO_CLASS_TEMPLATE_SPECIALIZATION
    // This can only be used when the template overload resolution can distinguish between T* and T**
-   template <typename T> TClass* GetClass(      T**       /* dummy */) { return GetClass((T*)0); }
-   template <typename T> TClass* GetClass(const T**       /* dummy */) { return GetClass((T*)0); }
-   template <typename T> TClass* GetClass(      T* const* /* dummy */) { return GetClass((T*)0); }
-   template <typename T> TClass* GetClass(const T* const* /* dummy */) { return GetClass((T*)0); }
+   template <typename T> TClass* GetClass(      T**       /* dummy */) { return TClass::GetClass<T>(); }
+   template <typename T> TClass* GetClass(const T**       /* dummy */) { return TClass::GetClass<T>(); }
+   template <typename T> TClass* GetClass(      T* const* /* dummy */) { return TClass::GetClass<T>(); }
+   template <typename T> TClass* GetClass(const T* const* /* dummy */) { return TClass::GetClass<T>(); }
 #endif
 
    extern TClass *CreateClass(const char *cname, Version_t id,
