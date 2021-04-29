@@ -203,6 +203,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooRealVarSharedProperties.h
     RooRecursiveFraction.h
     RooRefCountList.h
+    RooSTLRefCountList.h
     RooResolutionModel.h
     RooScaledFunc.h
     RooSecondMoment.h
@@ -447,6 +448,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooRealVarSharedProperties.cxx
     src/RooRecursiveFraction.cxx
     src/RooRefCountList.cxx
+    src/RooSTLRefCountList.cxx
     src/RooResolutionModel.cxx
     src/RooScaledFunc.cxx
     src/RooSecondMoment.cxx
