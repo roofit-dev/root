@@ -1,6 +1,17 @@
 // @(#)root/metautils:$Id$
-// Author: Victor Perev   04/10/2003
-//         Philippe Canal 05/2004
+/// \file TClassEdit.cxx
+/// \ingroup Base
+/// \author Victor Perev
+/// \author Philippe Canal
+/// \date 04/10/2003
+
+/*************************************************************************
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
+ * All rights reserved.                                                  *
+ *                                                                       *
+ * For the licensing terms see $ROOTSYS/LICENSE.                         *
+ * For the list of contributors see $ROOTSYS/README/CREDITS.             *
+ *************************************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -399,8 +410,9 @@ void TClassEdit::TSplitType::ShortType(std::string &answ, int mode)
          // this also will add the default template parameter if any needs to
          // be added.
          string typeresult;
-         if (gInterpreterHelper->ExistingTypeCheck(fElements[i], typeresult)
-             || gInterpreterHelper->GetPartiallyDesugaredNameWithScopeHandling(fElements[i], typeresult)) {
+         if (gInterpreterHelper &&
+             (gInterpreterHelper->ExistingTypeCheck(fElements[i], typeresult)
+              || gInterpreterHelper->GetPartiallyDesugaredNameWithScopeHandling(fElements[i], typeresult))) {
             if (!typeresult.empty()) fElements[i] = typeresult;
          }
       }
@@ -476,7 +488,7 @@ bool TClassEdit::TSplitType::IsTemplate()
 
 ROOT::ESTLType TClassEdit::STLKind(std::string_view type)
 {
-   unsigned char offset = 0;
+   size_t offset = 0;
    if (type.compare(0,6,"const ")==0) { offset += 6; }
    offset += StdLen(type.substr(offset));
 
@@ -1965,6 +1977,9 @@ public:
       // Perhaps we could treat atomics as well like this?
       if (!fMother && TClassEdit::IsUniquePtr(fName+"<")) {
          name = fArgumentNodes.front()->ToString();
+         // ROOT-9933: we remove const if present.
+         TClassEdit::TSplitType tst(name.c_str());
+         tst.ShortType(name, 1);
          fHasChanged = true;
          return name;
       }
@@ -2001,6 +2016,7 @@ std::string TClassEdit::GetNameForIO(const std::string& templateInstanceName,
    // Decompose template name into pieces and remount it applying the necessary
    // transformations necessary for the ROOT IO subsystem, namely:
    // - Transform std::unique_ptr<T> into T (for selections) (also nested)
+   // - Transform std::unique_ptr<const T> into T (for selections) (also nested)
    // - Transform std::COLL<std::unique_ptr<T>> into std::COLL<T*> (also nested)
    // Name normalisation is respected (e.g. spaces).
    // The implementation uses an internal class defined in the cxx file.

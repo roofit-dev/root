@@ -15,13 +15,13 @@
 
 #include "ROOT/RFrame.hxx"
 
-#include "ROOT/TLogger.hxx"
+#include "ROOT/RLogger.hxx"
 #include "ROOT/RPadUserAxis.hxx"
 
 #include <cassert>
 
 ROOT::Experimental::RFrame::RFrame(std::vector<std::unique_ptr<RPadUserAxisBase>> &&coords, const DrawingOpts &opts)
-   : fUserCoord(std::move(coords)), fPalette(RPalette::GetPalette("default")), fPos(opts.fPos.Get()), fSize(opts.fSize.Get())
+   : fUserCoord(std::move(coords)), fPalette(RPalette::GetPalette("default")), fOpts(opts)
 {}
 
 void ROOT::Experimental::RFrame::GrowToDimensions(size_t nDimensions)

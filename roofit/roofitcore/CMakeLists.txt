@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT roofitcore package
 # @author Pere Mato, CERN
@@ -203,6 +209,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooRealVarSharedProperties.h
     RooRecursiveFraction.h
     RooRefCountList.h
+    RooSTLRefCountList.h
     RooResolutionModel.h
     RooScaledFunc.h
     RooSecondMoment.h
@@ -386,7 +393,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooLinearVar.cxx
     src/RooLinkedList.cxx
     src/RooLinkedListElem.cxx
-    src/RooLinkedListIter.cxx
     src/RooLinTransBinning.cxx
     src/RooList.cxx
     src/RooListProxy.cxx
@@ -448,6 +454,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooRealVarSharedProperties.cxx
     src/RooRecursiveFraction.cxx
     src/RooRefCountList.cxx
+    src/RooSTLRefCountList.cxx
     src/RooResolutionModel.cxx
     src/RooScaledFunc.cxx
     src/RooSecondMoment.cxx
