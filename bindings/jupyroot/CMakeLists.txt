@@ -4,9 +4,9 @@
 # For the licensing terms see $ROOTSYS/LICENSE.
 # For the list of contributors see $ROOTSYS/README/CREDITS.
 
-#######################################################################################
-# CMakeLists.txt file for building JupyROOT bindings/pyroot_experimental/PyROOT package
-#######################################################################################
+###########################################################
+# CMakeLists.txt file for building JupyROOT
+###########################################################
 
 set(py_sources
   JupyROOT/__init__.py
@@ -30,25 +30,29 @@ set(py_sources
 set(JupyROOTPySrcDir python/JupyROOT)
 file(COPY ${JupyROOTPySrcDir} DESTINATION ${localruntimedir})
 
-# Install .py source files
-install(DIRECTORY ${JupyROOTPySrcDir} DESTINATION ${runtimedir})
-
 foreach(val RANGE ${how_many_pythons})
   list(GET python_under_version_strings ${val} python_under_version_string)
   list(GET python_include_dirs ${val} python_include_dir)
   list(GET python_executables ${val} python_executable)
-  list(GET python_libraries ${val} python_library)
 
   set(libname JupyROOT${python_under_version_string})
 
+  # libJupyROOT uses ROOT headers from source dirs and depends on Core
   add_library(${libname} SHARED src/IOHandler.cxx)
+  # Set the suffix to '.so' and the prefix to 'lib'
+  set_target_properties(${libname} PROPERTIES  ${ROOT_LIBRARY_PROPERTIES})
+  if(MSVC)
+    list(GET python_libraries ${val} python_library)
+    set_target_properties(${libname} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+    set_target_properties(${libname} PROPERTIES SUFFIX ".pyd")
+    target_link_libraries(${libname} PUBLIC Core  ${python_library})
+  elseif(APPLE)
+    target_link_libraries(${libname} PUBLIC -Wl,-bind_at_load -Wl,-undefined -Wl,dynamic_lookup Core)
+  else()
+    target_link_libraries(${libname} PUBLIC -Wl,--unresolved-symbols=ignore-all Core)
+  endif()
 
-  # libJupyROOT uses ROOT headers from binary directory
-  add_dependencies(${libname} move_headers)
-  target_include_directories(${libname} PRIVATE ${CMAKE_BINARY_DIR}/include)
   target_include_directories(${libname} PRIVATE ${python_include_dir})
-
-  target_link_libraries(${libname} ${python_library} Core ${CMAKE_DL_LIBS})
 
   # Disables warnings originating from deprecated register keyword in Python
   if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_STANDARD GREATER_EQUAL 11)
@@ -59,13 +63,21 @@ foreach(val RANGE ${how_many_pythons})
     target_compile_options(${libname} PRIVATE -Wno-deprecated-register)
   endif()
 
-  # Install compiled .py files
+  # Compile .py files
   foreach(py_source ${py_sources})
-    install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${d}/${py_source})")
-    install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${d}/${py_source})")
+    install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${localruntimedir}/${py_source})")
+    install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${localruntimedir}/${py_source})")
   endforeach()
 
   # Install library
-  install(TARGETS ${libname} EXPORT ${CMAKE_PROJECT_NAME}Exports DESTINATION ${runtimedir})
+  install(TARGETS ${libname} EXPORT ${CMAKE_PROJECT_NAME}Exports
+                             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT libraries
+                             LIBRARY DESTINATION ${CMAKE_INSTALL_PYTHONDIR} COMPONENT libraries
+                             ARCHIVE DESTINATION ${CMAKE_INSTALL_PYTHONDIR} COMPONENT libraries)
 
 endforeach()
+
+# Install Python sources and bytecode
+install(DIRECTORY ${localruntimedir}/JupyROOT
+        DESTINATION ${CMAKE_INSTALL_PYTHONDIR}
+        COMPONENT libraries)

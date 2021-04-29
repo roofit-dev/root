@@ -18,6 +18,7 @@
 
 #include <iostream>
 #include <vector>
+#include <string>
 
 #include "../Utility.h"
 #include "Math/Functor.h"
@@ -299,7 +300,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting weights input gate gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights input gate gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights input gate gradients" << std::endl;
       failed = true;
    }
 
@@ -342,7 +343,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting weights input gate-state gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights input gate-state gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights input gate-state gradients" << std::endl;
       failed = true;
    }
 
@@ -381,7 +382,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting weights forget gate gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights forget gate gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights forget gate gradients" << std::endl;
       failed = true;
    }
 
@@ -420,7 +421,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting weights forget gate-state gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights forget gate-state gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights forget gate-state gradients" << std::endl;
       failed = true;
    }
 
@@ -460,7 +461,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting weights candidate gate gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights candidate gate gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights candidate gate gradients" << std::endl;
       failed = true;
    }
 
@@ -500,7 +501,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting weights candidate gate-state gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights candidate gate-state gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights candidate gate-state gradients" << std::endl;
       failed = true;
    }
 
@@ -540,7 +541,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting weights output gate gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights output gate gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights output gate gradients" << std::endl;
       failed = true;
    }
 
@@ -579,7 +580,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting weights output gate-state gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in weights output gate-state gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in weights output gate-state gradients" << std::endl;
       failed = true;
    }
 
@@ -617,7 +618,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting input gate bias gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in input gate bias gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in input gate bias gradients" << std::endl;
       failed = true;
    }
 
@@ -654,7 +655,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting forget gate bias gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in forget gate bias gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in forget gate bias gradients" << std::endl;
       failed = true;
    }
 
@@ -691,7 +692,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting candidate gate bias gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in candidate gate bias gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in candidate gate bias gradients" << std::endl;
       failed = true;
    }
 
@@ -728,7 +729,7 @@ bool testLSTMBackpropagation(size_t timeSteps, size_t batchSize, size_t stateSiz
    std::cout << "\rTesting output gate bias gradients:      ";
    std::cout << "maximum error (" << maxerrorType << "): "  << print_error(maximum_error) << std::endl;
    if (maximum_error > 1.E-2) {
-      std::cerr << "\e[31m Error \e[39m in output gate bias gradients" << std::endl;
+      std::cerr << "\033[31m Error \033[39m in output gate bias gradients" << std::endl;
       failed = true;
    }
 

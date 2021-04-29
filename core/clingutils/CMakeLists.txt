@@ -60,7 +60,6 @@ set(stldicts
 if(NOT WIN32)
   list(APPEND stldicts valarray)
 endif()
-include_directories(${CMAKE_BINARY_DIR}/etc/cling/cint)
 foreach(dict ${stldicts})
   string(REPLACE "2" "" header ${dict})
   string(REPLACE "complex" "root_std_complex.h" header ${header})
@@ -71,6 +70,7 @@ foreach(dict ${stldicts})
                                 NODEPHEADERS ${header}
                                 LINKDEF src/${dict}Linkdef.h
                                 DEPENDENCIES Core)
+  target_include_directories(${dict}Dict PRIVATE ${CMAKE_SOURCE_DIR}/interpreter/cling/include/cling/cint)
 endforeach()
 
 set(CLANG_RESOURCE_DIR_STEM)
@@ -112,6 +112,8 @@ if (runtime_cxxmodules)
   set(custom_modulemaps boost.modulemap tinyxml2.modulemap cuda.modulemap module.modulemap.build)
   if (NOT libcxx)
     if (MSVC)
+      set(custom_modulemaps ${custom_modulemaps} vcruntime.modulemap)
+      set(custom_modulemaps ${custom_modulemaps} services_msvc.modulemap)
       set(custom_modulemaps ${custom_modulemaps} std_msvc.modulemap)
     else()
       set(custom_modulemaps ${custom_modulemaps} std.modulemap)
@@ -132,6 +134,7 @@ foreach(file ${custom_modulemaps}
         Interpreter/Exception.h
         Interpreter/RuntimePrintValue.h
         Interpreter/RuntimeUniverse.h
+        Interpreter/RuntimeOptions.h
         Interpreter/Value.h)
   get_filename_component(path ${file} PATH)
   set(dest_file ${file})
