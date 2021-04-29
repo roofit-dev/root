@@ -59,8 +59,7 @@
 
       factory(exports);
 
-      globalThis.JSROOT = exports;
-
+      global.JSROOT = exports;
    } else {
 
       if ((typeof JSROOT != 'undefined') && !JSROOT._workaround)
@@ -101,11 +100,11 @@
    /** @summary JSROOT version id
      * @desc For the JSROOT release the string in format "major.minor.patch" like "6.0.0"
      * For the ROOT release string is "ROOT major.minor.patch" like "ROOT 6.24.00" */
-   JSROOT.version_id = "6.0.0";
+   JSROOT.version_id = "dev";
 
    /** @summary JSROOT version date
      * @desc Release date in format day/month/year like "14/01/2021"*/
-   JSROOT.version_date = "14/01/2021";
+   JSROOT.version_date = "16/04/2021";
 
    /** @summary JSROOT version id and date
      * @desc Produced by concatenation of {@link JSROOT.version_id} and {@link JSROOT.version_date}
@@ -194,6 +193,18 @@
       return res;
    }
 
+   /** @summary Check if prototype string match to array (typed on untyped)
+     * @returns {Number} 0 - not array, 1 - regular array, 2 - typed array */
+   function is_array_proto(proto) {
+       if ((proto.length < 14) || (proto.indexOf('[object ') != 0)) return 0;
+       let p = proto.indexOf('Array]');
+       if ((p < 0) || (p != proto.length - 6)) return 0;
+       // plain array has only "[object Array]", typed array type name inside
+       return proto.length == 14 ? 1 : 2;
+   }
+
+   _.is_array_proto = is_array_proto;
+
    /** @summary Specialized JSROOT constants, used in {@link JSROOT.settings}
      * @namespace
      * @private */
@@ -266,7 +277,7 @@
                case "alwaysmathjax": return this.AlwaysMathJax;
             }
             let code = parseInt(s);
-            return (!isNaN(code) && (code >= this.Off) && (code <= this.AlwaysMathJax)) ? code : this.Normal;
+            return (Number.isInteger(code) && (code >= this.Off) && (code <= this.AlwaysMathJax)) ? code : this.Normal;
          }
       }
    };
@@ -351,7 +362,9 @@
        * @desc When specified, extra URL parameter like ```?stamp=unique_value``` append to each JSROOT script loaded
        * In such case browser will be forced to load JSROOT functionality disregards of server cache settings
        * @default false */
-      NoCache: false
+      NoCache: false,
+      /** @summary Skip streamer infos from the GUI */
+      SkipStreamerInfos: false
    };
 
    /** @namespace
@@ -626,6 +639,9 @@
       }
 
       function load_module(req, m) {
+         if (m.extract && !m.dep && !m.loading && globalThis[m.extract])
+            return finish_loading(m, globalThis[m.extract])
+
          let element = document.createElement("script");
          element.setAttribute('type', "text/javascript");
          element.setAttribute('src', m.src);
@@ -657,10 +673,8 @@
                      failed: function(msg) { this.processed = true; if (this.reject) this.reject(Error(msg || "JSROOT.require failed")); } };
 
          if (req.factoryFunc && req.thisModule) {
-
-            let m = _.modules[req.thisModule];
-            if (!m)
-               m = _.modules[req.thisModule] = { jsroot: true, src: thisSrc, loading: true };
+            if (!(_.modules[req.thisModule]))
+               _.modules[req.thisModule] = { jsroot: true, src: thisSrc, loading: true };
          }
 
          for (let k = 0; k < need.length; ++k) {
@@ -826,7 +840,7 @@
          if (typeof value === 'string') {
             if (newfmt || (value.length < 6) || (value.indexOf("$ref:") !== 0)) return;
             let ref = parseInt(value.substr(5));
-            if (isNaN(ref) || (ref < 0) || (ref >= map.length)) return;
+            if (!Number.isInteger(ref) || (ref < 0) || (ref >= map.length)) return;
             newfmt = false;
             return map[ref];
          }
@@ -836,7 +850,7 @@
          let proto = Object.prototype.toString.apply(value);
 
          // scan array - it can contain other objects
-         if ((proto.indexOf('[object')==0) && (proto.indexOf('Array]')>0)) {
+         if (is_array_proto(proto) > 0) {
              for (let i = 0; i < value.length; ++i) {
                 let res = unref_value(value[i]);
                 if (res!==undefined) value[i] = res;
@@ -848,7 +862,7 @@
 
          if ((newfmt!==false) && (len===1) && (ks[0]==='$ref')) {
             const ref = parseInt(value['$ref']);
-            if (isNaN(ref) || (ref < 0) || (ref >= map.length)) return;
+            if (!Number.isInteger(ref) || (ref < 0) || (ref >= map.length)) return;
             newfmt = true;
             return map[ref];
          }
@@ -919,6 +933,9 @@
             return; // pair object is not counted in the objects map
          }
 
+        // prevent endless loop
+        if (map.indexOf(value) >= 0) return;
+
          // add object to object map
          map.push(value);
 
@@ -950,10 +967,10 @@
          if (i >= 0) return map.clones[i];
       }
 
-      let proto = Object.prototype.toString.apply(src);
+      let arr_kind = is_array_proto(Object.prototype.toString.apply(src));
 
       // process normal array
-      if (proto === '[object Array]') {
+      if (arr_kind == 1) {
          let tgt = [];
          map.obj.push(src);
          map.clones.push(tgt);
@@ -967,7 +984,7 @@
       }
 
       // process typed array
-      if ((proto.indexOf('[object ') == 0) && (proto.indexOf('Array]') == proto.length-6)) {
+      if (arr_kind == 2) {
          let tgt = [];
          map.obj.push(src);
          map.clones.push(tgt);
@@ -1020,11 +1037,9 @@
 
          if ((value===undefined) || (value===null) || (typeof value !== 'object')) return value;
 
-         let proto = Object.prototype.toString.apply(value);
-
          // typed array need to be converted into normal array, otherwise looks strange
-         if ((proto.indexOf('[object ') == 0) && (proto.indexOf('Array]') == proto.length-6)) {
-            let arr = new Array(value.length)
+         if (is_array_proto(Object.prototype.toString.apply(value)) > 0) {
+            let arr = new Array(value.length);
             for (let i = 0; i < value.length; ++i)
                arr[i] = copy_value(value[i]);
             return arr;
@@ -1048,7 +1063,8 @@
 
          for (let k = 0; k < len; ++k) {
             let name = ks[k];
-            tgt[name] = copy_value(value[name]);
+            if (name && (name[0] != '$'))
+               tgt[name] = copy_value(value[name]);
          }
 
          return tgt;
@@ -1074,7 +1090,7 @@
          opts: {},
          has: function(opt) { return this.opts[opt] !== undefined; },
          get: function(opt,dflt) { let v = this.opts[opt]; return v!==undefined ? v : dflt; }
-      }
+      };
 
       if (!url || (typeof url !== 'string')) {
          if (JSROOT.settings.IgnoreUrlOptions || (typeof document === 'undefined')) return res;
@@ -1149,14 +1165,19 @@
       let xhr = JSROOT.nodejs ? new (require("xhr2"))() : new XMLHttpRequest();
 
       xhr.http_callback = (typeof user_accept_callback == 'function') ? user_accept_callback.bind(xhr) : function() {};
-      xhr.error_callback = (typeof user_reject_callback == 'function') ? user_reject_callback : function(err) { console.warn(err.message); this.http_callback(null); }.bind(xhr);
+      xhr.error_callback = (typeof user_reject_callback == 'function') ? user_reject_callback.bind(xhr) : function(err) { console.warn(err.message); this.http_callback(null); }.bind(xhr);
 
       if (!kind) kind = "buf";
 
       let method = "GET", async = true, p = kind.indexOf(";sync");
       if (p > 0) { kind = kind.substr(0,p); async = false; }
-      if (kind === "head") method = "HEAD"; else
-      if ((kind === "post") || (kind === "multi") || (kind === "posttext")) method = "POST";
+      switch (kind) {
+         case "head": method = "HEAD"; break;
+         case "posttext": method = "POST"; kind = "text"; break;
+         case "postbuf":  method = "POST"; kind = "buf"; break;
+         case "post":
+         case "multi":  method = "POST"; kind = buf; break;
+      }
 
       xhr.kind = kind;
 
@@ -1165,7 +1186,7 @@
             if (oEvent.lengthComputable && this.expected_size && (oEvent.loaded > this.expected_size)) {
                this.did_abort = true;
                this.abort();
-               this.error_callback(Error('Server sends more bytes ' + oEvent.loaded + ' than expected ' + this.expected_size + '. Abort I/O operation'));
+               this.error_callback(Error('Server sends more bytes ' + oEvent.loaded + ' than expected ' + this.expected_size + '. Abort I/O operation'), 598);
             }
          }.bind(xhr));
 
@@ -1175,10 +1196,10 @@
 
          if ((this.readyState === 2) && this.expected_size) {
             let len = parseInt(this.getResponseHeader("Content-Length"));
-            if (!isNaN(len) && (len > this.expected_size) && !JSROOT.settings.HandleWrongHttpResponse) {
+            if (Number.isInteger(len) && (len > this.expected_size) && !JSROOT.settings.HandleWrongHttpResponse) {
                this.did_abort = true;
                this.abort();
-               return this.error_callback(Error('Server response size ' + len + ' larger than expected ' + this.expected_size + '. Abort I/O operation'));
+               return this.error_callback(Error('Server response size ' + len + ' larger than expected ' + this.expected_size + '. Abort I/O operation'), 599);
             }
          }
 
@@ -1187,7 +1208,7 @@
          if ((this.status != 200) && (this.status != 206) && !browser.qt5 &&
              // in these special cases browsers not always set status
              !((this.status == 0) && ((url.indexOf("file://")==0) || (url.indexOf("blob:")==0)))) {
-               return this.error_callback(Error('Fail to load url ' + url));
+               return this.error_callback(Error('Fail to load url ' + url), this.status);
          }
 
          if (this.nodejs_checkzip && (this.getResponseHeader("content-encoding") == "gzip")) {
@@ -1200,7 +1221,6 @@
 
          switch(this.kind) {
             case "xml": return this.http_callback(this.responseXML);
-            case "posttext":
             case "text": return this.http_callback(this.responseText);
             case "object": return this.http_callback(JSROOT.parse(this.responseText));
             case "multi": return this.http_callback(JSROOT.parseMulti(this.responseText));
@@ -1222,7 +1242,7 @@
          }
 
          this.http_callback(this.response);
-      }
+      };
 
       xhr.open(method, url, async);
 
@@ -1246,6 +1266,7 @@
      *    - "xml" - returns req.responseXML
      *    - "head" - returns request itself, uses "HEAD" request method
      *    - "post" - creates post request, submits req.send(post_data)
+     *    - "postbuf" - creates post request, expectes binary data as response
      * @param {string} url - URL for the request
      * @param {string} kind - kind of requested data
      * @param {string} [post_data] - data submitted with post kind of request
@@ -1272,7 +1293,7 @@
          let scripts = url, loadNext = () => {
             if (!scripts.length) return Promise.resolve(true);
             return JSROOT.loadScript(scripts.shift()).then(loadNext, loadNext);
-         }
+         };
          return loadNext();
       }
 
@@ -1336,8 +1357,8 @@
    }
 
    // Open ROOT file, defined in JSRoot.io.js
-   JSROOT.openFile = (filename, callback) => {
-      return jsroot_require("io").then(() => JSROOT.openFile(filename, callback));
+   JSROOT.openFile = filename => {
+      return jsroot_require("io").then(() => JSROOT.openFile(filename));
    }
 
    // Draw object, defined in JSRoot.painter.js
@@ -1706,7 +1727,7 @@
             case "S": histo.fArray = new Int16Array(histo.fNcells); break;
             case "I": histo.fArray = new Int32Array(histo.fNcells); break;
             case "F": histo.fArray = new Float32Array(histo.fNcells); break;
-            case "L": histo.fArray = new Float64Array(histo.fNcells); break;
+            case "L":
             case "D": histo.fArray = new Float64Array(histo.fNcells); break;
             default: histo.fArray = new Array(histo.fNcells); break;
          }

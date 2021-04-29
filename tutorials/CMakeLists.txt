@@ -53,6 +53,7 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/rootlogoff.C "{}")
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/.rootrc "
 Proof.Sandbox: /tmp/proof
 Rint.History:  .root_hist
+ACLiC.LinkLibs:  1
 ")
 
 #---Definition of the helper function--------------------------------
@@ -82,6 +83,8 @@ if (NOT dataframe)
     list(APPEND dataframe_veto graphs/timeSeriesFromCSV_TDF.C)
     # TMVA tutorials dependent on RDataFrame
     list(APPEND dataframe_veto tmva/tmva*.C)
+    # RooFit tutorial depending on RDataFrame
+    list(APPEND dataframe_veto roofit/rf408*)
 elseif(MSVC AND NOT win_broken_tests)
     list(APPEND dataframe_veto dataframe/*.py)
 endif()
@@ -89,6 +92,12 @@ endif()
 if(NOT sqlite)
     # RDF+SQlite tutorials
     list(APPEND dataframe_veto dataframe/*SQlite*)
+endif()
+if(NOT davix)
+    list(APPEND dataframe_veto dataframe/df027_SQliteDependencyOverVersion.C)
+    list(APPEND dataframe_veto dataframe/df028_SQliteIPLocation.C)
+    list(APPEND dataframe_veto dataframe/df029_SQlitePlatformDistribution.C)
+    list(APPEND dataframe_veto dataframe/df030_SQliteVersionsOfROOT.C)
 endif()
 
 if(MACOSX_VERSION VERSION_EQUAL 10.13)
@@ -267,8 +276,10 @@ if(root7)
   if(NOT davix)
     list(APPEND root7_veto v7/ntuple/ntpl003_lhcbOpenData.C)
     list(APPEND root7_veto v7/ntuple/ntpl004_dimuon.C)
+    list(APPEND root7_veto v7/global_temperatures.cxx)
   endif()
   if(NOT dataframe)
+    list(APPEND root7_veto v7/global_temperatures.cxx)
     list(APPEND root7_veto v7/ntuple/ntpl004_dimuon.C)
   endif()
 else()
@@ -445,7 +456,9 @@ file(GLOB long_running RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${long_running})
 #--List multithreaded tutorials to run them serially
 set (multithreaded
      dataframe/df10[2-7]*
-     multicore/mp103*)
+     multicore/mp103*
+     tmva/TMVA_CNN_Classification.C
+     tmva/TMVA_RNN_Classification.C)
 file(GLOB multithreaded RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${multithreaded})
 
 #---Loop over all tutorials and define the corresponding test---------
@@ -570,6 +583,21 @@ if(ROOT_pyroot_FOUND)
     list(APPEND pyveto pyroot/pyroot004_NumbaDeclare.py)
   endif()
 
+  if((dataframe AND DEFINED ENV{ROOTTEST_IGNORE_PANDAS_PY2} AND PYTHON_VERSION_MAJOR_Development_Main EQUAL 2) OR
+     (dataframe AND DEFINED ENV{ROOTTEST_IGNORE_PANDAS_PY3} AND PYTHON_VERSION_MAJOR_Development_Main EQUAL 3))
+    list(APPEND pyveto dataframe/df026_AsNumpyArrays.py)
+  endif()
+
+  # Rules specific to distributed RDataFrame with Pyspark
+  # Disable distributed RDF tutorials if we didn't check dependencies in the environment first
+  if(NOT test_distrdf_pyspark)
+    list(APPEND pyveto dataframe/distrdf*)
+  endif()
+  # Use main Python executable to run in PySpark driver and executors
+  if(test_distrdf_pyspark)
+    list(APPEND ROOT_environ PYSPARK_PYTHON=${PYTHON_EXECUTABLE_Development_Main})
+  endif()
+
   find_python_module(xgboost QUIET)
   if(NOT PY_XGBOOST_FOUND OR NOT dataframe)
     file(GLOB tmva_veto_py RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/tmva10*.py)
@@ -587,6 +615,8 @@ if(ROOT_pyroot_FOUND)
     file(GLOB tmva_veto_py RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/pytorch/*.py)
     list(APPEND pyveto ${tmva_veto_py})
   endif()
+  # disable PyTorch model file used by TMVA_CNN_Classification.C
+  list(APPEND pyveto tmva/PyTorch_Generate_CNN_Model.py)
 
   # Now glob all vetos for pyroot
   file(GLOB pyveto RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${pyveto})
