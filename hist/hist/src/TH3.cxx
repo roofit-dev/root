@@ -661,7 +661,7 @@ Int_t TH3::Fill(Double_t x, Double_t y, const char *namez, Double_t w)
 ///
 /// N.B. By dfault this methods approximates the integral of the function in each bin with the
 ///      function value at the center of the bin, mutiplied by the bin width
-///      
+///
 ///
 ///  One can also call TF1::GetRandom to get a random variate from a function.
 
@@ -693,7 +693,7 @@ void TH3::FillRandom(const char *fname, Int_t ntimes)
    Int_t nbinsx = xAxis.GetNbins();
    Int_t nbinsy = yAxis.GetNbins();
    Int_t nbinsz = zAxis.GetNbins();
-   Int_t nxy = nbinsx*nbinsy; 
+   Int_t nxy = nbinsx*nbinsy;
    Int_t nbins  = nbinsx*nbinsy*nbinsz;
 
    Double_t *integral = new Double_t[nbins+1];
@@ -712,7 +712,7 @@ void TH3::FillRandom(const char *fname, Int_t ntimes)
             // Double_t fint = f1->Integral(xAxis.GetBinLowEdge(binx), xAxis.GetBinUpEdge(binx),
             //                              yAxis.GetBinLowEdge(biny), yAxis.GetBinUpEdge(biny),
             //                              zAxis.GetBinLowEdge(binz), zAxis.GetBinUpEdge(binz));
-            integral[ibin] = integral[ibin-1] + fint; 
+            integral[ibin] = integral[ibin-1] + fint;
          }
       }
    }
@@ -773,93 +773,6 @@ void TH3::FillRandom(TH1 *h, Int_t ntimes)
       Fill(x,y,z);
    }
 }
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Find first bin with content > threshold for axis (1=x, 2=y, 3=z)
-/// if no bins with content > threshold is found the function returns -1.
-
-Int_t TH3::FindFirstBinAbove(Double_t threshold, Int_t axis) const
-{
-   if (axis < 1 || axis > 3) {
-      Warning("FindFirstBinAbove","Invalid axis number : %d, axis x assumed\n",axis);
-      axis = 1;
-   }
-   Int_t nbinsx = fXaxis.GetNbins();
-   Int_t nbinsy = fYaxis.GetNbins();
-   Int_t nbinsz = fZaxis.GetNbins();
-   Int_t binx, biny, binz;
-   if (axis == 1) {
-      for (binx=1;binx<=nbinsx;binx++) {
-         for (biny=1;biny<=nbinsy;biny++) {
-            for (binz=1;binz<=nbinsz;binz++) {
-               if (GetBinContent(binx,biny,binz) > threshold) return binx;
-            }
-         }
-      }
-   } else if (axis == 2) {
-      for (biny=1;biny<=nbinsy;biny++) {
-         for (binx=1;binx<=nbinsx;binx++) {
-            for (binz=1;binz<=nbinsz;binz++) {
-               if (GetBinContent(binx,biny,binz) > threshold) return biny;
-            }
-         }
-      }
-   } else {
-      for (binz=1;binz<=nbinsz;binz++) {
-         for (binx=1;binx<=nbinsx;binx++) {
-            for (biny=1;biny<=nbinsy;biny++) {
-               if (GetBinContent(binx,biny,binz) > threshold) return binz;
-            }
-         }
-      }
-   }
-   return -1;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Find last bin with content > threshold for axis (1=x, 2=y, 3=z)
-/// if no bins with content > threshold is found the function returns -1.
-
-Int_t TH3::FindLastBinAbove(Double_t threshold, Int_t axis) const
-{
-   if (axis < 1 || axis > 3) {
-      Warning("FindLastBinAbove","Invalid axis number : %d, axis x assumed\n",axis);
-      axis = 1;
-   }
-   Int_t nbinsx = fXaxis.GetNbins();
-   Int_t nbinsy = fYaxis.GetNbins();
-   Int_t nbinsz = fZaxis.GetNbins();
-   Int_t binx, biny, binz;
-   if (axis == 1) {
-      for (binx=nbinsx;binx>=1;binx--) {
-         for (biny=1;biny<=nbinsy;biny++) {
-            for (binz=1;binz<=nbinsz;binz++) {
-               if (GetBinContent(binx,biny,binz) > threshold) return binx;
-            }
-         }
-      }
-   } else if (axis == 2) {
-      for (biny=nbinsy;biny>=1;biny--) {
-         for (binx=1;binx<=nbinsx;binx++) {
-            for (binz=1;binz<=nbinsz;binz++) {
-               if (GetBinContent(binx,biny,binz) > threshold) return biny;
-            }
-         }
-      }
-   } else {
-      for (binz=nbinsz;binz>=1;binz--) {
-         for (binx=1;binx<=nbinsx;binx++) {
-            for (biny=1;biny<=nbinsy;biny++) {
-               if (GetBinContent(binx,biny,binz) > threshold) return binz;
-            }
-         }
-      }
-   }
-   return -1;
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Project slices along Z in case of a 3-D histogram, then fit each slice
@@ -1173,7 +1086,7 @@ void TH3::GetStats(Double_t *stats) const
    Double_t w,err;
    Double_t x,y,z;
    if ((fTsumw == 0 && fEntries > 0) || fXaxis.TestBit(TAxis::kAxisRange) || fYaxis.TestBit(TAxis::kAxisRange) || fZaxis.TestBit(TAxis::kAxisRange)) {
-      for (bin=0;bin<9;bin++) stats[bin] = 0;
+      for (bin=0;bin<11;bin++) stats[bin] = 0;
 
       Int_t firstBinX = fXaxis.GetFirst();
       Int_t lastBinX  = fXaxis.GetLast();
@@ -1280,11 +1193,10 @@ Double_t TH3::IntegralAndError(Int_t binx1, Int_t binx2, Int_t biny1, Int_t biny
    return DoIntegral(binx1,binx2,biny1,biny2,binz1,binz2,error,option,kTRUE);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 ///Not yet implemented
 
-Double_t TH3::Interpolate(Double_t)
+Double_t TH3::Interpolate(Double_t) const
 {
    Error("Interpolate","This function must be called with 3 arguments for a TH3");
    return 0;
@@ -1294,7 +1206,7 @@ Double_t TH3::Interpolate(Double_t)
 ////////////////////////////////////////////////////////////////////////////////
 ///Not yet implemented
 
-Double_t TH3::Interpolate(Double_t, Double_t)
+Double_t TH3::Interpolate(Double_t, Double_t) const
 {
    Error("Interpolate","This function must be called with 3 arguments for a TH3");
    return 0;
@@ -1311,17 +1223,17 @@ Double_t TH3::Interpolate(Double_t, Double_t)
 ///   fYAxis.GetBinCenter(1) < y  < fYaxis.GetBinCenter(nbinY)     AND
 ///   fZAxis.GetBinCenter(1) < z  < fZaxis.GetBinCenter(nbinZ)
 
-Double_t TH3::Interpolate(Double_t x, Double_t y, Double_t z)
+Double_t TH3::Interpolate(Double_t x, Double_t y, Double_t z) const
 {
-   Int_t ubx = fXaxis.FindBin(x);
+   Int_t ubx = fXaxis.FindFixBin(x);
    if ( x < fXaxis.GetBinCenter(ubx) ) ubx -= 1;
    Int_t obx = ubx + 1;
 
-   Int_t uby = fYaxis.FindBin(y);
+   Int_t uby = fYaxis.FindFixBin(y);
    if ( y < fYaxis.GetBinCenter(uby) ) uby -= 1;
    Int_t oby = uby + 1;
 
-   Int_t ubz = fZaxis.FindBin(z);
+   Int_t ubz = fZaxis.FindFixBin(z);
    if ( z < fZaxis.GetBinCenter(ubz) ) ubz -= 1;
    Int_t obz = ubz + 1;
 
@@ -1608,6 +1520,7 @@ TH1D *TH3::ProjectionX(const char *name, Int_t iymin, Int_t iymax,
    if (hname == "_px") hname = TString::Format("%s%s", GetName(), name);
    TString title =  TString::Format("%s ( Projection X )",GetTitle());
 
+   // when projecting in Z outer axis are Y and Z (order is important. It is defined in the DoProject1D function)
    return DoProject1D(hname, title, iymin, iymax, izmin, izmax, &fXaxis, &fYaxis, &fZaxis, option);
 }
 
@@ -1639,6 +1552,7 @@ TH1D *TH3::ProjectionY(const char *name, Int_t ixmin, Int_t ixmax,
    if (hname == "_py") hname = TString::Format("%s%s", GetName(), name);
    TString title =  TString::Format("%s ( Projection Y )",GetTitle());
 
+   // when projecting in Z outer axis are X and Y (order is important. It is defined in the DoProject1D function)
    return DoProject1D(hname, title, ixmin, ixmax, izmin, izmax, &fYaxis, &fXaxis, &fZaxis, option);
 }
 
@@ -1671,6 +1585,7 @@ TH1D *TH3::ProjectionZ(const char *name, Int_t ixmin, Int_t ixmax,
    if (hname == "_pz") hname = TString::Format("%s%s", GetName(), name);
    TString title =  TString::Format("%s ( Projection Z )",GetTitle());
 
+   // when projecting in Z outer axis are X and Y (order is important. It is defined in the DoProject1D function)
    return DoProject1D(hname, title, ixmin, ixmax, iymin, iymax, &fZaxis, &fXaxis, &fYaxis, option);
 }
 
@@ -1686,14 +1601,21 @@ TH1D *TH3::DoProject1D(const char* name, const char * title, int imin1, int imax
    TString opt = option;
    opt.ToLower();
 
-   Int_t iminOld1 = axis1->GetFirst();
-   Int_t imaxOld1 = axis1->GetLast();
-   Int_t iminOld2 = axis2->GetFirst();
-   Int_t imaxOld2 = axis2->GetLast();
+   // save previous axis range and bits
+   // Int_t iminOld1 = axis1->GetFirst();
+   // Int_t imaxOld1 = axis1->GetLast();
+   // Int_t iminOld2 = axis2->GetFirst();
+   // Int_t imaxOld2 = axis2->GetLast();
+   // Bool_t hadRange1 = axis1->TestBit(TAxis::kAxisRange);
+   // Bool_t hadRange2 = axis2->TestBit(TAxis::kAxisRange);
 
    // need to cast-away constness to set range
-   const_cast<TAxis*>(axis1)->SetRange(imin1,imax1);
-   const_cast<TAxis*>(axis2)->SetRange(imin2,imax2);
+   TAxis out1(*axis1);
+   TAxis out2(*axis2);
+   // const_cast<TAxis *>(axis1)->SetRange(imin1, imax1);
+   // const_cast<TAxis*>(axis2)->SetRange(imin2,imax2);
+   out1.SetRange(imin1, imax1);
+   out2.SetRange(imin2, imax2);
 
    Bool_t computeErrors = GetSumw2N();
    if (opt.Contains("e") ) {
@@ -1706,11 +1628,13 @@ TH1D *TH3::DoProject1D(const char* name, const char * title, int imin1, int imax
       opt.Remove(opt.First("o"),1);
    }
 
-   TH1D * h1 = DoProject1D(name, title, projAxis, computeErrors, originalRange,true,true);
+   TH1D * h1 = DoProject1D(name, title, projAxis, &out1, &out2, computeErrors, originalRange,true,true);
 
-   // restore original range
-   if (axis1->TestBit(TAxis::kAxisRange)) const_cast<TAxis*>(axis1)->SetRange(iminOld1,imaxOld1);
-   if (axis2->TestBit(TAxis::kAxisRange)) const_cast<TAxis*>(axis2)->SetRange(iminOld2,imaxOld2);
+   // // restore original range
+   // if (axis1->TestBit(TAxis::kAxisRange)) {
+   //    if (hadRange1) const_cast<TAxis*>(axis1)->SetRange(iminOld1,imaxOld1);
+   // if (axis2->TestBit(TAxis::kAxisRange)) const_cast<TAxis*>(axis2)->SetRange(iminOld2,imaxOld2);
+   // // we need also to restore the original bits
 
    // draw in current pad
    if (h1 && opt.Contains("d")) {
@@ -1734,6 +1658,7 @@ TH1D *TH3::DoProject1D(const char* name, const char * title, int imin1, int imax
 /// called from other TH3::DoProject1D
 
 TH1D *TH3::DoProject1D(const char* name, const char * title, const TAxis* projX,
+                       const TAxis * out1, const TAxis * out2,
                        bool computeErrors, bool originalRange,
                        bool useUF, bool useOF) const
 {
@@ -1811,25 +1736,39 @@ TH1D *TH3::DoProject1D(const char* name, const char * title, const TAxis* projX,
    // Activate errors
    if ( computeErrors && (h1->GetSumw2N() != h1->GetNcells() ) ) h1->Sumw2();
 
-   // Set references to the axis, so that the bucle has no branches.
-   const TAxis* out1 = 0;
-   const TAxis* out2 = 0;
-   if ( projX == GetXaxis() ) {
-      out1 = GetYaxis();
-      out2 = GetZaxis();
-   } else if ( projX == GetYaxis() ) {
-      out1 = GetZaxis();
-      out2 = GetXaxis();
-   } else {
-      out1 = GetYaxis();
-      out2 = GetXaxis();
+   // Set references to the axies in case out1 or out2 ar enot provided
+   // and one can use the histogram axis given projX
+   if (out1 == nullptr && out2 == nullptr) {
+       if (projX == GetXaxis()) {
+         out1 = GetYaxis();
+         out2 = GetZaxis();
+      } else if (projX == GetYaxis()) {
+         out1 = GetXaxis();
+         out2 = GetZaxis();
+      } else {
+         out1 = GetXaxis();
+         out2 = GetYaxis();
+      }
    }
+   R__ASSERT(out1 != nullptr && out2 != nullptr);
 
    Int_t *refX = 0, *refY = 0, *refZ = 0;
    Int_t ixbin, out1bin, out2bin;
-   if ( projX == GetXaxis() ) { refX = &ixbin;   refY = &out1bin; refZ = &out2bin; }
-   if ( projX == GetYaxis() ) { refX = &out2bin; refY = &ixbin;   refZ = &out1bin; }
-   if ( projX == GetZaxis() ) { refX = &out2bin; refY = &out1bin; refZ = &ixbin;   }
+   if (projX == GetXaxis()) {
+      refX = &ixbin;
+      refY = &out1bin;
+      refZ = &out2bin;
+   }
+   if (projX == GetYaxis()) {
+      refX = &out1bin;
+      refY = &ixbin;
+      refZ = &out2bin;
+   }
+   if (projX == GetZaxis()) {
+      refX = &out1bin;
+      refY = &out2bin;
+      refZ = &ixbin;
+   }
    R__ASSERT (refX != 0 && refY != 0 && refZ != 0);
 
    // Fill the projected histogram excluding underflow/overflows if considered in the option
@@ -2286,20 +2225,20 @@ TH1 *TH3::Project3D(Option_t *option) const
    switch (pcase) {
       case 1:
          // "x"
-         h = DoProject1D(name, title, this->GetXaxis(),
-                       computeErrors, originalRange, useUF, useOF);
+         h = DoProject1D(name, title, this->GetXaxis(), nullptr, nullptr,
+                        computeErrors, originalRange, useUF, useOF);
          break;
 
       case 2:
          // "y"
-         h = DoProject1D(name, title, this->GetYaxis(),
-                       computeErrors, originalRange, useUF, useOF);
+         h = DoProject1D(name, title, this->GetYaxis(), nullptr, nullptr,
+                         computeErrors, originalRange, useUF, useOF);
          break;
 
       case 3:
          // "z"
-         h = DoProject1D(name, title, this->GetZaxis(),
-                       computeErrors, originalRange, useUF, useOF);
+         h = DoProject1D(name, title, this->GetZaxis(), nullptr, nullptr,
+                         computeErrors, originalRange, useUF, useOF);
          break;
 
       case 4:
@@ -2479,7 +2418,7 @@ TProfile2D *TH3::DoProjectProfile2D(const char* name, const char * title, const 
    // Weights management
    bool useWeights = (GetSumw2N() > 0);
    // store sum of w2 in profile if histo is weighted
-   if (useWeights && (p2->GetBinSumw2()->fN != p2->GetNcells() ) ) p2->Sumw2(); 
+   if (useWeights && (p2->GetBinSumw2()->fN != p2->GetNcells() ) ) p2->Sumw2();
 
    // Set references to the bins, so that the loop has no branches.
    Int_t *refX = 0, *refY = 0, *refZ = 0;

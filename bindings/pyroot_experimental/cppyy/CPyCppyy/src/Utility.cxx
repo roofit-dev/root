@@ -12,6 +12,7 @@
 #include "TypeManip.h"
 
 // Standard
+#include <limits.h>
 #include <string.h>
 #include <algorithm>
 #include <list>
@@ -28,6 +29,7 @@ bool CPyCppyy::gDictLookupActive = false;
 typedef std::map<std::string, std::string> TC2POperatorMapping_t;
 static TC2POperatorMapping_t gC2POperatorMapping;
 static std::set<std::string> gOpSkip;
+static std::set<std::string> gOpRemove;
 
 namespace {
 
@@ -41,7 +43,14 @@ namespace {
             gOpSkip.insert("[]");      // __s/getitem__, depends on return type
             gOpSkip.insert("+");       // __add__, depends on # of args (see __pos__)
             gOpSkip.insert("-");       // __sub__, id. (eq. __neg__)
-            gOpSkip.insert("+");       // __mul__, double meaning in C++
+            gOpSkip.insert("*");       // __mul__ or __deref__
+            gOpSkip.insert("++");      // __postinc__ or __preinc__
+            gOpSkip.insert("--");      // __postdec__ or __predec__
+
+            gOpRemove.insert("new");   // this and the following not handled at all
+            gOpRemove.insert("new[]");
+            gOpRemove.insert("delete");
+            gOpRemove.insert("delete[]");
 
             gC2POperatorMapping["[]"]  = "__getitem__";
             gC2POperatorMapping["()"]  = "__call__";
@@ -51,9 +60,12 @@ namespace {
             gC2POperatorMapping["<<"]  = "__lshift__";
             gC2POperatorMapping[">>"]  = "__rshift__";
             gC2POperatorMapping["&"]   = "__and__";
+            gC2POperatorMapping["&&"]  = "__dand__";
             gC2POperatorMapping["|"]   = "__or__";
+            gC2POperatorMapping["||"]  = "__dor__";
             gC2POperatorMapping["^"]   = "__xor__";
-            gC2POperatorMapping["~"]   = "__inv__";
+            gC2POperatorMapping["~"]   = "__invert__";
+            gC2POperatorMapping[","]   = "__comma__";
             gC2POperatorMapping["+="]  = "__iadd__";
             gC2POperatorMapping["-="]  = "__isub__";
             gC2POperatorMapping["*="]  = "__imul__";
@@ -75,8 +87,8 @@ namespace {
         // the following type mappings are "exact"
             gC2POperatorMapping["const char*"]  = "__str__";
             gC2POperatorMapping["char*"]        = "__str__";
-            gC2POperatorMapping["const char *"] = gC2POperatorMapping[ "const char*" ];
-            gC2POperatorMapping["char *"]       = gC2POperatorMapping[ "char*" ];
+            gC2POperatorMapping["const char *"] = gC2POperatorMapping["const char*"];
+            gC2POperatorMapping["char *"]       = gC2POperatorMapping["char*"];
             gC2POperatorMapping["int"]          = "__int__";
             gC2POperatorMapping["long"]         = CPPYY__long__;
             gC2POperatorMapping["double"]       = "__float__";
@@ -170,9 +182,11 @@ bool CPyCppyy::Utility::AddToClass(
     pdef->ml_doc   = nullptr;
 
     PyObject* func = PyCFunction_New(pdef, nullptr);
+    PyObject* name = CPyCppyy_PyText_InternFromString(pdef->ml_name);
     PyObject* method = CustomInstanceMethod_New(func, nullptr, pyclass);
-    bool isOk = PyObject_SetAttrString(pyclass, pdef->ml_name, method) == 0;
+    bool isOk = PyType_Type.tp_setattro(pyclass, name, method) == 0;
     Py_DECREF(method);
+    Py_DECREF(name);
     Py_DECREF(func);
 
     if (PyErr_Occurred())
@@ -194,7 +208,9 @@ bool CPyCppyy::Utility::AddToClass(PyObject* pyclass, const char* label, const c
     if (!pyfunc)
         return false;
 
-    bool isOk = PyObject_SetAttrString(pyclass, const_cast<char*>(label), pyfunc) == 0;
+    PyObject* pylabel = CPyCppyy_PyText_InternFromString(const_cast<char*>(label));
+    bool isOk = PyType_Type.tp_setattro(pyclass, pylabel, pyfunc) == 0;
+    Py_DECREF(pylabel);
 
     Py_DECREF(pyfunc);
     return isOk;
@@ -213,149 +229,95 @@ bool CPyCppyy::Utility::AddToClass(PyObject* pyclass, const char* label, PyCalla
             PyErr_Clear();
         Py_XDECREF((PyObject*)method);
         method = CPPOverload_New(label, pyfunc);
-        bool isOk = PyObject_SetAttrString(
-            pyclass, const_cast<char*>(label), (PyObject*)method) == 0;
+        PyObject* pylabel = CPyCppyy_PyText_InternFromString(const_cast<char*>(label));
+        bool isOk = PyType_Type.tp_setattro(pyclass, pylabel, (PyObject*)method) == 0;
+        Py_DECREF(pylabel);
         Py_DECREF(method);
         return isOk;
     }
 
-    method->AddMethod(pyfunc);
+    method->AdoptMethod(pyfunc);
 
     Py_DECREF(method);
     return true;
 }
 
-//----------------------------------------------------------------------------
-bool CPyCppyy::Utility::AddUsingToClass(PyObject* pyclass, const char* method)
-{
-// Helper to add base class methods to the derived class one (this covers the
-// 'using' cases, which the dictionary does not provide).
-    CPPOverload* derivedMethod =
-        (CPPOverload*)PyObject_GetAttrString(pyclass, const_cast<char*>(method));
-    if (!CPPOverload_Check(derivedMethod)) {
-        Py_XDECREF(derivedMethod);
-        return false;
-    }
-
-    PyObject* mro = PyObject_GetAttr(pyclass, PyStrings::gMRO);
-    if (!mro || ! PyTuple_Check(mro)) {
-        Py_XDECREF(mro);
-        Py_DECREF(derivedMethod);
-        return false;
-    }
-
-    CPPOverload* baseMethod = 0;
-    for (int i = 1; i < PyTuple_GET_SIZE(mro); ++i) {
-        baseMethod = (CPPOverload*)PyObject_GetAttrString(
-            PyTuple_GET_ITEM(mro, i), const_cast<char*>(method));
-
-        if (!baseMethod) {
-            PyErr_Clear();
-            continue;
-        }
-
-        if (CPPOverload_Check(baseMethod))
-            break;
-
-        Py_DECREF(baseMethod);
-        baseMethod = 0;
-    }
-
-    Py_DECREF(mro);
-
-    if (!CPPOverload_Check(baseMethod)) {
-        Py_XDECREF(baseMethod);
-        Py_DECREF(derivedMethod);
-        return false;
-    }
-
-    derivedMethod->AddMethod(baseMethod);
-
-    Py_DECREF(baseMethod);
-    Py_DECREF(derivedMethod);
-
-    return true;
-}
-
-//----------------------------------------------------------------------------
-bool CPyCppyy::Utility::AddBinaryOperator(PyObject* left, PyObject* right, const char* op,
-    const char* label, const char* alt, Cppyy::TCppScope_t scope)
-{
-// Install the named operator (op) into the left object's class if such a function
-// exists as a global overload; a label must be given if the operator is not in
-// gC2POperatorMapping (i.e. if it is ambiguous at the member level).
-
-// this should be a given, nevertheless ...
-    if (!CPPInstance_Check(left))
-        return false;
-
-// retrieve the class names to match the signature of any found global functions
-    std::string rcname = ClassName(right);
-    std::string lcname = ClassName(left);
-    PyObject* pyclass = (PyObject*)Py_TYPE(left);
-    bool result = AddBinaryOperator(pyclass, lcname, rcname, op, label, alt, scope);
-
-    return result;
-}
-
-//----------------------------------------------------------------------------
-bool CPyCppyy::Utility::AddBinaryOperator(PyObject* pyclass, const char* op,
-    const char* label, const char* alt, Cppyy::TCppScope_t scope)
-{
-// Install binary operator op in pyclass, working on two instances of pyclass.
-    std::string cname;
-    if (CPPScope_Check(pyclass))
-        cname = Cppyy::GetScopedFinalName(((CPPScope*)pyclass)->fCppType);
-    else {
-        PyObject* pyname = PyObject_GetAttr(pyclass, PyStrings::gName);
-        cname = Cppyy::ResolveName(CPyCppyy_PyUnicode_AsString(pyname));
-        Py_DECREF(pyname);
-    }
-
-    return AddBinaryOperator(pyclass, cname, cname, op, label, alt, scope);
-}
 
 //----------------------------------------------------------------------------
 static inline
-Cppyy::TCppMethod_t FindAndAddOperator(const std::string& lcname, const std::string& rcname,
-    const char* op, Cppyy::TCppScope_t scope = Cppyy::gGlobalScope)
+CPyCppyy::PyCallable* BuildOperator(const std::string& lcname, const std::string& rcname,
+    const char* op, Cppyy::TCppScope_t scope, bool reverse=false)
 {
 // Helper to find a function with matching signature in 'funcs'.
     std::string opname = "operator";
     opname += op;
 
-    Cppyy::TCppIndex_t idx = Cppyy::GetGlobalOperator(
-        scope, Cppyy::GetScope(lcname), Cppyy::GetScope(rcname), opname);
+    Cppyy::TCppIndex_t idx = Cppyy::GetGlobalOperator(scope, lcname, rcname, opname);
     if (idx == (Cppyy::TCppIndex_t)-1)
-        return (Cppyy::TCppMethod_t)0;
+        return nullptr;
 
-    return Cppyy::GetMethod(scope, idx);
+    Cppyy::TCppMethod_t meth = Cppyy::GetMethod(scope, idx);
+    if (!reverse)
+        return new CPyCppyy::CPPFunction(scope, meth);
+    return new CPyCppyy::CPPReverseBinary(scope, meth);
 }
 
-bool CPyCppyy::Utility::AddBinaryOperator(PyObject* pyclass, const std::string& lcname,
-    const std::string& rcname, const char* op, const char* label, const char* alt, Cppyy::TCppScope_t scope)
+//----------------------------------------------------------------------------
+CPyCppyy::PyCallable* CPyCppyy::Utility::FindUnaryOperator(PyObject* pyclass, const char* op)
 {
-// Find a global function with a matching signature and install the result on pyclass;
-// in addition, __gnu_cxx, std::__1, and __cppyy_internal are searched pro-actively (as
-// there's AFAICS no way to unearth using information).
+// Find a callable matching named operator (op) and klass arguments in the global
+// namespace or the klass' namespace.
+    if (!CPPScope_Check(pyclass))
+        return nullptr;
+
+    CPPClass* klass = (CPPClass*)pyclass;
+    const std::string& lcname = Cppyy::GetScopedFinalName(klass->fCppType);
+    Cppyy::TCppScope_t scope = Cppyy::GetScope(TypeManip::extract_namespace(lcname));
+    return FindBinaryOperator(lcname, "", op, scope, false);
+}
+
+//----------------------------------------------------------------------------
+CPyCppyy::PyCallable* CPyCppyy::Utility::FindBinaryOperator(PyObject* left, PyObject* right,
+    const char* op, Cppyy::TCppScope_t scope)
+{
+// Find a callable matching the named operator (op) and the (left, right)
+// arguments in the global or these objects' namespaces.
+
+    bool reverse = false;
+    if (!CPPInstance_Check(left)) {
+        if (CPPInstance_Check(right))
+           reverse = true;
+        else
+           return nullptr;
+    }
+
+// retrieve the class names to match the signature of any found global functions
+    const std::string& lcname = ClassName(left);
+    const std::string& rcname = ClassName(right);
+    return FindBinaryOperator(lcname, rcname, op, scope, reverse);
+}
+
+//----------------------------------------------------------------------------
+CPyCppyy::PyCallable* CPyCppyy::Utility::FindBinaryOperator(
+    const std::string& lcname, const std::string& rcname,
+    const char* op, Cppyy::TCppScope_t scope, bool reverse)
+{
+// Find a global function with a matching signature; search __gnu_cxx, std::__1,
+// and __cppyy_internal pro-actively (as there's AFAICS no way to unearth 'using'
+// information).
 
     if (rcname == "<unknown>" || lcname == "<unknown>")
-        return false;
+        return nullptr;
 
     PyCallable* pyfunc = 0;
 
     const std::string& lnsname = TypeManip::extract_namespace(lcname);
     if (!scope) scope = Cppyy::GetScope(lnsname);
-    if (scope) {
-        Cppyy::TCppMethod_t func = FindAndAddOperator(lcname, rcname, op, scope);
-        if (func) pyfunc = new CPPFunction(scope, func);
-    }
+    if (scope)
+        pyfunc = BuildOperator(lcname, rcname, op, scope, reverse);
 
-    if (!pyfunc && scope != Cppyy::gGlobalScope) {
-    // search in global scope
-        Cppyy::TCppMethod_t func = FindAndAddOperator(lcname, rcname, op);
-        if (func) pyfunc = new CPPFunction(Cppyy::gGlobalScope, func);
-    }
+    if (!pyfunc && scope != Cppyy::gGlobalScope)      // search in global scope anyway
+        pyfunc = BuildOperator(lcname, rcname, op, Cppyy::gGlobalScope, reverse);
 
     if (!pyfunc) {
     // For GNU on clang, search the internal __gnu_cxx namespace for binary operators (is
@@ -363,10 +325,8 @@ bool CPyCppyy::Utility::AddBinaryOperator(PyObject* pyclass, const std::string& 
     // TODO: only look in __gnu_cxx for iterators (and more generally: do lookups in the
     //       namespace where the class is defined
         static Cppyy::TCppScope_t gnucxx = Cppyy::GetScope("__gnu_cxx");
-        if (gnucxx) {
-            Cppyy::TCppMethod_t func = FindAndAddOperator(lcname, rcname, op, gnucxx);
-            if (func) pyfunc = new CPPFunction(gnucxx, func);
-         }
+        if (gnucxx)
+            pyfunc = BuildOperator(lcname, rcname, op, gnucxx, reverse);
     }
 
     if (!pyfunc) {
@@ -379,8 +339,7 @@ bool CPyCppyy::Utility::AddBinaryOperator(PyObject* pyclass, const std::string& 
  && lcname.find("__wrap_iter") == std::string::npos   // wrapper call does not compile
 #endif
         ) {
-            Cppyy::TCppMethod_t func = FindAndAddOperator(lcname, rcname, op, std__1);
-            if (func) pyfunc = new CPPFunction(std__1, func);
+            pyfunc = BuildOperator(lcname, rcname, op, std__1, reverse);
         }
     }
 
@@ -401,81 +360,223 @@ bool CPyCppyy::Utility::AddBinaryOperator(PyObject* pyclass, const std::string& 
         }
     }
 
-    if (pyfunc) {  // found a matching overload; add to class
-        bool ok = AddToClass(pyclass, label, pyfunc);
-        if (ok && alt)
-            return AddToClass(pyclass, alt, label);
-        return ok;
-    }
-
-    return false;
+    return pyfunc;
 }
 
 //----------------------------------------------------------------------------
-std::string CPyCppyy::Utility::ConstructTemplateArgs(PyObject* pyname, PyObject* tpArgs, PyObject* args, int argoff)
+static bool AddTypeName(std::string& tmpl_name, PyObject* tn, PyObject* arg,
+    CPyCppyy::Utility::ArgPreference pref, int* pcnt = nullptr)
+{
+// Determine the appropriate C++ type for a given Python type; this is a helper because
+// it can recurse if the type is list or tuple and needs matching on std::vector.
+    using namespace CPyCppyy;
+    using namespace CPyCppyy::Utility;
+
+    if (tn == (PyObject*)&PyInt_Type) {
+        if (arg) {
+#if PY_VERSION_HEX < 0x03000000
+            long l = PyInt_AS_LONG(arg);
+            tmpl_name.append((l < INT_MIN || INT_MAX < l) ? "long" : "int");
+#else
+             Long64_t ll = PyLong_AsLongLong(arg);
+             if (ll == (Long64_t)-1 && PyErr_Occurred()) {
+                 PyErr_Clear();
+                 ULong64_t ull = PyLong_AsUnsignedLongLong(arg);
+                 if (ull == (ULong64_t)-1 && PyErr_Occurred()) {
+                     PyErr_Clear();
+                     tmpl_name.append("int");    // still out of range, will fail later
+                 } else
+                     tmpl_name.append("ULong64_t");   // since already failed long long
+             } else
+                 tmpl_name.append((ll < INT_MIN || INT_MAX < ll) ? \
+                     ((ll < LONG_MIN || LONG_MAX < ll) ? "Long64_t" : "long") : "int");
+#endif
+        } else
+            tmpl_name.append("int");
+#if PY_VERSION_HEX < 0x03000000
+    } else if (tn == (PyObject*)&PyLong_Type) {
+        if (arg) {
+             Long64_t ll = PyLong_AsLongLong(arg);
+             if (ll == (Long64_t)-1 && PyErr_Occurred()) {
+                 PyErr_Clear();
+                 ULong64_t ull = PyLong_AsUnsignedLongLong(arg);
+                 if (ull == (ULong64_t)-1 && PyErr_Occurred()) {
+                     PyErr_Clear();
+                     tmpl_name.append("long");   // still out of range, will fail later
+                 } else
+                     tmpl_name.append("ULong64_t");   // since already failed long long
+             } else
+                 tmpl_name.append((ll < LONG_MIN || LONG_MAX < ll) ? "Long64_t" : "long");
+        } else
+            tmpl_name.append("long");
+#endif
+    } else if (tn == (PyObject*)&PyFloat_Type) {
+    // special case for floats (Python-speak for double) if from argument (only)
+        tmpl_name.append(arg ? "double" : "float");
+#if PY_VERSION_HEX < 0x03000000
+    } else if (tn == (PyObject*)&PyString_Type) {
+#else
+    } else if (tn == (PyObject*)&PyUnicode_Type) {
+#endif
+        tmpl_name.append("std::string");
+    } else if (tn == (PyObject*)&PyList_Type || tn == (PyObject*)&PyTuple_Type) {
+        if (arg && PySequence_Size(arg)) {
+            std::string subtype{"std::initializer_list<"};
+            PyObject* item = PySequence_GetItem(arg, 0);
+            ArgPreference subpref = pref == kValue ? kValue : kPointer;
+            if (AddTypeName(subtype, (PyObject*)Py_TYPE(item), item, subpref)) {
+                tmpl_name.append(subtype);
+                tmpl_name.append(">");
+            }
+            Py_DECREF(item);
+        }
+
+    } else if (CPPScope_Check(tn)) {
+        tmpl_name.append(Cppyy::GetScopedFinalName(((CPPClass*)tn)->fCppType));
+        if (arg) {
+        // try to specialize the type match for the given object
+            CPPInstance* pyobj = (CPPInstance*)arg;
+            if (CPPInstance_Check(pyobj)) {
+                if (pyobj->fFlags & CPPInstance::kIsRValue)
+                    tmpl_name.append("&&");
+                else {
+                    if (pcnt) *pcnt += 1;
+                    if ((pyobj->fFlags & CPPInstance::kIsReference) || pref == kPointer)
+                        tmpl_name.push_back('*');
+                    else if (pref != kValue)
+                        tmpl_name.push_back('&');
+                }
+            }
+        }
+    } else if (PyObject_HasAttr(tn, PyStrings::gCppName)) {
+        PyObject* tpName = PyObject_GetAttr(tn, PyStrings::gCppName);
+        tmpl_name.append(CPyCppyy_PyText_AsString(tpName));
+        Py_DECREF(tpName);
+    } else if (PyObject_HasAttr(tn, PyStrings::gName)) {
+        PyObject* tpName = PyObject_GetAttr(tn, PyStrings::gName);
+        tmpl_name.append(CPyCppyy_PyText_AsString(tpName));
+        Py_DECREF(tpName);
+    } else if (PyInt_Check(tn) || PyLong_Check(tn) || PyFloat_Check(tn)) {
+    // last ditch attempt, works for things like int values; since this is a
+    // source of errors otherwise, it is limited to specific types and not
+    // generally used (str(obj) can print anything ...)
+        PyObject* pystr = PyObject_Str(tn);
+        tmpl_name.append(CPyCppyy_PyText_AsString(pystr));
+        Py_DECREF(pystr);
+    } else {
+        return false;
+    }
+
+    return true;
+}
+
+std::string CPyCppyy::Utility::ConstructTemplateArgs(
+    PyObject* pyname, PyObject* tpArgs, PyObject* args, ArgPreference pref, int argoff, int* pcnt)
 {
 // Helper to construct the "<type, type, ...>" part of a templated name (either
 // for a class or method lookup
-    std::stringstream tmpl_name;
-    if (pyname)
-        tmpl_name << CPyCppyy_PyUnicode_AsString(pyname);
-    tmpl_name << '<';
+    bool justOne = !PyTuple_CheckExact(tpArgs);
 
-    Py_ssize_t nArgs = PyTuple_GET_SIZE(tpArgs);
+// Note: directly appending to string is a lot faster than stringstream
+    std::string tmpl_name;
+    tmpl_name.reserve(128);
+    if (pyname)
+        tmpl_name.append(CPyCppyy_PyText_AsString(pyname));
+    tmpl_name.push_back('<');
+
+    if (pcnt) *pcnt = 0;     // count number of times 'pref' is used
+
+    Py_ssize_t nArgs = justOne ? 1 : PyTuple_GET_SIZE(tpArgs);
     for (int i = argoff; i < nArgs; ++i) {
     // add type as string to name
-        PyObject* tn = PyTuple_GET_ITEM(tpArgs, i);
-        if (CPyCppyy_PyUnicode_Check(tn)) {
-            tmpl_name << CPyCppyy_PyUnicode_AsString(tn);
-        } else if (CPPScope_Check(tn)) {
-            tmpl_name << Cppyy::GetScopedFinalName(((CPPClass*)tn)->fCppType);
-            if (args) {
-            // try to specialize the type match for the given object
-                CPPInstance* pyobj = (CPPInstance*)PyTuple_GET_ITEM(args, i);
-                if (CPPInstance_Check(pyobj)) {
-                    if (pyobj->fFlags & CPPInstance::kIsRValue)
-                        tmpl_name << "&&";
-                    else if (pyobj->fFlags & CPPInstance::kIsReference)
-                        tmpl_name << '*';
-                    else
-                        tmpl_name << '&';
-                }
-            }
-        } else if (PyObject_HasAttr(tn, PyStrings::gCppName)) {
-            PyObject* tpName = PyObject_GetAttr(tn, PyStrings::gCppName);
-            tmpl_name << CPyCppyy_PyUnicode_AsString(tpName);
-            Py_DECREF(tpName);
-        } else if (PyObject_HasAttr(tn, PyStrings::gName)) {
-            PyObject* tpName = PyObject_GetAttr(tn, PyStrings::gName);
-
-        // special case for strings
-            if (strcmp(CPyCppyy_PyUnicode_AsString(tpName), "str") == 0)
-                tmpl_name << "std::string";
-            else
-                tmpl_name << CPyCppyy_PyUnicode_AsString(tpName);
-            Py_DECREF(tpName);
-        } else if (PyInt_Check(tn) || PyLong_Check(tn) || PyFloat_Check(tn)) {
-        // last ditch attempt, works for things like int values; since this is a
-        // source of errors otherwise, it is limited to specific types and not
-        // generally used (str(obj) can print anything ...)
-            PyObject* pystr = PyObject_Str(tn);
-            tmpl_name << CPyCppyy_PyUnicode_AsString(pystr);
-            Py_DECREF(pystr);
+        PyObject* tn = justOne ? tpArgs : PyTuple_GET_ITEM(tpArgs, i);
+        if (CPyCppyy_PyText_Check(tn)) {
+            tmpl_name.append(CPyCppyy_PyText_AsString(tn));
+    // some commmon numeric types (separated out for performance: checking for
+    // __cpp_name__ and/or __name__ is rather expensive)
         } else {
-            PyErr_SetString(PyExc_SyntaxError,
-                "could not construct C++ name from provided template argument.");
-            return "";
+            if (!AddTypeName(tmpl_name, tn, (args ? PyTuple_GET_ITEM(args, i) : nullptr), pref, pcnt)) {
+                PyErr_SetString(PyExc_SyntaxError,
+                    "could not construct C++ name from provided template argument.");
+                return "";
+            }
         }
 
-    // add a comma, as needed
+    // add a comma, as needed (no space as internally, final names don't have them)
         if (i != nArgs-1)
-            tmpl_name << ", ";
+            tmpl_name.push_back(',');
     }
 
 // close template name
-    tmpl_name << '>';
+    tmpl_name.push_back('>');
 
-    return tmpl_name.str();
+    return tmpl_name;
+}
+
+//----------------------------------------------------------------------------
+void CPyCppyy::Utility::ConstructCallbackPreamble(const std::string& retType,
+    const std::vector<std::string>& argtypes, std::ostringstream& code)
+{
+// Generate function setup to be used in callbacks (wrappers and overrides).
+    int nArgs = (int)argtypes.size();
+
+// return value and argument type converters
+    bool isVoid = (retType == "void");
+    if (!isVoid)
+        code << "    CPYCPPYY_STATIC std::unique_ptr<CPyCppyy::Converter, std::function<void(CPyCppyy::Converter*)>> "
+                     "retconv{CPyCppyy::CreateConverter(\""
+             << retType << "\"), CPyCppyy::DestroyConverter};\n";
+    if (nArgs) {
+        code << "    CPYCPPYY_STATIC std::vector<std::unique_ptr<CPyCppyy::Converter, std::function<void(CPyCppyy::Converter*)>>> argcvs;\n"
+             << "    if (argcvs.empty()) {\n"
+             << "      argcvs.reserve(" << nArgs << ");\n";
+        for (int i = 0; i < nArgs; ++i)
+            code << "      argcvs.emplace_back(CPyCppyy::CreateConverter(\"" << argtypes[i] << "\"), CPyCppyy::DestroyConverter);\n";
+        code << "    }\n";
+    }
+
+// declare return value (TODO: this does not work for most non-builtin values)
+    if (!isVoid)
+        code << "    " << retType << " ret{};\n";
+
+// acquire GIL
+    code << "    PyGILState_STATE state = PyGILState_Ensure();\n";
+
+// build argument tuple if needed
+    if (nArgs) {
+        code << "    std::vector<PyObject*> pyargs;\n";
+        code << "    pyargs.reserve(" << nArgs << ");\n"
+             << "    try {\n";
+        for (int i = 0; i < nArgs; ++i) {
+            code << "      pyargs.emplace_back(argcvs[" << i << "]->FromMemory((void*)&arg" << i << "));\n"
+                 << "      if (!pyargs.back()) throw " << i << ";\n";
+        }
+        code << "    } catch(int) {\n"
+             << "      for (auto pyarg : pyargs) Py_XDECREF(pyarg);\n"
+             << "      PyGILState_Release(state); throw CPyCppyy::PyException{};\n"
+             << "    }\n";
+    }
+}
+
+void CPyCppyy::Utility::ConstructCallbackReturn(bool isVoid, int nArgs, std::ostringstream& code)
+{
+// Generate code for return value conversion and error handling.
+    if (nArgs)
+        code << "    for (auto pyarg : pyargs) Py_DECREF(pyarg);\n";
+    code << "    bool cOk = (bool)pyresult;\n"
+            "    if (pyresult) { " << (isVoid ? "" : "cOk = retconv->ToMemory(pyresult, &ret); ")
+                                   << "Py_DECREF(pyresult); }\n"
+            "    if (!cOk) {"     // assume error set when converter failed
+// TODO: On Windows, throwing a C++ exception here makes the code hang; leave
+// the error be which allows at least one layer of propagation
+#ifdef _WIN32
+            " /* do nothing */ }\n"
+#else
+            " PyGILState_Release(state); throw CPyCppyy::PyException{}; }\n"
+#endif
+            "    PyGILState_Release(state);\n"
+            "    return";
+    code << (isVoid ? ";\n  }\n" : " ret;\n  }\n");
 }
 
 //----------------------------------------------------------------------------
@@ -518,13 +619,18 @@ Py_ssize_t CPyCppyy::Utility::GetBuffer(PyObject* pyobject, char tc, int size, v
         Py_buffer bufinfo;
         memset(&bufinfo, 0, sizeof(Py_buffer));
         if (PyObject_GetBuffer(pyobject, &bufinfo, PyBUF_FORMAT) == 0) {
-            if (tc == '*' || strchr(bufinfo.format, tc)) {
+            if (tc == '*' || strchr(bufinfo.format, tc)
+#ifdef _WIN32
+            // ctypes is inconsistent in format on Windows; either way these types are the same size
+                || (tc == 'I' && strchr(bufinfo.format, 'L')) || (tc == 'i' && strchr(bufinfo.format, 'l'))
+#endif
+                    ) {
                 buf = bufinfo.buf;
                 if (buf && bufinfo.ndim == 0) {
                     PyBuffer_Release(&bufinfo);
                     return bufinfo.len/bufinfo.itemsize;
                 } else if (buf && bufinfo.ndim == 1) {
-                    Py_ssize_t size1d = bufinfo.shape ? bufinfo.shape[0] : bufinfo.len;
+                    Py_ssize_t size1d = bufinfo.shape ? bufinfo.shape[0] : bufinfo.len/bufinfo.itemsize;
                     PyBuffer_Release(&bufinfo);
                     return size1d;
                 }
@@ -570,7 +676,7 @@ Py_ssize_t CPyCppyy::Utility::GetBuffer(PyObject* pyobject, char tc, int size, v
         // determine buffer compatibility (use "buf" as a status flag)
             PyObject* pytc = PyObject_GetAttr(pyobject, PyStrings::gTypeCode);
             if (pytc != 0) {      // for array objects
-                if (CPyCppyy_PyUnicode_AsString(pytc)[0] != tc)
+                if (CPyCppyy_PyText_AsString(pytc)[0] != tc)
                     buf = 0;      // no match
                 Py_DECREF(pytc);
             } else if (seqmeths->sq_length &&
@@ -586,9 +692,9 @@ Py_ssize_t CPyCppyy::Utility::GetBuffer(PyObject* pyobject, char tc, int size, v
             // clarify error message
                 PyObject* pytype = 0, *pyvalue = 0, *pytrace = 0;
                 PyErr_Fetch(&pytype, &pyvalue, &pytrace);
-                PyObject* pyvalue2 = CPyCppyy_PyUnicode_FromFormat(
+                PyObject* pyvalue2 = CPyCppyy_PyText_FromFormat(
                     (char*)"%s and given element size (%ld) do not match needed (%d)",
-                    CPyCppyy_PyUnicode_AsString(pyvalue),
+                    CPyCppyy_PyText_AsString(pyvalue),
                     seqmeths->sq_length ? (Long_t)(buflen/(*(seqmeths->sq_length))(pyobject)) : (Long_t)buflen,
                     size);
                 Py_DECREF(pyvalue);
@@ -597,7 +703,7 @@ Py_ssize_t CPyCppyy::Utility::GetBuffer(PyObject* pyobject, char tc, int size, v
         }
 
         if (!buf) return 0;
-        return buflen;
+        return buflen/(size ? size : 1);
     }
 
     return 0;
@@ -614,11 +720,16 @@ std::string CPyCppyy::Utility::MapOperatorName(const std::string& name, bool bTa
         std::string::size_type start = 0, end = op.size();
         while (start < end && isspace(op[start])) ++start;
         while (start < end && isspace(op[end-1])) --end;
+        op = op.substr(start, end - start);
+
+    // certain operators should be removed completely (e.g. operator delete & friends)
+        if (gOpRemove.find(op) != gOpRemove.end())
+            return "";
 
     // check first if none, to prevent spurious deserializing downstream
         TC2POperatorMapping_t::iterator pop = gC2POperatorMapping.find(op);
         if (pop == gC2POperatorMapping.end() && gOpSkip.find(op) == gOpSkip.end()) {
-            op = Cppyy::ResolveName(op.substr(start, end - start));
+            op = Cppyy::ResolveName(op);
             pop = gC2POperatorMapping.find(op);
         }
 
@@ -703,13 +814,30 @@ std::string CPyCppyy::Utility::ClassName(PyObject* pyobj)
     std::string clname = "<unknown>";
     PyObject* pyclass = (PyObject*)Py_TYPE(pyobj);
     PyObject* pyname = PyObject_GetAttr(pyclass, PyStrings::gCppName);
-    if (!pyname) pyname = PyObject_GetAttr(pyclass, PyStrings::gName);
+    if (!pyname) {
+        PyErr_Clear();
+        pyname = PyObject_GetAttr(pyclass, PyStrings::gName);
+    }
+
     if (pyname) {
-        clname = CPyCppyy_PyUnicode_AsString(pyname);
+        clname = CPyCppyy_PyText_AsString(pyname);
         Py_DECREF(pyname);
     } else
         PyErr_Clear();
     return clname;
+}
+
+
+//----------------------------------------------------------------------------
+CPyCppyy::Utility::PyOperators::~PyOperators()
+{
+    Py_XDECREF(fEq);
+    Py_XDECREF(fNe);
+    Py_XDECREF(fLAdd); Py_XDECREF(fRAdd);
+    Py_XDECREF(fSub);
+    Py_XDECREF(fLMul); Py_XDECREF(fRMul);
+    Py_XDECREF(fDiv);
+    Py_XDECREF(fHash);
 }
 
 
@@ -751,26 +879,39 @@ void CPyCppyy::Utility::SetDetailedException(std::vector<PyError_t>& errors, PyO
 // Use the collected exceptions to build up a detailed error log.
     if (errors.empty()) {
     // should not happen ...
+        PyErr_SetString(defexc, CPyCppyy_PyText_AsString(topmsg));
         Py_DECREF(topmsg);
         return;
     }
 
 // add the details to the topmsg
-    PyObject* separator = CPyCppyy_PyUnicode_FromString("\n  ");
+    PyObject* separator = CPyCppyy_PyText_FromString("\n  ");
 
     PyObject* exc_type = nullptr;
     for (auto& e : errors) {
         if (!exc_type) exc_type = e.fType;
         else if (exc_type != e.fType) exc_type = defexc;
-        CPyCppyy_PyUnicode_Append(&topmsg, separator);
-        CPyCppyy_PyUnicode_Append(&topmsg, e.fValue);
+        CPyCppyy_PyText_Append(&topmsg, separator);
+        if (CPyCppyy_PyText_Check(e.fValue)) {
+            CPyCppyy_PyText_Append(&topmsg, e.fValue);
+        } else if (e.fValue) {
+            PyObject* excstr = PyObject_Str(e.fValue);
+            if (!excstr) {
+                PyErr_Clear();
+                excstr = PyObject_Str((PyObject*)Py_TYPE(e.fValue));
+            }
+            CPyCppyy_PyText_AppendAndDel(&topmsg, excstr);
+        } else {
+            CPyCppyy_PyText_AppendAndDel(&topmsg,
+                CPyCppyy_PyText_FromString("unknown exception"));
+        }
     }
 
     Py_DECREF(separator);
     std::for_each(errors.begin(), errors.end(), PyError_t::Clear);
 
 // set the python exception
-    PyErr_SetObject(exc_type, topmsg);
+    PyErr_SetString(exc_type, CPyCppyy_PyText_AsString(topmsg));
     Py_DECREF(topmsg);
 }
 
@@ -781,42 +922,14 @@ bool CPyCppyy::Utility::IncludePython()
 {
 // setup Python API for callbacks
     if (!includesDone) {
-        bool okay = Cppyy::Compile("#ifdef _WIN32\n"
-            "#pragma warning (disable : 4275)\n"
-            "#pragma warning (disable : 4251)\n"
-            "#pragma warning (disable : 4800)\n"
-            "#endif\n"
-            "#if defined(linux)\n"
-            "#include <stdio.h>\n"
-            "#ifdef _POSIX_C_SOURCE\n"
-            "#undef _POSIX_C_SOURCE\n"
-            "#endif\n"
-            "#ifdef _FILE_OFFSET_BITS\n"
-            "#undef _FILE_OFFSET_BITS\n"
-            "#endif\n"
-            "#ifdef _XOPEN_SOURCE\n"
-            "#undef _XOPEN_SOURCE\n"
-            "#endif\n"
-            "#endif\n"
-            "#include \"Python.h\"\n"
-       // the following really should live in a header ...
-            "extern \"C\" void* cppyy_create_converter(const char*, long* dims);\n"
-            "namespace CPyCppyy {\n"
-            "struct Parameter; struct CallContext;\n"
-            "class Converter {\n"
-            "public:\n"
-            "  virtual ~Converter() {}\n"
-            "  virtual bool SetArg(PyObject*, Parameter&, CallContext* = nullptr) = 0;\n"
-            "  virtual PyObject* FromMemory(void* address);\n"
-            "  virtual bool ToMemory(PyObject* value, void* address);\n"
-            "};\n"
-       // and this lives in a header, but isn't accessible ...
-            "class TPyException : public std::exception {\n"
-            "public:\n"
-            "    TPyException();\n"
-            "    virtual ~TPyException() noexcept;\n"
-            "    virtual const char* what() const noexcept;\n"
-            "};}\n");
+        bool okay = Cppyy::Compile(
+        // basic API (converters etc.)
+            "#include \"CPyCppyy/API.h\"\n"
+
+        // utilities from the CPyCppyy public API
+            "#include \"CPyCppyy/DispatchPtr.h\"\n"
+            "#include \"CPyCppyy/PyException.h\"\n"
+        );
         includesDone = okay;
     }
 

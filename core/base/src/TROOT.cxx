@@ -66,12 +66,11 @@ of a main program creating an interactive version is shown below:
 ~~~
 */
 
-#include <ROOT/RConfig.h>
+#include <ROOT/RConfig.hxx>
 #include "RConfigure.h"
 #include "RConfigOptions.h"
 #include "RVersion.h"
 #include "RGitCommit.h"
-
 #include <string>
 #include <map>
 #include <stdlib.h>
@@ -114,6 +113,7 @@ FARPROC dlsym(void *library, const char *function_name)
 #endif
 
 #include "Riostream.h"
+#include "ROOT/FoundationUtils.hxx"
 #include "TROOT.h"
 #include "TClass.h"
 #include "TClassEdit.h"
@@ -540,6 +540,9 @@ namespace Internal {
    /// In all threads, gDirectory defaults to gROOT, a singleton which supports thread-safe insertion and deletion of contents.
    /// gFile and gPad default to nullptr, as it is for single-thread programs.
    ///
+   /// The ROOT graphics subsystem is not made thread-safe by this method. In particular drawing or printing different
+   /// canvases from different threads (and analogous operations such as invoking `Draw` on a `TObject`) is not thread-safe.
+   ///
    /// Note that there is no `DisableThreadSafety()`. ROOT's thread-safety features cannot be disabled once activated.
    // clang-format on
    void EnableThreadSafety()
@@ -624,7 +627,8 @@ namespace Internal {
 #endif
    }
 
-}
+
+} // end of ROOT namespace
 
 TROOT *ROOT::Internal::gROOTLocal = ROOT::GetROOT();
 
@@ -727,7 +731,7 @@ TROOT::TROOT(const char *name, const char *title, VoidFuncPtr_t *initfunc)
 
    gRootDir = GetRootSys().Data();
 
-   TDirectory::Build();
+   TDirectory::BuildDirectory(nullptr, nullptr);
 
    // Initialize interface to CINT C++ interpreter
    fVersionInt      = 0;  // check in TROOT dtor in case TCling fails
@@ -920,14 +924,15 @@ TROOT::~TROOT()
 
       // ATTENTION!!! Order is important!
 
-#ifdef R__COMPLETE_MEM_TERMINATION
       SafeDelete(fBrowsables);
 
       // FIXME: Causes rootcling to deadlock, debug and uncomment
       // SafeDelete(fRootFolder);
 
+#ifdef R__COMPLETE_MEM_TERMINATION
       fSpecials->Delete();   SafeDelete(fSpecials);    // delete special objects : PostScript, Minuit, Html
 #endif
+
       fClosedObjects->Delete("slow"); // and closed files
       fFiles->Delete("slow");       // and files
       SafeDelete(fFiles);
@@ -944,9 +949,7 @@ TROOT::~TROOT()
       fFunctions->Delete();  SafeDelete(fFunctions);   // etc..
       fGeometries->Delete(); SafeDelete(fGeometries);
       fBrowsers->Delete();   SafeDelete(fBrowsers);
-#ifdef R__COMPLETE_MEM_TERMINATION
       SafeDelete(fCanvases);
-#endif
       fColors->Delete();     SafeDelete(fColors);
       fStyles->Delete();     SafeDelete(fStyles);
 
@@ -1015,16 +1018,14 @@ TROOT::~TROOT()
       //
       //    delete fInterpreter;
 
+      // We cannot delete fCleanups because of the logic in atexit which needs it.
       SafeDelete(fCleanups);
 #endif
 
-      // llvm::TimingGroup used for measuring the timing relies the destructors.
-      // In order to make use of this feature we have to call the destructor of
-      // TCling which will shut down clang, cling and llvm.
-      // gSystem->Getenv is not available anymore.
-      if (::getenv("ROOT_CLING_TIMING"))
-         delete fInterpreter;
-
+#ifndef _MSC_VER
+      // deleting the interpreter makes things crash at exit in some cases
+      delete fInterpreter;
+#endif
 
       // Prints memory stats
       TStorage::PrintStatistics();
@@ -1264,6 +1265,12 @@ void TROOT::EndOfProcessCleanups()
    fCanvases->Delete("slow");
    fColors->Delete();
    fStyles->Delete();
+
+   TQObject::BlockAllSignals(kTRUE);
+
+   if (gInterpreter) {
+      gInterpreter->ShutDown();
+   }
 }
 
 
@@ -1763,18 +1770,19 @@ TCollection *TROOT::GetListOfFunctionTemplates()
 TCollection *TROOT::GetListOfGlobals(Bool_t load)
 {
    if (!fGlobals) {
-      // We add to the list the "funcky-fake" globals.
       fGlobals = new TListOfDataMembers(0);
-      fGlobals->Add(new TGlobalMappedFunction("gROOT", "TROOT*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&ROOT::GetROOT)));
-      fGlobals->Add(new TGlobalMappedFunction("gPad", "TVirtualPad*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TVirtualPad::Pad)));
-      fGlobals->Add(new TGlobalMappedFunction("gInterpreter", "TInterpreter*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TInterpreter::Instance)));
-      fGlobals->Add(new TGlobalMappedFunction("gVirtualX", "TVirtualX*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TVirtualX::Instance)));
-      fGlobals->Add(new TGlobalMappedFunction("gDirectory", "TDirectory*",
-               (TGlobalMappedFunction::GlobalFunc_t)((void*)&TDirectory::CurrentDirectory)));
+      // We add to the list the "funcky-fake" globals.
+
+      // provide special functor for gROOT, while ROOT::GetROOT() does not return reference
+      TGlobalMappedFunction::MakeFunctor("gROOT", "TROOT*", ROOT::GetROOT, [] {
+         ROOT::GetROOT();
+         return (void *)&ROOT::Internal::gROOTLocal;
+      });
+
+      TGlobalMappedFunction::MakeFunctor("gPad", "TVirtualPad*", TVirtualPad::Pad);
+      TGlobalMappedFunction::MakeFunctor("gVirtualX", "TVirtualX*", TVirtualX::Instance);
+      TGlobalMappedFunction::MakeFunctor("gDirectory", "TDirectory*", TDirectory::CurrentDirectory);
+
       // Don't let TGlobalMappedFunction delete our globals, now that we take them.
       fGlobals->AddAll(&TGlobalMappedFunction::GetEarlyRegisteredGlobals());
       TGlobalMappedFunction::GetEarlyRegisteredGlobals().SetOwner(kFALSE);
@@ -2134,14 +2142,6 @@ void TROOT::InitInterpreter()
    GetModuleHeaderInfoBuffer().clear();
 
    fInterpreter->Initialize();
-
-   // Read the rules before enabling the auto loading to not inadvertently
-   // load the libraries for the classes concerned even-though the user is
-   // *not* using them.
-   TClass::ReadRules(); // Read the default customization rules ...
-
-   // Enable autoloading
-   fInterpreter->EnableAutoLoading();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2596,7 +2596,7 @@ void TROOT::RegisterModule(const char* modulename,
    atexit(CallCloseFiles);
 
    // Now register with TCling.
-   if (gCling) {
+   if (TROOT::Initialized()) {
       gCling->RegisterModule(modulename, headers, includePaths, payloadCode, fwdDeclCode, triggerFunc,
                              fwdDeclsArgToSkip, classesHeaders, false, hasCxxModule);
    } else {
@@ -2848,6 +2848,13 @@ void TROOT::IndentLevel()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Initialize ROOT explicitly.
+
+void TROOT::Initialize() {
+   (void) gROOT;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Return kTRUE if the TROOT object has been initialized.
 
 Bool_t TROOT::Initialized()
@@ -2897,8 +2904,22 @@ Int_t TROOT::RootVersionCode()
 {
    return ROOT_VERSION_CODE;
 }
+////////////////////////////////////////////////////////////////////////////////
+/// Provide command line arguments to the interpreter construction.
+/// These arguments are added to the existing flags (e.g. `-DNDEBUG`).
+/// They are evaluated once per process, at the time where TROOT (and thus
+/// TInterpreter) is constructed.
+/// Returns the new flags.
+
+const std::vector<std::string> &TROOT::AddExtraInterpreterArgs(const std::vector<std::string> &args) {
+   static std::vector<std::string> sArgs = {};
+   sArgs.insert(sArgs.begin(), args.begin(), args.end());
+   return sArgs;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
+/// INTERNAL function!
+/// Used by rootcling to inject interpreter arguments through a C-interface layer.
 
 const char**& TROOT::GetExtraInterpreterArgs() {
    static const char** extraInterpArgs = 0;
@@ -2918,21 +2939,10 @@ static Bool_t IgnorePrefix() {
 /// Get the rootsys directory in the installation. Static utility function.
 
 const TString& TROOT::GetRootSys() {
-#ifdef ROOTPREFIX
-   if (IgnorePrefix()) {
-#endif
-      static TString rootsys;
-      if (rootsys.IsNull())
-         rootsys = gSystem->UnixPathName(gSystem->Getenv("ROOTSYS"));
-      if (rootsys.IsNull())
-         rootsys = gRootDir;
-      return rootsys;
-#ifdef ROOTPREFIX
-   } else {
-      const static TString rootsys = ROOTPREFIX;
-      return rootsys;
-   }
-#endif
+   // Avoid returning a reference to a temporary because of the conversion
+   // between std::string and TString.
+   const static TString rootsys = ROOT::FoundationUtils::GetRootSys();
+   return rootsys;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2981,42 +2991,20 @@ const TString& TROOT::GetLibDir() {
 /// Get the include directory in the installation. Static utility function.
 
 const TString& TROOT::GetIncludeDir() {
-#ifdef ROOTINCDIR
-   if (IgnorePrefix()) {
-#endif
-      static TString rootincdir;
-      if (rootincdir.IsNull()) {
-         rootincdir = "include";
-         gSystem->PrependPathName(GetRootSys(), rootincdir);
-      }
-      return rootincdir;
-#ifdef ROOTINCDIR
-   } else {
-      const static TString rootincdir = ROOTINCDIR;
-      return rootincdir;
-   }
-#endif
+   // Avoid returning a reference to a temporary because of the conversion
+   // between std::string and TString.
+   const static TString includedir = ROOT::FoundationUtils::GetIncludeDir();
+   return includedir;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Get the sysconfig directory in the installation. Static utility function.
 
 const TString& TROOT::GetEtcDir() {
-#ifdef ROOTETCDIR
-   if (IgnorePrefix()) {
-#endif
-      static TString rootetcdir;
-      if (rootetcdir.IsNull()) {
-         rootetcdir = "etc";
-         gSystem->PrependPathName(GetRootSys(), rootetcdir);
-      }
-      return rootetcdir;
-#ifdef ROOTETCDIR
-   } else {
-      const static TString rootetcdir = ROOTETCDIR;
-      return rootetcdir;
-   }
-#endif
+   // Avoid returning a reference to a temporary because of the conversion
+   // between std::string and TString.
+   const static TString etcdir = ROOT::FoundationUtils::GetEtcDir();
+   return etcdir;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3091,6 +3079,17 @@ const TString& TROOT::GetTutorialDir() {
       return roottutdir;
    }
 #endif
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Shut down ROOT.
+
+void TROOT::ShutDown()
+{
+   if (gROOT)
+      gROOT->EndOfProcessCleanups();
+   else if (gInterpreter)
+      gInterpreter->ShutDown();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
