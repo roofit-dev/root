@@ -9,14 +9,15 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-//////////////////////////////////////////////////////////////////////////
-//                                                                      //
-// TSessionDialogs                                                      //
-//                                                                      //
-// This file defines several dialogs that are used by TSessionViewer.   //
-// The following dialogs are available: TNewChainDlg and TNewQueryDlg.  //
-//                                                                      //
-//////////////////////////////////////////////////////////////////////////
+
+/** \class TSessionDialogs
+    \ingroup sessionviewer
+
+This file defines several dialogs that are used by TSessionViewer.
+The following dialogs are available: TNewChainDlg and TNewQueryDlg.
+
+*/
+
 
 #include "TSessionDialogs.h"
 #include "TSessionViewer.h"
@@ -31,15 +32,13 @@
 #include "TGNumberEntry.h"
 #include "TGLabel.h"
 #include "TGListView.h"
-#include "TGPicture.h"
 #include "TGFSContainer.h"
 #include "TGFileDialog.h"
 #include "TGListTree.h"
 #include "TInterpreter.h"
 #include "TApplication.h"
-#include "TKey.h"
+#include "TObjString.h"
 #include "TGTableLayout.h"
-#include "TGFileDialog.h"
 #include "TProof.h"
 #include "TFileInfo.h"
 #include "TGMsgBox.h"

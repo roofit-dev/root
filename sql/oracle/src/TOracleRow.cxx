@@ -11,19 +11,20 @@
 
 #include "TOracleRow.h"
 #include "TOracleServer.h"
-#include <string.h>
+#include "snprintf.h"
+#include <cstring>
 #include <ctime>
+
+#include <occi.h>
 
 ClassImp(TOracleRow);
 
-using namespace std;
 using namespace oracle::occi;
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Single row of query result.
 
-TOracleRow::TOracleRow(ResultSet *rs, vector<MetaData> *fieldMetaData)
+TOracleRow::TOracleRow(ResultSet *rs, std::vector<MetaData> *fieldMetaData)
 {
    fResult      = rs;
    fFieldInfo   = fieldMetaData;

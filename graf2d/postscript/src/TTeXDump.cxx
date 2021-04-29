@@ -13,11 +13,11 @@
 #pragma optimize("",off)
 #endif
 
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <fstream>
 
-#include "Riostream.h"
 #include "TROOT.h"
 #include "TColor.h"
 #include "TVirtualPad.h"
@@ -25,7 +25,6 @@
 #include "TTeXDump.h"
 #include "TStyle.h"
 #include "TMath.h"
-#include "TClass.h"
 
 ClassImp(TTeXDump);
 
@@ -662,7 +661,6 @@ void TTeXDump::Range(Float_t xsize, Float_t ysize)
 void TTeXDump::SetFillColor( Color_t cindex )
 {
    fFillColor = cindex;
-   if (gStyle->GetFillColor() <= 0) cindex = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
