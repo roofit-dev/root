@@ -52,7 +52,6 @@
 #include "TMath.h"
 #include "TRandom2.h"
 #include "TObjArray.h"
-#include "TVectorD.h"
 #include "Hoption.h"
 #include "Hparam.h"
 #include "TPluginManager.h"
@@ -5730,7 +5729,7 @@ void THistPainter::PaintColorLevels(Option_t*)
    }
    Int_t ndivz  = TMath::Abs(ndiv);
    if (fH->TestBit(TH1::kUserContour) == 0) fH->SetContour(ndiv);
-   Double_t scale = ndivz/dz;
+   Double_t scale = (dz ? ndivz / dz : 1.0);
 
    Int_t color;
    TProfile2D* prof2d = dynamic_cast<TProfile2D*>(fH);

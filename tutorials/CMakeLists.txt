@@ -93,6 +93,11 @@ if (NOT dataframe)
     list(APPEND dataframe_veto tmva/tmva*.C)
 endif()
 
+if(NOT sqlite)
+    # RDF+SQlite tutorials
+    list(APPEND dataframe_veto dataframe/*SQlite*)
+endif()
+
 if(NOT ROOT_mlp_FOUND)
    set(mlp_veto legacy/mlp/*.C)
 endif()
@@ -131,11 +136,6 @@ endif()
 # variables identifying the package must have the package name  in lower case (it corresponds to the CMake option name)
 if(NOT ROOT_r_FOUND)
   set(r_veto  r/*.C)
-endif()
-
-# FIXME: Temporary workaround for runtime_cxxmodule
-if (FIXME_TEMPORARILY_EXCLUDED_FOR_RUNTIME_CXXMODULES)
-  set(runtime_cxxmodules_veto r/Function.C)
 endif()
 
 if(WIN32)
