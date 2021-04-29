@@ -53,6 +53,12 @@ no normalization other than calculating the proper last coefficient \f$ c_n \f$,
 An (enforced) condition for this assumption is that each \f$ \mathrm{PDF}_i \f$ is independent
 of each \f$ c_i \f$.
 
+### Difference between RooAddPdf / RooRealSum{Func|Pdf}
+- RooAddPdf is a PDF of PDFs, *i.e.* its components need to be normalised and non-negative.
+- RooRealSumPdf is a PDF of functions, *i.e.*, its components can be negative, but their sum cannot be. The normalisation
+  is computed automatically, unless the PDF is extended (see above).
+- RooRealSumFunc is a sum of functions. It is neither normalised, nor need it be positive.
+
 */
 
 
@@ -96,9 +102,6 @@ RooAddPdf::RooAddPdf() :
   _snormList(0),
   _recursive(kFALSE)
 {
-  _pdfIter   = _pdfList.createIterator() ;
-  _coefIter  = _coefList.createIterator() ;
-
   _coefCache = new Double_t[100] ;
   _coefErrCount = _errorCount ;
   TRACE_CREATE 
@@ -123,9 +126,6 @@ RooAddPdf::RooAddPdf(const char *name, const char *title) :
   _allExtendable(kFALSE),
   _recursive(kFALSE)
 {
-  _pdfIter   = _pdfList.createIterator() ;
-  _coefIter  = _coefList.createIterator() ;
-
   _coefCache = new Double_t[100] ;
   _coefErrCount = _errorCount ;
   TRACE_CREATE 
@@ -150,9 +150,6 @@ RooAddPdf::RooAddPdf(const char *name, const char *title,
   _allExtendable(kFALSE),
   _recursive(kFALSE)
 {
-  _pdfIter  = _pdfList.createIterator() ;
-  _coefIter = _coefList.createIterator() ;
-
   _pdfList.add(pdf1) ;  
   _pdfList.add(pdf2) ;
   _coefList.add(coef1) ;
@@ -198,10 +195,6 @@ RooAddPdf::RooAddPdf(const char *name, const char *title, const RooArgList& inPd
     coutW(InputArguments) << "RooAddPdf::RooAddPdf(" << GetName() 
 			  << ") WARNING inconsistent input: recursive fractions options can only be used if Npdf=Ncoef+1, ignoring recursive fraction setting" << endl ;
   }
-
-
-  _pdfIter  = _pdfList.createIterator() ;
-  _coefIter = _coefList.createIterator() ;
  
   // Constructor with N PDFs and N or N-1 coefs
   TIterator* pdfIter = inPdfList.createIterator() ;
@@ -308,9 +301,6 @@ RooAddPdf::RooAddPdf(const char *name, const char *title, const RooArgList& inPd
   _allExtendable(kTRUE),
   _recursive(kFALSE)
 { 
-  _pdfIter  = _pdfList.createIterator() ;
-  _coefIter = _coefList.createIterator() ;
- 
   // Constructor with N PDFs 
   TIterator* pdfIter = inPdfList.createIterator() ;
   RooAbsPdf* pdf ;
@@ -353,8 +343,6 @@ RooAddPdf::RooAddPdf(const RooAddPdf& other, const char* name) :
   _allExtendable(other._allExtendable),
   _recursive(other._recursive)
 {
-  _pdfIter  = _pdfList.createIterator() ;
-  _coefIter = _coefList.createIterator() ;
   _coefCache = new Double_t[_pdfList.getSize()] ;
   _coefErrCount = _errorCount ;
   TRACE_CREATE 
@@ -367,9 +355,6 @@ RooAddPdf::RooAddPdf(const RooAddPdf& other, const char* name) :
 
 RooAddPdf::~RooAddPdf()
 {
-  delete _pdfIter ;
-  delete _coefIter ;
-
   if (_coefCache) delete[] _coefCache ;
   TRACE_DESTROY
 }
@@ -384,7 +369,7 @@ RooAddPdf::~RooAddPdf()
 /// interpretation of the coefficients to be done in the given set of
 /// observables. If frozen, fractions are automatically transformed
 /// from the reference normalization set to the contextual normalization
-/// set by ratios of integrals
+/// set by ratios of integrals.
 
 void RooAddPdf::fixCoefNormalization(const RooArgSet& refCoefNorm) 
 {
@@ -403,15 +388,15 @@ void RooAddPdf::fixCoefNormalization(const RooArgSet& refCoefNorm)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// By default the interpretation of the fraction coefficients is
-/// performed in the default range. This make the shape of a RooAddPdf
-/// explicitly dependent on the range of the observables. To allow
-/// a range independent definition of the fraction this function
-/// instructs RooAddPdf to freeze its interpretation in the given
-/// named range. If the current normalization range is different
-/// from the reference range, the appropriate fraction coefficients
-/// are automically calculation from the reference fractions using
-/// ratios if integrals
+/// By default, fraction coefficients are assumed to refer to the default
+/// fit range. This makes the shape of a RooAddPdf
+/// explicitly dependent on the range of the observables. Calling this function
+/// allows for a range-independent definition of the fractions, because it
+/// ties all coefficients to the given
+/// named range. If the normalisation range is different
+/// from this reference range, the appropriate fraction coefficients
+/// are automatically calculated from the reference fractions by
+/// integrating over the ranges, and comparing these integrals.
 
 void RooAddPdf::fixCoefRange(const char* rangeName)
 {
@@ -422,11 +407,15 @@ void RooAddPdf::fixCoefRange(const char* rangeName)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Retrieve cache element with for calculation of p.d.f value with normalization set nset and integrated over iset
-/// in range 'rangeName'. If cache element does not exist, create and fill it on the fly. The cache contains
-/// suplemental normalization terms (in case not all added p.d.f.s have the same observables), projection
-/// integrals to calculated transformed fraction coefficients when a frozen reference frame is provided
-/// and projection integrals for similar transformations when a frozen reference range is provided.
+/// Retrieve cache element for the computation of the PDF normalisation.
+/// \param[in] nset Current normalisation set (integration over these variables yields 1).
+/// \param[in] iset Integration set. Variables to be integrated over (if integrations are performed).
+/// \param[in] rangeName Reference range for the integrals.
+///
+/// If a cache element does not exist, create and fill it on the fly. The cache also contains
+/// - Supplemental normalization terms (in case not all added p.d.f.s have the same observables)
+/// - Projection integrals to calculate transformed fraction coefficients when a frozen reference frame is provided
+/// - Projection integrals for similar transformations when a frozen reference range is provided.
 
 RooAddPdf::CacheElem* RooAddPdf::getProjCache(const RooArgSet* nset, const RooArgSet* iset, const char* rangeName) const
 {
@@ -449,12 +438,9 @@ RooAddPdf::CacheElem* RooAddPdf::getProjCache(const RooArgSet* nset, const RooAr
   }    
 
   // Fill with dummy unit RRVs for now
-  _pdfIter->Reset() ;
-  _coefIter->Reset() ;
-  RooAbsPdf* pdf ;
-  RooAbsReal* coef ;
-  while((pdf=(RooAbsPdf*)_pdfIter->Next())) {    
-    coef=(RooAbsPdf*)_coefIter->Next() ;
+  for (int i = 0; i < _pdfList.getSize(); ++i) {
+    auto pdf  = static_cast<const RooAbsPdf *>(_pdfList.at(i));
+    auto coef = static_cast<const RooAbsReal*>(_coefList.at(i));
 
     // Start with full list of dependents
     RooArgSet supNSet(*fullDepList) ;
@@ -537,10 +523,8 @@ RooAddPdf::CacheElem* RooAddPdf::getProjCache(const RooArgSet* nset, const RooAr
 		   << " to "  << ((_refCoefNorm.getSize()>0)?_refCoefNorm:*nset2) << (_refCoefRangeName?":":"") << (_refCoefRangeName?RooNameReg::str(_refCoefRangeName):"") << endl ;
     
     // Recalculate projection integrals of PDFs 
-    _pdfIter->Reset() ;
-    RooAbsPdf* thePdf ;
-
-    while((thePdf=(RooAbsPdf*)_pdfIter->Next())) {
+    for (auto arg : _pdfList) {
+      auto thePdf = static_cast<const RooAbsPdf*>(arg);
 
       // Calculate projection integral
       RooAbsReal* pdfProj ;
@@ -672,24 +656,22 @@ RooAddPdf::CacheElem* RooAddPdf::getProjCache(const RooArgSet* nset, const RooAr
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Update the coefficient values in the given cache element: calculate new remainder
-/// fraction, normalize fractions obtained from extended ML terms to unity and
-/// multiply these the various range and dimensional corrections needed in the
-/// current use context
+/// fraction, normalize fractions obtained from extended ML terms to unity, and
+/// multiply the various range and dimensional corrections needed in the
+/// current use context.
 
 void RooAddPdf::updateCoefficients(CacheElem& cache, const RooArgSet* nset) const 
 {
   // cxcoutD(ChangeTracking) << "RooAddPdf::updateCoefficients(" << GetName() << ") update coefficients" << endl ;
-  
-  Int_t i ;
 
   // Straight coefficients
   if (_allExtendable) {
-    
+
     // coef[i] = expectedEvents[i] / SUM(expectedEvents)
     Double_t coefSum(0) ;
-    RooFIter it=_pdfList.fwdIterator() ; i=0 ;
-    RooAbsPdf* pdf ;
-    while((pdf=(RooAbsPdf*)it.next())) {      
+    std::size_t i = 0;
+    for (auto arg : _pdfList) {
+      auto pdf = static_cast<RooAbsPdf*>(arg);
       _coefCache[i] = pdf->expectedEvents(_refCoefNorm.getSize()>0?&_refCoefNorm:nset) ;
       coefSum += _coefCache[i] ;
       i++ ;
@@ -698,57 +680,53 @@ void RooAddPdf::updateCoefficients(CacheElem& cache, const RooArgSet* nset) cons
     if (coefSum==0.) {
       coutW(Eval) << "RooAddPdf::updateCoefCache(" << GetName() << ") WARNING: total number of expected events is 0" << endl ;
     } else {
-      Int_t siz = _pdfList.getSize() ;
-      for (i=0 ; i<siz ; i++) {
-	_coefCache[i] /= coefSum ;
+      for (int j=0; j < _pdfList.getSize(); j++) {
+        _coefCache[j] /= coefSum ;
       }			            
     }
-    
+
   } else {
     if (_haveLastCoef) {
-      
+
       // coef[i] = coef[i] / SUM(coef)
       Double_t coefSum(0) ;
-      RooFIter it=_coefList.fwdIterator() ; i=0 ;      
-      RooAbsReal* coef ;
-      while((coef=(RooAbsReal*)it.next())) {
-	_coefCache[i] = coef->getVal(nset) ;
-	coefSum += _coefCache[i] ;
-	i++ ;
+      std::size_t i=0;
+      for (auto coefArg : _coefList) {
+        auto coef = static_cast<RooAbsReal*>(coefArg);
+        _coefCache[i] = coef->getVal(nset) ;
+        coefSum += _coefCache[i++];
       }		
       if (coefSum==0.) {
-	coutW(Eval) << "RooAddPdf::updateCoefCache(" << GetName() << ") WARNING: sum of coefficients is zero 0" << endl ;
+        coutW(Eval) << "RooAddPdf::updateCoefCache(" << GetName() << ") WARNING: sum of coefficients is zero 0" << endl ;
       } else {	
-	Int_t siz = _coefList.getSize() ;
-	for (i=0 ; i<siz ; i++) {
-	  _coefCache[i] /= coefSum ;
-	}			
+        for (int j=0; j < _coefList.getSize(); j++) {
+          _coefCache[j] /= coefSum;
+        }
       }
     } else {
-      
+
       // coef[i] = coef[i] ; coef[n] = 1-SUM(coef[0...n-1])
       Double_t lastCoef(1) ;
-      RooFIter it=_coefList.fwdIterator() ; i=0 ;      
-      RooAbsReal* coef ;
-      while((coef=(RooAbsReal*)it.next())) {
-	_coefCache[i] = coef->getVal(nset) ;
- 	//cxcoutD(Caching) << "SYNC: orig coef[" << i << "] = " << _coefCache[i] << endl ;
-	lastCoef -= _coefCache[i] ;
-	i++ ;
+      std::size_t i=0;
+      for (auto coefArg : _coefList) {
+        auto coef = static_cast<RooAbsReal*>(coefArg);
+        _coefCache[i] = coef->getVal(nset) ;
+        //cxcoutD(Caching) << "SYNC: orig coef[" << i << "] = " << _coefCache[i] << endl ;
+        lastCoef -= _coefCache[i++];
       }			
       _coefCache[_coefList.getSize()] = lastCoef ;
       //cxcoutD(Caching) << "SYNC: orig coef[" << _coefList.getSize() << "] = " << _coefCache[_coefList.getSize()] << endl ;
-      
-      
+
+
       // Warn about coefficient degeneration
       if ((lastCoef<-1e-05 || (lastCoef-1)>1e-5) && _coefErrCount-->0) {
-	coutW(Eval) << "RooAddPdf::updateCoefCache(" << GetName() 
-		    << " WARNING: sum of PDF coefficients not in range [0-1], value=" 
-		    << 1-lastCoef ; 
-	if (_coefErrCount==0) {
-	  coutW(Eval) << " (no more will be printed)"  ;
-	}
-	coutW(Eval) << endl ;
+        coutW(Eval) << "RooAddPdf::updateCoefCache(" << GetName()
+		        << " WARNING: sum of PDF coefficients not in range [0-1], value="
+		        << 1-lastCoef ;
+        if (_coefErrCount==0) {
+          coutW(Eval) << " (no more will be printed)"  ;
+        }
+        coutW(Eval) << endl ;
       } 
     }
   }
@@ -771,38 +749,42 @@ void RooAddPdf::updateCoefficients(CacheElem& cache, const RooArgSet* nset) cons
    
   // Adjust coefficients for given projection
   Double_t coefSum(0) ;
-  for (i=0 ; i<_pdfList.getSize() ; i++) {
-    Bool_t _tmp = _globalSelectComp ;
-    RooAbsPdf::globalSelectComp(kTRUE) ;    
+  {
+    RooAbsReal::GlobalSelectComponentRAII compRAII(true);
 
-    RooAbsReal* pp = ((RooAbsReal*)cache._projList.at(i)) ; 
-    RooAbsReal* sn = ((RooAbsReal*)cache._suppProjList.at(i)) ; 
-    RooAbsReal* r1 = ((RooAbsReal*)cache._refRangeProjList.at(i)) ;
-    RooAbsReal* r2 = ((RooAbsReal*)cache._rangeProjList.at(i)) ;
+    for (int i = 0; i < _pdfList.getSize(); i++) {
 
-    Double_t proj = pp->getVal()/sn->getVal()*(r2->getVal()/r1->getVal()) ;  
-    
-//     cxcoutD(Caching) << "ALEX:    RooAddPdf::updateCoef(" << GetName() << ") with nset = " << (nset?*nset:RooArgSet()) << "for pdf component #" << i << " = " << _pdfList.at(i)->GetName() << endl
-// 	 << "ALEX:   pp = " << pp->GetName() << " = " << pp->getVal() << endl 
-// 	 << "ALEX:   sn = " << sn->GetName() << " = " << sn->getVal() <<  endl 
-// 	 << "ALEX:   r1 = " << r1->GetName() << " = " << r1->getVal() <<  endl 
-// 	 << "ALEX:   r2 = " << r2->GetName() << " = " << r2->getVal() <<  endl 
-// 	 << "ALEX: proj = (" << pp->getVal() << "/" << sn->getVal() << ")*(" << r2->getVal() << "/" << r1->getVal() << ") = " << proj << endl ;
-    
-    RooAbsPdf::globalSelectComp(_tmp) ;
+      RooAbsReal* pp = ((RooAbsReal*)cache._projList.at(i)) ;
+      RooAbsReal* sn = ((RooAbsReal*)cache._suppProjList.at(i)) ;
+      RooAbsReal* r1 = ((RooAbsReal*)cache._refRangeProjList.at(i)) ;
+      RooAbsReal* r2 = ((RooAbsReal*)cache._rangeProjList.at(i)) ;
 
-    _coefCache[i] *= proj ;
-    coefSum += _coefCache[i] ;
+      Double_t proj = pp->getVal()/sn->getVal()*(r2->getVal()/r1->getVal()) ;
+
+      //     cxcoutD(Caching) << "ALEX:    RooAddPdf::updateCoef(" << GetName() << ") with nset = " << (nset?*nset:RooArgSet()) << "for pdf component #" << i << " = " << _pdfList.at(i)->GetName() << endl
+      // 	 << "ALEX:   pp = " << pp->GetName() << " = " << pp->getVal() << endl
+      // 	 << "ALEX:   sn = " << sn->GetName() << " = " << sn->getVal() <<  endl
+      // 	 << "ALEX:   r1 = " << r1->GetName() << " = " << r1->getVal() <<  endl
+      // 	 << "ALEX:   r2 = " << r2->GetName() << " = " << r2->getVal() <<  endl
+      // 	 << "ALEX: proj = (" << pp->getVal() << "/" << sn->getVal() << ")*(" << r2->getVal() << "/" << r1->getVal() << ") = " << proj << endl ;
+
+      _coefCache[i] *= proj ;
+      coefSum += _coefCache[i] ;
+    }
   }
 
-  for (i=0 ; i<_pdfList.getSize() ; i++) {
+
+  if ((RooMsgService::_debugCount>0) && RooMsgService::instance().isActive(this,RooFit::Caching,RooFit::DEBUG)) {
+    for (int i=0; i < _pdfList.getSize(); ++i) {
+      ccoutD(Caching) << " ALEX:   POST-SYNC coef[" << i << "] = " << _coefCache[i]
+                      << " ( _coefCache[i]/coefSum = " << _coefCache[i]*coefSum << "/" << coefSum << " ) "<< endl ;
+    }
+  }
+
+  for (int i=0; i < _pdfList.getSize(); i++) {
     _coefCache[i] /= coefSum ;
-    //    _coefCache[i] *= rfrac ;
-//     cout << "POST-SYNC coef[" << i << "] = " << _coefCache[i] << endl ;
-     cxcoutD(Caching) << " ALEX:   POST-SYNC coef[" << i << "] = " << _coefCache[i]  
- 	 << " ( _coefCache[i]/coefSum = " << _coefCache[i]*coefSum << "/" << coefSum << " ) "<< endl ;
   }
-   
+
 
   
 }
@@ -827,29 +809,29 @@ Double_t RooAddPdf::evaluate() const
   updateCoefficients(*cache,nset) ;
   
   // Do running sum of coef/pdf pairs, calculate lastCoef.
-  RooAbsPdf* pdf ;
   Double_t value(0) ;
   Int_t i(0) ;
-  RooFIter pi = _pdfList.fwdIterator() ;
 
   if (cache->_needSupNorm) {
 
     Double_t snormVal ;
-    while((pdf = (RooAbsPdf*)pi.next())) {
+    for (auto arg : _pdfList) {
+      auto pdf = static_cast<RooAbsPdf*>(arg);
       snormVal = ((RooAbsReal*)cache->_suppNormList.at(i))->getVal() ;
       Double_t pdfVal = pdf->getVal(nset) ;
       if (pdf->isSelectedComp()) {
-	value += pdfVal*_coefCache[i]/snormVal ;
+        value += pdfVal*_coefCache[i]/snormVal ;
       }
       i++ ;
     }
   } else {
     
-    while((pdf = (RooAbsPdf*)pi.next())) {
+    for (auto arg : _pdfList) {
+      auto pdf = static_cast<RooAbsPdf*>(arg);
       Double_t pdfVal = pdf->getVal(nset) ;
 
       if (pdf->isSelectedComp()) {
-	value += pdfVal*_coefCache[i] ;
+        value += pdfVal*_coefCache[i] ;
       }
       i++ ;
     }
@@ -881,12 +863,9 @@ Bool_t RooAddPdf::checkObservables(const RooArgSet* nset) const
 {
   Bool_t ret(kFALSE) ;
 
-  _pdfIter->Reset() ;
-  _coefIter->Reset() ;
-  RooAbsReal* coef ;
-  RooAbsReal* pdf ;
-  while((coef=(RooAbsReal*)_coefIter->Next())) {
-    pdf = (RooAbsReal*)_pdfIter->Next() ;
+  for (int i = 0; i < _pdfList.getSize(); ++i) {
+    auto pdf  = static_cast<const RooAbsPdf *>(_pdfList.at(i));
+    auto coef = static_cast<const RooAbsReal*>(_coefList.at(i));
     if (pdf->observableOverlaps(nset,*coef)) {
       coutE(InputArguments) << "RooAddPdf::checkObservables(" << GetName() << "): ERROR: coefficient " << coef->GetName() 
 			    << " and PDF " << pdf->GetName() << " have one or more dependents in common" << endl ;
@@ -916,23 +895,18 @@ Int_t RooAddPdf::getAnalyticalIntegralWN(RooArgSet& allVars, RooArgSet& analVars
   RooArgSet allAnalVars(*allDepVars) ;
   delete allDepVars ;
 
-  TIterator* avIter = allVars.createIterator() ;
-
   Int_t n(0) ;
 
   // First iteration, determine what each component can integrate analytically
-  _pdfIter->Reset() ;
-  RooAbsPdf* pdf ;
-  while((pdf=(RooAbsPdf*)_pdfIter->Next())) {
+  for (const auto pdfArg : _pdfList) {
+    auto pdf = static_cast<const RooAbsPdf *>(pdfArg);
     RooArgSet subAnalVars ;
     pdf->getAnalyticalIntegralWN(allVars,subAnalVars,normSet,rangeName) ;
 
     // Observables that cannot be integrated analytically by this component are dropped from the common list
-    avIter->Reset() ;
-    RooAbsArg* arg ;
-    while((arg=(RooAbsArg*)avIter->Next())) {
+    for (const auto arg : allVars) {
       if (!subAnalVars.find(arg->GetName()) && pdf->dependsOn(*arg)) {
-	allAnalVars.remove(*arg,kTRUE,kTRUE) ;
+        allAnalVars.remove(*arg,kTRUE,kTRUE) ;
       }	
     }
     n++ ;
@@ -940,17 +914,16 @@ Int_t RooAddPdf::getAnalyticalIntegralWN(RooArgSet& allVars, RooArgSet& analVars
 
   // If no observables can be integrated analytically, return code 0 here
   if (allAnalVars.getSize()==0) {
-    delete avIter ;
     return 0 ;
   }
 
 
   // Now retrieve codes for integration over common set of analytically integrable observables for each component
-  _pdfIter->Reset() ;
   n=0 ;
   std::vector<Int_t> subCode(_pdfList.getSize());
   Bool_t allOK(kTRUE) ;
-  while((pdf=(RooAbsPdf*)_pdfIter->Next())) {
+  for (const auto arg : _pdfList) {
+    auto pdf = static_cast<const RooAbsPdf *>(arg);
     RooArgSet subAnalVars ;
     RooArgSet* allAnalVars2 = pdf->getObservables(allAnalVars) ;
     subCode[n] = pdf->getAnalyticalIntegralWN(*allAnalVars2,subAnalVars,normSet,rangeName) ;
@@ -964,7 +937,6 @@ Int_t RooAddPdf::getAnalyticalIntegralWN(RooArgSet& allVars, RooArgSet& analVars
     n++ ;
   }  
   if (!allOK) {
-    delete avIter ;
     return 0 ;
   }
 
@@ -974,8 +946,6 @@ Int_t RooAddPdf::getAnalyticalIntegralWN(RooArgSet& allVars, RooArgSet& analVars
   // Store set of variables analytically integrated
   RooArgSet* intSet = new RooArgSet(allAnalVars) ;
   Int_t masterCode = _codeReg.store(subCode,intSet)+1 ;
-
-  delete avIter ;
 
   return masterCode ;
 }
@@ -1014,26 +984,22 @@ Double_t RooAddPdf::analyticalIntegralWN(Int_t code, const RooArgSet* normSet, c
   Double_t value(0) ;
 
   // Do running sum of coef/pdf pairs, calculate lastCoef.
-  _pdfIter->Reset() ;
-  _coefIter->Reset() ;
-  RooAbsPdf* pdf ;
   Double_t snormVal ;
-  Int_t i(0) ;
 
   //cout << "ROP::aIWN updateCoefCache with rangeName = " << (rangeName?rangeName:"<null>") << endl ;
   RooArgList* snormSet = (cache->_suppNormList.getSize()>0) ? &cache->_suppNormList : 0 ;
-  while((pdf = (RooAbsPdf*)_pdfIter->Next())) {
+  for (int i = 0; i < _pdfList.getSize(); ++i ) {
+    auto pdf = static_cast<const RooAbsPdf*>(_pdfList.at(i));
+
     if (_coefCache[i]) {
       snormVal = snormSet ? ((RooAbsReal*) cache->_suppNormList.at(i))->getVal() : 1.0 ;
       
       // WVE swap this?
       Double_t val = pdf->analyticalIntegralWN(subCode[i],normSet,rangeName) ;
       if (pdf->isSelectedComp()) {
-	
-	value += val*_coefCache[i]/snormVal ;
+        value += val*_coefCache[i]/snormVal ;
       }
-    }    
-    i++ ;
+    }
   }
 
   return value ;
@@ -1183,13 +1149,11 @@ RooArgList RooAddPdf::CacheElem::containedArgs(Action)
 std::list<Double_t>* RooAddPdf::plotSamplingHint(RooAbsRealLValue& obs, Double_t xlo, Double_t xhi) const 
 {
   list<Double_t>* sumHint = 0 ;
-
-  _pdfIter->Reset() ;
-  RooAbsPdf* pdf ;
   Bool_t needClean(kFALSE) ;
 
   // Loop over components pdf
-  while((pdf=(RooAbsPdf*)_pdfIter->Next())) {
+  for (const auto arg : _pdfList) {
+    auto pdf = static_cast<const RooAbsPdf*>(arg);
 
     list<Double_t>* pdfHint = pdf->plotSamplingHint(obs,xlo,xhi) ;
 
@@ -1232,11 +1196,9 @@ std::list<Double_t>* RooAddPdf::binBoundaries(RooAbsRealLValue& obs, Double_t xl
   list<Double_t>* sumBinB = 0 ;
   Bool_t needClean(kFALSE) ;
   
-  _pdfIter->Reset() ;
-  RooAbsPdf* pdf ;
   // Loop over components pdf
-  while((pdf=(RooAbsPdf*)_pdfIter->Next())) {
-
+  for (auto arg : _pdfList) {
+    auto pdf = static_cast<const RooAbsPdf *>(arg);
     list<Double_t>* pdfBinB = pdf->binBoundaries(obs,xlo,xhi) ;
 
     // Process hint
@@ -1277,9 +1239,8 @@ std::list<Double_t>* RooAddPdf::binBoundaries(RooAbsRealLValue& obs, Double_t xl
 
 Bool_t RooAddPdf::isBinnedDistribution(const RooArgSet& obs) const 
 {
-  _pdfIter->Reset() ;
-  RooAbsPdf* pdf ;
-  while((pdf=(RooAbsPdf*)_pdfIter->Next())) {
+  for (const auto arg : _pdfList) {
+    auto pdf = static_cast<const RooAbsPdf*>(arg);
     if (pdf->dependsOn(obs) && !pdf->isBinnedDistribution(obs)) {
       return kFALSE ;
     }
@@ -1312,33 +1273,31 @@ void RooAddPdf::setCacheAndTrackHints(RooArgSet& trackNodes)
 
 void RooAddPdf::printMetaArgs(ostream& os) const 
 {
-  _pdfIter->Reset() ;
-  _coefIter->Reset() ;
-
   Bool_t first(kTRUE) ;
     
-  RooAbsArg* coef, *pdf ;
-  if (_coefList.getSize()!=0) { 
-    while((coef=(RooAbsArg*)_coefIter->Next())) {
+  if (_coefList.getSize() != 0) {
+    for (int i = 0; i < _pdfList.getSize(); ++i ) {
+      const RooAbsArg * coef = _coefList.at(i);
+      const RooAbsArg * pdf  = _pdfList.at(i);
       if (!first) {
-	os << " + " ;
+        os << " + " ;
       } else {
-	first = kFALSE ;
+        first = kFALSE ;
       }
-      pdf=(RooAbsArg*)_pdfIter->Next() ;
-      os << coef->GetName() << " * " << pdf->GetName() ;
-    }
-    pdf = (RooAbsArg*) _pdfIter->Next() ;
-    if (pdf) {
-      os << " + [%] * " << pdf->GetName() ;
+
+      if (i < _coefList.getSize()) {
+        os << coef->GetName() << " * " << pdf->GetName();
+      } else {
+        os << "[%] * " << pdf->GetName();
+      }
     }
   } else {
     
-    while((pdf=(RooAbsArg*)_pdfIter->Next())) {
+    for (const auto pdf : _pdfList) {
       if (!first) {
-	os << " + " ;
+        os << " + " ;
       } else {
-	first = kFALSE ;
+        first = kFALSE ;
       }
       os << pdf->GetName() ; 
     }  

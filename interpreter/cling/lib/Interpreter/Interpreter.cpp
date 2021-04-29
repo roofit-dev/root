@@ -59,9 +59,9 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Path.h"
 
+#include <sstream>
 #include <string>
 #include <vector>
-#include <sstream>
 
 using namespace clang;
 
@@ -217,8 +217,9 @@ namespace cling {
   }
 
   Interpreter::Interpreter(int argc, const char* const *argv,
-                           const char* llvmdir /*= 0*/, bool noRuntime,
-                           const Interpreter* parentInterp) :
+                           const char* llvmdir /*= 0*/,
+                           const ModuleFileExtensions& moduleExtensions,
+                           bool noRuntime, const Interpreter* parentInterp) :
     m_Opts(argc, argv),
     m_UniqueCounter(parentInterp ? parentInterp->m_UniqueCounter + 1 : 0),
     m_PrintDebug(false), m_DynamicLookupDeclared(false),
@@ -230,7 +231,7 @@ namespace cling {
 
     m_LLVMContext.reset(new llvm::LLVMContext);
     m_DyLibManager.reset(new DynamicLibraryManager(getOptions()));
-    m_IncrParser.reset(new IncrementalParser(this, llvmdir));
+    m_IncrParser.reset(new IncrementalParser(this, llvmdir, moduleExtensions));
     if (!m_IncrParser->isValid(false))
       return;
 
@@ -260,9 +261,9 @@ namespace cling {
     DiagnosticConsumer& DClient = getCI()->getDiagnosticClient();
     DClient.BeginSourceFile(getCI()->getLangOpts(), &PP);
 
-    bool usingCxxModules = getSema().getLangOpts().Modules;
-
-    if (usingCxxModules) {
+    if (!m_Opts.OverlayFile.empty()) {
+      assert(getSema().getLangOpts().Modules
+             && "Using overlay without -fmodules");
       HeaderSearch& HSearch = getCI()->getPreprocessor().getHeaderSearchInfo();
 
       // Get system include paths
@@ -279,11 +280,14 @@ namespace cling {
       // "/include/c++/" (as stl path is always inferred from gcc path),
       // append this to MOverlay.
       // FIXME: Implement a more sophisticated way to detect stl paths
-      for (auto SystemPath : HSearchPaths) {
-        if (llvm::sys::fs::is_directory(SystemPath) &&
-              (SystemPath.find("/include/c++/") != std::string::npos)) {
-          MOverlay += buildModuleMapOverlayEntry(SystemPath, "stl.modulemap",
+      for (auto &&SystemPath : HSearchPaths) {
+        llvm::StringRef SystemPathSR = SystemPath;
+        if (llvm::sys::fs::is_directory(SystemPathSR) &&
+            llvm::sys::path::filename(SystemPathSR) != "backward" &&
+            SystemPathSR.contains("/include/c++/")) {
+          MOverlay += buildModuleMapOverlayEntry(SystemPath, "std.modulemap",
                 m_Opts.OverlayFile, /*NotLast*/ true);
+          break; // first one wins!
         }
       }
 
@@ -307,18 +311,19 @@ namespace cling {
       clang::CompilerInvocation &CInvo = getCI()->getInvocation();
       // Load virtual modulemap overlay file
       CInvo.addOverlay(FS);
+    }
 
+    bool usingCxxModules = getSema().getLangOpts().Modules;
+    if (usingCxxModules) {
       // Explicitly create the modulemanager now. If we would create it later
       // implicitly then it would just overwrite our callbacks we set below.
       m_IncrParser->getCI()->createModuleManager();
-    }
 
-    // When using C++ modules, we setup the callbacks now that we have them
-    // ready before we parse code for the first time. Without C++ modules
-    // we can't setup the calls now because the clang PCH currently just
-    // overwrites it in the Initialize method and we have no simple way to
-    // initialize them earlier. We handle the non-modules case below.
-    if (usingCxxModules) {
+      // When using C++ modules, we setup the callbacks now that we have them
+      // ready before we parse code for the first time. Without C++ modules
+      // we can't setup the calls now because the clang PCH currently just
+      // overwrites it in the Initialize method and we have no simple way to
+      // initialize them earlier. We handle the non-modules case below.
       setupCallbacks(*this, parentInterp);
     }
 
@@ -342,7 +347,7 @@ namespace cling {
     }
 
     // When not using C++ modules, we now have a PCH and we can safely setup
-    // our callbacks without fearing that they get ovewritten by clang code.
+    // our callbacks without fearing that they get overwritten by clang code.
     // The modules setup is handled above.
     if (!usingCxxModules) {
       setupCallbacks(*this, parentInterp);
@@ -395,8 +400,11 @@ namespace cling {
   ///
   Interpreter::Interpreter(const Interpreter &parentInterpreter, int argc,
                            const char* const *argv,
-                           const char* llvmdir /*= 0*/, bool noRuntime) :
-    Interpreter(argc, argv, llvmdir, noRuntime, &parentInterpreter) {
+                           const char* llvmdir /*= 0*/,
+                           const ModuleFileExtensions& moduleExtensions/*={}*/,
+                           bool noRuntime /*= true*/) :
+    Interpreter(argc, argv, llvmdir, moduleExtensions, noRuntime,
+                &parentInterpreter) {
     // Do the "setup" of the connection between this interpreter and
     // its parent interpreter.
     if (CompilerInstance* CI = getCIOrNull()) {
@@ -629,6 +637,8 @@ namespace cling {
   // FIXME: Add stream argument and move DumpIncludePath path here.
   void Interpreter::dump(llvm::StringRef what, llvm::StringRef filter) {
     llvm::raw_ostream &where = cling::log();
+    // `.stats decl' and `.stats asttree FILTER' cause deserialization; force transaction
+    PushTransactionRAII RAII(this);
     if (what.equals("asttree")) {
       std::unique_ptr<clang::ASTConsumer> printer =
           clang::CreateASTDumper(filter, true  /*DumpDecls*/,
@@ -679,8 +689,8 @@ namespace cling {
   std::string Interpreter::toString(const char* type, void* obj) {
     LockCompilationDuringUserCodeExecutionRAII LCDUCER(*this);
     cling::valuePrinterInternal::declarePrintValue(*this);
-    std::string ret;
-    std::stringstream ss;
+    std::string buf, ret;
+    llvm::raw_string_ostream ss(buf);
     ss << "*((std::string*)" << &ret << ") = cling::printValue((" << type << "*)"
        << obj << ");";
     CompilationResult result = process(ss.str().c_str());
@@ -803,50 +813,53 @@ namespace cling {
     return DeclareInternal(input, CO, T);
   }
 
-  Interpreter::CompilationResult
-  Interpreter::loadModuleForHeader(const std::string& headerFile) {
+  ///\returns true if the module was loaded.
+  bool Interpreter::loadModule(const std::string& moduleName,
+                               bool complain /*= true*/) {
+    assert(getCI()->getLangOpts().Modules
+           && "Function only relevant when C++ modules are turned on!");
+
     Preprocessor& PP = getCI()->getPreprocessor();
-    //Copied from clang's PPDirectives.cpp
-    bool isAngled = false;
-    // Clang doc says:
-    // "LookupFrom is set when this is a \#include_next directive, it specifies
-    // the file to start searching from."
-    const DirectoryLookup* FromDir = 0;
-    const FileEntry* FromFile = 0;
-    const DirectoryLookup* CurDir = 0;
+    HeaderSearch &HS = PP.getHeaderSearchInfo();
 
-    ModuleMap::KnownHeader suggestedModule;
-    // PP::LookupFile uses it to issue 'nice' diagnostic
-    SourceLocation fileNameLoc;
-    PP.LookupFile(fileNameLoc, headerFile, isAngled, FromDir, FromFile, CurDir,
-                  /*SearchPath*/0, /*RelativePath*/ 0, &suggestedModule,
-                  0 /*IsMapped*/,
-                  /*SkipCache*/false, /*OpenFile*/ false, /*CacheFail*/ false);
-    if (!suggestedModule)
-      return Interpreter::kFailure;
+    if (Module *M = HS.lookupModule(moduleName, /*AllowSearch*/true,
+                                    /*AllowExtraSearch*/ true))
+      return loadModule(M, complain);
 
-    // Copied from PPDirectives.cpp
-    SmallVector<std::pair<IdentifierInfo *, SourceLocation>, 2> path;
-    for (auto mod = suggestedModule.getModule(); mod; mod = mod->Parent) {
-      IdentifierInfo* II
-        = &getSema().getPreprocessor().getIdentifierTable().get(mod->Name);
-      path.push_back(std::make_pair(II, fileNameLoc));
+   if (complain)
+     llvm::errs() << "Module " << moduleName << " not found.\n";
+
+
+   return false;
+  }
+
+  bool Interpreter::loadModule(clang::Module* M, bool complain /* = true*/) {
+    assert(getCI()->getLangOpts().Modules
+           && "Function only relevant when C++ modules are turned on!");
+    assert(M && "Module missing");
+    if (getSema().isModuleVisible(M))
+      return true;
+
+    Preprocessor& PP = getCI()->getPreprocessor();
+
+    IdentifierInfo *II = PP.getIdentifierInfo(M->Name);
+    SourceLocation ValidLoc = M->DefinitionLoc;
+    Interpreter::PushTransactionRAII RAII(this);
+    bool success = !getCI()->getSema().ActOnModuleImport(ValidLoc, ValidLoc,
+                                      std::make_pair(II, ValidLoc)).isInvalid();
+    if (success) {
+      // Also make the module visible in the preprocessor to export its macros.
+      PP.makeModuleVisible(M, ValidLoc);
+      return success;
+    }
+    if (complain) {
+      if (M->IsSystem)
+        llvm::errs() << "Failed to load module " << M->Name << "\n";
+      else
+        llvm::outs() << "Failed to load module " << M->Name << "\n";
     }
 
-    std::reverse(path.begin(), path.end());
-
-    // Pretend that the module came from an inclusion directive, so that clang
-    // will create an implicit import declaration to capture it in the AST.
-    bool isInclude = true;
-    SourceLocation includeLoc;
-    if (getCI()->loadModule(includeLoc, path, Module::AllVisible, isInclude)) {
-      // After module load we need to "force" Sema to generate the code for
-      // things like dynamic classes.
-      getSema().ActOnEndOfTranslationUnit();
-      return Interpreter::kSuccess;
-    }
-
-    return Interpreter::kFailure;
+   return false;
   }
 
   Interpreter::CompilationResult
@@ -1585,6 +1598,9 @@ namespace cling {
     return m_IncrParser->getLastTransaction();
   }
 
+  const Transaction* Interpreter::getLastWrapperTransaction() const {
+    return m_IncrParser->getLastWrapperTransaction();
+  }
   const Transaction* Interpreter::getCurrentTransaction() const {
     return m_IncrParser->getCurrentTransaction();
   }
@@ -1599,8 +1615,6 @@ namespace cling {
     if (!m_DynamicLookupDeclared && value) {
       // No dynlookup for the dynlookup header!
       m_DynamicLookupEnabled = false;
-      if (loadModuleForHeader("cling/Interpreter/DynamicLookupRuntimeUniverse.h")
-          != kSuccess)
       declare("#include \"cling/Interpreter/DynamicLookupRuntimeUniverse.h\"");
     }
     m_DynamicLookupDeclared = true;
@@ -1669,7 +1683,8 @@ namespace cling {
     // FIXME: CIFactory appends extra 3 folders to the llvmdir.
     std::string llvmdir
       = getCI()->getHeaderSearchOpts().ResourceDir + "/../../../";
-    cling::Interpreter fwdGen(1, &dummy, llvmdir.c_str(), true);
+    cling::Interpreter fwdGen(1, &dummy, llvmdir.c_str(),
+                              /*moduleExtensions*/ {}, /*noRuntime=*/true);
 
     // Copy the same header search options to the new instance.
     Preprocessor& fwdGenPP = fwdGen.getCI()->getPreprocessor();
