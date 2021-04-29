@@ -1,12 +1,12 @@
 import py, os, sys
 from pytest import raises
-from .support import setup_make
+from .support import setup_make, IS_WINDOWS
 
 currpath = py.path.local(__file__).dirpath()
-test_dct = str(currpath.join("fragileDict.so"))
+test_dct = str(currpath.join("fragileDict"))
 
 def setup_module(mod):
-    setup_make("fragileDict.so")
+    setup_make("fragile")
 
 
 class TestFRAGILE:
@@ -19,12 +19,12 @@ class TestFRAGILE:
         """Test failure to load dictionary"""
 
         import cppyy
-        raises(RuntimeError, cppyy.load_reflection_info, "does_not_exist.so")
+        raises(RuntimeError, cppyy.load_reflection_info, "does_not_exist")
 
         try:
-            cppyy.load_reflection_info("does_not_exist.so")
+            cppyy.load_reflection_info("does_not_exist")
         except RuntimeError as e:
-            assert "does_not_exist.so" in str(e)
+            assert "does_not_exist" in str(e)
 
     def test02_missing_classes(self):
         """Test (non-)access to missing classes"""
@@ -46,7 +46,7 @@ class TestFRAGILE:
         assert fragile.B is fragile.B
         assert fragile.B == fragile.B
         assert fragile.B().check() == ord('B')
-        raises(AttributeError, getattr, fragile.B().gime_no_such(), "_cpp_proxy")
+        assert not fragile.B().gime_no_such()
 
         assert fragile.C is fragile.C
         assert fragile.C == fragile.C
@@ -253,33 +253,33 @@ class TestFRAGILE:
         assert cppyy.gbl.fragile.nested1 is nested1
         assert nested1.__name__ == 'nested1'
         assert nested1.__module__ == 'cppyy.gbl.fragile'
-        assert nested1.__cppname__ == 'fragile::nested1'
+        assert nested1.__cpp_name__ == 'fragile::nested1'
 
         from cppyy.gbl.fragile.nested1 import A, nested2
         assert cppyy.gbl.fragile.nested1.A is A
         assert A.__name__ == 'A'
         assert A.__module__ == 'cppyy.gbl.fragile.nested1'
-        assert A.__cppname__ == 'fragile::nested1::A'
+        assert A.__cpp_name__ == 'fragile::nested1::A'
         assert cppyy.gbl.fragile.nested1.nested2 is nested2
         assert nested2.__name__ == 'nested2'
         assert nested2.__module__ == 'cppyy.gbl.fragile.nested1'
-        assert nested2.__cppname__ == 'fragile::nested1::nested2'
+        assert nested2.__cpp_name__ == 'fragile::nested1::nested2'
 
         from cppyy.gbl.fragile.nested1.nested2 import A, nested3
         assert cppyy.gbl.fragile.nested1.nested2.A is A
         assert A.__name__ == 'A'
         assert A.__module__ == 'cppyy.gbl.fragile.nested1.nested2'
-        assert A.__cppname__ == 'fragile::nested1::nested2::A'
+        assert A.__cpp_name__ == 'fragile::nested1::nested2::A'
         assert cppyy.gbl.fragile.nested1.nested2.nested3 is nested3
         assert nested3.__name__ == 'nested3'
         assert nested3.__module__ == 'cppyy.gbl.fragile.nested1.nested2'
-        assert nested3.__cppname__ == 'fragile::nested1::nested2::nested3'
+        assert nested3.__cpp_name__ == 'fragile::nested1::nested2::nested3'
 
         from cppyy.gbl.fragile.nested1.nested2.nested3 import A
         assert cppyy.gbl.fragile.nested1.nested2.nested3.A is nested3.A
         assert A.__name__ == 'A'
         assert A.__module__ == 'cppyy.gbl.fragile.nested1.nested2.nested3'
-        assert A.__cppname__ == 'fragile::nested1::nested2::nested3::A'
+        assert A.__cpp_name__ == 'fragile::nested1::nested2::nested3::A'
 
         # test writability of __module__
         nested3.__module__ = "peanut butter"
@@ -317,8 +317,6 @@ class TestFRAGILE:
     def test14_double_enum_trouble(self):
         """Test a redefinition of enum in a derived class"""
 
-        return # don't bother; is fixed in cling-support
-
         import cppyy
 
         M = cppyy.gbl.fragile.M
@@ -326,4 +324,136 @@ class TestFRAGILE:
 
         assert M.kOnce == N.kOnce
         assert M.kTwice == N.kTwice
-        assert M.__dict__['kTwice'] is not N.__dict__['kTwice']
+
+    def test15_const_in_name(self):
+        """Make sure 'const' is not erased when part of a name"""
+
+        import cppyy
+
+        cppyy.cppdef("""
+            struct Some0Class {}        myvar0;
+            struct constSome1Class {}   myvar1;
+            struct Some2Classconst {}   myvar2;
+            struct Some_const_Class3 {} myvar3;
+            struct SomeconstClass4 {}   myvar4;
+        """)
+
+        assert cppyy.gbl.myvar0
+        assert cppyy.gbl.myvar1
+        assert cppyy.gbl.myvar2
+        assert cppyy.gbl.myvar3
+        assert cppyy.gbl.myvar4
+
+    def test16_opaque_handle(self):
+        """Support use of opaque handles"""
+
+        import cppyy
+
+        assert cppyy.gbl.fragile.OpaqueType
+        assert cppyy.gbl.fragile.OpaqueHandle_t
+
+        handle = cppyy.gbl.fragile.OpaqueHandle_t(0x42)
+        assert handle
+        assert cppyy.addressof(handle) == 0x42
+
+        raises(TypeError, cppyy.gbl.fragile.OpaqueType)
+        assert not 'OpaqueType' in cppyy.gbl.fragile.__dict__
+
+        handle = cppyy.gbl.fragile.OpaqueHandle_t()
+        assert not handle
+
+        addr = cppyy.gbl.fragile.create_handle(handle);
+        assert addr
+        assert not not handle
+
+        assert cppyy.gbl.fragile.destroy_handle(handle, addr);
+
+        # now define OpaqueType
+        cppyy.cppdef("namespace fragile { class OpaqueType { public: int m_int; }; }")
+
+        # get fresh (should not have been cached while incomplete)
+        o = cppyy.gbl.fragile.OpaqueType()
+        assert hasattr(o, 'm_int')
+
+        assert 'OpaqueType' in cppyy.gbl.fragile.__dict__
+
+    def test17_interactive(self):
+        """Test the usage of 'from cppyy.interactive import *'"""
+
+        import assert_interactive
+
+    def test18_overload(self):
+        """Test usage of __overload__"""
+
+        import cppyy
+
+        cppyy.cppdef("""struct Variable {
+            Variable(double lb, double ub, double value, bool binary, bool integer, const string& name) {}
+            Variable(int) {}
+        };""")
+
+        for sig in ['double, double, double, bool, bool, const string&',
+                    'double,double,double,bool,bool,const string&',
+                    'double lb, double ub, double value, bool binary, bool integer, const string& name']:
+            assert cppyy.gbl.Variable.__init__.__overload__(sig)
+
+    def test19_gbl_contents(self):
+        """Assure cppyy.gbl is mostly devoid of ROOT thingies"""
+
+
+        import cppyy
+
+        dd = dir(cppyy.gbl)
+
+        assert not 'TCanvasImp' in dd
+        assert not 'ESysConstants' in dd
+        assert not 'kDoRed' in dd
+
+
+class TestSIGNALS:
+    def setup_class(cls):
+        cls.test_dct = test_dct
+        import cppyy
+        cls.fragile = cppyy.load_reflection_info(cls.test_dct)
+
+    def test01_abortive_signals(self):
+        """Conversion from abortive signals to Python exceptions"""
+
+        import cppyy
+        import cppyy.ll
+
+        f = cppyy.gbl.fragile
+
+        assert issubclass(cppyy.ll.BusError,               cppyy.ll.FatalError)
+        assert issubclass(cppyy.ll.SegmentationViolation,  cppyy.ll.FatalError)
+        assert issubclass(cppyy.ll.IllegalInstruction,     cppyy.ll.FatalError)
+        assert issubclass(cppyy.ll.AbortSignal,            cppyy.ll.FatalError)
+
+        import os
+        os.putenv('CPPYY_CRASH_QUIET', '1')
+
+        with raises((cppyy.ll.SegmentationViolation, cppyy.ll.IllegalInstruction)):
+            with cppyy.ll.signals_as_exception():
+                f.segfault()
+
+        with raises(cppyy.ll.AbortSignal):
+            with cppyy.ll.signals_as_exception():
+                f.sigabort()
+
+      # can only recover once from each error on Windows, which is functionally
+      # enough, but precludes further testing here
+        if not IS_WINDOWS:
+            cppyy.ll.set_signals_as_exception(True)
+            with raises((cppyy.ll.SegmentationViolation, cppyy.ll.IllegalInstruction)):
+                f.segfault()
+            with raises(cppyy.ll.AbortSignal):
+                f.sigabort()
+            cppyy.ll.set_signals_as_exception(False)
+
+            f.segfault.__sig2exc__ = True
+            with raises((cppyy.ll.SegmentationViolation, cppyy.ll.IllegalInstruction)):
+                f.segfault()
+
+            f.sigabort.__sig2exc__ = True
+            with raises(cppyy.ll.AbortSignal):
+                f.sigabort()
