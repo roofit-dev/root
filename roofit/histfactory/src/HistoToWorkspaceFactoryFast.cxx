@@ -75,6 +75,7 @@
 #include "Helper.h"
 
 #include <algorithm>
+#include <utility>
 
 #define VERBOSE
 
@@ -139,12 +140,12 @@ namespace HistFactory{
     }
     cout << endl;
 
-    RooArgSet * params= new RooArgSet;
+    RooArgSet params;
     for( unsigned int i = 0; i < poi_list.size(); ++i ) {
       std::string poi_name = poi_list.at(i);
       RooRealVar* poi = (RooRealVar*) ws_single->var( poi_name.c_str() );
       if(poi){
-	params->add(*poi);
+        params.add(*poi);
       }
       else {
 	std::cout << "WARNING: Can't find parameter of interest: " << poi_name 
@@ -152,7 +153,7 @@ namespace HistFactory{
 	//throw hf_exc();
       }
     }
-    proto_config->SetParametersOfInterest(*params);
+    proto_config->SetParametersOfInterest(params);
 
     // Name of an 'edited' model, if necessary
     std::string NewModelName = "newSimPdf"; // <- This name is hard-coded in HistoToWorkspaceFactoryFast::EditSyt.  Probably should be changed to : std::string("new") + ModelName;
@@ -322,7 +323,7 @@ namespace HistFactory{
 
   }
 
-  void HistoToWorkspaceFactoryFast::ProcessExpectedHisto(TH1* hist,RooWorkspace* proto, 
+  void HistoToWorkspaceFactoryFast::ProcessExpectedHisto(const TH1* hist,RooWorkspace* proto,
 							 string prefix, string productPrefix, 
 							 string systTerm ) {
     if(hist) {
@@ -350,7 +351,7 @@ namespace HistFactory{
     std::vector<std::string>::iterator itr = fObsNameVec.begin();
     for (int idx=0; itr!=fObsNameVec.end(); ++itr, ++idx ) {
       if ( !proto->var(itr->c_str()) ) {
-	TAxis* axis(0);
+	const TAxis* axis(0);
 	if (idx==0) { axis = hist->GetXaxis(); }
 	if (idx==1) { axis = hist->GetYaxis(); }
 	if (idx==2) { axis = hist->GetZaxis(); }
@@ -408,7 +409,7 @@ namespace HistFactory{
     constraintTermNames.push_back(constraint.GetName());
   }
 
-  void HistoToWorkspaceFactoryFast::LinInterpWithConstraint(RooWorkspace* proto, TH1* nominal, 
+  void HistoToWorkspaceFactoryFast::LinInterpWithConstraint(RooWorkspace* proto, const TH1* nominal,
 							    std::vector<HistoSys> histoSysList,
 							    string prefix, string productPrefix, 
 							    string systTerm, 
@@ -435,7 +436,7 @@ namespace HistFactory{
     std::vector<std::string>::iterator itr = fObsNameVec.begin();
     for (int idx=0; itr!=fObsNameVec.end(); ++itr, ++idx ) {
       if ( !proto->var(itr->c_str()) ) {
-	TAxis* axis(NULL);
+	const TAxis* axis(nullptr);
 	if (idx==0) { axis = nominal->GetXaxis(); }
 	else if (idx==1) { axis = nominal->GetYaxis(); }
 	else if (idx==2) { axis = nominal->GetZaxis(); }
@@ -1196,12 +1197,35 @@ namespace HistFactory{
   ///////////////////////////////////////////////
   RooWorkspace* HistoToWorkspaceFactoryFast::MakeSingleChannelWorkspace(Measurement& measurement, Channel& channel) {
 
-     // check inputs (see JIRA-6890 )
+    // check inputs (see JIRA-6890 )
 
-     if (channel.GetSamples().empty()) {
-        Error("MakeSingleChannelWorkspace","The input Channel does not contain any sample - return a nullptr");
-        return 0; 
-     }
+    if (channel.GetSamples().empty()) {
+      Error("MakeSingleChannelWorkspace",
+          "The input Channel does not contain any sample - return a nullptr");
+      return 0;
+    }
+
+    const TH1* channel_hist_template = channel.GetSamples().front().GetHisto();
+    if (channel_hist_template == nullptr) {
+      channel.CollectHistograms();
+      channel_hist_template = channel.GetSamples().front().GetHisto();
+    }
+    if (channel_hist_template == nullptr) {
+      std::ostringstream stream;
+      stream << "The sample " << channel.GetSamples().front().GetName()
+               << " in channel " << channel.GetName() << " does not contain a histogram. This is the channel:\n";
+      channel.Print(stream);
+      Error("MakeSingleChannelWorkspace", "%s", stream.str().c_str());
+      return 0;
+    }
+
+    if( ! channel.CheckHistograms() ) {
+      std::cout << "MakeSingleChannelWorkspace: Channel: " << channel.GetName()
+                  << " has uninitialized histogram pointers" << std::endl;
+      throw hf_exc();
+    }
+
+
      
     // Set these by hand inside the function
     vector<string> systToFix = measurement.GetConstantParams();
@@ -1219,7 +1243,6 @@ namespace HistFactory{
     /// MB: label observables x,y,z, depending on histogram dimensionality
     /// GHL: Give it the first sample's nominal histogram as a template
     ///      since the data histogram may not be present
-    TH1* channel_hist_template = channel.GetSamples().at(0).GetHisto();
     if (fObsNameVec.empty()) { GuessObsNameVec(channel_hist_template); }
 
     for ( unsigned int idx=0; idx<fObsNameVec.size(); ++idx ) {
@@ -1254,7 +1277,7 @@ namespace HistFactory{
     vector<string> likelihoodTermNames, constraintTermNames, totSystTermNames, syst_x_expectedPrefixNames, normalizationNames;
 
     vector< pair<string,string> >   statNamePairs;
-    vector< pair<TH1*,TH1*> >       statHistPairs; // <nominal, error>
+    vector< pair<const TH1*, const TH1*> > statHistPairs; // <nominal, error>
     std::string                     statFuncName; // the name of the ParamHistFunc
     std::string                     statNodeName; // the name of the McStat Node
     // Constraint::Type statConstraintType=Constraint::Gaussian;
@@ -1309,7 +1332,7 @@ namespace HistFactory{
 
       // get histogram
       //ES// TH1* nominal = it->nominal;
-      TH1* nominal = sample.GetHisto();
+      const TH1* nominal = sample.GetHisto();
 
       // MB : HACK no option to have both non-hist variations and hist variations ?
       // get histogram
@@ -1423,7 +1446,7 @@ namespace HistFactory{
 	
 	  // Save the nominal and error hists
 	  // for the building of constraint terms
-	  statHistPairs.push_back( pair<TH1*,TH1*>(nominal, statErrorHist) );
+	  statHistPairs.push_back( std::make_pair(nominal, statErrorHist) );
 
 	  // To do the 'conservative' version, we would need to do some
 	  // intervention here.  We would probably need to create a different
@@ -1539,12 +1562,12 @@ namespace HistFactory{
 	      
 	      // Set an initial shape, if requested
 	      if( shapeFactor.GetInitialShape() != NULL ) {
-		TH1* initialShape = shapeFactor.GetInitialShape();
-		std::cout << "Setting Shape Factor: " << shapeFactor.GetName()
-			  << " to have initial shape from hist: "
-			  << initialShape->GetName()
-			  << std::endl;
-		shapeFactorFunc.setShape( initialShape );
+	        TH1* initialShape = static_cast<TH1*>(shapeFactor.GetInitialShape()->Clone());
+	        std::cout << "Setting Shape Factor: " << shapeFactor.GetName()
+			      << " to have initial shape from hist: "
+			      << initialShape->GetName()
+			      << std::endl;
+	        shapeFactorFunc.setShape( initialShape );
 	      }
 	      
 	      // Set the variables constant, if requested
@@ -1662,7 +1685,7 @@ namespace HistFactory{
 	    // as well as the list of constraint terms (constraintTermNames)
 	    
 	    // The syst should be a fractional error
-	    TH1* shapeErrorHist = shapeSys.GetErrorHist();
+	    const TH1* shapeErrorHist = shapeSys.GetErrorHist();
 
 	    // Constraint::Type shapeConstraintType = Constraint::Gaussian;
 	    Constraint::Type systype = shapeSys.GetConstraintType();
@@ -2073,7 +2096,7 @@ namespace HistFactory{
     }
   }
 
-  void HistoToWorkspaceFactoryFast::GuessObsNameVec(TH1* hist)
+  void HistoToWorkspaceFactoryFast::GuessObsNameVec(const TH1* hist)
   {
     fObsNameVec.clear();
 
@@ -2411,7 +2434,7 @@ namespace HistFactory{
   
   }
   
-  TH1* HistoToWorkspaceFactoryFast::MakeScaledUncertaintyHist( const std::string& Name, std::vector< std::pair<TH1*, TH1*> > HistVec ) {
+  TH1* HistoToWorkspaceFactoryFast::MakeScaledUncertaintyHist( const std::string& Name, std::vector< std::pair<const TH1*, const TH1*> > HistVec ) {
 
     // Take a list of < nominal, absolError > TH1* pairs
     // and construct a single histogram representing the 
@@ -2430,15 +2453,15 @@ namespace HistFactory{
       return NULL;
     }
     
-    TH1* HistTemplate = HistVec.at(0).first;
+    const TH1* HistTemplate = HistVec.at(0).first;
     Int_t numBins = HistTemplate->GetNbinsX()*HistTemplate->GetNbinsY()*HistTemplate->GetNbinsZ();
 
   // Check that all histograms
   // have the same bins
   for( unsigned int i = 0; i < HistVec.size(); ++i ) {
     
-    TH1* nominal = HistVec.at(i).first;
-    TH1* error   = HistVec.at(i).second;
+    const TH1* nominal = HistVec.at(i).first;
+    const TH1* error   = HistVec.at(i).second;
     
     if( nominal->GetNbinsX()*nominal->GetNbinsY()*nominal->GetNbinsZ() != numBins ) {
       std::cout << "Error: Provided hists have unequal bins" << std::endl;
@@ -2465,8 +2488,8 @@ namespace HistFactory{
     
     for( unsigned int i_hist = 0; i_hist < numHists; ++i_hist ) {
       
-      TH1* nominal = HistVec.at(i_hist).first;
-      TH1* error   = HistVec.at(i_hist).second;
+      const TH1* nominal = HistVec.at(i_hist).first;
+      const TH1* error   = HistVec.at(i_hist).second;
 
       //Int_t binNumber = i_bins + 1;
 
@@ -2539,8 +2562,11 @@ namespace HistFactory{
     // the 1st bin in TH1 
     // (we ignore underflow)
 
-    ErrorHist->SetBinContent( binNumber, RelativeError );
-    
+    // Error and bin content are interchanged because for some reason, the other functions
+    // use the bin content to convey the error ...
+    ErrorHist->SetBinError(binNumber, TotalVal);
+    ErrorHist->SetBinContent(binNumber, RelativeError);
+
     std::cout << "Making Total Uncertainty for bin " << binNumber
 	      << " Error = " << sqrt(ErrorsSqr)
 	      << " Val = " << TotalVal
@@ -2557,7 +2583,7 @@ namespace HistFactory{
 
   RooArgList HistoToWorkspaceFactoryFast::
   createStatConstraintTerms( RooWorkspace* proto, vector<string>& constraintTermNames,
-			     ParamHistFunc& paramHist, TH1* uncertHist, 
+			     ParamHistFunc& paramHist, const TH1* uncertHist,
 			     Constraint::Type type, Double_t minSigma ) {
 
 
@@ -2609,14 +2635,14 @@ namespace HistFactory{
 
     // Get the sigma from the hist
     // (the relative uncertainty)
-    Double_t sigma = uncertHist->GetBinContent( TH1BinNumber );
+    const double sigmaRel = uncertHist->GetBinContent(TH1BinNumber); 
 
     // If the sigma is <= 0, 
     // do cont create the term
-    if( sigma <= 0 ){
+    if( sigmaRel <= 0 ){
       std::cout << "Not creating constraint term for "
 		<< gamma.GetName() 
-		<< " because sigma = " << sigma
+		<< " because sigma = " << sigmaRel
 		<< " (sigma<=0)" 
 		<< " (TH1 bin number = " << TH1BinNumber << ")"
 		<< std::endl;
@@ -2625,8 +2651,7 @@ namespace HistFactory{
     }
   
     // set reasonable ranges for gamma parameters
-    gamma.setMax( 1 + 5*sigma );
-    //    gamma.setMin( TMath::Max(1. - 5*sigma, 0.) );    
+    gamma.setMax( 1 + 5*sigmaRel );
     gamma.setMin( 0. );         
 
     // Make Constraint Term
@@ -2641,9 +2666,7 @@ namespace HistFactory{
     
       // Make sigma
 
-      RooConstVar constrSigma( sigmaName.c_str(), sigmaName.c_str(), sigma );
-      //proto->import( constrSigma, RecycleConflictNodes() );
-      //proto->import( constrSigma );
+      RooConstVar constrSigma( sigmaName.c_str(), sigmaName.c_str(), sigmaRel );
     
       // Make "observed" value
       RooRealVar constrNom(nomName.c_str(), nomName.c_str(), 1.0,0,10);
@@ -2654,11 +2677,13 @@ namespace HistFactory{
 			 constrNom, gamma, constrSigma );
       
       proto->import( gauss, RecycleConflictNodes() );
-      //proto->import( gauss );
       
+      // Give reasonable starting point for pre-fit errors by setting it to the absolute sigma
+      // Mostly useful for pre-fit plotting.
+      gamma.setError(sigmaRel);
     } else if( type == Constraint::Poisson ) {
     
-      Double_t tau = 1/sigma/sigma; // this is correct Poisson equivalent to a Gaussian with mean 1 and stdev sigma
+      Double_t tau = 1/sigmaRel/sigmaRel; // this is correct Poisson equivalent to a Gaussian with mean 1 and stdev sigma
 
       // Make nominal "observed" value
       RooRealVar constrNom(nomName.c_str(), nomName.c_str(), tau);
@@ -2679,6 +2704,10 @@ namespace HistFactory{
       pois.setNoRounding(true);
       proto->import( pois, RecycleConflictNodes() );
       
+      // Give reasonable starting point for pre-fit errors.
+      // Mostly useful for pre-fit plotting.
+      gamma.setError(sigmaRel);
+
     } else {
 
       std::cout << "Error: Did not recognize Stat Error constraint term type: "
@@ -2689,8 +2718,8 @@ namespace HistFactory{
     // If the sigma value is less
     // than a supplied threshold,
     // set the variable to constant
-    if( sigma < minSigma ) {
-      std::cout << "Warning:  Bin " << i << " = " << sigma
+    if( sigmaRel < minSigma ) {
+      std::cout << "Warning:  Bin " << i << " = " << sigmaRel
 		<< " and is < " << minSigma
 		<< ". Setting: " << gamma.GetName() << " to constant"
 		<< std::endl;

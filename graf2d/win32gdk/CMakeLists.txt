@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT graf2d/win32gdk package
 # @author Pere Mato, CERN
@@ -93,7 +99,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(Win32gdk
     src/gifquantize.c
     src/TGWin32.cxx
     src/TGWin32GL.cxx
-    src/TGWin32InterpreterProxy.cxx
     src/TGWin32ProxyBase.cxx
     src/TGWin32VirtualGLProxy.cxx
     src/TGWin32VirtualXProxy.cxx

@@ -88,7 +88,10 @@ namespace cling {
 #include "Varargs.h"
 
 namespace ROOT {
-   namespace TMetaUtils {
+namespace TMetaUtils {
+
+///\returns the resolved normalized absolute path possibly resolving symlinks.
+std::string GetRealPath(const std::string &path);
 
 // Forward Declarations --------------------------------------------------------
 class AnnotatedRecordDecl;
@@ -400,7 +403,7 @@ bool hasOpaqueTypedef(const AnnotatedRecordDecl &cl, const cling::Interpreter &i
 bool HasResetAfterMerge(clang::CXXRecordDecl const*, const cling::Interpreter&);
 
 //______________________________________________________________________________
-bool NeedDestructor(clang::CXXRecordDecl const*);
+bool NeedDestructor(clang::CXXRecordDecl const*, const cling::Interpreter&);
 
 //______________________________________________________________________________
 bool NeedTemplateKeyword(clang::CXXRecordDecl const*);

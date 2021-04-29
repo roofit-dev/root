@@ -16,6 +16,8 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
+R__LOAD_LIBRARY(libROOTGpadv7)
+
 #include "ROOT/RCanvas.hxx"
 #include "ROOT/RColor.hxx"
 #include "ROOT/RText.hxx"
@@ -32,11 +34,7 @@ void text()
       auto opts = canvas->Draw(RText({0.5_normal, 0.6_normal}, "____  Hello World"));
 
       RColor col(0.0015*i, 0.0025*i ,0.003*i);
-      opts->SetTextColor(col);
-      opts->SetTextSize(10+i/10);
-      opts->SetTextAngle(i);
-      opts->SetTextAlign(13);
-      opts->SetTextFont(42);
+      opts->SetColor(col).SetSize(10+i/10).SetAngle(i).SetAlign(13).SetFont(42);
    }
 
    canvas->Show();

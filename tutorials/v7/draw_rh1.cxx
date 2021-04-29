@@ -21,7 +21,7 @@
 
 // R__LOAD_LIBRARY(libROOTGpadv7);
 
-#include "ROOT/RHist.hxx"
+#include "ROOT/RHistDrawable.hxx"
 #include "ROOT/RCanvas.hxx"
 
 void draw_rh1() {
@@ -45,8 +45,11 @@ void draw_rh1() {
 
    // Create a canvas to be displayed.
    auto canvas = RCanvas::Create("Canvas Title");
-   canvas->Draw(pHist)->SetLineColor(RColor::kRed);
-   canvas->Draw(pHist2)->SetLineColor(RColor::kBlue);
+   auto draw1 = canvas->Draw(pHist);
+   draw1->Line().SetColor(RColor::kRed).SetWidth(2);
+   
+   auto draw2 = canvas->Draw(pHist2);
+   draw2->Line().SetColor(RColor::kBlue).SetWidth(4);
 
    canvas->Show();
 }

@@ -37,17 +37,20 @@ namespace cling {
 
   class StartParsingRAII {
     LookupHelper& m_LH;
+    llvm::SaveAndRestore<bool> SaveIsRecursivelyRunning;
     ParserStateRAII ResetParserState;
-
     void prepareForParsing(llvm::StringRef code, llvm::StringRef bufferName,
                            LookupHelper::DiagSetting diagOnOff);
   public:
     StartParsingRAII(LookupHelper& LH, llvm::StringRef code,
                      llvm::StringRef bufferName,
                      LookupHelper::DiagSetting diagOnOff)
-      : m_LH(LH), ResetParserState(*LH.m_Parser.get(), true /*skipToEOF*/) {
-    prepareForParsing(code, bufferName, diagOnOff);
-  }
+        : m_LH(LH), SaveIsRecursivelyRunning(LH.IsRecursivelyRunning),
+          ResetParserState(*LH.m_Parser.get(),
+                           !LH.IsRecursivelyRunning /*skipToEOF*/) {
+      LH.IsRecursivelyRunning = true;
+      prepareForParsing(code, bufferName, diagOnOff);
+    }
 
     ~StartParsingRAII() { pop(); }
     void pop() const {}
@@ -84,7 +87,8 @@ namespace cling {
     if (!PP.isIncrementalProcessingEnabled()) {
       PP.enableIncrementalProcessing();
     }
-    assert(!code.empty()&&"prepareForParsing should only be called when needd");
+    assert(!code.empty() &&
+           "prepareForParsing should only be called when need");
 
     // Create a fake file to parse the type name.
     FileID FID;
@@ -1588,22 +1592,18 @@ namespace cling {
       //
       //  Create the array of Expr from the array of Types.
       //
-
-      typedef llvm::SmallVectorImpl<QualType>::const_iterator iterator;
-      for(iterator iter = GivenTypes.begin(), end = GivenTypes.end();
-          iter != end;
-          ++iter) {
-        const clang::QualType QT = iter->getCanonicalType();
+      assert(!ExprMemory.size() && "Size must be 0");
+      ExprMemory.resize(GivenTypes.size() + 1);
+      for(size_t i = 0, e = GivenTypes.size(); i < e; ++i) {
+        const clang::QualType QT = GivenTypes[i].getCanonicalType();
         {
           ExprValueKind VK = VK_RValue;
           if (QT->getAs<LValueReferenceType>()) {
             VK = VK_LValue;
           }
           clang::QualType NonRefQT(QT.getNonReferenceType());
-          unsigned int slot = ExprMemory.size();
-          ExprMemory.resize(slot+1);
-          Expr* val = new (&ExprMemory[slot]) OpaqueValueExpr(SourceLocation(),
-                                                              NonRefQT, VK);
+          Expr* val = new (&ExprMemory[i]) OpaqueValueExpr(SourceLocation(),
+                                                           NonRefQT, VK);
           GivenArgs.push_back(val);
         }
       }
@@ -1656,6 +1656,9 @@ namespace cling {
           if (QT->getAs<LValueReferenceType>()) {
             VK = VK_LValue;
           }
+          // FIXME: This is potentially dangerous because if the capacity exceeds
+          // the reserved capacity of ExprMemory, it will reallocate and cause
+          // memory corruption on the OpaqueValueExpr. See ROOT-7749.
           clang::QualType NonRefQT(QT.getNonReferenceType());
           ExprMemory.resize(++nargs);
           new (&ExprMemory[nargs-1]) OpaqueValueExpr(TSI->getTypeLoc().getLocStart(),

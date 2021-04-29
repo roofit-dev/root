@@ -1,8 +1,9 @@
 #include "gtest/gtest.h"
 #include "ROOT/RHist.hxx"
+#include "ROOT/RHistDrawable.hxx"
 #include "ROOT/RCanvas.hxx"
 #include "ROOT/RColor.hxx"
-#include "ROOT/TFile.hxx"
+#include "ROOT/RFile.hxx"
 
 #include <TApplication.h>
 
@@ -19,7 +20,7 @@ TEST(IOTest, OneD)
 
    RAxisConfig xaxis{10, 0., 1.};
    RH1D h(xaxis);
-   auto file = TFile::Recreate("IOTestOneD.root");
+   auto file = RFile::Recreate("IOTestOneD.root");
    file->Write("h", h);
 }
 
@@ -30,8 +31,8 @@ TEST(IOTest, OneDOpts)
    auto h = std::make_unique<RH1D>(xaxis);
    RCanvas canv;
    auto optsPtr = canv.Draw(std::move(h));
-   optsPtr->SetLineColor(RColor::kRed);
+   optsPtr->Line().SetColor(RColor::kRed);
 
-   auto file = TFile::Recreate("IOTestOneDOpts.root");
+   auto file = RFile::Recreate("IOTestOneDOpts.root");
    file->Write("canv", canv);
 }

@@ -9,9 +9,7 @@
 ################################################################################
 
 from ROOT import pythonization
-from cppyy.gbl import TIter
-
-from ._generic import add_len
+import cppyy
 
 
 # Python-list-like methods
@@ -29,10 +27,9 @@ def _extend_pyz(self, c):
     # Parameters:
     # - self: collection
     # - c: collection to extend self with
-    lenc = c.GetEntries()
-    it = TIter(c)
-    for _ in range(lenc):
-        self.Add(it.Next())
+    it = iter(c)
+    for _ in range(len(c)):
+        self.Add(next(it))
 
 def _count_pyz(self, o):
     # Parameters:
@@ -42,12 +39,9 @@ def _count_pyz(self, o):
     # - Number of occurrences of the object in the collection
     n = 0
 
-    it = TIter(self)
-    obj = it.Next()
-    while obj:
-        if obj == o:
+    for elem in self:
+        if elem == o:
             n += 1
-        obj = it.Next()
 
     return n
 
@@ -81,8 +75,10 @@ def _imul_pyz(self, n):
     # - n: factor to multiply the collection by
     # Returns:
     # - self *= n
+    c = self.__class__()
+    c.AddAll(self)
     for _ in range(n - 1):
-        _extend_pyz(self, self)
+        _extend_pyz(self, c)
     return self
 
 # Python iteration
@@ -91,11 +87,10 @@ def _iter_pyz(self):
     # Generator function to iterate on TCollections
     # Parameters:
     # - self: collection to be iterated
-    it = TIter(self)
-    o = it.Next()
-    while o:
+    it = cppyy.gbl.TIter(self)
+    # TIter instances are iterable
+    for o in it:
         yield o
-        o = it.Next()
 
 
 @pythonization()
@@ -106,7 +101,7 @@ def pythonize_tcollection(klass, name):
 
     if name == 'TCollection':
         # Support `len(c)` as `c.GetEntries()`
-        add_len(klass, 'GetEntries')
+        klass.__len__ = klass.GetEntries
 
         # Add Python lists methods
         klass.append = klass.Add

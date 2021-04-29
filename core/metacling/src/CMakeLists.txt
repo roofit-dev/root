@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 # TInterpreter implementation for cling. Only in libCling; needs to resolve
 # symbols from libCore.
 
@@ -21,8 +27,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CLING_CXXFLAGS}")
 
 if(MSVC)
   set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/TClingCallbacks.cxx COMPILE_FLAGS -GR-)
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/TClingRdictModuleFileExtension.cxx COMPILE_FLAGS -GR-)
 else()
   set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/TClingCallbacks.cxx COMPILE_FLAGS -fno-rtti)
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/TClingRdictModuleFileExtension.cxx COMPILE_FLAGS -fno-rtti)
 endif()
 
 # This to avoid warning coming from llvm/src/tools/clang/include/clang/Sema/Lookup.h:441
@@ -44,8 +52,10 @@ ROOT_OBJECT_LIBRARY(MetaCling
   TClingClassInfo.cxx
   TCling.cxx
   TClingDataMemberInfo.cxx
+  TClingDeclInfo.cxx
   TClingMethodArgInfo.cxx
   TClingMethodInfo.cxx
+  TClingRdictModuleFileExtension.cxx
   TClingTypedefInfo.cxx
   TClingTypeInfo.cxx
   TClingValue.cxx
@@ -108,6 +118,7 @@ if(MSVC)
       ?_Facet_Register@std@@YAXPAV_Facet_base@1@@Z
       ??1Value@cling@@QAE@XZ
       ?isValid@Value@cling@@QBE_NXZ
+      ?kEmptyCollection@valuePrinterInternal@cling@@3QBDB
       ?AssertOnUnsupportedTypeCast@Value@cling@@IBEXXZ
       ?setValueNoAlloc@internal@runtime@cling@@YAXPAX00D@Z
       ?setValueNoAlloc@internal@runtime@cling@@YAXPAX00DM@Z
@@ -116,12 +127,14 @@ if(MSVC)
       ?setValueNoAlloc@internal@runtime@cling@@YAXPAX00D_K@Z
       ?setValueNoAlloc@internal@runtime@cling@@YAXPAX00DPBX@Z
       ?setValueWithAlloc@internal@runtime@cling@@YAPAXPAX00D@Z
+      ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PBM@Z
       ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PBN@Z
       ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PBH@Z
       ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PBX@Z
       ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PB_N@Z
       ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PAPBX@Z
       ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PAPBD@Z
+      ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PBV23@@Z
       ??$toUTF8@D@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@QBDID@Z
       ?EvaluateDynamicExpression@internal@runtime@cling@@YA?AVValue@3@PAVInterpreter@3@PAVDynamicExprInfo@123@PAVDeclContext@clang@@@Z
   )

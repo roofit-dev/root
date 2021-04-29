@@ -24,7 +24,7 @@ generator context specific for RooAddPdf PDFs. The strategy
 of RooAddGenContext is to defer generation of each component
 to a dedicated generator context for that component and to
 randomly choose one of those context to generate an event,
-with a probability proportional to its associated coefficient
+with a probability proportional to its associated coefficient.
 **/
 
 
@@ -74,13 +74,12 @@ RooAddGenContext::RooAddGenContext(const RooAddPdf &model, const RooArgSet &vars
       _pdf->fixAddCoefNormalization(coefNSet,kFALSE) ;
     }
 
-  model._pdfIter->Reset() ;
-  RooAbsPdf* pdf ;
   _nComp = model._pdfList.getSize() ;
   _coefThresh = new Double_t[_nComp+1] ;
   _vars = (RooArgSet*) vars.snapshot(kFALSE) ;
 
-  while((pdf=(RooAbsPdf*)model._pdfIter->Next())) {
+  for (const auto arg : model._pdfList) {
+    auto pdf = static_cast<const RooAbsPdf *>(arg);
     RooAbsGenContext* cx = pdf->genContext(vars,prototype,auxProto,verbose) ;
     _gcList.push_back(cx) ;
   }  

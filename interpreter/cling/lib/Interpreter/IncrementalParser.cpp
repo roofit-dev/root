@@ -234,12 +234,13 @@ static void HandlePlugins(CompilerInstance& CI,
 }
 
 namespace cling {
-  IncrementalParser::IncrementalParser(Interpreter* interp, const char* llvmdir)
+  IncrementalParser::IncrementalParser(Interpreter* interp, const char* llvmdir,
+                                   const ModuleFileExtensions& moduleExtensions)
       : m_Interpreter(interp) {
     std::unique_ptr<cling::DeclCollector> consumer;
     consumer.reset(m_Consumer = new cling::DeclCollector());
     m_CI.reset(CIFactory::createCI("", interp->getOptions(), llvmdir,
-                                   std::move(consumer)));
+                                   std::move(consumer), moduleExtensions));
 
     if (!m_CI) {
       cling::errs() << "Compiler instance could not be created.\n";
@@ -389,6 +390,28 @@ namespace cling {
     return m_CI && m_CI->hasFileManager() && m_Consumer
            && !m_VirtualFileID.isInvalid()
            && (!initialized || (m_TransactionPool && m_Parser));
+  }
+
+  namespace {
+    template <class T>
+    struct Reversed {
+      const T &m_orig;
+      auto begin() -> decltype(m_orig.rbegin()) { return m_orig.rbegin(); }
+      auto end() -> decltype (m_orig.rend()) { return m_orig.rend(); }
+    };
+    template <class T>
+    Reversed<T> reverse(const T& orig) { return {orig}; }
+  }
+
+  const Transaction* IncrementalParser::getLastWrapperTransaction() const {
+    if (auto *T = getCurrentTransaction())
+      if (T->getWrapperFD())
+        return T;
+
+    for (auto T: reverse(m_Transactions))
+      if (T->getWrapperFD())
+        return T;
+    return nullptr;
   }
 
   const Transaction* IncrementalParser::getCurrentTransaction() const {
@@ -629,9 +652,12 @@ namespace cling {
     }
     T->setState(Transaction::kCommitted);
 
-    if (InterpreterCallbacks* callbacks = m_Interpreter->getCallbacks())
-      callbacks->TransactionCommitted(*T);
-
+    {
+      Transaction* prevConsumerT = m_Consumer->getTransaction();
+      if (InterpreterCallbacks* callbacks = m_Interpreter->getCallbacks())
+        callbacks->TransactionCommitted(*T);
+      m_Consumer->setTransaction(prevConsumerT);
+    }
   }
 
   void IncrementalParser::emitTransaction(Transaction* T) {
