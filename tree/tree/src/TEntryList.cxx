@@ -125,7 +125,7 @@ changed.
 ## Using a TEntryList as input (TTree::SetEntryList() and TChain::SetEntryList())
 
 while the TTree::SetEntryList() function is only setting the TTree::fEntryList
-data member, the same function in TChain also finds correspondance between
+data member, the same function in TChain also finds correspondence between
 the TTrees of this TChain and the sub-lists of this TEntryList.
 
 ## TEntryList and the current directory
@@ -1452,8 +1452,8 @@ Int_t TEntryList::ScanPaths(TList *roots, Bool_t notify)
    }
    // Apply to ourselves
    Bool_t newobjs = kTRUE;
-   TString path = gSystem->DirName(fFileName), com;
-   TObjString *objs = 0;
+   TString path = gSystem->GetDirName(fFileName), com;
+   TObjString *objs = nullptr;
    TIter nxr(xrl);
    while ((objs = (TObjString *) nxr())) {
       Int_t rc = 0;
