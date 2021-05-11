@@ -484,7 +484,7 @@ Double_t &RooAbsMinimizerFcn::GetMaxFCN()
 {
    return _maxFCN;
 }
-Int_t RooAbsMinimizerFcn::GetNumInvalidNLL()
+Int_t RooAbsMinimizerFcn::GetNumInvalidNLL() const
 {
    return _numBadNLL;
 }
