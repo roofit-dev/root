@@ -30,6 +30,7 @@
 #include "RooMinimizer.h"
 #include "RooGaussMinimizer.h"
 
+#include "TClass.h"
 #include "TMatrixDSym.h"
 
 #include <fstream>
