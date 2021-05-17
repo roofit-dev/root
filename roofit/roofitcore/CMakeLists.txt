@@ -509,6 +509,10 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
 #    -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
+  LIBRARIES
+    RooBatchCompute
+    ${RT_LIBRARY}
+#    ${ZeroMQ_LIBRARY}
   DEPENDENCIES
     Core
     Hist
@@ -521,12 +525,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     MathCore
     Foam
     Smatrix
-    RooBatchCompute
 #        RooFitZMQ
 #        ZeroMQ # as noted above, this doesn't work here, so we instead list it as a library below
-  LIBRARIES
-    ${RT_LIBRARY}
-#    ${ZeroMQ_LIBRARY}
   LINKDEF
     inc/LinkDef.h
 )
