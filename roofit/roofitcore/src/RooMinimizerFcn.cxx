@@ -96,10 +96,17 @@ double RooMinimizerFcn::DoEval(const double *x) const {
     _numBadNLL++ ;
 
     if (_doEvalErrorWall) {
-      fvalue = _maxFCN+1;
+      const double badness = RooNaNPacker::unpackNaN(fvalue);
+      fvalue = (std::isfinite(_maxFCN) ? _maxFCN : 0.) + _recoverFromNaNStrength * badness;
     }
-
   } else {
+    if (_evalCounter > 0 && _evalCounter == _numBadNLL) {
+      // This is the first time we get a valid function value; while before, the
+      // function was always invalid. For invalid  cases, we returned values > 0.
+      // Now, we offset valid values such that they are < 0.
+      _funcOffset = -fvalue;
+    }
+    fvalue += _funcOffset;
     _maxFCN = std::max(fvalue, _maxFCN);
   }
       
