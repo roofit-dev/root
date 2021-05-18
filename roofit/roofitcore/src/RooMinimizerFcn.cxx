@@ -29,6 +29,7 @@
 #include "RooMsgService.h"
 #include "RooMinimizer.h"
 #include "RooGaussMinimizer.h"
+#include "RooNaNPacker.h"
 
 #include "TClass.h"
 #include "TMatrixDSym.h"
@@ -54,8 +55,8 @@ RooMinimizerFcn::~RooMinimizerFcn()
 {}
 
 
-ROOT::Math::IBaseFunctionMultiDim* RooMinimizerFcn::Clone() const 
-{  
+ROOT::Math::IBaseFunctionMultiDim* RooMinimizerFcn::Clone() const
+{
   return new RooMinimizerFcn(*this) ;
 }
 
@@ -85,7 +86,7 @@ double RooMinimizerFcn::DoEval(const double *x) const {
     SetPdfParamVal(index,x[index]);
   }
 
-  // Calculate the function for these parameters  
+  // Calculate the function for these parameters
   RooAbsReal::setHideOffset(kFALSE) ;
   double fvalue = _funct->getVal();
   RooAbsReal::setHideOffset(kTRUE) ;
@@ -109,12 +110,12 @@ double RooMinimizerFcn::DoEval(const double *x) const {
     fvalue += _funcOffset;
     _maxFCN = std::max(fvalue, _maxFCN);
   }
-      
+
   // Optional logging
-  if (_logfile) 
+  if (_logfile)
     (*_logfile) << setprecision(15) << fvalue << setprecision(4) << endl;
   if (_verbose) {
-    cout << "\nprevFCN" << (_funct->isOffsetting()?"-offset":"") << " = " << setprecision(10) 
+    cout << "\nprevFCN" << (_funct->isOffsetting()?"-offset":"") << " = " << setprecision(10)
          << fvalue << setprecision(4) << "  " ;
     cout.flush() ;
   }
@@ -125,4 +126,3 @@ double RooMinimizerFcn::DoEval(const double *x) const {
 }
 
 #endif
-
