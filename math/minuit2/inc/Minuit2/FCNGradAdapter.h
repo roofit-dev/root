@@ -13,6 +13,8 @@
 
 #include "Minuit2/FCNGradientBase.h"
 
+#include <vector>
+
 //#define DEBUG
 #ifdef DEBUG
 #include <iostream>
