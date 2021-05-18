@@ -530,7 +530,9 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
 
 # For recent clang, this can facilitate auto-vectorisation.
 # In RooFit, the errno side effect is not needed, anyway:
-target_compile_options(RooFitCore PUBLIC -fno-math-errno)
+if(NOT MSVC)
+  target_compile_options(RooFitCore PUBLIC -fno-math-errno)
+endif()
 
 target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
 
