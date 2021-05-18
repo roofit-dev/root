@@ -2213,8 +2213,9 @@ RooPlot* RooAbsReal::plotOn(RooPlot *frame, PlotOpt o) const
     projection->attachDataSet(*projDataSel) ;
 
     // Construct optimized data weighted average
-    RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*projection,*projDataSel,RooArgSet()/**projDataSel->get()*/,o.numCPU,o.interleave,o.CPUAffinity,kTRUE) ;
-    //RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*projection,*projDataSel,*projDataSel->get(),o.numCPU,o.interleave,o.CPUAffinity,kTRUE) ;
+    RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*projection,*projDataSel,RooArgSet()/**projDataSel->get()*/,
+                               {.nCPU=o.numCPU,.interleave=o.interleave, .CPUAffinity=o.CPUAffinity}, true) ;
+    //RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*projection,*projDataSel,*projDataSel->get(),o.numCPU,o.interleave,kTRUE) ;
 
     // Do _not_ activate cache-and-track as necessary information to define normalization observables are not present in the underlying dataset
     dwa.constOptimizeTestStatistic(Activate,kFALSE) ;
@@ -2584,8 +2585,9 @@ RooPlot* RooAbsReal::plotAsymOn(RooPlot *frame, const RooAbsCategoryLValue& asym
     }
 
 
-    RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*funcAsym,*projDataSel,RooArgSet()/**projDataSel->get()*/,o.numCPU,o.interleave,o.CPUAffinity,kTRUE) ;
-    //RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*funcAsym,*projDataSel,*projDataSel->get(),o.numCPU,o.interleave,o.CPUAffinity,kTRUE) ;
+    RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*funcAsym,*projDataSel,RooArgSet()/**projDataSel->get()*/,
+            {.nCPU=o.numCPU,.interleave=o.interleave, .CPUAffinity=o.CPUAffinity},true) ;
+    //RooDataWeightedAverage dwa(Form("%sDataWgtAvg",GetName()),"Data Weighted average",*funcAsym,*projDataSel,*projDataSel->get(),o.numCPU,o.interleave,kTRUE) ;
     dwa.constOptimizeTestStatistic(Activate) ;
 
     RooRealBinding projBind(dwa,*plotVar) ;
