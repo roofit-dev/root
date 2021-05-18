@@ -610,60 +610,67 @@ void RooMinimizer::optimizeConst(Int_t flag)
 
 RooFitResult* RooMinimizer::save(const char* userName, const char* userTitle)
 {
-   if (_theFitter->GetMinimizer()==0) {
-      coutW(Minimization) << "RooMinimizer::save: Error, run minimization before!"
-                          << endl ;
-      return 0;
-   }
+  if (_theFitter->GetMinimizer()==0) {
+    coutW(Minimization) << "RooMinimizer::save: Error, run minimization before!"
+			<< endl ;
+    return 0;
+  }
 
-   TString name,title ;
-   name = userName ? userName : Form("%s", _func->GetName()) ;
-   title = userTitle ? userTitle : Form("%s", _func->GetTitle()) ;
-   RooFitResult* fitRes = new RooFitResult(name,title) ;
+  TString name,title ;
+  name = userName ? userName : Form("%s", _func->GetName()) ;
+  title = userTitle ? userTitle : Form("%s", _func->GetTitle()) ;
+  RooFitResult* fitRes = new RooFitResult(name,title) ;
 
-   // Move eventual fixed parameters in floatList to constList
-   Int_t i ;
-   RooArgList saveConstList(*(_fcn->GetConstParamList())) ;
-   RooArgList saveFloatInitList(*(_fcn->GetInitFloatParamList())) ;
-   RooArgList saveFloatFinalList(*(_fcn->GetFloatParamList())) ;
-   for (i=0 ; i<_fcn->GetFloatParamList()->getSize() ; i++) {
-      RooAbsArg* par = _fcn->GetFloatParamList()->at(i) ;
-      if (par->isConstant()) {
-         saveFloatInitList.remove(*saveFloatInitList.find(par->GetName()),kTRUE) ;
-         saveFloatFinalList.remove(*par) ;
-         saveConstList.add(*par) ;
+  // Move eventual fixed parameters in floatList to constList
+  Int_t i ;
+  RooArgList saveConstList(*(_fcn->GetConstParamList())) ;
+  RooArgList saveFloatInitList(*(_fcn->GetInitFloatParamList())) ;
+  RooArgList saveFloatFinalList(*(_fcn->GetFloatParamList())) ;
+  for (i=0 ; i<_fcn->GetFloatParamList()->getSize() ; i++) {
+    RooAbsArg* par = _fcn->GetFloatParamList()->at(i) ;
+    if (par->isConstant()) {
+      saveFloatInitList.remove(*saveFloatInitList.find(par->GetName()),kTRUE) ;
+      saveFloatFinalList.remove(*par) ;
+      saveConstList.add(*par) ;
+    }
+  }
+  saveConstList.sort() ;
+
+  fitRes->setConstParList(saveConstList) ;
+  fitRes->setInitParList(saveFloatInitList) ;
+
+  // The fitter often clones the function. We therefore have to ask it for its copy.
+  const auto fitFcn = dynamic_cast<const RooMinimizerFcn*>(_theFitter->GetFCN());
+  double removeOffset = 0.;
+  if (fitFcn) {
+    fitRes->setNumInvalidNLL(fitFcn->GetNumInvalidNLL());
+    removeOffset = - fitFcn->getOffset();
+  }
+
+  fitRes->setStatus(_status) ;
+  fitRes->setCovQual(_theFitter->GetMinimizer()->CovMatrixStatus()) ;
+  fitRes->setMinNLL(_theFitter->Result().MinFcnValue() + removeOffset);
+  fitRes->setEDM(_theFitter->Result().Edm()) ;
+  fitRes->setFinalParList(saveFloatFinalList) ;
+  if (!_extV) {
+    std::vector<double> globalCC;
+    TMatrixDSym corrs(_theFitter->Result().Parameters().size()) ;
+    TMatrixDSym covs(_theFitter->Result().Parameters().size()) ;
+    for (UInt_t ic=0; ic<_theFitter->Result().Parameters().size(); ic++) {
+      globalCC.push_back(_theFitter->Result().GlobalCC(ic));
+      for (UInt_t ii=0; ii<_theFitter->Result().Parameters().size(); ii++) {
+	corrs(ic,ii) = _theFitter->Result().Correlation(ic,ii);
+	covs(ic,ii) = _theFitter->Result().CovMatrix(ic,ii);
       }
-   }
-   saveConstList.sort() ;
+    }
+    fitRes->fillCorrMatrix(globalCC,corrs,covs) ;
+  } else {
+    fitRes->setCovarianceMatrix(*_extV) ;
+  }
 
-   fitRes->setConstParList(saveConstList) ;
-   fitRes->setInitParList(saveFloatInitList) ;
+  fitRes->setStatusHistory(_statusHistory) ;
 
-   fitRes->setStatus(_status) ;
-   fitRes->setCovQual(_theFitter->GetMinimizer()->CovMatrixStatus()) ;
-   fitRes->setMinNLL(_theFitter->Result().MinFcnValue()) ;
-   fitRes->setNumInvalidNLL(_fcn->GetNumInvalidNLL()) ;
-   fitRes->setEDM(_theFitter->Result().Edm()) ;
-   fitRes->setFinalParList(saveFloatFinalList) ;
-   if (!_extV) {
-      std::vector<double> globalCC;
-      TMatrixDSym corrs(_theFitter->Result().Parameters().size()) ;
-      TMatrixDSym covs(_theFitter->Result().Parameters().size()) ;
-      for (UInt_t ic=0; ic<_theFitter->Result().Parameters().size(); ic++) {
-         globalCC.push_back(_theFitter->Result().GlobalCC(ic));
-         for (UInt_t ii=0; ii<_theFitter->Result().Parameters().size(); ii++) {
-            corrs(ic,ii) = _theFitter->Result().Correlation(ic,ii);
-            covs(ic,ii) = _theFitter->Result().CovMatrix(ic,ii);
-         }
-      }
-      fitRes->fillCorrMatrix(globalCC,corrs,covs) ;
-   } else {
-      fitRes->setCovarianceMatrix(*_extV) ;
-   }
-
-   fitRes->setStatusHistory(_statusHistory) ;
-
-   return fitRes ;
+  return fitRes ;
 
 }
 
