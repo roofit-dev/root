@@ -24,6 +24,9 @@
 #include "TObject.h"
 #include "TStopwatch.h"
 #include <fstream>
+#include <vector>
+#include <string>
+#include <utility>
 #include "TMatrixDSymfwd.h"
 #include "Math/IFunction.h"
 
