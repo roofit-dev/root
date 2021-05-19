@@ -200,7 +200,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooRealConstant.h
     RooRealIntegral.h
     RooRealMPFE.h
-    RooProxy.h
+    RooTemplateProxy.h
     RooRealProxy.h
     RooRealSumFunc.h
     RooRealSumPdf.h
