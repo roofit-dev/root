@@ -20,6 +20,8 @@
 #include "RooSetProxy.h"
 #include "RooRealProxy.h"
 #include "TStopwatch.h"
+#include "Math/Util.h"
+
 #include <string>
 #include <vector>
 
@@ -67,8 +69,8 @@ public:
 
   void enableOffsetting(Bool_t flag) ;
   Bool_t isOffsetting() const { return _doOffset ; }
-  virtual Double_t offset() const { return _offset ; }
-  virtual Double_t offsetCarry() const { return _offsetCarry; }
+  virtual Double_t offset() const { return _offset.Sum() ; }
+  virtual Double_t offsetCarry() const { return _offset.Carry(); }
 
   virtual RooAbsReal& function() { return *_func ; }
   virtual const RooAbsReal& function() const { return *_func ; }
@@ -156,8 +158,7 @@ protected:
   RooFit::MPSplit        _mpinterl ; // Use interleaving strategy rather than N-wise split for partioning of dataset for multiprocessor-split
   Bool_t         _CPUAffinity; // Use CPU affinity to pin processes to cores
   Bool_t         _doOffset ; // Apply interval value offset to control numeric precision?
-  mutable Double_t _offset ; //! Offset
-  mutable Double_t _offsetCarry; //! avoids loss of precision
+  mutable ROOT::Math::KahanSum<double> _offset{0.0} ; //! Offset as KahanSum to avoid loss of precision
   mutable Double_t _evalCarry; //! carry of Kahan sum in evaluatePartition
 
 private:
