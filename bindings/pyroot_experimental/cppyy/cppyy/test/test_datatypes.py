@@ -3,10 +3,10 @@ from pytest import raises
 from .support import setup_make, pylong, pyunicode
 
 currpath = py.path.local(__file__).dirpath()
-test_dct = str(currpath.join("datatypesDict.so"))
+test_dct = str(currpath.join("datatypesDict"))
 
 def setup_module(mod):
-    setup_make("datatypesDict.so")
+    setup_make("datatypes")
 
 
 class TestDATATYPES:
@@ -15,6 +15,7 @@ class TestDATATYPES:
         import cppyy
         cls.datatypes = cppyy.load_reflection_info(cls.test_dct)
         cls.N = cppyy.gbl.N
+        cls.has_byte = 201402 < cppyy.gbl.gInterpreter.ProcessLine("__cplusplus;")
 
     def test01_instance_data_read_access(self):
         """Read access to instance public data and verify values"""
@@ -35,8 +36,16 @@ class TestDATATYPES:
         assert c.m_uchar == 'c'
         assert type(c.m_wchar) == pyunicode
         assert c.m_wchar == u'D'
+        assert type(c.m_char32) == pyunicode
+        assert c.m_char16 == u'\u00df'
+        assert type(c.m_char16) == pyunicode
+        assert c.m_char32 == u'\u00df'
 
         # reading integer types
+        assert c.m_int8    == - 9; assert c.get_int8_cr()    == - 9; assert c.get_int8_r()    == - 9
+        assert c.m_uint8   ==   9; assert c.get_uint8_cr()   ==   9; assert c.get_uint8_r()   ==   9 
+        if self.has_byte:
+            assert c.m_byte == ord('d'); assert c.get_byte_cr() == ord('d'); assert c.get_byte_r() == ord('d')
         assert c.m_short   == -11; assert c.get_short_cr()   == -11; assert c.get_short_r()   == -11
         assert c.m_ushort  ==  11; assert c.get_ushort_cr()  ==  11; assert c.get_ushort_r()  ==  11
         assert c.m_int     == -22; assert c.get_int_cr()     == -22; assert c.get_int_r()     == -22
@@ -71,6 +80,7 @@ class TestDATATYPES:
         assert round(c.get_complex_r().real  -  99., 11) == 0
         assert round(c.get_complex_r().imag  - 101., 11) == 0
         assert complex(cppyy.gbl.std.complex['double'](1, 2)) == complex(1, 2)
+        assert repr(cppyy.gbl.std.complex['double'](1, 2)) == '(1+2j)'
 
         # complex<int> retains C++ type in all cases (but includes pythonization to
         # resemble Python's complex more closely
@@ -97,8 +107,10 @@ class TestDATATYPES:
             assert c.get_bool_array2()[i]   ==   bool((i+1)%2)
 
         # reading of integer array types
-        names = ['uchar',  'short', 'ushort',    'int', 'uint',    'long',  'ulong']
-        alpha = [ (1, 2), (-1, -2),   (3, 4), (-5, -6), (7, 8), (-9, -10), (11, 12)]
+        names = ['schar', 'uchar', 'short', 'ushort',    'int', 'uint',    'long',  'ulong']
+        alpha = [ (1, 2), (1, 2), (-1, -2),   (3, 4), (-5, -6), (7, 8), (-9, -10), (11, 12)]
+        if self.has_byte: names.append('byte'); alpha.append((3,4))
+
         for j in range(self.N):
             assert getattr(c, 'm_%s_array'    % names[i])[i]   == alpha[i][0]*i
             assert getattr(c, 'get_%s_array'  % names[i])()[i] == alpha[i][0]*i
@@ -113,7 +125,10 @@ class TestDATATYPES:
             assert round(c.m_double_array2[k] + 16.*k, 8) == 0
 
         # out-of-bounds checks
+        raises(IndexError, c.m_schar_array.__getitem__,  self.N)
         raises(IndexError, c.m_uchar_array.__getitem__,  self.N)
+        if self.has_byte:
+            raises(IndexError, c.m_byte_array.__getitem__,   self.N)
         raises(IndexError, c.m_short_array.__getitem__,  self.N)
         raises(IndexError, c.m_ushort_array.__getitem__, self.N)
         raises(IndexError, c.m_int_array.__getitem__,    self.N)
@@ -155,8 +170,10 @@ class TestDATATYPES:
         # char types through functions
         c.set_char('c');   assert c.get_char()  == 'c'
         c.set_uchar('e');  assert c.get_uchar() == 'e'
-        c.set_wchar(u'F'); assert c.get_wchar() == u'F';
+        c.set_wchar(u'F'); assert c.get_wchar() == u'F'
         assert type(c.get_wchar()) == pyunicode
+        c.set_char16(u'\u00f2');     assert c.get_char16() == u'\u00f2'
+        c.set_char32(u'\U0001f31c'); assert c.get_char32() == u'\U0001f31c'
 
         # char types through data members
         c.m_char = 'b';    assert c.get_char()  ==     'b'
@@ -169,15 +186,23 @@ class TestDATATYPES:
         c.set_uchar(43);   assert c.m_uchar     == chr(43)
         c.m_wchar = u'G';  assert c.get_wchar() ==    u'G'
         c.set_wchar(u'H'); assert c.m_wchar     ==    u'H'
+        c.m_char16 = u'\u00f3';  assert c.get_char16() == u'\u00f3'
+        c.set_char16(u'\u00f4'); assert c.m_char16     == u'\u00f4'
+        c.m_char32 = u'\U0001f31d';  assert c.get_char32() == u'\U0001f31d'
+        c.set_char32(u'\U0001f31e'); assert c.m_char32     == u'\U0001f31e'
 
-        raises(ValueError, c.set_char, "string")
-        raises(ValueError, c.set_char, 500)
-        raises(ValueError, c.set_uchar, "string")
-        raises(ValueError, c.set_uchar, -1)
-        raises(ValueError, c.set_wchar, "string")
+        raises(ValueError, c.set_char,   "string")
+        raises(ValueError, c.set_char,   500)
+        raises(ValueError, c.set_uchar,  "string")
+        raises(ValueError, c.set_uchar,  -1)
+        raises(ValueError, c.set_wchar,  "string")
+        raises(ValueError, c.set_char16, "string")
+        raises(ValueError, c.set_char32, "string")
 
         # integer types
-        names = ['short', 'ushort', 'int', 'uint', 'long', 'ulong', 'llong', 'ullong']
+        names = ['int8', 'uint8', 'short', 'ushort', 'int', 'uint', 'long', 'ulong', 'llong', 'ullong']
+        if self.has_byte: names.append('byte')
+
         for i in range(len(names)):
             setattr(c, 'm_'+names[i], i)
             assert eval('c.get_%s()' % names[i]) == i
@@ -189,6 +214,10 @@ class TestDATATYPES:
         for i in range(len(names)):
             getattr(c, 'set_'+names[i]+'_cr')(3*i)
             assert eval('c.m_%s' % names[i]) == 3*i
+
+        for i in range(len(names)):
+            getattr(c, 'set_'+names[i]+'_rv')(4*i)
+            assert eval('c.m_%s' % names[i]) == 4*i
 
         # float types through functions
         c.set_float(0.123);   assert round(c.get_float()   - 0.123, 5) == 0
@@ -206,14 +235,20 @@ class TestDATATYPES:
         c.set_ldouble(0.098);    assert round(c.m_ldouble     - 0.098, 8) == 0
         c.set_ldouble_cr(0.210); assert round(c.m_ldouble     - 0.210, 8) == 0
 
+        # (non-)writing of enum types
+        raises(TypeError, setattr, CppyyTestData, 'kNothing', 42)
+
         # arrays; there will be pointer copies, so destroy the current ones
         c.destroy_arrays()
 
         # integer arrays
         names = ['uchar', 'short', 'ushort', 'int', 'uint', 'long', 'ulong']
+        if self.has_byte: names.append('byte')
+
         import array
         a = range(self.N)
         atypes = ['B', 'h', 'H', 'i', 'I', 'l', 'L']
+        if self.has_byte: atypes.append('B')
         for j in range(len(names)):
             b = array.array(atypes[j], a)
             setattr(c, 'm_'+names[j]+'_array', b)     # buffer copies
@@ -285,11 +320,27 @@ class TestDATATYPES:
         assert CppyyTestData.s_uchar    == 'u'
         assert c.s_wchar                == u'U'
         assert CppyyTestData.s_wchar    == u'U'
+        assert c.s_wchar                == u'U'
+        assert CppyyTestData.s_char16   == u'\u6c29'
+        assert c.s_char16               == u'\u6c29'
+        assert CppyyTestData.s_char32   == u'\U0001f34b'
+        assert c.s_char32               == u'\U0001f34b'
 
-        assert type(c.s_wchar)             == pyunicode
-        assert type(CppyyTestData.s_wchar) == pyunicode
+        assert type(c.s_wchar)              == pyunicode
+        assert type(CppyyTestData.s_wchar)  == pyunicode
+        assert type(c.s_char16)             == pyunicode
+        assert type(CppyyTestData.s_char16) == pyunicode
+        assert type(c.s_char32)             == pyunicode
+        assert type(CppyyTestData.s_char32) == pyunicode
 
         # integer types
+        if self.has_byte:
+            assert CppyyTestData.s_byte == ord('b')
+            assert c.s_byte             == ord('b')
+        assert CppyyTestData.s_int8     == - 87
+        assert c.s_int8                 == - 87
+        assert CppyyTestData.s_uint8    ==   87
+        assert c.s_uint8                ==   87
         assert CppyyTestData.s_short    == -101
         assert c.s_short                == -101
         assert c.s_ushort               ==  255
@@ -341,8 +392,25 @@ class TestDATATYPES:
         assert c.s_wchar                == u'K'
         c.s_wchar                        = u'L'
         assert CppyyTestData.s_wchar    == u'L'
+        CppyyTestData.s_char16           = u'\u00df'
+        assert c.s_char16               == u'\u00df'
+        c.s_char16                       = u'\u00ef'
+        assert CppyyTestData.s_char16   == u'\u00ef'
+        CppyyTestData.s_char32           = u'\u00df'
+        assert c.s_char32               == u'\u00df'
+        c.s_char32                       = u'\u00ef'
+        assert CppyyTestData.s_char32   == u'\u00ef'
 
         # integer types
+        if self.has_byte:
+            c.s_byte                     =   66
+            assert CppyyTestData.s_byte ==   66
+            CppyyTestData.s_byte         =   66
+            assert c.s_byte             ==   66
+        c.s_short                        = - 88
+        assert CppyyTestData.s_short    == - 88
+        CppyyTestData.s_short            =   88
+        assert c.s_short                ==   88
         c.s_short                        = -102
         assert CppyyTestData.s_short    == -102
         CppyyTestData.s_short            = -203
@@ -417,9 +485,9 @@ class TestDATATYPES:
         c.m_double = -1
         assert round(c.m_double + 1.0, 8) == 0
 
-        raises(TypeError, c.m_double,  'c')
-        raises(TypeError, c.m_int,     -1.)
-        raises(TypeError, c.m_int,      1.)
+        raises(TypeError, setattr, c.m_double,  'c')
+        raises(TypeError, setattr, c.m_int,     -1.)
+        raises(TypeError, setattr, c.m_int,      1.)
 
         c.__destruct__()
 
@@ -438,6 +506,40 @@ class TestDATATYPES:
         gbl.g_int = 22
         assert gbl.get_global_int() == 22
         assert gbl.g_int == 22
+
+      # if setting before checking, the change must be reflected on the C++ side
+        gbl.g_some_global_string = "Python"
+        assert gbl.get_some_global_string() == "Python"
+        assert gbl.g_some_global_string2 == "C++"
+        assert gbl.get_some_global_string2() == "C++"
+        gbl.g_some_global_string2 = "Python"
+        assert gbl.get_some_global_string2() == "Python"
+
+        assert gbl.g_some_global_string16 == u'z\u00df\u6c34'
+        assert gbl.g_some_global_string32 == u'z\u00df\u6c34\U0001f34c'
+
+        NS = gbl.SomeStaticDataNS
+        NS.s_some_static_string = "Python"
+        assert NS.get_some_static_string() == "Python"
+        assert NS.s_some_static_string2 == "C++"
+        assert NS.get_some_static_string2() == "C++"
+        NS.s_some_static_string2 = "Python"
+        assert NS.get_some_static_string2() == "Python"
+
+     # verify that non-C++ data can still be set
+        gbl.g_python_only = "Python"
+        assert gbl.g_python_only == "Python"
+
+        NS.s_python_only = "Python"
+        assert NS.s_python_only == "Python"
+
+    def test08a_global_object(self):
+        """Test access to global objects by value"""
+
+        import cppyy
+        gbl = cppyy.gbl
+
+        assert gbl.gData.fData == 5.
 
     def test09_global_ptr(self):
         """Test access of global objects through a pointer"""
@@ -518,10 +620,30 @@ class TestDATATYPES:
         assert gbl.kApple  == 78
         assert gbl.kBanana == 29
         assert gbl.kCitrus == 34
+        assert gbl.EFruit.__name__     == 'EFruit'
+        assert gbl.EFruit.__cpp_name__ == 'EFruit'
+
+        assert gbl.EFruit.kApple  == 78
+        assert gbl.EFruit.kBanana == 29
+        assert gbl.EFruit.kCitrus == 34
+
+        assert gbl.NamedClassEnum.E1 == 42
+        assert gbl.NamedClassEnum.__name__     == 'NamedClassEnum'
+        assert gbl.NamedClassEnum.__cpp_name__ == 'NamedClassEnum'
 
         assert gbl.EnumSpace.E
         assert gbl.EnumSpace.EnumClass.E1 == -1   # anonymous
         assert gbl.EnumSpace.EnumClass.E2 == -1   # named type
+
+        assert gbl.EnumSpace.NamedClassEnum.E1 == -42
+        assert gbl.EnumSpace.NamedClassEnum.__name__     == 'NamedClassEnum'
+        assert gbl.EnumSpace.NamedClassEnum.__cpp_name__ == 'EnumSpace::NamedClassEnum'
+
+        raises(TypeError, setattr, gbl.EFruit, 'kBanana', 42)
+
+        assert gbl.g_enum == gbl.EFruit.kBanana
+        gbl.g_enum = gbl.EFruit.kCitrus
+        assert gbl.g_enum == gbl.EFruit.kCitrus
 
         # typedef enum
         assert gbl.EnumSpace.letter_code
@@ -540,6 +662,12 @@ class TestDATATYPES:
 
         assert c.get_valid_wstring(u'aap') == u'aap'
         assert c.get_invalid_wstring() == u''
+
+        assert c.get_valid_string16(u'z\u00df\u6c34') == u'z\u00df\u6c34'
+        assert c.get_invalid_string16() == u''
+
+        assert c.get_valid_string32(u'z\u00df\u6c34\U0001f34c') == u'z\u00df\u6c34\U0001f34c'
+        assert c.get_invalid_string32() == u''
 
     def test12_copy_constructor(self):
         """Test copy constructor"""
@@ -738,13 +866,17 @@ class TestDATATYPES:
         CppyyTestData = cppyy.gbl.CppyyTestData
 
         c = CppyyTestData()
+        byte_array_names = []
+        if self.has_byte:
+            byte_array_names = ['get_byte_array', 'get_byte_array2']
         for func in ['get_bool_array',   'get_bool_array2',
-                     'get_uchar_array',   'get_uchar_array2',
+                     'get_uchar_array',  'get_uchar_array2',
                      'get_ushort_array', 'get_ushort_array2',
                      'get_int_array',    'get_int_array2',
                      'get_uint_array',   'get_uint_array2',
                      'get_long_array',   'get_long_array2',
-                     'get_ulong_array',  'get_ulong_array2']:
+                     'get_ulong_array',  'get_ulong_array2']+\
+                     byte_array_names:
             arr = getattr(c, func)()
             arr.reshape((self.N,))
             assert len(arr) == self.N
@@ -807,36 +939,106 @@ class TestDATATYPES:
         c.s_voidp = c2
         address_equality_test(c.s_voidp, c2)
 
-    def test21_function_pointers(self):
-        """Function pointer passing"""
+    def test21_byte_arrays(self):
+        """Usage of unsigned char* as byte array and std::byte*"""
 
-        # TODO: currently crashes if fast path disabled
-        try:
-            if os.environ['CPPYY_DISABLE_FASTPATH']:
-                return
-        except KeyError:
-            pass
+        import array, cppyy, ctypes
+
+        buf = b'123456789'
+        total = 0
+        for c in buf:
+            try:
+                total += ord(c)        # p2
+            except TypeError:
+                total += c             # p3
+
+        def run(self, f, buf, total):
+
+            # The following create a unique type for fixed-size C arrays: ctypes.c_char_Array_9
+            # and neither inherits from a non-sized type nor implements the buffer interface.
+            # As such, it can't be handled. TODO?
+            #pbuf = ctypes.create_string_buffer(len(buf), buf)
+            #assert f(pbuf, len(buf)) == total
+
+            pbuf = array.array('B', buf)
+            assert f(pbuf, len(buf)) == total
+
+            pbuf = (ctypes.c_ubyte * len(buf)).from_buffer_copy(buf)
+            assert f(pbuf, len(buf)) == total
+
+            pbuf = ctypes.cast(buf, ctypes.POINTER(ctypes.c_ubyte * len(buf)))[0]
+            assert f(pbuf, len(buf)) == total
+
+        run(self, cppyy.gbl.sum_uc_data, buf, total)
+
+        if self.has_byte:
+            run(self, cppyy.gbl.sum_byte_data, buf, total)
+
+    def test22_function_pointers(self):
+        """Function pointer passing"""
 
         import cppyy
 
-        f1  = cppyy.gbl.sum_of_int
-        f2  = cppyy.gbl.sum_of_double
+        fi1 = cppyy.gbl.sum_of_int1
+        fi2 = cppyy.gbl.sum_of_int2
+        fd  = cppyy.gbl.sum_of_double
         fdd = cppyy.gbl.call_double_double
 
-        assert 5 == f1(2, 3)
-        assert 5. == f2(5., 0.)
+        assert 5 == fi1(2, 3)
+        assert 5. == fd(5., 0.)
 
-        raises(TypeError, fdd, f1, 2, 3)
+        raises(TypeError, fdd, fi1, 2, 3)
 
-        assert 5. == fdd(f2, 5., 0.)
+        assert  5. == fdd(fd, 5., 0.)
+        assert -1. == fdd(cppyy.nullptr, 5., 0.)
 
-    def test22_callable_passing(self):
+        fip = cppyy.gbl.sum_of_int_ptr
+        assert 5 == fip(2, 3)
+
+        cppyy.gbl.sum_of_int_ptr = cppyy.gbl.sum_of_int2
+        assert 7 == cppyy.gbl.sum_of_int_ptr(2, 3)
+
+        cppyy.gbl.sum_of_int_ptr = cppyy.nullptr
+        with raises(TypeError):        # not attribute error!
+            cppyy.gbl.sum_of_int_ptr
+        with raises(AttributeError):
+            cppyy.gbl.sim_of_int_ptr   # incorrect spelling
+
+        cppyy.gbl.sum_of_int_ptr = cppyy.gbl.sum_of_int1
+        assert fip is cppyy.gbl.sum_of_int_ptr   # b/c cached
+
+        o = cppyy.gbl.sum_of_int_struct()
+        o.sum_of_int_ptr = cppyy.gbl.sum_of_int1
+        assert 5 == o.sum_of_int_ptr(2, 3)
+
+        o.sum_of_int_ptr = cppyy.gbl.sum_of_int2
+        assert 7 == o.sum_of_int_ptr(2, 3)
+
+        def sum_in_python(i1, i2):
+            return i1-i2
+        cppyy.gbl.sum_of_int_ptr = sum_in_python
+        assert 1 == cppyy.gbl.call_sum_of_int(3, 2)
+
+        def sum_in_python(i1, i2, i3):
+            return i1+i2+i3
+        cppyy.gbl.sum_of_int_ptr = sum_in_python
+        with raises(TypeError):
+            cppyy.gbl.call_sum_of_int(3, 2)
+
+    def test23_callable_passing(self):
         """Passing callables through function pointers"""
 
         import cppyy
 
         fdd = cppyy.gbl.call_double_double
         fii = cppyy.gbl.call_int_int
+        fv  = cppyy.gbl.call_void
+        fri = cppyy.gbl.call_refi
+        frl = cppyy.gbl.call_refl
+        frd = cppyy.gbl.call_refd
+
+        assert 'call_double_double' in str(fdd)
+        assert 'call_refd' in str(frd)
 
         def pyf(arg0, arg1):
             return arg0+arg1
@@ -852,6 +1054,24 @@ class TestDATATYPES:
 
         assert fdd(pyf, 2, 3) == 6.
         assert fii(pyf, 2, 3) == 6
+
+        # call of void function
+        global retval
+        retval = None
+        def voidf(i):
+            global retval
+            retval = i
+
+        assert retval is None
+        assert fv(voidf, 5) == None
+        assert retval == 5
+
+        # call of function with reference argument
+        def reff(ref):
+            ref.value = 5
+        assert fri(reff) == 5
+        assert frl(reff) == pylong(5)
+        assert frd(reff) == 5.
 
         # callable that does not accept weak-ref
         import math
@@ -872,3 +1092,197 @@ class TestDATATYPES:
 
         c.set_callable(lambda x, y: x*y)
         raises(TypeError, c, 3, 3)     # lambda gone out of scope
+
+    def test24_callable_through_function_passing(self):
+        """Passing callables through std::function"""
+
+        import cppyy
+
+        fdd = cppyy.gbl.call_double_double_sf
+        fii = cppyy.gbl.call_int_int_sf
+        fv  = cppyy.gbl.call_void_sf
+        fri = cppyy.gbl.call_refi_sf
+        frl = cppyy.gbl.call_refl_sf
+        frd = cppyy.gbl.call_refd_sf
+
+        assert 'call_double_double_sf' in str(fdd)
+        assert 'call_refd_sf' in str(frd)
+
+        def pyf(arg0, arg1):
+            return arg0+arg1
+
+        assert type(fdd(pyf, 2, 3)) == float
+        assert fdd(pyf, 2, 3) == 5.
+
+        assert type(fii(pyf, 2, 3)) == int
+        assert fii(pyf, 2, 3) == 5
+
+        def pyf(arg0, arg1):
+            return arg0*arg1
+
+        assert fdd(pyf, 2, 3) == 6.
+        assert fii(pyf, 2, 3) == 6
+
+        # call of void function
+        global retval
+        retval = None
+        def voidf(i):
+            global retval
+            retval = i
+
+        assert retval is None
+        assert fv(voidf, 5) == None
+        assert retval == 5
+
+        # call of function with reference argument
+        def reff(ref):
+            ref.value = 5
+        assert fri(reff) == 5
+        assert frl(reff) == pylong(5)
+        assert frd(reff) == 5.
+
+        # callable that does not accept weak-ref
+        import math
+        assert fdd(math.atan2, 0, 3.) == 0.
+
+        # error testing
+        raises(TypeError, fii, None, 2, 3)
+
+        def pyf(arg0, arg1):
+            return arg0/arg1
+
+        raises(ZeroDivisionError, fii, pyf, 1, 0)
+
+        def pyd(arg0, arg1):
+            return arg0*arg1
+        c = cppyy.gbl.StoreCallable(pyd)
+        assert c(3, 3) == 9.
+
+        c.set_callable(lambda x, y: x*y)
+        raises(TypeError, c, 3, 3)     # lambda gone out of scope
+
+    def test25_multi_dim_arrays_of_builtins(test):
+        """Multi-dim arrays of builtins"""
+
+        import cppyy, ctypes
+
+        cppyy.cppdef("""
+        template<class T, int nlayers>
+        struct MultiDimTest {
+            T* layers[nlayers];
+
+            MultiDimTest(int width, int height) {
+                for (int i=0; i<nlayers; ++i) {
+                    layers[i] = new T[width*height];
+                    for (int j=0; j<width*height; ++j)
+                        layers[i][j] = j*2;
+                }
+            }
+            ~MultiDimTest() { for (int i=0; i<nlayers; ++i) delete[] layers[i]; }
+        };
+        """)
+
+        from cppyy.gbl import MultiDimTest
+
+        nlayers = 3; width = 8; height = 4
+        for (cpptype, ctype) in (('unsigned char', ctypes.c_ubyte),
+                                 ('int',           ctypes.c_int),
+                                 ('double',        ctypes.c_double)):
+            m = MultiDimTest[cpptype, nlayers](width, height)
+
+            for i in range(nlayers):
+                buf = m.layers[i]
+                p = (ctype * len(buf)).from_buffer(buf)
+                assert [p[j] for j in range(width*height)] == [2*j for j in range(width*height)]
+
+    def test26_anonymous_union(self):
+        """Anonymous unions place there fields in the parent scope"""
+
+        import cppyy
+
+        cppyy.cppdef("""namespace AnonUnion {
+        struct Event1 {
+            Event1() : num(1) { shrd.a = 5.; }
+            int num;
+            union SomeUnion {
+                double a;
+                int b;
+            } shrd;
+        };
+
+        struct Event2 {
+            Event2() : num(1) { shrd.a = 5.; }
+            int num;
+            union {
+                double a;
+                int b;
+            } shrd;
+        };
+
+        struct Event3 {
+            Event3(double d) : a(d) {}
+            Event3(int i) : b(i) {}
+            union {
+                double a;
+                int b;
+            };
+        };
+
+        struct Event4 {
+            Event4(int i) : num(1), b(i) {}
+            Event4(double d) : num(2), a(d) {}
+            int num;
+            union {
+                double a;
+                int b;
+            };
+        };
+
+        struct PointXYZI {
+            PointXYZI() : intensity(5.) {}
+            double x, y, z, i;
+            union {
+                int offset1;
+                struct {
+                   int offset2;
+                   float intensity;
+                };
+                float data_c[4];
+            };
+        }; }""")
+
+        # named union
+        e = cppyy.gbl.AnonUnion.Event1()
+        assert e.num == 1
+        raises(AttributeError, getattr, e, 'a')
+        raises(AttributeError, getattr, e, 'b')
+        assert e.shrd.a == 5.
+
+        # anonymous union, with field name
+        e = cppyy.gbl.AnonUnion.Event2()
+        assert e.num == 1
+        raises(AttributeError, getattr, e, 'a')
+        raises(AttributeError, getattr, e, 'b')
+        assert e.shrd.a == 5.
+
+        # anonymous union, no field name
+        e = cppyy.gbl.AnonUnion.Event3(42)
+        assert e.b == 42
+
+        e = cppyy.gbl.AnonUnion.Event3(5.)
+        assert e.a == 5.
+
+        # anonymous union, no field name, with offset
+        e = cppyy.gbl.AnonUnion.Event4(42)
+        assert e.num == 1
+        assert e.b == 42
+
+        e = cppyy.gbl.AnonUnion.Event4(5.)
+        assert e.num == 2
+        assert e.a == 5.
+
+        # anonumous struct in anonymous union
+        p = cppyy.gbl.AnonUnion.PointXYZI()
+        assert type(p.x) == float
+        assert type(p.data_c[0]) == float
+        assert p.intensity == 5.

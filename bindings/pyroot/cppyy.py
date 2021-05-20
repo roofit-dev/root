@@ -71,9 +71,6 @@ sys.modules[ __name__ ].libPyROOT = _backend
 if not _builtin_cppyy:
    _backend.SetMemoryPolicy( _backend.kMemoryStrict )
 
-#--- Enable Autoloading ignoring possible error for the time being
-try:    _backend.gInterpreter.EnableAutoLoading()
-except: pass
 
 ### -----------------------------------------------------------------------------
 ### -- metaclass helper from six ------------------------------------------------
@@ -244,9 +241,11 @@ if _builtin_cppyy:
 #--- Compatibility ------------------------------------------------------
 if not _builtin_cppyy:
    bind_object = _backend.BindObject
+   nullptr = _backend.nullptr
 
 #--- Pythonization factories --------------------------------------------
 import _pythonization
+py = _pythonization
 _pythonization._set_backend( _backend )
 from _pythonization import *
 del _pythonization

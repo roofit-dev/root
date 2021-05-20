@@ -616,7 +616,9 @@ public:
          data->add(*w->set("obs"));
 
          // NOTE: RooIntegrator1D is too slow and gives poor results
+#ifdef R__HAS_MATHMORE
          RooAbsReal::defaultIntegratorConfig()->method1D().setLabel("RooAdaptiveGaussKronrodIntegrator1D");
+#endif
 
          // Uniform prior on mean
          BayesianCalculator *bc = new BayesianCalculator(*data, *w->pdf("poiss"), *w->set("poi"), *w->pdf("prior"), NULL);
@@ -714,7 +716,7 @@ public:
       // Put the confidence level so that we obtain a 68% confidence interval
       const Double_t confidenceLevel = 2 * normal_cdf(1) - 1;
       const Int_t obsValue = 3; // observed experiment value
-      const Int_t numberScans = 10000; // sufficient number of scans
+      const Int_t numberScans = 100000; // sufficient number of scans
 
       // names of tested variables must be the same in write / comparison modes
       const TString lowerLimitString = "tbc2_lower_limit_unif";
@@ -746,8 +748,9 @@ public:
          data->add(*w->set("obs"));
 
          // NOTE: RooIntegrator1D is too slow and gives poor results
+#ifdef R__HAS_MATHMORE
          RooAbsReal::defaultIntegratorConfig()->method1D().setLabel("RooAdaptiveGaussKronrodIntegrator1D");
-
+#endif
          // Uniform prior on mean
          BayesianCalculator *bc = new BayesianCalculator(*data, *w->pdf("poiss"), *w->set("poi"), *w->pdf("prior"), NULL);
          bc->SetConfidenceLevel(confidenceLevel);
@@ -863,7 +866,9 @@ public:
       delete initialVariables;
 
       // NOTE: Roo1DIntegrator is too slow and gives poor results
+#ifdef R__HAS_MATHMORE
       RooAbsReal::defaultIntegratorConfig()->method1D().setLabel("RooAdaptiveGaussKronrodIntegrator1D");
+#endif
 
       // Create BayesianCalculator and
       BayesianCalculator *bc = new BayesianCalculator(*w->data("data"), *model);
@@ -991,7 +996,9 @@ public:
       delete initialVariables;
 
       // NOTE: Roo1DIntegrator is too slow and gives poor results
+#ifdef R__HAS_MATHMORE
       RooAbsReal::defaultIntegratorConfig()->method1D().setLabel("RooAdaptiveGaussKronrodIntegrator1D");
+#endif
 
       // create and configure MCMC calculator
       SequentialProposal *sp = new SequentialProposal(0.1);
@@ -1973,7 +1980,3 @@ static TestStatistic *buildTestStatistic(const ETestStatType testStatType, const
 
    return testStat;
 }
-
-
-
-
