@@ -20,6 +20,9 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                'sap/ui/codeeditor/CodeEditor',
                'sap/m/HBox',
                'sap/m/Image',
+               'sap/tnt/ToolHeader',
+               'sap/m/ToolbarSpacer',
+               'sap/m/OverflowToolbarLayoutData',
                'sap/m/Dialog',
                'rootui5/browser/controller/FileDialog.controller'
 ],function(Controller,
@@ -44,8 +47,12 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
            CodeEditor,
            HBox,
            Image,
+           ToolHeader,
+           ToolbarSpacer,
+           OverflowToolbarLayoutData,
            Dialog,
            FileDialogController) {
+
 
    "use strict";
 
@@ -55,7 +62,35 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
    return Controller.extend("rootui5.browser.controller.Browser", {
       onInit: async function () {
 
-         this.globalId = 1;
+         let pthis = this;
+         let burgerMenu = pthis.getView().byId("burgerMenu");
+
+         sap.ui.Device.orientation.attachHandler((mParams) => {
+            burgerMenu.detachPress(pthis.onFullScreenPressLandscape, pthis);
+            burgerMenu.detachPress(pthis.onFullScreenPressPortrait, pthis);
+
+            if (mParams.landscape) {
+               burgerMenu.attachPress(pthis.onFullScreenPressLandscape, pthis);
+               this.getView().byId('expandMaster').setVisible(true);
+            } else {
+               burgerMenu.attachPress(pthis.onFullScreenPressPortrait, pthis);
+
+               this.getView().byId('masterPage').getParent().removeStyleClass('masterExpanded');
+               this.getView().byId('expandMaster').setVisible(false);
+               this.getView().byId('shrinkMaster').setVisible(false);
+            }
+         });
+
+         if(sap.ui.Device.orientation.landscape) {
+            burgerMenu.attachPress(pthis.onFullScreenPressLandscape, pthis);
+         } else {
+            burgerMenu.attachPress(pthis.onFullScreenPressPortrait, pthis);
+            this.getView().byId('expandMaster').setVisible(false);
+         }
+
+        this.globalId = 1;
+        this.nextElem = "";
+        this.DBLCLKRun = false;
 
          this.websocket = this.getView().getViewData().conn_handle;
 
@@ -204,42 +239,44 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       },
 
       newCodeEditorFragment: function (ID) {
-         return new Splitter({
-            orientation: "Vertical",
-            contentAreas: [
-               new Toolbar({
+         return [
+               new ToolHeader({
+                  height: "40px",
                   content: [
-                     new FileUploader({
-                        change: [this.onChangeFile, this]
+                     new Button(ID + "Run", {
+                        text: "Run",
+                        tooltip: "Run Current Macro",
+                        icon: "sap-icon://play",
+                        type: "Transparent",
+                        enabled: false,
+                        press: [this.onRunMacro, this]
+                     }),
+                     new ToolbarSpacer({
+                        layoutData: new OverflowToolbarLayoutData({
+                           priority:"NeverOverflow",
+                           minWidth: "16px"
+                        })
                      }),
                      new Button(ID + "SaveAs", {
                         text: "Save as...",
                         tooltip: "Save current file as...",
+                        type: "Transparent",
                         press: [this.onSaveAs, this]
                      }),
                      new Button(ID + "Save", {
                         text: "Save",
                         tooltip: "Save current file",
+                        type: "Transparent",
                         press: [this.onSaveFile, this]
-                     }),
-                     new Button(ID + "Run", {
-                        text: "Run",
-                        tooltip: "Run Current Macro",
-                        icon: "sap-icon://play",
-                        enabled: false,
-                        press: [this.onRunMacro, this]
-                     }),
-                  ],
-                  layoutData: new SplitterLayoutData({
-                     size: "35px",
-                     resizable: false
-                  })
+                     })
+                  ]
                }),
                new CodeEditor(ID + "Editor", {
-                  height: "100%",
+                  // height: 'auto',
                   colorTheme: "default",
                   type: "c_cpp",
                   value: "{/code}",
+                  height: "calc(100% - 40px)",
                   change: function () {
                      this.getModel().setProperty("/modified", true);
                   }
@@ -250,8 +287,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
                   fullpath: "",
                   modified: false
                }))
-            ]
-         });
+            ];
       },
 
       /** @brief Invoke dialog with server side code */
@@ -263,12 +299,13 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             websocket: this.websocket,
             filename: oEditor.getModel().getProperty("/fullpath"),
             title: "Select file name to save",
+            filter: "Any files",
+            filters: ["Text files (*.txt)", "C++ files (*.cxx *.cpp *.c)", "Any files (*)"],
             onOk: function(fname) {
                this.setFileNameType(oEditor, fname);
                const sText = oEditor.getModel().getProperty("/code");
                oEditor.getModel().setProperty("/modified", false);
                this.websocket.Send("SAVEFILE:" + JSON.stringify([fname, sText]));
-
             }.bind(this),
             onCancel: function() { },
             onFailure: function() { }
@@ -337,7 +374,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
        * @desc Used to set the editor's model properties and display the file name on the tab element  */
       setFileNameType: function (oEditor, fullname) {
          let oModel = oEditor.getModel();
-         let oTabElement = oEditor.getParent().getParent();
+         let oTabElement = oEditor.getParent();
          let ext = "txt";
          let runButton = this.getElementFromCurrentTab("Run");
          runButton.setEnabled(false);
@@ -396,9 +433,6 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             case "sh":
                oEditor.setType('sh');
                break;
-            case "md":
-               oEditor.setType('markdown');
-               break;
             case "xml":
                oEditor.setType('xml');
                break;
@@ -444,17 +478,16 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /* ============================================ */
 
       newImageViewerFragment: function (ID) {
-         return new HBox({
-            alignContent: "Center",
-            alignItems: "Center",
-            justifyContent: "Center",
-            height: "100%",
-            width: "100%",
-            items: new Image(ID + "Image", {
+         return new sap.m.Page({
+            showNavButton: false,
+            showFooter: false,
+            showSubHeader: false,
+            showHeader: false,
+            content: new Image(ID + "Image", {
                src: "",
                densityAware: false
             })
-         })
+         });
       },
 
       newImageViewer: async function () {
@@ -472,6 +505,8 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
          oTabContainer.addItem(tabContainerItem);
          oTabContainer.setSelectedItem(tabContainerItem);
+
+         sap.ui.getCore().byId(ID + 'Image').addStyleClass("imageViewer");
       },
 
       getSelectedImageViewer: function (no_warning) {
@@ -587,6 +622,10 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
          this.drawingOptions[graphType] = oEvent.getSource().mProperties.value;
       },
 
+      settingsDBLCLKRun: function(oEvent) {
+         this.DBLCLKRun = oEvent.getSource().getSelected();
+      },
+
       /* ============================================= */
       /* =============== Settings menu =============== */
       /* ============================================= */
@@ -598,7 +637,6 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /** @brief Add Tab event handler */
       addNewButtonPressHandler: async function (oEvent) {
          //TODO: Change to some UI5 function (unknown for now)
-
          let oButton = oEvent.getSource().mAggregations._tabStrip.mAggregations.addButton;
 
          // create action sheet only once
@@ -734,8 +772,6 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
 
       onTerminalSubmit: function(oEvent) {
          let command = oEvent.getSource().getValue();
-         let url = '/ProcessLine/cmd.json?arg1="' + command + '"';
-         console.log(command);
          this.websocket.Send("CMD:" + command);
          oEvent.getSource().setValue("");
          this.requestRootHist();
@@ -771,6 +807,45 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       /* =============== Terminal =============== */
       /* ======================================== */
 
+      /* ========================================== */
+      /* =============== ToolHeader =============== */
+      /* ========================================== */
+
+      onFullScreenPressLandscape: function () {
+         let splitApp = this.getView().byId("SplitAppBrowser");
+         let mode = splitApp.getMode();
+         if(mode === "ShowHideMode") {
+            splitApp.setMode("HideMode");
+         } else {
+            splitApp.setMode("ShowHideMode");
+         }
+      },
+
+      onFullScreenPressPortrait: function () {
+         let splitApp = this.getView().byId("SplitAppBrowser");
+         if(splitApp.isMasterShown()) {
+            splitApp.hideMaster();
+         } else {
+            splitApp.showMaster();
+         }
+      },
+
+      onExpandMaster: function () {
+         this.getView().byId('expandMaster').setVisible(false);
+         this.getView().byId('shrinkMaster').setVisible(true);
+         this.getView().byId('masterPage').getParent().addStyleClass('masterExpanded');
+      },
+
+      onShrinkMaster: function () {
+         this.getView().byId('expandMaster').setVisible(true);
+         this.getView().byId('shrinkMaster').setVisible(false);
+         this.getView().byId('masterPage').getParent().removeStyleClass('masterExpanded');
+      },
+
+      /* ========================================== */
+      /* =============== ToolHeader =============== */
+      /* ========================================== */
+
       /** @brief Assign the "double click" event handler to each row */
       assignRowHandlers: function () {
          var rows = this.byId("treeTable").getRows();
@@ -780,6 +855,12 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
       },
 
       sendDblClick: function (fullpath, opt) {
+         if(this.DBLCLKRun) {
+            if(opt !== '$$$editor$$$') {
+               opt = '$$$execute$$$';
+               console.log(fullpath);
+            }
+         }
          this.websocket.Send('DBLCLK: ["' + fullpath + '","' + (opt || "") + '"]');
       },
 
@@ -1086,6 +1167,7 @@ sap.ui.define(['sap/ui/core/mvc/Controller',
             // JSROOT.CallBack(call_back, true);
          });
       },
+
    });
 
 });

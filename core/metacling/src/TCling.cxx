@@ -761,14 +761,14 @@ int TCling_GenerateDictionary(const std::vector<std::string> &classes,
       for (it = unknown.begin(); it != unknown.end(); ++it) {
          TClass* cl = TClass::GetClass(it->c_str());
          if (cl && cl->GetDeclFileName()) {
-            TString header(gSystem->BaseName(cl->GetDeclFileName()));
-            TString dir(gSystem->DirName(cl->GetDeclFileName()));
+            TString header = gSystem->BaseName(cl->GetDeclFileName());
+            TString dir = gSystem->GetDirName(cl->GetDeclFileName());
             TString dirbase(gSystem->BaseName(dir));
             while (dirbase.Length() && dirbase != "."
                    && dirbase != "include" && dirbase != "inc"
                    && dirbase != "prec_stl") {
                gSystem->PrependPathName(dirbase, header);
-               dir = gSystem->DirName(dir);
+               dir = gSystem->GetDirName(dir);
             }
             fileContent += TString("#include \"") + header + "\"\n";
          }
@@ -983,14 +983,14 @@ bool TClingLookupHelper__ExistingTypeCheck(const std::string &tname,
       // Check if the scope is in the list of classes
       if (auto scope = static_cast<TClass *>(gROOT->GetListOfClasses()->FindObject(scopeName))) {
          auto enumTable = dynamic_cast<const THashList *>(scope->GetListOfEnums(false));
-         if (enumTable && enumTable->THashList::FindObject(enName)) return true;
+         if (enumTable && enumTable->THashList::FindObject(enName)) { delete [] scopeName; return true; }
       }
       // It may still be in one of the loaded protoclasses
       else if (auto scope = static_cast<TProtoClass *>(gClassTable->GetProtoNorm(scopeName))) {
          auto listOfEnums = scope->GetListOfEnums();
          if (listOfEnums) { // it could be null: no enumerators in the protoclass
             auto enumTable = dynamic_cast<const THashList *>(listOfEnums);
-            if (enumTable && enumTable->THashList::FindObject(enName)) return true;
+            if (enumTable && enumTable->THashList::FindObject(enName)) { delete [] scopeName; return true; }
          }
       }
       delete [] scopeName;
@@ -1154,6 +1154,10 @@ static void RegisterCxxModules(cling::Interpreter &clingInterp)
    // core modules have defined it:
    // https://www.gnu.org/software/libc/manual/html_node/Complex-Numbers.html
    clingInterp.declare("#ifdef I\n #undef I\n #endif\n");
+
+   // libc++ complex.h has #define complex _Complex. Give preference to the one
+   // in std.
+   clingInterp.declare("#ifdef complex\n #undef complex\n #endif\n");
 
    // These macros are from loading R related modules, which conflict with
    // user's code.
@@ -1435,9 +1439,6 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
       // e.g. because of an RPATH build.
       fInterpreter->getDynamicLibraryManager()->addSearchPath(TROOT::GetLibDir().Data());
    }
-
-   // We are set up. EnableAutoLoading() is checking for fromRootCling.
-   EnableAutoLoading();
 }
 
 
@@ -1465,6 +1466,20 @@ TCling::~TCling()
 void TCling::Initialize()
 {
    fClingCallbacks->Initialize();
+
+   // We are set up. Enable ROOT's AutoLoading.
+   if (IsFromRootCling())
+      return;
+
+   // Read the rules before enabling the auto loading to not inadvertently
+   // load the libraries for the classes concerned even-though the user is
+   // *not* using them.
+   // Note this call must happen before the first call to LoadLibraryMap.
+   assert(GetRootMapFiles() == 0 && "Must be called before LoadLibraryMap!");
+   TClass::ReadRules(); // Read the default customization rules ...
+
+   LoadLibraryMap();
+   SetClassAutoloading(true);
 }
 
 void TCling::ShutDown()
@@ -2921,11 +2936,11 @@ bool TCling::Declare(const char* code)
 
 void TCling::EnableAutoLoading()
 {
-   if (IsFromRootCling())
-      return;
-
-   LoadLibraryMap();
-   SetClassAutoloading(true);
+#if ROOT_VERSION_CODE < ROOT_VERSION(6,21,00)
+   Warning("EnableAutoLoading()", "Call to deprecated interface does nothing. Please remove the call.");
+#else
+# error "Remove this deprecated code"
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -6338,8 +6353,7 @@ static std::string ResolveSymbol(const std::string& mangled_name,
       // not strictly require symbols from those sections. Enable after checking
       // performance!
       if (FindSymbol(LibName, mangled_name, /*ignore*/
-                     llvm::object::SymbolRef::SF_Undefined |
-                     llvm::object::SymbolRef::SF_Weak)) {
+                     llvm::object::SymbolRef::SF_Undefined)) {
          sQueriedLibraries.push_back(P);
          return LibName;
       }
