@@ -645,7 +645,8 @@ public:
                 << RDFInternal::PrettyPrintAddr(&upcastInterface) << ")->Cache<";
 
       const auto &customCols = fCustomColumns.GetNames();
-      for (auto &c : columnList) {
+      const auto validColumnNames = GetValidatedColumnNames(columnList.size(), columnList);
+      for (auto &c : validColumnNames) {
          const auto isCustom = std::find(customCols.begin(), customCols.end(), c) != customCols.end();
          const auto customColID = isCustom ? fCustomColumns.GetColumns().at(c)->GetID() : 0;
          cacheCall << RDFInternal::ColumnName2ColumnTypeName(c, nsID, tree, fDataSource, isCustom,
@@ -1988,6 +1989,22 @@ public:
    /// std::cout << df.GetNSlots() << std::endl; // prints "6"
    /// ~~~
    unsigned int GetNSlots() const { return fLoopManager->GetNSlots(); }
+
+   /// \brief Gets the number of event loops run
+   /// \return The number of event loops run by this RDataFrame instance
+   ///
+   /// This method returns the number of events loops run so far by this RDataFrame instance.
+   ///
+   /// Example usage:
+   /// ~~~{.cpp}
+   /// ROOT::RDataFrame df(1);
+   /// std::cout << df.GetNRuns() << std::endl; // prints "0"
+   /// df.Sum("rdfentry_").GetValue(); // trigger the event loop
+   /// std::cout << df.GetNRuns() << std::endl; // prints "1"
+   /// df.Sum("rdfentry_").GetValue(); // trigger another event loop
+   /// std::cout << df.GetNRuns() << std::endl; // prints "2"
+   /// ~~~
+   unsigned int GetNRuns() const { return fLoopManager->GetNRuns(); }
 
    // clang-format off
    ////////////////////////////////////////////////////////////////////////////

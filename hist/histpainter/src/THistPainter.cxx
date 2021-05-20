@@ -653,8 +653,8 @@ Example:
 
 print fit probability, parameter names/values and errors.
 
-1. When `v" = 1` is specified, only the non-fixed parameters are shown.
-2. When `v" = 2` all parameters are shown.
+1. When `v = 1` is specified, only the non-fixed parameters are shown.
+2. When `v = 2` all parameters are shown.
 
 Note: `gStyle->SetOptFit(1)` means "default value", so it is equivalent
 to `gStyle->SetOptFit(111)`
@@ -2892,7 +2892,7 @@ The supported option is:
 
 | Option   | Description                                                       |
 |----------|-------------------------------------------------------------------|
-| "GLTF3"  | Draw a TF3.|
+| "GL"     | Draw a TF3.|
 
 
 
@@ -3143,6 +3143,7 @@ THistPainter::THistPainter()
    }
    fXHighlightBin = -1;
    fYHighlightBin = -1;
+   fCurrentF3 = nullptr;
 
    gStringEntries          = gEnv->GetValue("Hist.Stats.Entries",          "Entries");
    gStringMean             = gEnv->GetValue("Hist.Stats.Mean",             "Mean");
@@ -3172,6 +3173,7 @@ THistPainter::THistPainter()
 
 THistPainter::~THistPainter()
 {
+   if (fPie) delete fPie;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4117,12 +4119,14 @@ Int_t THistPainter::MakeChopt(Option_t *choptin)
 
    l = strstr(chopt,"TF3");
    if (l) {
+      memcpy(l,"    ",3);
       l = strstr(chopt,"FB");   if (l) { Hoption.FrontBox = 0; memcpy(l,"  ",2); }
       l = strstr(chopt,"BB");   if (l) { Hoption.BackBox = 0;  memcpy(l,"  ",2); }
    }
 
    l = strstr(chopt,"ISO");
    if (l) {
+      memcpy(l,"    ",3);
       l = strstr(chopt,"FB");   if (l) { Hoption.FrontBox = 0; memcpy(l,"  ",2); }
       l = strstr(chopt,"BB");   if (l) { Hoption.BackBox = 0;  memcpy(l,"  ",2); }
    }
@@ -6344,6 +6348,10 @@ void THistPainter::PaintErrors(Option_t *)
       // apply offset on errors for bar histograms
       Double_t xminTmp = gPad->XtoPad(fXaxis->GetBinLowEdge(k));
       Double_t xmaxTmp = gPad->XtoPad(fXaxis->GetBinUpEdge(k));
+      if (Hoption.Logx) {
+        xminTmp = TMath::Power(10, xminTmp);
+        xmaxTmp = TMath::Power(10, xmaxTmp);
+      }
       Double_t w    = (xmaxTmp-xminTmp)*width;
       xminTmp += offset*(xmaxTmp-xminTmp);
       xmaxTmp = xminTmp + w;
@@ -6888,7 +6896,10 @@ void THistPainter::PaintH3(Option_t *option)
    opt.ToLower();
    Int_t irep;
 
-   if (Hoption.Box || Hoption.Lego) {
+   if (fCurrentF3) {
+      PaintTF3();
+      return;
+   } else if (Hoption.Box || Hoption.Lego) {
       if (Hoption.Box == 11 || Hoption.Lego == 11) {
          PaintH3Box(1);
       } else if (Hoption.Box == 12 || Hoption.Lego == 12) {
@@ -10034,9 +10045,9 @@ void THistPainter::PaintTF3()
 
    fLego->SetDrawFace(&TPainter3dAlgorithms::DrawFaceMode1);
 
-   fLego->ImplicitFunction(fXbuf, fYbuf, fH->GetNbinsX(),
-                                         fH->GetNbinsY(),
-                                         fH->GetNbinsZ(), "BF");
+   fLego->ImplicitFunction(fCurrentF3, fXbuf, fYbuf, fH->GetNbinsX(),
+                                       fH->GetNbinsY(),
+                                       fH->GetNbinsZ(), "BF");
 
    if (Hoption.FrontBox) {
       fLego->InitMoveScreen(-1.1,1.1);
@@ -10155,17 +10166,8 @@ void THistPainter::PaintTitle()
 
 void THistPainter::ProcessMessage(const char *mess, const TObject *obj)
 {
-
    if (!strcmp(mess,"SetF3")) {
-      TPainter3dAlgorithms::SetF3((TF3*)obj);
-   } else if (!strcmp(mess,"SetF3ClippingBoxOff")) {
-      TPainter3dAlgorithms::SetF3ClippingBoxOff();
-   } else if (!strcmp(mess,"SetF3ClippingBoxOn")) {
-      TVectorD &v =  (TVectorD&)(*obj);
-      Double_t xclip = v(0);
-      Double_t yclip = v(1);
-      Double_t zclip = v(2);
-      TPainter3dAlgorithms::SetF3ClippingBoxOn(xclip,yclip,zclip);
+      fCurrentF3 = (TF3 *)obj;
    }
 }
 
