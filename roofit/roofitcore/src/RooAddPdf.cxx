@@ -63,33 +63,24 @@ An (enforced) condition for this assumption is that each \f$ \mathrm{PDF}_i \f$ 
 
 */
 
-
-#include "RooFit.h"
-#include "RooMsgService.h"
-
-#include "TIterator.h"
-#include "TList.h"
 #include "RooAddPdf.h"
+
 #include "RooDataSet.h"
 #include "RooRealProxy.h"
-#include "RooPlot.h"
 #include "RooRealVar.h"
 #include "RooAddGenContext.h"
 #include "RooRealConstant.h"
-#include "RooNameReg.h"
 #include "RooRecursiveFraction.h"
 #include "RooGlobalFunc.h"
 #include "RooRealIntegral.h"
-#include "RooTrace.h"
+#include "RooNaNPacker.h"
 
-#include "Riostream.h"
 #include <algorithm>
-
+#include <sstream>
 
 using namespace std;
 
 ClassImp(RooAddPdf);
-;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -702,9 +693,10 @@ void RooAddPdf::updateCoefficients(CacheElem& cache, const RooArgSet* nset) cons
       }		
       if (coefSum==0.) {
         coutW(Eval) << "RooAddPdf::updateCoefCache(" << GetName() << ") WARNING: sum of coefficients is zero 0" << endl ;
-      } else {	
+      } else {
+        const double invCoefSum = 1./coefSum;
         for (int j=0; j < _coefList.getSize(); j++) {
-          myCoefCache[j] /= coefSum;
+          myCoefCache[j] *= invCoefSum;
         }
       }
     } else {
@@ -715,41 +707,34 @@ void RooAddPdf::updateCoefficients(CacheElem& cache, const RooArgSet* nset) cons
       for (auto coefArg : _coefList) {
         auto coef = static_cast<RooAbsReal*>(coefArg);
         myCoefCache[i] = coef->getVal(nset) ;
-        //cxcoutD(Caching) << "SYNC: orig coef[" << i << "] = " << myCoefCache[i] << endl ;
         lastCoef -= myCoefCache[i++];
       }			
       myCoefCache[_coefList.getSize()] = lastCoef ;
-      //cxcoutD(Caching) << "SYNC: orig coef[" << _coefList.getSize() << "] = " << myCoefCache[_coefList.getSize()] << endl ;
 
+      // Treat coefficient degeneration
+      const float coefDegen = lastCoef < 0. ? -lastCoef : (lastCoef > 1. ? lastCoef - 1. : 0.);
+      if (coefDegen > 1.E-5) {
+        myCoefCache[_coefList.getSize()] = RooNaNPacker::packFloatIntoNaN(100.f*coefDegen);
 
-      // Warn about coefficient degeneration
-      if ((lastCoef<-1e-05 || (lastCoef-1)>1e-5) && _coefErrCount-->0) {
-        coutW(Eval) << "RooAddPdf::updateCoefCache(" << GetName()
-		        << " WARNING: sum of PDF coefficients not in range [0-1], value="
-		        << 1-lastCoef ;
-        if (_coefErrCount==0) {
-          coutW(Eval) << " (no more will be printed)"  ;
+        std::stringstream msg;
+        if (_coefErrCount-->0) {
+          msg << "RooAddPdf::updateCoefCache(" << GetName()
+              << " WARNING: sum of PDF coefficients not in range [0-1], value="
+		      << 1-lastCoef ;
+          if (_coefErrCount==0) {
+            msg << " (no more will be printed)"  ;
+          }
+          coutW(Eval) << msg.str() << std::endl;
         }
-        coutW(Eval) << endl ;
       } 
     }
   }
 
-  
-
-//    cout << "XXXX" << GetName() << "updateCoefs _projectCoefs = " << (_projectCoefs?"T":"F") << " cache._projList.getSize()= " << cache._projList.getSize() << endl ;
 
   // Stop here if not projection is required or needed
   if ((!_projectCoefs && _normRange.Length()==0) || cache._projList.getSize()==0) {
-    //if (cache._projList.getSize()==0) {
-//     cout << GetName() << " SYNC no projection required rangeName = " << (_normRange.Length()>0?_normRange.Data():"<none>") << endl ;
     return ;
   }
-
-//    cout << "XXXX" << GetName() << " updateCoefs, applying correction" << endl ;
-//    cout << "PROJLIST = " << endl ;
-//    cache._projList.Print("v") ;
-   
    
   // Adjust coefficients for given projection
   Double_t coefSum(0) ;
@@ -764,13 +749,6 @@ void RooAddPdf::updateCoefficients(CacheElem& cache, const RooArgSet* nset) cons
       RooAbsReal* r2 = ((RooAbsReal*)cache._rangeProjList.at(i)) ;
 
       Double_t proj = pp->getVal()/sn->getVal()*(r2->getVal()/r1->getVal()) ;
-
-      //     cxcoutD(Caching) << "ALEX:    RooAddPdf::updateCoef(" << GetName() << ") with nset = " << (nset?*nset:RooArgSet()) << "for pdf component #" << i << " = " << _pdfList.at(i)->GetName() << endl
-      // 	 << "ALEX:   pp = " << pp->GetName() << " = " << pp->getVal() << endl
-      // 	 << "ALEX:   sn = " << sn->GetName() << " = " << sn->getVal() <<  endl
-      // 	 << "ALEX:   r1 = " << r1->GetName() << " = " << r1->getVal() <<  endl
-      // 	 << "ALEX:   r2 = " << r2->GetName() << " = " << r2->getVal() <<  endl
-      // 	 << "ALEX: proj = (" << pp->getVal() << "/" << sn->getVal() << ")*(" << r2->getVal() << "/" << r1->getVal() << ") = " << proj << endl ;
 
       myCoefCache[i] *= proj ;
       coefSum += myCoefCache[i] ;
@@ -792,14 +770,15 @@ void RooAddPdf::updateCoefficients(CacheElem& cache, const RooArgSet* nset) cons
   for (int i=0; i < _pdfList.getSize(); i++) {
     myCoefCache[i] /= coefSum ;
   }
-
-
   
 }
 
-std::pair<const RooArgSet*, RooAddPdf::CacheElem*> RooAddPdf::getNormAndCache() const {
-  const RooArgSet* nset = _normSet ; 
-  //cxcoutD(Caching) << "RooAddPdf::evaluate(" << GetName() << ") calling getProjCache with nset = " << nset << " = " << (nset?*nset:RooArgSet()) << endl ;
+////////////////////////////////////////////////////////////////////////////////
+/// Look up projection cache and per-PDF norm sets. If a PDF doesn't have a special
+/// norm set, use the `defaultNorm`. If `defaultNorm == nullptr`, use the member
+/// _normSet.
+std::pair<const RooArgSet*, RooAddPdf::CacheElem*> RooAddPdf::getNormAndCache(const RooArgSet* defaultNorm) const {
+  const RooArgSet* nset = defaultNorm ? defaultNorm : _normSet;
 
   if (nset==0 || nset->getSize()==0) {
     if (_refCoefNorm.getSize()!=0) {
@@ -870,6 +849,42 @@ RooSpan<double> RooAddPdf::evaluateBatch(std::size_t begin, std::size_t batchSiz
 
     if (pdf.isSelectedComp()) {
       for (std::size_t i = 0; i < n; ++i) { //CHECK_VECTORISE
+        output[i] += pdfOutputs[i] * coef;
+      }
+    }
+  }
+
+  return output;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Compute addition of PDFs in batches.
+RooSpan<double> RooAddPdf::evaluateSpan(BatchHelpers::RunContext& evalData, const RooArgSet* normSet) const {
+  auto normAndCache = getNormAndCache(normSet);
+  const RooArgSet* nset = normAndCache.first;
+  CacheElem* cache = normAndCache.second;
+
+
+  RooSpan<double> output;
+
+  for (unsigned int pdfNo = 0; pdfNo < _pdfList.size(); ++pdfNo) {
+    const auto& pdf = static_cast<RooAbsPdf&>(_pdfList[pdfNo]);
+    auto pdfOutputs = pdf.getValues(evalData, nset);
+    if (output.empty()) {
+      output = evalData.makeBatch(this, pdfOutputs.size());
+      for (double& val : output) { //CHECK_VECTORISE
+        val = 0.;
+      }
+    }
+    assert(output.size() == pdfOutputs.size());
+
+    const double coef = _coefCache[pdfNo] / (cache->_needSupNorm ?
+        static_cast<RooAbsReal*>(cache->_suppNormList.at(pdfNo))->getVal() :
+        1.);
+
+    if (pdf.isSelectedComp()) {
+      for (std::size_t i = 0; i < output.size(); ++i) { //CHECK_VECTORISE
         output[i] += pdfOutputs[i] * coef;
       }
     }

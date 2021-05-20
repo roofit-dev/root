@@ -16,9 +16,10 @@ if(MSVC AND MSVC_VERSION GREATER_EQUAL 1925)
 endif()
 
 set(BASE_HEADERS
-  ROOT/StringConv.hxx
+  ROOT/TErrorDefaultHandler.hxx
   ROOT/TExecutor.hxx
   ROOT/TSequentialExecutor.hxx
+  ROOT/StringConv.hxx
   Buttons.h
   Bytes.h
   Byteswap.h
@@ -46,7 +47,6 @@ set(BASE_HEADERS
   TDatime.h
   TDirectory.h
   TEnv.h
-  TError.h
   TException.h
   TExec.h
   TFileCollection.h
@@ -137,7 +137,7 @@ set(BASE_SOURCES
   src/TDatime.cxx
   src/TDirectory.cxx
   src/TEnv.cxx
-  src/TError.cxx
+  src/TErrorDefaultHandler.cxx
   src/TException.cxx
   src/TExec.cxx
   src/TFileCollection.cxx
@@ -195,22 +195,14 @@ set(BASE_SOURCES
   src/TVirtualX.cxx
 )
 
-if(CMAKE_CXX_STANDARD GREATER 11)
-  list(APPEND BASE_HEADERS ROOT/RLogger.hxx)
-  list(APPEND BASE_SOURCES v7/src/RLogger.cxx)
-  # TLogger.hxx may be used without root7 flag, but is placed in v7/inc/,
-  # so we need to tell ROOT_INSTALL_HEADERS() where to find it
-  set(BASE_HEADER_DIRS inc/ v7/inc/)
-endif()
-
 if(root7)
+  set(BASE_V7_INC ${CMAKE_SOURCE_DIR}/core/base/v7/inc)
+  set(BASE_HEADER_DIRS inc/ v7/inc/)
   list(APPEND BASE_HEADERS
       ROOT/RDirectoryEntry.hxx
-      ROOT/RError.hxx
       ROOT/RIndexIter.hxx)
-  list(APPEND BASE_SOURCES
-       v7/src/RError.cxx)
-  ROOT_ADD_TEST_SUBDIRECTORY(v7/test)
+  set(BASE_V7_INC ${CMAKE_SOURCE_DIR}/core/base/v7/inc)
+  set(BASE_HEADER_DIRS inc/ v7/inc/)
 endif()
 
 
@@ -220,6 +212,7 @@ set(Core_dict_headers ${BASE_HEADERS} PARENT_SCOPE)
 ROOT_OBJECT_LIBRARY(Base ${BASE_SOURCES})
 
 target_include_directories(Base PRIVATE
+   ${BASE_V7_INC}
    ${PCRE_INCLUDE_DIR}
    res
    ${CMAKE_SOURCE_DIR}/core/foundation/res

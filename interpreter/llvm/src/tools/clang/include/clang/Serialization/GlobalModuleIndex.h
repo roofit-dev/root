@@ -17,6 +17,7 @@
 #define LLVM_CLANG_SERIALIZATION_GLOBALMODULEINDEX_H
 
 #include "llvm/ADT/DenseMap.h"
+#include <llvm/ADT/DenseSet.h>
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -141,6 +142,9 @@ public:
     EC_IOError
   };
 
+  using UserDefinedInterestingIDs =
+    llvm::StringMap<llvm::SmallVector<const FileEntry*, 2>>;
+
   /// \brief Read a global index file for the given directory.
   ///
   /// \param Path The path to the specific module cache where the module files
@@ -183,7 +187,7 @@ public:
   /// \returns true if the identifier is known to the index, false otherwise.
   bool lookupIdentifier(StringRef Name, HitSet &Hits);
 
-  typedef llvm::SmallPtrSet<std::string *, 4> FileNameHitSet;
+  typedef llvm::SmallDenseSet<llvm::StringRef, 4> FileNameHitSet;
   bool lookupIdentifier(StringRef Name, FileNameHitSet &Hits);
 
   /// \brief Note that the given module file has been loaded.
@@ -205,9 +209,11 @@ public:
   /// creating modules.
   /// \param Path The path to the directory containing module files, into
   /// which the global index will be written.
+  /// \param Optionally pass already precomputed interesting identifiers.
   static ErrorCode writeIndex(FileManager &FileMgr,
                               const PCHContainerReader &PCHContainerRdr,
-                              StringRef Path);
+                              StringRef Path,
+                              UserDefinedInterestingIDs *ExternalIDs = nullptr);
 };
 }
 

@@ -15,7 +15,6 @@
  *****************************************************************************/
 
 /**
-\file RooCategory.cxx
 \class RooCategory
 \ingroup Roofitcore
 
@@ -29,7 +28,7 @@ A category object can be used to *e.g.* conduct a simultaneous fit of
 the same observable in multiple categories.
 
 ### Setting up a category
-A category can be set up like this:
+1. A category can be set up like this:
 ~~~{.cpp}
 RooCategory myCat("myCat", "Lepton multiplicity category", {
                   {"0Lep", 0},
@@ -37,14 +36,14 @@ RooCategory myCat("myCat", "Lepton multiplicity category", {
                   {"2Lep", 2},
                   {"3Lep", 3}
 });
-~~~{.cpp}
-Like this:
 ~~~
+2. Like this:
+~~~{.cpp}
 RooCategory myCat("myCat", "Asymmetry");
 myCat["left"]  = -1;
 myCat["right"] =  1;
 ~~~
-Or like this:
+3. Or like this:
 ~~~{.cpp}
 RooCategory myCat("myCat", "Asymmetry");
 myCat.defineType("left", -1);
@@ -68,7 +67,7 @@ for (const auto& otherNameIdx : otherCat) {
 }
 ~~~
 
-Also refer to the RooFit tutorials rf404_categories.C for an introduction, and to rf405_realtocatfuncs.C and rf406_cattocatfuncs.C
+Also refer to \ref tutorial_roofit, especially rf404_categories.C for an introduction, and to rf405_realtocatfuncs.C and rf406_cattocatfuncs.C
 for advanced uses of categories.
 **/
 
@@ -86,10 +85,14 @@ for advanced uses of categories.
 #include "TBuffer.h"
 #include "TString.h"
 #include "ROOT/RMakeUnique.hxx"
+#include "TList.h"
+
+#include <iostream>
+#include <cstdlib>
 
 using namespace std;
 
-ClassImp(RooCategory); 
+ClassImp(RooCategory);
 
 std::map<std::string, std::weak_ptr<RooCategory::RangeMap_t>> RooCategory::_uuidToSharedRangeIOHelper; // Helper for restoring shared properties
 std::map<std::string, std::weak_ptr<RooCategory::RangeMap_t>> RooCategory::_sharedRangeIOHelper;
@@ -210,7 +213,7 @@ bool RooCategory::defineType(const std::string& label)
     return true;
   }
 
-  return RooAbsCategory::defineState(label) == RooAbsCategory::_invalidCategory;
+  return RooAbsCategory::defineState(label) == invalidCategory();
 }
 
 
@@ -226,7 +229,7 @@ bool RooCategory::defineType(const std::string& label, Int_t index)
     return true;
   }
 
-  return RooAbsCategory::defineState(label, index) == RooAbsCategory::_invalidCategory;
+  return RooAbsCategory::defineState(label, index) == invalidCategory();
 }
 
 
@@ -278,15 +281,20 @@ std::map<std::string, RooAbsCategory::value_type>& RooCategory::states() {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Read object contents from given stream
-
+/// Read object contents from given stream. If token is a decimal digit, try to
+/// find a corresponding state for it. If that succeeds, the state denoted by this
+/// index is used. Otherwise, interpret it as a label.
 Bool_t RooCategory::readFromStream(istream& is, Bool_t /*compact*/, Bool_t verbose) 
 {
   // Read single token
   RooStreamParser parser(is) ;
   TString token = parser.readToken() ;
 
-  return setLabel(token,verbose) ;
+  if (token.IsDec() && hasIndex(std::stoi(token.Data()))) {
+    return setIndex(std::stoi(token.Data()), verbose);
+  } else {
+    return setLabel(token,verbose) ;
+  }
 }
 
 
@@ -370,7 +378,7 @@ void RooCategory::addToRange(const char* name, const char* stateNameList)
   // Parse list of state names, verify that each is valid and add them to the list
   for (const auto& token : RooHelpers::tokenise(stateNameList, ",")) {
     const value_type idx = lookupIndex(token);
-    if (idx != _invalidCategory.second) {
+    if (idx != invalidCategory().second) {
       addToRange(name, idx);
     } else {
       coutW(InputArguments) << "RooCategory::setRange(" << GetName() << ") WARNING: Ignoring invalid state name '" 

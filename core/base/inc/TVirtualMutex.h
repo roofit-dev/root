@@ -22,9 +22,7 @@
 //                                                                      //
 //////////////////////////////////////////////////////////////////////////
 
-#include "TObject.h"
-
-#include <memory>
+#include "Rtypes.h"
 
 class TVirtualMutex;
 

@@ -16,8 +16,12 @@
 
 #include "BatchData.h"
 
+#include "RooArgProxy.h"
+#include "RooAbsReal.h"
+
 #include <ostream>
 #include <iomanip>
+#include <vector>
 
 namespace BatchHelpers {
 
@@ -73,7 +77,7 @@ bool BatchData::setStatus(std::size_t begin, std::size_t size, Status_t stat,
 /// Retrieve an existing batch.
 ///
 /// \param[in] begin Begin index of the batch.
-/// \param[in] size  Requested size. Batch may come out smaller than this.
+/// \param[in] maxSize  Requested size. Batch may come out smaller than this.
 /// \param[in] normSet Optional normSet pointer to distinguish differently normalised computations.
 /// \param[in] ownerTag Optional owner tag. This avoids reusing batch memory for e.g. getVal() and getLogVal().
 /// \return Non-mutable contiguous batch data.
@@ -161,7 +165,6 @@ void BatchData::attachForeignStorage(const std::vector<double>& vec) {
   clear();
 
   _foreignData = &vec;
-  _ownedBatches.clear();
 }
 
 

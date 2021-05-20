@@ -102,12 +102,13 @@
 
 #include "RooFit.h"
 #include "RooSimWSTool.h"
+
+#include "RooFitLegacy/RooCatTypeLegacy.h"
 #include "RooMsgService.h"
 #include "RooCategory.h"
 #include "RooRealVar.h"
 #include "RooAbsPdf.h"
 #include "RooSuperCategory.h"
-#include "RooCatType.h"
 #include "RooCustomizer.h"
 #include "RooMultiCategory.h"
 #include "RooSimultaneous.h"
@@ -125,10 +126,11 @@ ClassImp(RooSimWSTool::ObjSplitRule);
 
 using namespace std ;
 
+namespace {
 
 static Int_t init();
 
-static Int_t dummy = init() ;
+Int_t dummy = init() ;
 
 static Int_t init()
 {
@@ -139,6 +141,7 @@ static Int_t init()
   return 0 ;
 }
 
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor of SimWSTool on given workspace. All input is taken from the workspace
@@ -478,7 +481,7 @@ RooSimultaneous* RooSimWSTool::executeBuild(const char* simPdfName, ObjBuildConf
       if(splitIter->second.second.size()>0) {
 	
 	// Check that specified split name is in fact valid
-	if (!splitCat->lookupType(splitIter->second.second.c_str())) {
+	if (!splitCat->hasLabel(splitIter->second.second)) {
 	  coutE(InputArguments) << "RooSimWSTool::executeBuild(" << GetName() << ") ERROR: name of remainder state for constrained split, '" 
 				<< splitIter->second.second << "' , does not match any state name of (composite) split category " << splitCat->GetName() << endl ;
 	  return 0 ;

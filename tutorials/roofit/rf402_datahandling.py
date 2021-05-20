@@ -1,7 +1,6 @@
 ## \file
 ## \ingroup tutorial_roofit
 ## \notebook
-##
 ## Data and categories: tools for manipulation of (un)binned datasets
 ##
 ## \macro_code

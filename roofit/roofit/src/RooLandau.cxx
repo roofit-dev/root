@@ -169,7 +169,7 @@ void compute(	size_t batchSize,
 /// and if found, the computation will be batched over their
 /// values. If batch data are not found for one of the proxies, the proxies value is assumed to
 /// be constant over the batch.
-/// \param[in] batchIndex Index of the batch to be computed.
+/// \param[in] begin Index of the batch to be computed.
 /// \param[in] batchSize Size of each batch. The last batch may be smaller.
 /// \return A span with the computed values.
 
@@ -185,7 +185,7 @@ RooSpan<double> RooLandau::evaluateBatch(std::size_t begin, std::size_t batchSiz
   if (!batchX && !batchMean && !batchSigma) {
     return {};
   }
-  batchSize = findSize({ xData, meanData, sigmaData });
+  batchSize = BatchHelpers::findSmallestBatch({ xData, meanData, sigmaData });
   auto output = _batchData.makeWritableBatchUnInit(begin, batchSize);
 
   if (batchX && !batchMean && !batchSigma ) {

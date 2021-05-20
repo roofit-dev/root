@@ -9,8 +9,6 @@
 #include "TLine.h"
 #include "TFile.h"
 #include "TClass.h"
-#include "TCanvas.h"
-#include "TH1.h"
 #include "TBenchmark.h"
 #include "RooGlobalFunc.h"
 #include "RooMsgService.h"
@@ -56,8 +54,7 @@ void StatusPrint(Int_t id,const TString &title,Int_t status)
 }
 
 
-//#include "stressRooFit_tests_direct.cxx"
-#include "stressRooFit_tests.cxx"
+#include "stressRooFit_tests.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 

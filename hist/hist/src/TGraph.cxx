@@ -9,9 +9,7 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <string.h>
 
-#include "Riostream.h"
 #include "TROOT.h"
 #include "TBuffer.h"
 #include "TEnv.h"
@@ -30,9 +28,14 @@
 #include "TBrowser.h"
 #include "TSystem.h"
 #include "TPluginManager.h"
-#include <stdlib.h>
+#include "strtok.h"
+
+#include <cstdlib>
 #include <string>
 #include <cassert>
+#include <iostream>
+#include <fstream>
+#include <cstring>
 
 #include "HFitInterface.h"
 #include "Fit/DataRange.h"
@@ -367,17 +370,22 @@ TGraph::TGraph(const TF1 *f, Option_t *option)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Graph constructor reading input from filename.
-/// filename is assumed to contain at least two columns of numbers.
-/// the string format is by default "%%lg %%lg".
-/// this is a standard c formatting for scanf. If columns of numbers should be
-/// skipped, a "%*lg" or "%*s" for each column can be added,
-/// e.g. "%%lg %%*lg %%lg" would read x-values from the first and y-values from
-/// the third column.
-/// For files separated by a specific delimiter different from ' ' and '\t' (e.g. ';' in csv files)
-/// you can avoid using %*s to bypass this delimiter by explicitly specify the "option" argument,
-/// e.g. option=" \t,;" for columns of figures separated by any of these characters (' ', '\t', ',', ';')
-/// used once (e.g. "1;1") or in a combined way (" 1;,;;  1").
-/// Note in that case, the instantiation is about 2 times slower.
+///
+/// `filename` is assumed to contain at least two columns of numbers.
+/// the string format is by default `"%lg %lg"`.
+/// This is a standard c formatting for `scanf()`.
+///
+/// If columns of numbers should be skipped, a `"%*lg"` or `"%*s"` for each column
+/// can be added,  e.g. `"%lg %*lg %lg"` would read x-values from the first and
+/// y-values from the third column.
+///
+/// For files separated by a specific delimiter different from ' ' and '\t' (e.g.
+/// ';' in csv files) you can avoid using `%*s` to bypass this delimiter by explicitly
+/// specify the `option` argument,
+/// e.g. option=`" \t,;"` for columns of figures separated by any of these characters
+/// (' ', '\t', ',', ';')
+/// used once (e.g. `"1;1"`) or in a combined way (`" 1;,;;  1"`).
+/// Note in that case, the instantiation is about two times slower.
 
 TGraph::TGraph(const char *filename, const char *format, Option_t *option)
    : TNamed("Graph", filename), TAttLine(), TAttFill(0, 1000), TAttMarker()
@@ -1537,13 +1545,18 @@ TH1F *TGraph::GetHistogram() const
    if (fNpoints > npt) npt = fNpoints;
    const char *gname = GetName();
    if (!gname[0]) gname = "Graph";
-   ((TGraph*)this)->fHistogram = new TH1F(gname, GetTitle(), npt, rwxmin, rwxmax);
+   // do not add the histogram to gDirectory
+   // use local TDirectory::TContect that will set temporarly gDirectory to a nullptr and
+   // will avoid that histogram is added in the global directory
+   {
+      TDirectory::TContext ctx(nullptr);
+      ((TGraph*)this)->fHistogram = new TH1F(gname, GetTitle(), npt, rwxmin, rwxmax);
+   }
    if (!fHistogram) return 0;
    fHistogram->SetMinimum(minimum);
    fHistogram->SetBit(TH1::kNoStats);
    fHistogram->SetMaximum(maximum);
    fHistogram->GetYaxis()->SetLimits(minimum, maximum);
-   fHistogram->SetDirectory(0);
    // Restore the axis attributes if needed
    if (historg) {
       fHistogram->GetXaxis()->SetTitle(historg->GetXaxis()->GetTitle());
@@ -1892,9 +1905,9 @@ Int_t TGraph::IsInside(Double_t x, Double_t y) const
 /// Least squares polynomial fitting without weights.
 ///
 /// \param [in] m     number of parameters
-/// \param [in] ma     array of parameters
-/// \param [in] mfirst 1st point number to fit (default =0)
-/// \param [in] mlast  last point number to fit (default=fNpoints-1)
+/// \param [in] a     array of parameters
+/// \param [in] xmin  1st point number to fit (default =0)
+/// \param [in] xmax  last point number to fit (default=fNpoints-1)
 ///
 /// based on CERNLIB routine LSQ: Translated to C++ by Rene Brun
 
