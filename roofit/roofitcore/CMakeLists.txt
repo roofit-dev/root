@@ -528,6 +528,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RIO
     MathCore
     Foam
+    Smatrix
         RooFitZMQ  # necessary for ppoll and zmqSvc that are necessary via MultiProcess includes
         RooFitMultiProcess
 #        ZeroMQ # as noted above, this doesn't work here, so we instead list it as a library below
