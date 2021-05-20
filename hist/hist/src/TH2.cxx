@@ -607,7 +607,7 @@ void TH2::FillRandom(const char *fname, Int_t ntimes)
 
    TAxis & xAxis = fXaxis;
    TAxis & yAxis = fYaxis;
-   
+
    // in case axes of histogram are not defined use the function axis
    if (fXaxis.GetXmax() <= fXaxis.GetXmin()  || fYaxis.GetXmax() <= fYaxis.GetXmin()) {
       Double_t xmin,xmax,ymin,ymax;
@@ -689,66 +689,6 @@ void TH2::FillRandom(TH1 *h, Int_t ntimes)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Find first bin with content > threshold for axis (1=x, 2=y, 3=z)
-/// if no bins with content > threshold is found the function returns -1.
-
-Int_t TH2::FindFirstBinAbove(Double_t threshold, Int_t axis) const
-{
-   if (axis < 1 || axis > 2) {
-      Warning("FindFirstBinAbove","Invalid axis number : %d, axis x assumed\n",axis);
-      axis = 1;
-   }
-   Int_t nbinsx = fXaxis.GetNbins();
-   Int_t nbinsy = fYaxis.GetNbins();
-   Int_t binx, biny;
-   if (axis == 1) {
-      for (binx=1;binx<=nbinsx;binx++) {
-         for (biny=1;biny<=nbinsy;biny++) {
-            if (GetBinContent(binx,biny) > threshold) return binx;
-         }
-      }
-   } else {
-      for (biny=1;biny<=nbinsy;biny++) {
-         for (binx=1;binx<=nbinsx;binx++) {
-            if (GetBinContent(binx,biny) > threshold) return biny;
-         }
-      }
-   }
-   return -1;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Find last bin with content > threshold for axis (1=x, 2=y, 3=z)
-/// if no bins with content > threshold is found the function returns -1.
-
-Int_t TH2::FindLastBinAbove(Double_t threshold, Int_t axis) const
-{
-   if (axis < 1 || axis > 2) {
-      Warning("FindLastBinAbove","Invalid axis number : %d, axis x assumed\n",axis);
-      axis = 1;
-   }
-   Int_t nbinsx = fXaxis.GetNbins();
-   Int_t nbinsy = fYaxis.GetNbins();
-   Int_t binx, biny;
-   if (axis == 1) {
-      for (binx=nbinsx;binx>=1;binx--) {
-         for (biny=1;biny<=nbinsy;biny++) {
-            if (GetBinContent(binx,biny) > threshold) return binx;
-         }
-      }
-   } else {
-      for (biny=nbinsy;biny>=1;biny--) {
-         for (binx=1;binx<=nbinsx;binx++) {
-            if (GetBinContent(binx,biny) > threshold) return biny;
-         }
-      }
-   }
-   return -1;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
 
 void TH2::DoFitSlices(bool onX,
                       TF1 *f1, Int_t firstbin, Int_t lastbin, Int_t cut, Option_t *option, TObjArray* arr)
@@ -761,6 +701,13 @@ void TH2::DoFitSlices(bool onX,
    if (lastbin < 0 || lastbin > nbins + 1) lastbin = nbins + 1;
    if (lastbin < firstbin) {firstbin = 0; lastbin = nbins + 1;}
    TString opt = option;
+   TString proj_opt = "e";
+   Int_t i1 = opt.Index("[");
+   Int_t i2 = opt.Index("]");
+   if (i1>=0 && i2>i1) {
+      proj_opt += opt(i1,i2-i1+1);
+      opt.Remove(i1, i2-i1+1);
+   }
    opt.ToLower();
    Int_t ngroup = 1;
    if (opt.Contains("g2")) {ngroup = 2; opt.ReplaceAll("g2","");}
@@ -827,9 +774,9 @@ void TH2::DoFitSlices(bool onX,
    for (bin=firstbin;bin+ngroup-1<=lastbin;bin += nstep) {
       TH1D *hp;
       if (onX)
-         hp= ProjectionX("_temp",bin,bin+ngroup-1,"e");
+         hp= ProjectionX("_temp",bin,bin+ngroup-1,proj_opt);
       else
-         hp= ProjectionY("_temp",bin,bin+ngroup-1,"e");
+         hp= ProjectionY("_temp",bin,bin+ngroup-1,proj_opt);
       if (hp == 0) continue;
       nentries = Long64_t(hp->GetEntries());
       if (nentries == 0 || nentries < cut) {delete hp; continue;}
@@ -1219,7 +1166,6 @@ Double_t TH2::Integral(Int_t firstxbin, Int_t lastxbin, Int_t firstybin, Int_t l
    return DoIntegral(firstxbin,lastxbin,firstybin,lastybin,-1,0,err,option);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Return integral of bin contents in range [firstxbin,lastxbin],[firstybin,lastybin]
 /// for a 2-D histogram. Calculates also the integral error using error propagation
@@ -1233,16 +1179,14 @@ Double_t TH2::IntegralAndError(Int_t firstxbin, Int_t lastxbin, Int_t firstybin,
    return DoIntegral(firstxbin,lastxbin,firstybin,lastybin,-1,0,error,option,kTRUE);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 ///illegal for a TH2
 
-Double_t TH2::Interpolate(Double_t)
+Double_t TH2::Interpolate(Double_t) const
 {
    Error("Interpolate","This function must be called with 2 arguments for a TH2");
    return 0;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Given a point P(x,y), Interpolate approximates the value via bilinear
@@ -1251,13 +1195,13 @@ Double_t TH2::Interpolate(Double_t)
 /// Andy Mastbaum 10/8/2008
 /// vaguely based on R.Raja 6-Sep-2008
 
- Double_t TH2::Interpolate(Double_t x, Double_t y)
+ Double_t TH2::Interpolate(Double_t x, Double_t y) const
 {
    Double_t f=0;
    Double_t x1=0,x2=0,y1=0,y2=0;
    Double_t dx,dy;
-   Int_t bin_x = fXaxis.FindBin(x);
-   Int_t bin_y = fYaxis.FindBin(y);
+   Int_t bin_x = fXaxis.FindFixBin(x);
+   Int_t bin_y = fYaxis.FindFixBin(y);
    if(bin_x<1 || bin_x>GetNbinsX() || bin_y<1 || bin_y>GetNbinsY()) {
       Error("Interpolate","Cannot interpolate outside histogram domain.");
       return 0;
@@ -1300,13 +1244,13 @@ Double_t TH2::Interpolate(Double_t)
       y2 = fYaxis.GetBinCenter(bin_y);
       break;
    }
-   Int_t bin_x1 = fXaxis.FindBin(x1);
+   Int_t bin_x1 = fXaxis.FindFixBin(x1);
    if(bin_x1<1) bin_x1=1;
-   Int_t bin_x2 = fXaxis.FindBin(x2);
+   Int_t bin_x2 = fXaxis.FindFixBin(x2);
    if(bin_x2>GetNbinsX()) bin_x2=GetNbinsX();
-   Int_t bin_y1 = fYaxis.FindBin(y1);
+   Int_t bin_y1 = fYaxis.FindFixBin(y1);
    if(bin_y1<1) bin_y1=1;
-   Int_t bin_y2 = fYaxis.FindBin(y2);
+   Int_t bin_y2 = fYaxis.FindFixBin(y2);
    if(bin_y2>GetNbinsY()) bin_y2=GetNbinsY();
    Int_t bin_q22 = GetBin(bin_x2,bin_y2);
    Int_t bin_q12 = GetBin(bin_x1,bin_y2);
@@ -1325,7 +1269,7 @@ Double_t TH2::Interpolate(Double_t)
 ////////////////////////////////////////////////////////////////////////////////
 ///illegal for a TH2
 
-Double_t TH2::Interpolate(Double_t, Double_t, Double_t)
+Double_t TH2::Interpolate(Double_t, Double_t, Double_t) const
 {
    Error("Interpolate","This function must be called with 2 arguments for a TH2");
    return 0;
@@ -1552,10 +1496,10 @@ TH2 * TH2::Rebin( Int_t ngroup, const char*newname, const Double_t *xbins)
 {
    if (xbins != nullptr) {
       Error("Rebin","Rebinning a 2-d histogram into variable bins is not supported (it is possible only for 1-d histograms). Return a nullptr");
-      return nullptr; 
+      return nullptr;
    }
    Info("Rebin","Rebinning only the x-axis. Use Rebin2D for rebinning both axes");
-   return RebinX(ngroup, newname); 
+   return RebinX(ngroup, newname);
 }
 ////////////////////////////////////////////////////////////////////////////////
 /// Rebin this histogram grouping nxgroup/nygroup bins along the xaxis/yaxis together.
@@ -2408,13 +2352,10 @@ TH1D* TH2::QuantilesY( Double_t prob, const char * name) const
 TH1D* TH2::DoQuantiles(bool onX, const char * name, Double_t prob) const
 {
    const TAxis *outAxis = 0;
-   const TAxis *inAxis = 0;
    if ( onX )   {
       outAxis = GetXaxis();
-      inAxis = GetYaxis();
    }  else {
       outAxis = GetYaxis();
-      inAxis = GetXaxis();
    }
 
    // build first name of returned histogram
@@ -2454,7 +2395,7 @@ TH1D* TH2::DoQuantiles(bool onX, const char * name, Double_t prob) const
   pp[0] = prob;
 
   TH1D * slice = 0;
-  for (int ibin = inAxis->GetFirst() ; ibin <= inAxis->GetLast() ; ++ibin) {
+  for (int ibin = outAxis->GetFirst() ; ibin <= outAxis->GetLast() ; ++ibin) {
     Double_t qq[1];
     // do a projection on the opposite axis
     slice = DoProjection(!onX, "tmp",ibin,ibin,"");
