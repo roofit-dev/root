@@ -60,10 +60,10 @@ You can directly see RDataFrame in action through its [code examples](https://ro
 These are the operations which can be performed with RDataFrame
 
 ### Transformations
-Transformations are a way to manipulated the data.
+Transformations are a way to manipulate the data.
 
 | **Transformation** | **Description** |
-|------------------|-----------------|
+|------------------|--------------------|
 | [Define](classROOT_1_1RDF_1_1RInterface.html#a7d48eb23b4378e99ebccb35e94ad025a) | Creates a new column in the dataset. |
 | [DefineSlot](classROOT_1_1RDF_1_1RInterface.html#acaacf727b8a41d27c6bb4513348ac892) | Same as `Define`, but the user-defined function must take an extra `unsigned int slot` as its first parameter. `slot` will take a different value, `0` to `nThreads - 1`, for each thread of execution. This is meant as a helper in writing thread-safe `Define` transformation when using `RDataFrame` after `ROOT::EnableImplicitMT()`. `DefineSlot` works just as well with single-thread execution: in that case `slot` will always be `0`.  |
 | [DefineSlotEntry](classROOT_1_1RDF_1_1RInterface.html#a4f17074d5771916e3df18f8458186de7) | Same as `DefineSlot`, but the entry number is passed in addition to the slot number. This is meant as a helper in case some dependency on the entry number needs to be honoured. |
@@ -119,6 +119,7 @@ produce several different results in one event loop. Instant actions trigger the
 | [GetFilterNames](classROOT_1_1RDF_1_1RInterface.html#a25026681111897058299161a70ad9bb2) | Get all the filters defined. If called on a root node, all filters will be returned. For any other node, only the filters upstream of that node. |
 | [Display](classROOT_1_1RDF_1_1RInterface.html#a652f9ab3e8d2da9335b347b540a9a941) | Provides an ASCII representation of the columns types and contents of the dataset printable by the user. |
 | [SaveGraph](namespaceROOT_1_1RDF.html#adc17882b283c3d3ba85b1a236197c533) | Store the computation graph of an RDataFrame in graphviz format for easy inspection. |
+| [GetNRuns](classROOT_1_1RDF_1_1RInterface.html#adfb0562a9f7732c3afb123aefa07e0df) | Get the number of event loops run by this RDataFrame instance. |
 
 
 ## <a name="introduction"></a>Introduction
@@ -154,8 +155,8 @@ TTreeReaderValue<A_t> a(reader, "A");
 TTreeReaderValue<B_t> b(reader, "B");
 TTreeReaderValue<C_t> c(reader, "C");
 while(reader.Next()) {
-   if(IsGoodEvent(a, b, c))
-      DoStuff(a, b, c);
+   if(IsGoodEvent(*a, *b, *c))
+      DoStuff(*a, *b, *c);
 }
 ~~~
    </td>
@@ -177,8 +178,7 @@ d.Filter(IsGoodEvent).Foreach(DoStuff);
 <tr>
    <td>
 ~~~{.cpp}
-TTree *t = nullptr;
-file->GetObject("myTree", t);
+auto t = file->Get<TTree>("myTree");
 t->Draw("x", "y > 2");
 ~~~
    </td>
@@ -204,8 +204,7 @@ operations should work with. Here are the most common methods to construct a RDa
 ~~~{.cpp}
 // single file -- all ctors are equivalent
 TFile *f = TFile::Open("file.root");
-TTree *t = nullptr;
-f.GetObject("treeName", t);
+auto t = f.Get<TTree>("treeName");
 
 RDataFrame d1("treeName", "file.root");
 RDataFrame d2("treeName", f); // same as TTreeReader
@@ -755,6 +754,14 @@ More specifically, the dataset will be divided in batches of entries, and thread
 processing of these batches. There are no guarantees on the order the batches are processed, i.e. no guarantees in the
 order entries of the dataset are processed. Note that this in turn means that, for multi-thread event loops, there is no
 guarantee on the order in which `Snapshot` will _write_ entries: they could be scrambled with respect to the input dataset.
+
+\warning RDataFrame will by default start as many threads as the hardware supports, using up **all** the resources on
+a machine. On a worker node of *e.g.* a batch cluster, this might not be desired if the machine is shared with other
+users. Therefore, **when running on shared computing resources**, use
+```
+ROOT::EnableImplicitMT(i)
+```
+replacing `i` with the number of CPUs/slots that were allocated for this job.
 
 ### Thread-safety of user-defined expressions
 RDataFrame operations such as `Histo1D` or `Snapshot` are guaranteed to work correctly in multi-thread event loops.
