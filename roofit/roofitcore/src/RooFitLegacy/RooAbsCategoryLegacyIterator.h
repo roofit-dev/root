@@ -20,11 +20,14 @@
 #include "TIterator.h"
 #include "RooAbsCategory.h"
 #include <map>
+#include <vector>
+#include <string>
 
 #include "RooFitLegacy/RooCatTypeLegacy.h"
 
 /// \deprecated Legacy class to iterate through legacy RooAbsCategory states.
 /// Use RooAbsCategory::begin(), RooAbsCategory::end() or range-based for loops instead.
+/// \ingroup Roofitlegacy
 class RooAbsCategoryLegacyIterator : public TIterator {
   public:
     RooAbsCategoryLegacyIterator(const std::map<std::string, RooAbsCategory::value_type>& stateNames) :

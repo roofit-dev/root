@@ -31,13 +31,14 @@ endif()
 
 ROOT_OBJECT_LIBRARY(MetaCling
   rootclingTCling.cxx
+  TCling.cxx
   TClingBaseClassInfo.cxx
   TClingCallbacks.cxx
   TClingCallFunc.cxx
   TClingClassInfo.cxx
-  TCling.cxx
   TClingDataMemberInfo.cxx
   TClingDeclInfo.cxx
+  TClingMemberIter.cxx
   TClingMethodArgInfo.cxx
   TClingMethodInfo.cxx
   TClingRdictModuleFileExtension.cxx

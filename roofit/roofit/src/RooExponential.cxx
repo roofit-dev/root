@@ -102,7 +102,7 @@ void compute(size_t n, double* __restrict output, Tx x, Tc c) {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Evaluate the exponential without normalising it on the given batch.
-/// \param[in] batchIndex Index of the batch to be computed.
+/// \param[in] begin Index of the batch to be computed.
 /// \param[in] batchSize Size of each batch. The last batch may be smaller.
 /// \return A span with the computed values.
 
@@ -116,7 +116,7 @@ RooSpan<double> RooExponential::evaluateBatch(std::size_t begin, std::size_t bat
   if (!batchX && !batchC) {
     return {};
   }
-  batchSize = findSize({ xData, cData });
+  batchSize = BatchHelpers::findSmallestBatch({ xData, cData });
   auto output = _batchData.makeWritableBatchUnInit(begin, batchSize);
 
   if (batchX && !batchC ) {

@@ -84,6 +84,7 @@
 #pragma link C++ class RooCmdArg+ ;
 #pragma link C++ class RooCmdConfig+ ;
 #pragma link C++ class RooConstVar+ ;
+#pragma read sourceClass="RooConstVar" targetClass="RooConstVar" version="[1]" source="Double_t _value" target="" code="{ newObj->changeVal(onfile._value); }"
 #pragma link C++ class RooConvCoefVar+ ;
 #pragma link C++ class RooConvGenContext+ ;
 #pragma link C++ class RooConvIntegrandBinding+ ;
@@ -180,7 +181,8 @@
 #pragma link C++ class RooRealConstant+ ;
 #pragma link C++ class RooRealIntegral+ ;
 #pragma link C++ class RooRealMPFE+ ;
-#pragma link C++ class RooTemplateProxy<RooAbsReal>+;
+#pragma link C++ class RooRealProxy+;
+#pragma read sourceClass="RooRealProxy" targetClass="RooTemplateProxy<RooAbsReal>";
 #pragma link C++ class RooTemplateProxy<RooAbsPdf>+;
 #pragma read sourceClass="RooRealProxy" targetClass="RooTemplateProxy<RooAbsPdf>";
 #pragma link C++ class RooTemplateProxy<RooAbsRealLValue>+;
@@ -194,6 +196,12 @@
 #pragma read sourceClass="RooCategoryProxy" targetClass="RooTemplateProxy<RooAbsCategoryLValue>";
 #pragma link C++ class RooRealVar- ;
 #pragma link C++ class RooRealVarSharedProperties+ ;
+#pragma read sourceClass="RooRealVarSharedProperties" targetClass="RooRealVarSharedProperties" version="[1]" \
+  include="RooLinkedList.h" \
+  source="RooLinkedList _altBinning" target="_altBinning" \
+  code="{ RooFIter iter = onfile._altBinning.fwdIterator(); TObject* binning;\
+    while ( (binning = iter.next()) ) { _altBinning[binning->GetName()] = static_cast<RooAbsBinning*>(binning); } \
+  }"
 #pragma link C++ class RooRefCountList+ ;
 #pragma link C++ class RooScaledFunc+ ;
 #pragma link C++ class RooSegmentedIntegrator1D+ ;

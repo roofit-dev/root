@@ -48,8 +48,8 @@
 */
 
 #include <atomic>
+#include <iostream>
 
-#include "Riostream.h"
 #include "TROOT.h"
 #include "TClass.h"
 #include "TDirectoryFile.h"
@@ -79,10 +79,7 @@ const ULong64_t kPidOffsetMask = 0xffffffffffffUL;
 #endif
 const UChar_t kPidOffsetShift = 48;
 
-TString &gTDirectoryString() {
-   TTHREAD_TLS_DECL_ARG(TString,gTDirectoryString,"TDirectory");
-   return gTDirectoryString;
-}
+const static TString gTDirectoryString("TDirectory");
 std::atomic<UInt_t> keyAbsNumber{0};
 
 ClassImp(TKey);
@@ -632,7 +629,7 @@ void TKey::FillBuffer(char *&buffer)
    }
    if (TestBit(kIsDirectoryFile)) {
       // We want to record "TDirectory" instead of TDirectoryFile so that the file can be read by ancient version of ROOT.
-      gTDirectoryString().FillBuffer(buffer);
+      gTDirectoryString.FillBuffer(buffer);
    } else {
       fClassName.FillBuffer(buffer);
    }
@@ -688,6 +685,18 @@ Bool_t TKey::IsFolder() const
 void TKey::Keep()
 {
    if (fCycle >0)  fCycle = -fCycle;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// List Key contents.
+/// Add indicator of whether it is the current item or a backup copy.
+
+void TKey::ls(Bool_t current) const
+{
+   TROOT::IndentLevel();
+   std::cout <<"KEY: "<<fClassName<<"\t"<<GetName()<<";"<<GetCycle()<<"\t"<<GetTitle();
+   std::cout << (current ? " [current cycle]" : " [backup cycle]");
+   std::cout <<std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1424,7 +1433,7 @@ void TKey::Streamer(TBuffer &b)
       }
       if (TestBit(kIsDirectoryFile)) {
          // We want to record "TDirectory" instead of TDirectoryFile so that the file can be read by ancient version of ROOT.
-         gTDirectoryString().Streamer(b);
+         b.WriteTString(gTDirectoryString);
       } else {
          fClassName.Streamer(b);
       }

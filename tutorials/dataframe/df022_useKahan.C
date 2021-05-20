@@ -1,13 +1,15 @@
 /// \file
 /// \ingroup tutorial_dataframe
 /// \notebook
+/// Implement a custom action that evaluates a Kahan sum.
+///
 /// This tutorial shows how to implement a Kahan summation custom action.
 ///
 /// \macro_code
 /// \macro_output
 ///
 /// \date July 2018
-/// \author Enrico Guiraud, Danilo Piparo, Massimo Tumolo
+/// \authors Enrico Guiraud, Danilo Piparo (CERN), Massimo Tumolo (Politecnico di Torino)
 
 template <typename T>
 class KahanSum final : public ROOT::Detail::RDF::RActionImpl<class KahanSum<T>>  {

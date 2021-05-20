@@ -27,8 +27,10 @@
 #ifndef TMVA_DNN_GENERALLAYER
 #define TMVA_DNN_GENERALLAYER
 
-#include <iostream>
+#include <sstream>
 #include <limits>
+#include <vector>
+#include <string>
 
 // for xml
 #include "TMVA/Tools.h"
@@ -505,8 +507,9 @@ auto VGeneralLayer<Architecture_t>::WriteTensorToXML(void * node, const char * n
       auto & mat = tensor[i];
       for (Int_t row = 0; row < mat.GetNrows(); row++) {
          for (Int_t col = 0; col < mat.GetNcols(); col++) {
-            TString tmp = TString::Format( "%5.15e ", (mat)(row,col) );
-            s << tmp.Data();
+            // TString tmp = TString::Format( "%5.15e ", (mat)(row,col) );
+            // s << tmp.Data();
+            s << std::scientific << mat(row, col) << " ";
          }
       }
    }

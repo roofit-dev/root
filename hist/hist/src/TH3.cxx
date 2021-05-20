@@ -407,21 +407,26 @@ Int_t TH3::Fill(const char *namex, const char *namey, const char *namez, Double_
    if (binx == 0 || binx > fXaxis.GetNbins()) return -1;
    if (biny == 0 || biny > fYaxis.GetNbins()) return -1;
    if (binz == 0 || binz > fZaxis.GetNbins()) return -1;
-   Double_t x = fXaxis.GetBinCenter(binx);
-   Double_t y = fYaxis.GetBinCenter(biny);
-   Double_t z = fZaxis.GetBinCenter(binz);
+
    Double_t v = w;
    fTsumw   += v;
    fTsumw2  += v*v;
-   fTsumwx  += v*x;
-   fTsumwx2 += v*x*x;
-   fTsumwy  += v*y;
-   fTsumwy2 += v*y*y;
-   fTsumwxy += v*x*y;
-   fTsumwz  += v*z;
-   fTsumwz2 += v*z*z;
-   fTsumwxz += v*x*z;
-   fTsumwyz += v*y*z;
+   // skip computation of the statistics along axis that have labels (can be extended and are aphanumeric)
+   UInt_t labelBitMask = GetAxisLabelStatus();
+   if (labelBitMask != TH1::kAllAxes) {
+      Double_t x = (labelBitMask & TH1::kXaxis) ? 0 : fXaxis.GetBinCenter(binx);
+      Double_t y = (labelBitMask & TH1::kYaxis) ? 0 : fYaxis.GetBinCenter(biny);
+      Double_t z = (labelBitMask & TH1::kZaxis) ? 0 : fZaxis.GetBinCenter(binz);
+      fTsumwx += v * x;
+      fTsumwx2 += v * x * x;
+      fTsumwy += v * y;
+      fTsumwy2 += v * y * y;
+      fTsumwxy += v * x * y;
+      fTsumwz += v * z;
+      fTsumwz2 += v * z * z;
+      fTsumwxz += v * x * z;
+      fTsumwyz += v * y * z;
+   }
    return bin;
 }
 
@@ -452,20 +457,24 @@ Int_t TH3::Fill(const char *namex, Double_t y, const char *namez, Double_t w)
       if (!GetStatOverflowsBehaviour()) return -1;
    }
    if (binz == 0 || binz > fZaxis.GetNbins()) return -1;
-   Double_t x = fXaxis.GetBinCenter(binx);
-   Double_t z = fZaxis.GetBinCenter(binz);
    Double_t v = w;
    fTsumw   += v;
    fTsumw2  += v*v;
-   fTsumwx  += v*x;
-   fTsumwx2 += v*x*x;
    fTsumwy  += v*y;
    fTsumwy2 += v*y*y;
-   fTsumwxy += v*x*y;
-   fTsumwz  += v*z;
-   fTsumwz2 += v*z*z;
-   fTsumwxz += v*x*z;
-   fTsumwyz += v*y*z;
+   // skip computation of the statistics along axis that have labels (can be extended and are aphanumeric)
+   UInt_t labelBitMask = GetAxisLabelStatus();
+   if (labelBitMask != (TH1::kXaxis | TH1::kZaxis) ) {
+      Double_t x = (labelBitMask & TH1::kXaxis) ? 0 : fXaxis.GetBinCenter(binx);
+      Double_t z = (labelBitMask & TH1::kZaxis) ? 0 : fZaxis.GetBinCenter(binz);
+      fTsumwx += v * x;
+      fTsumwx2 += v * x * x;
+      fTsumwxy += v * x * y;
+      fTsumwz += v * z;
+      fTsumwz2 += v * z * z;
+      fTsumwxz += v * x * z;
+      fTsumwyz += v * y * z;
+   }
    return bin;
 }
 
@@ -496,20 +505,24 @@ Int_t TH3::Fill(const char *namex, const char *namey, Double_t z, Double_t w)
    if (binz == 0 || binz > fZaxis.GetNbins()) {
       if (!GetStatOverflowsBehaviour()) return -1;
    }
-   Double_t x = fXaxis.GetBinCenter(binx);
-   Double_t y = fYaxis.GetBinCenter(biny);
    Double_t v = w;
    fTsumw   += v;
    fTsumw2  += v*v;
-   fTsumwx  += v*x;
-   fTsumwx2 += v*x*x;
-   fTsumwy  += v*y;
-   fTsumwy2 += v*y*y;
-   fTsumwxy += v*x*y;
    fTsumwz  += v*z;
    fTsumwz2 += v*z*z;
-   fTsumwxz += v*x*z;
-   fTsumwyz += v*y*z;
+   // skip computation of the statistics along axis that have labels (can be extended and are aphanumeric)
+   UInt_t labelBitMask = GetAxisLabelStatus();
+   if (labelBitMask != (TH1::kXaxis | TH1::kYaxis)) {
+      Double_t x = (labelBitMask & TH1::kXaxis) ? 0 : fXaxis.GetBinCenter(binx);
+      Double_t y = (labelBitMask & TH1::kYaxis) ? 0 : fYaxis.GetBinCenter(biny);
+      fTsumwx += v * x;
+      fTsumwx2 += v * x * x;
+      fTsumwy += v * y;
+      fTsumwy2 += v * y * y;
+      fTsumwxy += v * x * y;
+      fTsumwxz += v * x * z;
+      fTsumwyz += v * y * z;
+   }
    return bin;
 }
 
@@ -540,23 +553,77 @@ Int_t TH3::Fill(Double_t x, const char *namey, const char *namez, Double_t w)
    }
    if (biny == 0 || biny > fYaxis.GetNbins()) return -1;
    if (binz == 0 || binz > fZaxis.GetNbins()) return -1;
-   Double_t y = fYaxis.GetBinCenter(biny);
-   Double_t z = fZaxis.GetBinCenter(binz);
+
+   // skip computation of the statistics along axis that have labels (can be extended and are aphanumeric)
+   UInt_t labelBitMask = GetAxisLabelStatus();
+   Double_t y = (labelBitMask & TH1::kYaxis) ? 0 : fYaxis.GetBinCenter(biny);
+   Double_t z = (labelBitMask & TH1::kZaxis) ? 0 : fZaxis.GetBinCenter(binz);
    Double_t v = w;
-   fTsumw   += v;
-   fTsumw2  += v*v;
-   fTsumwx  += v*x;
-   fTsumwx2 += v*x*x;
-   fTsumwy  += v*y;
-   fTsumwy2 += v*y*y;
-   fTsumwxy += v*x*y;
-   fTsumwz  += v*z;
-   fTsumwz2 += v*z*z;
-   fTsumwxz += v*x*z;
-   fTsumwyz += v*y*z;
+   fTsumw += v;
+   fTsumw2 += v * v;
+   fTsumwx += v * x;
+   fTsumwx2 += v * x * x;
+   fTsumwy += v * y;
+   fTsumwy2 += v * y * y;
+   fTsumwxy += v * x * y;
+   fTsumwz += v * z;
+   fTsumwz2 += v * z * z;
+   fTsumwxz += v * x * z;
+   fTsumwyz += v * y * z;
    return bin;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Increment cell defined by namex , y ,z by a weight w
+///
+/// If the weight is not equal to 1, the storage of the sum of squares of
+///  weights is automatically triggered and the sum of the squares of weights is incremented
+///  by w^2 in the corresponding cell.
+/// The function returns the corresponding global bin number which has its content
+/// incremented by w
+
+Int_t TH3::Fill(const char * namex, Double_t y, Double_t z, Double_t w)
+{
+   Int_t binx, biny, binz, bin;
+   fEntries++;
+   binx = fXaxis.FindBin(namex);
+   biny = fYaxis.FindBin(y);
+   binz = fZaxis.FindBin(z);
+   if (binx < 0 || biny < 0 || binz < 0)
+      return -1;
+   bin = binx + (fXaxis.GetNbins() + 2) * (biny + (fYaxis.GetNbins() + 2) * binz);
+   if (!fSumw2.fN && w != 1.0 && !TestBit(TH1::kIsNotW))
+      Sumw2(); // must be called before AddBinContent
+   if (fSumw2.fN)
+      fSumw2.fArray[bin] += w * w;
+   AddBinContent(bin, w);
+   if (binx == 0 || binx > fXaxis.GetNbins()) {
+         return -1;
+   }
+   if (biny == 0 || biny > fYaxis.GetNbins()) {
+      if (!GetStatOverflowsBehaviour())
+         return -1;
+   }
+   if (binz == 0 || binz > fZaxis.GetNbins()) {
+      if (!GetStatOverflowsBehaviour())
+         return -1;
+   }
+   UInt_t labelBitMask = GetAxisLabelStatus();
+   Double_t x = (labelBitMask & TH1::kXaxis) ? 0 : fXaxis.GetBinCenter(binx);
+   Double_t v = w;
+   fTsumw += v;
+   fTsumw2 += v * v;
+   fTsumwx += v * x;
+   fTsumwx2 += v * x * x;
+   fTsumwy += v * y;
+   fTsumwy2 += v * y * y;
+   fTsumwxy += v * x * y;
+   fTsumwz += v * z;
+   fTsumwz2 += v * z * z;
+   fTsumwxz += v * x * z;
+   fTsumwyz += v * y * z;
+   return bin;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Increment cell defined by x,namey,z by a weight w
@@ -586,7 +653,8 @@ Int_t TH3::Fill(Double_t x, const char *namey, Double_t z, Double_t w)
    if (binz == 0 || binz > fZaxis.GetNbins()) {
       if (!GetStatOverflowsBehaviour()) return -1;
    }
-   Double_t y = fYaxis.GetBinCenter(biny);
+   UInt_t labelBitMask = GetAxisLabelStatus();
+   Double_t y = (labelBitMask & TH1::kYaxis) ? 0 : fYaxis.GetBinCenter(biny);
    Double_t v = w;
    fTsumw   += v;
    fTsumw2  += v*v;
@@ -631,7 +699,8 @@ Int_t TH3::Fill(Double_t x, Double_t y, const char *namez, Double_t w)
       if (!GetStatOverflowsBehaviour()) return -1;
    }
    if (binz == 0 || binz > fZaxis.GetNbins()) return -1;
-   Double_t z = fZaxis.GetBinCenter(binz);
+   UInt_t labelBitMask = GetAxisLabelStatus();
+   Double_t z = (labelBitMask & TH1::kZaxis) ? 0 : fZaxis.GetBinCenter(binz);
    Double_t v = w;
    fTsumw   += v;
    fTsumw2  += v*v;
@@ -651,6 +720,10 @@ Int_t TH3::Fill(Double_t x, Double_t y, const char *namez, Double_t w)
 ////////////////////////////////////////////////////////////////////////////////
 /// Fill histogram following distribution in function fname.
 ///
+///  @param fname  : Function name used for filling the historam
+///  @param ntimes : number of times the histogram is filled
+///  @param rng    : (optional) Random number generator used to sample
+///
 ///   The distribution contained in the function fname (TF1) is integrated
 ///   over the channel contents.
 ///   It is normalized to 1.
@@ -666,7 +739,7 @@ Int_t TH3::Fill(Double_t x, Double_t y, const char *namez, Double_t w)
 ///
 ///  One can also call TF1::GetRandom to get a random variate from a function.
 
-void TH3::FillRandom(const char *fname, Int_t ntimes)
+void TH3::FillRandom(const char *fname, Int_t ntimes, TRandom * rng)
 {
    Int_t bin, binx, biny, binz, ibin, loop;
    Double_t r1, x, y,z, xv[3];
@@ -729,7 +802,7 @@ void TH3::FillRandom(const char *fname, Int_t ntimes)
    if (fDimension < 2) nbinsy = -1;
    if (fDimension < 3) nbinsz = -1;
    for (loop=0;loop<ntimes;loop++) {
-      r1 = gRandom->Rndm();
+      r1 = (rng) ? rng->Rndm() : gRandom->Rndm();
       ibin = TMath::BinarySearch(nbins,&integral[0],r1);
       binz = ibin/nxy;
       biny = (ibin - nxy*binz)/nbinsx;
@@ -748,6 +821,10 @@ void TH3::FillRandom(const char *fname, Int_t ntimes)
 ////////////////////////////////////////////////////////////////////////////////
 /// Fill histogram following distribution in histogram h.
 ///
+///  @param h      : Histogram  pointer used for smpling random number
+///  @param ntimes : number of times the histogram is filled
+///  @param rng    : (optional) Random number generator used for sampling
+///
 ///   The distribution contained in the histogram h (TH3) is integrated
 ///   over the channel contents.
 ///   It is normalized to 1.
@@ -757,7 +834,7 @@ void TH3::FillRandom(const char *fname, Int_t ntimes)
 ///     - Fill histogram channel
 ///   ntimes random numbers are generated
 
-void TH3::FillRandom(TH1 *h, Int_t ntimes)
+void TH3::FillRandom(TH1 *h, Int_t ntimes, TRandom * rng)
 {
    if (!h) { Error("FillRandom", "Null histogram"); return; }
    if (fDimension != h->GetDimension()) {
@@ -770,7 +847,7 @@ void TH3::FillRandom(TH1 *h, Int_t ntimes)
    Int_t loop;
    Double_t x,y,z;
    for (loop=0;loop<ntimes;loop++) {
-      h3->GetRandom3(x,y,z);
+      h3->GetRandom3(x,y,z,rng);
       Fill(x,y,z);
    }
 }
@@ -1083,9 +1160,13 @@ Double_t TH3::GetCovariance(Int_t axis1, Int_t axis2) const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Return 3 random numbers along axis x , y and z distributed according
-/// the cell-contents of a 3-dim histogram
+/// to the cell-contents of this 3-dim histogram
+/// @param[out] x  reference to random generated x value
+/// @param[out] y  reference to random generated y value
+/// @param[out] z  reference to random generated z value
+/// @param[in] rng (optional) Random number generator pointer used (default is gRandom)
 
-void TH3::GetRandom3(Double_t &x, Double_t &y, Double_t &z)
+void TH3::GetRandom3(Double_t &x, Double_t &y, Double_t &z, TRandom * rng)
 {
    Int_t nbinsx = GetNbinsX();
    Int_t nbinsy = GetNbinsY();
@@ -1104,7 +1185,8 @@ void TH3::GetRandom3(Double_t &x, Double_t &y, Double_t &z)
    // case histogram has negative bins
    if (integral == TMath::QuietNaN() ) { x = TMath::QuietNaN(); y = TMath::QuietNaN(); z = TMath::QuietNaN(); return;}
 
-   Double_t r1 = gRandom->Rndm();
+   if (!rng) rng = gRandom;
+   Double_t r1 = rng->Rndm();
    Int_t ibin = TMath::BinarySearch(nbins,fIntegral,(Double_t) r1);
    Int_t binz = ibin/nxy;
    Int_t biny = (ibin - nxy*binz)/nbinsx;
@@ -1112,8 +1194,8 @@ void TH3::GetRandom3(Double_t &x, Double_t &y, Double_t &z)
    x = fXaxis.GetBinLowEdge(binx+1);
    if (r1 > fIntegral[ibin]) x +=
       fXaxis.GetBinWidth(binx+1)*(r1-fIntegral[ibin])/(fIntegral[ibin+1] - fIntegral[ibin]);
-   y = fYaxis.GetBinLowEdge(biny+1) + fYaxis.GetBinWidth(biny+1)*gRandom->Rndm();
-   z = fZaxis.GetBinLowEdge(binz+1) + fZaxis.GetBinWidth(binz+1)*gRandom->Rndm();
+   y = fYaxis.GetBinLowEdge(biny+1) + fYaxis.GetBinWidth(biny+1)*rng->Rndm();
+   z = fZaxis.GetBinLowEdge(binz+1) + fZaxis.GetBinWidth(binz+1)*rng->Rndm();
 }
 
 
@@ -1163,13 +1245,19 @@ void TH3::GetStats(Double_t *stats) const
             if (lastBinZ ==  fZaxis.GetNbins() ) lastBinZ += 1;
          }
       }
+
+      // check for labels axis . In that case corresponsing statistics do not make sense and it is set to zero
+      Bool_t labelXaxis =  ((const_cast<TAxis&>(fXaxis)).GetLabels() && fXaxis.CanExtend() );
+      Bool_t labelYaxis =  ((const_cast<TAxis&>(fYaxis)).GetLabels() && fYaxis.CanExtend() );
+      Bool_t labelZaxis =  ((const_cast<TAxis&>(fZaxis)).GetLabels() && fZaxis.CanExtend() );
+
       for (binz = firstBinZ; binz <= lastBinZ; binz++) {
-         z = fZaxis.GetBinCenter(binz);
+         z = (!labelZaxis) ? fZaxis.GetBinCenter(binz) : 0;
          for (biny = firstBinY; biny <= lastBinY; biny++) {
-            y = fYaxis.GetBinCenter(biny);
+            y = (!labelYaxis) ? fYaxis.GetBinCenter(biny) : 0;
             for (binx = firstBinX; binx <= lastBinX; binx++) {
                bin = GetBin(binx,biny,binz);
-               x   = fXaxis.GetBinCenter(binx);
+               x = (!labelXaxis) ? fXaxis.GetBinCenter(binx) : 0;
                //w   = TMath::Abs(GetBinContent(bin));
                w   = RetrieveBinContent(bin);
                err = TMath::Abs(GetBinError(bin));

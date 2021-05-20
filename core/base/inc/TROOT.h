@@ -26,12 +26,13 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include "TDirectory.h"
-#include "TList.h"
-#include "RConfigure.h"
+// #include "TList.h"  // included in TDirectory.h
+// #include "RConfigure.h"  // included via Rtypes.h
 
 #include <atomic>
 #include <string>
 #include <vector>
+#include <utility>
 
 class TClass;
 class TCanvas;
@@ -55,6 +56,7 @@ class TListOfDataMembers;
 class TListOfEnums;
 class TListOfFunctions;
 class TListOfFunctionTemplates;
+class TSeqCollection;
 class TFunctionTemplate;
 class TGlobalMappedFunction;
 
@@ -86,7 +88,6 @@ namespace ROOT {
    void EnableImplicitMT(UInt_t numthreads = 0);
    void DisableImplicitMT();
    Bool_t IsImplicitMTEnabled();
-   UInt_t GetImplicitMTPoolSize() R__DEPRECATED(6, 24, "Please use ROOT::GetThreadPoolSize() instead");
    UInt_t GetThreadPoolSize();
 }
 
@@ -130,7 +131,6 @@ protected:
    Bool_t          fEditHistograms;       //True if histograms can be edited with the mouse
    Bool_t          fFromPopUp;            //True if command executed from a popup menu
    Bool_t          fMustClean;            //True if object destructor scans canvases
-   Bool_t          fReadingObject;        //True while reading an object [Deprecated (will be removed in next release)
    Bool_t          fForceStyle;           //Force setting of current style when reading objects
    Bool_t          fInterrupt;            //True if macro should be interrupted
    Bool_t          fEscape;               //True if ESC has been pressed
@@ -270,8 +270,8 @@ public:
    TObject          *GetGeometry(const char *name) const;
    const TObject    *GetSelectedPrimitive() const { return fPrimitive; }
    TVirtualPad      *GetSelectedPad() const { return fSelectPad; }
-   Int_t             GetNclasses() const { return fClasses->GetSize(); }
-   Int_t             GetNtypes() const { return fTypes->GetSize(); }
+   Int_t             GetNclasses() const;
+   Int_t             GetNtypes() const;
    TFolder          *GetRootFolder() const { return fRootFolder; }
    TProcessUUID     *GetUUIDs() const { return fUUIDs; }
    const TString    &GetWebDisplay() const { return fWebDisplay; }
