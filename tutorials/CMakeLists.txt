@@ -93,6 +93,11 @@ if (NOT dataframe)
     list(APPEND dataframe_veto tmva/tmva*.C)
 endif()
 
+if(NOT sqlite)
+    # RDF+SQlite tutorials
+    list(APPEND dataframe_veto dataframe/*SQlite*)
+endif()
+
 if(NOT ROOT_mlp_FOUND)
    set(mlp_veto legacy/mlp/*.C)
 endif()
@@ -125,17 +130,13 @@ endif()
 if(NOT XROOTD_FOUND)
   set(xrootd_veto dataframe/df101_h1Analysis.C
                   dataframe/df102_NanoAODDimuonAnalysis.C
-                  dataframe/df103_NanoAODHiggsAnalysis.C)
+                  dataframe/df103_NanoAODHiggsAnalysis.C
+                  tmva/tmva103_Application.C)
 endif()
 
 # variables identifying the package must have the package name  in lower case (it corresponds to the CMake option name)
 if(NOT ROOT_r_FOUND)
   set(r_veto  r/*.C)
-endif()
-
-# FIXME: Temporary workaround for runtime_cxxmodule
-if (FIXME_TEMPORARILY_EXCLUDED_FOR_RUNTIME_CXXMODULES)
-  set(runtime_cxxmodules_veto r/Function.C)
 endif()
 
 if(WIN32)
@@ -375,6 +376,7 @@ set(unfold-testUnfold5b-depends tutorial-unfold-testUnfold5a)
 set(unfold-testUnfold7d-depends tutorial-unfold-testUnfold7c)
 set(unfold-testUnfold7c-depends tutorial-unfold-testUnfold7b)
 set(unfold-testUnfold7b-depends tutorial-unfold-testUnfold7a)
+set(xml-xmlmodifyfile-depends tutorial-xml-xmlnewfile)
 set(xml-xmlreadfile-depends tutorial-xml-xmlnewfile)
 set(roofit-rf503_wspaceread-depends tutorial-roofit-rf502_wspacewrite)
 set(histfactory-example-depends tutorial-roostats-CreateExampleFile)
@@ -483,7 +485,7 @@ foreach(t ${mpi_tutorials})
 endforeach()
 
 #---Python tutorials-----------------------------------------------------
-if(ROOT_python_FOUND)
+if(ROOT_pyroot_FOUND)
   if(NOT PYTHON_EXECUTABLE)
     find_package(PythonInterp REQUIRED)
   endif()
@@ -504,6 +506,16 @@ if(ROOT_python_FOUND)
              sql/sqlfilldb.py       # same as the C++ case
              sql/sqlselect.py       # same as the C++ case
              )
+
+  if(NOT pyroot_experimental)
+    # Disable in old PyROOT, which lacks Import pythonization
+    list(APPEND pyveto
+        roofit/rf502_wspacewrite.py
+        roofit/rf504_simwstool.py
+        roofit/rf509_wsinteractive.py
+        roofit/rf511_wsfactory_basic.py)
+  endif()
+
   if(NOT ROOT_mathmore_FOUND)
     list(APPEND pyveto math/Legendre.py)
     list(APPEND pyveto math/Bessel.py)
@@ -513,7 +525,10 @@ if(ROOT_python_FOUND)
  if(NOT XROOTD_FOUND)
    list(APPEND pyveto
        dataframe/df102_NanoAODDimuonAnalysis.py
-       dataframe/df103_NanoAODHiggsAnalysis.py)
+       dataframe/df103_NanoAODHiggsAnalysis.py
+       dataframe/df104_HiggsToTwoPhotons.py
+       dataframe/df105_WBosonAnalysis.py
+       dataframe/df106_HiggsToFourLeptons.py)
  endif()
 
   list(REMOVE_ITEM pytutorials ${pyveto})
@@ -522,7 +537,16 @@ if(ROOT_python_FOUND)
     set(dataframe_veto_py dataframe/*.py)
     file(GLOB dataframe_veto_py RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} dataframe/*.py tmva/tmva*.py)
     list(REMOVE_ITEM pytutorials ${dataframe_veto_py})
-    list(REMOVE_ITEM pytutorials pyroot/pyroot002_TTreeAsMatrix.py)
+    list(REMOVE_ITEM pytutorials
+        pyroot/pyroot002_TTreeAsMatrix.py)
+  endif()
+
+  if(NOT dataframe
+     OR ${PYTHON_VERSION_STRING} VERSION_LESS_EQUAL 2.7.5
+     OR (DEFINED ENV{ROOTTEST_IGNORE_NUMBA_PY2} AND PYTHON_VERSION_MAJOR EQUAL 2)
+     OR (DEFINED ENV{ROOTTEST_IGNORE_NUMBA_PY3} AND PYTHON_VERSION_MAJOR EQUAL 3))
+    list(REMOVE_ITEM pytutorials
+        pyroot/pyroot004_NumbaDeclare.py)
   endif()
 
   find_python_module(xgboost QUIET)
@@ -564,7 +588,7 @@ if(ROOT_python_FOUND)
     endif()
 
     ROOT_ADD_TEST(${tutorial_name}
-                COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/${t} -b
+                COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/launcher.py ${CMAKE_CURRENT_SOURCE_DIR}/${t}
                 PASSRC ${rc} FAILREGEX "Error in" ": error:" "segmentation violation"
                 LABELS tutorial
                 DEPENDS ${${tname}-depends}

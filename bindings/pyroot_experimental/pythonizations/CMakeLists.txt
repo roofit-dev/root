@@ -10,6 +10,7 @@
 
 if(dataframe)
     list(APPEND PYROOT_EXTRA_PYSOURCE
+        ROOT/pythonization/_rdf_utils.py
         ROOT/pythonization/_rdataframe.py
         ROOT/pythonization/_rtensor.py)
     list(APPEND PYROOT_EXTRA_SOURCE
@@ -20,6 +21,7 @@ endif()
 set(py_sources
   ROOT/__init__.py
   ROOT/_application.py
+  ROOT/_numbadeclare.py
   ROOT/_facade.py
   ROOT/pythonization/__init__.py
   ROOT/pythonization/_cppinstance.py
@@ -29,6 +31,7 @@ set(py_sources
   ROOT/pythonization/_rooabscollection.py
   ROOT/pythonization/_roodatahist.py
   ROOT/pythonization/_roodataset.py
+  ROOT/pythonization/_rooworkspace.py
   ROOT/pythonization/_rvec.py
   ROOT/pythonization/_stl_vector.py
   ROOT/pythonization/_tarray.py
@@ -54,7 +57,6 @@ set(py_sources
 )
 
 set(cpp_sources
-    src/CppCallablePyz.cxx
     src/PyROOTModule.cxx
     src/PyROOTStrings.cxx
     src/PyROOTWrapper.cxx
@@ -72,41 +74,51 @@ set(cpp_sources
     src/PyzCppHelpers.cxx
     src/PyzPythonHelpers.cxx
     src/CPPInstancePyz.cxx
+    src/FacadeHelpers.cxx
     ${PYROOT_EXTRA_SOURCE}
 )
 
-set(ROOTDirName python/ROOT)
-set(ROOT_headers inc)
+set(ROOTPySrcDir python/ROOT)
+set(ROOT_headers_dir inc)
 
-ROOT_LINKER_LIBRARY(ROOTPythonizations ${cpp_sources} DEPENDENCIES Core Tree cppyy CMAKENOEXPORT)
-target_include_directories(ROOTPythonizations PRIVATE ${ROOT_headers} ${PYTHON_INCLUDE_DIRS})
+file(COPY ${ROOTPySrcDir} DESTINATION ${localruntimedir})
+# Copy headers inside build_dir/include/ROOT
+file(COPY ${ROOT_headers_dir}/ DESTINATION ${CMAKE_BINARY_DIR}/include/ROOT)
 
-file(COPY ${ROOTDirName} DESTINATION ${py_localruntimedir})
-install(DIRECTORY ${ROOTDirName} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+# Install .py source files
+install(DIRECTORY ${ROOTPySrcDir} DESTINATION ${runtimedir})
 
-# Copy headers inside build_dir/include/Pythonizations
-file(COPY ${ROOT_headers}/ DESTINATION ${CMAKE_BINARY_DIR}/include/ROOT)
+foreach(val RANGE ${how_many_pythons})
+  list(GET python_under_version_strings ${val} python_under_version_string)
+  list(GET python_include_dirs ${val} python_include_dir)
+  list(GET python_executables ${val} python_executable)
 
-foreach(py_source ${py_sources})
-  install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -m py_compile ${d}/${py_source})")
-  install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -O -m py_compile ${d}/${py_source})")
+  set(libname ROOTPythonizations${python_under_version_string})
+
+  ROOT_LINKER_LIBRARY(${libname} ${cpp_sources} DEPENDENCIES Core Tree cppyy${python_under_version_string} CMAKENOEXPORT)
+
+  target_include_directories(${libname} PRIVATE ${python_include_dir})
+
+  # Disables warnings caused by Py_RETURN_TRUE/Py_RETURN_FALSE
+  if(NOT MSVC)
+    target_compile_options(${libname} PRIVATE -Wno-strict-aliasing)
+  endif()
+
+  # Disables warnings originating from deprecated register keyword in Python
+  if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_STANDARD GREATER_EQUAL 11)
+    target_compile_options(${libname} PRIVATE -Wno-register)
+  endif()
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" AND CMAKE_CXX_STANDARD GREATER_EQUAL 11)
+    target_compile_options(${libname} PRIVATE -Wno-register)
+    target_compile_options(${libname} PRIVATE -Wno-deprecated-register)
+  endif()
+
+  # Install compiled .py files
+  foreach(py_source ${py_sources})
+    install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${install_dir_lib}/${py_source})")
+    install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${install_dir_lib}/${py_source})")
+  endforeach()
+
 endforeach()
-
-# Disables warnings caused by Py_RETURN_TRUE/Py_RETURN_FALSE
-if(NOT MSVC)
-    target_compile_options(ROOTPythonizations PRIVATE -Wno-strict-aliasing)
-endif()
-
-# Disables warnings originating from deprecated register keyword in Python
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_STANDARD GREATER_EQUAL 11)
-    target_compile_options(ROOTPythonizations PRIVATE -Wno-register)
-endif()
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang" AND CMAKE_CXX_STANDARD GREATER_EQUAL 11)
-    target_compile_options(ROOTPythonizations PRIVATE -Wno-deprecated-register)
-endif()
-
-# create egg with PyROOT info
-set(ROOT_egg "${CMAKE_CURRENT_BINARY_DIR}/PyROOT.egg")
-file(WRITE ${ROOT_egg} "PyROOT ${ROOT_VERSION}")
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

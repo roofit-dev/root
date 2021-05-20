@@ -39,7 +39,6 @@
 #include "RooMsgService.h"
 
 #include "RooAbsReal.h"
-#include "RooAbsReal.h"
 #include "RooArgSet.h"
 #include "RooArgList.h"
 #include "RooBinning.h"
@@ -71,7 +70,6 @@
 #include "RooDerivative.h"
 #include "RooGenFunction.h"
 #include "RooMultiGenFunction.h"
-#include "RooCmdConfig.h"
 #include "RooXYChi2Var.h"
 #include "RooMinuit.h"
 #include "RooMinimizer.h"
@@ -227,7 +225,7 @@ Bool_t RooAbsReal::operator==(Double_t value) const
 /// Equality operator when comparing to another RooAbsArg.
 /// Only functional when the other arg is a RooAbsReal
 
-Bool_t RooAbsReal::operator==(const RooAbsArg& other)
+Bool_t RooAbsReal::operator==(const RooAbsArg& other) const
 {
   const RooAbsReal* otherReal = dynamic_cast<const RooAbsReal*>(&other) ;
   return otherReal ? operator==(otherReal->getVal()) : kFALSE ;
@@ -236,13 +234,13 @@ Bool_t RooAbsReal::operator==(const RooAbsArg& other)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Bool_t RooAbsReal::isIdentical(const RooAbsArg& other, Bool_t assumeSameType)
+Bool_t RooAbsReal::isIdentical(const RooAbsArg& other, Bool_t assumeSameType) const
 {
   if (!assumeSameType) {
     const RooAbsReal* otherReal = dynamic_cast<const RooAbsReal*>(&other) ;
     return otherReal ? operator==(otherReal->getVal()) : kFALSE ;
   } else {
-    return getVal()==((RooAbsReal&)other).getVal() ;
+    return getVal() == static_cast<const RooAbsReal&>(other).getVal();
   }
 }
 
@@ -309,7 +307,7 @@ RooSpan<const double> RooAbsReal::getValBatch(std::size_t begin, std::size_t max
   }
 
   //TODO check and wait if computation is running?
-  if (_batchData.status(begin, maxSize) < BatchHelpers::BatchData::kReady) {
+  if (_batchData.status(begin) < BatchHelpers::BatchData::kReady) {
     auto ret = evaluateBatch(begin, maxSize);
     maxSize = ret.size();
     _batchData.setStatus(begin, maxSize, BatchHelpers::BatchData::kReady);
@@ -1688,7 +1686,7 @@ void RooAbsReal::plotOnCompSelect(RooArgSet* selNodes) const
 /// <tr><td> `MarkerSize(Double_t size)`   <td> Select the ROOT marker size
 ///
 /// <tr><td> `FillStyle(Int_t style)`          <td> Select fill style, default is not filled. If a filled style is selected, also use VLines()
-///                                    to add vertical downward lines at end of curve to ensure proper closure
+///                                    to add vertical downward lines at end of curve to ensure proper closure. Add `DrawOption("F")` for filled drawing.
 /// <tr><td> `FillColor(Int_t color)`          <td> Select fill color by ROOT color code
 ///
 /// <tr><td> `Range(const char* name)`         <td> Only draw curve in range defined by given name
@@ -1983,6 +1981,11 @@ RooPlot* RooAbsReal::plotOn(RooPlot* frame, RooLinkedList& argList) const
   if (markerStyle!=-999) ret->getAttMarker()->SetMarkerStyle(markerStyle) ;
   if (markerSize!=-999) ret->getAttMarker()->SetMarkerSize(markerSize) ;
 
+  if ((fillColor != -999 || fillStyle != -999) && !drawOpt.Contains("F")) {
+    coutW(Plotting) << "Fill color or style was set for plotting \"" << GetName()
+        << "\", but these only have an effect when 'DrawOption(\"F\")' for fill is used at the same time." << std::endl;
+  }
+
   // Move last inserted object to back to drawing stack if requested
   if (pc.getInt("moveToBack") && frame->numItems()>1) {
     frame->drawBefore(frame->getObject(0)->GetName(), frame->getCurve()->GetName());
@@ -2175,7 +2178,7 @@ RooPlot* RooAbsReal::plotOn(RooPlot *frame, PlotOpt o) const
 	  if ((real = dynamic_cast<RooAbsRealLValue*>(sliceVar))) {
 	    cutString.Append(Form("%s==%f",real->GetName(),real->getVal())) ;
 	  } else if ((cat = dynamic_cast<RooAbsCategoryLValue*>(sliceVar))) {
-	    cutString.Append(Form("%s==%d",cat->GetName(),cat->getIndex())) ;
+	    cutString.Append(Form("%s==%d",cat->GetName(),cat->getCurrentIndex())) ;
 	  }
 	}
 	delete iter2 ;
@@ -2577,7 +2580,7 @@ RooPlot* RooAbsReal::plotAsymOn(RooPlot *frame, const RooAbsCategoryLValue& asym
  	  if ((real = dynamic_cast<RooAbsRealLValue*>(sliceVar))) {
 	    cutString.Append(Form("%s==%f",real->GetName(),real->getVal())) ;
 	  } else if ((cat = dynamic_cast<RooAbsCategoryLValue*>(sliceVar))) {
-	    cutString.Append(Form("%s==%d",cat->GetName(),cat->getIndex())) ;
+	    cutString.Append(Form("%s==%d",cat->GetName(),cat->getCurrentIndex())) ;
 	  }
  	}
 	delete iter ;
@@ -4873,7 +4876,7 @@ void RooAbsReal::setParameterizeIntegral(const RooArgSet& paramVars)
 /// \return     Span pointing to the results. The memory is held by the object, on which this
 /// function is called.
 RooSpan<double> RooAbsReal::evaluateBatch(std::size_t begin, std::size_t maxSize) const {
-  assert(_batchData.status(begin, maxSize) != BatchHelpers::BatchData::kReadyAndConstant);
+  assert(_batchData.status(begin) != BatchHelpers::BatchData::kReadyAndConstant);
 
   RooArgSet allLeafs;
   leafNodeServerList(&allLeafs);
@@ -4928,7 +4931,6 @@ RooSpan<double> RooAbsReal::evaluateBatch(std::size_t begin, std::size_t maxSize
 
 
 #include "TSystem.h"
-#include "RooHelpers.h"
 
 using RooHelpers::CachingError;
 using RooHelpers::FormatPdfTree;
@@ -4984,7 +4986,7 @@ void RooAbsReal::checkBatchComputation(std::size_t evtNo, const RooArgSet* normS
     }
   }
 
-  if (!_allBatchesDirty && _batchData.status(evtNo, 1) >= BatchHelpers::BatchData::kReady) {
+  if (!_allBatchesDirty && _batchData.status(evtNo) >= BatchHelpers::BatchData::kReady) {
     RooSpan<const double> batch = _batchData.getBatch(evtNo, 1);
     RooSpan<const double> enclosingBatch = _batchData.getBatch(evtNo-1, 3);
     const double batchVal = batch[0];

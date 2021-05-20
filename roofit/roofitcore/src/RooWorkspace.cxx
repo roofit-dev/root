@@ -32,14 +32,23 @@ ROOT distribution, portability of workspaces can be enhanced by
 storing the source code of those classes in the workspace as well.
 This process is also organized by the workspace through the
 `importClassCode()` method.
+
+### Seemingly random rashes when reading large workspaces
+When reading or loading workspaces with deeply nested PDFs, one can encounter
+ouf-of-memory errors if the stack size is too small. This manifests in crashes
+at seemingly random locations, or in the process silently ending.
+Unfortunately, ROOT neither recover from this situation, nor warn or give useful
+instructions. When suspecting to have run out of stack memory, check
+```
+ulimit -s
+```
+and try reading again.
 **/
 
 #include "RooWorkspace.h"
 #include "RooHelpers.h"
 #include "RooFit.h"
-#include "RooWorkspace.h"
 #include "RooWorkspaceHandle.h"
-#include "RooFit.h"
 #include "RooAbsPdf.h"
 #include "RooRealVar.h"
 #include "RooCategory.h"
@@ -50,6 +59,7 @@ This process is also organized by the workspace through the
 #include "RooResolutionModel.h"
 #include "RooPlot.h"
 #include "RooRandom.h"
+#include "TBuffer.h"
 #include "TInterpreter.h"
 #include "TClassTable.h"
 #include "TBaseClass.h"
@@ -241,7 +251,7 @@ RooWorkspace::~RooWorkspace()
 ////////////////////////////////////////////////////////////////////////////////
 /// Import a RooAbsArg or RooAbsData set from a workspace in a file. Filespec should be constructed as "filename:wspacename:objectname"
 /// The arguments will be passed to the relevant import() or import(RooAbsData&, ...) import calls
-
+/// \note From python, use `Import()`, since `import` is a reserved keyword.
 Bool_t RooWorkspace::import(const char* fileSpec,
 			    const RooCmdArg& arg1, const RooCmdArg& arg2, const RooCmdArg& arg3,
 			    const RooCmdArg& arg4, const RooCmdArg& arg5, const RooCmdArg& arg6,
@@ -303,7 +313,7 @@ Bool_t RooWorkspace::import(const char* fileSpec,
 ////////////////////////////////////////////////////////////////////////////////
 /// Import multiple RooAbsArg objects into workspace. For details on arguments see documentation
 /// of import() method for single RooAbsArg
-
+/// \note From python, use `Import()`, since `import` is a reserved keyword.
 Bool_t RooWorkspace::import(const RooArgSet& args,
 			    const RooCmdArg& arg1, const RooCmdArg& arg2, const RooCmdArg& arg3,
 			    const RooCmdArg& arg4, const RooCmdArg& arg5, const RooCmdArg& arg6,
@@ -331,10 +341,10 @@ Bool_t RooWorkspace::import(const RooArgSet& args,
 ///  <table>
 ///  <tr><th> Accepted arguments
 ///  <tr><td> `RenameConflictNodes(const char* suffix)`   <td>  Add suffix to branch node name if name conflicts with existing node in workspace
-///  <tr><td> `RenameAllNodes(const char* suffix)`    <td>  Add suffix to all branch node names including top level node
-///  <tr><td> `RenameAllVariables(const char* suffix)`    <td>  Add suffix to all variables names
+///  <tr><td> `RenameAllNodes(const char* suffix)`    <td>  Add suffix to all branch node names including top level node.
+///  <tr><td> `RenameAllVariables(const char* suffix)`    <td>  Add suffix to all variables of objects being imported.
 ///  <tr><td> `RenameAllVariablesExcept(const char* suffix, const char* exceptionList)`   <td>  Add suffix to all variables names, except ones listed
-///  <tr><td> `RenameVariable(const char* inputName, const char* outputName)` <td>  Rename variable as specified upon import.
+///  <tr><td> `RenameVariable(const char* inputName, const char* outputName)` <td>  Rename a single variable as specified upon import.
 ///  <tr><td> `RecycleConflictNodes()`    <td>  If any of the function objects to be imported already exist in the name space, connect the
 ///                            imported expression to the already existing nodes.
 ///                            \attention Use with care! If function definitions do not match, this alters the definition of your function upon import
@@ -345,7 +355,7 @@ Bool_t RooWorkspace::import(const RooArgSet& args,
 ///  The RenameConflictNodes, RenameNodes and RecycleConflictNodes arguments are mutually exclusive. The RenameVariable argument can be repeated
 ///  as often as necessary to rename multiple variables. Alternatively, a single RenameVariable argument can be given with
 ///  two comma separated lists.
-
+/// \note From python, use `Import()`, since `import` is a reserved keyword.
 Bool_t RooWorkspace::import(const RooAbsArg& inArg,
 			    const RooCmdArg& arg1, const RooCmdArg& arg2, const RooCmdArg& arg3,
 			    const RooCmdArg& arg4, const RooCmdArg& arg5, const RooCmdArg& arg6,
@@ -743,7 +753,7 @@ Bool_t RooWorkspace::import(const RooAbsArg& inArg,
 /// <tr><td> `Rename(const char* suffix)` <td> Rename dataset upon insertion
 /// <tr><td> `RenameVariable(const char* inputName, const char* outputName)` <td> Change names of observables in dataset upon insertion
 /// <tr><td> `Silence` <td> Be quiet, except in case of errors
-
+/// \note From python, use `Import()`, since `import` is a reserved keyword.
 Bool_t RooWorkspace::import(RooAbsData& inData,
 			    const RooCmdArg& arg1, const RooCmdArg& arg2, const RooCmdArg& arg3,
 			    const RooCmdArg& arg4, const RooCmdArg& arg5, const RooCmdArg& arg6,
@@ -2190,8 +2200,9 @@ RooFactoryWSTool& RooWorkspace::factory()
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Short-hand function for factory()->process(expr) ;
-
+/// Short-hand function for `factory()->process(expr);`
+///
+/// \copydoc RooFactoryWSTool::process(const char*)
 RooAbsArg* RooWorkspace::factory(const char* expr)
 {
   return factory().process(expr) ;

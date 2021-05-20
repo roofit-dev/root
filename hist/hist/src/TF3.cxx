@@ -11,6 +11,7 @@
 
 #include "TROOT.h"
 #include "TF3.h"
+#include "TBuffer.h"
 #include "TMath.h"
 #include "TH3.h"
 #include "TVirtualPad.h"
@@ -20,7 +21,6 @@
 #include "TColor.h"
 #include "TVirtualFitter.h"
 #include "TVirtualHistPainter.h"
-#include "TClass.h"
 #include <cassert>
 
 ClassImp(TF3);

@@ -529,36 +529,12 @@ namespace {
     return Paths;
   }
 
-  /// \brief Prepares a file path for string comparison with another file path.
-  /// This easily be tricked by a malicious user with hardlinking directories
-  /// and so on, but for a comparison in good faith this should be enough.
-  static std::string normalizePath(StringRef path) {
-    SmallVector<char, 256> AbsolutePath, Result;
-    AbsolutePath.insert(AbsolutePath.begin(), path.begin(), path.end());
-    llvm::sys::fs::make_absolute(AbsolutePath);
-    llvm::sys::fs::real_path(AbsolutePath, Result, true);
-    return llvm::Twine(Result).str();
-  }
-
   /// \brief Adds all the paths to the prebuilt module paths of the given
   /// HeaderSearchOptions.
   static void addPrebuiltModulePaths(clang::HeaderSearchOptions& Opts,
                                      const SmallVectorImpl<StringRef>& Paths) {
-    for (StringRef ModulePath : Paths) {
-      // FIXME: If we have a prebuilt module path that is equal to our module
-      // cache we fail to compile the clang builtin modules for some reason.
-      // This can't be reproduced in clang, so I assume we have some strange
-      // error in our interpreter setup where this is causing errors (or maybe
-      // clang is doing the same check in some hidden place).
-      // The error looks like this:
-      //   .../include/stddef.h error: unknown type name '__PTRDIFF_TYPE__'
-      //   typedef __PTRDIFF_TYPE__ ptrdiff_t;
-      //   <similar follow up errors>
-      // For now it is fixed by just checking those two paths are not identical.
-      if (normalizePath(ModulePath) != normalizePath(Opts.ModuleCachePath)) {
-        Opts.AddPrebuiltModulePath(ModulePath);
-      }
-    }
+    for (StringRef ModulePath : Paths)
+      Opts.AddPrebuiltModulePath(ModulePath);
   }
 
   static std::string getIncludePathForHeader(const clang::HeaderSearch& HS,
@@ -584,7 +560,8 @@ namespace {
     llvm::SmallString<128> cIncLoc(getIncludePathForHeader(HS, "time.h"));
 
     llvm::SmallString<256> stdIncLoc(getIncludePathForHeader(HS, "cassert"));
-
+    llvm::SmallString<256> boostIncLoc(getIncludePathForHeader(HS, "boost/version.hpp"));
+    llvm::SmallString<256> tinyxml2IncLoc(getIncludePathForHeader(HS, "tinyxml2.h"));
     llvm::SmallString<256> cudaIncLoc(getIncludePathForHeader(HS, "cuda.h"));
     llvm::SmallString<256> clingIncLoc(getIncludePathForHeader(HS,
                                         "cling/Interpreter/RuntimeUniverse.h"));
@@ -593,46 +570,100 @@ namespace {
     llvm::sys::path::append(clingIncLoc, "cling");
 
     // Construct a column of modulemap overlay file if needed.
-    auto maybeAppendOverlayEntry = [&HSOpts](llvm::StringRef SystemDir,
-                                             const std::string& Filename,
-                                             const std::string& Location,
-                                             std::string& overlay) {
+    auto maybeAppendOverlayEntry
+       = [&HSOpts, &ModuleMapFiles](llvm::StringRef SystemDir,
+                                    const std::string& Filename,
+                                    const std::string& Location,
+                                    std::string& overlay) -> void {
 
-      llvm::SmallString<512> originalLoc(Location);
-      llvm::sys::path::append(originalLoc, Filename);
-
-      assert(llvm::sys::fs::exists(originalLoc.str()) && "Must exist!");
       assert(llvm::sys::fs::exists(SystemDir) && "Must exist!");
 
+      std::string modulemapFilename = "module.modulemap";
       llvm::SmallString<512> systemLoc(SystemDir);
-      llvm::sys::path::append(systemLoc, "module.modulemap");
+      llvm::sys::path::append(systemLoc, modulemapFilename);
       // Check if we need to mount a custom modulemap. We may have it, for
       // instance when we are on osx or using libc++.
       if (llvm::sys::fs::exists(systemLoc.str())) {
         if (HSOpts.Verbose)
-          cling::log() << systemLoc.str()
-                       << " already exists! Skip replacing it with "
-                       << originalLoc.str();
+          cling::log() << "Loading '" << systemLoc.str() << "'\n";
+
+        // If the library had its own modulemap file, use it. This should handle
+        // the case where we use libc++ on Unix.
+        if (!HSOpts.ImplicitModuleMaps)
+           ModuleMapFiles.push_back(systemLoc.str().str());
+
         return;
+      }
+
+      llvm::SmallString<512> originalLoc(Location);
+      assert(llvm::sys::fs::exists(originalLoc.str()) && "Must exist!");
+      llvm::sys::path::append(originalLoc, Filename);
+      assert(llvm::sys::fs::exists(originalLoc.str()));
+
+      if (HSOpts.Verbose)
+        cling::log() << "'" << systemLoc << "' does not exist. Mounting '"
+                     << originalLoc.str() << "' as '" << systemLoc << "'\n";
+
+      if (!HSOpts.ImplicitModuleMaps) {
+         modulemapFilename = Filename;
+         llvm::sys::path::remove_filename(systemLoc);
+         llvm::sys::path::append(systemLoc, modulemapFilename);
       }
 
       if (!overlay.empty())
         overlay += ",\n";
 
       overlay += "{ 'name': '" + SystemDir.str() + "', 'type': 'directory',\n";
-      overlay += "'contents': [\n   { 'name': 'module.modulemap', ";
+      overlay += "'contents': [\n   { 'name': '" + modulemapFilename + "', ";
       overlay += "'type': 'file',\n  'external-contents': '";
       overlay += originalLoc.str().str() + "'\n";
       overlay += "}\n ]\n }";
+
+      if (HSOpts.ImplicitModuleMaps)
+         return;
+
+      ModuleMapFiles.push_back(systemLoc.str().str());
     };
 
+    if (!HSOpts.ImplicitModuleMaps) {
+      // Register the modulemap files.
+      llvm::SmallString<512> resourceDirLoc(HSOpts.ResourceDir);
+      llvm::sys::path::append(resourceDirLoc, "include", "module.modulemap");
+      ModuleMapFiles.push_back(resourceDirLoc.str().str());
+      llvm::SmallString<512> clingModuleMap(clingIncLoc);
+      llvm::sys::path::append(clingModuleMap, "module.modulemap");
+      ModuleMapFiles.push_back(clingModuleMap.str().str());
+#ifdef __APPLE__
+      llvm::SmallString<512> libcModuleMap(cIncLoc);
+      llvm::sys::path::append(libcModuleMap, "module.modulemap");
+      ModuleMapFiles.push_back(libcModuleMap.str().str());
+      llvm::SmallString<512> stdModuleMap(stdIncLoc);
+      llvm::sys::path::append(stdModuleMap, "module.modulemap");
+      ModuleMapFiles.push_back(stdModuleMap.str().str());
+#endif // __APPLE__
+    }
+
     std::string MOverlay;
+#ifdef LLVM_ON_WIN32
+    maybeAppendOverlayEntry(cIncLoc.str(), "libc_msvc.modulemap",
+                            clingIncLoc.str(), MOverlay);
+    maybeAppendOverlayEntry(stdIncLoc.str(), "std_msvc.modulemap",
+                            clingIncLoc.str(), MOverlay);
+#else
     maybeAppendOverlayEntry(cIncLoc.str(), "libc.modulemap", clingIncLoc.str(),
                             MOverlay);
     maybeAppendOverlayEntry(stdIncLoc.str(), "std.modulemap", clingIncLoc.str(),
                             MOverlay);
+#endif // LLVM_ON_WIN32
+
+    if (!tinyxml2IncLoc.empty())
+      maybeAppendOverlayEntry(tinyxml2IncLoc.str(), "tinyxml2.modulemap",
+                              clingIncLoc.str(), MOverlay);
     if (!cudaIncLoc.empty())
       maybeAppendOverlayEntry(cudaIncLoc.str(), "cuda.modulemap",
+                              clingIncLoc.str(), MOverlay);
+    if (!boostIncLoc.empty())
+      maybeAppendOverlayEntry(boostIncLoc.str(), "boost.modulemap",
                               clingIncLoc.str(), MOverlay);
 
     if (/*needsOverlay*/!MOverlay.empty()) {
@@ -657,25 +688,6 @@ namespace {
       // Load virtual modulemap overlay file
       CI.getInvocation().addOverlay(FS);
     }
-
-    if (HSOpts.ImplicitModuleMaps)
-      return;
-
-    // Register the modulemap files.
-    llvm::SmallString<512> resourceDirLoc(HSOpts.ResourceDir);
-    llvm::sys::path::append(resourceDirLoc, "include", "module.modulemap");
-    ModuleMapFiles.push_back(resourceDirLoc.str().str());
-    // FIXME: Move these calls in maybeAppendOverlayEntry.
-    llvm::sys::path::append(cIncLoc, "module.modulemap");
-    ModuleMapFiles.push_back(cIncLoc.str().str());
-    llvm::sys::path::append(stdIncLoc, "module.modulemap");
-    ModuleMapFiles.push_back(stdIncLoc.str().str());
-    if (!cudaIncLoc.empty()) {
-      llvm::sys::path::append(cudaIncLoc, "module.modulemap");
-      ModuleMapFiles.push_back(cudaIncLoc.str().str());
-    }
-    llvm::sys::path::append(clingIncLoc, "module.modulemap");
-    ModuleMapFiles.push_back(clingIncLoc.str().str());
   }
 
   static void setupCxxModules(clang::CompilerInstance& CI) {
@@ -1602,6 +1614,12 @@ static void stringifyPreprocSetting(PreprocessorOptions& PPOpts,
                                       PP.getLangOpts(),
                                       PP.getTargetInfo().getTriple());
     }
+
+    // Tell the diagnostic client that we are entering file parsing mode as the
+    // handling of modulemap files may issue diagnostics.
+    // FIXME: Consider moving in SetupDiagnostics.
+    DiagnosticConsumer& DClient = CI->getDiagnosticClient();
+    DClient.BeginSourceFile(CI->getLangOpts(), &PP);
 
     for (const auto& Filename : FrontendOpts.ModuleMapFiles) {
       if (auto* File = FM.getFile(Filename))

@@ -44,13 +44,13 @@
 #include "TChain.h"
 #include "TDSet.h"
 #include "TFileInfo.h"
+#include "TObjString.h"
 #include "TProof.h"
 #include "TRandom.h"
 #include "TSessionViewer.h"
 #include "TSessionLogView.h"
 #include "TQueryResult.h"
 #include "TGTextView.h"
-#include "TGMenu.h"
 #include "TGToolBar.h"
 #include "TGTab.h"
 #include "TRootEmbeddedCanvas.h"
@@ -62,8 +62,10 @@
 #include "TSessionDialogs.h"
 #include "TEnv.h"
 #include "TH2.h"
-#include "TTreePlayer.h"
+#include "TVirtualTreePlayer.h"
+#include "TSelector.h"
 #include "TFileCollection.h"
+#include "TVirtualX.h"
 #ifdef WIN32
 #include "TWin32SplashThread.h"
 #endif
@@ -2968,8 +2970,8 @@ void TSessionQueryFrame::OnBtnFinalize()
    if (fViewer->GetActDesc()->fLocal) {
       gPad->SetEditable(kFALSE);
       TChain *chain = (TChain *)fViewer->GetActDesc()->fActQuery->fChain;
-      if (chain)
-         ((TTreePlayer *)(chain->GetPlayer()))->GetSelectorFromFile()->Terminate();
+      if (chain && chain->GetPlayer())
+         chain->GetPlayer()->GetSelectorFromFile()->Terminate();
    }
 }
 
@@ -3041,8 +3043,8 @@ void TSessionQueryFrame::OnBtnRetrieve()
       if (item2) {
          // add input and output list entries
          TChain *chain = (TChain *)fViewer->GetActDesc()->fActQuery->fChain;
-         if (chain) {
-            TSelector *selector = ((TTreePlayer *)(chain->GetPlayer()))->GetSelectorFromFile();
+         if (chain && chain->GetPlayer()) {
+            TSelector *selector = chain->GetPlayer()->GetSelectorFromFile();
             if (selector) {
                TList *objlist = selector->GetOutputList();
                if (objlist)
@@ -4784,8 +4786,8 @@ void TSessionViewer::OnListTreeClicked(TGListTreeItem *entry, Int_t btn,
          }
          else {
             TChain *chain = (TChain *)fActDesc->fActQuery->fChain;
-            if (chain) {
-               objlist = ((TTreePlayer *)(chain->GetPlayer()))->GetSelectorFromFile()->GetOutputList();
+            if (chain && chain->GetPlayer()) {
+               objlist = chain->GetPlayer()->GetSelectorFromFile()->GetOutputList();
                if (objlist) {
                   TIter nexto(objlist);
                   while ((obj = (TObject *) nexto())) {

@@ -16,7 +16,6 @@
 #ifndef ROO_ABS_ARG
 #define ROO_ABS_ARG
 
-#include <assert.h>
 #include "TNamed.h"
 #include "THashList.h"
 #include "TRefArray.h"
@@ -108,7 +107,13 @@ public:
   Bool_t hasClients() const { return !_clientList.empty(); }
 
   ////////////////////////////////////////////////////////////////////////////
-  // Legacy iterators
+  /// \name Deprecated functions
+  /// Don't use these iterators, since they are inefficient. References to the
+  /// underlying containers can be obtained using `clients()` instead of `clientIterator()`,
+  /// `valueClients()` instead of `valueClientIterator()` etc.
+  /// These containers allow for range-based for loops and index access. This makes the
+  /// iterators in this section unnecessary.
+  /// @{
   inline TIterator* clientIterator() const
   R__SUGGEST_ALTERNATIVE("Use clients() and begin(), end() or range-based loops.") {
     // Return iterator over all client RooAbsArgs
@@ -139,10 +144,10 @@ public:
     return RooFIter(std::unique_ptr<RefCountListLegacyIterator_t>(makeLegacyIterator(_clientListShape)));
   }
   inline RooFIter serverMIterator() const
-  R__SUGGEST_ALTERNATIVE("Use shapeClients() and begin(), end() or range-based loops.") {
+  R__SUGGEST_ALTERNATIVE("Use servers() and begin(), end() or range-based loops.") {
     return RooFIter(std::unique_ptr<RefCountListLegacyIterator_t>(makeLegacyIterator(_serverList)));
   }
-
+  /// @}
   ////////////////////////////////////////////////////////////////////////////
 
   /// List of all clients of this object.
@@ -336,8 +341,8 @@ public:
 
   static void setDirtyInhibit(Bool_t flag) ;
 
-  virtual Bool_t operator==(const RooAbsArg& other) = 0 ;
-  virtual Bool_t isIdentical(const RooAbsArg& other, Bool_t assumeSameType=kFALSE) = 0 ;
+  virtual bool operator==(const RooAbsArg& other) const = 0 ;
+  virtual bool isIdentical(const RooAbsArg& other, Bool_t assumeSameType=kFALSE) const = 0 ;
 
   // Range management
   virtual Bool_t inRange(const char*) const {
@@ -652,12 +657,15 @@ private:
 
   mutable RooWorkspace *_myws; //! In which workspace do I live, if any
 
+  /// \cond Internal
   // Legacy streamers need the following statics:
   friend class RooFitResult;
+
  public:
-  static std::map<RooAbsArg*,TRefArray*> _ioEvoList ; // temporary holding list for proxies needed in schema evolution
+  static std::map<RooAbsArg*,std::unique_ptr<TRefArray>> _ioEvoList; // temporary holding list for proxies needed in schema evolution
  protected:
   static std::stack<RooAbsArg*> _ioReadStack ; // reading stack
+  /// \endcond
 
   ClassDef(RooAbsArg,7) // Abstract variable
 };

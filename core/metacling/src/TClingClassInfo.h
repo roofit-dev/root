@@ -27,6 +27,7 @@
 
 #include "TClingDeclInfo.h"
 #include "TClingMethodInfo.h"
+#include "TClingUtils.h"
 #include "TDataType.h"
 #include "TDictionary.h"
 
@@ -80,7 +81,7 @@ public: // Types
 public:
 
    explicit TClingClassInfo(cling::Interpreter *, Bool_t all = kTRUE);
-   explicit TClingClassInfo(cling::Interpreter *, const char *);
+   explicit TClingClassInfo(cling::Interpreter *, const char *classname, bool intantiateTemplate = kTRUE);
    explicit TClingClassInfo(cling::Interpreter *, const clang::Type &);
    explicit TClingClassInfo(cling::Interpreter *, const clang::Decl *);
    void                 AddBaseOffsetFunction(const clang::Decl* decl, OffsetPtrFunc_t func) { fOffsetCache[decl] = std::make_pair(0L, func); }
@@ -125,7 +126,7 @@ public:
    ptrdiff_t            GetBaseOffset(TClingClassInfo* toBase, void* address, bool isDerivedObject);
    const clang::Type   *GetType() const { return fType; } // Underlying representation with Double32_t
    std::vector<std::string> GetUsingNamespaces();
-   bool                 HasDefaultConstructor() const;
+   ROOT::TMetaUtils::EIOCtorCategory HasDefaultConstructor(bool checkio = false, std::string *type_name = nullptr) const;
    bool                 HasMethod(const char *name) const;
    void                 Init(const char *name);
    void                 Init(const clang::Decl*);

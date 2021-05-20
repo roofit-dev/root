@@ -36,10 +36,10 @@
 #include "TPie.h"
 #include "TVirtualPad.h"
 #include "TGColorSelect.h"
-#include "TGComboBox.h"
 #include "TColor.h"
 #include "TBox.h"
 #include "TPaveLabel.h"
+#include "TVirtualX.h"
 
 ClassImp(TPieEditor);
 

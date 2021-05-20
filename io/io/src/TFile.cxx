@@ -96,6 +96,7 @@ The structure of a directory is shown in TDirectoryFile::TDirectoryFile
 #include "RConfigure.h"
 #include "Strlen.h"
 #include "TArrayC.h"
+#include "TBuffer.h"
 #include "TClass.h"
 #include "TClassEdit.h"
 #include "TClassTable.h"
@@ -150,7 +151,6 @@ Bool_t   TFile::fgCacheFileDisconnected = kTRUE;
 UInt_t   TFile::fgOpenTimeout = TFile::kEternalTimeout;
 Bool_t   TFile::fgOnlyStaged = kFALSE;
 #ifdef R__USE_IMT
-ROOT::TRWSpinLock TFile::fgRwLock;
 ROOT::Internal::RConcurrentHashColl TFile::fgTsSIHashes;
 #endif
 
@@ -1823,14 +1823,16 @@ TProcessID  *TFile::ReadProcessID(UShort_t pidf)
    TIter next(pidslist);
    TProcessID *p;
    bool found = false;
-   R__RWLOCK_ACQUIRE_READ(fgRwLock);
-   while ((p = (TProcessID*)next())) {
-      if (!strcmp(p->GetTitle(),pid->GetTitle())) {
-         found = true;
-         break;
+
+   {
+      R__READ_LOCKGUARD(ROOT::gCoreMutex);
+      while ((p = (TProcessID*)next())) {
+         if (!strcmp(p->GetTitle(),pid->GetTitle())) {
+            found = true;
+            break;
+         }
       }
    }
-   R__RWLOCK_RELEASE_READ(fgRwLock);
 
    if (found) {
       delete pid;
@@ -1842,11 +1844,12 @@ TProcessID  *TFile::ReadProcessID(UShort_t pidf)
    pids->AddAtAndExpand(pid,pidf);
    pid->IncrementCount();
 
-   R__RWLOCK_ACQUIRE_WRITE(fgRwLock);
-   pidslist->Add(pid);
-   Int_t ind = pidslist->IndexOf(pid);
-   pid->SetUniqueID((UInt_t)ind);
-   R__RWLOCK_RELEASE_WRITE(fgRwLock);
+   {
+      R__WRITE_LOCKGUARD(ROOT::gCoreMutex);
+      pidslist->Add(pid);
+      Int_t ind = pidslist->IndexOf(pid);
+      pid->SetUniqueID((UInt_t)ind);
+   }
 
    return pid;
 }
@@ -3541,7 +3544,7 @@ void TFile::ReadStreamerInfo()
             Int_t asize = fClassIndex->GetSize();
             if (uid >= asize && uid <100000) fClassIndex->Set(2*asize);
             if (uid >= 0 && uid < fClassIndex->GetSize()) fClassIndex->fArray[uid] = 1;
-            else {
+            else if (!isstl) {
                printf("ReadStreamerInfo, class:%s, illegal uid=%d\n",info->GetName(),uid);
             }
             if (gDebug > 0) printf(" -class: %s version: %d info read at slot %d\n",info->GetName(), info->GetClassVersion(),uid);
@@ -4521,9 +4524,9 @@ Bool_t TFile::ShrinkCacheFileDir(Long64_t shrinksize, Long_t cleanupinterval)
 #if defined(R__WIN32)
    cmd = "echo <TFile::ShrinkCacheFileDir>: cleanup to be implemented";
 #elif defined(R__MACOSX)
-   cmd.Format("perl -e 'my $cachepath = \"%s\"; my $cachesize = %lld;my $findcommand=\"find $cachepath -type f -exec stat -f \\\"\\%%a::\\%%N::\\%%z\\\" \\{\\} \\\\\\;\";my $totalsize=0;open FIND, \"$findcommand | sort -k 1 |\";while (<FIND>) { my ($accesstime, $filename, $filesize) = split \"::\",$_; $totalsize += $filesize;if ($totalsize > $cachesize) {if ( ( -e \"${filename}.ROOT.cachefile\" ) && ( -e \"${filename}\" ) ) {unlink \"$filename.ROOT.cachefile\";unlink \"$filename\";}}}close FIND;' ", fgCacheFileDir.Data(),shrinksize);
+   cmd.Form("perl -e 'my $cachepath = \"%s\"; my $cachesize = %lld;my $findcommand=\"find $cachepath -type f -exec stat -f \\\"\\%%a::\\%%N::\\%%z\\\" \\{\\} \\\\\\;\";my $totalsize=0;open FIND, \"$findcommand | sort -k 1 |\";while (<FIND>) { my ($accesstime, $filename, $filesize) = split \"::\",$_; $totalsize += $filesize;if ($totalsize > $cachesize) {if ( ( -e \"${filename}.ROOT.cachefile\" ) || ( -e \"${filename}\" ) ) {unlink \"$filename.ROOT.cachefile\";unlink \"$filename\";}}}close FIND;' ", fgCacheFileDir.Data(),shrinksize);
 #else
-   cmd.Format("perl -e 'my $cachepath = \"%s\"; my $cachesize = %lld;my $findcommand=\"find $cachepath -type f -exec stat -c \\\"\\%%x::\\%%n::\\%%s\\\" \\{\\} \\\\\\;\";my $totalsize=0;open FIND, \"$findcommand | sort -k 1 |\";while (<FIND>) { my ($accesstime, $filename, $filesize) = split \"::\",$_; $totalsize += $filesize;if ($totalsize > $cachesize) {if ( ( -e \"${filename}.ROOT.cachefile\" ) && ( -e \"${filename}\" ) ) {unlink \"$filename.ROOT.cachefile\";unlink \"$filename\";}}}close FIND;' ", fgCacheFileDir.Data(),shrinksize);
+   cmd.Form("perl -e 'my $cachepath = \"%s\"; my $cachesize = %lld;my $findcommand=\"find $cachepath -type f -exec stat -c \\\"\\%%x::\\%%n::\\%%s\\\" \\{\\} \\\\\\;\";my $totalsize=0;open FIND, \"$findcommand | sort -k 1 |\";while (<FIND>) { my ($accesstime, $filename, $filesize) = split \"::\",$_; $totalsize += $filesize;if ($totalsize > $cachesize) {if ( ( -e \"${filename}.ROOT.cachefile\" ) || ( -e \"${filename}\" ) ) {unlink \"$filename.ROOT.cachefile\";unlink \"$filename\";}}}close FIND;' ", fgCacheFileDir.Data(),shrinksize);
 #endif
 
    tagfile->WriteBuffer(cmd, 4096);

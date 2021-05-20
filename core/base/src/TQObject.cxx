@@ -58,6 +58,7 @@ General purpose message signal
 #include "THashList.h"
 #include "TPRegexp.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TClass.h"
 #include "TSystem.h"
 #include "TMethod.h"
@@ -69,8 +70,6 @@ General purpose message signal
 #include "Riostream.h"
 #include "RQ_OBJECT.h"
 #include "TVirtualMutex.h"
-#include "Varargs.h"
-#include "TInterpreter.h"
 #include "RConfigure.h"
 
 void *gTQSender; // A pointer to the object that sent the last signal.
