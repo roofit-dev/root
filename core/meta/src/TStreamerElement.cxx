@@ -28,13 +28,15 @@
 #include "TDataType.h"
 #include "TRealData.h"
 #include "ThreadLocalStorage.h"
+#include "TList.h"
 #include "TRef.h"
 #include "TInterpreter.h"
 #include "TError.h"
 #include "TObjArray.h"
 #include "TVirtualMutex.h"
 #include "TVirtualCollectionProxy.h"
-#include <iostream>
+#include "strlcpy.h"
+#include "snprintf.h"
 
 #include <string>
 

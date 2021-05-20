@@ -70,10 +70,8 @@ ROOT_ADD_TEST(TMVA-DNN-CNN-MixedArchitectures COMMAND testMixedArchitectures)
 
 endif()
 
-include_directories(${ROOT_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS})
+include_directories(${CUDA_INCLUDE_DIRS})
 
-else()
-include_directories(${ROOT_INCLUDE_DIRS})
 endif()
 
 #-- -test of reference architecture
@@ -112,7 +110,7 @@ endif()
 #--- CPU tests. ----------------------------
 if ((BLAS_FOUND OR mathmore) AND imt AND tmva-cpu)
 
-include_directories(${TBB_INCLUDE_DIRS})
+include_directories(SYSTEM ${TBB_INCLUDE_DIRS})
 
 ROOT_EXECUTABLE(testIm2ColCpu TestIm2ColCpu.cxx LIBRARIES ${Libraries})
 ROOT_ADD_TEST(TMVA-DNN-CNN-Im2Col-CPU COMMAND testIm2ColCpu)

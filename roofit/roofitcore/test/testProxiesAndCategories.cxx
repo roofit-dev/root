@@ -64,6 +64,19 @@ public:
    * The ranges "evens" and "odds" for even and odd state names are defined.
    * Now, we check that set ranges are read and written properly, and that
    * sharing of those ranges works even after reading back.
+   * A mock file can be created as follows:
+      RooCategory cat("cat", "a category")
+      cat.defineType("one")
+      cat.defineType("two")
+      cat.defineType("three")
+      cat.defineType("four")
+      cat.addToRange("evens", "two,four")
+      cat.addToRange("odds", "one,three")
+      RooDataSet data("data", "a dataset with a category", RooArgSet(cat))
+      data.fill()
+      TFile outfile("/tmp/testCategories.root", "RECREATE")
+      outfile.WriteObject(&cat, "catOrig")
+      outfile.WriteObject(&data, "data")
    */
   void SetUp() override {
     TFile file(GetParam(), "READ");
@@ -86,9 +99,9 @@ public:
 
 protected:
   enum State_t {one = 0, two = 1, three = 2, four = 3};
-  RooCategory* cat;
-  RooDataSet* data;
-  RooCategory* catFromDataset;
+  RooCategory* cat{nullptr};
+  RooDataSet* data{nullptr};
+  RooCategory* catFromDataset{nullptr};
 };
 
 TEST_P(RooCategoryIO, ReadWithRanges) {
@@ -130,6 +143,21 @@ TEST(RooCategory, BracketOperator) {
     ASSERT_NE(targets.find(nameAndIndex.second), targets.end());
     EXPECT_EQ(nameAndIndex.first, targets[nameAndIndex.second]);
   }
+}
+
+
+TEST(RooCategory, OverwriteActiveState) {
+  RooCategory myCat;
+  myCat["0Lep"] = 1;
+  myCat["1Lep"] = 2;
+
+  EXPECT_EQ(myCat.getCurrentIndex(), 1);
+
+  RooCategory otherCat;
+  otherCat["test1"] = 1;
+  otherCat["test2"] = 2;
+
+  EXPECT_STREQ(otherCat.getCurrentLabel(), "test1");
 }
 
 

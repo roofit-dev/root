@@ -1,38 +1,4 @@
-#include "gtest/gtest.h"
-
-#include <ROOT/RMiniFile.hxx>
-#include <ROOT/RRawFile.hxx>
-
-#include <TFile.h>
-
-#include <iostream>
-#include <memory>
-
-using ENTupleContainerFormat = ROOT::Experimental::ENTupleContainerFormat;
-using RMiniFileReader = ROOT::Experimental::Internal::RMiniFileReader;
-using RNTupleFileWriter = ROOT::Experimental::Internal::RNTupleFileWriter;
-using RNTuple = ROOT::Experimental::RNTuple;
-using RRawFile = ROOT::Internal::RRawFile;
-
-namespace {
-
-/**
- * An RAII wrapper around an open temporary file on disk. It cleans up the guarded file when the wrapper object
- * goes out of scope.
- */
-class FileRaii {
-private:
-   std::string fPath;
-public:
-   explicit FileRaii(const std::string &path) : fPath(path) { }
-   FileRaii(const FileRaii&) = delete;
-   FileRaii& operator=(const FileRaii&) = delete;
-   ~FileRaii() { std::remove(fPath.c_str()); }
-   std::string GetPath() const { return fPath; }
-};
-
-} // anonymous namespace
-
+#include "ntuple_test.hxx"
 
 TEST(MiniFile, Raw)
 {
@@ -50,7 +16,7 @@ TEST(MiniFile, Raw)
 
    auto rawFile = RRawFile::Create(fileGuard.GetPath());
    RMiniFileReader reader(rawFile.get());
-   auto ntuple = reader.GetNTuple("MyNTuple");
+   auto ntuple = reader.GetNTuple("MyNTuple").Inspect();
    EXPECT_EQ(offHeader, ntuple.fSeekHeader);
    EXPECT_EQ(offFooter, ntuple.fSeekFooter);
 
@@ -80,7 +46,7 @@ TEST(MiniFile, Stream)
 
    auto rawFile = RRawFile::Create(fileGuard.GetPath());
    RMiniFileReader reader(rawFile.get());
-   auto ntuple = reader.GetNTuple("MyNTuple");
+   auto ntuple = reader.GetNTuple("MyNTuple").Inspect();
    EXPECT_EQ(offHeader, ntuple.fSeekHeader);
    EXPECT_EQ(offFooter, ntuple.fSeekFooter);
 
@@ -116,7 +82,7 @@ TEST(MiniFile, Proper)
 
    auto rawFile = RRawFile::Create(fileGuard.GetPath());
    RMiniFileReader reader(rawFile.get());
-   auto ntuple = reader.GetNTuple("MyNTuple");
+   auto ntuple = reader.GetNTuple("MyNTuple").Inspect();
    EXPECT_EQ(offHeader, ntuple.fSeekHeader);
    EXPECT_EQ(offFooter, ntuple.fSeekFooter);
 
@@ -156,10 +122,10 @@ TEST(MiniFile, Multi)
 
    auto rawFile = RRawFile::Create(fileGuard.GetPath());
    RMiniFileReader reader(rawFile.get());
-   auto ntuple1 = reader.GetNTuple("FirstNTuple");
+   auto ntuple1 = reader.GetNTuple("FirstNTuple").Inspect();
    EXPECT_EQ(offHeader1, ntuple1.fSeekHeader);
    EXPECT_EQ(offFooter1, ntuple1.fSeekFooter);
-   auto ntuple2 = reader.GetNTuple("SecondNTuple");
+   auto ntuple2 = reader.GetNTuple("SecondNTuple").Inspect();
    EXPECT_EQ(offHeader2, ntuple2.fSeekHeader);
    EXPECT_EQ(offFooter2, ntuple2.fSeekFooter);
 
@@ -198,5 +164,11 @@ TEST(MiniFile, Failures)
 
    auto rawFile = RRawFile::Create(fileGuard.GetPath());
    RMiniFileReader reader(rawFile.get());
-   EXPECT_DEATH(reader.GetNTuple("No such NTiple"), ".*");
+   RNTuple ntuple;
+   try {
+      ntuple = reader.GetNTuple("No such RNTuple").Inspect();
+      FAIL() << "bad RNTuple names should throw";
+   } catch (const RException& err) {
+      EXPECT_THAT(err.what(), testing::HasSubstr("no RNTuple named 'No such RNTuple' in file '" + fileGuard.GetPath()));
+   }
 }

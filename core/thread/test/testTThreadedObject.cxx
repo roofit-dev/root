@@ -152,7 +152,7 @@ TEST(TThreadedObject, GrowSlots)
 TEST(TThreadedObject, GetNSlots)
 {
    // default ctor produces fgMaxSlots slots
-   EXPECT_EQ(ROOT::TThreadedObject<int>(42).GetNSlots(), ROOT::TThreadedObject<int>::fgMaxSlots);
+   EXPECT_EQ(ROOT::TThreadedObject<int>(42).GetNSlots(), ROOT::TThreadedObject<int>::fgMaxSlots.fVal);
 
    ROOT::TThreadedObject<int> tto(ROOT::TNumSlots{0});
    EXPECT_EQ(tto.GetNSlots(), 0u);
@@ -170,7 +170,10 @@ TEST(TThreadedObject, GetNSlots)
    std::vector<std::thread> threads;
    for (int i = 0; i < 4; ++i)
       threads.emplace_back(task);
-   ready = true;
+   {
+      std::lock_guard<std::mutex> lk(m);
+      ready = true;
+   }
    cv.notify_all();
    for (auto &t : threads)
       t.join();

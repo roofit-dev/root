@@ -46,8 +46,6 @@
 #include "TMVA/DNN/Adadelta.h"
 #include "TMVA/Timer.h"
 
-#include "TStopwatch.h"
-
 #include <chrono>
 
 REGISTER_METHOD(DL)
@@ -196,30 +194,17 @@ void MethodDL::DeclareOptions()
    AddPreDefVal(TString("OPENCL"));    // not yet implemented
    AddPreDefVal(TString("CUDNN"));     // not needed (by default GPU is now CUDNN if available)
 
-   // define training stratgey separated by a separator "|"
-   DeclareOptionRef(fTrainingStrategyString = "LearningRate=1e-1,"
-                                              "Momentum=0.3,"
-                                              "Repetitions=3,"
-                                              "ConvergenceSteps=50,"
+   // define training strategy separated by a separator "|"
+   DeclareOptionRef(fTrainingStrategyString = "LearningRate=1e-3,"
+                                              "Momentum=0.0,"
+                                              "ConvergenceSteps=100,"
+                                              "MaxEpochs=2000,"
+                                              "Optimizer=ADAM,"
                                               "BatchSize=30,"
-                                              "TestRepetitions=7,"
+                                              "TestRepetitions=1,"
                                               "WeightDecay=0.0,"
                                               "Regularization=None,"
-                                              "DropConfig=0.0,"
-                                              "DropRepetitions=5"
-                                              "|"
-                                              "LearningRate=1e-4,"
-                                              "Momentum=0.3,"
-                                              "Repetitions=3,"
-                                              "ConvergenceSteps=50,"
-                                              "MaxEpochs=2000,"
-                                              "BatchSize=20,"
-                                              "TestRepetitions=7,"
-                                              "WeightDecay=0.001,"
-                                              "Regularization=L2,"
-                                              "DropConfig=0.0+0.5+0.5,"
-                                              "DropRepetitions=5,"
-                                              "Multithreading=True",
+                                              "DropConfig=0.0",
                     "TrainingStrategy", "Defines the training strategies.");
 }
 
@@ -376,18 +361,10 @@ void MethodDL::ProcessOptions()
          settings.optimizerName = "ADAM";
       }
 
-
-      TString strMultithreading = fetchValueTmp(block, "Multithreading", TString("True"));
-
-      if (strMultithreading.BeginsWith("T")) {
-         settings.multithreading = true;
-      } else {
-         settings.multithreading = false;
-      }
-
       fTrainingSettings.push_back(settings);
    }
 
+   // this set fInputShape[0] = batchSize
    this->SetBatchSize(fTrainingSettings.front().batchSize);
 
    // case inputlayout and batch layout was not given. Use default then
@@ -401,7 +378,14 @@ void MethodDL::ProcessOptions()
       fInputShape[2] = 1;
       fInputShape[3] = GetNVariables();
    }
+   // case when batch layout is not provided (all zero)
+   // batch layout can be determined by the input layout + batch size
+   // case DNN : { 1, B, W }
+   // case CNN :  { B, C, H*W}
+   // case RNN :  { B, T, H*W }
+
    if (fBatchWidth == 0 && fBatchHeight == 0 && fBatchDepth == 0) {
+      // case first layer is DENSE
       if (fInputShape[2] == 1 && fInputShape[1] == 1) {
          // case of (1, batchsize, input features)
          fBatchDepth  = 1;
@@ -409,6 +393,7 @@ void MethodDL::ProcessOptions()
          fBatchWidth  = fInputShape[3];
       }
       else { // more general cases (e.g. for CNN)
+         // case CONV or RNN
          fBatchDepth  = fTrainingSettings.front().batchSize;
          fBatchHeight = fInputShape[1];
          fBatchWidth  = fInputShape[3]*fInputShape[2];
@@ -443,13 +428,24 @@ void MethodDL::ParseInputLayout()
    int subDim = 1;
    std::vector<size_t> inputShape;
    inputShape.reserve(inputLayoutString.Length()/2 + 2);
-   inputShape.push_back(30);    // Will be set by Trainingsettings, use default now
+   inputShape.push_back(0);    // Will be set later by Trainingsettings, use 0 value now
    for (; inputDimString != nullptr; inputDimString = (TObjString *)nextInputDim()) {
       // size_t is unsigned
       subDim = (size_t) abs(inputDimString->GetString().Atoi());
       // Size among unused dimensions should be set to 1 for cudnn
       //if (subDim == 0) subDim = 1;
       inputShape.push_back(subDim);
+   }
+   // it is expected that empty Shape has at least 4 dimensions. We pad the missing one's with 1
+   // for example in case of dense layer input layouts
+   // when we will support 3D convolutions we would need to add extra 1's
+   if (inputShape.size() == 2) {
+      // case of dense layer where only width is specified
+      inputShape.insert(inputShape.begin() + 1, {1,1});
+   }
+   else if (inputShape.size() == 3) {
+      //e.g. case of RNN T,W -> T,1,W
+      inputShape.insert(inputShape.begin() + 2, 1);
    }
 
    this->SetInputShape(inputShape);
@@ -615,8 +611,15 @@ void MethodDL::ParseDenseLayer(DNN::TDeepNet<Architecture_t, Layer_t> &deepNet,
          width = fml.Eval(inputSize);
       }
    }
-   // avoid zero width. assume is 1
-   if (width == 0) width = 1;
+   // avoid zero width. assume is last layer and give width = output width
+   // Determine the number of outputs
+   size_t outputSize = 1;
+   if (fAnalysisType == Types::kRegression && GetNTargets() != 0) {
+      outputSize = GetNTargets();
+   } else if (fAnalysisType == Types::kMulticlass && DataInfo().GetNClasses() >= 2) {
+      outputSize = DataInfo().GetNClasses();
+   }
+   if (width == 0) width = outputSize;
 
    // Add the dense layer, initialize the weights and biases and copy
    TDenseLayer<Architecture_t> *denseLayer = deepNet.AddDenseLayer(width, activationFunction);
@@ -1144,14 +1147,6 @@ void MethodDL::TrainDeepNet()
 
    bool debug = Log().GetMinType() == kDEBUG;
 
-
-   // Determine the number of outputs
-   // //    size_t outputSize = 1;
-   // //    if (fAnalysisType == Types::kRegression && GetNTargets() != 0) {
-   // //       outputSize = GetNTargets();
-   // //    } else if (fAnalysisType == Types::kMulticlass && DataInfo().GetNClasses() >= 2) {
-   // //       outputSize = DataInfo().GetNClasses();
-   // //    }
 
    // set the random seed for weight initialization
    Architecture_t::SetRandomSeed(fRandomSeed);
@@ -2263,7 +2258,7 @@ void MethodDL::ReadWeightsFromXML(void * rootXML)
          // use some dammy value which will be overwrittem in BatchNormLayer::ReadWeightsFromXML
          fNet->AddBatchNormLayer(0., 0.0);
       }
-      // read eventually weights and biases
+      // read weights and biases
       fNet->GetLayers().back()->ReadWeightsFromXML(layerXML);
 
       // read next layer

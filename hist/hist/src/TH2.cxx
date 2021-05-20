@@ -26,7 +26,7 @@
 #include "TObjString.h"
 #include "TObjArray.h"
 #include "TVirtualHistPainter.h"
-
+#include "snprintf.h"
 
 ClassImp(TH2);
 
@@ -416,16 +416,21 @@ Int_t TH2::Fill(const char *namex, const char *namey, Double_t w)
    AddBinContent(bin,w);
    if (binx == 0 || binx > fXaxis.GetNbins()) return -1;
    if (biny == 0 || biny > fYaxis.GetNbins()) return -1;
-   Double_t x = fXaxis.GetBinCenter(binx);
-   Double_t y = fYaxis.GetBinCenter(biny);
+
    Double_t z= w;
    fTsumw   += z;
    fTsumw2  += z*z;
-   fTsumwx  += z*x;
-   fTsumwx2 += z*x*x;
-   fTsumwy  += z*y;
-   fTsumwy2 += z*y*y;
-   fTsumwxy += z*x*y;
+   // skip computation of the statistics along axis that have labels (can be extended and are aphanumeric)
+   UInt_t labelBitMask = GetAxisLabelStatus();
+   if (labelBitMask != (TH1::kXaxis | TH1::kYaxis)) {
+      Double_t x = (labelBitMask & TH1::kXaxis) ? 0 : fXaxis.GetBinCenter(binx);
+      Double_t y = (labelBitMask & TH1::kYaxis) ? 0 : fYaxis.GetBinCenter(biny);
+      fTsumwx += z * x;
+      fTsumwx2 += z * x * x;
+      fTsumwy += z * y;
+      fTsumwy2 += z * y * y;
+      fTsumwx2 += z * x * x;
+   }
    return bin;
 }
 
@@ -460,15 +465,17 @@ Int_t TH2::Fill(const char *namex, Double_t y, Double_t w)
    if (biny == 0 || biny > fYaxis.GetNbins()) {
       if (!GetStatOverflowsBehaviour()) return -1;
    }
-   Double_t x = fXaxis.GetBinCenter(binx);
    Double_t z= w; //(w > 0 ? w : -w);
    fTsumw   += z;
    fTsumw2  += z*z;
-   fTsumwx  += z*x;
-   fTsumwx2 += z*x*x;
    fTsumwy  += z*y;
    fTsumwy2 += z*y*y;
-   fTsumwxy += z*x*y;
+   if (!fXaxis.CanExtend() || !fXaxis.IsAlphanumeric()) {
+      Double_t x = fXaxis.GetBinCenter(binx);
+      fTsumwx += z * x;
+      fTsumwx2 += z * x * x;
+      fTsumwxy += z * x * y;
+   }
    return bin;
 }
 
@@ -503,15 +510,18 @@ Int_t TH2::Fill(Double_t x, const char *namey, Double_t w)
       if (!GetStatOverflowsBehaviour()) return -1;
    }
    if (biny == 0 || biny > fYaxis.GetNbins()) return -1;
-   Double_t y = fYaxis.GetBinCenter(biny);
+
    Double_t z= w; //(w > 0 ? w : -w);
    fTsumw   += z;
    fTsumw2  += z*z;
    fTsumwx  += z*x;
    fTsumwx2 += z*x*x;
-   fTsumwy  += z*y;
-   fTsumwy2 += z*y*y;
-   fTsumwxy += z*x*y;
+   if (!fYaxis.CanExtend() || !fYaxis.IsAlphanumeric()) {
+      Double_t y = fYaxis.GetBinCenter(biny);
+      fTsumwy += z * y;
+      fTsumwy2 += z * y * y;
+      fTsumwxy += z * x * y;
+   }
    return bin;
 }
 
@@ -585,6 +595,10 @@ void TH2::FillN(Int_t ntimes, const Double_t *x, const Double_t *y, const Double
 ////////////////////////////////////////////////////////////////////////////////
 /// Fill histogram following distribution in function fname.
 ///
+///  @param fname  : Function name used for filling the historam
+///  @param ntimes : number of times the histogram is filled
+///  @param rng    : (optional) Random number generator used to sample
+///
 ///   The distribution contained in the function fname (TF2) is integrated
 ///   over the channel contents.
 ///   It is normalized to 1.
@@ -596,7 +610,7 @@ void TH2::FillN(Int_t ntimes, const Double_t *x, const Double_t *y, const Double
 ///
 ///  One can also call TF2::GetRandom2 to get a random variate from a function.
 
-void TH2::FillRandom(const char *fname, Int_t ntimes)
+void TH2::FillRandom(const char *fname, Int_t ntimes, TRandom * rng)
 {
    Int_t bin, binx, biny, ibin, loop;
    Double_t r1, x, y;
@@ -646,7 +660,7 @@ void TH2::FillRandom(const char *fname, Int_t ntimes)
 
    // Start main loop ntimes
    for (loop=0;loop<ntimes;loop++) {
-      r1 = gRandom->Rndm();
+      r1 = (rng) ? rng->Rndm() : gRandom->Rndm();
       ibin = TMath::BinarySearch(nbins,&integral[0],r1);
       biny = ibin/nbinsx;
       binx = 1 + ibin - nbinsx*biny;
@@ -662,6 +676,10 @@ void TH2::FillRandom(const char *fname, Int_t ntimes)
 ////////////////////////////////////////////////////////////////////////////////
 /// Fill histogram following distribution in histogram h.
 ///
+///  @param h      : Histogram  pointer used for smpling random number
+///  @param ntimes : number of times the histogram is filled
+///  @param rng    : (optional) Random number generator used for sampling
+///
 ///   The distribution contained in the histogram h (TH2) is integrated
 ///   over the channel contents.
 ///   It is normalized to 1.
@@ -671,7 +689,7 @@ void TH2::FillRandom(const char *fname, Int_t ntimes)
 ///     - Fill histogram channel
 ///   ntimes random numbers are generated
 
-void TH2::FillRandom(TH1 *h, Int_t ntimes)
+void TH2::FillRandom(TH1 *h, Int_t ntimes, TRandom * rng)
 {
    if (!h) { Error("FillRandom", "Null histogram"); return; }
    if (fDimension != h->GetDimension()) {
@@ -684,7 +702,7 @@ void TH2::FillRandom(TH1 *h, Int_t ntimes)
    Double_t x,y;
    TH2 *h2 = (TH2*)h;
    for (loop=0;loop<ntimes;loop++) {
-      h2->GetRandom2(x,y);
+      h2->GetRandom2(x,y,rng);
       Fill(x,y);
    }
 }
@@ -717,7 +735,7 @@ void TH2::DoFitSlices(bool onX,
    if (lastbin < 0 || lastbin > nbins + 1) lastbin = nbins + 1;
    if (lastbin < firstbin) {firstbin = 0; lastbin = nbins + 1;}
 
-   
+
    TString opt = option;
    TString proj_opt = "e";
    Int_t i1 = opt.Index("[");
@@ -761,11 +779,11 @@ void TH2::DoFitSlices(bool onX,
    const TArrayD *bins = outerAxis.GetXbins();
    // outer axis boudaries used for creating reported histograms are different
    // than the limits used in the projection loop (firstbin,lastbin)
-   Int_t firstOutBin = outerAxis.TestBit(TAxis::kAxisRange) ? std::max(firstbin,1) : 1; 
+   Int_t firstOutBin = outerAxis.TestBit(TAxis::kAxisRange) ? std::max(firstbin,1) : 1;
    Int_t lastOutBin = outerAxis.TestBit(TAxis::kAxisRange) ?  std::min(lastbin,outerAxis.GetNbins() ) : outerAxis.GetNbins();
    Int_t nOutBins = lastOutBin-firstOutBin+1;
    // merge bins if use nstep > 1 and fixed bins
-   if (bins->fN == 0) nOutBins /= nstep;  
+   if (bins->fN == 0) nOutBins /= nstep;
    for (ipar=0;ipar<npar;ipar++) {
       snprintf(name,2000,"%s_%d",GetName(),ipar);
       snprintf(title,2000,"Fitted value of par[%d]=%s",ipar,f1->GetParName(ipar));
@@ -831,7 +849,7 @@ void TH2::DoFitSlices(bool onX,
       }
       // don't need to delete hp. If histogram has the same name it is re-used in TH2::Projection
    }
-   delete hp; 
+   delete hp;
    delete [] parsave;
    delete [] name;
    delete [] title;
@@ -1070,10 +1088,14 @@ Double_t TH2::GetCovariance(Int_t axis1, Int_t axis2) const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Return 2 random numbers along axis x and y distributed according
-/// the cell-contents of a 2-dim histogram
+/// to the cell-contents of this 2-dim histogram
 /// return a NaN if the histogram has a bin with negative content
+///
+/// @param[out] x  reference to random generated x value
+/// @param[out] y  reference to random generated x value
+/// @param[in] rng (optional) Random number generator pointer used (default is gRandom)
 
-void TH2::GetRandom2(Double_t &x, Double_t &y)
+void TH2::GetRandom2(Double_t &x, Double_t &y, TRandom * rng)
 {
    Int_t nbinsx = GetNbinsX();
    Int_t nbinsy = GetNbinsY();
@@ -1090,14 +1112,15 @@ void TH2::GetRandom2(Double_t &x, Double_t &y)
    // case histogram has negative bins
    if (integral == TMath::QuietNaN() ) { x = TMath::QuietNaN(); y = TMath::QuietNaN(); return;}
 
-   Double_t r1 = gRandom->Rndm();
+   if (!rng) rng = gRandom;
+   Double_t r1 = rng->Rndm();
    Int_t ibin = TMath::BinarySearch(nbins,fIntegral,(Double_t) r1);
    Int_t biny = ibin/nbinsx;
    Int_t binx = ibin - nbinsx*biny;
    x = fXaxis.GetBinLowEdge(binx+1);
    if (r1 > fIntegral[ibin]) x +=
       fXaxis.GetBinWidth(binx+1)*(r1-fIntegral[ibin])/(fIntegral[ibin+1] - fIntegral[ibin]);
-   y = fYaxis.GetBinLowEdge(biny+1) + fYaxis.GetBinWidth(biny+1)*gRandom->Rndm();
+   y = fYaxis.GetBinLowEdge(biny+1) + fYaxis.GetBinWidth(biny+1)*rng->Rndm();
 }
 
 
@@ -1148,10 +1171,14 @@ void TH2::GetStats(Double_t *stats) const
             if (lastBinY ==  fYaxis.GetNbins() ) lastBinY += 1;
          }
       }
+      // check for labels axis . In that case corresponsing statistics do not make sense and it is set to zero
+      Bool_t labelXaxis =  ((const_cast<TAxis&>(fXaxis)).GetLabels() && fXaxis.CanExtend() );
+      Bool_t labelYaxis =  ((const_cast<TAxis&>(fYaxis)).GetLabels() && fYaxis.CanExtend() );
+
       for (Int_t biny = firstBinY; biny <= lastBinY; ++biny) {
-         Double_t y = fYaxis.GetBinCenter(biny);
+         Double_t y = (!labelYaxis) ? fYaxis.GetBinCenter(biny) : 0;
          for (Int_t binx = firstBinX; binx <= lastBinX; ++binx) {
-            Double_t x = fXaxis.GetBinCenter(binx);
+            Double_t x = (!labelXaxis) ? fXaxis.GetBinCenter(binx) : 0;
             //w   = TMath::Abs(GetBinContent(bin));
             Int_t bin = GetBin(binx,biny);
             Double_t w = RetrieveBinContent(bin);
