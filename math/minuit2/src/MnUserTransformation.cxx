@@ -13,7 +13,7 @@
 #include "Minuit2/MnMatrix.h"
 
 #include <algorithm>
-#include <stdio.h>
+#include <cstdio>
 #include <string>
 #include <sstream>
 
@@ -95,44 +95,40 @@ namespace ROOT {
 // }
 // #endif
 
-    double MnUserTransformation::Int2ext(unsigned int i, double val) const {
-//      std::cout << "Int2Ext in = " << val; EGP
-      // return external value from internal value for parameter i
-      if(fParameters[fExtOfInt[i]].HasLimits()) {
-        if(fParameters[fExtOfInt[i]].HasUpperLimit() && fParameters[fExtOfInt[i]].HasLowerLimit())
-          val = fDoubleLimTrafo.Int2ext(val, fParameters[fExtOfInt[i]].UpperLimit(), fParameters[fExtOfInt[i]].LowerLimit());
-        else if(fParameters[fExtOfInt[i]].HasUpperLimit() && !fParameters[fExtOfInt[i]].HasLowerLimit())
-          val = fUpperLimTrafo.Int2ext(val, fParameters[fExtOfInt[i]].UpperLimit());
-        else
-          val = fLowerLimTrafo.Int2ext(val, fParameters[fExtOfInt[i]].LowerLimit());
-      }
+double MnUserTransformation::Int2ext(unsigned int i, double val) const {
+   // return external value from internal value for parameter i
+   if(fParameters[fExtOfInt[i]].HasLimits()) {
+      if(fParameters[fExtOfInt[i]].HasUpperLimit() && fParameters[fExtOfInt[i]].HasLowerLimit())
+         return fDoubleLimTrafo.Int2ext(val, fParameters[fExtOfInt[i]].UpperLimit(), fParameters[fExtOfInt[i]].LowerLimit());
+      else if(fParameters[fExtOfInt[i]].HasUpperLimit() && !fParameters[fExtOfInt[i]].HasLowerLimit())
+         return fUpperLimTrafo.Int2ext(val, fParameters[fExtOfInt[i]].UpperLimit());
+      else
+         return fLowerLimTrafo.Int2ext(val, fParameters[fExtOfInt[i]].LowerLimit());
+   }
 
-//      std::cout << ", out = " << val << std::endl; EGP
+   return val;
+}
 
-      return val;
-    }
+double MnUserTransformation::Int2extError(unsigned int i, double val, double err) const {
+   // return external error from internal error for parameter i
 
-    double MnUserTransformation::Int2extError(unsigned int i, double val, double err) const {
-      // return external error from internal error for parameter i
+   //err = sigma Value == std::sqrt(cov(i,i))
+   double dx = err;
 
-      //err = sigma Value == sqrt(cov(i,i))
-      double dx = err;
-
-      if(fParameters[fExtOfInt[i]].HasLimits()) {
-        double ui = Int2ext(i, val);
-        double du1 = Int2ext(i, val+dx) - ui;
-        double du2 = Int2ext(i, val-dx) - ui;
-        if(fParameters[fExtOfInt[i]].HasUpperLimit() && fParameters[fExtOfInt[i]].HasLowerLimit()) {
-          //       double al = fParameters[fExtOfInt[i]].Lower();
-          //       double ba = fParameters[fExtOfInt[i]].Upper() - al;
-          //       double du1 = al + 0.5*(sin(val + dx) + 1.)*ba - ui;
-          //       double du2 = al + 0.5*(sin(val - dx) + 1.)*ba - ui;
-          //       if(dx > 1.) du1 = ba;
-          if(dx > 1.) du1 = fParameters[fExtOfInt[i]].UpperLimit() - fParameters[fExtOfInt[i]].LowerLimit();
-          dx = 0.5*(fabs(du1) + fabs(du2));
-        } else {
-          dx = 0.5*(fabs(du1) + fabs(du2));
-        }
+   if(fParameters[fExtOfInt[i]].HasLimits()) {
+      double ui = Int2ext(i, val);
+      double du1 = Int2ext(i, val+dx) - ui;
+      double du2 = Int2ext(i, val-dx) - ui;
+      if(fParameters[fExtOfInt[i]].HasUpperLimit() && fParameters[fExtOfInt[i]].HasLowerLimit()) {
+         //       double al = fParameters[fExtOfInt[i]].Lower();
+         //       double ba = fParameters[fExtOfInt[i]].Upper() - al;
+         //       double du1 = al + 0.5*(sin(val + dx) + 1.)*ba - ui;
+         //       double du2 = al + 0.5*(sin(val - dx) + 1.)*ba - ui;
+         //       if(dx > 1.) du1 = ba;
+         if(dx > 1.) du1 = fParameters[fExtOfInt[i]].UpperLimit() - fParameters[fExtOfInt[i]].LowerLimit();
+         dx = 0.5*(std::fabs(du1) + std::fabs(du2));
+      } else {
+         dx = 0.5*(std::fabs(du1) + std::fabs(du2));
       }
 
       return dx;
@@ -147,18 +143,18 @@ namespace ROOT {
       for(unsigned int i = 0; i < vec.size(); i++) {
         double dxdi = 1.;
         if(fParameters[fExtOfInt[i]].HasLimits()) {
-          //       dxdi = 0.5*fabs((fParameters[fExtOfInt[i]].Upper() - fParameters[fExtOfInt[i]].Lower())*cos(vec(i)));
-          dxdi = DInt2Ext(i, vec(i));
-        }
-        for(unsigned int j = i; j < vec.size(); j++) {
-          double dxdj = 1.;
-          if(fParameters[fExtOfInt[j]].HasLimits()) {
-            //   dxdj = 0.5*fabs((fParameters[fExtOfInt[j]].Upper() - fParameters[fExtOfInt[j]].Lower())*cos(vec(j)));
+         //       dxdi = 0.5*std::fabs((fParameters[fExtOfInt[i]].Upper() - fParameters[fExtOfInt[i]].Lower())*cos(vec(i)));
+         dxdi = DInt2Ext(i, vec(i));
+      }
+      for(unsigned int j = i; j < vec.size(); j++) {
+         double dxdj = 1.;
+         if(fParameters[fExtOfInt[j]].HasLimits()) {
+            //   dxdj = 0.5*std::fabs((fParameters[fExtOfInt[j]].Upper() - fParameters[fExtOfInt[j]].Lower())*cos(vec(j)));
             dxdj = DInt2Ext(j, vec(j));
           }
           result(i,j) = dxdi*cov(i,j)*dxdj;
         }
-        //     double diag = Int2extError(i, vec(i), sqrt(cov(i,i)));
+        //     double diag = Int2extError(i, vec(i), std::sqrt(cov(i,i)));
         //     result(i,i) = diag*diag;
       }
 
@@ -168,7 +164,6 @@ namespace ROOT {
     double MnUserTransformation::Ext2int(unsigned int i, double val) const {
       // return the internal value for parameter i with external value val
 
-//      std::cout << "Ext2Int: " << val; EGP
       if(fParameters[i].HasLimits()) {
         if(fParameters[i].HasUpperLimit() && fParameters[i].HasLowerLimit())
           val = fDoubleLimTrafo.Ext2int(val, fParameters[i].UpperLimit(), fParameters[i].LowerLimit(), Precision());
@@ -178,8 +173,6 @@ namespace ROOT {
           val = fLowerLimTrafo.Ext2int(val, fParameters[i].LowerLimit(), Precision());
       }
 
-//      std::cout << ", out = " << val << std::endl; EGP
-
       return val;
     }
 
@@ -187,19 +180,16 @@ namespace ROOT {
       // return the derivative of the int->ext transformation: dPext(i) / dPint(i)
       // for the parameter i with value val
 
-//      std::cout << "DInt2Ext in = " << val; EGP
       double dd = 1.;
       if(fParameters[fExtOfInt[i]].HasLimits()) {
         if(fParameters[fExtOfInt[i]].HasUpperLimit() && fParameters[fExtOfInt[i]].HasLowerLimit())
-          //       dd = 0.5*fabs((fParameters[fExtOfInt[i]].Upper() - fParameters[fExtOfInt[i]].Lower())*cos(vec(i)));
+          //       dd = 0.5*std::fabs((fParameters[fExtOfInt[i]].Upper() - fParameters[fExtOfInt[i]].Lower())*cos(vec(i)));
           dd = fDoubleLimTrafo.DInt2Ext(val, fParameters[fExtOfInt[i]].UpperLimit(), fParameters[fExtOfInt[i]].LowerLimit());
         else if(fParameters[fExtOfInt[i]].HasUpperLimit() && !fParameters[fExtOfInt[i]].HasLowerLimit())
           dd = fUpperLimTrafo.DInt2Ext(val, fParameters[fExtOfInt[i]].UpperLimit());
         else
           dd = fLowerLimTrafo.DInt2Ext(val, fParameters[fExtOfInt[i]].LowerLimit());
       }
-
-//      std::cout << ", out = " << dd << std::endl; EGP
 
       return dd;
     }
@@ -247,7 +237,7 @@ namespace ROOT {
 
     if(fParameters[fExtOfInt[i]].HasLimits()) {
        if(fParameters[fExtOfInt[i]].HasUpperLimit() && fParameters[fExtOfInt[i]].HasLowerLimit())
-          //       dd = 0.5*fabs((fParameters[fExtOfInt[i]].Upper() - fParameters[fExtOfInt[i]].Lower())*cos(vec(i)));
+          //       dd = 0.5*std::fabs((fParameters[fExtOfInt[i]].Upper() - fParameters[fExtOfInt[i]].Lower())*cos(vec(i)));
           dd = fDoubleLimTrafo.dExt2Int(val, fParameters[fExtOfInt[i]].UpperLimit(), fParameters[fExtOfInt[i]].LowerLimit());
        else if(fParameters[fExtOfInt[i]].HasUpperLimit() && !fParameters[fExtOfInt[i]].HasLowerLimit())
           dd = fUpperLimTrafo.dExt2Int(val, fParameters[fExtOfInt[i]].UpperLimit());
