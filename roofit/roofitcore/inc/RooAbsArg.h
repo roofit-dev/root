@@ -16,7 +16,6 @@
 #ifndef ROO_ABS_ARG
 #define ROO_ABS_ARG
 
-#include <assert.h>
 #include "TNamed.h"
 #include "THashList.h"
 #include "TRefArray.h"
@@ -336,8 +335,8 @@ public:
 
   static void setDirtyInhibit(Bool_t flag) ;
 
-  virtual Bool_t operator==(const RooAbsArg& other) = 0 ;
-  virtual Bool_t isIdentical(const RooAbsArg& other, Bool_t assumeSameType=kFALSE) = 0 ;
+  virtual bool operator==(const RooAbsArg& other) const = 0 ;
+  virtual bool isIdentical(const RooAbsArg& other, Bool_t assumeSameType=kFALSE) const = 0 ;
 
   // Range management
   virtual Bool_t inRange(const char*) const {

@@ -50,7 +50,6 @@ clang/LLVM technology.
 #include "TObjString.h"
 #include "TString.h"
 #include "THashList.h"
-#include "TOrdCollection.h"
 #include "TVirtualPad.h"
 #include "TSystem.h"
 #include "TVirtualMutex.h"
@@ -95,9 +94,11 @@ clang/LLVM technology.
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Lex/PreprocessorOptions.h"
+#include "clang/Parse/Parser.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
-#include "clang/Parse/Parser.h"
+#include "clang/Serialization/ASTReader.h"
+#include "clang/Serialization/GlobalModuleIndex.h"
 
 #include "cling/Interpreter/ClangInternalState.h"
 #include "cling/Interpreter/DynamicLibraryManager.h"
@@ -1055,6 +1056,10 @@ static bool LoadModule(const std::string &ModuleName, cling::Interpreter &interp
    std::string currentDir = gSystem->WorkingDirectory();
    assert(!currentDir.empty());
    gCling->RegisterPrebuiltModulePath(currentDir);
+   if (gDebug > 2)
+      ::Info("TCling::__LoadModule", "Preloading module %s. \n",
+             ModuleName.c_str());
+
    return interp.loadModule(ModuleName, /*Complain=*/true);
 }
 
@@ -1073,7 +1078,8 @@ static bool IsFromRootCling() {
   return foundSymbol;
 }
 
-static std::string GetModuleNameAsString(clang::Module *M, const clang::Preprocessor &PP)
+/// Checks if there is an ASTFile on disk for the given module \c M.
+static bool HasASTFileOnDisk(clang::Module *M, const clang::Preprocessor &PP, std::string *FullFileName = nullptr)
 {
    const HeaderSearchOptions &HSOpts = PP.getHeaderSearchInfo().getHeaderSearchOpts();
 
@@ -1081,11 +1087,52 @@ static std::string GetModuleNameAsString(clang::Module *M, const clang::Preproce
    if (!HSOpts.PrebuiltModulePaths.empty())
       // Load the module from *only* in the prebuilt module path.
       ModuleFileName = PP.getHeaderSearchInfo().getModuleFileName(M->Name, /*ModuleMapPath*/"", /*UsePrebuiltPath*/ true);
-   if (ModuleFileName.empty()) return "";
+   if (FullFileName)
+      *FullFileName = ModuleFileName;
 
-   std::string ModuleName = llvm::sys::path::filename(ModuleFileName);
-   // Return stem of the filename
-   return std::string(llvm::sys::path::stem(ModuleName));
+   return !ModuleFileName.empty();
+}
+
+static bool HaveFullGlobalModuleIndex = false;
+static GlobalModuleIndex *loadGlobalModuleIndex(SourceLocation TriggerLoc, cling::Interpreter &interp)
+{
+   CompilerInstance &CI = *interp.getCI();
+   Preprocessor &PP = CI.getPreprocessor();
+   auto ModuleManager = CI.getModuleManager();
+   assert(ModuleManager);
+   // StringRef ModuleIndexPath = HSI.getModuleCachePath();
+   // HeaderSearch& HSI = PP.getHeaderSearchInfo();
+   // HSI.setModuleCachePath(TROOT::GetLibDir().Data());
+   std::string ModuleIndexPath = TROOT::GetLibDir().Data();
+   if (ModuleIndexPath.empty())
+      return nullptr;
+   // Get an existing global index. This loads it if not already loaded.
+   ModuleManager->resetForReload();
+   ModuleManager->loadGlobalIndex();
+   GlobalModuleIndex *GlobalIndex = ModuleManager->getGlobalIndex();
+
+   // For finding modules needing to be imported for fixit messages,
+   // we need to make the global index cover all modules, so we do that here.
+   if (!GlobalIndex && !HaveFullGlobalModuleIndex) {
+      ModuleMap &MMap = PP.getHeaderSearchInfo().getModuleMap();
+      bool RecreateIndex = false;
+      for (ModuleMap::module_iterator I = MMap.module_begin(), E = MMap.module_end(); I != E; ++I) {
+         Module *TheModule = I->second;
+         // We want the index only of the prebuilt modules.
+         if (!HasASTFileOnDisk(TheModule, PP))
+            continue;
+         LoadModule(TheModule->Name, interp);
+         RecreateIndex = true;
+      }
+      if (RecreateIndex) {
+         GlobalModuleIndex::writeIndex(CI.getFileManager(), CI.getPCHContainerReader(), ModuleIndexPath);
+         ModuleManager->resetForReload();
+         ModuleManager->loadGlobalIndex();
+         GlobalIndex = ModuleManager->getGlobalIndex();
+      }
+      HaveFullGlobalModuleIndex = true;
+   }
+   return GlobalIndex;
 }
 
 static void RegisterCxxModules(cling::Interpreter &clingInterp)
@@ -1113,35 +1160,73 @@ static void RegisterCxxModules(cling::Interpreter &clingInterp)
                                            "Core",
                                            "RIO"};
 
+   LoadModules(CoreModules, clingInterp);
+
    // FIXME: Reducing those will let us be less dependent on rootmap files
    static constexpr std::array<const char *, 3> ExcludeModules = {
       {"Rtools", "RSQLite", "RInterface"}};
 
-   LoadModules(CoreModules, clingInterp);
-
    // Take this branch only from ROOT because we don't need to preload modules in rootcling
    if (!IsFromRootCling()) {
-      // Dynamically get all the modules and load them if they are not in core modules
+      std::vector<std::string> CommonModules = {"MathCore"};
+      LoadModules(CommonModules, clingInterp);
+
+      // These modules should not be preloaded but they fix issues.
+      std::vector<std::string> FIXMEModules = {"Hist", "Gpad", "Graf",
+                                               "GenVector", "Smatrix", "Tree",
+                                               "TreePlayer", "Physics",
+                                               "Proof", "Geom"};
+      LoadModules(FIXMEModules, clingInterp);
+
       clang::CompilerInstance &CI = *clingInterp.getCI();
-      clang::ModuleMap &moduleMap = CI.getPreprocessor().getHeaderSearchInfo().getModuleMap();
+      GlobalModuleIndex *GlobalIndex = nullptr;
+      if (gSystem->Getenv("ROOT_EXPERIMENTAL_GMI")) {
+         loadGlobalModuleIndex(SourceLocation(), clingInterp);
+         GlobalIndex = CI.getModuleManager()->getGlobalIndex();
+      }
+      llvm::StringSet<> KnownModuleFileNames;
+      if (GlobalIndex)
+         GlobalIndex->getKnownModuleFileNames(KnownModuleFileNames);
+
       clang::Preprocessor &PP = CI.getPreprocessor();
-      std::vector<std::string> ModulesPreloaded;
-      for (auto I = moduleMap.module_begin(), E = moduleMap.module_end(); I != E; ++I) {
+      std::vector<std::string> PendingModules;
+      PendingModules.reserve(256);
+      ModuleMap &MMap = PP.getHeaderSearchInfo().getModuleMap();
+      for (auto I = MMap.module_begin(), E = MMap.module_end(); I != E; ++I) {
          clang::Module *M = I->second;
          assert(M);
 
-         std::string ModuleName = GetModuleNameAsString(M, PP);
-         if (!ModuleName.empty() &&
-             std::find(CoreModules.begin(), CoreModules.end(), ModuleName) == CoreModules.end() &&
-             std::find(ExcludeModules.begin(), ExcludeModules.end(), ModuleName) ==
-                ExcludeModules.end()) {
-            if (M->IsSystem && !M->IsMissingRequirement)
-               LoadModule(ModuleName, clingInterp);
-            else if (!M->IsSystem && !M->IsMissingRequirement)
-               ModulesPreloaded.push_back(ModuleName);
+         // We want to load only already created modules.
+         std::string FullASTFilePath;
+         if (!HasASTFileOnDisk(M, PP, &FullASTFilePath))
+            continue;
+
+         if (GlobalIndex && KnownModuleFileNames.count(FullASTFilePath))
+            continue;
+
+         if (M->IsMissingRequirement)
+            continue;
+
+         if (GlobalIndex)
+            LoadModule(M->Name, clingInterp);
+         else {
+            // FIXME: We may be able to remove those checks as cling::loadModule
+            // checks if a module was alredy loaded.
+            if (std::find(CoreModules.begin(), CoreModules.end(), M->Name) != CoreModules.end())
+               continue; // This is a core module which was already loaded.
+
+            if (std::find(ExcludeModules.begin(), ExcludeModules.end(), M->Name) != ExcludeModules.end())
+               continue;
+
+            // Load system modules now and delay the other modules after we have
+            // loaded all system ones.
+            if (M->IsSystem)
+               LoadModule(M->Name, clingInterp);
+            else
+               PendingModules.push_back(M->Name);
          }
       }
-      LoadModules(ModulesPreloaded, clingInterp);
+      LoadModules(PendingModules, clingInterp);
    }
 
    // Check that the gROOT macro was exported by any core module.
@@ -1325,6 +1410,17 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
 
          clingArgsStorage.push_back("-fmodule-map-file=" + ModuleMapLoc);
       }
+      std::string ModulesCachePath;
+      EnvOpt = llvm::sys::Process::GetEnv("CLING_MODULES_CACHE_PATH");
+      if (EnvOpt.hasValue()){
+         StringRef Env(*EnvOpt);
+         assert(llvm::sys::fs::exists(Env) && "Path does not exist!");
+         ModulesCachePath = Env.str();
+      } else {
+         ModulesCachePath = TROOT::GetLibDir();
+      }
+
+      clingArgsStorage.push_back("-fmodules-cache-path=" + ModulesCachePath);
    }
 
    std::vector<const char*> interpArgs;
@@ -1346,7 +1442,7 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
          // this by accident.
          interpArgs.push_back("-Rmodule-build");
       }
-      // ROOT implements its autoloading upon module's link directives. We
+      // ROOT implements its AutoLoading upon module's link directives. We
       // generate module A { header "A.h" link "A.so" export * } where ROOT's
       // facilities use the link directive to dynamically load the relevant
       // library. So, we need to suppress clang's default autolink behavior.
@@ -1391,7 +1487,7 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
    // Don't check whether modules' files exist.
    fInterpreter->getCI()->getPreprocessorOpts().DisablePCHValidation = true;
 
-   // Until we can disable autoloading during Sema::CorrectTypo() we have
+   // Until we can disable AutoLoading during Sema::CorrectTypo() we have
    // to disable spell checking.
    fInterpreter->getCI()->getLangOpts().SpellChecking = false;
 
@@ -1479,7 +1575,7 @@ void TCling::Initialize()
    TClass::ReadRules(); // Read the default customization rules ...
 
    LoadLibraryMap();
-   SetClassAutoloading(true);
+   SetClassAutoLoading(true);
 }
 
 void TCling::ShutDown()
@@ -1703,7 +1799,7 @@ void TCling::LoadPCMImpl(TFile &pcmFile)
 
 void TCling::LoadPCM(std::string pcmFileNameFullPath)
 {
-   SuspendAutoloadingRAII autoloadOff(this);
+   SuspendAutoLoadingRAII autoloadOff(this);
    SuspendAutoParsing autoparseOff(this);
    assert(!pcmFileNameFullPath.empty());
    assert(llvm::sys::path::is_absolute(pcmFileNameFullPath));
@@ -1937,9 +2033,9 @@ void TCling::RegisterModule(const char* modulename,
    // better than nothing.
    fLookedUpClasses.clear();
 
-   // Make sure we do not set off autoloading or autoparsing during the
+   // Make sure we do not set off AutoLoading or autoparsing during the
    // module registration!
-   SuspendAutoloadingRAII autoLoadOff(this);
+   SuspendAutoLoadingRAII autoLoadOff(this);
 
    for (const char** inclPath = includePaths; *inclPath; ++inclPath) {
       TCling::AddIncludePath(*inclPath);
@@ -2913,7 +3009,7 @@ bool TCling::Declare(const char* code)
 {
    R__LOCKGUARD_CLING(gInterpreterMutex);
 
-   SuspendAutoloadingRAII autoLoadOff(this);
+   SuspendAutoLoadingRAII autoLoadOff(this);
    SuspendAutoParsing autoParseRaii(this);
 
    bool oldDynLookup = fInterpreter->isDynamicLookupEnabled();
@@ -2926,21 +3022,6 @@ bool TCling::Declare(const char* code)
    fInterpreter->enableRawInput(oldRawInput);
    fInterpreter->enableDynamicLookup(oldDynLookup);
    return ret;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Enable the automatic loading of shared libraries when a class
-/// is used that is stored in a not yet loaded library. Uses the
-/// information stored in the class/library map (typically
-/// $ROOTSYS/etc/system.rootmap).
-
-void TCling::EnableAutoLoading()
-{
-#if ROOT_VERSION_CODE < ROOT_VERSION(6,21,00)
-   Warning("EnableAutoLoading()", "Call to deprecated interface does nothing. Please remove the call.");
-#else
-# error "Remove this deprecated code"
-#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3879,6 +3960,9 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
       return kUnknown;
    }
 
+   // Do not turn on the AutoLoading if it is globally off.
+   autoload = autoload && IsClassAutoLoadingEnabled();
+
    // Avoid the double search below in case the name is a fundamental type
    // or typedef to a fundamental type.
    THashTable *typeTable = dynamic_cast<THashTable*>( gROOT->GetListOfTypes() );
@@ -3899,7 +3983,7 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
 
    const char *classname = name;
 
-   int storeAutoload = SetClassAutoloading(autoload);
+   int storeAutoload = SetClassAutoLoading(autoload);
 
    // First we want to check whether the decl exist, but _without_
    // generating any template instantiation. However, the lookup
@@ -3945,14 +4029,14 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
             // findscope.
             if (ROOT::TMetaUtils::IsSTLCont(*tmpltDecl)) {
                // For STL Collection we return kUnknown.
-               SetClassAutoloading(storeAutoload);
+               SetClassAutoLoading(storeAutoload);
                return kUnknown;
             }
          }
       }
       TClingClassInfo tci(GetInterpreterImpl(), *type);
       if (!tci.IsValid()) {
-         SetClassAutoloading(storeAutoload);
+         SetClassAutoLoading(storeAutoload);
          return kUnknown;
       }
       auto propertiesMask = isClassOrNamespaceOnly ? kIsClass | kIsStruct | kIsNamespace :
@@ -3979,19 +4063,19 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
          // , hasClassDefInline);
 
          // We are now sure that the entry is not in fact an autoload entry.
-         SetClassAutoloading(storeAutoload);
+         SetClassAutoLoading(storeAutoload);
          if (hasClassDefInline)
             return kWithClassDefInline;
          else
             return kKnown;
       } else {
          // We are now sure that the entry is not in fact an autoload entry.
-         SetClassAutoloading(storeAutoload);
+         SetClassAutoLoading(storeAutoload);
          return kUnknown;
       }
    }
 
-   SetClassAutoloading(storeAutoload);
+   SetClassAutoLoading(storeAutoload);
    if (decl)
       return kKnown;
    else
@@ -4003,7 +4087,7 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
    TClingTypedefInfo t(fInterpreter, name);
    if (t.IsValid() && !(t.Property() & kIsFundamental)) {
       delete[] classname;
-      SetClassAutoloading(storeAutoload);
+      SetClassAutoLoading(storeAutoload);
       return kTRUE;
    }
    */
@@ -4014,7 +4098,7 @@ TCling::CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamesp
 //      decl = lh.findScope(buf);
 //   }
 
-//   SetClassAutoloading(storeAutoload);
+//   SetClassAutoLoading(storeAutoload);
 //   return (decl);
 }
 
@@ -5357,7 +5441,7 @@ namespace {
    using namespace clang;
 
    class ExtVisibleStorageAdder: public RecursiveASTVisitor<ExtVisibleStorageAdder>{
-      // This class is to be considered an helper for autoloading.
+      // This class is to be considered an helper for AutoLoading.
       // It is a recursive visitor is used to inspect namespaces coming from
       // forward declarations in rootmaps and to set the external visible
       // storage flag for them.
@@ -5719,7 +5803,7 @@ Int_t TCling::UnloadLibraryMap(const char* library)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Register the autoloading information for a class.
+/// Register the AutoLoading information for a class.
 /// libs is a space separated list of libraries.
 
 Int_t TCling::SetClassSharedLibs(const char *cls, const char *libs)
@@ -5770,7 +5854,7 @@ TClass *TCling::GetClass(const std::type_info& typeinfo, Bool_t load) const
 
 Int_t TCling::AutoLoad(const std::type_info& typeinfo, Bool_t knowDictNotLoaded /* = kFALSE */)
 {
-   assert(IsClassAutoloadingEnabled() && "Calling when autoloading is off!");
+   assert(IsClassAutoLoadingEnabled() && "Calling when AutoLoading is off!");
 
    int err = 0;
    char* demangled_name_c = TClassEdit::DemangleTypeIdName(typeinfo, err);
@@ -5808,7 +5892,7 @@ Int_t TCling::AutoLoad(const char *cls, Bool_t knowDictNotLoaded /* = kFALSE */)
    // rootcling (in *_rdict.pcm file generation) it is a no op.
    // FIXME: We should avoid calling autoload when we know we are not supposed
    // to and transform this check into an assert.
-   if (!IsClassAutoloadingEnabled()) {
+   if (!IsClassAutoLoadingEnabled()) {
       // Never load any library from rootcling/genreflex.
       if (gDebug > 2) {
          Info("TCling::AutoLoad", "Explicitly disabled (the class name is %s)", cls);
@@ -5816,7 +5900,7 @@ Int_t TCling::AutoLoad(const char *cls, Bool_t knowDictNotLoaded /* = kFALSE */)
       return 0;
    }
 
-   assert(IsClassAutoloadingEnabled() && "Calling when autoloading is off!");
+   assert(IsClassAutoLoadingEnabled() && "Calling when AutoLoading is off!");
 
    R__LOCKGUARD(gInterpreterMutex);
 
@@ -5843,7 +5927,7 @@ Int_t TCling::AutoLoad(const char *cls, Bool_t knowDictNotLoaded /* = kFALSE */)
       return 0;
    }
    // Prevent the recursion when the library dictionary are loaded.
-   SuspendAutoloadingRAII autoLoadOff(this);
+   SuspendAutoLoadingRAII autoLoadOff(this);
    // Try using externally provided callback first.
    if (fAutoLoadCallBack) {
       int success = (*(AutoLoadCallBack_t)fAutoLoadCallBack)(cls);
@@ -6090,7 +6174,7 @@ Int_t TCling::AutoParse(const char *cls)
       return 0;
 
    if (!fHeaderParsingOnDemand || fIsAutoParsingSuspended) {
-      if (fClingCallbacks->IsAutoloadingEnabled()) {
+      if (fClingCallbacks->IsAutoLoadingEnabled()) {
          return AutoLoad(cls);
       } else {
          return 0;
@@ -6105,7 +6189,7 @@ Int_t TCling::AutoParse(const char *cls)
    }
 
    // The catalogue of headers is in the dictionary
-   if (fClingCallbacks->IsAutoloadingEnabled()
+   if (fClingCallbacks->IsAutoLoadingEnabled()
          && !gClassTable->GetDictNorm(cls)) {
       // Need RAII against recursive (dictionary payload) parsing (ROOT-8445).
       ROOT::Internal::ParsingStateRAII parsingStateRAII(fInterpreter->getParser(),
@@ -6114,7 +6198,7 @@ Int_t TCling::AutoParse(const char *cls)
    }
 
    // Prevent the recursion when the library dictionary are loaded.
-   SuspendAutoloadingRAII autoLoadOff(this);
+   SuspendAutoLoadingRAII autoLoadOff(this);
 
    // No recursive header parsing on demand; we require headers to be standalone.
    SuspendAutoParsing autoParseRAII(this);
@@ -6127,7 +6211,7 @@ Int_t TCling::AutoParse(const char *cls)
 }
 
 // This is a function which gets callback from cling when DynamicLibraryManager->loadLibrary failed for some reason.
-// Try to solve the problem by autoloading. Return true when autoloading success, return
+// Try to solve the problem by AutoLoading. Return true when AutoLoading success, return
 // false if not.
 bool TCling::LibraryLoadingFailed(const std::string& errmessage, const std::string& libStem, bool permanent, bool resolved)
 {
@@ -6310,7 +6394,7 @@ static std::string ResolveSymbol(const std::string& mangled_name,
    static BasePaths sPaths;
    static LibraryPaths sQueriedLibraries;
 
-   // For system header autoloading
+   // For system header AutoLoading
    static LibraryPaths sSysLibraries;
 
    if (sFirstRun) {
@@ -6595,7 +6679,7 @@ void TCling::UpdateClassInfoWithDecl(const NamedDecl* ND)
    // Supposedly we are being called while something is being
    // loaded ... let's now tell the autoloader to do the work
    // yet another time.
-   SuspendAutoloadingRAII autoLoadOff(this);
+   SuspendAutoLoadingRAII autoLoadOff(this);
    // FIXME: There can be more than one TClass for a single decl.
    // for example vector<double> and vector<Double32_t>
    TClass* cl = (TClass*)gROOT->GetListOfClasses()->FindObject(name.c_str());
@@ -6974,7 +7058,7 @@ const char* TCling::GetClassSharedLibs(const char* cls)
       if (className.contains("(lambda)"))
          return nullptr;
       // Limit the recursion which can be induced by GetClassSharedLibsForModule.
-      SuspendAutoloadingRAII AutoloadingDisabled(this);
+      SuspendAutoLoadingRAII AutoLoadingDisabled(this);
       cling::LookupHelper &LH = fInterpreter->getLookupHelper();
       std::string libs = GetClassSharedLibsForModule(cls, LH);
       if (!libs.empty()) {
@@ -7352,32 +7436,32 @@ void TCling::SetAllocunlockfunc(void (* /* p */ )()) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Returns if class autoloading is currently enabled.
+/// Returns if class AutoLoading is currently enabled.
 
-bool TCling::IsClassAutoloadingEnabled() const
+bool TCling::IsClassAutoLoadingEnabled() const
 {
    if (IsFromRootCling())
       return false;
    if (!fClingCallbacks)
       return false;
-   return fClingCallbacks->IsAutoloadingEnabled();
+   return fClingCallbacks->IsAutoLoadingEnabled();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Enable/Disable the Autoloading of libraries.
+/// Enable/Disable the AutoLoading of libraries.
 /// Returns the old value, i.e whether it was enabled or not.
 
-int TCling::SetClassAutoloading(int autoload) const
+int TCling::SetClassAutoLoading(int autoload) const
 {
    // If no state change is required, exit early.
    // FIXME: In future we probably want to complain if we made a request which
    // was with the same state as before in order to catch programming errors.
-   if ((bool) autoload == IsClassAutoloadingEnabled())
+   if ((bool) autoload == IsClassAutoLoadingEnabled())
       return autoload;
 
    assert(fClingCallbacks && "We must have callbacks!");
-   bool oldVal = fClingCallbacks->IsAutoloadingEnabled();
-   fClingCallbacks->SetAutoloadingEnabled(autoload);
+   bool oldVal = fClingCallbacks->IsAutoLoadingEnabled();
+   fClingCallbacks->SetAutoLoadingEnabled(autoload);
    return oldVal;
 }
 
@@ -8006,10 +8090,10 @@ int TCling::ClassInfo_GetMethodNArg(ClassInfo_t* cinfo, const char* method, cons
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TCling::ClassInfo_HasDefaultConstructor(ClassInfo_t* cinfo) const
+bool TCling::ClassInfo_HasDefaultConstructor(ClassInfo_t* cinfo, Bool_t testio) const
 {
-   TClingClassInfo* TClinginfo = (TClingClassInfo*) cinfo;
-   return TClinginfo->HasDefaultConstructor();
+   TClingClassInfo *TClinginfo = (TClingClassInfo *) cinfo;
+   return TClinginfo->HasDefaultConstructor(testio) != ROOT::TMetaUtils::EIOCtorCategory::kAbsent;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
