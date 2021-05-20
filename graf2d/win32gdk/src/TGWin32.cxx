@@ -52,7 +52,6 @@ by Olivier Couet (package X11INT).
 #include "KeySymbols.h"
 #include "TWinNTSystem.h"
 #include "TGWin32VirtualXProxy.h"
-#include "TGWin32InterpreterProxy.h"
 #include "TWin32SplashThread.h"
 #include "TString.h"
 #include "TObjString.h"
@@ -176,7 +175,7 @@ static GdkPixmap *gFillPattern; // Fill pattern
 //
 // Text management
 //
-static char *gTextFont = "arial.ttf";      // Current font
+static const char *gTextFont = "arial.ttf";      // Current font
 
 //
 // Markers
@@ -249,7 +248,7 @@ struct KeySymbolMap_t {
    EKeySym fKeySym;
 };
 
-static char *keyCodeToString[] = {
+static const char *keyCodeToString[] = {
    "",                          /* 0x000 */
    "",                          /* 0x001, VK_LBUTTON */
    "",                          /* 0x002, VK_RBUTTON */
@@ -806,9 +805,6 @@ TGWin32::TGWin32(const char *name, const char *title) : TVirtualX(name,title), f
       TGWin32ProxyBase::fgMainThreadId = ::GetCurrentThreadId(); // gMainThread->fId;
       TGWin32VirtualXProxy::fgRealObject = this;
       gPtr2VirtualX = &TGWin32VirtualXProxy::ProxyObject;
-#ifdef OLD_THREAD_IMPLEMENTATION
-      gPtr2Interpreter = &TGWin32InterpreterProxy::ProxyObject;
-#endif
    }
 }
 
@@ -905,14 +901,7 @@ void TGWin32::CloseDisplay()
 
    // terminate server thread
    gPtr2VirtualX = 0;
-#if ROOT_VERSION_CODE < ROOT_VERSION(6,00,00)
-   gPtr2Interpreter = 0;
-#endif
    gVirtualX = TGWin32VirtualXProxy::RealObject();
-   // Following the change in revision 47611,
-   // gInterpreter is a read-only variable but its value
-   // is overridden by gPtr2Interpreter when it is not null.
-   //   gInterpreter = TGWin32InterpreterProxy::RealObject();
 
    // The lock above does not work, so at least
    // minimize the risk
