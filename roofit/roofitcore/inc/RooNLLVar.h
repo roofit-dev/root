@@ -48,12 +48,9 @@ public:
   virtual TObject* clone(const char* newname) const { return new RooNLLVar(*this,newname); }
 
   virtual RooAbsTestStatistic* create(const char *name, const char *title, RooAbsReal& pdf, RooAbsData& adata,
-				      const RooArgSet& projDeps, const char* rangeName, const char* addCoefRangeName=0,
-				      Int_t nCPU=1, RooFit::MPSplit interleave=RooFit::BulkPartition, Bool_t CPUAffinity=kTRUE,
-				      Bool_t verbose=kTRUE, Bool_t splitRange=kFALSE, Bool_t binnedL=kFALSE) {
-    return new RooNLLVar(name,title,(RooAbsPdf&)pdf,adata,projDeps,_extended,rangeName, addCoefRangeName, nCPU, interleave, CPUAffinity, verbose,splitRange,kFALSE,binnedL) ;
-  }
-
+				      const RooArgSet& projDeps, const char* rangeName, const char* addCoefRangeName=0, 
+				      Int_t nCPU=1, RooFit::MPSplit interleave=RooFit::BulkPartition, Bool_t CPUAffinity=kTRUE, Bool_t verbose=kTRUE, Bool_t splitRange=kFALSE, Bool_t binnedL=kFALSE);
+  
   virtual ~RooNLLVar();
 
   void applyWeightSquared(Bool_t flag) ;
