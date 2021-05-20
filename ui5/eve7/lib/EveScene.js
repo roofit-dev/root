@@ -2,9 +2,7 @@
 
 // TODO: add dependency from JSROOT components
 
-sap.ui.define([
-    'rootui5/eve7/lib/EveManager'
-], function(EveManager) {
+sap.ui.define(['rootui5/eve7/lib/EveManager'], function(EveManager) {
 
    "use strict";
 
@@ -318,6 +316,10 @@ sap.ui.define([
       if (this.mgr.MatchSelection(this.mgr.global_highlight_id, obj3d.eve_el, indx))
          return true;
 
+      // when send queue below threshold, ignre highlight
+      if (this.mgr.CheckSendThreshold())
+         return true;
+
       let is_multi  = false;
       let is_secsel = indx !== undefined;
 
@@ -337,6 +339,10 @@ sap.ui.define([
       // QQQQ This will have to change for multi client support.
       // Highlight will always be multi and we will have to track
       // which highlight is due to our connection.
+
+      // when send queue below threshold, ignre highlight
+      if (this.mgr.CheckSendThreshold())
+         return true;
 
       let is_multi  = false;
       let is_secsel = false;
@@ -364,7 +370,7 @@ sap.ui.define([
          let prl = pthis.mgr.GetElement(rec.primary);
          if (prl && prl.fSceneId == pthis.id)
          {
-            pthis.SelectElement(selection_obj, rec.primary, rec.sec_idcs);
+            pthis.SelectElement(selection_obj, rec.primary, rec.sec_idcs, rec.extra );
          }
          else // XXXXX why else ... should we not process all of them?!!!!
          {
@@ -374,7 +380,7 @@ sap.ui.define([
                if (eli && eli.fSceneId == pthis.id)
                {
                   // console.log("CHECK select IMPLIED", pthis);
-                  pthis.SelectElement(selection_obj, impId, rec.sec_idcs);
+                  pthis.SelectElement(selection_obj, impId, rec.sec_idcs, rec.extra);
                }
             }
          }

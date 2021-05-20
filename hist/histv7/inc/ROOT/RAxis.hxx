@@ -54,7 +54,7 @@ protected:
    ///\}
 
    /// Default construct a RAxisBase (for use by derived classes for I/O)
-   RAxisBase() noexcept = default;
+   RAxisBase() noexcept(noexcept(std::string())) = default;
 
    /// Virtual destructor needed in this inheritance-based design
    virtual ~RAxisBase();
@@ -619,7 +619,7 @@ public:
    {
 #ifdef R__DO_RANGE_CHECKS
       if (!std::is_sorted(fBinBorders.begin(), fBinBorders.end()))
-         R__ERROR_HERE("HIST") << "Bin borders must be sorted!";
+         R__LOG_ERROR("HIST") << "Bin borders must be sorted!";
 #endif // R__DO_RANGE_CHECKS
    }
 
@@ -632,7 +632,7 @@ public:
    {
 #ifdef R__DO_RANGE_CHECKS
       if (!std::is_sorted(fBinBorders.begin(), fBinBorders.end()))
-         R__ERROR_HERE("HIST") << "Bin borders must be sorted!";
+         R__LOG_ERROR("HIST") << "Bin borders must be sorted!";
 #endif // R__DO_RANGE_CHECKS
    }
 
@@ -643,7 +643,7 @@ public:
    {
 #ifdef R__DO_RANGE_CHECKS
       if (!std::is_sorted(fBinBorders.begin(), fBinBorders.end()))
-         R__ERROR_HERE("HIST") << "Bin borders must be sorted!";
+         R__LOG_ERROR("HIST") << "Bin borders must be sorted!";
 #endif // R__DO_RANGE_CHECKS
    }
 
@@ -656,7 +656,7 @@ public:
    {
 #ifdef R__DO_RANGE_CHECKS
       if (!std::is_sorted(fBinBorders.begin(), fBinBorders.end()))
-         R__ERROR_HERE("HIST") << "Bin borders must be sorted!";
+         R__LOG_ERROR("HIST") << "Bin borders must be sorted!";
 #endif // R__DO_RANGE_CHECKS
    }
 

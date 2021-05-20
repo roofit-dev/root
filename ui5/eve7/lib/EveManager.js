@@ -60,12 +60,29 @@ sap.ui.define([], function() {
    }
 
    EveManager.prototype.OnWebsocketClosed = function() {
-      for (var i = 0; i < this.controllers.length; ++i) {
-         if (typeof this.controllers[i].onDisconnect !== "undefined") {
-            this.controllers[i].onDisconnect();
-         }
-      }
+      this.controllers.forEach(ctrl => {
+         if (typeof ctrl.onDisconnect === "function")
+             ctrl.onDisconnect();
+      });
    }
+
+   /** Checks if number of credits on the connection below threshold */
+   EveManager.prototype.CheckSendThreshold = function() {
+      if (!this.handle) return false;
+      let value = this.handle.getRelCanSend();
+      let below = (value <= 0.2);
+      if (this.credits_below_threshold === undefined)
+         this.credits_below_threshold = false;
+      if (this.credits_below_threshold === below)
+         return below;
+
+      this.credits_below_threshold = below;
+      this.controllers.forEach(ctrl => {
+         if (typeof ctrl.onSendThresholdChanged === "function")
+             ctrl.onSendThresholdChanged(below, value);
+      });
+   }
+
 
    EveManager.prototype.OnWebsocketOpened = function() {
       // console.log("opened!!!");
@@ -523,7 +540,7 @@ sap.ui.define([], function() {
       var oldMap = new Map();
       sel.prev_sel_list.forEach(function(rec) {
          let iset = new Set(rec.sec_idcs);
-         let x    = { "valid": true, "implied": rec.implied, "set": iset };
+         let x    = { "valid": true, "implied": rec.implied, "set": iset, "extra": rec.extra };
          oldMap.set(rec.primary, x);
       });
 
@@ -535,8 +552,7 @@ sap.ui.define([], function() {
       var newMap = new Map();
       sel.sel_list.forEach(function(rec) {
          let iset = new Set(rec.sec_idcs);
-         let x    = { "valid": true, "implied": rec.implied, "set": iset };
-         x.extra = rec.extra;
+         let x    = { "valid": true, "implied": rec.implied, "set": iset, "extra": rec.extra };
          newMap.set(rec.primary, x);
       });
 
@@ -767,7 +783,8 @@ sap.ui.define([], function() {
       this.handle.Inject([msg1, msg2, msg3]);
    }
 
-   /** used to intercept SetRnrSelf call @private */
+   /** @summary used to intercept SetRnrSelf call
+     * @private */
    EveManager.prototype._intercept_SetRnrSelf = function(flag) {
       var messages = [{ content: "BeginChanges" }];
 
@@ -787,12 +804,12 @@ sap.ui.define([], function() {
       this.handle.Inject(messages);
    }
 
-   /** used to intercept SetMainColorRGB @private */
+   /** @summary used to intercept SetMainColorRGB
+     * @private */
    EveManager.prototype._intercept_SetMainColorRGB = function(colr, colg, colb) {
       var messages = [{ content: "BeginChanges" }];
 
-      var newColor = JSROOT.Painter.root_colors.length;
-      JSROOT.Painter.root_colors.push("rgb(" + colr + "," + colg + "," + colb + ")");
+      var newColor = JSROOT.Painter.addColor("rgb(" + colr + "," + colg + "," + colb + ")");
 
       var mirElem = this.GetElement(this._intercept_id);
       var msg = { arr: [ JSROOT.extend({changeBit:1}, mirElem) ],

@@ -16,6 +16,10 @@
 namespace ROOT {
 namespace Experimental {
 
+class RLogChannel;
+/// Log channel for GPad diagnostics.
+RLogChannel &GPadLog();
+
 /** \class RAttrBase
 \ingroup GpadROOT7
 \author Sergey Linev <s.linev@gsi.de>
@@ -172,6 +176,10 @@ protected:
       return Eval<T>(name);
    }
 
+   virtual RAttrMap CollectDefaults() const;
+
+   virtual bool IsValue() const { return false; }
+
 public:
    RAttrBase() = default;
 
@@ -179,17 +187,18 @@ public:
 
    friend bool operator==(const RAttrBase& lhs, const RAttrBase& rhs) { return lhs.IsSame(rhs) && rhs.IsSame(lhs); }
    friend bool operator!=(const RAttrBase& lhs, const RAttrBase& rhs) { return !lhs.IsSame(rhs) || !rhs.IsSame(lhs); }
+
 };
 
 
 } // namespace Experimental
 } // namespace ROOT
 
-#define R__ATTR_CLASS(ClassName,dflt_prefix,dflt_values) \
+#define R__ATTR_CLASS(ClassName,dflt_prefix) \
 protected: \
 const RAttrMap &GetDefaults() const override \
 { \
-   static auto dflts = RAttrMap().dflt_values; \
+   static auto dflts = CollectDefaults(); \
    return dflts; \
 } \
 public: \
