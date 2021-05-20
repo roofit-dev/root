@@ -289,27 +289,32 @@ bool RooMinimizer::fitFcn() const {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-
+/// Minimise the function passed in the constructor.
+/// \param[in] type Type of fitter to use, e.g. "Minuit" "Minuit2".
+/// \attention This overrides the default fitter of this RooMinimizer.
+/// \param[in] alg  Fit algorithm to use. (Optional)
 Int_t RooMinimizer::minimize(const char* type, const char* alg)
 {
-   _fcn->Synchronize(_theFitter->Config().ParamsSettings(), _fcn->getOptConst(), _verbose);
+  _fcn->Synchronize(_theFitter->Config().ParamsSettings(),
+		    _fcn->getOptConst(),_verbose) ;
 
-   _theFitter->Config().SetMinimizer(type,alg);
+  _minimizerType = type;
+  _theFitter->Config().SetMinimizer(type,alg);
 
-   profileStart() ;
-   RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::CollectErrors) ;
-   RooAbsReal::clearEvalErrorLog() ;
+  profileStart() ;
+  RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::CollectErrors) ;
+  RooAbsReal::clearEvalErrorLog() ;
 
-   bool ret = fitFcn();
-   _status = ((ret) ? _theFitter->Result().Status() : -1);
+  bool ret = fitFcn();
+  _status = ((ret) ? _theFitter->Result().Status() : -1);
 
-   RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::PrintErrors) ;
-   profileStop() ;
-   _fcn->BackProp(_theFitter->Result());
+  RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::PrintErrors) ;
+  profileStop() ;
+  _fcn->BackProp(_theFitter->Result());
 
-   saveStatus("MINIMIZE",_status) ;
+  saveStatus("MINIMIZE",_status) ;
 
-   return _status ;
+  return _status ;
 }
 
 
@@ -318,41 +323,29 @@ Int_t RooMinimizer::minimize(const char* type, const char* alg)
 /// Execute MIGRAD. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 // TODO: this function's body could be replaced by one line: `minimize(_minimizerType.c_str(),"migrad");`, except for the saveSTATUS call...
 
 Int_t RooMinimizer::migrad()
 {
-   auto get_time = [](){return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();};
-   decltype(get_time()) t1, t2, t3, t4, t5, t6, t7; //, t8, t9, t10;
+  _fcn->Synchronize(_theFitter->Config().ParamsSettings(),
+		    _fcn->getOptConst(),_verbose) ;
+  profileStart() ;
+  RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::CollectErrors) ;
+  RooAbsReal::clearEvalErrorLog() ;
 
-   t1 = get_time();
-   _fcn->Synchronize(_theFitter->Config().ParamsSettings(), _fcn->getOptConst(), _verbose);
-   t2 = get_time();
+  _theFitter->Config().SetMinimizer(_minimizerType.c_str(),"migrad");
+  bool ret = fitFcn();
+  _status = ((ret) ? _theFitter->Result().Status() : -1);
 
-   profileStart() ;
-   t3 = get_time();
-   RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::CollectErrors) ;
-   t4 = get_time();
-   RooAbsReal::clearEvalErrorLog() ;
-   t5 = get_time();
+  RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::PrintErrors) ;
+  profileStop() ;
+  _fcn->BackProp(_theFitter->Result());
 
-   _theFitter->Config().SetMinimizer(_minimizerType.c_str(),"migrad");
-   t6 = get_time();
-   bool ret = fitFcn();
-   t7 = get_time();
-   _status = ((ret) ? _theFitter->Result().Status() : -1);
+  saveStatus("MIGRAD",_status) ;
 
-   RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::PrintErrors) ;
-   profileStop() ;
-   _fcn->BackProp(_theFitter->Result());
-
-   saveStatus("MIGRAD",_status) ;
-
-   oocxcoutD((TObject*)nullptr,Benchmarking2) << "migrad timestamps: " << t1 << " " << t2 << " " << t3 << " " << t4 << " " << t5 << " " << t6 << " " << t7 << " " << std::endl;
-
-   return _status ;
+  return _status ;
 }
 
 
@@ -361,7 +354,7 @@ Int_t RooMinimizer::migrad()
 /// Execute HESSE. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::hesse()
 {
@@ -397,7 +390,7 @@ Int_t RooMinimizer::hesse()
 /// Execute MINOS. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::minos()
 {
@@ -434,7 +427,7 @@ Int_t RooMinimizer::minos()
 /// Execute MINOS for given list of parameters. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::minos(const RooArgSet& minosParamList)
 {
@@ -492,7 +485,7 @@ Int_t RooMinimizer::minos(const RooArgSet& minosParamList)
 /// Execute SEEK. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::seek()
 {
@@ -520,7 +513,7 @@ Int_t RooMinimizer::seek()
 /// Execute SIMPLEX. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::simplex()
 {
@@ -548,7 +541,7 @@ Int_t RooMinimizer::simplex()
 /// Execute IMPROVE. Changes in parameter values
 /// and calculated errors are automatically
 /// propagated back the RooRealVars representing
-/// the floating parameters in the MINUIT operation
+/// the floating parameters in the MINUIT operation.
 
 Int_t RooMinimizer::improve()
 {
