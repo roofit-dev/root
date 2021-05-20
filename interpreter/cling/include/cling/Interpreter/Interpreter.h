@@ -11,6 +11,7 @@
 #define CLING_INTERPRETER_H
 
 #include "cling/Interpreter/InvocationOptions.h"
+#include "cling/Interpreter/RuntimeOptions.h"
 
 #include "llvm/ADT/StringRef.h"
 
@@ -45,13 +46,13 @@ namespace clang {
   class NamedDecl;
   class Parser;
   class Preprocessor;
+  class PresumedLoc;
   class QualType;
   class RecordDecl;
   class Sema;
   class SourceLocation;
   class SourceManager;
   class Type;
-  class PresumedLoc;
 }
 
 namespace cling {
@@ -66,13 +67,13 @@ namespace cling {
   class ClangInternalState;
   class CompilationOptions;
   class DynamicLibraryManager;
+  class IncrementalCUDADeviceCompiler;
   class IncrementalExecutor;
   class IncrementalParser;
   class InterpreterCallbacks;
   class LookupHelper;
-  class Value;
   class Transaction;
-  class IncrementalCUDADeviceCompiler;
+  class Value;
 
   ///\brief Class that implements the interpreter-like behavior. It manages the
   /// incremental compilation.
@@ -188,9 +189,9 @@ namespace cling {
     ///
     bool m_RawInputEnabled;
 
-    ///\brief Whether to allow decl redefinition, i.e. enable the DefinitionShadower.
-    ///
-    bool m_RedefinitionAllowed;
+    ///\brief Configuration bits that can be changed at runtime. This allows the
+    /// user to enable/disable specific interpreter extensions.
+    cling::runtime::RuntimeOptions m_RuntimeOptions;
 
     ///\brief Flag toggling the optimization level to be used.
     ///
@@ -360,6 +361,9 @@ namespace cling {
 
     const InvocationOptions& getOptions() const { return m_Opts; }
     InvocationOptions& getOptions() { return m_Opts; }
+
+    const cling::runtime::RuntimeOptions& getRuntimeOptions() const { return m_RuntimeOptions; }
+    cling::runtime::RuntimeOptions& getRuntimeOptions() { return m_RuntimeOptions; }
 
     const llvm::LLVMContext* getLLVMContext() const {
       return m_LLVMContext.get();
@@ -681,9 +685,6 @@ namespace cling {
     bool isRawInputEnabled() const { return m_RawInputEnabled; }
     void enableRawInput(bool raw = true) { m_RawInputEnabled = raw; }
 
-    bool isRedefinitionAllowed() const { return m_RedefinitionAllowed; }
-    void allowRedefinition(bool b = true) { m_RedefinitionAllowed = b; }
-
     int getDefaultOptLevel() const { return m_OptLevel; }
     void setDefaultOptLevel(int optLevel) { m_OptLevel = optLevel; }
 
@@ -691,6 +692,10 @@ namespace cling {
     clang::CompilerInstance* getCIOrNull() const;
     clang::Sema& getSema() const;
     clang::DiagnosticsEngine& getDiagnostics() const;
+
+    IncrementalCUDADeviceCompiler* getCUDACompiler() const {
+      return m_CUDACompiler.get();
+    }
 
     ///\brief Create suitable default compilation options.
     CompilationOptions makeDefaultCompilationOpts() const;

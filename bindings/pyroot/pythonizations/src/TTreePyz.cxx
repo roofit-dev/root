@@ -189,7 +189,7 @@ PyObject *PyROOT::AddBranchAttrSyntax(PyObject * /* self */, PyObject *args)
 /// implementation of the method expects the address of a pointer.
 ///
 /// For example:
-/// ~~~{.python}
+/// ~~~{.py}
 /// v = ROOT.std.vector('int')()
 /// t.SetBranchAddress("my_vector_branch", v)
 /// ~~~
@@ -227,10 +227,12 @@ PyObject *PyROOT::SetBranchAddressPyz(PyObject * /* self */, PyObject *args)
 
       void *buf = 0;
       if (CPPInstance_Check(address)) {
+         ((CPPInstance *)address)->GetDatamemberCache(); // force creation of cache
+
          if (((CPPInstance *)address)->fFlags & CPPInstance::kIsReference || isLeafList)
-            buf = (void *)((CPPInstance *)address)->fObject;
+            buf = (void *)((CPPInstance *)address)->GetObject();
          else
-            buf = (void *)&((CPPInstance *)address)->fObject;
+            buf = (void *)&(((CPPInstance *)address)->GetObjectRaw());
       } else
          Utility::GetBuffer(address, '*', 1, buf, false);
 
@@ -380,7 +382,7 @@ PyObject *TryBranchPtrToPtrOverloads(int argc, PyObject *args)
 /// implementation of the method expects the address of a pointer.
 ///
 /// For example:
-/// ~~~{.python}
+/// ~~~{.py}
 /// v = ROOT.std.vector('int')()
 /// t.Branch('my_vector_branch', v)
 /// ~~~

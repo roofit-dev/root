@@ -60,11 +60,13 @@ TEST(RNTuple, InsideCollection)
    ASSERT_NE(idKlass, ROOT::Experimental::kInvalidDescriptorId);
    auto idA = source->GetDescriptor().FindFieldId("a", idKlass);
    ASSERT_NE(idA, ROOT::Experimental::kInvalidDescriptorId);
-   auto fieldInner = std::unique_ptr<RFieldBase>(RFieldBase::Create("klassVec.a", "float"));
-   RFieldFuse::ConnectRecursively(idA, *source, *fieldInner);
+   auto fieldInner = std::unique_ptr<RFieldBase>(RFieldBase::Create("klassVec.a", "float").Unwrap());
+   fieldInner->SetOnDiskId(idA);
+   fieldInner->ConnectPageStorage(*source);
 
    auto field = std::make_unique<ROOT::Experimental::RVectorField>("klassVec", std::move(fieldInner));
-   RFieldFuse::Connect(idKlassVec, *source, *field);
+   field->SetOnDiskId(idKlassVec);
+   field->ConnectPageStorage(*source);
 
    auto value = field->GenerateValue();
    field->Read(0, &value);
@@ -72,7 +74,7 @@ TEST(RNTuple, InsideCollection)
    EXPECT_EQ(1U, aVec->size());
    EXPECT_EQ(42.0, (*aVec)[0]);
    field->DestroyValue(value);
-   
+
    // TODO: test reading of "klassVec.v1"
 }
 
@@ -145,7 +147,7 @@ TEST(RNTuple, BoolVector)
    wrBoolRVec->push_back(true);
    wrBoolRVec->push_back(false);
 
-   auto modelRead = std::unique_ptr<RNTupleModel>(modelWrite->Clone());
+   auto modelRead = modelWrite->Clone();
 
    {
       RNTupleWriter ntuple(std::move(modelWrite),

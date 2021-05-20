@@ -17,13 +17,6 @@ if (tmva-cpu)
 endif()
 
 if(tmva-gpu)
-  set(dictoptions -I${CUDA_TOOLKIT_INCLUDE})
-
-  if (runtime_cxxmodules)
-    # We build the cuda.pcm in the context of TMVA
-    list(APPEND dictoptions "-mByproduct" "cuda")
-  endif(runtime_cxxmodules)
-
   set(TMVA_GPU_HEADERS
        TMVA/DNN/Architectures/Cuda.h
        #  TMVA/DNN/Architectures/Cuda/CudaBuffers.h
@@ -433,7 +426,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(TMVA
     ${TMVA_EXTRA_DEPENDENCIES}
   DICTIONARY_OPTIONS
     -writeEmptyRootPCM
-    ${dictoptions}
   INSTALL_OPTIONS
     ${installoptions}
 )
@@ -447,7 +439,7 @@ if(vdt OR builtin_vdt)
 endif()
 
 if(tmva-cpu)
-  target_include_directories(TMVA SYSTEM PRIVATE ${TBB_INCLUDE_DIRS})
+  target_include_directories(TMVA PRIVATE ${TBB_INCLUDE_DIRS})
   target_link_libraries(TMVA PRIVATE ${TBB_LIBRARIES})
   set_target_properties(TMVA PROPERTIES COMPILE_FLAGS "${TBB_CXXFLAGS}")
 

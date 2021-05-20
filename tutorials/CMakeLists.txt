@@ -53,6 +53,7 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/rootlogoff.C "{}")
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/.rootrc "
 Proof.Sandbox: /tmp/proof
 Rint.History:  .root_hist
+ACLiC.LinkLibs:  1
 ")
 
 #---Definition of the helper function--------------------------------
@@ -82,14 +83,21 @@ if (NOT dataframe)
     list(APPEND dataframe_veto graphs/timeSeriesFromCSV_TDF.C)
     # TMVA tutorials dependent on RDataFrame
     list(APPEND dataframe_veto tmva/tmva*.C)
+    # RooFit tutorial depending on RDataFrame
+    list(APPEND dataframe_veto roofit/rf408*)
 elseif(MSVC AND NOT win_broken_tests)
     list(APPEND dataframe_veto dataframe/*.py)
-    list(APPEND dataframe_veto tmva/tmva003_RReader.C)
 endif()
 
 if(NOT sqlite)
     # RDF+SQlite tutorials
     list(APPEND dataframe_veto dataframe/*SQlite*)
+endif()
+if(NOT davix)
+    list(APPEND dataframe_veto dataframe/df027_SQliteDependencyOverVersion.C)
+    list(APPEND dataframe_veto dataframe/df028_SQliteIPLocation.C)
+    list(APPEND dataframe_veto dataframe/df029_SQlitePlatformDistribution.C)
+    list(APPEND dataframe_veto dataframe/df030_SQliteVersionsOfROOT.C)
 endif()
 
 if(MACOSX_VERSION VERSION_EQUAL 10.13)
@@ -110,7 +118,11 @@ if(NOT ROOT_roofit_FOUND)
                    roofit/*.py)
 else()
   if(MSVC AND NOT win_broken_tests)
-    set(roofit_veto roofit/rf401_importttreethx.C)
+    set(roofit_veto roofit/rf104_classfactory.C
+                    roofit/rf104_classfactory.py
+                    roofit/rf401_importttreethx.C
+                    roofit/rf512_wsfactory_oper.C
+    )
   endif()
 endif()
 
@@ -230,7 +242,7 @@ set(gui_veto fit/fitpanel_playback.C
              webgui/panel/server.cxx webgui/webwindow/server.cxx)
 
 if (NOT ROOT_tmva_FOUND)
-  list(APPEND tmva_veto tmva/*.C tmva/*.py tmva/envelope/*.C tmva/keras/*.C tmva/keras/*.py)
+  list(APPEND tmva_veto tmva/*.C tmva/*.py tmva/envelope/*.C tmva/keras/*.C tmva/keras/*.py tmva/pytorch/*.py )
 else()
   #---These do not need to run for TMVA
   list(APPEND tmva_veto tmva/createData.C)
@@ -261,11 +273,14 @@ if(root7)
                  v7/fitpanel.cxx
                  v7/fitpanel6.cxx
       )
-  if(MSVC AND NOT win_broken_tests)
-    list(APPEND root7_veto v7/box.cxx v7/draw*.cxx )
+  if(NOT davix)
+    list(APPEND root7_veto v7/ntuple/ntpl003_lhcbOpenData.C)
+    list(APPEND root7_veto v7/ntuple/ntpl004_dimuon.C)
+    list(APPEND root7_veto v7/global_temperatures.cxx)
   endif()
   if(NOT dataframe)
-    set(root7_veto v7/ntuple/ntpl004_dimuon.C)
+    list(APPEND root7_veto v7/global_temperatures.cxx)
+    list(APPEND root7_veto v7/ntuple/ntpl004_dimuon.C)
   endif()
 else()
   file(GLOB v7_veto_files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/ v7/*.cxx v7/*/*.cxx v7/*.C v7/*/*.C)
@@ -430,6 +445,8 @@ set (tmva-TMVAMulticlassApplication-depends tutorial-tmva-TMVAMulticlass)
 set (tmva-TMVARegressionApplication-depends tutorial-tmva-TMVARegression)
 set (tmva-tmva101_Training-depends tutorial-tmva-tmva100_DataPreparation-py)
 set (tmva-tmva102_Testing-depends tutorial-tmva-tmva101_Training-py)
+set (tmva-pytorch-ApplicationClassificationPyTorch-depends tutorial-tmva-pytorch-ClassificationPyTorch-py)
+set (tmva-pytorch-ApplicationRegressionPyTorch-depends tutorial-tmva-pytorch-RegressionPyTorch-py)
 
 #--List long-running tutorials to label them as "longtest"
 set (long_running
@@ -439,7 +456,9 @@ file(GLOB long_running RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${long_running})
 #--List multithreaded tutorials to run them serially
 set (multithreaded
      dataframe/df10[2-7]*
-     multicore/mp103*)
+     multicore/mp103*
+     tmva/TMVA_CNN_Classification.C
+     tmva/TMVA_RNN_Classification.C)
 file(GLOB multithreaded RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${multithreaded})
 
 #---Loop over all tutorials and define the corresponding test---------
@@ -564,6 +583,21 @@ if(ROOT_pyroot_FOUND)
     list(APPEND pyveto pyroot/pyroot004_NumbaDeclare.py)
   endif()
 
+  if((dataframe AND DEFINED ENV{ROOTTEST_IGNORE_PANDAS_PY2} AND PYTHON_VERSION_MAJOR_Development_Main EQUAL 2) OR
+     (dataframe AND DEFINED ENV{ROOTTEST_IGNORE_PANDAS_PY3} AND PYTHON_VERSION_MAJOR_Development_Main EQUAL 3))
+    list(APPEND pyveto dataframe/df026_AsNumpyArrays.py)
+  endif()
+
+  # Rules specific to distributed RDataFrame with Pyspark
+  # Disable distributed RDF tutorials if we didn't check dependencies in the environment first
+  if(NOT test_distrdf_pyspark)
+    list(APPEND pyveto dataframe/distrdf*)
+  endif()
+  # Use main Python executable to run in PySpark driver and executors
+  if(test_distrdf_pyspark)
+    list(APPEND ROOT_environ PYSPARK_PYTHON=${PYTHON_EXECUTABLE_Development_Main})
+  endif()
+
   find_python_module(xgboost QUIET)
   if(NOT PY_XGBOOST_FOUND OR NOT dataframe)
     file(GLOB tmva_veto_py RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/tmva10*.py)
@@ -575,6 +609,14 @@ if(ROOT_pyroot_FOUND)
     file(GLOB tmva_veto_py RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/keras/*.py)
     list(APPEND pyveto ${tmva_veto_py})
   endif()
+
+  find_python_module(torch QUIET)
+  if(NOT PY_TORCH_FOUND)
+    file(GLOB tmva_veto_py RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/pytorch/*.py)
+    list(APPEND pyveto ${tmva_veto_py})
+  endif()
+  # disable PyTorch model file used by TMVA_CNN_Classification.C
+  list(APPEND pyveto tmva/PyTorch_Generate_CNN_Model.py)
 
   # Now glob all vetos for pyroot
   file(GLOB pyveto RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${pyveto})
@@ -607,8 +649,9 @@ if(ROOT_pyroot_FOUND)
   file(GLOB requires_numba   RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} pyroot/pyroot004_NumbaDeclare.py)
   file(GLOB requires_pandas  RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} dataframe/df026_AsNumpyArrays.py)
   file(GLOB requires_keras   RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/keras/*.py)
+  file(GLOB requires_torch   RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/pytorch/*.py)
   file(GLOB requires_xgboost RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tmva/tmva10*.py)
-  set(fixtureLists requires_numpy requires_numba requires_pandas requires_keras requires_xgboost)
+  set(fixtureLists requires_numpy requires_numba requires_pandas requires_keras requires_xgboost requires_torch)
 
   # Now set up all the tests
   foreach(t ${pytutorials})
