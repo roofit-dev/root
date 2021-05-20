@@ -25,6 +25,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <unordered_set>
 
@@ -58,13 +59,28 @@ an ntuple.  Concrete implementations can use a TFile, a raw file, an object stor
 */
 // clang-format on
 class RPageStorage {
+public:
+   /// The interface of a task scheduler to schedule page (de)compression tasks
+   class RTaskScheduler {
+   public:
+      /// Start a new set of tasks
+      virtual void Reset() = 0;
+      /// Take a callable that represents a task
+      virtual void AddTask(const std::function<void(void)> &taskFunc) = 0;
+      /// Blocks until all scheduled tasks finished
+      virtual void Wait() = 0;
+   };
+
 protected:
    std::string fNTupleName;
+   RTaskScheduler *fTaskScheduler = nullptr;
 
 public:
    explicit RPageStorage(std::string_view name);
    RPageStorage(const RPageStorage &other) = delete;
    RPageStorage& operator =(const RPageStorage &other) = delete;
+   RPageStorage(RPageStorage &&other) = default;
+   RPageStorage& operator =(RPageStorage &&other) = default;
    virtual ~RPageStorage();
 
    /// Whether the concrete implementation is a sink or a source
@@ -94,6 +110,8 @@ public:
 
    /// Returns an empty metrics.  Page storage implementations usually have their own metrics.
    virtual RNTupleMetrics &GetMetrics();
+
+   void SetTaskScheduler(RTaskScheduler *taskScheduler) { fTaskScheduler = taskScheduler; }
 };
 
 // clang-format off
@@ -130,7 +148,13 @@ protected:
 
 public:
    RPageSink(std::string_view ntupleName, const RNTupleWriteOptions &options);
+
+   RPageSink(const RPageSink&) = delete;
+   RPageSink& operator=(const RPageSink&) = delete;
+   RPageSink(RPageSink&&) = default;
+   RPageSink& operator=(RPageSink&&) = default;
    virtual ~RPageSink();
+
    /// Guess the concrete derived page source from the file name (location)
    static std::unique_ptr<RPageSink> Create(std::string_view ntupleName, std::string_view location,
                                             const RNTupleWriteOptions &options = RNTupleWriteOptions());
@@ -177,9 +201,16 @@ protected:
    ColumnSet_t fActiveColumns;
 
    virtual RNTupleDescriptor AttachImpl() = 0;
+   // Only called if a task scheduler is set. No-op be default.
+   virtual void UnzipClusterImpl(RCluster * /* cluster */)
+      { }
 
 public:
    RPageSource(std::string_view ntupleName, const RNTupleReadOptions &fOptions);
+   RPageSource(const RPageSource&) = delete;
+   RPageSource& operator=(const RPageSource&) = delete;
+   RPageSource(RPageSource&&) = default;
+   RPageSource& operator=(RPageSource&&) = default;
    virtual ~RPageSource();
    /// Guess the concrete derived page source from the file name (location)
    static std::unique_ptr<RPageSource> Create(std::string_view ntupleName, std::string_view location,
@@ -211,6 +242,13 @@ public:
    /// LoadCluster() is typically called from the I/O thread of a cluster pool, i.e. the method runs
    /// concurrently to other methods of the page source.
    virtual std::unique_ptr<RCluster> LoadCluster(DescriptorId_t clusterId, const ColumnSet_t &columns) = 0;
+
+   /// Parallel decompression and unpacking of the pages in the given cluster. The unzipped pages are supposed
+   /// to be preloaded in a page pool attached to the source. The method is triggered by the cluster pool's
+   /// unzip thread. It is an optional optimization, the method can safely do nothing. In particular, the
+   /// actual implementation will only run if a task scheduler is set. In practice, a task scheduler is set
+   /// if implicit multi-threading is turned on.
+   void UnzipCluster(RCluster *cluster);
 };
 
 } // namespace Detail
