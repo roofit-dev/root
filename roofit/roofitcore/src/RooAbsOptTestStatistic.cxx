@@ -79,7 +79,6 @@ RooAbsOptTestStatistic:: RooAbsOptTestStatistic()
   _funcClone = 0 ;
 
   _normSet = 0 ;
-  _dataClone = 0 ;
   _projDeps = 0 ;
 
   _origFunc = 0 ;
@@ -121,7 +120,6 @@ RooAbsOptTestStatistic::RooAbsOptTestStatistic(const char *name, const char *tit
     _funcCloneSet = 0 ;
     _funcClone = 0 ;
     _normSet = 0 ;
-    _dataClone = 0 ;
     _projDeps = 0 ;    
     _origFunc = 0 ;
     _origData = 0 ;
@@ -149,7 +147,6 @@ RooAbsOptTestStatistic::RooAbsOptTestStatistic(const RooAbsOptTestStatistic& oth
     _funcCloneSet = 0 ;
     _funcClone = 0 ;
     _normSet = other._normSet ? ((RooArgSet*) other._normSet->snapshot()) : 0 ;   
-    _dataClone = 0 ;
     _projDeps = 0 ;    
     _origFunc = 0 ;
     _origData = 0 ;
@@ -289,46 +286,48 @@ void RooAbsOptTestStatistic::initSlave(RooAbsReal& real, RooAbsData& indata, con
   RooArgSet* dataObsSet = (RooArgSet*) _dataClone->get() ;
   if (rangeName && strlen(rangeName)) {    
     cxcoutI(Fitting) << "RooAbsOptTestStatistic::ctor(" << GetName() << ") constructing test statistic for sub-range named " << rangeName << endl ;    
-    //cout << "now adjusting observable ranges to requested fit range" << endl ;
 
+    bool observablesKnowRange = false;
     // Adjust FUNC normalization ranges to requested fitRange, store original ranges for RooAddPdf coefficient interpretation
     for (const auto arg : *_funcObsSet) {
 
       RooRealVar* realObs = dynamic_cast<RooRealVar*>(arg) ;
       if (realObs) {
 
-	// If no explicit range is given for RooAddPdf coefficients, create explicit named range equivalent to original observables range
+        observablesKnowRange |= realObs->hasRange(rangeName);
+
+        // If no explicit range is given for RooAddPdf coefficients, create explicit named range equivalent to original observables range
         if (!(addCoefRangeName && strlen(addCoefRangeName))) {
-	  realObs->setRange(Form("NormalizationRangeFor%s",rangeName),realObs->getMin(),realObs->getMax()) ;
-// 	  cout << "RAOTS::ctor() setting range " << Form("NormalizationRangeFor%s",rangeName) << " on observable " 
-// 	       << realObs->GetName() << " to [" << realObs->getMin() << "," << realObs->getMax() << "]" << endl ;
-	}
+          realObs->setRange(Form("NormalizationRangeFor%s",rangeName),realObs->getMin(),realObs->getMax()) ;
+        }
 
-	// Adjust range of function observable to those of given named range
-	realObs->setRange(realObs->getMin(rangeName),realObs->getMax(rangeName)) ;	
-//  	cout << "RAOTS::ctor() setting normalization range on observable " 
-//  	     << realObs->GetName() << " to [" << realObs->getMin() << "," << realObs->getMax() << "]" << endl ;
+        // Adjust range of function observable to those of given named range
+        realObs->setRange(realObs->getMin(rangeName),realObs->getMax(rangeName)) ;
 
-	// Adjust range of data observable to those of given named range
-	RooRealVar* dataObs = (RooRealVar*) dataObsSet->find(realObs->GetName()) ;
-	dataObs->setRange(realObs->getMin(rangeName),realObs->getMax(rangeName)) ;	
+        // Adjust range of data observable to those of given named range
+        RooRealVar* dataObs = (RooRealVar*) dataObsSet->find(realObs->GetName()) ;
+        dataObs->setRange(realObs->getMin(rangeName),realObs->getMax(rangeName)) ;
        
-	// Keep track of list of fit ranges in string attribute fit range of original p.d.f.
-	if (!_splitRange) {
-	  const char* origAttrib = real.getStringAttribute("fitrange") ;	  
-	  if (origAttrib) {
-	    real.setStringAttribute("fitrange",Form("%s,fit_%s",origAttrib,GetName())) ;
-	  } else {
-	    real.setStringAttribute("fitrange",Form("fit_%s",GetName())) ;
-	  }
-	  RooRealVar* origObs = (RooRealVar*) origObsSet->find(arg->GetName()) ;
-	  if (origObs) {
-	    origObs->setRange(Form("fit_%s",GetName()),realObs->getMin(rangeName),realObs->getMax(rangeName)) ;
-	  }
-	}
-	
+        // Keep track of list of fit ranges in string attribute fit range of original p.d.f.
+        if (!_splitRange) {
+          const std::string fitRangeName = std::string("fit_") + GetName();
+          const char* origAttrib = real.getStringAttribute("fitrange") ;
+          std::string newAttr = origAttrib ? origAttrib : "";
+
+          if (newAttr.find(fitRangeName) == std::string::npos) {
+            newAttr += (newAttr.empty() ? "" : ",") + fitRangeName;
+          }
+          real.setStringAttribute("fitrange", newAttr.c_str());
+          RooRealVar* origObs = (RooRealVar*) origObsSet->find(arg->GetName()) ;
+          if (origObs) {
+            origObs->setRange(fitRangeName.c_str(), realObs->getMin(rangeName), realObs->getMax(rangeName));
+          }
+        }
       }
     }
+
+    if (!observablesKnowRange)
+      coutW(Fitting) << "None of the fit observables seem to know the range '" << rangeName << "'. This means that the full range will be used." << std::endl;
   }
   delete origObsSet ;
 
@@ -643,29 +642,13 @@ void RooAbsOptTestStatistic::optimizeConstantTerms(Bool_t activate, Bool_t apply
 
     _funcClone->findConstantNodes(*_dataClone->get(),_cachedNodes) ;
 
-//     cout << "ROATS::oCT(" << GetName() << ") funcClone structure dump BEFORE cacheArgs" << endl ;
-//     _funcClone->Print("t") ;
-
-
     // Cache constant nodes with dataset - also cache entries corresponding to zero-weights in data when using BinnedLikelihood
     _dataClone->cacheArgs(this,_cachedNodes,_normSet,!_funcClone->getAttribute("BinnedLikelihood")) ;  
-
-//     cout << "ROATS::oCT(" << GetName() << ") funcClone structure dump AFTER cacheArgs" << endl ;
-//     _funcClone->Print("t") ;
-
 
     // Put all cached nodes in AClean value caching mode so that their evaluate() is never called
     for (auto cacheArg : _cachedNodes) {
       cacheArg->setOperMode(RooAbsArg::AClean) ;
     }
-
-
-//     cout << "_cachedNodes = " << endl ;
-//     RooFIter i = _cachedNodes.fwdIterator() ;
-//     RooAbsArg* aa ;
-//     while ((aa=i.next())) {
-//       cout << aa->IsA()->GetName() << "::" << aa->GetName() << (aa->getAttribute("ConstantExpressionCached")?" CEC":"   ") << (aa->getAttribute("CacheAndTrack")?" CAT":"   ") << endl ;
-//     }
 
     RooArgSet* constNodes = (RooArgSet*) _cachedNodes.selectByAttrib("ConstantExpressionCached",kTRUE) ;
     RooArgSet actualTrackNodes(_cachedNodes) ;
@@ -676,11 +659,6 @@ void RooAbsOptTestStatistic::optimizeConstantTerms(Bool_t activate, Bool_t apply
       } else {
         coutI(Minimization) << " A total of " << constNodes->getSize() << " expressions have been identified as constant and will be precalculated and cached." << endl ;
       }
-//       RooFIter i = constNodes->fwdIterator() ;
-//       RooAbsArg* cnode ;
-//       while((cnode=i.next())) {
-// 	cout << cnode->IsA()->GetName() << "::" << cnode->GetName() << endl ;
-//       }      
     }
     if (actualTrackNodes.getSize()>0) {
       if (actualTrackNodes.getSize()<20) {
@@ -720,12 +698,10 @@ void RooAbsOptTestStatistic::optimizeConstantTerms(Bool_t activate, Bool_t apply
 
 
 ////////////////////////////////////////////////////////////////////////////////
-///   cout << "RAOTS::setDataSlave(" << this << ") START" << endl ;
 /// Change dataset that is used to given one. If cloneData is kTRUE, a clone of
 /// in the input dataset is made.  If the test statistic was constructed with
-/// a range specification on the data, the cloneData argument is ignore and
+/// a range specification on the data, the cloneData argument is ignored and
 /// the data is always cloned.
-
 Bool_t RooAbsOptTestStatistic::setDataSlave(RooAbsData& indata, Bool_t cloneData, Bool_t ownNewData) 
 { 
 

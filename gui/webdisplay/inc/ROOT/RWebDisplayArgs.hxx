@@ -47,6 +47,7 @@ protected:
    EBrowserKind fKind{kNative};   ///<! id of web browser used for display
    std::string fUrl;              ///<! URL to display
    std::string fExtraArgs;        ///<! extra arguments which will be append to exec string
+   std::string fPageContent;      ///<! HTML page content
    std::string fRedirectOutput;   ///<! filename where browser output should be redirected
    bool fHeadless{false};         ///<! is browser runs in headless mode
    bool fStandalone{true};        ///<! indicates if browser should run isolated from other browser instances
@@ -61,6 +62,9 @@ protected:
 
    std::shared_ptr<RWebWindow> fMaster; ///<!  master window
    int fMasterChannel{-1};              ///<!  used master channel
+
+   bool SetSizeAsStr(const std::string &str);
+   bool SetPosAsStr(const std::string &str);
 
 public:
    RWebDisplayArgs();
@@ -90,16 +94,21 @@ public:
       return (GetBrowserKind() == kLocal) || (GetBrowserKind() == kCEF) || (GetBrowserKind() == kQt5);
    }
 
-   /// returns true if browser supports headless mode
+   /// returns true if browser supports headless (batch) mode, used for image production
    bool IsSupportHeadless() const
    {
-      return (GetBrowserKind() == kNative) || (GetBrowserKind() == kFirefox) || (GetBrowserKind() == kChrome);
+      return (GetBrowserKind() == kNative) || (GetBrowserKind() == kChrome) || (GetBrowserKind() == kCEF) || (GetBrowserKind() == kQt5);
    }
 
    /// set window url
    RWebDisplayArgs &SetUrl(const std::string &url) { fUrl = url; return *this; }
    /// returns window url
-   std::string GetUrl() const { return fUrl; }
+   const std::string &GetUrl() const { return fUrl; }
+
+   /// set window url
+   RWebDisplayArgs &SetPageContent(const std::string &cont) { fPageContent = cont; return *this; }
+   /// returns window url
+   const std::string &GetPageContent() const { return fPageContent; }
 
    /// Set standalone mode for running browser, default on
    /// When disabled, normal browser window (or just tab) will be started
@@ -110,7 +119,7 @@ public:
    /// set window url options
    RWebDisplayArgs &SetUrlOpt(const std::string &opt) { fUrlOpt = opt; return *this; }
    /// returns window url options
-   std::string GetUrlOpt() const { return fUrlOpt; }
+   const std::string &GetUrlOpt() const { return fUrlOpt; }
 
    /// append extra url options, add "&" as separator if required
    void AppendUrlOpt(const std::string &opt);

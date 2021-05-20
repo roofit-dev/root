@@ -25,10 +25,6 @@
        recs: [{x:0,y:256,w:13,h:39,f:'rgb(38,62,168)'},{x:13,y:371,w:39,h:39},{y:294,h:39},{y:256,h:39},{y:218,h:39},{x:51,y:410,w:39,h:39},{y:371,h:39},{y:333,h:39},{y:294},{y:256,h:39},{y:218,h:39},{y:179,h:39},{y:141,h:39},{y:102,h:39},{y:64},{x:90,y:448,w:39,h:39},{y:410},{y:371,h:39},{y:333,h:39,f:'rgb(22,82,205)'},{y:294},{y:256,h:39,f:'rgb(16,100,220)'},{y:218,h:39},{y:179,h:39,f:'rgb(22,82,205)'},{y:141,h:39},{y:102,h:39,f:'rgb(38,62,168)'},{y:64},{y:0,h:27},{x:128,y:448,w:39,h:39},{y:410},{y:371,h:39},{y:333,h:39,f:'rgb(22,82,205)'},{y:294,f:'rgb(20,129,214)'},{y:256,h:39,f:'rgb(9,157,204)'},{y:218,h:39,f:'rgb(14,143,209)'},{y:179,h:39,f:'rgb(20,129,214)'},{y:141,h:39,f:'rgb(16,100,220)'},{y:102,h:39,f:'rgb(22,82,205)'},{y:64,f:'rgb(38,62,168)'},{y:26,h:39},{y:0,h:27},{x:166,y:486,h:14},{y:448,h:39},{y:410},{y:371,h:39,f:'rgb(22,82,205)'},{y:333,h:39,f:'rgb(20,129,214)'},{y:294,f:'rgb(82,186,146)'},{y:256,h:39,f:'rgb(179,189,101)'},{y:218,h:39,f:'rgb(116,189,129)'},{y:179,h:39,f:'rgb(82,186,146)'},{y:141,h:39,f:'rgb(14,143,209)'},{y:102,h:39,f:'rgb(16,100,220)'},{y:64,f:'rgb(38,62,168)'},{y:26,h:39},{x:205,y:486,w:39,h:14},{y:448,h:39},{y:410},{y:371,h:39,f:'rgb(16,100,220)'},{y:333,h:39,f:'rgb(9,157,204)'},{y:294,f:'rgb(149,190,113)'},{y:256,h:39,f:'rgb(244,198,59)'},{y:218,h:39},{y:179,h:39,f:'rgb(226,192,75)'},{y:141,h:39,f:'rgb(13,167,195)'},{y:102,h:39,f:'rgb(18,114,217)'},{y:64,f:'rgb(22,82,205)'},{y:26,h:39,f:'rgb(38,62,168)'},{x:243,y:448,w:39,h:39},{y:410},{y:371,h:39,f:'rgb(18,114,217)'},{y:333,h:39,f:'rgb(30,175,179)'},{y:294,f:'rgb(209,187,89)'},{y:256,h:39,f:'rgb(251,230,29)'},{y:218,h:39,f:'rgb(249,249,15)'},{y:179,h:39,f:'rgb(226,192,75)'},{y:141,h:39,f:'rgb(30,175,179)'},{y:102,h:39,f:'rgb(18,114,217)'},{y:64,f:'rgb(38,62,168)'},{y:26,h:39},{x:282,y:448,h:39},{y:410},{y:371,h:39,f:'rgb(18,114,217)'},{y:333,h:39,f:'rgb(14,143,209)'},{y:294,f:'rgb(149,190,113)'},{y:256,h:39,f:'rgb(226,192,75)'},{y:218,h:39,f:'rgb(244,198,59)'},{y:179,h:39,f:'rgb(149,190,113)'},{y:141,h:39,f:'rgb(9,157,204)'},{y:102,h:39,f:'rgb(18,114,217)'},{y:64,f:'rgb(38,62,168)'},{y:26,h:39},{x:320,y:448,w:39,h:39},{y:410},{y:371,h:39,f:'rgb(22,82,205)'},{y:333,h:39,f:'rgb(20,129,214)'},{y:294,f:'rgb(46,183,164)'},{y:256,h:39},{y:218,h:39,f:'rgb(82,186,146)'},{y:179,h:39,f:'rgb(9,157,204)'},{y:141,h:39,f:'rgb(20,129,214)'},{y:102,h:39,f:'rgb(16,100,220)'},{y:64,f:'rgb(38,62,168)'},{y:26,h:39},{x:358,y:448,h:39},{y:410},{y:371,h:39,f:'rgb(22,82,205)'},{y:333,h:39},{y:294,f:'rgb(16,100,220)'},{y:256,h:39,f:'rgb(20,129,214)'},{y:218,h:39,f:'rgb(14,143,209)'},{y:179,h:39,f:'rgb(18,114,217)'},{y:141,h:39,f:'rgb(22,82,205)'},{y:102,h:39,f:'rgb(38,62,168)'},{y:64},{y:26,h:39},{x:397,y:448,w:39,h:39},{y:371,h:39},{y:333,h:39},{y:294,f:'rgb(22,82,205)'},{y:256,h:39},{y:218,h:39},{y:179,h:39,f:'rgb(38,62,168)'},{y:141,h:39},{y:102,h:39},{y:64},{y:26,h:39},{x:435,y:410,h:39},{y:371,h:39},{y:333,h:39},{y:294},{y:256,h:39},{y:218,h:39},{y:179,h:39},{y:141,h:39},{y:102,h:39},{y:64},{x:474,y:256,h:39},{y:179,h:39}]
    };
 
-   JSROOT.ToolbarIcons.th2colorz = {
-      recs: [{x:128,y:486,w:256,h:26,f:'rgb(38,62,168)'},{y:461,f:'rgb(22,82,205)'},{y:435,f:'rgb(16,100,220)'},{y:410,f:'rgb(18,114,217)'},{y:384,f:'rgb(20,129,214)'},{y:358,f:'rgb(14,143,209)'},{y:333,f:'rgb(9,157,204)'},{y:307,f:'rgb(13,167,195)'},{y:282,f:'rgb(30,175,179)'},{y:256,f:'rgb(46,183,164)'},{y:230,f:'rgb(82,186,146)'},{y:205,f:'rgb(116,189,129)'},{y:179,f:'rgb(149,190,113)'},{y:154,f:'rgb(179,189,101)'},{y:128,f:'rgb(209,187,89)'},{y:102,f:'rgb(226,192,75)'},{y:77,f:'rgb(244,198,59)'},{y:51,f:'rgb(253,210,43)'},{y:26,f:'rgb(251,230,29)'},{y:0,f:'rgb(249,249,15)'}]
-   };
-
    JSROOT.ToolbarIcons.th2draw3d = {
       path: "M172.768,0H51.726C23.202,0,0.002,23.194,0.002,51.712v89.918c0,28.512,23.2,51.718,51.724,51.718h121.042   c28.518,0,51.724-23.2,51.724-51.718V51.712C224.486,23.194,201.286,0,172.768,0z M177.512,141.63c0,2.611-2.124,4.745-4.75,4.745   H51.726c-2.626,0-4.751-2.134-4.751-4.745V51.712c0-2.614,2.125-4.739,4.751-4.739h121.042c2.62,0,4.75,2.125,4.75,4.739 L177.512,141.63L177.512,141.63z "+
             "M460.293,0H339.237c-28.521,0-51.721,23.194-51.721,51.712v89.918c0,28.512,23.2,51.718,51.721,51.718h121.045   c28.521,0,51.721-23.2,51.721-51.718V51.712C512.002,23.194,488.802,0,460.293,0z M465.03,141.63c0,2.611-2.122,4.745-4.748,4.745   H339.237c-2.614,0-4.747-2.128-4.747-4.745V51.712c0-2.614,2.133-4.739,4.747-4.739h121.045c2.626,0,4.748,2.125,4.748,4.739 V141.63z "+
@@ -491,14 +487,14 @@
          this.DrawText({ align: pt.fTextAlign, width: width, height: height, text: lines[0], color: tcolor, latex: 1 });
       } else
       for (var j = 0; j < nlines; ++j) {
-         var posy = j*stepy, jcolor = tcolor;
+         var posy = j*stepy;
          this.UseTextColor = true;
 
          if (first_stat && (j >= first_stat)) {
             var parts = lines[j].split("|");
             for (var n = 0; n < parts.length; ++n)
                this.DrawText({ align: "middle", x: width * n / num_cols, y: posy, latex: 0,
-                               width: width/num_cols, height: stepy, text: parts[n], color: jcolor });
+                               width: width/num_cols, height: stepy, text: parts[n], color: tcolor });
          } else if (lines[j].indexOf('=') < 0) {
             if (j==0) {
                has_head = true;
@@ -506,12 +502,12 @@
                   lines[j] = lines[j].substr(0,maxlen+2) + "...";
             }
             this.DrawText({ align: (j == 0) ? "middle" : "start", x: margin_x, y: posy,
-                            width: width-2*margin_x, height: stepy, text: lines[j], color: jcolor });
+                            width: width-2*margin_x, height: stepy, text: lines[j], color: tcolor });
          } else {
             var parts = lines[j].split("="), sumw = 0;
             for (var n = 0; n < 2; ++n)
                sumw += this.DrawText({ align: (n == 0) ? "start" : "end", x: margin_x, y: posy,
-                                       width: width-2*margin_x, height: stepy, text: parts[n], color: jcolor });
+                                       width: width-2*margin_x, height: stepy, text: parts[n], color: tcolor });
             this.TextScaleFactor(1.05*sumw/(width-2*margin_x), this.draw_g);
          }
       }
@@ -689,9 +685,10 @@
       }
    }
 
+   /** Method used to convert value to string according specified format
+     * format can be like 5.4g or 4.2e or 6.4f
+     * @private */
    TPavePainter.prototype.Format = function(value, fmt) {
-      // method used to convert value to string according specified format
-      // format can be like 5.4g or 4.2e or 6.4f
       if (!fmt) fmt = "stat";
 
       var pave = this.GetObject();
@@ -758,8 +755,9 @@
              icol = i % ncols, irow = (i - icol) / ncols,
              x0 = icol * column_width,
              tpos_x = x0 + Math.round(legend.fMargin*column_width),
-             pos_y = Math.round(padding_y + irow*step_y), // top corner
-             mid_y = Math.round(padding_y + (irow+0.5)*step_y), // center line
+             mid_x = Math.round((x0 + tpos_x)/2),
+             pos_y = Math.round(irow*step_y + padding_y), // top corner
+             mid_y = Math.round((irow+0.5)*step_y + padding_y), // center line
              o_fill = leg, o_marker = leg, o_line = leg,
              mo = leg.fObject,
              painter = null, isany = false;
@@ -775,19 +773,25 @@
          // Draw fill pattern (in a box)
          if (lopt.indexOf('f') != -1) {
             var fillatt = (painter && painter.fillatt) ? painter.fillatt : this.createAttFill(o_fill);
+
             // box total height is yspace*0.7
             // define x,y as the center of the symbol for this entry
-            this.draw_g.append("svg:rect")
-                   .attr("x", x0 + padding_x)
-                   .attr("y", Math.round(pos_y+step_y*0.1))
-                   .attr("width", tpos_x - 2*padding_x - x0)
-                   .attr("height", Math.round(step_y*0.8))
-                   .call(fillatt.func);
+            var rect = this.draw_g.append("svg:rect")
+                           .attr("x", x0 + padding_x)
+                           .attr("y", Math.round(pos_y+step_y*0.1))
+                           .attr("width", tpos_x - 2*padding_x - x0)
+                           .attr("height", Math.round(step_y*0.8))
+                           .call(fillatt.func);
             if (!fillatt.empty()) isany = true;
+            if ((lopt.indexOf('l') < 0 && lopt.indexOf('e') < 0) && (lopt.indexOf('p') < 0)) {
+               var lineatt = (painter && painter.lineatt) ? painter.lineatt : new JSROOT.TAttLineHandler(o_line);
+               rect.call(lineatt.func);
+               if (lineatt.color !== 'none') isany = true;
+            }
          }
 
-         // Draw line
-         if (lopt.indexOf('l') != -1) {
+         // Draw line (also when error specified)
+         if (lopt.indexOf('l') != -1 || lopt.indexOf('e') != -1) {
             var lineatt = (painter && painter.lineatt) ? painter.lineatt : new JSROOT.TAttLineHandler(o_line);
             this.draw_g.append("svg:line")
                .attr("x1", x0 + padding_x)
@@ -799,7 +803,15 @@
          }
 
          // Draw error
-         if (lopt.indexOf('e') != -1  && (lopt.indexOf('l') == -1 || lopt.indexOf('f') != -1)) {
+         if (lopt.indexOf('e') != -1) {
+            var lineatt = (painter && painter.lineatt) ? painter.lineatt : new JSROOT.TAttLineHandler(o_line);
+            this.draw_g.append("svg:line")
+                .attr("x1", mid_x)
+                .attr("y1", Math.round(pos_y+step_y*0.1))
+                .attr("x2", mid_x)
+                .attr("y2", Math.round(pos_y+step_y*0.9))
+                .call(lineatt.func);
+            if (lineatt.color !== 'none') isany = true;
          }
 
          // Draw Polymarker
@@ -1115,20 +1127,16 @@
       if (!evnt) {
          d3.event.stopPropagation(); // disable main context menu
          d3.event.preventDefault();  // disable browser context menu
-
-         // one need to copy event, while after call back event may be changed
          evnt = d3.event;
       }
-
-      this.ctx_menu_evnt = evnt;
 
       JSROOT.Painter.createMenu(this, function(menu) {
          menu.painter.FillContextMenu(menu);
 
          menu.painter.FillObjectExecMenu(menu, "title", function() {
-            menu.show(menu.painter.ctx_menu_evnt);
+            menu.show();
         });
-      }); // end menu creation
+      }, evnt); // end menu creation
    }
 
    TPavePainter.prototype.IsStats = function() {
@@ -1654,7 +1662,7 @@
       if (d.check('E', true)) {
          this.Error = true;
          if (hdim == 1) {
-            this.Zero = false; // do not draw empty bins with erros
+            this.Zero = false; // do not draw empty bins with errors
             this.Hist = false;
             if (!isNaN(parseInt(d.part[0]))) this.ErrorKind = parseInt(d.part[0]);
             if ((this.ErrorKind === 3) || (this.ErrorKind === 4)) this.need_fillcol = true;
@@ -1738,7 +1746,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.TObjectPainter
+    * @arguments JSROOT.TObjectPainter
     * @param {object} histo - histogram object
     */
 
@@ -1758,6 +1766,7 @@
       return this.GetObject();
    }
 
+   /** Returns histogram axis @prviate */
    THistPainter.prototype.GetAxis = function(name) {
       var histo = this.GetObject();
       if (histo)
@@ -1807,6 +1816,7 @@
       if (histo._typename.match(/^TH2/)) return 2;
       if (histo._typename.match(/^TProfile2D/)) return 2;
       if (histo._typename.match(/^TH3/)) return 3;
+      if (this.IsTH2Poly()) return 2;
       return 1;
    }
 
@@ -1906,14 +1916,11 @@
          // The only that could be done is update of content
 
          // check only stats bit, later other settings can be monitored
+         var statpainter = this.FindPainterFor(this.FindStat());
          if (histo.TestBit(JSROOT.TH1StatusBits.kNoStats) != obj.TestBit(JSROOT.TH1StatusBits.kNoStats)) {
             histo.fBits = obj.fBits;
-
-            var statpainter = this.FindPainterFor(this.FindStat());
             if (statpainter) statpainter.Enabled = !histo.TestBit(JSROOT.TH1StatusBits.kNoStats);
          }
-
-         // if (histo.TestBit(JSROOT.TH1StatusBits.kNoStats)) this.ToggleStat();
 
          // special treatment for webcanvas - also name can be changed
          if (this.snapid !== undefined)
@@ -2029,6 +2036,11 @@
                      newfuncs.push(func);
                   }
                }
+
+            if (statpainter) {
+               var indx = painters.indexOf(statpainter);
+               if (indx >= 0) painters.splice(indx, 1);
+            }
 
             // remove all function which are not found in new list of primitives
             if (pp && (painters.length > 0))
@@ -2556,9 +2568,6 @@
          }
       }
 
-      // one need to copy event, while after call back event may be changed
-      menu_painter.ctx_menu_evnt = evnt;
-
       JSROOT.Painter.createMenu(menu_painter, function(menu) {
          var domenu = menu.painter.FillContextMenu(menu, kind, obj);
 
@@ -2570,10 +2579,10 @@
             menu.painter.FillObjectExecMenu(menu, kind, function() {
                 // suppress any running zooming
                 menu.painter.SwitchTooltip(false);
-                menu.show(menu.painter.ctx_menu_evnt, menu.painter.SwitchTooltip.bind(menu.painter, true));
+                menu.show(null, menu.painter.SwitchTooltip.bind(menu.painter, true));
             });
 
-      });  // end menu creation
+      }, evnt);  // end menu creation
    }
 
    /** @summary Invoke dialog to enter and modify user range @private */
@@ -2601,6 +2610,27 @@
       this.Redraw();
    }
 
+   /** @summary Start dialog to modify range of axis where histogram values are displayed @private */
+   THistPainter.prototype.ChangeValuesRange = function() {
+      let curr;
+      if ((this.options.minimum != -1111) && (this.options.maximum != -1111))
+         curr = "[" + this.options.minimum + "," + this.options.maximum + "]";
+      else
+         curr = "[" + this.gminbin + "," + this.gmaxbin + "]";
+
+      let res = prompt("Enter min/max hist values or empty string to reset", curr);
+      res = res ? JSON.parse(res) : [];
+
+      if (!res || (typeof res != "object") || (res.length!=2) || isNaN(res[0]) || isNaN(res[1])) {
+         this.options.minimum = this.options.maximum = -1111;
+      } else {
+         this.options.minimum = res[0];
+         this.options.maximum = res[1];
+       }
+
+       this.RedrawPad();
+   }
+
    THistPainter.prototype.FillContextMenu = function(menu) {
 
       var histo = this.GetHisto(),
@@ -2619,6 +2649,8 @@
             menu.add("Y", "Y", this.ChangeUserRange);
             if (this.Dimension() > 2)
                menu.add("Z", "Z", this.ChangeUserRange);
+            else
+               menu.add("Values", this.ChangeValuesRange);
             menu.add("endsub:")
          }
 
@@ -3183,7 +3215,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.THistPainter
+    * @arguments JSROOT.THistPainter
     * @param {object} histo - histogram object
     */
 
@@ -3198,12 +3230,13 @@
 
       if (histo.fReady) return;
 
-      var arr = histo.fArray; // array of values
+      var arr = histo.fArray, entries = histo.fEntries; // array of values
       histo.fNcells = histo.fXaxis.fNbins + 2;
       histo.fArray = new Float64Array(histo.fNcells);
       for (var n=0;n<histo.fNcells;++n) histo.fArray[n] = 0;
       for (var n=0;n<histo.fNIn;++n) histo.Fill(arr[n]);
       histo.fReady = true;
+      histo.fEntries = entries;
    }
 
    /** @summary Scan content of 1-D histogram
@@ -4226,20 +4259,20 @@
       return false;
    }
 
-   TH1Painter.prototype.CallDrawFunc = function(callback, resize) {
+   TH1Painter.prototype.CallDrawFunc = function(callback, reason) {
 
       var main = this.main_painter(),
           fp = this.frame_painter();
 
-     if ((main!==this) && fp && (fp.mode3d !== this.options.Mode3D))
+     if ((main !== this) && fp && (fp.mode3d !== this.options.Mode3D))
         this.CopyOptionsFrom(main);
 
       var funcname = this.options.Mode3D ? "Draw3D" : "Draw2D";
 
-      this[funcname](callback, resize);
+      this[funcname](callback, reason);
    }
 
-   TH1Painter.prototype.Draw2D = function(call_back) {
+   TH1Painter.prototype.Draw2D = function(call_back, reason) {
       this.Clear3DScene();
       this.mode3d = false;
 
@@ -4258,15 +4291,15 @@
       JSROOT.CallBack(call_back);
    }
 
-   TH1Painter.prototype.Draw3D = function(call_back, resize) {
+   TH1Painter.prototype.Draw3D = function(call_back, reason) {
       this.mode3d = true;
       JSROOT.AssertPrerequisites('hist3d', function() {
-         this.Draw3D(call_back, resize);
+         this.Draw3D(call_back, reason);
       }.bind(this));
    }
 
-   TH1Painter.prototype.Redraw = function(resize) {
-      this.CallDrawFunc(null, resize);
+   TH1Painter.prototype.Redraw = function(reason) {
+      this.CallDrawFunc(null, reason);
    }
 
    function drawHistogram1D(divid, histo, opt) {
@@ -4302,7 +4335,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.THistPainter
+    * @arguments JSROOT.THistPainter
     * @param {object} histo - histogram object
     */
 
@@ -6207,20 +6240,20 @@
       }.bind(this));
    }
 
-   TH2Painter.prototype.CallDrawFunc = function(callback, resize) {
+   TH2Painter.prototype.CallDrawFunc = function(callback, reason) {
 
       var main = this.main_painter(),
           fp = this.frame_painter();
 
-     if ((main!==this) && fp && (fp.mode3d !== this.options.Mode3D))
+     if ((main !== this) && fp && (fp.mode3d !== this.options.Mode3D))
         this.CopyOptionsFrom(main);
 
       var funcname = this.options.Mode3D ? "Draw3D" : "Draw2D";
-      this[funcname](callback, resize);
+      this[funcname](callback, reason);
    }
 
-   TH2Painter.prototype.Redraw = function(resize) {
-      this.CallDrawFunc(null, resize);
+   TH2Painter.prototype.Redraw = function(reason) {
+      this.CallDrawFunc(null, reason);
    }
 
    function drawHistogram2D(divid, histo, opt) {
@@ -6529,7 +6562,7 @@
 
          // if there is auto colors assignment, try to provide it
          if (this.options._pfc || this.options._plc || this.options._pmc) {
-            if (!this.pallette && JSROOT.Painter.GetColorPalette)
+            if (!this.palette && JSROOT.Painter.GetColorPalette)
                this.palette = JSROOT.Painter.GetColorPalette();
             if (this.palette) {
                var color = this.palette.calcColor(rindx, nhists+1);

@@ -18,6 +18,7 @@ namespace Experimental {
 
 class RDrawable;
 class RStyle;
+class RAttrMap;
 
 /** \class RDisplayItem
 \ingroup GpadROOT7
@@ -32,9 +33,11 @@ protected:
    std::string fObjectID;   ///< unique object identifier
    RStyle *fStyle{nullptr}; ///< style object
    unsigned fIndex{0};      ///<! index inside current pad, used to produce fully-qualified id, not send to client
+   bool fDummy{false};      ///< if true, just placeholder for drawable which does not changed
 
 public:
    RDisplayItem() = default;
+   RDisplayItem(bool dummy) : RDisplayItem() { fDummy = dummy; }
    virtual ~RDisplayItem() {}
 
    void SetObjectID(const std::string &id) { fObjectID = id; }
@@ -74,7 +77,35 @@ public:
       fDrawable = &dr;
    }
 
+   const RDrawable *GetDrawable() const { return fDrawable; }
+
+   virtual ~RDrawableDisplayItem();
+
 };
+
+
+/** \class RIndirectDisplayItem
+\ingroup GpadROOT7
+\brief Extract (reference) only basic attributes from drawable, but not drawable itself
+\author Sergey Linev <s.linev@gsi.de>
+\date 2020-04-02
+\warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
+*/
+
+class RIndirectDisplayItem : public RDisplayItem {
+protected:
+
+   const RAttrMap *fAttr{nullptr};        ///< pointer on drawable attributes
+   const std::string *fCssClass{nullptr}; ///< pointer on drawable class
+   const std::string *fId{nullptr};       ///< pointer on drawable id
+
+public:
+
+   RIndirectDisplayItem() = default;
+
+   RIndirectDisplayItem(const RDrawable &dr);
+};
+
 
 /** \class RObjectDisplayItem
 \ingroup GpadROOT7

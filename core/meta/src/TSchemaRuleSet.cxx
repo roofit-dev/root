@@ -7,7 +7,8 @@
 #include "TObjString.h"
 #include "TClass.h"
 #include "TROOT.h"
-#include "Riostream.h"
+#include "TBuffer.h"
+#include <iostream>
 
 #include "TVirtualCollectionProxy.h"
 #include "TVirtualStreamerInfo.h"
