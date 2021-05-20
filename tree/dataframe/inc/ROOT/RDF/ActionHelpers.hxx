@@ -1,7 +1,15 @@
-// Author: Enrico Guiraud, Danilo Piparo CERN  12/2016
+/**
+ \file ROOT/RDF/ActionHelpers.hxx
+ \ingroup dataframe
+ \author Enrico Guiraud, CERN
+ \author Danilo Piparo, CERN
+ \date 2016-12
+ \author Vincenzo Eduardo Padulano
+ \date 2020-06
+*/
 
 /*************************************************************************
- * Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2020, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -25,15 +33,16 @@
 #include "RtypesCore.h"
 #include "TBranch.h"
 #include "TClassEdit.h"
+#include "TClassRef.h"
 #include "TDirectory.h"
 #include "TFile.h" // for SnapshotHelper
 #include "TH1.h"
 #include "TGraph.h"
 #include "TLeaf.h"
-#include "TObjArray.h"
 #include "TObject.h"
 #include "TTree.h"
 #include "TTreeReader.h" // for SnapshotHelper
+#include "ROOT/RDF/RMergeableValue.hxx"
 
 #include <algorithm>
 #include <limits>
@@ -43,6 +52,7 @@
 #include <type_traits>
 #include <vector>
 #include <iomanip>
+#include <numeric> // std::accumulate in MeanHelper
 
 /// \cond HIDDEN_SYMBOLS
 
@@ -52,6 +62,7 @@ namespace RDF {
 template <typename Helper>
 class RActionImpl {
 public:
+   virtual ~RActionImpl() = default;
    // call Helper::FinalizeTask if present, do nothing otherwise
    template <typename T = Helper>
    auto CallFinalizeTask(unsigned int slot) -> decltype(&T::FinalizeTask, void())
@@ -62,6 +73,11 @@ public:
    template <typename... Args>
    void CallFinalizeTask(unsigned int, Args...) {}
 
+   // Helper functions for RMergeableValue
+   virtual std::unique_ptr<RMergeableValueBase> GetMergeableValue() const
+   {
+      throw std::logic_error("`GetMergeableValue` is not implemented for this type of action.");
+   }
 };
 
 } // namespace RDF
@@ -123,6 +139,13 @@ public:
    void Exec(unsigned int slot);
    void Initialize() { /* noop */}
    void Finalize();
+
+   // Helper functions for RMergeableValue
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      return std::make_unique<RMergeableCount>(*fResultCount);
+   }
+
    ULong64_t &PartialUpdate(unsigned int slot);
 
    std::string GetActionName() { return "Count"; }
@@ -183,7 +206,7 @@ public:
    void Exec(unsigned int slot, double v);
    void Exec(unsigned int slot, double v, double w);
 
-   template <typename T, typename std::enable_if<IsContainer<T>::value, int>::type = 0>
+   template <typename T, typename std::enable_if<IsDataContainer<T>::value || std::is_same<T, std::string>::value, int>::type = 0>
    void Exec(unsigned int slot, const T &vs)
    {
       auto &thisBuf = fBuffers[slot];
@@ -194,7 +217,7 @@ public:
    }
 
    template <typename T, typename W,
-             typename std::enable_if<IsContainer<T>::value && IsContainer<W>::value, int>::type = 0>
+             typename std::enable_if<IsDataContainer<T>::value && IsDataContainer<W>::value, int>::type = 0>
    void Exec(unsigned int slot, const T &vs, const W &ws)
    {
       auto &thisBuf = fBuffers[slot];
@@ -211,7 +234,7 @@ public:
    }
 
    template <typename T, typename W,
-             typename std::enable_if<IsContainer<T>::value && !IsContainer<W>::value, int>::type = 0>
+             typename std::enable_if<IsDataContainer<T>::value && !IsDataContainer<W>::value, int>::type = 0>
    void Exec(unsigned int slot, const T &vs, const W w)
    {
       auto &thisBuf = fBuffers[slot];
@@ -226,7 +249,7 @@ public:
 
    // ROOT-10092: Filling with a scalar as first column and a collection as second is not supported
    template <typename T, typename W,
-             typename std::enable_if<IsContainer<W>::value && !IsContainer<T>::value, int>::type = 0>
+             typename std::enable_if<IsDataContainer<W>::value && !IsDataContainer<T>::value, int>::type = 0>
    void Exec(unsigned int, const T &, const W &)
    {
       throw std::runtime_error(
@@ -238,6 +261,12 @@ public:
    void Initialize() { /* noop */}
 
    void Finalize();
+
+   // Helper functions for RMergeableValue
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      return std::make_unique<RMergeableFill<Hist_t>>(*fResultHist);
+   }
 
    std::string GetActionName() { return "Fill"; }
 };
@@ -296,7 +325,7 @@ public:
       fObjects[slot]->Fill(x0, x1, x2, x3);
    }
 
-   template <typename X0, typename std::enable_if<IsContainer<X0>::value, int>::type = 0>
+   template <typename X0, typename std::enable_if<IsDataContainer<X0>::value || std::is_same<X0, std::string>::value, int>::type = 0>
    void Exec(unsigned int slot, const X0 &x0s)
    {
       auto thisSlotH = fObjects[slot];
@@ -307,7 +336,7 @@ public:
 
    // ROOT-10092: Filling with a scalar as first column and a collection as second is not supported
    template <typename X0, typename X1,
-             typename std::enable_if<IsContainer<X1>::value && !IsContainer<X0>::value, int>::type = 0>
+             typename std::enable_if<IsDataContainer<X1>::value && !IsDataContainer<X0>::value, int>::type = 0>
    void Exec(unsigned int , const X0 &, const X1 &)
    {
       throw std::runtime_error(
@@ -315,7 +344,7 @@ public:
    }
 
    template <typename X0, typename X1,
-             typename std::enable_if<IsContainer<X0>::value && IsContainer<X1>::value, int>::type = 0>
+             typename std::enable_if<IsDataContainer<X0>::value && IsDataContainer<X1>::value, int>::type = 0>
    void Exec(unsigned int slot, const X0 &x0s, const X1 &x1s)
    {
       auto thisSlotH = fObjects[slot];
@@ -331,7 +360,7 @@ public:
    }
 
    template <typename X0, typename W,
-             typename std::enable_if<IsContainer<X0>::value && !IsContainer<W>::value, int>::type = 0>
+             typename std::enable_if<IsDataContainer<X0>::value && !IsDataContainer<W>::value, int>::type = 0>
    void Exec(unsigned int slot, const X0 &x0s, const W w)
    {
       auto thisSlotH = fObjects[slot];
@@ -341,7 +370,7 @@ public:
    }
 
    template <typename X0, typename X1, typename X2,
-             typename std::enable_if<IsContainer<X0>::value && IsContainer<X1>::value && IsContainer<X2>::value,
+             typename std::enable_if<IsDataContainer<X0>::value && IsDataContainer<X1>::value && IsDataContainer<X2>::value,
                                      int>::type = 0>
    void Exec(unsigned int slot, const X0 &x0s, const X1 &x1s, const X2 &x2s)
    {
@@ -359,7 +388,7 @@ public:
    }
 
    template <typename X0, typename X1, typename W,
-             typename std::enable_if<IsContainer<X0>::value && IsContainer<X1>::value && !IsContainer<W>::value,
+             typename std::enable_if<IsDataContainer<X0>::value && IsDataContainer<X1>::value && !IsDataContainer<W>::value,
                                      int>::type = 0>
    void Exec(unsigned int slot, const X0 &x0s, const X1 &x1s, const W w)
    {
@@ -376,8 +405,8 @@ public:
    }
 
    template <typename X0, typename X1, typename X2, typename X3,
-             typename std::enable_if<IsContainer<X0>::value && IsContainer<X1>::value && IsContainer<X2>::value &&
-                                        IsContainer<X3>::value,
+             typename std::enable_if<IsDataContainer<X0>::value && IsDataContainer<X1>::value && IsDataContainer<X2>::value &&
+                                        IsDataContainer<X3>::value,
                                      int>::type = 0>
    void Exec(unsigned int slot, const X0 &x0s, const X1 &x1s, const X2 &x2s, const X3 &x3s)
    {
@@ -396,8 +425,8 @@ public:
    }
 
    template <typename X0, typename X1, typename X2, typename W,
-             typename std::enable_if<IsContainer<X0>::value && IsContainer<X1>::value && IsContainer<X2>::value &&
-                                        !IsContainer<W>::value,
+             typename std::enable_if<IsDataContainer<X0>::value && IsDataContainer<X1>::value && IsDataContainer<X2>::value &&
+                                        !IsDataContainer<W>::value,
                                      int>::type = 0>
    void Exec(unsigned int slot, const X0 &x0s, const X1 &x1s, const X2 &x2s, const W w)
    {
@@ -431,6 +460,12 @@ public:
 
    HIST &PartialUpdate(unsigned int slot) { return *fObjects[slot]; }
 
+   // Helper functions for RMergeableValue
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      return std::make_unique<RMergeableFill<HIST>>(*fObjects[0]);
+   }
+
    std::string GetActionName() { return "FillPar"; }
 };
 
@@ -460,8 +495,7 @@ public:
    void InitTask(TTreeReader *, unsigned int) {}
 
    template <typename X0, typename X1,
-             typename std::enable_if<
-                ROOT::TypeTraits::IsContainer<X0>::value && ROOT::TypeTraits::IsContainer<X1>::value, int>::type = 0>
+             typename std::enable_if<IsDataContainer<X0>::value && IsDataContainer<X1>::value, int>::type = 0>
    void Exec(unsigned int slot, const X0 &x0s, const X1 &x1s)
    {
       if (x0s.size() != x1s.size()) {
@@ -493,6 +527,12 @@ public:
          l.Add(fGraphs[slot]);
       }
       resGraph->Merge(&l);
+   }
+
+   // Helper functions for RMergeableValue
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      return std::make_unique<RMergeableFill<Result_t>>(*fGraphs[0]);
    }
 
    std::string GetActionName() { return "Graph"; }
@@ -728,11 +768,11 @@ public:
 
    void InitTask(TTreeReader *, unsigned int) {}
 
-   template <typename T, typename std::enable_if<IsContainer<T>::value, int>::type = 0>
+   template <typename T, typename std::enable_if<IsDataContainer<T>::value, int>::type = 0>
    void Exec(unsigned int slot, const T &vs)
    {
       for (auto &&v : vs)
-         fMins[slot] = std::min(v, fMins[slot]);
+         fMins[slot] = std::min(static_cast<ResultType>(v), fMins[slot]);
    }
 
    void Initialize() { /* noop */}
@@ -742,6 +782,12 @@ public:
       *fResultMin = std::numeric_limits<ResultType>::max();
       for (auto &m : fMins)
          *fResultMin = std::min(m, *fResultMin);
+   }
+
+   // Helper functions for RMergeableValue
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      return std::make_unique<RMergeableMin<ResultType>>(*fResultMin);
    }
 
    ResultType &PartialUpdate(unsigned int slot) { return fMins[slot]; }
@@ -772,11 +818,11 @@ public:
    void InitTask(TTreeReader *, unsigned int) {}
    void Exec(unsigned int slot, ResultType v) { fMaxs[slot] = std::max(v, fMaxs[slot]); }
 
-   template <typename T, typename std::enable_if<IsContainer<T>::value, int>::type = 0>
+   template <typename T, typename std::enable_if<IsDataContainer<T>::value, int>::type = 0>
    void Exec(unsigned int slot, const T &vs)
    {
       for (auto &&v : vs)
-         fMaxs[slot] = std::max((ResultType)v, fMaxs[slot]);
+         fMaxs[slot] = std::max(static_cast<ResultType>(v), fMaxs[slot]);
    }
 
    void Initialize() { /* noop */}
@@ -787,6 +833,12 @@ public:
       for (auto &m : fMaxs) {
          *fResultMax = std::max(m, *fResultMax);
       }
+   }
+
+   // Helper functions for RMergeableValue
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      return std::make_unique<RMergeableMax<ResultType>>(*fResultMax);
    }
 
    ResultType &PartialUpdate(unsigned int slot) { return fMaxs[slot]; }
@@ -832,7 +884,7 @@ public:
    void InitTask(TTreeReader *, unsigned int) {}
    void Exec(unsigned int slot, ResultType v) { fSums[slot] += v; }
 
-   template <typename T, typename std::enable_if<IsContainer<T>::value, int>::type = 0>
+   template <typename T, typename std::enable_if<IsDataContainer<T>::value, int>::type = 0>
    void Exec(unsigned int slot, const T &vs)
    {
       for (auto &&v : vs)
@@ -845,6 +897,12 @@ public:
    {
       for (auto &m : fSums)
          *fResultSum += m;
+   }
+
+   // Helper functions for RMergeableValue
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      return std::make_unique<RMergeableSum<ResultType>>(*fResultSum);
    }
 
    ResultType &PartialUpdate(unsigned int slot) { return fSums[slot]; }
@@ -865,7 +923,7 @@ public:
    void InitTask(TTreeReader *, unsigned int) {}
    void Exec(unsigned int slot, double v);
 
-   template <typename T, typename std::enable_if<IsContainer<T>::value, int>::type = 0>
+   template <typename T, typename std::enable_if<IsDataContainer<T>::value, int>::type = 0>
    void Exec(unsigned int slot, const T &vs)
    {
       for (auto &&v : vs) {
@@ -877,6 +935,13 @@ public:
    void Initialize() { /* noop */}
 
    void Finalize();
+
+   // Helper functions for RMergeableValue
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      const ULong64_t counts = std::accumulate(fCounts.begin(), fCounts.end(), 0ull);
+      return std::make_unique<RMergeableMean>(*fResultMean, counts);
+   }
 
    double &PartialUpdate(unsigned int slot);
 
@@ -907,7 +972,7 @@ public:
    void InitTask(TTreeReader *, unsigned int) {}
    void Exec(unsigned int slot, double v);
 
-   template <typename T, typename std::enable_if<IsContainer<T>::value, int>::type = 0>
+   template <typename T, typename std::enable_if<IsDataContainer<T>::value, int>::type = 0>
    void Exec(unsigned int slot, const T &vs)
    {
       for (auto &&v : vs) {
@@ -918,6 +983,15 @@ public:
    void Initialize() { /* noop */}
 
    void Finalize();
+
+   // Helper functions for RMergeableValue
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      const ULong64_t counts = std::accumulate(fCounts.begin(), fCounts.end(), 0ull);
+      const Double_t mean =
+         std::inner_product(fMeans.begin(), fMeans.end(), fCounts.begin(), 0.) / static_cast<Double_t>(counts);
+      return std::make_unique<RMergeableStdDev>(*fResultStdDev, counts, mean);
+   }
 
    std::string GetActionName() { return "StdDev"; }
 };
@@ -945,7 +1019,7 @@ public:
    void InitTask(TTreeReader *, unsigned int) {}
 
    template <typename... Columns>
-   void Exec(unsigned int, Columns... columns)
+   void Exec(unsigned int, Columns &... columns)
    {
       fDisplayerHelper->AddRow(columns...);
       if (!fDisplayerHelper->HasNext()) {
@@ -1055,12 +1129,30 @@ void *GetData(T & /*v*/)
    return nullptr;
 }
 
-
 template <typename T>
-void SetBranchesHelper(BoolArrayMap &, TTree * /*inputTree*/, TTree &outputTree, const std::string & /*validName*/,
-                       const std::string &name, TBranch *& branch, void *& branchAddress, T *address)
+void SetBranchesHelper(BoolArrayMap &, TTree *inputTree, TTree &outputTree, const std::string &inName,
+                       const std::string &name, TBranch *&branch, void *&branchAddress, T *address)
 {
-   outputTree.Branch(name.c_str(), address);
+   auto *inputBranch = inputTree ? inputTree->GetBranch(inName.c_str()) : nullptr;
+   if (inputBranch) {
+      // Respect the original bufsize and splitlevel arguments
+      // In particular, by keeping splitlevel equal to 0 if this was the case for `inputBranch`, we avoid
+      // writing garbage when unsplit objects cannot be written as split objects (e.g. in case of a polymorphic
+      // TObject branch, see https://bit.ly/2EjLMId ).
+      const auto bufSize = inputBranch->GetBasketSize();
+      const auto splitLevel = inputBranch->GetSplitLevel();
+
+      static TClassRef tbo_cl("TBranchObject");
+      if (inputBranch->IsA() == tbo_cl) {
+         // Need to pass a pointer to pointer
+         outputTree.Branch(name.c_str(), (T **)inputBranch->GetAddress(), bufSize, splitLevel);
+      } else {
+         outputTree.Branch(name.c_str(), address, bufSize, splitLevel);
+      }
+   } else {
+      outputTree.Branch(name.c_str(), address);
+   }
+   // This is not an array branch, so we don't need to register the address of the input branch.
    branch = nullptr;
    branchAddress = nullptr;
 }
@@ -1070,20 +1162,31 @@ void SetBranchesHelper(BoolArrayMap &, TTree * /*inputTree*/, TTree &outputTree,
 /// 1. c-style arrays in ROOT files, so we are sure that there are input trees to which we can ask the correct branch title
 /// 2. RVecs coming from a custom column or a source
 /// 3. vectors coming from ROOT files
-/// In case of 1., we save the pointer to the branch and the pointer to the input value. In case of 2. and 3. we save
-/// nullptrs.
+/// 4. TClonesArray
+///
+/// In case of 1., we keep aside the pointer to the branch and the pointer to the input value (in `branch` and
+/// `branchAddress`) so we can intercept changes in the address of the input branch and tell the output branch.
 template <typename T>
 void SetBranchesHelper(BoolArrayMap &boolArrays, TTree *inputTree, TTree &outputTree, const std::string &inName,
                        const std::string &outName, TBranch *&branch, void *&branchAddress, RVec<T> *ab)
 {
    auto *const inputBranch = inputTree ? inputTree->GetBranch(inName.c_str()) : nullptr;
-   const auto mustWriteStdVec =
-      !inputBranch || ROOT::ESTLType::kSTLvector == TClassEdit::IsSTLCont(inputBranch->GetClassName());
+   const bool isTClonesArray = inputBranch != nullptr && std::string(inputBranch->GetClassName()) == "TClonesArray";
+   const auto mustWriteStdVec = !inputBranch || isTClonesArray ||
+                                ROOT::ESTLType::kSTLvector == TClassEdit::IsSTLCont(inputBranch->GetClassName());
 
    if (mustWriteStdVec) {
-      // Treat 2. and 3.:
+      // Treat:
       // 2. RVec coming from a custom column or a source
       // 3. RVec coming from a column on disk of type vector (the RVec is adopting the data of that vector)
+      // 4. TClonesArray.
+      // In all cases, we write out a std::vector<T> when the column is RVec<T>
+      if (isTClonesArray) {
+         Warning("Snapshot",
+                 "Branch \"%s\" contains TClonesArrays but the type specified to Snapshot was RVec<T>. The branch will "
+                 "be written out as a std::vector instead of a TClonesArray. Specify that the type of the branch is "
+                 "TClonesArray as a Snapshot template parameter to write out a TClonesArray instead.", inName.c_str());
+      }
       outputTree.Branch(outName.c_str(), &ab->AsVector());
       return;
    }
@@ -1118,6 +1221,10 @@ void UpdateBoolArray(BoolArrayMap &, T&, const std::string &, TTree &) {}
 // RVec<bool> overload, update boolArrays if needed
 inline void UpdateBoolArray(BoolArrayMap &boolArrays, RVec<bool> &v, const std::string &outName, TTree &t)
 {
+   // in case the RVec<bool> does not correspond to a bool C-array
+   if (boolArrays.find(outName) == boolArrays.end())
+      return;
+
    if (v.size() > boolArrays[outName].Size()) {
       boolArrays[outName] = BoolArray(v); // resize and copy
       t.SetBranchAddress(outName.c_str(), boolArrays[outName].Data());
@@ -1127,9 +1234,11 @@ inline void UpdateBoolArray(BoolArrayMap &boolArrays, RVec<bool> &v, const std::
    }
 }
 
+void ValidateSnapshotOutput(const RSnapshotOptions &opts, const std::string &treeName, const std::string &fileName);
+
 /// Helper object for a single-thread Snapshot action
-template <typename... BranchTypes>
-class SnapshotHelper : public RActionImpl<SnapshotHelper<BranchTypes...>> {
+template <typename... ColTypes>
+class SnapshotHelper : public RActionImpl<SnapshotHelper<ColTypes...>> {
    const std::string fFileName;
    const std::string fDirName;
    const std::string fTreeName;
@@ -1145,13 +1254,14 @@ class SnapshotHelper : public RActionImpl<SnapshotHelper<BranchTypes...>> {
    std::vector<void *> fBranchAddresses; // Addresses associated to output branches, non-null only for the ones holding C arrays
 
 public:
-   using ColumnTypes_t = TypeList<BranchTypes...>;
+   using ColumnTypes_t = TypeList<ColTypes...>;
    SnapshotHelper(std::string_view filename, std::string_view dirname, std::string_view treename,
                   const ColumnNames_t &vbnames, const ColumnNames_t &bnames, const RSnapshotOptions &options)
       : fFileName(filename), fDirName(dirname), fTreeName(treename), fOptions(options), fInputBranchNames(vbnames),
         fOutputBranchNames(ReplaceDotWithUnderscore(bnames)), fBranches(vbnames.size(), nullptr),
         fBranchAddresses(vbnames.size(), nullptr)
    {
+      ValidateSnapshotOutput(fOptions, fTreeName, fFileName);
    }
 
    SnapshotHelper(const SnapshotHelper &) = delete;
@@ -1167,9 +1277,9 @@ public:
       fInputTree->AddClone(fOutputTree.get());
    }
 
-   void Exec(unsigned int /* slot */, BranchTypes &... values)
+   void Exec(unsigned int /* slot */, ColTypes &... values)
    {
-      using ind_t = std::index_sequence_for<BranchTypes...>;
+      using ind_t = std::index_sequence_for<ColTypes...>;
       if (! fIsFirstEvent) {
          UpdateCArraysPtrs(values..., ind_t{});
       } else {
@@ -1181,7 +1291,7 @@ public:
    }
 
    template <std::size_t... S>
-   void UpdateCArraysPtrs(BranchTypes &... values, std::index_sequence<S...> /*dummy*/)
+   void UpdateCArraysPtrs(ColTypes &... values, std::index_sequence<S...> /*dummy*/)
    {
       // This code deals with branches which hold C arrays of variable size. It can happen that the buffers
       // associated to those is re-allocated. As a result the value of the pointer can change therewith
@@ -1197,7 +1307,7 @@ public:
    }
 
    template <std::size_t... S>
-   void SetBranches(BranchTypes &... values, std::index_sequence<S...> /*dummy*/)
+   void SetBranches(ColTypes &... values, std::index_sequence<S...> /*dummy*/)
    {
       // create branches in output tree (and fill fBoolArrays for RVec<bool> columns)
       int expander[] = {(SetBranchesHelper(fBoolArrays, fInputTree, *fOutputTree, fInputBranchNames[S],
@@ -1208,7 +1318,7 @@ public:
    }
 
    template <std::size_t... S>
-   void UpdateBoolArrays(BranchTypes &...values, std::index_sequence<S...> /*dummy*/)
+   void UpdateBoolArrays(ColTypes &...values, std::index_sequence<S...> /*dummy*/)
    {
       int expander[] = {(UpdateBoolArray(fBoolArrays, values, fOutputBranchNames[S], *fOutputTree), 0)..., 0};
       (void)expander; // avoid unused variable warnings for older compilers such as gcc 4.9
@@ -1219,19 +1329,21 @@ public:
       fOutputFile.reset(
          TFile::Open(fFileName.c_str(), fOptions.fMode.c_str(), /*ftitle=*/"",
                      ROOT::CompressionSettings(fOptions.fCompressionAlgorithm, fOptions.fCompressionLevel)));
+      if(!fOutputFile)
+         throw std::runtime_error("Snapshot: could not create output file " + fFileName);
 
+      TDirectory *outputDir = fOutputFile.get();
       if (!fDirName.empty()) {
          TString checkupdate = fOptions.fMode;
          checkupdate.ToLower();
          if (checkupdate == "update")
-            fOutputFile->mkdir(fDirName.c_str(), "", true);  // do not overwrite existing directory
+            outputDir = fOutputFile->mkdir(fDirName.c_str(), "", true);  // do not overwrite existing directory
          else
-            fOutputFile->mkdir(fDirName.c_str());
-         fOutputFile->cd(fDirName.c_str());
+            outputDir = fOutputFile->mkdir(fDirName.c_str());
       }
 
       fOutputTree =
-         std::make_unique<TTree>(fTreeName.c_str(), fTreeName.c_str(), fOptions.fSplitLevel, /*dir=*/fOutputFile.get());
+         std::make_unique<TTree>(fTreeName.c_str(), fTreeName.c_str(), fOptions.fSplitLevel, /*dir=*/outputDir);
 
       if (fOptions.fAutoFlush)
          fOutputTree->SetAutoFlush(fOptions.fAutoFlush);
@@ -1240,8 +1352,8 @@ public:
    void Finalize()
    {
       if (fOutputFile && fOutputTree) {
-         ::TDirectory::TContext ctxt(fOutputFile->GetDirectory(fDirName.c_str()));
-         fOutputTree->Write();
+         // because TTree::Write writes in gDirectory, not in fDirectory
+         fOutputTree->AutoSave("flushbaskets");
          // must destroy the TTree first, otherwise TFile will delete it too leading to a double delete
          fOutputTree.reset();
          fOutputFile->Close();
@@ -1254,8 +1366,8 @@ public:
 };
 
 /// Helper object for a multi-thread Snapshot action
-template <typename... BranchTypes>
-class SnapshotHelperMT : public RActionImpl<SnapshotHelperMT<BranchTypes...>> {
+template <typename... ColTypes>
+class SnapshotHelperMT : public RActionImpl<SnapshotHelperMT<ColTypes...>> {
    const unsigned int fNSlots;
    std::unique_ptr<ROOT::Experimental::TBufferMerger> fMerger; // must use a ptr because TBufferMerger is not movable
    std::vector<std::shared_ptr<ROOT::Experimental::TBufferMergerFile>> fOutputFiles;
@@ -1275,7 +1387,7 @@ class SnapshotHelperMT : public RActionImpl<SnapshotHelperMT<BranchTypes...>> {
    std::vector<std::vector<void *>> fBranchAddresses; 
 
 public:
-   using ColumnTypes_t = TypeList<BranchTypes...>;
+   using ColumnTypes_t = TypeList<ColTypes...>;
    SnapshotHelperMT(const unsigned int nSlots, std::string_view filename, std::string_view dirname,
                     std::string_view treename, const ColumnNames_t &vbnames, const ColumnNames_t &bnames,
                     const RSnapshotOptions &options)
@@ -1285,6 +1397,7 @@ public:
         fBranches(fNSlots, std::vector<TBranch *>(vbnames.size(), nullptr)), 
         fBranchAddresses(fNSlots, std::vector<void *>(vbnames.size(), nullptr))
    {
+      ValidateSnapshotOutput(fOptions, fTreeName, fFileName);
    }
    SnapshotHelperMT(const SnapshotHelperMT &) = delete;
    SnapshotHelperMT(SnapshotHelperMT &&) = default;
@@ -1305,6 +1418,7 @@ public:
       // TODO we could instead create the output tree and its branches, change addresses of input variables in each task
       fOutputTrees[slot] =
          std::make_unique<TTree>(fTreeName.c_str(), fTreeName.c_str(), fOptions.fSplitLevel, /*dir=*/treeDirectory);
+      fOutputTrees[slot]->SetBit(TTree::kEntriesReshuffled);
       // TODO can be removed when RDF supports interleaved TBB task execution properly, see ROOT-10269
       fOutputTrees[slot]->SetImplicitMT(false);
       if (fOptions.fAutoFlush)
@@ -1331,9 +1445,9 @@ public:
       fOutputTrees[slot].reset(nullptr);
    }
 
-   void Exec(unsigned int slot, BranchTypes &... values)
+   void Exec(unsigned int slot, ColTypes &... values)
    {
-      using ind_t = std::index_sequence_for<BranchTypes...>;
+      using ind_t = std::index_sequence_for<ColTypes...>;
       if (!fIsFirstEvent[slot]) {
          UpdateCArraysPtrs(slot, values..., ind_t{});
       } else {
@@ -1349,7 +1463,7 @@ public:
    }
 
    template <std::size_t... S>
-   void UpdateCArraysPtrs(unsigned int slot, BranchTypes &... values, std::index_sequence<S...> /*dummy*/)
+   void UpdateCArraysPtrs(unsigned int slot, ColTypes &... values, std::index_sequence<S...> /*dummy*/)
    {
       // This code deals with branches which hold C arrays of variable size. It can happen that the buffers
       // associated to those is re-allocated. As a result the value of the pointer can change therewith
@@ -1366,7 +1480,7 @@ public:
    }
 
    template <std::size_t... S>
-   void SetBranches(unsigned int slot, BranchTypes &... values, std::index_sequence<S...> /*dummy*/)
+   void SetBranches(unsigned int slot, ColTypes &... values, std::index_sequence<S...> /*dummy*/)
    {
          // hack to call TTree::Branch on all variadic template arguments
          int expander[] = {
@@ -1379,7 +1493,7 @@ public:
    }
 
    template <std::size_t... S>
-   void UpdateBoolArrays(unsigned int slot, BranchTypes &... values, std::index_sequence<S...> /*dummy*/)
+   void UpdateBoolArrays(unsigned int slot, ColTypes &... values, std::index_sequence<S...> /*dummy*/)
    {
       (void)slot; // avoid bogus 'unused parameter' warning
       int expander[] = {
@@ -1390,7 +1504,10 @@ public:
    void Initialize()
    {
       const auto cs = ROOT::CompressionSettings(fOptions.fCompressionAlgorithm, fOptions.fCompressionLevel);
-      fMerger = std::make_unique<ROOT::Experimental::TBufferMerger>(fFileName.c_str(), fOptions.fMode.c_str(), cs);
+      auto out_file = TFile::Open(fFileName.c_str(), fOptions.fMode.c_str(), /*ftitle=*/fFileName.c_str(), cs);
+      if(!out_file)
+         throw std::runtime_error("Snapshot: could not create output file " + fFileName);
+      fMerger = std::make_unique<ROOT::Experimental::TBufferMerger>(std::unique_ptr<TFile>(out_file));
    }
 
    void Finalize()
@@ -1405,7 +1522,12 @@ public:
       }
 
       if (!fileWritten) {
-         Warning("Snapshot", "A lazy Snapshot action was booked but never triggered.");
+         if (std::none_of(fOutputFiles.begin(), fOutputFiles.end(), [] (const std::shared_ptr<ROOT::Experimental::TBufferMergerFile> ptr) { return bool(ptr); })) {
+            Warning("Snapshot",
+                    "No input entries (input TTree was empty or no entry passed the Filters). Output TTree is empty.");
+         } else {
+            Warning("Snapshot", "A lazy Snapshot action was booked but never triggered.");
+         }
       }
 
       // flush all buffers to disk by destroying the TBufferMerger

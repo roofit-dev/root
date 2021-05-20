@@ -14,7 +14,7 @@
       if (typeof d3 != 'object')
          throw new Error('This extension requires d3.js', 'JSRootPainter.hist3d.js');
       if (typeof THREE == 'undefined')
-         throw new Error('THREE is not defined', 'JSRoot3DPainter.js');
+         throw new Error('THREE is not defined', 'JSRootPainter.hist3d.js');
       factory(JSROOT, d3, JSROOT, THREE, THREE);
    }
 } (function(JSROOT, d3, __DUMMY__, THREE, THREE_MORE, document) {
@@ -28,7 +28,7 @@
    if (typeof JSROOT.THistPainter === 'undefined')
       throw new Error('JSROOT.THistPainter is not defined', 'JSRootPainter.hist3d.js');
 
-   JSROOT.TFramePainter.prototype.SetCameraPosition = function(pad, first_time) {
+   JSROOT.TFramePainter.prototype.SetCameraPosition = function(first_time, pad) {
       var max3d = Math.max(0.75*this.size_xy3d, this.size_z3d);
 
       if (first_time)
@@ -108,7 +108,7 @@
 
          this.Resize3D(); // set actual sizes
 
-         this.SetCameraPosition(this.root_pad(), false);
+         this.SetCameraPosition(false, this.root_pad());
 
          return;
       }
@@ -142,7 +142,7 @@
       this.camera.up = new THREE.Vector3(0,0,1);
       this.scene.add( this.camera );
 
-      this.SetCameraPosition(this.root_pad(), true);
+      this.SetCameraPosition(true, this.root_pad());
 
       var res = JSROOT.Painter.Create3DRenderer(this.scene_width, this.scene_height, this.usesvg, (sz.can3d == 4));
 
@@ -229,7 +229,7 @@
 
    JSROOT.TFramePainter.prototype.SetActive = function(on) {
       if (this.control)
-         this.control.enableKeys = on;
+         this.control.enableKeys = on && JSROOT.key_handling;
    }
 
    /** @brief call 3D rendering of the histogram drawing
@@ -1106,9 +1106,10 @@
           main = this.frame_painter(),
           axis_zmin = main.grz.domain()[0],
           axis_zmax = main.grz.domain()[1],
+          zmin, zmax,
           handle = this.PrepareColorDraw({ rounding: false, use3d: true, extra: 1 }),
           i1 = handle.i1, i2 = handle.i2, j1 = handle.j1, j2 = handle.j2,
-          i, j, x1, x2, y1, y2, binz1, binz2, reduced, nobottom, notop,
+          i, j, k, vert, x1, x2, y1, y2, binz1, binz2, reduced, nobottom, notop,
           pthis = this,
           histo = this.GetHisto(),
           basehisto = histo ? histo.$baseh : null,
@@ -1158,13 +1159,14 @@
 
       for (var nlevel=0; nlevel<levels.length-1;++nlevel) {
 
-         var zmin = levels[nlevel], zmax = levels[nlevel+1],
-             z1 = 0, z2 = 0, numvertices = 0, num2vertices = 0;
+         zmin = levels[nlevel];
+         zmax = levels[nlevel+1];
 
-         // artifically extend last level of color pallette to maximial visible value
+         // artificially extend last level of color palette to maximal visible value
          if (palette && (nlevel==levels.length-2) && zmax < axis_zmax) zmax = axis_zmax;
 
-         var grzmin = main.grz(zmin), grzmax = main.grz(zmax);
+         var z1 = 0, z2 = 0, numvertices = 0, num2vertices = 0,
+             grzmin = main.grz(zmin), grzmax = main.grz(zmax);
 
          // now calculate size of buffer geometry for boxes
 
@@ -1299,7 +1301,7 @@
 
          mesh.tooltip = function(intersect) {
             if (isNaN(intersect.faceIndex)) {
-               console.error('faceIndex not provided, check three.js version', THREE.REVISION, 'expected r97');
+               console.error('faceIndex not provided, check three.js version', THREE.REVISION, 'expected r102');
                return null;
             }
 
@@ -1437,7 +1439,7 @@
 
       // create boxes
       var lcolor = this.get_color(histo.fLineColor);
-      material = new THREE.LineBasicMaterial({ color: new THREE.Color(lcolor) });
+      var material = new THREE.LineBasicMaterial({ color: new THREE.Color(lcolor) });
       if (!JSROOT.browser.isIE) material.linewidth = histo.fLineWidth;
 
       var line = JSROOT.Painter.createLineSegments(lpositions, material, uselineindx ? lindicies : null );
@@ -1495,7 +1497,7 @@
    // ==========================================================================================
 
    /** @summary Draw 1-D histogram in 3D @private */
-   JSROOT.TH1Painter.prototype.Draw3D = function(call_back, resize) {
+   JSROOT.TH1Painter.prototype.Draw3D = function(call_back, reason) {
 
       this.mode3d = true;
 
@@ -1503,7 +1505,7 @@
           is_main = this.is_main_painter(), // is main histogram
           histo = this.GetHisto();
 
-      if (resize)  {
+      if (reason == "resize")  {
 
          if (is_main && main.Resize3D()) main.Render3D();
 
@@ -1540,7 +1542,7 @@
 
    // ==========================================================================================
 
-   JSROOT.TH2Painter.prototype.Draw3D = function(call_back, resize) {
+   JSROOT.TH2Painter.prototype.Draw3D = function(call_back, reason) {
 
       this.mode3d = true;
 
@@ -1548,7 +1550,7 @@
           is_main = this.is_main_painter(), // is main histogram
           histo = this.GetHisto();
 
-      if (resize) {
+      if (reason == "resize") {
 
          if (is_main && main.Resize3D()) main.Render3D();
 
@@ -2104,7 +2106,7 @@
 
        line.tooltip = function(intersect) {
           if (isNaN(intersect.index)) {
-             console.error('segment index not provided, check three.js version', THREE.REVISION, 'expected r97');
+             console.error('segment index not provided, check three.js version', THREE.REVISION, 'expected r102');
              return null;
           }
 
@@ -2118,7 +2120,7 @@
           tip.x1 = Math.max(-main.size_xy3d, main.grx(histo.fXaxis.GetBinLowEdge(tip.ix)));
           tip.x2 = Math.min(main.size_xy3d, main.grx(histo.fXaxis.GetBinLowEdge(tip.ix+1)));
           tip.y1 = Math.max(-main.size_xy3d, main.gry(histo.fYaxis.GetBinLowEdge(tip.iy)));
-          tip.y2 = Math.min(main.size_xy3d, main.gry(histo.fXaxis.GetBinLowEdge(tip.iy+1)));
+          tip.y2 = Math.min(main.size_xy3d, main.gry(histo.fYaxis.GetBinLowEdge(tip.iy+1)));
 
           tip.z1 = main.grz(tip.value-tip.error < this.zmin ? this.zmin : tip.value-tip.error);
           tip.z2 = main.grz(tip.value+tip.error > this.zmax ? this.zmax : tip.value+tip.error);
@@ -2589,7 +2591,7 @@
 
       mesh.tooltip = function(intersect) {
          if (isNaN(intersect.index)) {
-            console.error('intersect.index not provided, check three.js version', THREE.REVISION, 'expected r97');
+            console.error('intersect.index not provided, check three.js version', THREE.REVISION, 'expected r102');
             return null;
          }
 
@@ -2723,7 +2725,7 @@
          for (j = j1; j < j2; ++j) {
             for (k = k1; k < k2; ++k) {
                bin_content = histo.getBinContent(i+1, j+1, k+1);
-               if ((bin_content===0) || (bin_content < this.gminbin)) continue;
+               if (!this.options.GLColor && ((bin_content===0) || (bin_content < this.gminbin))) continue;
                wei = use_scale ? Math.pow(Math.abs(bin_content*use_scale), 0.3333) : 1;
                if (wei < 1e-3) continue; // do not draw empty or very small bins
 
@@ -2793,7 +2795,7 @@
             biny = histo.fYaxis.GetBinCenter(j+1); gry = main.gry(biny);
             for (k = k1; k < k2; ++k) {
                bin_content = histo.getBinContent(i+1, j+1, k+1);
-               if ((bin_content===0) || (bin_content < this.gminbin)) continue;
+               if (!this.options.GLColor && ((bin_content===0) || (bin_content < this.gminbin))) continue;
 
                wei = use_scale ? Math.pow(Math.abs(bin_content*use_scale), 0.3333) : 1;
                if (wei < 1e-3) continue; // do not show very small bins
@@ -2884,7 +2886,7 @@
 
          combined_bins.tooltip = function(intersect) {
             if (isNaN(intersect.faceIndex)) {
-               console.error('intersect.faceIndex not provided, check three.js version', THREE.REVISION, 'expected r97');
+               console.error('intersect.faceIndex not provided, check three.js version', THREE.REVISION, 'expected r102');
                return null;
             }
             var indx = Math.floor(intersect.faceIndex / this.bins_faces);
@@ -2927,12 +2929,12 @@
       }
    }
 
-   TH3Painter.prototype.Redraw = function(resize) {
+   TH3Painter.prototype.Redraw = function(reason) {
 
       var main = this.frame_painter(), // who makes axis and 3D drawing
           histo = this.GetHisto();
 
-      if (resize) {
+      if (reason == "resize") {
 
          if (main.Resize3D()) main.Render3D();
 
@@ -3153,7 +3155,7 @@
 
    TGraph2DPainter.prototype.Graph2DTooltip = function(intersect) {
       if (isNaN(intersect.index)) {
-         console.error('intersect.index not provided, check three.js version', THREE.REVISION, 'expected r97');
+         console.error('intersect.index not provided, check three.js version', THREE.REVISION, 'expected r102');
          return null;
       }
 
@@ -3338,7 +3340,7 @@
                err[ierr+2] = fp.grz(graph.fZ[i] - graph.fEZ[i]);
                err[ierr+3] = x;
                err[ierr+4] = y;
-               err[ierr+5] = fp.grz(graph.fZ[i] + graph.fEZ[i]);;
+               err[ierr+5] = fp.grz(graph.fZ[i] + graph.fEZ[i]);
                ierr+=6;
             }
 
@@ -3509,7 +3511,7 @@
 
             mesh.tooltip = function(intersect) {
                if (isNaN(intersect.index)) {
-                  console.error('intersect.index not provided, check three.js version', THREE.REVISION, 'expected r97');
+                  console.error('intersect.index not provided, check three.js version', THREE.REVISION, 'expected r102');
                   return null;
                }
                var indx = Math.floor(intersect.index / this.nvertex);

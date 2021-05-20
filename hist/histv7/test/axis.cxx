@@ -83,6 +83,7 @@ TEST(AxisTest, Config) {
 
       RAxisIrregular axis = Internal::AxisConfigToType<RAxisConfig::kIrregular>()(cfg);
       EXPECT_EQ(axis.GetTitle(), title);
+      EXPECT_EQ(axis.GetNBinsNoOver(), 3);
       EXPECT_EQ(axis.GetBinBorders().size(), 4u);
       EXPECT_EQ(axis.GetBinBorders()[0], 2.3);
       EXPECT_EQ(axis.GetBinBorders()[1], 5.7);
@@ -117,6 +118,7 @@ TEST(AxisTest, Config) {
 
       RAxisLabels axis = Internal::AxisConfigToType<RAxisConfig::kLabels>()(cfg);
       EXPECT_EQ(axis.GetTitle(), title);
+      EXPECT_EQ(axis.GetNBinsNoOver(), 5);
       EXPECT_EQ(axis.GetBinLabels().size(), 5u);
       EXPECT_EQ(axis.GetBinLabels()[0], "abc");
       EXPECT_EQ(axis.GetBinLabels()[1], "de");
@@ -231,22 +233,24 @@ void test_axis_base(const RAxisBase& axis,
   EXPECT_EQ(axis.GetNOverflowBins(), n_overflow_bins);
   EXPECT_EQ(axis.GetNBins(), n_bins_no_over + n_overflow_bins);
 
-  const int underflow_bin = can_grow ? -1 : 0;
+  const int kInvalidBin = RAxisBase::kInvalidBin;
+  const int underflow_bin = can_grow ? kInvalidBin : -1;
   EXPECT_EQ(axis.GetUnderflowBin(), underflow_bin);
-  EXPECT_EQ(axis.IsUnderflowBin(underflow_bin-1), true);
-  EXPECT_EQ(axis.IsUnderflowBin(underflow_bin), true);
-  EXPECT_EQ(axis.IsUnderflowBin(underflow_bin+1), false);
 
-  const int overflow_bin = underflow_bin + n_bins_no_over + 1;
+  const int overflow_bin = can_grow ? kInvalidBin : -2;
   EXPECT_EQ(axis.GetOverflowBin(), overflow_bin);
-  EXPECT_EQ(axis.IsOverflowBin(overflow_bin-1), false);
-  EXPECT_EQ(axis.IsOverflowBin(overflow_bin), true);
-  EXPECT_EQ(axis.IsOverflowBin(overflow_bin+1), true);
 
-  EXPECT_EQ(*axis.begin(), underflow_bin+1);
-  EXPECT_EQ(*axis.begin_with_underflow(), 0);
-  EXPECT_EQ(*axis.end(), overflow_bin);
-  EXPECT_EQ(*axis.end_with_overflow(), n_bins_no_over + n_overflow_bins);
+  EXPECT_EQ(axis.GetFirstBin(), 1);
+  EXPECT_EQ(axis.GetLastBin(), n_bins_no_over);
+
+  EXPECT_EQ(*axis.begin(), can_grow ? underflow_bin+1 : underflow_bin+2);
+  EXPECT_EQ(*axis.end(), n_bins_no_over + 1);
+
+  int nBins = 0;
+  for (auto iter = axis.begin(); iter != axis.end(); ++iter) {
+    ++nBins;
+  }
+  EXPECT_EQ(nBins, n_bins_no_over);
 
   EXPECT_DOUBLE_EQ(axis.GetMinimum(), minimum);
   EXPECT_DOUBLE_EQ(axis.GetMaximum(), maximum);
@@ -265,18 +269,21 @@ void test_axis_equidistant(const RAxisEquidistant& axis,
   EXPECT_DOUBLE_EQ(axis.GetBinWidth(), bin_width);
   EXPECT_DOUBLE_EQ(axis.GetInverseBinWidth(), 1.0/bin_width);
 
-  const int underflow_findbin_res = can_grow ? RAxisBase::kIgnoreBin : 0;
-  EXPECT_EQ(axis.FindBin(minimum-100*bin_width), underflow_findbin_res);
+  const int kInvalidBin = RAxisBase::kInvalidBin;
+  const int underflow_findbin_res = can_grow ? kInvalidBin : -1;
+  EXPECT_EQ(axis.FindBin(std::numeric_limits<double>::lowest()),
+            underflow_findbin_res);
   EXPECT_EQ(axis.FindBin(minimum-0.01*bin_width), underflow_findbin_res);
-  const int first_bin = can_grow ? 0 : 1;
+  const int first_bin = 1;
   EXPECT_EQ(axis.FindBin(minimum+0.01*bin_width), first_bin);
   EXPECT_EQ(axis.FindBin(minimum+0.99*bin_width), first_bin);
   EXPECT_EQ(axis.FindBin(minimum+1.01*bin_width), first_bin+1);
   const int last_bin = first_bin + n_bins_no_over - 1;
   EXPECT_EQ(axis.FindBin(maximum-0.01*bin_width), last_bin);
-  const int overflow_findbin_res = can_grow ? RAxisBase::kIgnoreBin : last_bin+1;
+  const int overflow_findbin_res = can_grow ? kInvalidBin : -2;
   EXPECT_EQ(axis.FindBin(maximum+0.01*bin_width), overflow_findbin_res);
-  EXPECT_EQ(axis.FindBin(maximum+100*bin_width), overflow_findbin_res);
+  EXPECT_EQ(axis.FindBin(std::numeric_limits<double>::max()),
+            overflow_findbin_res);
 
   // NOTE: Result of GetBinFrom on underflow bins, GetBinTo on overflow bins and
   //       GetBinCenter on either is considered unspecified for now. If we do
@@ -297,56 +304,54 @@ void test_axis_equidistant(const RAxisEquidistant& axis,
     EXPECT_DOUBLE_EQ(axis.GetBinFrom(n_bins_no_over+1), maximum);
   }
 
-  EXPECT_EQ(axis.GetBinIndexForLowEdge(minimum-100*bin_width), -1);
-  EXPECT_EQ(axis.GetBinIndexForLowEdge(minimum-bin_width), -1);
-  EXPECT_EQ(axis.GetBinIndexForLowEdge(minimum-0.5*bin_width), -1);
+  EXPECT_EQ(axis.GetBinIndexForLowEdge(std::numeric_limits<double>::lowest()),
+            kInvalidBin);
+  EXPECT_EQ(axis.GetBinIndexForLowEdge(minimum-bin_width), kInvalidBin);
+  EXPECT_EQ(axis.GetBinIndexForLowEdge(minimum-0.5*bin_width), kInvalidBin);
   EXPECT_EQ(axis.GetBinIndexForLowEdge(minimum), first_bin);
-  EXPECT_EQ(axis.GetBinIndexForLowEdge(minimum+0.5*bin_width), -1);
+  EXPECT_EQ(axis.GetBinIndexForLowEdge(minimum+0.5*bin_width), kInvalidBin);
   EXPECT_EQ(axis.GetBinIndexForLowEdge(minimum+bin_width), first_bin+1);
-  EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum-1.5*bin_width), -1);
+  EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum-1.5*bin_width), kInvalidBin);
   EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum-bin_width), last_bin);
-  EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum-0.5*bin_width), -1);
+  EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum-0.5*bin_width), kInvalidBin);
   EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum), last_bin+1);
-  EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum+0.5*bin_width), -1);
-  EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum+bin_width), -1);
-  EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum+100*bin_width), -1);
+  EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum+0.5*bin_width), kInvalidBin);
+  EXPECT_EQ(axis.GetBinIndexForLowEdge(maximum+bin_width), kInvalidBin);
+  EXPECT_EQ(axis.GetBinIndexForLowEdge(std::numeric_limits<double>::max()),
+            kInvalidBin);
 }
 
 TEST(AxisTest, Equidistant) {
-  auto test = [](const RAxisEquidistant& axis, std::string_view title) {
-    test_axis_equidistant(axis, title, false, 10, 1.2, 3.4);
+  auto test = [](const RAxisEquidistant& axis,
+                 std::string_view title,
+                 int nbins,
+                 double min,
+                 double max) {
+    test_axis_equidistant(axis, title, false, nbins, min, max);
 
     RAxisConfig cfg(axis);
     EXPECT_EQ(cfg.GetTitle(), title);
-    EXPECT_EQ(cfg.GetNBinsNoOver(), 10);
+    EXPECT_EQ(cfg.GetNBinsNoOver(), nbins);
     EXPECT_EQ(cfg.GetKind(), RAxisConfig::kEquidistant);
     EXPECT_EQ(cfg.GetBinBorders().size(), 2u);
-    EXPECT_EQ(cfg.GetBinBorders()[0], 1.2);
-    EXPECT_DOUBLE_EQ(cfg.GetBinBorders()[1], 3.4);
+    EXPECT_EQ(cfg.GetBinBorders()[0], min);
+    EXPECT_DOUBLE_EQ(cfg.GetBinBorders()[1], max);
     EXPECT_EQ(cfg.GetBinLabels().size(), 0u);
   };
 
   {
-    SCOPED_TRACE("Equidistant axis w/o title");
-    test(RAxisEquidistant(10, 1.2, 3.4), "");
+    SCOPED_TRACE("Equidistant axis w/o title, normal binning");
+    test(RAxisEquidistant(10, 1.2, 3.4), "", 10, 1.2, 3.4);
   }
 
   {
-    SCOPED_TRACE("Equidistant axis with title");
-    test(RAxisEquidistant("RITLE_E2", 10, 1.2, 3.4), "RITLE_E2");
+    SCOPED_TRACE("Equidistant axis with title, normal binning");
+    test(RAxisEquidistant("RITLE_E2", 5, -8.9, -6.7),
+         "RITLE_E2",
+         5,
+         -8.9,
+         -6.7);
   }
-
-  // Only RAxisEquidistant currently has an equality operator defined
-  RAxisEquidistant axis1("Title", 12, 3.4, 5.6);
-  EXPECT_EQ(axis1, RAxisEquidistant("Ritle", 12, 3.4, 5.6));
-
-  // Title is ignored by the equality operator
-  EXPECT_EQ(axis1, RAxisEquidistant("Ritl", 12, 3.4, 5.6));
-
-  // Everything else is taken into account by the equality operator
-  EXPECT_NE(axis1, RAxisEquidistant("Ritle", 13, 3.4, 5.6));
-  EXPECT_NE(axis1, RAxisEquidistant("Ritle", 12, 3.5, 5.6));
-  EXPECT_NE(axis1, RAxisEquidistant("Ritle", 12, 3.4, 5.7));
 }
 
 TEST(AxisTest, Growable) {
@@ -383,60 +388,71 @@ TEST(AxisTest, Growable) {
 }
 
 TEST(AxisTest, Irregular) {
-  auto test = [](const RAxisIrregular& axis, std::string_view title) {
-    test_axis_base(axis, title, false, 3, 2.3, 17.19);
+  auto test = [&](const RAxisIrregular& axis,
+                  std::string_view title,
+                  const std::vector<double>& bin_borders) {
+    const int n_bins_no_over = bin_borders.size() - 1;
+    test_axis_base(axis,
+                   title,
+                   false,
+                   n_bins_no_over,
+                   bin_borders.front(),
+                   bin_borders.back());
 
-    EXPECT_EQ(axis.FindBin(-100), 0);
-    EXPECT_EQ(axis.FindBin(2.29), 0);
-    EXPECT_EQ(axis.FindBin(2.31), 1);
-    EXPECT_EQ(axis.FindBin(5.69), 1);
-    EXPECT_EQ(axis.FindBin(5.71), 2);
-    EXPECT_EQ(axis.FindBin(11.1), 2);
-    EXPECT_EQ(axis.FindBin(11.2), 3);
-    EXPECT_EQ(axis.FindBin(17.1), 3);
-    EXPECT_EQ(axis.FindBin(17.3), 4);
-    EXPECT_EQ(axis.FindBin(1000), 4);
-    EXPECT_DOUBLE_EQ(axis.GetBinCenter(0), std::numeric_limits<double>::lowest());
-    EXPECT_DOUBLE_EQ(axis.GetBinCenter(1), 4.0);
-    EXPECT_DOUBLE_EQ(axis.GetBinCenter(2), 8.415);
-    EXPECT_DOUBLE_EQ(axis.GetBinCenter(3), 14.16);
-    EXPECT_DOUBLE_EQ(axis.GetBinCenter(4), std::numeric_limits<double>::max());
-    EXPECT_DOUBLE_EQ(axis.GetBinFrom(0), std::numeric_limits<double>::lowest());
-    EXPECT_DOUBLE_EQ(axis.GetBinFrom(1), 2.3);
-    EXPECT_DOUBLE_EQ(axis.GetBinFrom(2), 5.7);
-    EXPECT_DOUBLE_EQ(axis.GetBinFrom(3), 11.13);
-    EXPECT_DOUBLE_EQ(axis.GetBinFrom(4), 17.19);
-    EXPECT_DOUBLE_EQ(axis.GetBinTo(0), 2.3);
-    EXPECT_DOUBLE_EQ(axis.GetBinTo(1), 5.7);
-    EXPECT_DOUBLE_EQ(axis.GetBinTo(2), 11.13);
-    EXPECT_DOUBLE_EQ(axis.GetBinTo(3), 17.19);
-    EXPECT_DOUBLE_EQ(axis.GetBinTo(4), std::numeric_limits<double>::max());
-    EXPECT_EQ(axis.GetBinBorders().size(), 4u);
-    EXPECT_EQ(axis.GetBinBorders()[0], 2.3);
-    EXPECT_EQ(axis.GetBinBorders()[1], 5.7);
-    EXPECT_EQ(axis.GetBinBorders()[2], 11.13);
-    EXPECT_EQ(axis.GetBinBorders()[3], 17.19);
+    const int underflow_findbin_res = -1;
+    const int overflow_findbin_res = -2;
+    EXPECT_EQ(axis.FindBin(std::numeric_limits<double>::lowest()), underflow_findbin_res);
+    EXPECT_EQ(axis.FindBin(bin_borders.front() - 0.01), underflow_findbin_res);
+    for (int bin = 1; bin <= n_bins_no_over; ++bin) {
+      const double bin_width = bin_borders[bin] - bin_borders[bin-1];
+      EXPECT_EQ(axis.FindBin(bin_borders[bin-1] + 0.01 * bin_width), bin);
+      EXPECT_EQ(axis.FindBin(bin_borders[bin] - 0.01 * bin_width), bin);
+    }
+    EXPECT_EQ(axis.FindBin(bin_borders.back() + 0.01), overflow_findbin_res);
+    EXPECT_EQ(axis.FindBin(std::numeric_limits<double>::max()), overflow_findbin_res);
+
+    EXPECT_DOUBLE_EQ(axis.GetBinTo(underflow_findbin_res), bin_borders[0]);
+    for (int bin = 1; bin <= n_bins_no_over; ++bin) {
+      const double left_border = bin_borders[bin-1];
+      const double right_border = bin_borders[bin];
+      EXPECT_DOUBLE_EQ(axis.GetBinCenter(bin), (left_border + right_border) / 2.0);
+      EXPECT_DOUBLE_EQ(axis.GetBinFrom(bin), left_border);
+      EXPECT_DOUBLE_EQ(axis.GetBinTo(bin), right_border);
+    }
+    EXPECT_DOUBLE_EQ(axis.GetBinFrom(overflow_findbin_res), bin_borders.back());
+
+    EXPECT_EQ(axis.GetBinBorders(), bin_borders);
+
+    const int kInvalidBin = RAxisBase::kInvalidBin;
+    EXPECT_EQ(axis.GetBinIndexForLowEdge(std::numeric_limits<double>::lowest()),
+              kInvalidBin);
+    for (int iborder = 0; iborder < (int) bin_borders.size(); ++iborder) {
+      const double border = bin_borders[iborder];
+      EXPECT_EQ(axis.GetBinIndexForLowEdge(border - 0.01), kInvalidBin);
+      EXPECT_EQ(axis.GetBinIndexForLowEdge(border), iborder + 1);
+      EXPECT_EQ(axis.GetBinIndexForLowEdge(border + 0.01), kInvalidBin);
+    }
+    EXPECT_EQ(axis.GetBinIndexForLowEdge(std::numeric_limits<double>::max()),
+              kInvalidBin);
 
     RAxisConfig cfg(axis);
     EXPECT_EQ(cfg.GetTitle(), title);
-    EXPECT_EQ(cfg.GetNBinsNoOver(), 3);
+    EXPECT_EQ(cfg.GetNBinsNoOver(), n_bins_no_over);
     EXPECT_EQ(cfg.GetKind(), RAxisConfig::kIrregular);
-    EXPECT_EQ(cfg.GetBinBorders().size(), 4u);
-    EXPECT_EQ(cfg.GetBinBorders()[0], 2.3);
-    EXPECT_EQ(cfg.GetBinBorders()[1], 5.7);
-    EXPECT_EQ(cfg.GetBinBorders()[2], 11.13);
-    EXPECT_EQ(cfg.GetBinBorders()[3], 17.19);
+    EXPECT_EQ(cfg.GetBinBorders(), bin_borders);
     EXPECT_EQ(cfg.GetBinLabels().size(), 0u);
   };
 
   {
     SCOPED_TRACE("Irregular axis w/o title");
-    test(RAxisIrregular({2.3, 5.7, 11.13, 17.19}), "");
+    test(RAxisIrregular({-1.2, 3.4, 5.6}), "", {-1.2, 3.4, 5.6});
   }
 
   {
     SCOPED_TRACE("Irregular axis with title");
-    test(RAxisIrregular("RITLE_I2", {2.3, 5.7, 11.13, 17.19}), "RITLE_I2");
+    test(RAxisIrregular("RITLE_I2", {2.3, 5.7, 11.13, 17.19}),
+         "RITLE_I2",
+         {2.3, 5.7, 11.13, 17.19});
   }
 }
 
@@ -457,6 +473,32 @@ TEST(AxisTest, Labels) {
       for (size_t i = 0; i < expected_labels.size(); ++i) {
         EXPECT_EQ(caxis.GetBinLabels()[i], expected_labels[i]);
       }
+
+      EXPECT_EQ(caxis.CompareBinLabels(RAxisLabels(expected_labels)),
+                RAxisLabels::kLabelsCmpSame);
+      const std::vector<std::string_view> missing_last_label(
+        expected_labels.cbegin(), expected_labels.cend() - 1);
+      EXPECT_EQ(caxis.CompareBinLabels(RAxisLabels(missing_last_label)),
+                RAxisLabels::kLabelsCmpSubset);
+      auto one_extra_label = expected_labels;
+      one_extra_label.push_back("I AM ROOT");
+      EXPECT_EQ(caxis.CompareBinLabels(RAxisLabels(one_extra_label)),
+                RAxisLabels::kLabelsCmpSuperset);
+      auto swapped_labels = expected_labels;
+      std::swap(swapped_labels[0], swapped_labels[expected_labels.size()-1]);
+      EXPECT_EQ(caxis.CompareBinLabels(RAxisLabels(swapped_labels)),
+                RAxisLabels::kLabelsCmpDisordered);
+      auto changed_one_label = expected_labels;
+      changed_one_label[0] = "I AM ROOT";
+      EXPECT_EQ(caxis.CompareBinLabels(RAxisLabels(changed_one_label)),
+                RAxisLabels::kLabelsCmpSubset | RAxisLabels::kLabelsCmpSuperset);
+      auto removed_first = expected_labels;
+      removed_first.erase(removed_first.cbegin());
+      EXPECT_EQ(caxis.CompareBinLabels(RAxisLabels(removed_first)),
+                RAxisLabels::kLabelsCmpSubset | RAxisLabels::kLabelsCmpDisordered);
+      swapped_labels.push_back("I AM ROOT");
+      EXPECT_EQ(caxis.CompareBinLabels(RAxisLabels(swapped_labels)),
+                RAxisLabels::kLabelsCmpSuperset | RAxisLabels::kLabelsCmpDisordered);
 
       RAxisConfig cfg(caxis);
       EXPECT_EQ(cfg.GetTitle(), title);
@@ -513,6 +555,59 @@ TEST(AxisTest, Labels) {
     RAxisLabels axis("RITLE_L2", labels);
     test(axis, "RITLE_L2");
   }
+}
+
+TEST(AxisTest, SameBinning) {
+  using EqAxis = RAxisEquidistant;
+  using GrowAxis = RAxisGrow;
+  using IrrAxis = RAxisIrregular;
+  using LabAxis = RAxisLabels;
+
+  auto test_eq = [](const RAxisBase& base, bool grow) {
+    EXPECT_EQ(base.HasSameBinningAs(EqAxis(4, 1.2, 3.4)), !grow);
+    EXPECT_EQ(base.HasSameBinningAs(EqAxis("RitleEq", 4, 1.2, 3.4)), !grow);
+    EXPECT_EQ(base.HasSameBinningAs(GrowAxis(4, 1.2, 3.4)), grow);
+    EXPECT_EQ(base.HasSameBinningAs(GrowAxis("RitleGrow", 4, 1.2, 3.4)), grow);
+    // NOTE: Whether an IrrAxis with the "same" bin boundaries is considered to
+    //       have the same binning is left unspecified for now.
+    EXPECT_FALSE(base.HasSameBinningAs(EqAxis(6, 1.2, 3.4)));
+    EXPECT_FALSE(base.HasSameBinningAs(EqAxis(4, 1.7, 3.4)));
+    EXPECT_FALSE(base.HasSameBinningAs(EqAxis(4, 1.2, 3.9)));
+    EXPECT_FALSE(base.HasSameBinningAs(IrrAxis({0.1, 2.3, 4.5, 6.7, 8.9})));
+    // FIXME: Workaround for RAxisLabels constructor ambiguity
+    const std::vector<std::string_view> four_labels({"a", "bc", "def", "g"});
+    EXPECT_FALSE(base.HasSameBinningAs(LabAxis(four_labels)));
+  };
+  {
+    SCOPED_TRACE("Equidistant axis");
+    test_eq(EqAxis(4, 1.2, 3.4), false);
+  }
+  {
+    SCOPED_TRACE("Growable axis");
+    test_eq(GrowAxis(4, 1.2, 3.4), true);
+  }
+
+  const IrrAxis irr({1.2, 3.4, 5.6});
+  const RAxisBase& ibase = irr;
+  EXPECT_TRUE(ibase.HasSameBinningAs(IrrAxis({1.2, 3.4, 5.6})));
+  EXPECT_TRUE(ibase.HasSameBinningAs(IrrAxis("RitleIrr", {1.2, 3.4, 5.6})));
+  // NOTE: Whether an EqAxis with the "same" bin boundaries is considered to
+  //       have the same binning is left unspecified for now.
+  EXPECT_FALSE(ibase.HasSameBinningAs(EqAxis(2, 1.2, 3.4)));
+  EXPECT_FALSE(ibase.HasSameBinningAs(GrowAxis(2, 1.2, 3.4)));
+  // FIXME: Workaround for RAxisLabels constructor ambiguity
+  const std::vector<std::string_view> two_labels({"abc", "d"});
+  EXPECT_FALSE(ibase.HasSameBinningAs(LabAxis(two_labels)));
+
+  // FIXME: Workaround for RAxisLabels constructor ambiguity
+  const std::vector<std::string_view> three_labels({"ab", "cde" "f"});
+  const LabAxis lab(three_labels);
+  const RAxisBase& lbase = lab;
+  EXPECT_TRUE(lbase.HasSameBinningAs(LabAxis(three_labels)));
+  EXPECT_TRUE(lbase.HasSameBinningAs(LabAxis("RitleLab", three_labels)));
+  EXPECT_FALSE(lbase.HasSameBinningAs(EqAxis(3, 0., 3.)));
+  EXPECT_FALSE(lbase.HasSameBinningAs(GrowAxis(3, 0., 3.)));
+  EXPECT_FALSE(lbase.HasSameBinningAs(IrrAxis({0., 1., 2., 3.})));
 }
 
 TEST(AxisTest, ReverseBinLimits) {

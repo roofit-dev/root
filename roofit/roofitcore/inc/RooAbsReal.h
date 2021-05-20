@@ -24,6 +24,7 @@
 #include "RooGlobalFunc.h"
 #include "RooSpan.h"
 #include "BatchData.h"
+#include <map>
 
 class RooArgList ;
 class RooDataSet ;
@@ -45,6 +46,7 @@ class RooVectorDataStore ;
 namespace RooHelpers {
 class BatchInterfaceAccessor;
 }
+struct TreeReadBuffer; /// A space to attach TBranches
 
 class TH1;
 class TH1F;
@@ -58,6 +60,8 @@ class TH3F;
 
 class RooAbsReal : public RooAbsArg {
 public:
+  using value_type = double;
+
   // Constructors, assignment etc
   RooAbsReal() ;
   RooAbsReal(const char *name, const char *title, const char *unit= "") ;
@@ -449,19 +453,10 @@ protected:
   TString  _label ;         // Plot label for objects value
   Bool_t   _forceNumInt ;   // Force numerical integration if flag set
 
-  mutable Float_t _floatValue{0.}; //! Transient cache for floating point values from tree branches
-  mutable Int_t   _intValue{0};    //! Transient cache for integer values from tree branches
-  mutable Bool_t  _boolValue{false}; //! Transient cache for bool values from tree branches
-  mutable UChar_t _byteValue{'\0'};  //! Transient cache for byte values from tree branches
-  mutable Char_t  _sbyteValue{'\0'}; //! Transient cache for signed byte values from tree branches
-  mutable UInt_t  _uintValue{0u};  //! Transient cache for unsigned integer values from tree branches
-
   friend class RooAbsPdf ;
   friend class RooAbsAnaConvPdf ;
 
   RooNumIntConfig* _specIntegratorConfig ; // Numeric integrator configuration specific for this object
-
-  Bool_t   _treeVar ;       // !do not persist
 
   friend class RooDataProjBinding ;
   friend class RooAbsOptGoodnessOfFit ;
@@ -520,6 +515,8 @@ private:
   static Int_t _evalErrorCount ;
 
   Bool_t matchArgsByName(const RooArgSet &allArgs, RooArgSet &matchedArgs, const TList &nameList) const;
+
+  std::unique_ptr<TreeReadBuffer> _treeReadBuffer; //! A buffer for reading values from trees
 
 protected:
 

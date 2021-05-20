@@ -9,14 +9,13 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <ctype.h>
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
+#include <cctype>
+#include <iostream>
 
-#include "Riostream.h"
 #include "TROOT.h"
-#include "TClass.h"
 #include "TSystem.h"
 #include "THistPainter.h"
 #include "TH2.h"
@@ -37,7 +36,6 @@
 #include "TPaveStats.h"
 #include "TFrame.h"
 #include "TLatex.h"
-#include "TLine.h"
 #include "TPolyLine.h"
 #include "TPoints.h"
 #include "TStyle.h"
@@ -53,7 +51,6 @@
 #include "TMath.h"
 #include "TRandom2.h"
 #include "TObjArray.h"
-#include "TVectorD.h"
 #include "Hoption.h"
 #include "Hparam.h"
 #include "TPluginManager.h"
@@ -61,10 +58,12 @@
 #include "TCrown.h"
 #include "TArrow.h"
 #include "TVirtualPadEditor.h"
+#include "TVirtualX.h"
 #include "TEnv.h"
 #include "TPoint.h"
 #include "TImage.h"
 #include "TCandle.h"
+#include "strlcpy.h"
 
 /*! \class THistPainter
 \ingroup Histpainter
@@ -419,7 +418,7 @@ some combinations must be use with care.
 - It does not work when combined with the `LEGO` and `SURF` options unless the
   histogram plotted with the option `SAME` has exactly the same
   ranges on the X, Y and Z axis as the currently drawn histogram. To superimpose
-  lego plots [histograms' stacks](#HP26) should be used.</li>
+  lego plots [histograms' stacks](#HP26) should be used.
 
 
 ### <a name="HP061"></a> Colors automatically picked in palette
@@ -5730,7 +5729,7 @@ void THistPainter::PaintColorLevels(Option_t*)
    }
    Int_t ndivz  = TMath::Abs(ndiv);
    if (fH->TestBit(TH1::kUserContour) == 0) fH->SetContour(ndiv);
-   Double_t scale = ndivz/dz;
+   Double_t scale = (dz ? ndivz / dz : 1.0);
 
    Int_t color;
    TProfile2D* prof2d = dynamic_cast<TProfile2D*>(fH);

@@ -24,6 +24,8 @@
 #include "RooObjCacheManager.h"
 #include "RooCmdArg.h"
 #include <vector>
+#include <list>
+#include <string>
 
 typedef RooArgList* pRooArgList ;
 typedef RooLinkedList* pRooLinkedList ;
@@ -53,7 +55,6 @@ public:
   virtual TObject* clone(const char* newname) const { return new RooProdPdf(*this,newname) ; }
   virtual ~RooProdPdf() ;
 
-  virtual Double_t getValV(const RooArgSet* set=0) const ;
   virtual Bool_t checkObservables(const RooArgSet* nset) const ;	
 
   virtual Bool_t forceAnalyticalInt(const RooAbsArg& dep) const ; 
@@ -162,7 +163,6 @@ private:
 
   mutable RooAICRegistry _genCode ; //! Registry of composite direct generator codes
 
-  mutable RooArgSet* _curNormSet = nullptr; //!
   Double_t _cutOff ;       //  Cutoff parameter for running product
   RooListProxy _pdfList ;  //  List of PDF components
   RooLinkedList _pdfNSetList ; // List of PDF component normalization sets

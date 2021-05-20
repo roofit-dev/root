@@ -8,20 +8,22 @@
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
-// ---------------------------------- TFormula.h
 #ifndef ROOT_TFormula
 #define ROOT_TFormula
 
 
 #include "TNamed.h"
- #include "TBits.h"
-#include "TObjArray.h"
-#include "TMethodCall.h"
+#include "TBits.h"
 #include "TInterpreter.h"
+#include <cassert>
 #include <vector>
 #include <list>
 #include <map>
+#include <string>
 #include <Math/Types.h>
+
+class TMethodCall;
+
 
 class TFormulaFunction
 {

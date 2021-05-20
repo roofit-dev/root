@@ -540,6 +540,8 @@ void TBranchElement::Init(TTree *tree, TBranch *parent,const char* bname, TStrea
                element->SetTitle(atitle.Data());
             }
             TString branchname( name );
+            if (branchname.EndsWith("."))
+               branchname.Remove(branchname.Length()-1);
             branchname += "_";
             SetTitle(branchname);
             leaf->SetName(branchname);
@@ -592,6 +594,8 @@ void TBranchElement::Init(TTree *tree, TBranch *parent,const char* bname, TStrea
                   element->SetTitle(atitle.Data());
                }
                TString branchname (name);
+               if (branchname.EndsWith("."))
+                  branchname.Remove(branchname.Length()-1);
                branchname += "_";
                SetTitle(branchname);
                leaf->SetName(branchname);
@@ -731,8 +735,12 @@ void TBranchElement::Init(TTree *tree, TBranch *parent, const char* bname, TClon
    fDirectory     = fTree->GetDirectory();
    fFileName      = "";
 
-   SetName(bname);
-   const char* name = GetName();
+   TString name( bname );
+   if (name[name.Length()-1]=='.') {
+      name.Remove(name.Length()-1);
+   }
+
+   SetName(name);
    SetTitle(name);
    //fClassName = fInfo->GetName();
    fCompress = compress;
@@ -773,7 +781,7 @@ void TBranchElement::Init(TTree *tree, TBranch *parent, const char* bname, TClon
       // ===> create sub branches for each data member of a TClonesArray
       fClonesName = clonesClass->GetName();
       fClonesClass = clonesClass;
-      std::string branchname = name + std::string("_");
+      std::string branchname = name.Data() + std::string("_");
       SetTitle(branchname.c_str());
       leaf->SetName(branchname.c_str());
       leaf->SetTitle(branchname.c_str());
@@ -2740,6 +2748,23 @@ Int_t TBranchElement::GetExpectedType(TClass *&expectedClass,EDataType &expected
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Return the 'full' name of the branch.  In particular prefix  the mother's name
+/// when it does not end in a trailing dot and thus is not part of the branch name
+TString TBranchElement::GetFullName() const
+{
+   TBranchElement* mother = static_cast<TBranchElement*>(GetMother());
+   if (!mother || mother==this || mother->GetType() == 3 || mother->GetType() == 4) {
+      // The parent's name is already included in the name for split TClonesArray and STL collections
+      return fName;
+   }
+   TString motherName(mother->GetName());
+   if (motherName.Length() && (motherName[motherName.Length()-1] == '.')) {
+      return fName;
+   }
+   return motherName + "." + fName;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Return icon name depending on type of branch element.
 
 const char* TBranchElement::GetIconName() const
@@ -3132,7 +3157,7 @@ void TBranchElement::InitializeOffsets()
       {
          TBranch *br = GetMother()->GetSubBranch( this );
          stlParentName = br->GetName();
-         stlParentName.Strip( TString::kTrailing, '.' );
+         stlParentName = stlParentName.Strip( TString::kTrailing, '.' );
 
          // We may ourself contain the 'Mother' branch name.
          // To avoid code duplication, we delegate the removal
@@ -3740,7 +3765,7 @@ void TBranchElement::Print(Option_t* option) const
       Int_t ind = parent ? parent->GetListOfBranches()->IndexOf(this) : -1;
       TVirtualStreamerInfo *info = ((TBranchElement*)this)->GetInfoImp();
 
-      Printf("%-16s %2d %4d %-16s %-16s %8x %8x %s\n",
+      Printf("%-16s %2d %4d %-16s %-16s %8x %8x %p\n",
              info ? info->GetName() : "StreamerInfo unvailable", GetID(), GetType(),
              GetClassName(), GetParentName(),
              (fBranchOffset&&parent && ind>=0) ? parent->fBranchOffset[ind] : 0,
@@ -4853,6 +4878,14 @@ void TBranchElement::ResetInitInfo(Bool_t recurse)
 
 void TBranchElement::SetAddress(void* addr)
 {
+   SetAddressImpl(addr, (addr == nullptr));
+}
+
+/// See TBranchElement::SetAddress.
+/// If implied is true, we do not over-ride existing address for
+/// sub-branches.
+void TBranchElement::SetAddressImpl(void* addr, bool implied)
+{
    //
    //  Don't bother if we are disabled.
    //
@@ -4879,6 +4912,7 @@ void TBranchElement::SetAddress(void* addr)
       fAddress = (char*) -1;
       fObject = (char*) -1;
       ResetBit(kDeleteObject);
+      ResetBit(kAddressSet);
       return;
    }
 
@@ -4921,6 +4955,7 @@ void TBranchElement::SetAddress(void* addr)
       fObject = 0;
    }
    ResetBit(kDeleteObject);
+   SetBit(kAddressSet);
 
    //
    //  Do special stuff if we got called from a MakeClass class.
@@ -4995,6 +5030,7 @@ void TBranchElement::SetAddress(void* addr)
          } else {
             // FIXME: Must maintain fObject here as well.
             fAddress = 0;
+            ResetBit(kAddressSet);
          }
       }
    } else if (fType == 4) {
@@ -5074,6 +5110,7 @@ void TBranchElement::SetAddress(void* addr)
                      GetName(),oldProxy->GetCollectionClass()->GetName(),newType->GetName());
                fAddress = 0;
                fObject = 0;
+               ResetBit(kAddressSet);
                return;
             }
          }
@@ -5125,6 +5162,7 @@ void TBranchElement::SetAddress(void* addr)
             // FIXME: We must maintain fObject here as well.
             Error("SetAddress","For %s can not convert %s into %s\n",GetName(),GetCurrentClass()->GetName(),newType->GetName());
             fAddress = 0;
+            ResetBit(kAddressSet);
             return;
          }
       } else {
@@ -5242,7 +5280,9 @@ void TBranchElement::SetAddress(void* addr)
             // We are either a top-level branch or subbranch which is a pointer to an STL container.
             // Streamer type should be -1 (for a top-level branch) or kSTLp here.
             if ((fStreamerType != -1) && (fStreamerType != TVirtualStreamerInfo::kSTLp)) {
-               Error("SetAddress", "STL container with fStreamerType: %d", fStreamerType);
+               Error("SetAddress",
+                     "Branch %s is a split STL container (fStreamerType is: %d), the address can not be set directly.",
+                     GetName(), fStreamerType);
             } else if (fStreamerType == -1) {
                // -- We are a top-level branch.
                void** pp = (void**) fAddress;
@@ -5255,6 +5295,7 @@ void TBranchElement::SetAddress(void* addr)
                      //        fAddress to be zero if no fObject, but is
                      //        that a good thing?
                      fAddress = 0;
+                     ResetBit(kAddressSet);
                   }
                }
                fObject = (char*) *pp;
@@ -5272,6 +5313,7 @@ void TBranchElement::SetAddress(void* addr)
                      //        fAddress to be zero if no fObject, but is
                      //        that a good thing?
                      fAddress = 0;
+                     ResetBit(kAddressSet);
                   }
                }
                fObject = (char*) *pp;
@@ -5291,7 +5333,9 @@ void TBranchElement::SetAddress(void* addr)
             // We are either a top-level branch or sub-branch which is a pointer to an STL container.
             // Streamer type should be -1 (for a top-level branch) or kSTLp here.
             if ((fStreamerType != -1) && (fStreamerType != TVirtualStreamerInfo::kSTLp)) {
-               Error("SetAddress", "STL container with fStreamerType: %d", fStreamerType);
+               Error("SetAddress",
+                     "Branch %s is a split STL container (fStreamerType is: %d), the address can not be set directly.",
+                     GetName(), fStreamerType);
             } else if (fStreamerType == -1) {
                // -- We are a top-level branch, allocate.
                SetBit(kDeleteObject);
@@ -5304,6 +5348,7 @@ void TBranchElement::SetAddress(void* addr)
                   //        fAddress to be zero if no fObject, but is
                   //        that a good thing?
                   fAddress = 0;
+                  ResetBit(kAddressSet);
                }
             } else {
                // -- We are a sub-branch which is a pointer to an STL container.
@@ -5365,11 +5410,12 @@ void TBranchElement::SetAddress(void* addr)
    // FIXME: This is a tail recursion, we burn stack.
    Int_t nbranches = fBranches.GetEntriesFast();
    for (Int_t i = 0; i < nbranches; ++i) {
-      TBranch* abranch = (TBranch*) fBranches.UncheckedAt(i);
+      TBranch *abranch = (TBranch*) fBranches.UncheckedAt(i);
       // FIXME: This is a tail recursion!
-      if (fBranchOffset[i] != TStreamerInfo::kMissing) {
-         abranch->SetAddress(fObject + fBranchOffset[i]);
+      if (fBranchOffset[i] != TStreamerInfo::kMissing && !(implied && abranch->TestBit(kAddressSet))) {
+         abranch->SetAddressImpl(fObject + fBranchOffset[i], implied);
          abranch->SetBit(kAddressSet);
+         abranch->SetMakeClass(TestBit(kDecomposedObj));
       } else {
          // When the member is missing, just leave the address alone
          // (since setting explicitly to 0 would trigger error/warning
@@ -5602,7 +5648,7 @@ void TBranchElement::SetReadLeavesPtr()
       fReadLeaves = (ReadLeaves_t)&TBranchElement::ReadLeavesCustomStreamer;
    } else if (fType == 0 && fID == -1) {
       // top-level branch.
-      Bool_t hasCustomStreamer = !fBranchClass.GetClass()->GetCollectionProxy() && (fBranchClass.GetClass()->GetStreamer() != 0 || fBranchClass.GetClass()->TestBit(TClass::kHasCustomStreamerMember));
+      Bool_t hasCustomStreamer = fBranchClass.GetClass() && !fBranchClass.GetClass()->GetCollectionProxy() && (fBranchClass.GetClass()->GetStreamer() != 0 || fBranchClass.GetClass()->TestBit(TClass::kHasCustomStreamerMember));
       if (hasCustomStreamer) {
          // We are in the case where the object did *not* have a custom
          // Streamer when the TTree was written but now *does* have a custom

@@ -14,7 +14,6 @@
 #include "TParallelCoordRange.h"
 #include "TParallelCoordVar.h"
 
-#include "TGFrame.h"
 #include "TGButton.h"
 #include "TGButtonGroup.h"
 #include "TGNumberEntry.h"
@@ -25,15 +24,9 @@
 #include "TColor.h"
 #include "TG3DLine.h"
 #include "TGSlider.h"
-#include "TGComboBox.h"
 #include "TGDoubleSlider.h"
-#include "TTree.h"
-#include "TGListBox.h"
 #include "TGedPatternSelect.h"
-#include "TPad.h"
 #include "TCanvas.h"
-
-#include "Riostream.h"
 
 #include "TROOT.h"
 
