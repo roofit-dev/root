@@ -108,10 +108,10 @@ TEST(RNTuple, Descriptor)
    EXPECT_EQ(0U, reference.FindPrevClusterId(1));
    EXPECT_EQ(ROOT::Experimental::kInvalidDescriptorId, reference.FindPrevClusterId(0));
 
-   auto szHeader = reference.SerializeHeader(nullptr);
+   auto szHeader = reference.GetHeaderSize();
    auto headerBuffer = new unsigned char[szHeader];
    reference.SerializeHeader(headerBuffer);
-   auto szFooter = reference.SerializeFooter(nullptr);
+   auto szFooter = reference.GetFooterSize();
    auto footerBuffer = new unsigned char[szFooter];
    reference.SerializeFooter(footerBuffer);
 
@@ -375,4 +375,45 @@ TEST(RFieldDescriptorRange, SortByLambda)
    EXPECT_EQ(sorted_by_typename[1], std::string("bools"));
    EXPECT_EQ(sorted_by_typename[2], std::string("jets"));
    EXPECT_EQ(sorted_by_typename[3], std::string("bool_vec_vec"));
+}
+
+
+TEST(RColumnDescriptorRange, IterateOverColumns)
+{
+   auto model = RNTupleModel::Create();
+   auto floats = model->MakeField<std::vector<float>>("jets");
+   auto bools = model->MakeField<std::string>("tag");
+
+   FileRaii fileGuard("test_column_iterator.root");
+   {
+      RNTupleWriter ntuple(std::move(model),
+         std::make_unique<RPageSinkFile>("ntuple", fileGuard.GetPath(), RNTupleWriteOptions()));
+      ntuple.Fill();
+   }
+
+   auto ntuple = RNTupleReader::Open("ntuple", fileGuard.GetPath());
+   const auto &desc = ntuple->GetDescriptor();
+
+   // No column attached to the zero field
+   unsigned int counter = 0;
+   for (const auto &c : desc.GetColumnRange(desc.GetFieldZeroId())) {
+      (void)c;
+      counter++;
+   }
+   EXPECT_EQ(0u, counter);
+
+   const auto tagId = desc.FindFieldId("tag");
+   for (const auto &c : desc.GetColumnRange(tagId)) {
+      EXPECT_EQ(tagId, c.GetFieldId());
+      EXPECT_EQ(counter, c.GetIndex());
+      counter++;
+   }
+   EXPECT_EQ(2, counter);
+
+   const auto jetsId = desc.FindFieldId("jets");
+   for (const auto &c : desc.GetColumnRange(desc.FindFieldId("jets"))) {
+      EXPECT_EQ(jetsId, c.GetFieldId());
+      counter++;
+   }
+   EXPECT_EQ(3, counter);
 }

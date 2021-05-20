@@ -1,9 +1,6 @@
-/// \file ROOT/RWebDisplayArgs.hxx
-/// \ingroup WebGui ROOT7
-/// \author Sergey Linev <s.linev@gsi.de>
-/// \date 2018-10-24
-/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
-/// is welcome!
+// Author: Sergey Linev <s.linev@gsi.de>
+// Date: 2018-10-24
+// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 /*************************************************************************
  * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
@@ -23,6 +20,10 @@ class THttpServer;
 
 namespace ROOT {
 namespace Experimental {
+
+class RLogChannel;
+/// Log channel for WebGUI diagnostics.
+RLogChannel &WebGUILog();
 
 class RWebWindow;
 
@@ -49,6 +50,7 @@ protected:
    std::string fExtraArgs;        ///<! extra arguments which will be append to exec string
    std::string fPageContent;      ///<! HTML page content
    std::string fRedirectOutput;   ///<! filename where browser output should be redirected
+   bool fBatchMode{false};        ///<! is browser runs in batch mode
    bool fHeadless{false};         ///<! is browser runs in headless mode
    bool fStandalone{true};        ///<! indicates if browser should run isolated from other browser instances
    THttpServer *fServer{nullptr}; ///<! http server which handle all requests
@@ -94,10 +96,10 @@ public:
       return (GetBrowserKind() == kLocal) || (GetBrowserKind() == kCEF) || (GetBrowserKind() == kQt5);
    }
 
-   /// returns true if browser supports headless (batch) mode, used for image production
+   /// returns true if browser supports headless mode
    bool IsSupportHeadless() const
    {
-      return (GetBrowserKind() == kNative) || (GetBrowserKind() == kChrome) || (GetBrowserKind() == kCEF) || (GetBrowserKind() == kQt5);
+      return (GetBrowserKind() == kNative) || (GetBrowserKind() == kChrome) || (GetBrowserKind() == kFirefox) || (GetBrowserKind() == kCEF) || (GetBrowserKind() == kQt5);
    }
 
    /// set window url
@@ -126,6 +128,11 @@ public:
 
    /// returns window url with append options
    std::string GetFullUrl() const;
+
+   /// set batch mode
+   void SetBatchMode(bool on = true) { fBatchMode = on; }
+   /// returns batch mode
+   bool IsBatchMode() const { return fBatchMode; }
 
    /// set headless mode
    void SetHeadless(bool on = true) { fHeadless = on; }
@@ -173,6 +180,8 @@ public:
    void SetDriverData(void *data) { fDriverData = data; }
    /// [internal] returns web-driver data, used to start window
    void *GetDriverData() const { return fDriverData; }
+
+   static std::string GetQt5EmbedQualifier(const void *qparent, const std::string &urlopt = "");
 };
 
 }

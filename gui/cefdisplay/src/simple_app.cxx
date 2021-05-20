@@ -1,9 +1,6 @@
-/// \file simple_app.cxx
-/// \ingroup WebGui
-/// \author Sergey Linev <S.Linev@gsi.de>
-/// \date 2017-06-29
-/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
-/// is welcome!
+// Author: Sergey Linev <S.Linev@gsi.de>
+// Date: 2017-06-29
+// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 // Copyright (c) 2013 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
@@ -126,7 +123,7 @@ SimpleApp::SimpleApp(bool use_viewes,
    // Windows and Linux.
 #else
    if (fUseViewes) {
-      R__ERROR_HERE("CEF") << "view framework does not supported by CEF on the platform, switching off";
+      R__LOG_ERROR(CefWebDisplayLog()) << "view framework does not supported by CEF on the platform, switching off";
       fUseViewes = false;
    }
 #endif

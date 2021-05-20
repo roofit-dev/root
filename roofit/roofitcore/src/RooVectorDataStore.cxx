@@ -19,8 +19,16 @@
 \class RooVectorDataStore
 \ingroup Roofitcore
 
-RooVectorDataStore is the abstract base class for data collection that
-use a TTree as internal storage mechanism
+RooVectorDataStore uses std::vectors to store data columns. Each of these vectors
+is associated to an instance of a RooAbsReal, whose values it represents. Those
+RooAbsReal are the observables of the dataset.
+In addition to the observables, a data column can be bound to a different instance
+of a RooAbsReal (e.g., the column "x" can be bound to the observable "x" of a computation
+graph using attachBuffers()). In this case, a get() operation writes the value of
+the requested column into the bound real.
+
+As a faster alternative to loading values one-by-one, one can use the function getBatches(),
+which returns spans pointing directly to the data.
 **/
 
 #include "RooVectorDataStore.h"
@@ -35,11 +43,10 @@ use a TTree as internal storage mechanism
 #include "RooHistError.h"
 #include "RooTrace.h"
 #include "RooHelpers.h"
+#include "RunContext.h"
 
-#include "TTree.h"
-#include "TChain.h"
-#include "TBuffer.h"
 #include "TList.h"
+#include "TBuffer.h"
 
 #include <iomanip>
 using namespace std;
@@ -58,10 +65,6 @@ RooVectorDataStore::RooVectorDataStore() :
   _extWgtErrLoArray(0),
   _extWgtErrHiArray(0),
   _extSumW2Array(0),
-  _curWgt(1),
-  _curWgtErrLo(0),
-  _curWgtErrHi(0),
-  _curWgtErr(0),
   _cache(0),
   _cacheOwner(0),
   _forcedUpdate(kFALSE)
@@ -83,10 +86,6 @@ RooVectorDataStore::RooVectorDataStore(const char* name, const char* title, cons
   _extWgtErrLoArray(0),
   _extWgtErrHiArray(0),
   _extSumW2Array(0),
-  _curWgt(1),
-  _curWgtErrLo(0),
-  _curWgtErrHi(0),
-  _curWgtErr(0),
   _cache(0),
   _cacheOwner(0),
   _forcedUpdate(kFALSE)
@@ -168,10 +167,7 @@ RooVectorDataStore::RooVectorDataStore(const RooVectorDataStore& other, const ch
   _extWgtErrLoArray(other._extWgtErrLoArray),
   _extWgtErrHiArray(other._extWgtErrHiArray),
   _extSumW2Array(other._extSumW2Array),
-  _curWgt(other._curWgt),
-  _curWgtErrLo(other._curWgtErrLo),
-  _curWgtErrHi(other._curWgtErrHi),
-  _curWgtErr(other._curWgtErr),
+  _currentWeightIndex(other._currentWeightIndex),
   _cache(0),
   _cacheOwner(0),
   _forcedUpdate(kFALSE)
@@ -206,20 +202,14 @@ RooVectorDataStore::RooVectorDataStore(const RooTreeDataStore& other, const RooA
   _extWgtErrLoArray(0),
   _extWgtErrHiArray(0),
   _extSumW2Array(0),
-  _curWgt(1),
-  _curWgtErrLo(0),
-  _curWgtErrHi(0),
-  _curWgtErr(0),
+  _currentWeightIndex(0),
   _cache(0),
   _cacheOwner(0),
   _forcedUpdate(kFALSE)
 {
-  TIterator* iter = _varsww.createIterator() ;
-  RooAbsArg* arg ;
-  while((arg=(RooAbsArg*)iter->Next())) {
+  for (const auto arg : _varsww) {
     arg->attachToVStore(*this) ;
   }
-  delete iter ;
 
   setAllBuffersNative() ;
   
@@ -248,10 +238,7 @@ RooVectorDataStore::RooVectorDataStore(const RooVectorDataStore& other, const Ro
   _extWgtErrLoArray(other._extWgtErrLoArray),
   _extWgtErrHiArray(other._extWgtErrHiArray),
   _extSumW2Array(other._extSumW2Array),
-  _curWgt(other._curWgt),
-  _curWgtErrLo(other._curWgtErrLo),
-  _curWgtErrHi(other._curWgtErrHi),
-  _curWgtErr(other._curWgtErr),
+  _currentWeightIndex(other._currentWeightIndex),
   _cache(0),
   _forcedUpdate(kFALSE)
 {
@@ -312,19 +299,12 @@ RooVectorDataStore::RooVectorDataStore(const char *name, const char *title, RooA
   _extWgtErrLoArray(0),
   _extWgtErrHiArray(0),
   _extSumW2Array(0),
-  _curWgt(1),
-  _curWgtErrLo(0),
-  _curWgtErrHi(0),
-  _curWgtErr(0),
   _cache(0),
   _forcedUpdate(kFALSE)
 {
-  TIterator* iter = _varsww.createIterator() ;
-  RooAbsArg* arg ;
-  while((arg=(RooAbsArg*)iter->Next())) {
+  for (const auto arg : _varsww) {
     arg->attachToVStore(*this) ;
   }
-  delete iter ;
 
   setAllBuffersNative() ;
 
@@ -441,31 +421,7 @@ const RooArgSet* RooVectorDataStore::get(Int_t index) const
   }
   
   // Update current weight cache
-  if (_extWgtArray) {
-
-    // If external array is specified use that  
-    _curWgt = _extWgtArray[index] ;
-    _curWgtErrLo = _extWgtErrLoArray[index] ;
-    _curWgtErrHi = _extWgtErrHiArray[index] ;
-    _curWgtErr   = sqrt(_extSumW2Array[index]) ;
-
-  } else if (_wgtVar) {
-
-    // Otherwise look for weight variable
-    _curWgt = _wgtVar->getVal() ;
-    _curWgtErrLo = _wgtVar->getAsymErrorLo() ;
-    _curWgtErrHi = _wgtVar->getAsymErrorHi() ;
-    _curWgtErr   = _wgtVar->hasAsymError() ? ((_wgtVar->getAsymErrorHi() - _wgtVar->getAsymErrorLo())/2)  : _wgtVar->getError() ;
-
-  } // else {
-
-//     // Otherwise return 1 
-//     _curWgt=1.0 ;
-//     _curWgtErrLo = 0 ;
-//     _curWgtErrHi = 0 ;
-//     _curWgtErr = 0 ;
-    
-//   }
+  _currentWeightIndex = index;
 
   if (_cache) {
     _cache->get(index) ;
@@ -502,31 +458,7 @@ const RooArgSet* RooVectorDataStore::getNative(Int_t index) const
   }
   
   // Update current weight cache
-  if (_extWgtArray) {
-
-    // If external array is specified use that  
-    _curWgt = _extWgtArray[index] ;
-    _curWgtErrLo = _extWgtErrLoArray[index] ;
-    _curWgtErrHi = _extWgtErrHiArray[index] ;
-    _curWgtErr   = sqrt(_extSumW2Array[index]) ;
-
-  } else if (_wgtVar) {
-
-    // Otherwise look for weight variable
-    _curWgt = _wgtVar->getVal() ;
-    _curWgtErrLo = _wgtVar->getAsymErrorLo() ;
-    _curWgtErrHi = _wgtVar->getAsymErrorHi() ;
-    _curWgtErr   = _wgtVar->hasAsymError() ? ((_wgtVar->getAsymErrorHi() - _wgtVar->getAsymErrorLo())/2)  : _wgtVar->getError() ;
-
-  } else {
-
-    // Otherwise return 1 
-    _curWgt=1.0 ;
-    _curWgtErrLo = 0 ;
-    _curWgtErrHi = 0 ;
-    _curWgtErr = 0 ;
-    
-  }
+  _currentWeightIndex = index;
 
   if (_cache) {
     _cache->getNative(index) ;
@@ -538,23 +470,13 @@ const RooArgSet* RooVectorDataStore::getNative(Int_t index) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return the weight of the n-th data point (n='index') in memory
-
+/// Load data point at `index`, and return its weight.
 Double_t RooVectorDataStore::weight(Int_t index) const 
 {
   get(index) ;
   return weight() ;
 }
 
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Return the weight of the n-th data point (n='index') in memory
-
-Double_t RooVectorDataStore::weight() const 
-{
-  return _curWgt ;
-}
 
 
 
@@ -599,7 +521,8 @@ Double_t RooVectorDataStore::weightError(RooAbsData::ErrorType etype) const
 void RooVectorDataStore::weightError(Double_t& lo, Double_t& hi, RooAbsData::ErrorType etype) const
 {
   if (_extWgtArray) {
-    
+    double wgt;
+
     // We have a weight array, use that info
     switch (etype) {
       
@@ -612,23 +535,24 @@ void RooVectorDataStore::weightError(Double_t& lo, Double_t& hi, RooAbsData::Err
       break ;
       
     case RooAbsData::Poisson:
-      // Weight may be preset or precalculated
-      if (_curWgtErrLo>=0) {
-         lo = _curWgtErrLo ;
-         hi = _curWgtErrHi ;
-         return ;
+      // Weight may be preset or precalculated    
+      if (_extWgtErrLoArray && _extWgtErrLoArray[_currentWeightIndex] >= 0) {
+        lo = _extWgtErrLoArray[_currentWeightIndex];
+        hi = _extWgtErrHiArray[_currentWeightIndex];
+        return ;
       }
       
       // Otherwise Calculate poisson errors
+      wgt = weight();
       Double_t ym,yp ;  
-      RooHistError::instance().getPoissonInterval(Int_t(weight()+0.5),ym,yp,1) ;
-      lo = weight()-ym ;
-      hi = yp-weight() ;
+      RooHistError::instance().getPoissonInterval(Int_t(wgt+0.5),ym,yp,1);
+      lo = wgt-ym;
+      hi = yp-wgt;
       return ;
       
     case RooAbsData::SumW2:
-      lo = _curWgtErr ;
-      hi = _curWgtErr ;
+      lo = sqrt( _extSumW2Array ? _extSumW2Array[_currentWeightIndex] : _extWgtArray[_currentWeightIndex] );
+      hi = lo;
       return ;
       
     case RooAbsData::None:
@@ -1411,27 +1335,47 @@ void RooVectorDataStore::RealFullVector::Streamer(TBuffer &R__b)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return a batch of the data columns for all events in [firstEvent, lastEvent[.
+/// Return batches of the data columns for the requested events.
+/// \param[in] first First event in the batches.
+/// \param[in] len   Number of events in batches.
+/// \return RunContext object whose member `spans` maps RooAbsReal pointers to spans with
+/// the associated data.
+RooBatchCompute::RunContext RooVectorDataStore::getBatches(std::size_t first, std::size_t len) const {
+  RooBatchCompute::RunContext evalData;
 
-std::vector<RooSpan<const double>> RooVectorDataStore::getBatch(std::size_t firstEvent, std::size_t lastEvent) const
-{
-  std::vector<RooSpan<const double>> ret;
-
-  ret.reserve(_realStoreList.size());
+  auto emplace = [this,&evalData,first,len](const RealVector* realVec) {
+    auto span = realVec->getRange(first, first + len);
+    auto result = evalData.spans.emplace(realVec->_nativeReal, span);
+    if (result.second == false || result.first->second.size() != len) {
+      const auto size = result.second ? result.first->second.size() : 0;
+      coutE(DataHandling) << "A batch of data for '" << realVec->_nativeReal->GetName()
+          << "' was requested from " << first << " to " << first+len
+          << ", but only the events [" << first << ", " << first + size << ") are available." << std::endl;
+    }
+    if (realVec->_real) {
+      // If a buffer is attached, i.e. we are ready to load into a RooAbsReal outside of our dataset,
+      // we can directly map our spans to this real.
+      evalData.spans.emplace(realVec->_real, std::move(span));
+    }
+  };
 
   for (const auto realVec : _realStoreList) {
-    ret.emplace_back(realVec->getRange(firstEvent, lastEvent));
+    emplace(realVec);
+  }
+  for (const auto realVec : _realfStoreList) {
+    emplace(realVec);
   }
 
   if (_cache) {
-    ret.reserve(ret.size() + _cache->_realStoreList.size());
-
     for (const auto realVec : _cache->_realStoreList) {
-      ret.emplace_back(realVec->getRange(firstEvent, lastEvent));
+      emplace(realVec);
+    }
+    for (const auto realVec : _cache->_realfStoreList) {
+      emplace(realVec);
     }
   }
 
-  return ret;
+  return evalData;
 }
 
 
@@ -1443,17 +1387,26 @@ std::vector<RooSpan<const double>> RooVectorDataStore::getBatch(std::size_t firs
 RooSpan<const double> RooVectorDataStore::getWeightBatch(std::size_t first, std::size_t len) const
 {
   if (_extWgtArray) {
-    return RooSpan<const double>(_extWgtArray + first, _extWgtArray + len);
+    return RooSpan<const double>(_extWgtArray + first, _extWgtArray + first + len);
   }
-
 
   if (_wgtVar) {
-    return _wgtVar->getValBatch(first, len);
-  }
+    auto findWeightVar = [this](const RealVector* realVec) {
+      return realVec->_nativeReal == _wgtVar || realVec->_nativeReal->GetName() == _wgtVar->GetName();
+    };
 
+    auto storageIter = std::find_if(_realStoreList.begin(), _realStoreList.end(), findWeightVar);
+    if (storageIter != _realStoreList.end())
+      return (*storageIter)->getRange(first, first + len);
+
+    auto fstorageIter = std::find_if(_realfStoreList.begin(), _realfStoreList.end(), findWeightVar);
+    if (fstorageIter != _realfStoreList.end())
+      return (*fstorageIter)->getRange(first, first + len);
+
+    throw std::logic_error("RooVectorDataStore::getWeightBatch(): Could not retrieve data for _wgtVar.");
+  }
   return {};
 }
-
 
 
 RooVectorDataStore::CatVector* RooVectorDataStore::addCategory(RooAbsCategory* cat) {

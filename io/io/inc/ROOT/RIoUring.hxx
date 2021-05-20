@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
+#include <string>
 
 #include <liburing.h>
 #include <liburing/io_uring.h>
@@ -144,6 +145,7 @@ public:
                readEvents[i].fSize,
                readEvents[i].fOffset
             );
+            sqe->flags |= IOSQE_ASYNC; // maximize read event throughput
             sqe->user_data = i;
          }
 

@@ -6,6 +6,7 @@
 #include "TSystem.h"
 #include <TInterpreter.h>
 #include "TTree.h"
+#include "TChain.h"
 #include "gtest/gtest.h"
 #include <limits>
 #include <memory>
@@ -468,14 +469,17 @@ void ReadWriteCarray(const char *outFileNameBase)
    auto size = 0;
    int v[maxArraySize];
    bool vb[maxArraySize];
+   long int vl[maxArraySize];
    t.Branch("size", &size, "size/I");
    t.Branch("v", v, "v[size]/I");
    t.Branch("vb", vb, "vb[size]/O");
+   t.Branch("vl", vl, "vl[size]/G");
 
    // Size 1
    size = 1;
    v[0] = 12;
    vb[0] = true;
+   vl[0] = 8589934592; // 2**33
    t.Fill();
 
    // Size 0 (see ROOT-9860)
@@ -487,6 +491,7 @@ void ReadWriteCarray(const char *outFileNameBase)
    for (auto i : ROOT::TSeqU(size)) {
       v[i] = 84;
       vb[i] = true;
+      vl[i] = 42;
    }
    t.Fill();
 
@@ -498,6 +503,9 @@ void ReadWriteCarray(const char *outFileNameBase)
    vb[0] = true;
    vb[1] = false;
    vb[2] = true;
+   vl[0] = -1;
+   vl[1] = 0;
+   vl[2] = 1;
    t.Fill();
 
    t.Write();
@@ -509,30 +517,36 @@ void ReadWriteCarray(const char *outFileNameBase)
       TTreeReader r(treename, &f2);
       TTreeReaderArray<int> rv(r, "v");
       TTreeReaderArray<bool> rvb(r, "vb");
+      TTreeReaderArray<long int> rvl(r, "vl");
 
       // Size 1
-      r.Next();
+      EXPECT_TRUE(r.Next());
       EXPECT_EQ(rv.GetSize(), 1u);
       EXPECT_EQ(rv[0], 12);
       EXPECT_EQ(rvb.GetSize(), 1u);
       EXPECT_TRUE(rvb[0]);
+      EXPECT_EQ(rvl.GetSize(), 1u);
+      EXPECT_EQ(rvl[0], 8589934592);
 
       // Size 0
-      r.Next();
+      EXPECT_TRUE(r.Next());
       EXPECT_EQ(rv.GetSize(), 0u);
       EXPECT_EQ(rvb.GetSize(), 0u);
+      EXPECT_EQ(rvl.GetSize(), 0u);
 
       // Size 100k
-      r.Next();
+      EXPECT_TRUE(r.Next());
       EXPECT_EQ(rv.GetSize(), 100000u);
       EXPECT_EQ(rvb.GetSize(), 100000u);
       for (auto e : rv)
          EXPECT_EQ(e, 84);
       for (auto e : rvb)
          EXPECT_TRUE(e);
+      for (auto e : rvl)
+         EXPECT_EQ(e, 42);
 
       // Size 3
-      r.Next();
+      EXPECT_TRUE(r.Next());
       EXPECT_EQ(rv.GetSize(), 3u);
       EXPECT_EQ(rv[0], 42);
       EXPECT_EQ(rv[1], 43);
@@ -541,6 +555,12 @@ void ReadWriteCarray(const char *outFileNameBase)
       EXPECT_TRUE(rvb[0]);
       EXPECT_FALSE(rvb[1]);
       EXPECT_TRUE(rvb[2]);
+      EXPECT_EQ(rvl.GetSize(), 3u);
+      EXPECT_EQ(rvl[0], -1);
+      EXPECT_EQ(rvl[1], 0);
+      EXPECT_EQ(rvl[2], 1);
+
+      EXPECT_FALSE(r.Next());
    };
 
    // read and write using RDataFrame
@@ -549,7 +569,8 @@ void ReadWriteCarray(const char *outFileNameBase)
    outputChecker(outfname1.c_str());
 
    const auto outfname2 = outFileNameBaseStr + "_out2.root";
-   RDataFrame(treename, fname).Snapshot<int, RVec<int>, RVec<bool>>(treename, outfname2, {"size", "v", "vb"});
+   RDataFrame(treename, fname)
+      .Snapshot<int, RVec<int>, RVec<bool>, RVec<long int>>(treename, outfname2, {"size", "v", "vb", "vl"});
    outputChecker(outfname2.c_str());
 
    gSystem->Unlink(fname.c_str());
@@ -633,14 +654,49 @@ TEST(RDFSnapshotMore, Lazy)
    gSystem->Unlink(fname1);
 }
 
+TEST(RDFSnapshotMore, LazyJitted)
+{
+   const auto treename = "t";
+   const auto fname = "lazyjittedsnapshot.root";
+   // make sure the file is not here beforehand
+   gSystem->Unlink(fname);
+   RDataFrame d(1);
+   RSnapshotOptions opts = {"RECREATE", ROOT::kZLIB, 0, 0, 99, true};
+   auto ds = d.Alias("c0", "rdfentry_").Snapshot(treename, fname, {"c0"}, opts);
+   EXPECT_TRUE(gSystem->AccessPathName(fname)); // This returns FALSE if the file IS there
+   *ds;
+   EXPECT_FALSE(gSystem->AccessPathName(fname));
+   gSystem->Unlink(fname);
+}
+
+void BookLazySnapshot()
+{
+   auto d = ROOT::RDataFrame(1);
+   ROOT::RDF::RSnapshotOptions opts;
+   opts.fLazy = true;
+   d.Snapshot<ULong64_t>("t", "lazysnapshotnottriggered_shouldnotbecreated.root", {"rdfentry_"}, opts);
+}
+
 TEST(RDFSnapshotMore, LazyNotTriggered)
 {
-   {
-      auto d = ROOT::RDataFrame(1);
-      ROOT::RDF::RSnapshotOptions opts;
-      opts.fLazy = true;
-      d.Snapshot<ULong64_t>("t", "foo.root", {"tdfentry_"}, opts);
-   }
+   ROOT_EXPECT_WARNING(BookLazySnapshot(), "Snapshot", "A lazy Snapshot action was booked but never triggered.");
+}
+
+RResultPtr<RInterface<RLoopManager, void>> ReturnLazySnapshot(const char *fname)
+{
+   auto d = ROOT::RDataFrame(1);
+   ROOT::RDF::RSnapshotOptions opts;
+   opts.fLazy = true;
+   auto res = d.Snapshot<ULong64_t>("t", fname, {"rdfentry_"}, opts);
+   RResultPtr<RInterface<RLoopManager, void>> res2 = res;
+   return res;
+}
+
+TEST(RDFSnapshotMore, LazyTriggeredAfterCopy)
+{
+   const auto fname = "lazysnapshottriggeredaftercopy.root";
+   ROOT_EXPECT_NODIAG(*ReturnLazySnapshot(fname));
+   gSystem->Unlink(fname);
 }
 
 void CheckTClonesArrayOutput(const RVec<TH1D> &hvec)
@@ -754,6 +810,19 @@ TEST(RDFSnapshotMore, ForbiddenOutputFilename)
    // "SysError in <TFile::TFile>: file /definitely/not/a/valid/path/f.root can not be opened No such file or directory\nError in <TReentrantRWLock::WriteUnLock>: Write lock already released for 0x55f179989378\n"
    // but the address printed changes every time
    EXPECT_THROW(df.Snapshot("t", out_fname, {"rdfslot_"}), std::runtime_error);
+}
+
+TEST(RDFSnapshotMore, ZeroOutputEntries)
+{
+   const auto fname = "snapshot_zerooutputentries.root";
+   ROOT::RDataFrame(10).Alias("c", "rdfentry_").Filter([] { return false; }).Snapshot<ULong64_t>("t", fname, {"c"});
+   EXPECT_EQ(gSystem->AccessPathName(fname), 0); // This returns 0 if the file IS there
+
+   TFile f(fname);
+   auto *t = f.Get<TTree>("t");
+   EXPECT_NE(t, nullptr);           // TTree "t" should be in there...
+   EXPECT_EQ(t->GetEntries(), 0ll); // ...and have zero entries
+   gSystem->Unlink(fname);
 }
 
 /********* MULTI THREAD TESTS ***********/
@@ -964,15 +1033,7 @@ TEST(RDFSnapshotMore, JittedSnapshotAndAliasedColumns)
 TEST(RDFSnapshotMore, LazyNotTriggeredMT)
 {
    ROOT::EnableImplicitMT(4);
-   const auto fname = "lazynottriggeredmt.root";
-   {
-      auto d = ROOT::RDataFrame(8);
-      ROOT::RDF::RSnapshotOptions opts;
-      opts.fLazy = true;
-      d.Snapshot<ULong64_t, ULong64_t>("t", fname, {"tdfentry_", "rdfentry_"}, opts);
-   }
-
-   gSystem->Unlink(fname);
+   ROOT_EXPECT_WARNING(BookLazySnapshot(), "Snapshot", "A lazy Snapshot action was booked but never triggered.");
    ROOT::DisableImplicitMT();
 }
 
@@ -1034,6 +1095,87 @@ TEST(RDFSnapshotMore, ForbiddenOutputFilenameMT)
    // "SysError in <TFile::TFile>: file /definitely/not/a/valid/path/f.root can not be opened No such file or directory\nError in <TReentrantRWLock::WriteUnLock>: Write lock already released for 0x55f179989378\n"
    // but the address printed changes every time
    EXPECT_THROW(df.Snapshot("t", out_fname, {"rdfslot_"}), std::runtime_error);
+}
+
+/**
+ * Test against issue #6523 and #6640
+ * Try to force `TTree::ChangeFile` behaviour. Within RDataFrame, this should
+ * not happen and both sequential and multithreaded Snapshot should only create
+ * one file.
+ */
+TEST(RDFSnapshotMore, SetMaxTreeSizeMT)
+{
+   // Set TTree max size to a low number. Normally this would trigger the
+   // behaviour of TTree::ChangeFile, but not within RDataFrame.
+   const auto old_maxtreesize = TTree::GetMaxTreeSize();
+   TTree::SetMaxTreeSize(1000);
+
+   // Create TTree, fill it and Snapshot (should create one single file).
+   {
+      TTree t{"T", "SetMaxTreeSize(1000)"};
+      int x{};
+      const int nentries = 20000;
+
+      t.Branch("x", &x, "x/I");
+
+      for (auto i = 0; i < nentries; i++) {
+         x = i;
+         t.Fill();
+      }
+
+      ROOT::RDataFrame df{t};
+      df.Snapshot<Int_t>("T", "rdfsnapshot_ttree_sequential_setmaxtreesize.root", {"x"});
+   }
+
+   // Create an RDF from the previously snapshotted file, then Snapshot again
+   // with IMT enabled.
+   {
+      ROOT::EnableImplicitMT();
+
+      ROOT::RDataFrame df{"T", "rdfsnapshot_ttree_sequential_setmaxtreesize.root"};
+      df.Snapshot<Int_t>("T", "rdfsnapshot_imt_setmaxtreesize.root", {"x"});
+
+      ROOT::DisableImplicitMT();
+   }
+
+   // Check the file for data integrity.
+   {
+      TFile f{"rdfsnapshot_imt_setmaxtreesize.root"};
+      std::unique_ptr<TTree> t{f.Get<TTree>("T")};
+
+      EXPECT_EQ(t->GetEntries(), 20000);
+
+      int sum{0};
+      int x{0};
+      t->SetBranchAddress("x", &x);
+
+      for (auto i = 0; i < t->GetEntries(); i++) {
+         t->GetEntry(i);
+         sum += x;
+      }
+
+      // sum(range(20000)) == 199990000
+      EXPECT_EQ(sum, 199990000);
+   }
+
+   gSystem->Unlink("rdfsnapshot_ttree_sequential_setmaxtreesize.root");
+   gSystem->Unlink("rdfsnapshot_imt_setmaxtreesize.root");
+
+   // Reset TTree max size to its old value
+   TTree::SetMaxTreeSize(old_maxtreesize);
+}
+
+TEST(RDFSnapshotMore, ZeroOutputEntriesMT)
+{
+   const auto fname = "snapshot_zerooutputentriesmt.root";
+   ROOT::RDataFrame(10).Alias("c", "rdfentry_").Filter([] { return false; }).Snapshot<ULong64_t>("t", fname, {"c"});
+   EXPECT_EQ(gSystem->AccessPathName(fname), 0); // This returns 0 if the file IS there
+
+   TFile f(fname);
+   auto *t = f.Get<TTree>("t");
+   // TTree "t" should *not* be in there, differently from the single-thread case: see ROOT-10868
+   EXPECT_NE(t, nullptr);
+   gSystem->Unlink(fname);
 }
 
 #endif // R__USE_IMT
