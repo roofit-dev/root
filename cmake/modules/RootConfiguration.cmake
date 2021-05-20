@@ -340,15 +340,13 @@ find_program(PERL_EXECUTABLE perl)
 set(perl ${PERL_EXECUTABLE})
 
 find_program(CHROME_EXECUTABLE NAMES chrome.exe chromium chromium-browser chrome chrome-browser Google\ Chrome
-             PATHS "$ENV{PROGRAMFILES}/Google/Chrome/Application"
-             "$ENV{PROGRAMFILES\(X86\)}/Google/Chrome/Application")
+             PATH_SUFFIXES "Google/Chrome/Application")
 if(CHROME_EXECUTABLE)
   set(chromeexe ${CHROME_EXECUTABLE})
 endif()
 
 find_program(FIREFOX_EXECUTABLE NAMES firefox firefox.exe
-             PATHS "$ENV{PROGRAMFILES}/Mozilla Firefox"
-             "$ENV{PROGRAMFILES\(X86\)}/Mozilla Firefox")
+             PATH_SUFFIXES "Mozilla Firefox")
 if(FIREFOX_EXECUTABLE)
   set(firefoxexe ${FIREFOX_EXECUTABLE})
 endif()
@@ -521,6 +519,24 @@ else()
   set(hasstodstringview undef)
 endif()
 
+if(found_stdstringview)
+  CHECK_CXX_SOURCE_COMPILES("#include <string>
+     #include <string_view>
+     int main() { std::string s; std::string_view v; s += v; return 0;}" found_opplusequal_stringview)
+elseif(found_stdexpstringview)
+  CHECK_CXX_SOURCE_COMPILES("#include <string>
+     #include <experimental/string_view>
+     int main() { std::string s; std::experimental::string_view v; s += v; return 0;}" found_opplusequal_stringview)
+else()
+  set(found_opplusequal_stringview false)
+endif()
+
+if(found_opplusequal_stringview)
+  set(hasopplusequalstringview define)
+else()
+  set(hasopplusequalstringview undef)
+endif()
+
 CHECK_CXX_SOURCE_COMPILES("#include <tuple>
 int main() { std::apply([](int, int){}, std::make_tuple(1,2)); return 0;}" found_stdapply)
 if(found_stdapply)
@@ -597,6 +613,9 @@ configure_file(${CMAKE_SOURCE_DIR}/config/RConfigOptions.in include/RConfigOptio
 configure_file(${CMAKE_SOURCE_DIR}/config/Makefile-comp.in config/Makefile.comp NEWLINE_STYLE UNIX)
 configure_file(${CMAKE_SOURCE_DIR}/config/Makefile.in config/Makefile.config NEWLINE_STYLE UNIX)
 configure_file(${CMAKE_SOURCE_DIR}/config/mimes.unix.in ${CMAKE_BINARY_DIR}/etc/root.mimes NEWLINE_STYLE UNIX)
+# We need to have class.rules during configuration time to avoid silent error during generation of dictionary:
+# Error in <TClass::ReadRules()>: Cannot find rules
+configure_file(${CMAKE_SOURCE_DIR}/etc/class.rules ${CMAKE_BINARY_DIR}/etc/class.rules COPYONLY)
 
 #---Generate the ROOTConfig files to be used by CMake projects-----------------------------------------------
 ROOT_GET_OPTIONS(ROOT_ALL_OPTIONS)
@@ -707,6 +726,7 @@ endif()
 
 if(APPLE AND runtime_cxxmodules)
   # Modules have superior dynamic linker and they can resolve undefined symbols upon library loading.
+  set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS} -undefined dynamic_lookup")
   set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS} -undefined dynamic_lookup")
 endif()
 

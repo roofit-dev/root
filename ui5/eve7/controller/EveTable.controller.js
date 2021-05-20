@@ -10,9 +10,10 @@ sap.ui.define([
    'sap/m/Button',
    "sap/ui/core/ResizeHandler",
    "sap/ui/layout/VerticalLayout",
-   "sap/ui/layout/HorizontalLayout"
+   "sap/ui/layout/HorizontalLayout",
+   "sap/m/MessageBox"
 ], function (Controller, JSONModel, CheckBox, Menu, MenuItem, coreItem, Column,
-             mInput, mButton, ResizeHandler, VerticalLayout, HorizontalLayout) {
+             mInput, mButton, ResizeHandler, VerticalLayout, HorizontalLayout, MessageBox) {
 
    "use strict";
 
@@ -29,11 +30,11 @@ sap.ui.define([
          this._render_html = false;
 
          this.mgr = data.mgr;
-         this.elementid = data.elementid;
+         this.eveViewerId = data.eveViewerId;
          this.kind = data.kind;
-         
+
          this.bindTableColumns = true;
-         var element = this.mgr.GetElement(this.elementid);
+         var element = this.mgr.GetElement(this.eveViewerId);
          // loop over scene and add dependency
          for (var k=0;k<element.childs.length;++k) {
             var scene = element.childs[k];
@@ -45,7 +46,7 @@ sap.ui.define([
       locateEveTable: function()
       {
          this.eveTable = 0;
-         var element = this.mgr.GetElement(this.elementid);
+         var element = this.mgr.GetElement(this.eveViewerId);
          var sceneInfo = element.childs[0];
          var scene = this.mgr.GetElement(sceneInfo.fSceneId);
          // console.log(">>>table scene", scene);
@@ -147,7 +148,7 @@ sap.ui.define([
 
          for (var i = 0; i < clist.childs.length; i++)
          {
-            mData.itemx.push({"text" :clist.childs[i].fName, "key": clist.childs[i].fName, "elementId":clist.childs[i].fElementId });
+            mData.itemx.push({"text" :clist.childs[i].fName, "key": clist.childs[i].fName, "collectionEveId":clist.childs[i].fElementId });
          }
          oModel.setData(mData);
          this.getView().setModel(oModel, "collections");
@@ -175,21 +176,13 @@ sap.ui.define([
       },
 
       UpdateMgr : function(mgr) {
-         var elem = mgr.map[this.elementid];
+         var elem = mgr.map[this.eveViewerId];
          var scene = mgr.map[ elem.fMotherId];
          this.mgr = mgr;
       },
 
       onAfterRendering: function() {
          this._render_html = true;
-
-         // this.getView().$().css("overflow", "hidden");
-
-         // this.getView().$().parent().css("overflow", "hidden");
-
-         // only when rendering completed - register for modify events
-         var element = this.mgr.GetElement(this.elementid);
-
          this.checkScenes();
       },
 
@@ -197,8 +190,7 @@ sap.ui.define([
       },
 
       toggleTableEdit: function() {
-
-         var header = this.getView().byId("header");
+         var header = sap.ui.getCore().byId("EveViewer21--header");
          if (!this.editor) {
             this.editor = new VerticalLayout("tableEdit", {"width":"100%"});
 
@@ -207,51 +199,109 @@ sap.ui.define([
             // expression row
             {
                var collection = this.mgr.GetElement(this.eveTable.fCollectionId);
-               var oModel = new JSONModel();
-               oModel.setData(collection.publicFunction);
-               // oModel.setData(aData);
-               this.getView().setModel(oModel);
+               var exprIn = new sap.m.Input("inputExp", {
+    		  placeholder: "Start expression with \"i.\" to access object",
+    		  showValueHelp: true,
+    		  showTableSuggestionValueHelp: false,
+    		  width: "100%",
+    		  maxSuggestionWidth: "500px",
+    		  showSuggestion: true,
+    		  valueHelpRequest: function (oEvent) {
+                     MessageBox.alert("Write any valid expression.\n Using \"i.\" convetion to access an object in collection. Below is an example:\ni.GetPdgCode() + 2");
+    		  },
+    		  suggestionItemSelected: function(oEvent){
+    		     var oItem = oEvent.getParameter("selectedRow");
+    		     console.log("sap.m.Input id with suggestion: selected item text is ------ " , oItem.getCells());
+                     // fill in title if empty
+                     var it = sap.ui.getCore().byId("titleEx");
+                     if ((it.getValue() && it.getValue().length) == false) {
+                        var v =  oItem.getCells()[0].getText().substring(2);
+                        var t = v.split("(");
+                        it.setValue(t[0]);
+                     }
+                     //fill in precision if empty
+                     var ip = sap.ui.getCore().byId("precisionEx");
+                     if ((ip.getValue() && ip.getValue().length) == false) {
+                        var p = oItem.getCells()[1].getText();
+                        if (p.startsWith("Int") || p.startsWith("int"))
+                           ip.setValue("0");
+                        else
+                           ip.setValue("3");
+                     }
+    		  },
+    		  suggestionColumns : [
+    		     new sap.m.Column({
+    			styleClass : "f",
+    			hAlign : "Begin",
+    			header : new sap.m.Label({
+                           text : "Funcname"
+    			})
+    		     }),
+    		     new sap.m.Column({
+    			hAlign : "Center",
+    			styleClass : "r",
+    			popinDisplay : "Inline",
+    			header : new sap.m.Label({
+    			   text : "Return"
+    			}),
+    			minScreenWidth : "Tablet",
+    			demandPopin : true
+    		     }),
 
-               var exprIn = new mInput("expression", {
-                                         width:"98%",
-                                         type : sap.m.InputType.Text,
-                                         placeholder: "Expression",
-                                         showSuggestion: true
-                                       });
+    		     new sap.m.Column({
+    			hAlign : "End",
+    			styleClass : "c",
+    			width : "30%",
+    			popinDisplay : "Inline",
+    			header : new sap.m.Label({
+                           text : "Class"
+    			}),
+    			minScreenWidth : "400px",
+    			demandPopin : true
+    		     })
+    		  ]
+    	       }).addStyleClass("inputRight");
+
+
                exprIn.setModel(oModel);
-               exprIn.bindAggregation("suggestionItems", "/", new coreItem({text: "{name}"}));
-               exprIn.setFilterFunction(function(sTerm, oItem) {
-                  // A case-insensitive 'string contains' style filter
-                  // console.log("filter sterm", sTerm);
-                  var base = sTerm;
-                  var n = base.lastIndexOf("i.");
-                  // console.log("last index ", n);
-                  if (n>=0) n+=2;
-                  var txt = base.substring(n,this.getFocusInfo().cursorPos );
-                  // console.log("suggest filter ", txt);
-                  // console.log("focus 1", this.getFocusInfo());
 
-                  return oItem.getText().match(new RegExp(txt, "i"));
-               });
+    	       var oTableItemTemplate = new sap.m.ColumnListItem({
+    		  type : "Active",
+    		  vAlign : "Middle",
+    		  cells : [
+    		     new sap.m.Label({
+    			text : "{f}"
+    		     }),
+                     new sap.m.Label({
+    			text: "{r}"
+    		     }),
+                     new sap.m.Label({
+    			text : "{c}"
+    		     })
+    		  ]
+    	       });
+    	       var oModel = new sap.ui.model.json.JSONModel();
+               var oSuggestionData = collection.fPublicFunctions;
+               console.log("suggested data ",oSuggestionData );
+    	       oModel.setData(oSuggestionData);
+    	       exprIn.setModel(oModel);
+    	       exprIn.bindAggregation("suggestionRows", "/", oTableItemTemplate);
+
                this.editor.addContent(exprIn);
             }
 
             // title & prec
             {
-               var hl = new HorizontalLayout();
-               var titleIn = new mInput("title", {placeholder:"Title", tooltip:"title"});
-               titleIn.setWidth("98%");
+               var hl = new HorizontalLayout( {"width":"100%"});
+               var titleIn = new mInput("titleEx", {placeholder:"Title", tooltip:"column title"});
+             titleIn.setWidth("100%");
                hl.addContent(titleIn);
-               //this.editor.addContent(titleIn);
 
-               var precIn = new mInput("precision", {placeholder:"Precision", type: sap.m.InputType.Number, constraints: {minimum:"0", maximum:"9"}});
-               // precIn.bindProperty("value", "abc>precision");
-               precIn.setWidth("100px");
-
+               var precIn = new mInput("precisionEx", {placeholder:"Precision", type: sap.m.InputType.Number, constraints: {minimum:"0", maximum:"9"}});
+               precIn.setWidth("100%");
                hl.addContent(precIn);
 
                this.editor.addContent(hl);
-
             }
 
             //  button actions
@@ -293,14 +343,12 @@ sap.ui.define([
             title = expr;
          }
 
-         var mir = "AddNewColumnToCurrentCollection( \"" + expr + "\", \"" + title + "\" )";
+         pthis.mgr.SendMIR("AddNewColumnToCurrentCollection( \"" + expr + "\", \"" + title + "\" )",
+                           pthis.viewInfo.fElementId, pthis.viewInfo._typename);
 
-         // console.log("table element id ", pthis.eveTable.fElementId);
-
-         var obj = {"mir" : mir, "fElementId" :pthis.viewInfo.fElementId, "class" : pthis.viewInfo._typename};
-         // console.log("MIR obj ", obj);
-         //pthis.mgr.handle.Send(JSON.stringify(obj));
-         pthis.mgr.SendMIR(obj);
+         // reset values
+         sap.ui.getCore().byId("titleEx").setValue("");
+         sap.ui.getCore().byId("precisionEx").setValue("");
       },
 
       collectionChanged: function(oEvent) {
@@ -308,12 +356,10 @@ sap.ui.define([
          var model = oEvent.oSource.getSelectedItem().getBindingContext("collections");
          var path = model.getPath();
          var entry = model.getProperty(path);
-         var coll = entry.elementId;
+         var coll = entry.collectionEveId;
          var mng =  this.viewInfo;
 
-         var mir = "SetDisplayedCollection(" + coll + ")";
-         var obj = {"mir" : mir, "fElementId" : mng.fElementId, "class":mng._typename };    
-         this.mgr.SendMIR(obj);
+         this.mgr.SendMIR("SetDisplayedCollection(" + coll + ")", mng.fElementId, mng._typename);
       },
 
       sceneElementChange : function(el)

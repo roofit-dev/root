@@ -22,6 +22,7 @@ HEADERS
   ROOT/RField.hxx
   ROOT/RFieldValue.hxx
   ROOT/RFieldVisitor.hxx
+  ROOT/RMiniFile.hxx
   ROOT/RNTuple.hxx
   ROOT/RNTupleDescriptor.hxx
   ROOT/RNTupleMetrics.hxx
@@ -29,18 +30,19 @@ HEADERS
   ROOT/RNTupleOptions.hxx
   ROOT/RNTupleUtil.hxx
   ROOT/RNTupleView.hxx
+  ROOT/RNTupleZip.hxx
   ROOT/RPage.hxx
   ROOT/RPageAllocator.hxx
   ROOT/RPagePool.hxx
   ROOT/RPageStorage.hxx
-  ROOT/RPageStorageRaw.hxx
-  ROOT/RPageStorageRoot.hxx
+  ROOT/RPageStorageFile.hxx
 SOURCES
   v7/src/RColumn.cxx
   v7/src/RColumnElement.cxx
   v7/src/RField.cxx
   v7/src/RFieldVisitor.cxx
   v7/src/REntry.cxx
+  v7/src/RMiniFile.cxx
   v7/src/RNTuple.cxx
   v7/src/RNTupleDescriptor.cxx
   v7/src/RNTupleDescriptorFmt.cxx
@@ -50,8 +52,7 @@ SOURCES
   v7/src/RPageAllocator.cxx
   v7/src/RPagePool.cxx
   v7/src/RPageStorage.cxx
-  v7/src/RPageStorageRaw.cxx
-  v7/src/RPageStorageRoot.cxx
+  v7/src/RPageStorageFile.cxx
 LINKDEF
   LinkDef.h
 DEPENDENCIES
