@@ -24,7 +24,6 @@
 
 // TMVA
 #include "TMVA/Config.h"
-#include "TMVA/efficienciesMulticlass.h"
 #include "TMVA/tmvaglob.h"
 
 // ROOT
@@ -224,7 +223,7 @@ void TMVA::plotEfficienciesMulticlass(roccurvelist_t rocCurves, classcanvasmap_t
          EfficiencyPlotWrapper *plotWrapper = classCanvasMap.at(classname);
          plotWrapper->addGraph(h);
          plotWrapper->addLegendEntry(methodTitle, h);
-      } catch (const std::out_of_range &oor) {
+      } catch (const std::out_of_range &) {
          cout << Form("ERROR: Class %s discovered among plots but was not found by TMVAMulticlassGui. Skipping.",
                       classname.Data())
               << endl;

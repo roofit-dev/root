@@ -126,10 +126,10 @@
 #include "RooLinearVar.h"
 #include "RooCustomizer.h"
 #include "RooGlobalFunc.h"
-#include "RooLinearVar.h"
 #include "RooConstVar.h"
 #include "TClass.h"
 #include "TSystem.h"
+#include "RooUniformBinning.h"
 
 using namespace std ;
 

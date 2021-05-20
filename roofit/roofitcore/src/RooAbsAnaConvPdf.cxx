@@ -19,7 +19,7 @@
 ///  \ingroup Roofitcore
 ///
 ///  RooAbsAnaConvPdf is the base class for PDFs that represent a
-///  physics model that can be analytically convolved with a resolution model
+///  physics model that can be analytically convolved with a resolution model.
 ///
 ///  To achieve factorization between the physics model and the resolution
 ///  model, each physics model must be able to be written in the form
@@ -318,7 +318,7 @@ Bool_t RooAbsAnaConvPdf::isDirectGenSafe(const RooAbsArg& arg) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Return a pointer to the convolution variable instance used in the resolution model
 
-const RooRealVar* RooAbsAnaConvPdf::convVar() const
+RooAbsRealLValue* RooAbsAnaConvPdf::convVar()
 {
   RooResolutionModel* conv = (RooResolutionModel*) _convSet.at(0) ;
   if (!conv) return 0 ;  

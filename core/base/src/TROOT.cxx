@@ -143,9 +143,7 @@ FARPROC dlsym(void *library, const char *function_name)
 #include "TProcessUUID.h"
 #include "TPluginManager.h"
 #include "TMap.h"
-#include "TObjString.h"
 #include "TVirtualMutex.h"
-#include "TInterpreter.h"
 #include "TListOfTypes.h"
 #include "TListOfDataMembers.h"
 #include "TListOfEnumsWithLock.h"
@@ -154,9 +152,7 @@ FARPROC dlsym(void *library, const char *function_name)
 #include "TFunctionTemplate.h"
 #include "ThreadLocalStorage.h"
 #include "TVirtualRWMutex.h"
-
-#include <string>
-namespace std {} using namespace std;
+#include "TVirtualX.h"
 
 #if defined(R__UNIX)
 #if defined(R__HAS_COCOA)
@@ -416,8 +412,6 @@ namespace Internal {
    void EnableParBranchProcessing()
    {
 #ifdef R__USE_IMT
-      if (!IsImplicitMTEnabled())
-         EnableImplicitMT();
       static void (*sym)() = (void(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_EnableParBranchProcessing");
       if (sym)
          sym();
@@ -446,55 +440,6 @@ namespace Internal {
    {
 #ifdef R__USE_IMT
       static Bool_t (*sym)() = (Bool_t(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_IsParBranchProcessingEnabled");
-      if (sym)
-         return sym();
-      else
-         return kFALSE;
-#else
-      return kFALSE;
-#endif
-   }
-
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Globally enables the parallel tree processing, which is a case of
-   /// implicit multi-threading in ROOT, activating the required locks.
-   /// This IMT use case, implemented in TTreeProcessor::Process, receives a user
-   /// function and applies it to subranges of the tree, which correspond to its
-   /// clusters. Hence, for every cluster, a task is spawned to potentially
-   /// process it in parallel with the other clusters.
-   void EnableParTreeProcessing()
-   {
-#ifdef R__USE_IMT
-      if (!IsImplicitMTEnabled())
-         EnableImplicitMT();
-      static void (*sym)() = (void(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_EnableParTreeProcessing");
-      if (sym)
-         sym();
-#else
-      ::Warning("EnableParTreeProcessing", "Cannot enable parallel tree processing, please build ROOT with -Dimt=ON");
-#endif
-   }
-
-   //////////////////////////////////////////////////////////////////////////////
-   /// Globally disables the IMT use case of parallel branch processing,
-   /// deactivating the corresponding locks.
-   void DisableParTreeProcessing()
-   {
-#ifdef R__USE_IMT
-      static void (*sym)() = (void(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_DisableParTreeProcessing");
-      if (sym)
-         sym();
-#else
-      ::Warning("DisableParTreeProcessing", "Cannot disable parallel tree processing, please build ROOT with -Dimt=ON");
-#endif
-   }
-
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Returns true if parallel tree processing is enabled.
-   Bool_t IsParTreeProcessingEnabled()
-   {
-#ifdef R__USE_IMT
-      static Bool_t (*sym)() = (Bool_t(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_IsParTreeProcessingEnabled");
       if (sym)
          return sym();
       else
@@ -613,11 +558,11 @@ namespace Internal {
    }
 
    ////////////////////////////////////////////////////////////////////////////////
-   /// Returns the size of the pool used for implicit multi-threading.
-   UInt_t GetImplicitMTPoolSize()
+   /// Returns the size of ROOT's thread pool
+   UInt_t GetThreadPoolSize()
    {
 #ifdef R__USE_IMT
-      static UInt_t (*sym)() = (UInt_t(*)())Internal::GetSymInLibImt("ROOT_TImplicitMT_GetImplicitMTPoolSize");
+      static UInt_t (*sym)() = (UInt_t(*)())Internal::GetSymInLibImt("ROOT_MT_GetThreadPoolSize");
       if (sym)
          return sym();
       else
@@ -627,7 +572,12 @@ namespace Internal {
 #endif
    }
 
-
+   ////////////////////////////////////////////////////////////////////////////////
+   /// Returns the size of the pool used for implicit multi-threading.
+   UInt_t GetImplicitMTPoolSize()
+   {
+      return GetThreadPoolSize();
+   }
 } // end of ROOT namespace
 
 TROOT *ROOT::Internal::gROOTLocal = ROOT::GetROOT();
@@ -2040,22 +1990,6 @@ void TROOT::InitInterpreter()
    // rootcling.
    if (!dlsym(RTLD_DEFAULT, "usedToIdentifyRootClingByDlSym")
        && !dlsym(RTLD_DEFAULT, "usedToIdentifyStaticRoot")) {
-      // Make sure no llvm symbols are visible before loading libCling. If they
-      // exist libCling will use those and not ours, causing havoc in the
-      // interpreter. Look for an extern "C" symbol to avoid mangling; look for a
-      // symbol from llvm because clang builds on top, so users would likely
-      // have also their own llvm symbols when providing their own clang.
-      void *LLVMEnablePrettyStackTraceAddr = 0;
-      // Can't use gSystem->DynFindSymbol() because that iterates over all *known*
-      // libraries which is not the same!
-      LLVMEnablePrettyStackTraceAddr = dlsym(RTLD_DEFAULT, "LLVMEnablePrettyStackTrace");
-      // FIXME: When we configure with -Dclingtest=On we intentionally export the symbols. Silence this error.
-      if (LLVMEnablePrettyStackTraceAddr) {
-         Error("InitInterpreter()", "LLVM SYMBOLS ARE EXPOSED TO CLING! "
-               "This will cause problems; please hide them or dlopen() them "
-               "after the call to TROOT::InitInterpreter()!");
-      }
-
       char *libRIO = gSystem->DynamicPathName("libRIO");
       void *libRIOHandle = dlopen(libRIO, RTLD_NOW|RTLD_GLOBAL);
       delete [] libRIO;

@@ -18,7 +18,6 @@
 #include <assert.h>
 #include <string.h>
 #include "TClassEdit.h"
-#include <ctype.h>
 #include <cctype>
 #include "Rstrstream.h"
 #include <set>
@@ -27,6 +26,8 @@
 #include <memory>
 #include "ROOT/RStringView.hxx"
 #include <algorithm>
+
+using namespace std;
 
 namespace {
    static TClassEdit::TInterpreterLookupHelper *gInterpreterHelper = 0;
@@ -42,8 +43,6 @@ namespace {
       }
    };
 }
-
-namespace std {} using namespace std;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Return the length, if any, taken by std:: and any
@@ -1488,7 +1487,6 @@ static void ResolveTypedefImpl(const char *tname,
 
    if (len > 2 && strncmp(tname+cursor,"::",2) == 0) {
       cursor += 2;
-      len -= 2;
    }
 
    unsigned int start_of_type = cursor;

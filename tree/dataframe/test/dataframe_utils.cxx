@@ -72,8 +72,7 @@ TEST(RDataFrameUtils, DeduceAllPODsFromColumns)
                                                      {"vararrint.a", "ROOT::VecOps::RVec<Int_t>"}};
 
    for (auto &nameType : nameTypes) {
-      auto typeName = RDFInt::ColumnName2ColumnTypeName(nameType.first, /*nsID=*/0, &t, /*ds=*/nullptr,
-                                                        /*custom=*/false);
+      auto typeName = RDFInt::ColumnName2ColumnTypeName(nameType.first, &t, /*ds=*/nullptr, /*customCol=*/nullptr);
       EXPECT_STREQ(nameType.second, typeName.c_str());
    }
 }
@@ -100,8 +99,7 @@ TEST(RDataFrameUtils, DeduceTypeOfBranchesWithCustomTitle)
                                                      {"vararrint.a", "ROOT::VecOps::RVec<Int_t>"}};
 
    for (auto &nameType : nameTypes) {
-      auto typeName = RDFInt::ColumnName2ColumnTypeName(nameType.first, /*nsID=*/0, &t, /*ds=*/nullptr,
-                                                                     /*custom=*/false);
+      auto typeName = RDFInt::ColumnName2ColumnTypeName(nameType.first, &t, /*ds=*/nullptr, /*customCol=*/nullptr);
       EXPECT_STREQ(nameType.second, typeName.c_str());
    }
 }
@@ -239,4 +237,22 @@ TEST(RDataFrameUtils, FindUnknownColumnsFriendTrees)
 
    auto ncols = RDFInt::FindUnknownColumns({"c2", "c3", "c4"}, RDFInt::GetBranchNames(t1), {}, {});
    EXPECT_EQ(ncols.size(), 0u) << "Cannot find column in friend trees.";
+}
+
+TEST(RDataFrameUtils, IsDataContainer)
+{
+   static_assert(RDFInt::IsDataContainer<std::vector<int>>::value, "");
+   static_assert(RDFInt::IsDataContainer<std::vector<bool>>::value, "");
+   static_assert(RDFInt::IsDataContainer<std::tuple<int, int>>::value == false, "");
+   static_assert(RDFInt::IsDataContainer<std::string>::value == false, "");
+}
+
+TEST(RDataFrameUtils, ValueType)
+{
+   static_assert(std::is_same<RDFInt::ValueType<std::vector<float>>::value_type, float>::value, "");
+   static_assert(std::is_same<RDFInt::ValueType<ROOT::RVec<float>>::value_type, float>::value, "");
+   static_assert(std::is_same<RDFInt::ValueType<std::string>::value_type, char>::value, "");
+   static_assert(std::is_same<RDFInt::ValueType<float>::value_type, float>::value, "");
+   struct Foo {};
+   static_assert(std::is_same<RDFInt::ValueType<Foo>::value_type, Foo>::value, "");
 }
