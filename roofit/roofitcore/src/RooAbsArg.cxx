@@ -38,7 +38,6 @@ setting/clearing/testing named attributes.
 
 #include "TBuffer.h"
 #include "TClass.h"
-#include "TObjString.h"
 #include "TVirtualStreamerInfo.h"
 // #include "TGraphStruct.h"
 
@@ -56,15 +55,14 @@ setting/clearing/testing named attributes.
 #include "RooAbsCategoryLValue.h"
 #include "RooAbsRealLValue.h"
 #include "RooTrace.h"
-#include "RooStringVar.h"
 #include "RooRealIntegral.h"
 #include "RooConstVar.h"
-#include "RooMsgService.h"
 #include "RooExpensiveObjectCache.h"
 #include "RooAbsDataStore.h"
 #include "RooResolutionModel.h"
 #include "RooVectorDataStore.h"
 #include "RooTreeDataStore.h"
+#include "ROOT/RMakeUnique.hxx"
 
 #include <sstream>
 #include <string.h>
@@ -83,7 +81,7 @@ Bool_t RooAbsArg::_verboseDirty(kFALSE) ;
 Bool_t RooAbsArg::_inhibitDirty(kFALSE) ;
 Bool_t RooAbsArg::inhibitDirty() const { return _inhibitDirty && !_localNoInhibitDirty; }
 
-std::map<RooAbsArg*,TRefArray*> RooAbsArg::_ioEvoList ;
+std::map<RooAbsArg*,std::unique_ptr<TRefArray>> RooAbsArg::_ioEvoList;
 std::stack<RooAbsArg*> RooAbsArg::_ioReadStack ;
 
 
@@ -360,7 +358,7 @@ void RooAbsArg::addServer(RooAbsArg& server, Bool_t valueProp, Bool_t shapeProp,
     cxcoutF(LinkStateMgmt) << "RooAbsArg::addServer(" << this << "," << GetName()
 			   << "): PROHIBITED SERVER ADDITION REQUESTED: adding server " << server.GetName()
 			   << "(" << &server << ") for " << (valueProp?"value ":"") << (shapeProp?"shape":"") << endl ;
-    assert(0) ;
+    throw std::logic_error("PROHIBITED SERVER ADDITION REQUESTED in RooAbsArg::addServer");
   }
 
   cxcoutD(LinkStateMgmt) << "RooAbsArg::addServer(" << this << "," << GetName() << "): adding server " << server.GetName()
@@ -998,19 +996,20 @@ Bool_t RooAbsArg::redirectServers(const RooAbsCollection& newSetOrig, Bool_t mus
   setShapeDirty() ;
 
   // Process the proxies
-  Bool_t allReplaced=kTRUE ;
   for (int i=0 ; i<numProxies() ; i++) {
     RooAbsProxy* p = getProxy(i) ;
     if (!p) continue ;
     Bool_t ret2 = p->changePointer(*newSet,nameChange,kFALSE) ;
-    allReplaced &= ret2 ;
+
+    if (mustReplaceAll && !ret2) {
+      auto ap = dynamic_cast<const RooArgProxy*>(p);
+      coutE(LinkStateMgmt) << "RooAbsArg::redirectServers(" << GetName()
+          << "): ERROR, proxy '" << p->name()
+          << "' with arg '" << (ap ? ap->absArg()->GetName() : "<could not cast>") << "' could not be adjusted" << endl;
+      ret = kTRUE ;
+    }
   }
 
-  if (mustReplaceAll && !allReplaced) {
-    coutE(LinkStateMgmt) << "RooAbsArg::redirectServers(" << GetName()
-			 << "): ERROR, some proxies could not be adjusted" << endl ;
-    ret = kTRUE ;
-  }
 
   // Optional subclass post-processing
   for (Int_t i=0 ;i<numCaches() ; i++) {
@@ -2277,9 +2276,8 @@ void RooAbsArg::Streamer(TBuffer &R__b)
 
 void RooAbsArg::ioStreamerPass2()
 {
-
   // Handling of v5-v6 migration (TRefArray _proxyList --> RooRefArray _proxyList)
-  map<RooAbsArg*,TRefArray*>::iterator iter = _ioEvoList.find(this) ;
+  auto iter = _ioEvoList.find(this);
   if (iter != _ioEvoList.end()) {
 
     // Transfer contents of saved TRefArray to RooRefArray now
@@ -2289,8 +2287,7 @@ void RooAbsArg::ioStreamerPass2()
        _proxyList.Add(iter->second->At(i));
     }
     // Delete TRefArray and remove from list
-    delete iter->second ;
-    _ioEvoList.erase(iter) ;
+    _ioEvoList.erase(iter);
   }
 }
 
@@ -2307,30 +2304,20 @@ void RooAbsArg::ioStreamerPass2()
 
 void RooAbsArg::ioStreamerPass2Finalize()
 {
-
   // Handling of v5-v6 migration (TRefArray _proxyList --> RooRefArray _proxyList)
-  map<RooAbsArg*,TRefArray*>::iterator iter = _ioEvoList.begin() ;
-  while (iter != _ioEvoList.end()) {
+  for (const auto& iter : _ioEvoList) {
 
     // Transfer contents of saved TRefArray to RooRefArray now
-    if (!iter->first->_proxyList.GetEntriesFast())
-       iter->first->_proxyList.Expand(iter->second->GetEntriesFast());
-    for (int i = 0; i < iter->second->GetEntriesFast(); i++) {
-       iter->first->_proxyList.Add(iter->second->At(i));
+    if (!iter.first->_proxyList.GetEntriesFast())
+       iter.first->_proxyList.Expand(iter.second->GetEntriesFast());
+    for (int i = 0; i < iter.second->GetEntriesFast(); i++) {
+       iter.first->_proxyList.Add(iter.second->At(i));
     }
-
-    // Save iterator position for deletion after increment
-    map<RooAbsArg*,TRefArray*>::iterator iter_tmp = iter ;
-
-    ++iter ;
-
-    // Delete TRefArray and remove from list
-    delete iter_tmp->second ;
-    _ioEvoList.erase(iter_tmp) ;
-
   }
 
+  _ioEvoList.clear();
 }
+
 
 RooAbsArg::RefCountListLegacyIterator_t *
 RooAbsArg::makeLegacyIterator(const RooAbsArg::RefCountList_t& list) const {
@@ -2348,12 +2335,12 @@ void RooRefArray::Streamer(TBuffer &R__b)
       Version_t R__v = R__b.ReadVersion(&R__s, &R__c); if (R__v) { }
 
       // Make temporary refArray and read that from the streamer
-      TRefArray* refArray = new TRefArray ;
+      auto refArray = std::make_unique<TRefArray>();
       refArray->Streamer(R__b) ;
       R__b.CheckByteCount(R__s, R__c, refArray->IsA());
 
       // Schedule deferred processing of TRefArray into proxy list
-      RooAbsArg::_ioEvoList[RooAbsArg::_ioReadStack.top()] = refArray ;
+      RooAbsArg::_ioEvoList[RooAbsArg::_ioReadStack.top()] = std::move(refArray);
 
    } else {
 

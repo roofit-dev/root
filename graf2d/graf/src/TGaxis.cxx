@@ -16,6 +16,7 @@
 
 #include "Riostream.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TGaxis.h"
 #include "TAxisModLab.h"
 #include "TVirtualPad.h"
@@ -26,7 +27,6 @@
 #include "TF1.h"
 #include "TAxis.h"
 #include "THashList.h"
-#include "TObjString.h"
 #include "TObject.h"
 #include "TMath.h"
 #include "THLimitsFinder.h"
@@ -34,7 +34,6 @@
 #include "TClass.h"
 #include "TTimeStamp.h"
 #include "TSystem.h"
-#include "TTimeStamp.h"
 
 Int_t TGaxis::fgMaxDigits = 5;
 Float_t TGaxis::fXAxisExpXOffset = 0.; //Exponent X offset for the X axis
@@ -329,8 +328,7 @@ Begin_Macro(source)
 {
    Double_t pi = TMath::Pi();
    TF1*   f = new TF1("f","TMath::Cos(x/TMath::Pi())", -pi, pi);
-   TH1*   h = f->GetHistogram();
-   TAxis* a = h->GetXaxis();
+   TAxis* a = f->GetXaxis();
    a->SetNdivisions(-502);
    a->ChangeLabel(1,-1,-1,-1,-1,-1,"-#pi");
    a->ChangeLabel(-1,-1,-1,-1,-1,-1,"#pi");

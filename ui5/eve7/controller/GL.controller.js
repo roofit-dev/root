@@ -4,18 +4,13 @@ sap.ui.define([
    'sap/ui/core/mvc/Controller',
    'sap/ui/model/json/JSONModel',
    "sap/ui/core/ResizeHandler",
-   'rootui5/eve7/lib/EveManager'
-], function (Component, UIComponent, Controller, JSONModel, ResizeHandler, EveManager) {
+   'rootui5/eve7/lib/EveManager',
+   'rootui5/eve7/lib/EveScene'
+], function (Component, UIComponent, Controller, JSONModel, ResizeHandler, EveManager, EveScene) {
 
    "use strict";
 
-   // EveScene constructor function.
-   var EveScene = null;
-   var GlViewer = null;
-
-   let viewer_class = "JSRoot"; // JSRoot Three RCore
-
-   let maybe_proto = Controller.extend("rootui5.eve7.Controller.GL", {
+   return Controller.extend("rootui5.eve7.Controller.GL", {
 
       //==============================================================================
       // Initialization, bootstrap, destruction & cleanup.
@@ -23,8 +18,6 @@ sap.ui.define([
 
       onInit : function()
       {
-         this.resize_handler = ResizeHandler;
-
          // var id = this.getView().getId();
 
          let viewData = this.getView().getViewData();
@@ -39,54 +32,36 @@ sap.ui.define([
 
          this._load_scripts = false;
          this._render_html  = false;
+         this.htimeout = 250;
 
-         if (viewer_class === "RCore")
-         {
-            var pthis = this;
-            import("../../eve7/rnr_core/RenderCore.js").then((module) => {
-               console.log("GLC onInit RenderCore loaded");
-	       // alert("Step 1: controller says: RnrCore loaded")
-	       pthis.RCore = module;
+         ResizeHandler.register(this.getView(), this.onResize.bind(this));
 
-               let orc = new pthis.RCore.Object3D;
-               console.log("RCore::Object3D", orc);
-
-               JSROOT.AssertPrerequisites("geom", pthis.onLoadScripts.bind(pthis));
-            });
-         }
-         else
-         {
-            JSROOT.AssertPrerequisites("geom", this.onLoadScripts.bind(this));
-         }
+         JSROOT.AssertPrerequisites("geom", this.onLoadScripts.bind(this));
       },
 
       onLoadScripts: function()
       {
-         var pthis = this;
+         this._load_scripts = true;
 
-         // console.log("GLC::onLoadScripts, now loading EveScene and GlViewer" + viewer_class);
-
-         // one only can load EveScene after geometry painter
-
-         sap.ui.require(['rootui5/eve7/lib/EveScene',
-                         'rootui5/eve7/lib/GlViewer' + viewer_class
-                        ],
-                        function (eve_scene, gl_viewer) {
-                           EveScene = eve_scene;
-                           GlViewer = gl_viewer;
-                           pthis._load_scripts = true;
-                           pthis.checkViewReady();
-                        });
+         this.checkViewReady();
       },
 
       onViewObjectMatched: function(oEvent)
       {
          let args = oEvent.getParameter("arguments");
 
+         console.log('ON MATCHED', args.viewName);
+         
+         console.log('MORE DATA', JSROOT.$eve7tmp);
+
+         console.log('COMPONENT DATA', Component.getOwnerComponentFor(this.getView()).getComponentData());
+
          this.setupManagerAndViewType(Component.getOwnerComponentFor(this.getView()).getComponentData(),
                                       args.viewName, JSROOT.$eve7tmp);
 
          delete JSROOT.$eve7tmp;
+
+         this.checkViewReady();
       },
 
       // Initialization that can be done immediately onInit or later through UI5 bootstrap callbacks.
@@ -154,7 +129,7 @@ sap.ui.define([
                break;
             }
          }
-         if ( ! found) return;
+         if (!found) return;
 
          this.eveViewerId = found.fElementId;
          this.kind      = (found.fName == "Default Viewer") ? "3D" : "2D";
@@ -173,17 +148,24 @@ sap.ui.define([
       // Checks if all initialization is performed and startup renderer.
       checkViewReady: function()
       {
-         if ( ! this._load_scripts || ! this._render_html || ! this.eveViewerId)
-         {
-            return;
-         }
+         if (!this.mgr || !this._load_scripts || !this._render_html || !this.eveViewerId || this.viewer_class) return;
 
-         // console.log("GLC::checkViewReady, instantiating GLViewer" + viewer_class);
+         this.viewer_class = this.mgr.handle.GetUserArgs("GLViewer");
+         if ((this.viewer_class != "JSRoot") && (this.viewer_class != "Three") && (this.viewer_class != "RCore"))
+            this.viewer_class = "Three";
 
-         this.viewer = new GlViewer(viewer_class);
-         this.viewer.init(this);
+         this.htimeout = this.mgr.handle.GetUserArgs("HTimeout");
+         if (this.htimeout === undefined) this.htimeout = 250;
+
+         // when "Reset" - reset camera position
+         this.dblclick_action = this.mgr.handle.GetUserArgs("DblClick");
+
+         sap.ui.require(['rootui5/eve7/lib/GlViewer' + this.viewer_class],
+               function(GlViewer) {
+                  this.viewer = new GlViewer(this.viewer_class);
+                  this.viewer.init(this);
+               }.bind(this));
       },
-
 
       //==============================================================================
       // Common functions between THREE and GeoPainter
@@ -235,7 +217,7 @@ sap.ui.define([
       onResize: function(event)
       {
          if (this.resize_tmout) clearTimeout(this.resize_tmout);
-         this.resize_tmout = setTimeout(this.onResizeTimeout.bind(this), 250); // minimal latency
+         this.resize_tmout = setTimeout(this.onResizeTimeout.bind(this), 250); // small latency
       },
 
       onResizeTimeout: function()
@@ -247,10 +229,15 @@ sap.ui.define([
          // TODO: should be specified somehow in XML file
          this.getView().$().css("overflow", "hidden").css("width", "100%").css("height", "100%");
 
-         this.viewer.onResizeTimeout();
+         if (this.viewer)
+            this.viewer.onResizeTimeout();
       },
+
+      /** Called from JSROOT context menu when object selected for browsing */
+      invokeBrowseOf: function(obj_id) {
+         this.mgr.SendMIR("BrowseElement(" + obj_id + ")", 0, "ROOT::Experimental::REveManager");
+      }
 
    });
 
-   return maybe_proto;
 });

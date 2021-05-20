@@ -13,6 +13,7 @@
 
 #include "Riostream.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TVirtualPad.h"
 #include "TMarker.h"
 #include "TVirtualX.h"
@@ -20,7 +21,6 @@
 #include "TPoint.h"
 #include "TText.h"
 #include "TClass.h"
-#include "TPoint.h"
 
 ClassImp(TMarker);
 

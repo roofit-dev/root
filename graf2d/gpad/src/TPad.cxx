@@ -14,6 +14,7 @@
 
 #include "Riostream.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TError.h"
 #include "TMath.h"
 #include "TSystem.h"
@@ -53,7 +54,6 @@
 #include "TCreatePrimitives.h"
 #include "TLegend.h"
 #include "TAtt3D.h"
-#include "TObjString.h"
 #include "TApplication.h"
 #include "TVirtualPadPainter.h"
 
@@ -1540,8 +1540,11 @@ void TPad::DrawCrosshair()
       pymin = 0;
       pymax = cpad->GetWh();
    }
+#ifndef R__HAS_COCOA
+   // Not needed, no XOR with Cocoa.
    if(pxold) gVirtualX->DrawLine(pxold,pymin,pxold,pymax);
    if(pyold) gVirtualX->DrawLine(pxmin,pyold,pxmax,pyold);
+#endif // R__HAS_COCOA
    if (cpad->GetEvent() == kButton1Down ||
        cpad->GetEvent() == kButton1Up   ||
        cpad->GetEvent() == kMouseLeave) {
@@ -4645,14 +4648,19 @@ void TPad::Pop()
 ///  - if filename is "", the file produced is padname.ps
 ///  - if filename starts with a dot, the padname is added in front
 ///  - if filename contains .eps, an Encapsulated Postscript file is produced
+///  - if filename contains .pdf, a PDF file is produced NOTE: TMathText will be converted to TLatex; q.e.d., symbols only available in TMathText will not render properly.
+///  - if filename contains .svg, a SVG file is produced
+///  - if filename contains .tex, a TeX file is produced
 ///  - if filename contains .gif, a GIF file is produced
-///  - if filename contains .gif+NN, an animated GIF file is produced
-///       See comments in TASImage::WriteImage for meaning of NN and other
-///       .gif suffix variants
+///  - if filename contains .gif+NN, an  animated GIF file is produced See comments in TASImage::WriteImage for meaning of NN and other .gif sufix variants
+///  - if filename contains .xpm, a XPM file is produced
+///  - if filename contains .png, a PNG file is produced
+///  - if filename contains .jpg, a JPEG file is produced NOTE: JPEG's lossy compression will make all sharp edges fuzzy.
+///  - if filename contains .tiff, a TIFF file is produced
 ///  - if filename contains .C or .cxx, a C++ macro file is produced
 ///  - if filename contains .root, a Root file is produced
-///  - if filename contains .xml,  a XML file is produced
-///  - if filename contains .json,  a JSON file is produced
+///  - if filename contains .xml, a XML file is produced
+///  - if filename contains .json, a JSON file is produced
 ///
 ///  See comments in TPad::SaveAs or the TPad::Print function below
 
@@ -4695,7 +4703,7 @@ static Bool_t ContainsTImage(TList *li)
 ///  -        "eps"  an Encapsulated Postscript file is produced
 ///  -    "Preview"  an Encapsulated Postscript file with preview is produced.
 ///  - "EmbedFonts"  a PDF file with embedded fonts is generated.
-///  -        "pdf"  a PDF file is produced
+///  -        "pdf"  a PDF file is produced NOTE: TMathText will be converted to TLatex; q.e.d., symbols only available in TMathText will not render properly.
 ///  -        "svg"  a SVG file is produced
 ///  -        "tex"  a TeX file is produced
 ///  -        "gif"  a GIF file is produced
@@ -5260,6 +5268,9 @@ void TPad::RecursiveRemove(TObject *obj)
 ///   gPad->RedrawAxis();
 ///   gPad->RedrawAxis("G");
 /// ~~~
+///
+///  If option="f" is specified, this will force the drawing of the frame
+/// around the plot.
 
 void TPad::RedrawAxis(Option_t *option)
 {
@@ -5300,6 +5311,16 @@ void TPad::RedrawAxis(Option_t *option)
    if (hobj) {
       if (opt.Contains("g")) hobj->DrawCopy("sameaxig");
       else                   hobj->DrawCopy("sameaxis");
+   }
+
+   if (opt.Contains("f")) {
+      auto b = new TBox(gPad->GetUxmin(), gPad->GetUymin(),
+                        gPad->GetUxmax(), gPad->GetUymax());
+      b->SetFillStyle(0);
+      b->SetLineStyle(gPad->GetFrameLineStyle());
+      b->SetLineWidth(gPad->GetFrameLineWidth());
+      b->SetLineColor(gPad->GetFrameLineColor());
+      b->Draw();
    }
 
    if (padsav) padsav->cd();
@@ -5552,7 +5573,7 @@ void TPad::ResizePad(Option_t *option)
 ///  - if filename is "", the file produced is padname.ps
 ///  - if filename starts with a dot, the padname is added in front
 ///  - if filename contains .eps, an Encapsulated Postscript file is produced
-///  - if filename contains .pdf, a PDF file is produced
+///  - if filename contains .pdf, a PDF file is produced NOTE: TMathText will be converted to TLatex; q.e.d., symbols only available in TMathText will not render properly.
 ///  - if filename contains .svg, a SVG file is produced
 ///  - if filename contains .tex, a TeX file is produced
 ///  - if filename contains .gif, a GIF file is produced
@@ -5564,6 +5585,7 @@ void TPad::ResizePad(Option_t *option)
 ///  - if filename contains .C or .cxx, a C++ macro file is produced
 ///  - if filename contains .root, a Root file is produced
 ///  - if filename contains .xml, a XML file is produced
+///  - if filename contains .json, a JSON file is produced
 ///
 ///   See comments in TPad::Print for the Postscript formats
 

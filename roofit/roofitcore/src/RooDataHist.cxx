@@ -24,15 +24,11 @@ coordinates in N-dimensional space are represented by a RooArgSet containing Roo
 or RooStringVar objects, thus data can be binned in real and/or discrete dimensions.
 **/
 
+#include "RooDataHist.h"
+
 #include "RooFit.h"
 #include "Riostream.h"
-
-#include "TH1.h"
-#include "TH1.h"
-#include "TDirectory.h"
-#include "TMath.h"
 #include "RooMsgService.h"
-#include "RooDataHist.h"
 #include "RooDataHistSliceIter.h"
 #include "RooAbsLValue.h"
 #include "RooArgList.h"
@@ -46,10 +42,19 @@ or RooStringVar objects, thus data can be binned in real and/or discrete dimensi
 #include "RooLinkedListIter.h"
 #include "RooTreeDataStore.h"
 #include "RooVectorDataStore.h"
-#include "TTree.h"
 #include "RooTrace.h"
 #include "RooTreeData.h"
 #include "RooHelpers.h"
+#include "RooFormulaVar.h"
+#include "RooFormula.h"
+#include "RooUniformBinning.h"
+
+#include "TH1.h"
+#include "TTree.h"
+#include "TDirectory.h"
+#include "TBuffer.h"
+#include "TMath.h"
+#include "Math/Util.h"
 
 using namespace std ;
 
@@ -498,7 +503,7 @@ void RooDataHist::importTH1Set(const RooArgList& vars, RooCategory& indexCat, ma
   Int_t ic(0),ix(0),iy(0),iz(0) ;
   for (ic=0 ; ic < icat->numBins(0) ; ic++) {
     icat->setBin(ic) ;
-    histo = hmap[icat->getLabel()] ;
+    histo = hmap[icat->getCurrentLabel()] ;
     for (ix=0 ; ix < xvar->getBins() ; ix++) {
       xvar->setBin(ix) ;
       if (yvar) {
@@ -876,7 +881,7 @@ RooAbsData* RooDataHist::cacheClone(const RooAbsArg* newCacheOwner, const RooArg
 /// Implementation of RooAbsData virtual method that drives the RooAbsData::reduce() methods
 
 RooAbsData* RooDataHist::reduceEng(const RooArgSet& varSubset, const RooFormulaVar* cutVar, const char* cutRange, 
-				   Int_t nStart, Int_t nStop, Bool_t /*copyCache*/)
+    std::size_t nStart, std::size_t nStop, Bool_t /*copyCache*/)
 {
   checkInit() ;
   RooArgSet* myVarSubset = (RooArgSet*) _vars.selectCommon(varSubset) ;
@@ -896,11 +901,10 @@ RooAbsData* RooDataHist::reduceEng(const RooArgSet& varSubset, const RooFormulaV
     cloneVar->attachDataSet(*this) ;
   }
 
-  Int_t i ;
   Double_t lo,hi ;
-  Int_t nevt = nStop < numEntries() ? nStop : numEntries() ;
+  const std::size_t nevt = nStop < static_cast<std::size_t>(numEntries()) ? nStop : static_cast<std::size_t>(numEntries());
   TIterator* vIter = get()->createIterator() ;
-  for (i=nStart ; i<nevt ; i++) {
+  for (auto i=nStart; i<nevt ; i++) {
     const RooArgSet* row = get(i) ;
 
     Bool_t doSelect(kTRUE) ;

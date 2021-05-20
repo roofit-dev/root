@@ -16,11 +16,8 @@
 #include "TThread.h"
 #include "TFPBlock.h"
 #include "TSemaphore.h"
-#include "TMD5.h"
 #include "TObject.h"
 #include "TString.h"
-#include "TObjString.h"
-#include "TObjArray.h"
 #include "TStopwatch.h"
 
 #include <atomic>

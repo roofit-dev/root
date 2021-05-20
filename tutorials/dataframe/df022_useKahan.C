@@ -37,7 +37,7 @@ public:
    {
       static_assert(std::is_floating_point<T>::value, "Kahan sum makes sense only on floating point numbers");
 
-      fNSlots = ROOT::IsImplicitMTEnabled() ? ROOT::GetImplicitMTPoolSize() : 1;
+      fNSlots = ROOT::IsImplicitMTEnabled() ? ROOT::GetThreadPoolSize() : 1;
       fPartialSums.resize(fNSlots, 0.);
       fCompensations.resize(fNSlots, 0.);
    }
@@ -52,7 +52,7 @@ public:
       KahanAlgorithm(x, fPartialSums[slot], fCompensations[slot]);
    }
 
-   template <typename V=T, typename std::enable_if<ROOT::TypeTraits::IsContainer<V>::value, int>::type = 0>
+   template <typename V=T, typename std::enable_if<ROOT::Internal::RDF::IsDataContainer<V>::value, int>::type = 0>
    void Exec(unsigned int slot, const T &vs)
    {
       for (auto &&v : vs) {
