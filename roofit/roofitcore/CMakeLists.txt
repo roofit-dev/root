@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT roofitcore package
 # @author Pere Mato, CERN
@@ -54,7 +60,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooAbsStudy.h
     RooAbsTestStatistic.h
     RooAcceptReject.h
-    RooAdaptiveGaussKronrodIntegrator1D.h
     RooAdaptiveIntegratorND.h
     RooAddGenContext.h
     RooAddition.h
@@ -119,7 +124,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooFormulaVar.h
     RooFracRemainder.h
     RooFunctor.h
-    RooGaussKronrodIntegrator1D.h
     RooGenContext.h
     RooGenericPdf.h
     RooGenFitStudy.h
@@ -203,6 +207,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooRealVarSharedProperties.h
     RooRecursiveFraction.h
     RooRefCountList.h
+    RooSTLRefCountList.h
     RooResolutionModel.h
     RooScaledFunc.h
     RooSecondMoment.h
@@ -225,7 +230,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooSuperCategory.h
     RooTable.h
     RooTFoamBinding.h
-    RooThreshEntry.h
     RooThresholdCategory.h
     RooTObjWrap.h
     RooTrace.h
@@ -236,6 +240,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooUnitTest.h
     RooVectorDataStore.h
     RooWorkspace.h
+    RooWorkspaceHandle.h
     RooXYChi2Var.h
         RooTestStatMPDriver.h
         RooTimer.h
@@ -267,6 +272,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         TestStatistics/optional_parameter_types.h
         TestStatistics/likelihood_builders.h
         RooAbsMinimizerFcn.h
+    RooHelpers.h
+    RooSpan.h
+    BatchData.h
+    BatchHelpers.h
+    RooVDTHeaders.h
+    RooWrapperPdf.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -301,7 +312,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooAbsStudy.cxx
     src/RooAbsTestStatistic.cxx
     src/RooAcceptReject.cxx
-    src/RooAdaptiveGaussKronrodIntegrator1D.cxx
     src/RooAdaptiveIntegratorND.cxx
     src/RooAddGenContext.cxx
     src/RooAddition.cxx
@@ -364,7 +374,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooFormulaVar.cxx
     src/RooFracRemainder.cxx
     src/RooFunctor.cxx
-    src/RooGaussKronrodIntegrator1D.cxx
     src/RooGenContext.cxx
     src/RooGenericPdf.cxx
     src/RooGenFitStudy.cxx
@@ -386,7 +395,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooLinearVar.cxx
     src/RooLinkedList.cxx
     src/RooLinkedListElem.cxx
-    src/RooLinkedListIter.cxx
     src/RooLinTransBinning.cxx
     src/RooList.cxx
     src/RooListProxy.cxx
@@ -448,6 +456,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooRealVarSharedProperties.cxx
     src/RooRecursiveFraction.cxx
     src/RooRefCountList.cxx
+    src/RooSTLRefCountList.cxx
     src/RooResolutionModel.cxx
     src/RooScaledFunc.cxx
     src/RooSecondMoment.cxx
@@ -470,7 +479,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooSuperCategory.cxx
     src/RooTable.cxx
     src/RooTFoamBinding.cxx
-    src/RooThreshEntry.cxx
     src/RooThresholdCategory.cxx
     src/RooTObjWrap.cxx
     src/RooTrace.cxx
@@ -511,7 +519,11 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/TestStatistics/likelihood_builders.cxx
         src/TestStatistics/kahan_sum.cxx
         src/RooAbsMinimizerFcn.cxx
-  DICTIONARY_OPTIONS
+    src/RooHelpers.cxx
+    src/BatchData.cxx
+    src/BatchHelpers.cxx
+    src/RooWrapperPdf.cxx
+    DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
 #    -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
   DEPENDENCIES
@@ -537,4 +549,8 @@ target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
 
 if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)
+endif()
+
+if(vdt AND NOT builtin_vdt)
+  target_include_directories(RooFitCore PRIVATE ${VDT_INCLUDE_DIR})
 endif()
