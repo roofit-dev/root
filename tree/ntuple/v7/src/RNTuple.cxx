@@ -13,15 +13,22 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include "ROOT/RNTuple.hxx"
+#include <ROOT/RNTuple.hxx>
 
-#include "ROOT/RFieldVisitor.hxx"
-#include "ROOT/RNTupleModel.hxx"
-#include "ROOT/RPageStorage.hxx"
+#include <ROOT/RFieldVisitor.hxx>
+#include <ROOT/RNTupleModel.hxx>
+#include <ROOT/RPageStorage.hxx>
 #include "ROOT/RPageStorageFile.hxx"
+#ifdef R__USE_IMT
+#include <ROOT/TTaskGroup.hxx>
+#endif
+
+#include <TError.h>
+#include <TROOT.h> // for IsImplicitMTEnabled()
 
 #include <algorithm>
 #include <exception>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -29,20 +36,53 @@
 #include <unordered_map>
 #include <utility>
 
-#include <TError.h>
-#include <TFile.h> // for RNTupleWriter::Append
+
+#ifdef R__USE_IMT
+void ROOT::Experimental::RNTupleImtTaskScheduler::Reset()
+{
+   fTaskGroup = std::make_unique<TTaskGroup>();
+}
+
+
+void ROOT::Experimental::RNTupleImtTaskScheduler::AddTask(const std::function<void(void)> &taskFunc)
+{
+   fTaskGroup->Run(taskFunc);
+}
+
+
+void ROOT::Experimental::RNTupleImtTaskScheduler::Wait()
+{
+   fTaskGroup->Wait();
+}
+#endif
+
+
+//------------------------------------------------------------------------------
 
 
 void ROOT::Experimental::RNTupleReader::ConnectModel(const RNTupleModel &model) {
-   std::unordered_map<const Detail::RFieldBase *, DescriptorId_t> fieldPtr2Id;
-   fieldPtr2Id[model.GetFieldZero()] = fSource->GetDescriptor().GetFieldZeroId();
+   const auto &desc = fSource->GetDescriptor();
+   model.GetFieldZero()->SetOnDiskId(desc.GetFieldZeroId());
    for (auto &field : *model.GetFieldZero()) {
-      auto parentId = fieldPtr2Id[field.GetParent()];
-      auto fieldId = fSource->GetDescriptor().FindFieldId(field.GetName(), parentId);
-      R__ASSERT(fieldId != kInvalidDescriptorId);
-      fieldPtr2Id[&field] = fieldId;
-      Detail::RFieldFuse::Connect(fieldId, *fSource, field);
+      // If the model has been created from the descritor, the on-disk IDs are already set.
+      // User-provided models instead need to find their corresponding IDs in the descriptor.
+      if (field.GetOnDiskId() == kInvalidDescriptorId) {
+         field.SetOnDiskId(desc.FindFieldId(field.GetName(), field.GetParent()->GetOnDiskId()));
+      }
+      field.ConnectPageStorage(*fSource);
    }
+}
+
+void ROOT::Experimental::RNTupleReader::InitPageSource()
+{
+#ifdef R__USE_IMT
+   if (IsImplicitMTEnabled()) {
+      fUnzipTasks = std::make_unique<RNTupleImtTaskScheduler>();
+      fSource->SetTaskScheduler(fUnzipTasks.get());
+   }
+#endif
+   fSource->Attach();
+   fMetrics.ObserveMetrics(fSource->GetMetrics());
 }
 
 ROOT::Experimental::RNTupleReader::RNTupleReader(
@@ -52,9 +92,14 @@ ROOT::Experimental::RNTupleReader::RNTupleReader(
    , fModel(std::move(model))
    , fMetrics("RNTupleReader")
 {
-   fSource->Attach();
+   if (!fSource) {
+      throw RException(R__FAIL("null source"));
+   }
+   if (!fModel) {
+      throw RException(R__FAIL("null model"));
+   }
+   InitPageSource();
    ConnectModel(*fModel);
-   fMetrics.ObserveMetrics(fSource->GetMetrics());
 }
 
 ROOT::Experimental::RNTupleReader::RNTupleReader(std::unique_ptr<ROOT::Experimental::Detail::RPageSource> source)
@@ -62,13 +107,13 @@ ROOT::Experimental::RNTupleReader::RNTupleReader(std::unique_ptr<ROOT::Experimen
    , fModel(nullptr)
    , fMetrics("RNTupleReader")
 {
-   fSource->Attach();
-   fMetrics.ObserveMetrics(fSource->GetMetrics());
+   if (!fSource) {
+      throw RException(R__FAIL("null source"));
+   }
+   InitPageSource();
 }
 
-ROOT::Experimental::RNTupleReader::~RNTupleReader()
-{
-}
+ROOT::Experimental::RNTupleReader::~RNTupleReader() = default;
 
 std::unique_ptr<ROOT::Experimental::RNTupleReader> ROOT::Experimental::RNTupleReader::Open(
    std::unique_ptr<RNTupleModel> model,
@@ -214,11 +259,19 @@ ROOT::Experimental::RNTupleWriter::RNTupleWriter(
    std::unique_ptr<ROOT::Experimental::Detail::RPageSink> sink)
    : fSink(std::move(sink))
    , fModel(std::move(model))
+   , fMetrics("RNTupleWriter")
    , fClusterSizeEntries(kDefaultClusterSizeEntries)
    , fLastCommitted(0)
    , fNEntries(0)
 {
+   if (!fModel) {
+      throw RException(R__FAIL("null model"));
+   }
+   if (!fSink) {
+      throw RException(R__FAIL("null sink"));
+   }
    fSink->Create(*fModel.get());
+   fMetrics.ObserveMetrics(fSink->GetMetrics());
 }
 
 ROOT::Experimental::RNTupleWriter::~RNTupleWriter()
@@ -262,7 +315,7 @@ void ROOT::Experimental::RNTupleWriter::CommitCluster()
 //------------------------------------------------------------------------------
 
 
-ROOT::Experimental::RCollectionNTuple::RCollectionNTuple(std::unique_ptr<REntry> defaultEntry)
+ROOT::Experimental::RCollectionNTupleWriter::RCollectionNTupleWriter(std::unique_ptr<REntry> defaultEntry)
    : fOffset(0), fDefaultEntry(std::move(defaultEntry))
 {
 }

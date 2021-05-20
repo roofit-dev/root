@@ -36,8 +36,9 @@ using namespace ROOT::Detail::RDF;
 namespace GraphDrawing {
 std::shared_ptr<GraphNode> CreateFilterNode(const RFilterBase *filterPtr);
 
-std::shared_ptr<GraphNode>
-CreateDefineNode(const std::string &columnName, const RDFDetail::RDefineBase *columnPtr);
+std::shared_ptr<GraphNode> AddDefinesToGraph(std::shared_ptr<GraphNode> node,
+                                             const RDFInternal::RBookedDefines &defines,
+                                             const std::vector<std::string> &prevNodeDefines);
 } // ns GraphDrawing
 
 } // ns RDF
@@ -49,7 +50,7 @@ using namespace ROOT::TypeTraits;
 namespace RDFGraphDrawing = ROOT::Internal::RDF::GraphDrawing;
 
 template <typename FilterF, typename PrevDataFrame>
-class RFilter final : public RFilterBase {
+class R__CLING_PTRCHECK(off) RFilter final : public RFilterBase {
    using ColumnTypes_t = typename CallableTraits<FilterF>::arg_types;
    using TypeInd_t = std::make_index_sequence<ColumnTypes_t::list_size>;
 
@@ -177,25 +178,12 @@ public:
          return thisNode;
       }
 
-      auto evaluatedNode = thisNode;
-      /* Each column that this node has but the previous hadn't has been defined in between,
-       * so it has to be built and appended. */
-
-      for (auto &column : fDefines.GetColumns()) {
-         // Even if treated as custom columns by the Dataframe, datasource columns must not be in the graph.
-         if (RDFInternal::IsInternalColumn(column.first))
-            continue;
-         if (std::find(prevColumns.begin(), prevColumns.end(), column.first) == prevColumns.end()) {
-            auto defineNode = RDFGraphDrawing::CreateDefineNode(column.first, column.second.get());
-            evaluatedNode->SetPrevNode(defineNode);
-            evaluatedNode = defineNode;
-         }
-      }
+      auto upmostNode = AddDefinesToGraph(thisNode, fDefines, prevColumns);
 
       // Keep track of the columns defined up to this point.
       thisNode->AddDefinedColumns(fDefines.GetNames());
 
-      evaluatedNode->SetPrevNode(prevNode);
+      upmostNode->SetPrevNode(prevNode);
       return thisNode;
    }
 };

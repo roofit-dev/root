@@ -18,11 +18,11 @@
 #include "TBuffer3D.h"
 #include "TBuffer3DTypes.h"
 
-#include "json.hpp"
 #include <cassert>
 
+#include <nlohmann/json.hpp>
+
 using namespace ROOT::Experimental;
-namespace REX = ROOT::Experimental;
 
 namespace
 {
