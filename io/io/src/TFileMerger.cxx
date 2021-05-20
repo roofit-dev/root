@@ -31,6 +31,7 @@ to be merged, like the standalone hadd program.
 #include "TKey.h"
 #include "THashList.h"
 #include "TObjString.h"
+#include "TObjArray.h"
 #include "TClass.h"
 #include "Riostream.h"
 #include "TFileMergeInfo.h"
@@ -776,8 +777,10 @@ Bool_t TFileMerger::MergeRecursive(TDirectory *target, TList *sourcelist, Int_t 
                   TDirectory *ndir = nextsource->GetDirectory(dirpath);
                   // For consistency (and persformance), we reset the MustCleanup be also for those
                   // 'key' retrieved indirectly.
-                  ndir->ResetBit(kMustCleanup);
-                  delete ndir;
+                  if (ndir) {
+                     ndir->ResetBit(kMustCleanup);
+                     delete ndir;
+                  }
                   nextsource = (TFile*)sourcelist->After( nextsource );
                }
             } else if (cl->InheritsFrom( TCollection::Class() )) {

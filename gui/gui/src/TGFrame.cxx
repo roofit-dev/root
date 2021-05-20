@@ -73,10 +73,10 @@
 #include "TClass.h"
 
 #include "TObjString.h"
-#include "TObjArray.h"
 #include "TBits.h"
 #include "TColor.h"
 #include "TROOT.h"
+#include "TDatime.h"
 #include "KeySymbols.h"
 #include "TGFileDialog.h"
 #include "TGMsgBox.h"
@@ -89,6 +89,8 @@
 #include "TGDNDManager.h"
 #include "TImage.h"
 #include "TObjectSpy.h"
+#include "TVirtualX.h"
+
 
 
 Bool_t      TGFrame::fgInit = kFALSE;

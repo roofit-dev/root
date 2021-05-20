@@ -176,7 +176,10 @@ void TCudnn<AFloat>::InitializeActivationDescriptor(TCudnn<AFloat>::ActivationDe
       case EActivationFunction::kTanh:
          activationMode = CUDNN_ACTIVATION_TANH;
          break;
-   // The activations otherwise used are not supported by cuDNN
+      case EActivationFunction::kFastTanh:
+         activationMode = CUDNN_ACTIVATION_TANH;
+         break;
+         // The activations otherwise used are not supported by cuDNN
       default:
          activationMode = CUDNN_ACTIVATION_RELU;
    };
@@ -528,7 +531,7 @@ void TCudnn<AFloat>::InitializeConvWorkspace(TWorkspace * & workspace,
    auto reduceTensorDesc = convWorkspace->fReduceTensorDesc;
    CUDNNCHECK(cudnnSetReduceTensorDescriptor(reduceTensorDesc, CUDNN_REDUCE_TENSOR_ADD, Tensor_t::GetDataType(),
                                              CUDNN_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES, CUDNN_32BIT_INDICES));
-   
+
    CUDNNCHECK(cudnnGetReductionWorkspaceSize(cudnnHandle, reduceTensorDesc, activationGradients.GetTensorDescriptor(),
                                              biasGradients.GetTensorDescriptor(),
                                              &convWorkspace->fReductionWorkspaceSize));
@@ -625,7 +628,7 @@ void TCudnn<AFloat>::InitializePoolDropoutWorkspace(TWorkspace * & workspace,
 
 //____________________________________________________________________________
 template <typename AFloat>
-void TCudnn<AFloat>::FreeConvWorkspace(TWorkspace * workspace, ConvLayer_t *L) {
+void TCudnn<AFloat>::FreeConvWorkspace(TWorkspace * workspace) {
    if (!workspace) return;
    auto convWorkspace = static_cast<ConvWorkspace_t *>(workspace);
 
@@ -642,7 +645,7 @@ void TCudnn<AFloat>::FreeConvWorkspace(TWorkspace * workspace, ConvLayer_t *L) {
 
 //____________________________________________________________________________
 template <typename AFloat>
-void TCudnn<AFloat>::FreePoolDropoutWorkspace(TWorkspace * workspace, PoolingLayer_t *L) {
+void TCudnn<AFloat>::FreePoolDropoutWorkspace(TWorkspace * workspace) {
    if (!workspace) return;
    auto poolWorkspace = static_cast<PoolingWorkspace_t *>(workspace);
 

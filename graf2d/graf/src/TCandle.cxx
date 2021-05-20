@@ -11,10 +11,10 @@
 
 #include <stdlib.h>
 #include <iostream>
-#include "TROOT.h"
+#include "TBuffer.h"
 #include "TCandle.h"
-#include "TClass.h"
-#include "TPad.h"
+#include "TVirtualPad.h"
+#include "TH2D.h"
 #include "TRandom2.h"
 
 Double_t TCandle::fWhiskerRange  = 1.0;

@@ -3740,7 +3740,7 @@ void TBranchElement::Print(Option_t* option) const
       Int_t ind = parent ? parent->GetListOfBranches()->IndexOf(this) : -1;
       TVirtualStreamerInfo *info = ((TBranchElement*)this)->GetInfoImp();
 
-      Printf("%-16s %2d %4d %-16s %-16s %8x %8x %s\n",
+      Printf("%-16s %2d %4d %-16s %-16s %8x %8x %p\n",
              info ? info->GetName() : "StreamerInfo unvailable", GetID(), GetType(),
              GetClassName(), GetParentName(),
              (fBranchOffset&&parent && ind>=0) ? parent->fBranchOffset[ind] : 0,
@@ -5242,7 +5242,9 @@ void TBranchElement::SetAddress(void* addr)
             // We are either a top-level branch or subbranch which is a pointer to an STL container.
             // Streamer type should be -1 (for a top-level branch) or kSTLp here.
             if ((fStreamerType != -1) && (fStreamerType != TVirtualStreamerInfo::kSTLp)) {
-               Error("SetAddress", "STL container with fStreamerType: %d", fStreamerType);
+               Error("SetAddress",
+                     "Branch %s is a split STL container (fStreamerType is: %d), the address can not be set directly.",
+                     GetName(), fStreamerType);
             } else if (fStreamerType == -1) {
                // -- We are a top-level branch.
                void** pp = (void**) fAddress;
@@ -5291,7 +5293,9 @@ void TBranchElement::SetAddress(void* addr)
             // We are either a top-level branch or sub-branch which is a pointer to an STL container.
             // Streamer type should be -1 (for a top-level branch) or kSTLp here.
             if ((fStreamerType != -1) && (fStreamerType != TVirtualStreamerInfo::kSTLp)) {
-               Error("SetAddress", "STL container with fStreamerType: %d", fStreamerType);
+               Error("SetAddress",
+                     "Branch %s is a split STL container (fStreamerType is: %d), the address can not be set directly.",
+                     GetName(), fStreamerType);
             } else if (fStreamerType == -1) {
                // -- We are a top-level branch, allocate.
                SetBit(kDeleteObject);

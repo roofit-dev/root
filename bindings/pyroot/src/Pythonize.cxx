@@ -30,6 +30,7 @@
 #include "TKey.h"
 #include "TObject.h"
 #include "TObjArray.h"
+#include "TObjString.h"
 #include "TSeqCollection.h"
 
 #include "TTree.h"
@@ -943,6 +944,12 @@ namespace {
 #endif
 #if PY_VERSION_HEX >= 0x03040000
       , 0                        // tp_finalize
+#endif
+#if PY_VERSION_HEX >= 0x03080000
+      , 0                        // tp_vectorcall
+#if PY_VERSION_HEX < 0x03090000
+      , 0                        // tp_print (python 3.8 only)
+#endif
 #endif
    };
 

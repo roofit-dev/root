@@ -177,7 +177,6 @@ called for each data event.
 #include "TClass.h"
 #include "Riostream.h"
 #include "TMath.h"
-#include "TObjString.h"
 #include "TPaveText.h"
 #include "TList.h"
 #include "TH1.h"
@@ -192,9 +191,9 @@ called for each data event.
 using namespace std;
 
 ClassImp(RooAbsPdf); 
-;
+
 ClassImp(RooAbsPdf::GenSpec);
-;
+
 
 Int_t RooAbsPdf::_verboseEval = 0;
 TString RooAbsPdf::_normRangeOverride ;
@@ -348,7 +347,7 @@ Double_t RooAbsPdf::getValV(const RooArgSet* nset) const
 RooSpan<const double> RooAbsPdf::getValBatch(std::size_t begin, std::size_t maxSize,
     const RooArgSet* normSet) const
 {
-  // Some PDFs do preprocessing here:
+  // Some PDFs do preprocessing here, e.g. of the norm
   getValV(normSet);
 
   if (_allBatchesDirty || _operMode == ADirty) {
@@ -370,15 +369,9 @@ RooSpan<const double> RooAbsPdf::getValBatch(std::size_t begin, std::size_t maxS
   }
 
 
-  // Process change in last data set used
-  Bool_t nsetChanged(kFALSE) ;
-  if (normSet != _normSet || _norm == nullptr) {
-    nsetChanged = syncNormalization(normSet) ;
-  }
-
   // TODO wait if batch is computing?
-  if (_batchData.status(begin, maxSize) <= BatchHelpers::BatchData::kDirty
-      || nsetChanged || _norm->isValueDirty()) {
+  if (_batchData.status(begin, normSet, BatchHelpers::BatchData::kgetVal) <= BatchHelpers::BatchData::kDirty
+      || _norm->isValueDirty()) {
 
     auto outputs = evaluateBatch(begin, maxSize);
     maxSize = outputs.size();
@@ -623,39 +616,6 @@ Bool_t RooAbsPdf::syncNormalization(const RooArgSet* nset, Bool_t adjustProxies)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// WVE 08/21/01 Probably obsolete now.
-
-Bool_t RooAbsPdf::traceEvalHook(Double_t value) const 
-{
-  // Floating point error checking and tracing for given float value
-
-  // check for a math error or negative value
-  Bool_t error= TMath::IsNaN(value) || (value < 0);
-
-  // do nothing if we are no longer tracing evaluations and there was no error
-  if(!error && _traceCount <= 0) return error ;
-
-  // otherwise, print out this evaluations input values and result
-  if(error && ++_errorCount <= 10) {
-    cxcoutD(Tracing) << "*** Evaluation Error " << _errorCount << " ";
-    if(_errorCount == 10) ccoutD(Tracing) << "(no more will be printed) ";
-  }
-  else if(_traceCount > 0) {
-    ccoutD(Tracing) << '[' << _traceCount-- << "] ";
-  }
-  else {
-    return error ;
-  }
-
-  Print() ;
-
-  return error ;
-}
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
 /// Reset error counter to given value, limiting the number
 /// of future error messages for this pdf to 'resetValue'
 
@@ -787,7 +747,8 @@ RooSpan<const double> RooAbsPdf::getLogValBatch(std::size_t begin, std::size_t m
     logBatchComputationErrors(pdfValues, begin);
   }
 
-  auto output = _batchData.makeWritableBatchUnInit(begin, pdfValues.size());
+  auto output = _batchData.makeWritableBatchUnInit(begin, pdfValues.size(),
+      normSet, BatchHelpers::BatchData::kgetLogVal);
 
   for (std::size_t i = 0; i < pdfValues.size(); ++i) { //CHECK_VECTORISE
     const double prob = pdfValues[i];
@@ -1052,6 +1013,9 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
     }
   }
 
+  // Clear possible range attributes from previous fits.
+  setStringAttribute("fitrange", nullptr);
+
   if (pc.hasProcessed("Range")) {
     Double_t rangeLo = pc.getDouble("rangeLo") ;
     Double_t rangeHi = pc.getDouble("rangeHi") ;
@@ -1062,6 +1026,7 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
       RooRealVar* rrv =  dynamic_cast<RooRealVar*>(arg) ;
       if (rrv) rrv->setRange("fit",rangeLo,rangeHi) ;
     }
+
     // Set range name to be fitted to "fit"
     rangeName = "fit" ;
   }
@@ -1393,7 +1358,7 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
   if (weightedData && doSumW2==-1 && doAsymptotic==-1) {
     coutW(InputArguments) << "RooAbsPdf::fitTo(" << GetName() << ") WARNING: a likelihood fit is requested of what appears to be weighted data.\n"
                           << "       While the estimated values of the parameters will always be calculated taking the weights into account,\n"
-			  << "       there are multiple ways to estimate the errors of the parameters. You are advised to make an'n"
+			  << "       there are multiple ways to estimate the errors of the parameters. You are advised to make an \n"
 			  << "       explicit choice for the error calculation:\n"
 			  << "           - Either provide SumW2Error(true), to calculate a sum-of-weights-corrected HESSE error matrix\n"
 			  << "             (error will be proportional to the number of events in MC).\n"
@@ -1533,9 +1498,9 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 	std::vector<std::unique_ptr<RooDerivative> > derivatives;
 	const RooArgList& floated = rw->floatParsFinal();
 	std::unique_ptr<RooArgSet> floatingparams( (RooArgSet*)getParameters(data)->selectByAttrib("Constant", false) );
-	for (int k=0; k<floated.getSize(); k++) {	   
-	   RooRealVar* paramresult = (RooRealVar*)floated.at(k);
-	   RooRealVar* paraminternal = (RooRealVar*)floatingparams->find(paramresult->getTitle());
+	for (const auto paramresult : floated) {
+	   auto paraminternal = static_cast<RooRealVar*>(floatingparams->find(*paramresult));
+	   assert(floatingparams->find(*paramresult)->IsA() == RooRealVar::Class());
 	   std::unique_ptr<RooDerivative> deriv( derivative(*paraminternal, *obs, 1) );
 	   derivatives.push_back(std::move(deriv));
 	}
@@ -1546,9 +1511,9 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 	   *obs = *data.get(j);
 	   //Determine first derivatives
 	   std::vector<Double_t> diffs(floated.getSize(), 0.0);
-	   for (int k=0; k<floated.getSize(); k++) {
-	      RooRealVar* paramresult = (RooRealVar*)floated.at(k);
-	      RooRealVar* paraminternal = (RooRealVar*)floatingparams->find(paramresult->getTitle());
+	   for (int k=0; k < floated.getSize(); k++) {
+	      const auto paramresult = static_cast<RooRealVar*>(floated.at(k));
+	      auto paraminternal = static_cast<RooRealVar*>(floatingparams->find(*paramresult));
 	      //first derivative to parameter k at best estimate point for this measurement
 	      Double_t diff = derivatives.at(k)->getVal();
 	      //need to reset to best fit point after differentiation
@@ -1562,7 +1527,7 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 	         num(k,l) += data.weight()*data.weight()*diffs.at(k)*diffs.at(l)/(prob*prob);
 	      }
 	   }
-	}	
+	}
 	num.Similarity(matV);
 
 	//Propagate corrected errors to parameters objects
@@ -1909,6 +1874,9 @@ RooAbsReal* RooAbsPdf::createChi2(RooDataHist& data, const RooCmdArg& arg1,  con
   RooAbsReal* chi2 ;
   string baseName = Form("chi2_%s_%s",GetName(),data.GetName()) ;
   
+  // Clear possible range attributes from previous fits.
+  setStringAttribute("fitrange", nullptr);
+
   if (!rangeName || strchr(rangeName,',')==0) {
     // Simple case: default range, or single restricted range
 
@@ -1930,22 +1898,16 @@ RooAbsReal* RooAbsPdf::createChi2(RooDataHist& data, const RooCmdArg& arg1,  con
 
     // Composite case: multiple ranges
     RooArgList chi2List ;
-    const size_t bufSize = strlen(rangeName)+1;
-    char* buf = new char[bufSize] ;
-    strlcpy(buf,rangeName,bufSize) ;
-    char* token = strtok(buf,",") ;
-    while(token) {
-      RooCmdArg subRangeCmd = RooFit::Range(token) ;
+    for (std::string& token : RooHelpers::tokenise(rangeName, ",")) {
+      RooCmdArg subRangeCmd = RooFit::Range(token.c_str()) ;
       // Construct chi2 while substituting original RangeWithName argument with subrange argument created above
-      RooAbsReal* chi2Comp = new RooChi2Var(Form("%s_%s",baseName.c_str(),token),"chi^2",*this,data,
+      RooAbsReal* chi2Comp = new RooChi2Var(Form("%s_%s", baseName.c_str(), token.c_str()), "chi^2", *this, data,
 					    &arg1==rarg?subRangeCmd:arg1,&arg2==rarg?subRangeCmd:arg2,
 					    &arg3==rarg?subRangeCmd:arg3,&arg4==rarg?subRangeCmd:arg4,
 					    &arg5==rarg?subRangeCmd:arg5,&arg6==rarg?subRangeCmd:arg6,
 					    &arg7==rarg?subRangeCmd:arg7,&arg8==rarg?subRangeCmd:arg8) ;
       chi2List.add(*chi2Comp) ;
-      token = strtok(0,",") ;
     }
-    delete[] buf ;
     chi2 = new RooAddition(baseName.c_str(),"chi^2",chi2List,kTRUE) ;
   }
   RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::PrintErrors) ;
@@ -1963,7 +1925,7 @@ RooAbsReal* RooAbsPdf::createChi2(RooDataHist& data, const RooCmdArg& arg1,  con
 RooAbsReal* RooAbsPdf::createChi2(RooDataSet& data, const RooLinkedList& cmdList) 
 {
   // Select the pdf-specific commands 
-  RooCmdConfig pc(Form("RooAbsPdf::fitTo(%s)",GetName())) ;
+  RooCmdConfig pc(Form("RooAbsPdf::createChi2(%s)",GetName())) ;
 
   pc.defineInt("integrate","Integrate",0,0) ;
   pc.defineObject("yvar","YVar",0,0) ;
@@ -2759,6 +2721,7 @@ void removeRangeOverlap(std::vector<std::pair<double, double>>& ranges) {
 /// <tr><td> `ProjectionRange(const char* rn)`  <td>  Override default range of projection integrals to a different
 ///               range specified by given range name. This technique allows you to project a finite width slice in a real-valued observable
 /// <tr><td> `NormRange(const char* name)`      <td>  Calculate curve normalization w.r.t. specified range[s].
+///               See the tutorial rf212_rangesAndBlinding.C
 ///               \note A Range() by default sets a NormRange() on the same range, but this option allows
 ///               to override the default, or specify normalization ranges when the full curve is to be drawn.
 ///
@@ -2921,7 +2884,7 @@ RooPlot* RooAbsPdf::plotOn(RooPlot* frame, RooLinkedList& cmdList) const
         nameSuffix.Append(Form("_Range[%f_%f]",rangeLo,rangeHi)) ;
 
       } else if (pc.hasProcessed("RangeWithName")) {    
-        for (const std::string& rangeNameToken : RooHelpers::tokenise(pc.getString("rangeName",0,true), ",")) {
+        for (const std::string& rangeNameToken : RooHelpers::tokenise(pc.getString("rangeName","",false), ",")) {
           if (!frame->getPlotVar()->hasRange(rangeNameToken.c_str())) {
             coutE(Plotting) << "Range '" << rangeNameToken << "' not defined for variable '"
                 << frame->getPlotVar()->GetName() << "'. Ignoring ..." << std::endl;
@@ -2965,13 +2928,15 @@ RooPlot* RooAbsPdf::plotOn(RooPlot* frame, RooLinkedList& cmdList) const
       }
 
       if (hasCustomRange && adjustNorm) {
+        // If overlapping ranges were given, remove them now
         const std::size_t oldSize = rangeLim.size();
         removeRangeOverlap(rangeLim);
 
-        if (oldSize != rangeLim.size()) {
+        if (oldSize != rangeLim.size() && !pc.hasProcessed("NormRange")) {
           // User gave overlapping ranges. This leads to double-counting events and integrals, and must
-          // therefore be avoided.
-          coutE(Plotting) << "Requested ranges overlap. For correct plotting, new ranges "
+          // therefore be avoided. If a NormRange has been given, the overlap is alreay gone.
+          // It's safe to plot even with overlap now.
+          coutE(Plotting) << "Requested plot/integration ranges overlap. For correct plotting, new ranges "
               "will be defined." << std::endl;
           auto plotVar = dynamic_cast<RooRealVar*>(frame->getPlotVar());
           assert(plotVar);

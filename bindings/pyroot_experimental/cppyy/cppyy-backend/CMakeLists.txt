@@ -15,20 +15,35 @@ set(py_sources
   cppyy_backend/_get_cppflags.py
 )
 
+set(cppyy_backendPySrcDir cling/python/cppyy_backend)
+file(COPY ${cppyy_backendPySrcDir} DESTINATION ${localruntimedir})
+
+# Install .py source files
 foreach(py_source ${py_sources})
-  file(COPY cling/python/${py_source} DESTINATION ${py_localruntimedir}/cppyy_backend)
-  install(FILES cling/python/${py_source} DESTINATION ${CMAKE_INSTALL_LIBDIR}/cppyy_backend)
-  install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -m py_compile ${d}/${py_source})")
-  install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -O -m py_compile ${d}/${py_source})")
+  install(FILES cling/python/${py_source} DESTINATION ${runtimedir}/cppyy_backend)
 endforeach()
 
-add_library(cppyy_backend SHARED clingwrapper/src/clingwrapper.cxx)
-target_include_directories(cppyy_backend PRIVATE clingwrapper/src)
-target_link_libraries(cppyy_backend Core ${CMAKE_DL_LIBS})
+foreach(val RANGE ${how_many_pythons})
+  list(GET python_under_version_strings ${val} python_under_version_string)
+  list(GET python_executables ${val} python_executable)
 
-# cppyy uses ROOT headers from binary directory
-add_dependencies(cppyy_backend move_headers)
-target_include_directories(cppyy_backend PRIVATE ${CMAKE_BINARY_DIR}/include)
+  set(libname cppyy_backend${python_under_version_string})
 
-set_property(GLOBAL APPEND PROPERTY ROOT_EXPORTED_TARGETS cppyy_backend)
-install(TARGETS cppyy_backend EXPORT ROOTExports DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  add_library(${libname} SHARED clingwrapper/src/clingwrapper.cxx)
+
+  target_link_libraries(${libname} Core ${CMAKE_DL_LIBS})
+
+  # cppyy uses ROOT headers from binary directory
+  add_dependencies(${libname} move_headers)
+
+  set_property(GLOBAL APPEND PROPERTY ROOT_EXPORTED_TARGETS ${libname})
+
+  # Install library
+  install(TARGETS ${libname} EXPORT ROOTExports DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+  # Install compiled .py files
+  foreach(py_source ${py_sources})
+    install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${install_dir_lib}/${py_source})")
+    install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${install_dir_lib}/${py_source})")
+  endforeach()
+endforeach()

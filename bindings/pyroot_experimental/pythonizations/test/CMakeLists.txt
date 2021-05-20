@@ -4,12 +4,19 @@
 # For the licensing terms see $ROOTSYS/LICENSE.
 # For the list of contributors see $ROOTSYS/README/CREDITS.
 
+# Test library loads during importing ROOT
+# Testing only the Linux systems is sufficient to detect unwanted links to libraries at import time.
+# Mac (and potentially Windows) pull in many system libraries which makes this test very complex.
+if (NOT APPLE AND NOT WIN32)
+    ROOT_ADD_PYUNITTEST(pyroot_import_load_libs import_load_libs.py)
+endif()
+
 # Test ROOT module
 ROOT_ADD_PYUNITTEST(pyroot_root_module root_module.py)
 
 # General pythonizations
 ROOT_ADD_PYUNITTEST(pyroot_pyz_pretty_printing pretty_printing.py)
-ROOT_ADD_PYUNITTEST(pyroot_pyz_array_interface array_interface.py)
+ROOT_ADD_PYUNITTEST(pyroot_pyz_array_interface array_interface.py DEPENDENCIES_FOUND ${NUMPY_FOUND})
 
 # TObject and subclasses pythonisations
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tobject_contains tobject_contains.py)
@@ -27,10 +34,10 @@ ROOT_ADD_PYUNITTEST(pyroot_pyz_tfile_attrsyntax_get_writeobject_open tfile_attrs
 file(COPY TreeHelper.h DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_branch_attr ttree_branch_attr.py)
 ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_iterable ttree_iterable.py)
-ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_setbranchaddress ttree_setbranchaddress.py)
-ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_branch ttree_branch.py)
+ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_setbranchaddress ttree_setbranchaddress.py DEPENDENCIES_FOUND ${NUMPY_FOUND})
+ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_branch ttree_branch.py DEPENDENCIES_FOUND ${NUMPY_FOUND})
 if (dataframe)
-    ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_asmatrix ttree_asmatrix.py)
+    ROOT_ADD_PYUNITTEST(pyroot_pyz_ttree_asmatrix ttree_asmatrix.py DEPENDENCIES_FOUND ${NUMPY_FOUND})
 endif()
 
 # TH1 and subclasses pythonizations
@@ -81,17 +88,18 @@ ROOT_ADD_PYUNITTEST(pyroot_pyz_tobjstring_str_repr tobjstring_str_repr.py)
 ROOT_ADD_PYUNITTEST(pyroot_pyz_tobjstring_comparisonops tobjstring_comparisonops.py)
 
 # RVec and subclasses pythonizations
-ROOT_ADD_PYUNITTEST(pyroot_pyz_rvec_asrvec rvec_asrvec.py)
+ROOT_ADD_PYUNITTEST(pyroot_pyz_rvec rvec.py)
+ROOT_ADD_PYUNITTEST(pyroot_pyz_rvec_asrvec rvec_asrvec.py DEPENDENCIES_FOUND ${NUMPY_FOUND})
 
 # RDataFrame and subclasses pythonizations
 if (dataframe)
-    #ROOT_ADD_PYUNITTEST(pyroot_pyz_rdataframe_asnumpy rdataframe_asnumpy.py)
-    ROOT_ADD_PYUNITTEST(pyroot_pyz_rdataframe_makenumpy rdataframe_makenumpy.py)
+    ROOT_ADD_PYUNITTEST(pyroot_pyz_rdataframe_asnumpy rdataframe_asnumpy.py DEPENDENCIES_FOUND ${NUMPY_FOUND})
+    ROOT_ADD_PYUNITTEST(pyroot_pyz_rdataframe_makenumpy rdataframe_makenumpy.py DEPENDENCIES_FOUND ${NUMPY_FOUND})
 endif()
 
 # RTensor pythonizations
 if (dataframe)
-    ROOT_ADD_PYUNITTEST(pyroot_pyz_rtensor rtensor.py)
+    ROOT_ADD_PYUNITTEST(pyroot_pyz_rtensor rtensor.py DEPENDENCIES_FOUND ${NUMPY_FOUND})
 endif()
 
 # Passing Python callables to ROOT.TF
@@ -103,6 +111,9 @@ if(roofit)
 
   # RooDataHist pythonisations
   ROOT_ADD_PYUNITTEST(pyroot_pyz_roodatahist_ploton roodatahist_ploton.py)
+
+  # RooWorkspace pythonizations
+  ROOT_ADD_PYUNITTEST(pyroot_pyz_rooworkspace rooworkspace.py)
 endif()
 
 # std::string_view backport in CPyCppyy
@@ -110,9 +121,9 @@ if (dataframe)
     ROOT_ADD_PYUNITTEST(pyroot_string_view_backport string_view_backport.py)
 endif()
 
-# Test wrapping Python callables for use in C++
+# Test wrapping Python callables for use in C++ using numba
 if (dataframe)
-    ROOT_ADD_PYUNITTEST(pyroot_cppcallable cppcallable.py)
+    ROOT_ADD_PYUNITTEST(pyroot_numbadeclare numbadeclare.py)
 endif()
 
 # TComplex pythonizations
