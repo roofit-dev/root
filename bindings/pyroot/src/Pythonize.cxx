@@ -2538,7 +2538,10 @@ Bool_t PyROOT::Pythonize( PyObject* pyclass, const std::string& name )
       }
 
    // vector-optimized iterator protocol
-      ((PyTypeObject*)pyclass)->tp_iter     = (getiterfunc)vector_iter;
+   // Breaks for vector of bool since the "data" member function is not required in the STL.
+      if ( name.find("vector<bool>") == std::string::npos && name.find("RVec<bool>") == std::string::npos ) {
+         ((PyTypeObject*)pyclass)->tp_iter     = (getiterfunc)vector_iter;
+      }
 
    // helpers for iteration
       TypedefInfo_t* ti = gInterpreter->TypedefInfo_Factory( (name+"::value_type").c_str() );
@@ -2790,6 +2793,18 @@ Bool_t PyROOT::Pythonize( PyObject* pyclass, const std::string& name )
 
    else if ( name == "RooSimultaneous" )
       Utility::AddUsingToClass( pyclass, "plotOn" );
+   else if ( name == "RooAbsPdf" ) {
+      Utility::AddUsingToClass( pyclass, "createChi2" );
+      Utility::AddUsingToClass( pyclass, "chi2FitTo" );
+   }
+   else if ( name == "RooDataSet" ) {
+      Utility::AddUsingToClass( pyclass, "createHistogram" );
+   }
+// Same for TH2
+   else if ( name == "TH2" ) {
+      Utility::AddUsingToClass( pyclass, "GetBinErrorUp" );
+      Utility::AddUsingToClass( pyclass, "GetBinErrorLow" );
+   }
 
    // TODO: store these on the pythonizations module, not on gRootModule
    // TODO: externalize this code and use update handlers on the python side
