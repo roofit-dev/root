@@ -6,6 +6,8 @@
 
 #include "gtest/gtest.h"
 
+#include <vector>
+
 // ROOT-10702
 TEST(TTreeRegressions, CompositeTypeWithNameClash)
 {
@@ -89,4 +91,27 @@ TEST(TTreeRegressions, ChangeFileWithTFileOnStack)
    gSystem->Unlink("ChangeFileWithTFileOnStack.root");
    gSystem->Unlink("ChangeFileWithTFileOnStack_1.root");
    gSystem->Unlink("ChangeFileWithTFileOnStack_2.root");
+}
+
+// Issue #6964
+TEST(TTreeRegressions, GetLeafAndFriends)
+{
+   TTree t("t", "t");
+   int x = 42;
+   std::vector<int> v(1, 42);
+   t.Branch("x", &x);
+   t.Branch("vec", &v);
+   t.Fill();
+
+   TTree t2("t2", "t2");
+   t2.Branch("x", &x);
+   t2.Branch("vec", &v);
+   t2.Fill();
+
+   EXPECT_EQ(t.GetLeaf("asdklj", "x"), nullptr);
+   EXPECT_EQ(t.GetLeaf("asdklj", "vec"), nullptr);
+
+   t.AddFriend(&t2);
+   EXPECT_EQ(t.GetLeaf("asdklj", "x"), nullptr);
+   EXPECT_EQ(t.GetLeaf("asdklj", "vec"), nullptr);
 }
