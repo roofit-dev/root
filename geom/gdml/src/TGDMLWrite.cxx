@@ -150,8 +150,6 @@ See that function for details.
 #include "TGeoEltu.h"
 #include "TGeoXtru.h"
 #include "TGeoScaledShape.h"
-#include "TGeoVolume.h"
-#include "TROOT.h"
 #include "TMath.h"
 #include "TGeoBoolNode.h"
 #include "TGeoMedium.h"
@@ -159,7 +157,7 @@ See that function for details.
 #include "TGeoShape.h"
 #include "TGeoCompositeShape.h"
 #include "TGeoOpticalSurface.h"
-#include <stdlib.h>
+#include <cstdlib>
 #include <string>
 #include <map>
 #include <set>
@@ -168,7 +166,7 @@ See that function for details.
 
 ClassImp(TGDMLWrite);
 
-TGDMLWrite *TGDMLWrite::fgGDMLWrite = 0;
+TGDMLWrite *TGDMLWrite::fgGDMLWrite = nullptr;
 
 namespace {
   struct MaterialExtractor  {

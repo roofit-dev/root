@@ -13,6 +13,8 @@
 
 #include "Minuit2/FCNBase.h"
 
+#include <vector>
+
 namespace ROOT {
 
   namespace Minuit2 {

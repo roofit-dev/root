@@ -33,6 +33,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <string>
+#include <utility>
 
 #ifndef WIN32
 #define TWin32SendClass char
@@ -49,6 +51,7 @@ namespace clang {
    class DeclContext;
    class EnumDecl;
    class FunctionDecl;
+   class IdentifierIterator;
    class NamedDecl;
    class NamespaceDecl;
    class TagDecl;
@@ -162,9 +165,19 @@ private: // Data Members
       operator bool() const { return (bool)fState; }
    };
 
-   std::vector<MutexStateAndRecurseCount> fInitialMutex{1};
+   struct MutexStateAndRecurseCountDelta {
+      using StateDelta = ROOT::TVirtualRWMutex::StateDelta;
+
+      MutexStateAndRecurseCount   fInitialState;
+      std::unique_ptr<StateDelta> fDelta;
+   };
+
+   MutexStateAndRecurseCount fInitialMutex;
 
    DeclId_t GetDeclId(const llvm::GlobalValue *gv) const;
+
+   static Int_t DeepAutoLoadImpl(const char *cls);
+   static Int_t ShallowAutoLoadImpl(const char *cls);
 
    Bool_t fHeaderParsingOnDemand;
    Bool_t fIsAutoParsingSuspended;
@@ -240,6 +253,7 @@ public: // Public Interface
                           const char** classesHeaders,
                           Bool_t lateRegistration = false,
                           Bool_t hasCxxModule = false);
+   virtual void AddAvailableIndentifiers(TSeqCollection& Idents);
    void    RegisterTClassUpdate(TClass *oldcl,DictFuncPtr_t dict);
    void    UnRegisterTClassUpdate(const TClass *oldcl);
 
@@ -355,7 +369,7 @@ public: // Public Interface
 
    // core/meta helper functions.
    virtual EReturnType MethodCallReturnType(TFunction *func) const;
-   virtual void GetFunctionName(const clang::FunctionDecl *decl, std::string &name) const;
+   virtual void GetFunctionName(const clang::Decl *decl, std::string &name) const;
    virtual bool DiagnoseIfInterpreterException(const std::exception &e) const;
 
    // CallFunc interface
@@ -408,7 +422,7 @@ public: // Public Interface
    virtual ClassInfo_t*  ClassInfo_Factory(DeclId_t declid) const;
    virtual Long_t   ClassInfo_GetBaseOffset(ClassInfo_t* fromDerived, ClassInfo_t* toBase, void * address, bool isDerivedObject) const;
    virtual int    ClassInfo_GetMethodNArg(ClassInfo_t* info, const char* method, const char* proto, Bool_t objectIsConst = false, ROOT::EFunctionMatchMode mode = ROOT::kConversionMatch) const;
-   virtual bool   ClassInfo_HasDefaultConstructor(ClassInfo_t* info) const;
+   virtual bool   ClassInfo_HasDefaultConstructor(ClassInfo_t* info, Bool_t testio = kFALSE) const;
    virtual bool   ClassInfo_HasMethod(ClassInfo_t* info, const char* name) const;
    virtual void   ClassInfo_Init(ClassInfo_t* info, const char* funcname) const;
    virtual void   ClassInfo_Init(ClassInfo_t* info, int tagnum) const;
@@ -453,7 +467,7 @@ public: // Public Interface
    virtual DeclId_t GetDeclId(DataMemberInfo_t *info) const;
    virtual int    DataMemberInfo_ArrayDim(DataMemberInfo_t* dminfo) const;
    virtual void   DataMemberInfo_Delete(DataMemberInfo_t* dminfo) const;
-   virtual DataMemberInfo_t*  DataMemberInfo_Factory(ClassInfo_t* clinfo = 0) const;
+   virtual DataMemberInfo_t*  DataMemberInfo_Factory(ClassInfo_t* clinfo, TDictionary::EMemberSelection selection) const;
    virtual DataMemberInfo_t  *DataMemberInfo_Factory(DeclId_t declid, ClassInfo_t* clinfo) const;
    virtual DataMemberInfo_t*  DataMemberInfo_FactoryCopy(DataMemberInfo_t* dminfo) const;
    virtual bool   DataMemberInfo_IsValid(DataMemberInfo_t* dminfo) const;

@@ -25,6 +25,9 @@
 #include "RooCacheManager.h"
 #include "RooObjCacheManager.h"
 #include "RooNameReg.h"
+#include <vector>
+#include <list>
+#include <utility>
 
 class RooAddPdf : public RooAbsPdf {
 public:
@@ -144,7 +147,7 @@ protected:
   mutable Int_t _coefErrCount ; //! Coefficient error counter
 
 private:
-  std::pair<const RooArgSet*, CacheElem*> getNormAndCache() const;
+  std::pair<const RooArgSet*, CacheElem*> getNormAndCache(const RooArgSet* defaultNorm = nullptr) const;
 
   ClassDef(RooAddPdf,3) // PDF representing a sum of PDFs
 };

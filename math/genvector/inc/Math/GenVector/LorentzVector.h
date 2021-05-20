@@ -25,6 +25,7 @@
 #include "Math/GenVector/GenVectorIO.h"
 
 #include <cmath>
+#include <string>
 
 namespace ROOT {
 
@@ -182,18 +183,10 @@ More details about the GenVector package can be found [here](Vector.html).
        /**
           Set internal data based on 4 Scalars at *begin to *end
        */
-//#ifdef NDEBUG
-          //this does not compile in CINT
-//        template< class IT >
-//        LorentzVector<CoordSystem>& SetCoordinates( IT begin, IT /* end */  ) {
-// #endif
        template< class IT >
-#ifndef NDEBUG
        LorentzVector<CoordSystem>& SetCoordinates( IT begin, IT end  ) {
-#else
-       LorentzVector<CoordSystem>& SetCoordinates( IT begin, IT /* end */  ) {
-#endif
           IT a = begin; IT b = ++begin; IT c = ++begin; IT d = ++begin;
+          (void)end;
           assert (++begin==end);
           SetCoordinates (*a,*b,*c,*d);
           return *this;
@@ -215,12 +208,9 @@ More details about the GenVector package can be found [here](Vector.html).
           get internal data into 4 Scalars at *begin to *end
        */
        template <class IT>
-#ifndef NDEBUG
        void GetCoordinates( IT begin, IT end ) const
-#else
-       void GetCoordinates( IT begin, IT /* end */ ) const
-#endif
        { IT a = begin; IT b = ++begin; IT c = ++begin; IT d = ++begin;
+       (void)end;
        assert (++begin==end);
        GetCoordinates (*a,*b,*c,*d);
        }
