@@ -595,7 +595,7 @@ Bool_t RooArgSet::setCatIndex(const char* name, Int_t newVal, Bool_t verbose)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Get string value of a RooAbsString stored in set with given name. If none is found, value of defVal is returned.
+/// Get string value of a RooStringVar stored in set with given name. If none is found, value of defVal is returned.
 /// No error messages are printed unless the verbose flag is set
 
 const char* RooArgSet::getStringValue(const char* name, const char* defVal, Bool_t verbose) const
@@ -605,11 +605,12 @@ const char* RooArgSet::getStringValue(const char* name, const char* defVal, Bool
     if (verbose) coutE(InputArguments) << "RooArgSet::getStringValue(" << GetName() << ") ERROR no object with name '" << name << "' found" << endl ;
     return defVal ;
   }
-  RooAbsString* ras = dynamic_cast<RooAbsString*>(raa) ;
+  auto ras = dynamic_cast<const RooStringVar*>(raa) ;
   if (!ras) {
-    if (verbose) coutE(InputArguments) << "RooArgSet::getStringValue(" << GetName() << ") ERROR object '" << name << "' is not of type RooAbsString" << endl ;
+    if (verbose) coutE(InputArguments) << "RooArgSet::getStringValue(" << GetName() << ") ERROR object '" << name << "' is not of type RooStringVar" << endl ;
     return defVal ;
   }
+
   return ras->getVal() ;
 }
 
@@ -626,13 +627,14 @@ Bool_t RooArgSet::setStringValue(const char* name, const char* newVal, Bool_t ve
     if (verbose) coutE(InputArguments) << "RooArgSet::setStringValue(" << GetName() << ") ERROR no object with name '" << name << "' found" << endl ;
     return kTRUE ;
   }
-  RooStringVar* ras = dynamic_cast<RooStringVar*>(raa) ;
+  auto ras = dynamic_cast<RooStringVar*>(raa);
   if (!ras) {
-    if (verbose) coutE(InputArguments) << "RooArgSet::setStringValue(" << GetName() << ") ERROR object '" << name << "' is not of type RooAbsString" << endl ;
+    if (verbose) coutE(InputArguments) << "RooArgSet::setStringValue(" << GetName() << ") ERROR object '" << name << "' is not of type RooStringVar" << endl ;
     return kTRUE ;
   }
-  ras->setVal(newVal) ;
-  return kFALSE ;
+  ras->setVal(newVal);
+
+  return false;
 }
 
 
@@ -678,13 +680,16 @@ Bool_t RooArgSet::readFromFile(const char* fileName, const char* flagReadAtt, co
 /// 
 /// The `<argValue>` part of each element is written by the arguments'
 /// writeToStream() function.
-/// \param os The stream to write to
-/// \param compact Write only the bare values, separated by ' '. Doing this,
-/// the stream cannot be read back into a RooArgSet, but only into a RooArgList, because the
-/// key names are lost.
-
-void RooArgSet::writeToStream(ostream& os, Bool_t compact, const char* /*section*/) const
+/// \param os The stream to write to.
+/// \param compact Write only the bare values, separated by ' '.
+/// \note In compact mode, the stream cannot be read back into a RooArgSet,
+/// but only into a RooArgList, because the variable names are lost.
+/// \param section If non-null, add a section header like `[<section>]`.
+void RooArgSet::writeToStream(ostream& os, Bool_t compact, const char* section) const
 {
+  if (section && section[0] != '\0')
+    os << '[' << section << ']' << '\n';
+
   if (compact) {
     for (const auto next : _list) {
       next->writeToStream(os, true);

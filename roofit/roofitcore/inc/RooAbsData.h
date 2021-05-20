@@ -19,21 +19,26 @@
 #include "TNamed.h"
 #include "RooPrintable.h"
 #include "RooArgSet.h"
-#include "RooFormulaVar.h"
-#include <cmath>
-#include "TMatrixDSym.h"
+#include "RooArgList.h"
 #include "RooSpan.h"
 
 class RooAbsArg;
 class RooAbsReal ;
+class RooRealVar;
+class RooAbsRealLValue;
 class RooAbsCategory ;
+class RooAbsCategoryLValue;
 class Roo1DTable ;
 class RooPlot;
 class RooArgList;
 class TH1;
+class TH2F;
 class RooAbsBinning ;
 class Roo1DTable ;
 class RooAbsDataStore ;
+template<typename T> class TMatrixTSym;
+using TMatrixDSym = TMatrixTSym<Double_t>;
+class RooFormulaVar;
 namespace RooFit {
 namespace TestStatistics {
 class RooAbsL;
@@ -97,7 +102,11 @@ public:
   virtual void weightError(Double_t& lo, Double_t& hi, ErrorType etype=Poisson) const ; 
   virtual const RooArgSet* get(Int_t index) const ;
 
-  virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t last) const = 0;
+  ////////////////////////////////////////////////////////////////////////////////
+  /// Return event weights of all events in range [first, first+len).
+  /// If no contiguous structure of weights is stored, an empty batch can be returned.
+  /// This indicates that the weight is constant. Use weight() to retrieve it.
+  virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t len) const = 0;
 
   virtual Int_t numEntries() const ;
   virtual Double_t sumEntries() const = 0 ;
@@ -113,7 +122,7 @@ public:
   virtual void reset() ;
 
 
-  Bool_t getRange(const RooRealVar& var, double& lowest, double& highest, double marginFrac=0, bool symMode=kFALSE) const ;
+  Bool_t getRange(const RooAbsRealLValue& var, Double_t& lowest, Double_t& highest, Double_t marginFrac=0, Bool_t symMode=kFALSE) const ;
 
   // Plot the distribution of a real valued arg
   virtual Roo1DTable* table(const RooArgSet& catSet, const char* cuts="", const char* opts="") const ;
@@ -264,7 +273,7 @@ protected:
 
   virtual RooAbsData* cacheClone(const RooAbsArg* newCacheOwner, const RooArgSet* newCacheVars, const char* newName=0) = 0 ; // DERIVED
   virtual RooAbsData* reduceEng(const RooArgSet& varSubset, const RooFormulaVar* cutVar, const char* cutRange=0, 
-	                        Int_t nStart=0, Int_t nStop=2000000000, Bool_t copyCache=kTRUE) = 0 ; // DERIVED
+	                        std::size_t nStart = 0, std::size_t = std::numeric_limits<std::size_t>::max(), Bool_t copyCache=kTRUE) = 0 ; // DERIVED
 
   RooRealVar* dataRealVar(const char* methodname, const RooRealVar& extVar) const ;
 

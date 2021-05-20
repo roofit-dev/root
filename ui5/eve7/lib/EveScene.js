@@ -234,10 +234,9 @@ sap.ui.define([
       {
          let elId  = ids[i];
          let obj3d = this.getObj3D(elId);
-         if ( ! obj3d)
-         {
-            let  el = this.mgr.GetElement(elId);
-            if (el.render_data) {
+         if (!obj3d) {
+            let el = this.mgr.GetElement(elId);
+            if (el && el.render_data) {
                console.log("ERROR EveScene.prototype.elementsRemoved can't find obj3d ",this.mgr.GetElement(el));
             }
             continue;
@@ -292,7 +291,7 @@ sap.ui.define([
       // MT BEGIN
       // console.log("EveScene.prototype.processElementSelected", obj3d, col, indx, evnt);
 
-      let is_multi  = event && event.ctrlKey;
+      let is_multi  = event && event.ctrlKey ? true : false;
       let is_secsel = indx !== undefined;
 
       let fcall = "NewElementPicked(" + (obj3d ? obj3d.eve_el.fElementId : 0) + `, ${is_multi}, ${is_secsel}`;
@@ -310,40 +309,21 @@ sap.ui.define([
    /** interactive handler */
    EveScene.prototype.processElementHighlighted = function(obj3d, indx, evnt)
    {
+      if (this.mgr.MatchSelection(this.mgr.global_selection_id, obj3d.eve_el, indx))
+         return true;
+
+
       // Need check for duplicates before call server, else server will un-higlight highlighted element
       // console.log("EveScene.prototype.processElementHighlighted", obj3d.eve_el.fElementId, indx, evnt);
+      if (this.mgr.MatchSelection(this.mgr.global_highlight_id, obj3d.eve_el, indx))
+         return true;
+
       let is_multi  = false;
       let is_secsel = indx !== undefined;
 
-      let so = this.mgr.GetElement(this.mgr.global_highlight_id);
-      let a  = so ? so.prev_sel_list : null;
-
-      // AMT presume there is no multiple highlight and multiple secondary selections
-      // if that is the case in the futre write data in set and comapre sets
-
-      // console.log("EveScene.prototype.processElementHighlighted compare Reveselection ", a[0], "incoming ", obj3d.eveId,indx);
-      if (a && (a.length == 1))
-      {
-         let h = a[0];
-         if (h.primary == obj3d.eve_el.fElementId || h.primary == obj3d.eve_el.fMasterId) {
-            if (indx) {
-               if (h.sec_idcs && h.sec_idcs[0] == indx) {
-                  // console.log("EveScene.prototype.processElementHighlighted processElementHighlighted same index ");
-                  return true;
-               }
-            }
-            if ( ! indx && ! h.sec_idcs.length) {
-               // console.log("processElementHighlighted primary selection not changed ");
-               return true;
-            }
-         }
-      }
-
       let fcall = "NewElementPicked(" + obj3d.eve_el.fElementId + `, ${is_multi}, ${is_secsel}`;
       if (is_secsel)
-      {
          fcall += ", { " + (Array.isArray(indx) ? indx.join(", ") : indx) + " }";
-      }
       fcall += ")";
 
       this.mgr.SendMIR(fcall, this.mgr.global_highlight_id, "ROOT::Experimental::REveSelection");
@@ -453,7 +433,7 @@ sap.ui.define([
       // console.log("EveScene.UnselectElement ", selection_obj.fName, element_id, selection_obj.fElementId, this.glctrl.viewer.outline_pass.id2obj_map);
       if (opass.id2obj_map[element_id] !== undefined)
       {
-	 delete opass.id2obj_map[element_id][selection_obj.fElementId];
+         delete opass.id2obj_map[element_id][selection_obj.fElementId];
       }
    }
 
