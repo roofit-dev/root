@@ -35,6 +35,7 @@
 #include "TObjString.h"
 #include "Riostream.h"
 #include "TVirtualMutex.h"
+#include "ThreadLocalStorage.h"
 #include "TObjArray.h"
 #include <map>
 #include <algorithm>
@@ -2153,6 +2154,7 @@ void TUnixSystem::Exit(int code, Bool_t mode)
 
 void TUnixSystem::Abort(int)
 {
+   IgnoreSignal(kSigAbort);
    ::abort();
 }
 
@@ -3631,6 +3633,8 @@ void TUnixSystem::DispatchSignals(ESignals sig)
       if (gExceptionHandler)
          gExceptionHandler->HandleException(sig);
       else {
+         if (sig == kSigAbort)
+            return;
          Break("TUnixSystem::DispatchSignals", "%s", UnixSigname(sig));
          StackTrace();
          if (gApplication)

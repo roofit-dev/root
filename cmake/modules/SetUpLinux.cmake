@@ -96,14 +96,62 @@ endif()
 # JIT must be able to resolve symbols from all ROOT binaries.
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
 
+# Set developer flags
+if(dev)
+  # Warnings are errors.
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
+
+  # Do not relink just because a dependent .so has changed.
+  # I.e. relink only if a header included by the libs .o-s has changed,
+  # whether or not that header "belongs" to a different .so.
+  set(CMAKE_LINK_DEPENDS_NO_SHARED On)
+
+  # Split debug info for faster builds.
+  if(NOT gnuinstall)
+    # We won't install DWARF files.
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -gsplit-dwarf")
+  endif()
+
+  # Try faster linkers, prefer lld then gold.
+  execute_process(COMMAND ${CMAKE_C_COMPILER} -fuse-ld=lld -Wl,--version OUTPUT_VARIABLE stdout ERROR_QUIET)
+  if("${stdout}" MATCHES "LLD ")
+    set(SUPERIOR_LINKER "lld")
+  else()
+    execute_process(COMMAND ${CMAKE_C_COMPILER} -fuse-ld=gold -Wl,--version OUTPUT_VARIABLE stdout ERROR_QUIET)
+    if ("${stdout}" MATCHES "GNU gold")
+      set(SUPERIOR_LINKER "gold")
+    endif()
+  endif()
+  # Only lld and gold support --gdb-index
+  if(SUPERIOR_LINKER)
+    set(LLVM_USE_LINKER "${SUPERIOR_LINKER}")
+    if(CMAKE_BUILD_TYPE MATCHES "Deb")
+      message(STATUS "Using ${SUPERIOR_LINKER} linker with gdb-index")
+      set(GDBINDEX "-Wl,--gdb-index")
+    else()
+      message(STATUS "Using ${SUPERIOR_LINKER} linker")
+    endif()
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=${SUPERIOR_LINKER} ${GDBINDEX}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=${SUPERIOR_LINKER} ${GDBINDEX}")
+    set(LLVM_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=${SUPERIOR_LINKER} ${GDBINDEX}")
+    set(LLVM_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=${SUPERIOR_LINKER} ${GDBINDEX}")
+  endif()
+endif()
+
 if(CMAKE_COMPILER_IS_GNUCXX)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe ${FP_MATH_FLAGS} -Wshadow -Wall -W -Woverloaded-virtual -fsigned-char")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pipe -Wall -W")
   set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
 
-  set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS}")
-  set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS}")
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined -Wl,--hash-style=\"both\"")
+  
+  if(asan)
+    # See also core/sanitizer/README.md for what's happening.
+    execute_process(COMMAND ${CMAKE_CXX_COMPILER} --print-file-name=libclang_rt.asan-x86_64.so OUTPUT_VARIABLE ASAN_RUNTIME_LIBRARY OUTPUT_STRIP_TRAILING_WHITESPACE)
+    set(ASAN_EXTRA_CXX_FLAGS -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=address)
+    set(ASAN_EXTRA_SHARED_LINKER_FLAGS "-fsanitize=address -z undefs")
+    set(ASAN_EXTRA_EXE_LINKER_FLAGS "-fsanitize=address -z undefs -Wl,--undefined=__asan_default_options -Wl,--undefined=__lsan_default_options -Wl,--undefined=__lsan_default_suppressions")
+  endif()
 
   # Select flags.
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -g -DNDEBUG"  CACHE STRING "Flags for release build with debug info")
@@ -121,9 +169,15 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wshadow")
   endif()
 
-  set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS}")
-  set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS}")
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
+  
+  if(asan)
+    # See also core/sanitizer/README.md for what's happening.
+    execute_process(COMMAND ${CMAKE_CXX_COMPILER} --print-file-name=libclang_rt.asan-x86_64.so OUTPUT_VARIABLE ASAN_RUNTIME_LIBRARY OUTPUT_STRIP_TRAILING_WHITESPACE)
+    set(ASAN_EXTRA_CXX_FLAGS -fsanitize=address -fno-omit-frame-pointer -fsanitize-blacklist=${CMAKE_SOURCE_DIR}/build/ASan_blacklist.txt)
+    set(ASAN_EXTRA_SHARED_LINKER_FLAGS "-fsanitize=address -static-libsan -z undefs")
+    set(ASAN_EXTRA_EXE_LINKER_FLAGS "-fsanitize=address -static-libsan -z undefs -Wl,--undefined=__asan_default_options -Wl,--undefined=__lsan_default_options -Wl,--undefined=__lsan_default_suppressions")
+  endif()
 
   # Select flags.
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG"           CACHE STRING "Flags for release build with debug info")
@@ -167,9 +221,6 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL Intel)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd597 -wd1098 -wd1292 -wd1478 -wd3373")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -wd597 -wd1098 -wd1292 -wd1478 -wd3373")
   endif()
-
-  set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS}")
-  set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS}")
 
   # Select flags.
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -fp-model precise -g -DNDEBUG" CACHE STRING "Flags for release build with debug info")

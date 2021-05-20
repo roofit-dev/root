@@ -36,6 +36,7 @@
 #include <type_traits>
 #include <typeinfo>
 #include <vector>
+#include <unordered_map>
 
 class TObjArray;
 class TTree;
@@ -248,26 +249,34 @@ void CheckCustomColumn(std::string_view definedCol, TTree *treePtr, const Column
 
 std::string PrettyPrintAddr(const void *const addr);
 
-void BookFilterJit(RJittedFilter *jittedFilter, void *prevNodeOnHeap, std::string_view name,
-                   std::string_view expression, const std::map<std::string, std::string> &aliasMap,
-                   const ColumnNames_t &branches, const RDFInternal::RBookedCustomColumns &customCols, TTree *tree,
-                   RDataSource *ds, unsigned int namespaceID);
+void BookFilterJit(const std::shared_ptr<RJittedFilter> &jittedFilter, std::shared_ptr<RNodeBase> *prevNodeOnHeap,
+                   std::string_view name, std::string_view expression,
+                   const std::map<std::string, std::string> &aliasMap, const ColumnNames_t &branches,
+                   const RDFInternal::RBookedCustomColumns &customCols, TTree *tree, RDataSource *ds);
 
-void BookDefineJit(std::string_view name, std::string_view expression, RLoopManager &lm, RDataSource *ds,
-                   const std::shared_ptr<RJittedCustomColumn> &jittedCustomColumn,
-                   const RDFInternal::RBookedCustomColumns &customCols, const ColumnNames_t &branches);
+std::shared_ptr<RJittedCustomColumn> BookDefineJit(std::string_view name, std::string_view expression, RLoopManager &lm,
+                                                   RDataSource *ds, const RDFInternal::RBookedCustomColumns &customCols,
+                                                   const ColumnNames_t &branches,
+                                                   std::shared_ptr<RNodeBase> *prevNodeOnHeap);
 
-std::string JitBuildAction(const ColumnNames_t &bl, void *prevNode, const std::type_info &art, const std::type_info &at,
-                           void *r, TTree *tree, const unsigned int nSlots,
-                           const RDFInternal::RBookedCustomColumns &customColumns, RDataSource *ds,
-                           std::shared_ptr<RJittedAction> *jittedActionOnHeap, unsigned int namespaceID);
+std::string JitBuildAction(const ColumnNames_t &bl, std::shared_ptr<RDFDetail::RNodeBase> *prevNode,
+                           const std::type_info &art, const std::type_info &at, void *rOnHeap, TTree *tree,
+                           const unsigned int nSlots, const RDFInternal::RBookedCustomColumns &customColumns,
+                           RDataSource *ds, std::weak_ptr<RJittedAction> *jittedActionOnHeap);
 
-// allocate a shared_ptr on the heap, return a reference to it. the user is responsible of deleting the shared_ptr*.
-// this function is meant to only be used by RInterface's action methods, and should be deprecated as soon as we find
-// a better way to make jitting work: the problem it solves is that we need to pass the same shared_ptr to the Helper
-// object of each action and to the RResultPtr returned by the action. While the former is only instantiated when
-// the event loop is about to start, the latter has to be returned to the user as soon as the action is booked.
-// a heap allocated shared_ptr will stay alive long enough that at jitting time its address is still valid.
+// Allocate a weak_ptr on the heap, return a pointer to it. The user is responsible for deleting this weak_ptr.
+// This function is meant to be used by RInterface's methods that book code for jitting.
+// The problem it solves is that we generate code to be lazily jitted with the addresses of certain objects in them,
+// and we need to check those objects are still alive when the generated code is finally jitted and executed.
+// So we pass addresses to weak_ptrs allocated on the heap to the jitted code, which is then responsible for
+// the deletion of the weak_ptr object.
+template <typename T>
+std::weak_ptr<T> *MakeWeakOnHeap(const std::shared_ptr<T> &shPtr)
+{
+   return new std::weak_ptr<T>(shPtr);
+}
+
+// Same as MakeWeakOnHeap, but create a shared_ptr that makes sure the object is definitely kept alive.
 template <typename T>
 std::shared_ptr<T> *MakeSharedOnHeap(const std::shared_ptr<T> &shPtr)
 {
@@ -285,7 +294,7 @@ ColumnNames_t GetValidatedColumnNames(RLoopManager &lm, const unsigned int nColu
 
 std::vector<bool> FindUndefinedDSColumns(const ColumnNames_t &requestedCols, const ColumnNames_t &definedDSCols);
 
-using ColumnNames_t = ROOT::Detail::RDF::ColumnNames_t;
+using ROOT::Detail::RDF::ColumnNames_t;
 
 template <typename T>
 void AddDSColumnsHelper(RLoopManager &lm, std::string_view name, RDFInternal::RBookedCustomColumns &currentCols,
@@ -295,8 +304,8 @@ void AddDSColumnsHelper(RLoopManager &lm, std::string_view name, RDFInternal::RB
    auto getValue = [readers](unsigned int slot) { return *readers[slot]; };
    using NewCol_t = RCustomColumn<decltype(getValue), CustomColExtraArgs::Slot>;
 
-   auto newCol = std::make_shared<NewCol_t>(&lm, name, std::move(getValue), ColumnNames_t{}, nSlots, currentCols,
-                                            /*isDSColumn=*/true);
+   auto newCol = std::make_shared<NewCol_t>(&lm, name, ds.GetTypeName(name), std::move(getValue), ColumnNames_t{},
+                                            nSlots, currentCols, /*isDSColumn=*/true);
 
    lm.RegisterCustomColumn(newCol.get());
    currentCols.AddName(name);
@@ -332,12 +341,27 @@ AddDSColumns(RLoopManager &lm, const std::vector<std::string> &requiredCols,
 
 // this function is meant to be called by the jitted code generated by BookFilterJit
 template <typename F, typename PrevNode>
-void JitFilterHelper(F &&f, const ColumnNames_t &cols, std::string_view name, RJittedFilter *jittedFilter,
-                     std::shared_ptr<PrevNode> *prevNodeOnHeap, RDFInternal::RBookedCustomColumns *customColumns)
+void JitFilterHelper(F &&f, const ColumnNames_t &cols, std::string_view name,
+                     std::weak_ptr<RJittedFilter> *wkJittedFilter, std::shared_ptr<PrevNode> *prevNodeOnHeap,
+                     RDFInternal::RBookedCustomColumns *customColumns)
 {
+   if (wkJittedFilter->expired()) {
+      // The branch of the computation graph that needed this jitted code went out of scope between the type
+      // jitting was booked and the time jitting actually happened. Nothing to do other than cleaning up.
+      delete wkJittedFilter;
+      // customColumns must be deleted before prevNodeOnHeap because their dtor needs the RLoopManager to be alive
+      // and prevNodeOnHeap is what keeps it alive if the rest of the computation graph is already out of scope
+      delete customColumns;
+      delete prevNodeOnHeap;
+      return;
+   }
+
+   const auto jittedFilter = wkJittedFilter->lock();
+
    // mock Filter logic -- validity checks and Define-ition of RDataSource columns
-   using F_t = RFilter<F, PrevNode>;
-   using ColTypes_t = typename TTraits::CallableTraits<F>::arg_types;
+   using Callable_t = typename std::decay<F>::type;
+   using F_t = RFilter<Callable_t, PrevNode>;
+   using ColTypes_t = typename TTraits::CallableTraits<Callable_t>::arg_types;
    constexpr auto nColumns = ColTypes_t::list_size;
    RDFInternal::CheckFilter(f);
 
@@ -352,16 +376,32 @@ void JitFilterHelper(F &&f, const ColumnNames_t &cols, std::string_view name, RJ
    // share data after it has lazily compiled the code. Here the data has been used and the memory can be freed.
    delete customColumns;
 
-   jittedFilter->SetFilter(std::make_unique<F_t>(std::move(f), cols, *prevNodeOnHeap, newColumns, name));
+   jittedFilter->SetFilter(std::make_unique<F_t>(std::forward<F>(f), cols, *prevNodeOnHeap, newColumns, name));
    delete prevNodeOnHeap;
+   delete wkJittedFilter;
 }
 
 template <typename F>
 void JitDefineHelper(F &&f, const ColumnNames_t &cols, std::string_view name, RLoopManager *lm,
-                     RJittedCustomColumn &jittedCustomCol, RDFInternal::RBookedCustomColumns *customColumns)
+                     std::weak_ptr<RJittedCustomColumn> *wkJittedCustomCol,
+                     RDFInternal::RBookedCustomColumns *customColumns, std::shared_ptr<RNodeBase> *prevNodeOnHeap)
 {
-   using NewCol_t = RCustomColumn<F, CustomColExtraArgs::None>;
-   using ColTypes_t = typename TTraits::CallableTraits<F>::arg_types;
+   if (wkJittedCustomCol->expired()) {
+      // The branch of the computation graph that needed this jitted code went out of scope between the type
+      // jitting was booked and the time jitting actually happened. Nothing to do other than cleaning up.
+      delete wkJittedCustomCol;
+      // customColumns must be deleted before prevNodeOnHeap because their dtor needs the RLoopManager to be alive
+      // and prevNodeOnHeap is what keeps it alive if the rest of the computation graph is already out of scope
+      delete customColumns;
+      delete prevNodeOnHeap;
+      return;
+   }
+
+   auto jittedCustomCol = wkJittedCustomCol->lock();
+
+   using Callable_t = typename std::decay<F>::type;
+   using NewCol_t = RCustomColumn<Callable_t, CustomColExtraArgs::None>;
+   using ColTypes_t = typename TTraits::CallableTraits<Callable_t>::arg_types;
    constexpr auto nColumns = ColTypes_t::list_size;
 
    auto ds = lm->GetDataSource();
@@ -372,18 +412,39 @@ void JitDefineHelper(F &&f, const ColumnNames_t &cols, std::string_view name, RL
    // customColumns points to the columns structure in the heap, created before the jitted call so that the jitter can
    // share data after it has lazily compiled the code. Here the data has been used and the memory can be freed.
    delete customColumns;
+   // prevNodeOnHeap only serves the purpose of keeping the RLoopManager alive so it can be accessed by
+   // customColumns' destructor in case the rest of the computation graph is gone. Can be safely deleted here.
+   delete prevNodeOnHeap;
 
-   jittedCustomCol.SetCustomColumn(
-      std::make_unique<NewCol_t>(lm, name, std::move(f), cols, lm->GetNSlots(), newColumns));
+   // will never actually be used (trumped by jittedCustomCol->GetTypeName()), but we set it to something meaningful
+   // to help devs debugging
+   const auto dummyType = "jittedCol_t";
+   // use unique_ptr<RCustomColumnBase> instead of make_unique<NewCol_t> to reduce jit/compile-times
+   jittedCustomCol->SetCustomColumn(std::unique_ptr<RCustomColumnBase>(
+      new NewCol_t(lm, name, dummyType, std::forward<F>(f), cols, lm->GetNSlots(), newColumns)));
+
+   delete wkJittedCustomCol;
 }
 
 /// Convenience function invoked by jitted code to build action nodes at runtime
 template <typename ActionTag, typename... BranchTypes, typename PrevNodeType, typename ActionResultType>
 void CallBuildAction(std::shared_ptr<PrevNodeType> *prevNodeOnHeap, const ColumnNames_t &bl, const unsigned int nSlots,
-                     const std::shared_ptr<ActionResultType> *rOnHeap,
-                     std::shared_ptr<RJittedAction> *jittedActionOnHeap,
+                     std::weak_ptr<ActionResultType> *wkROnHeap, std::weak_ptr<RJittedAction> *wkJittedActionOnHeap,
                      RDFInternal::RBookedCustomColumns *customColumns)
 {
+   if (wkROnHeap->expired()) {
+      delete wkROnHeap;
+      delete wkJittedActionOnHeap;
+      // customColumns must be deleted before prevNodeOnHeap because their dtor needs the RLoopManager to be alive
+      // and prevNodeOnHeap is what keeps it alive if the rest of the computation graph is already out of scope
+      delete customColumns;
+      delete prevNodeOnHeap;
+      return;
+   }
+
+   const auto rOnHeap = wkROnHeap->lock();
+   auto jittedActionOnHeap = wkJittedActionOnHeap->lock();
+
    // if we are here it means we are jitting, if we are jitting the loop manager must be alive
    auto &prevNodePtr = *prevNodeOnHeap;
    auto &loopManager = *prevNodePtr->GetLoopManagerUnchecked();
@@ -394,21 +455,21 @@ void CallBuildAction(std::shared_ptr<PrevNodeType> *prevNodeOnHeap, const Column
                                                     std::make_index_sequence<nColumns>(), ColTypes_t())
                         : *customColumns;
 
-   auto actionPtr =
-      BuildAction<BranchTypes...>(bl, *rOnHeap, nSlots, std::move(prevNodePtr), ActionTag{}, std::move(newColumns));
-   (*jittedActionOnHeap)->SetAction(std::move(actionPtr));
+   auto actionPtr = BuildAction<BranchTypes...>(bl, std::move(rOnHeap), nSlots, std::move(prevNodePtr), ActionTag{},
+                                                std::move(newColumns));
+   jittedActionOnHeap->SetAction(std::move(actionPtr));
 
    // customColumns points to the columns structure in the heap, created before the jitted call so that the jitter can
    // share data after it has lazily compiled the code. Here the data has been used and the memory can be freed.
    delete customColumns;
 
-   delete rOnHeap;
+   delete wkROnHeap;
    delete prevNodeOnHeap;
-   delete jittedActionOnHeap;
+   delete wkJittedActionOnHeap;
 }
 
 /// The contained `type` alias is `double` if `T == RInferredType`, `U` if `T == std::container<U>`, `T` otherwise.
-template <typename T, bool Container = TTraits::IsContainer<T>::value && !std::is_same<T, std::string>::value>
+template <typename T, bool Container = RDFInternal::IsDataContainer<T>::value && !std::is_same<T, std::string>::value>
 struct TMinReturnType {
    using type = T;
 };
@@ -449,8 +510,6 @@ template <>
 struct TNeedJitting<RInferredType> {
    static constexpr bool value = true;
 };
-
-ColumnNames_t GetTopLevelBranchNames(TTree &t);
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Check preconditions for RInterface::Aggregate:

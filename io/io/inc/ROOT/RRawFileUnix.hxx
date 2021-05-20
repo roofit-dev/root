@@ -19,8 +19,7 @@
 #include <cstdint>
 
 namespace ROOT {
-namespace Experimental {
-namespace Detail {
+namespace Internal {
 
 /**
  * \class RRawFileUnix RRawFileUnix.hxx
@@ -47,8 +46,7 @@ public:
    int GetFeatures() const final { return kFeatureHasSize | kFeatureHasMmap; }
 };
 
-} // namespace Detail
-} // namespace Experimental
+} // namespace Internal
 } // namespace ROOT
 
 #endif

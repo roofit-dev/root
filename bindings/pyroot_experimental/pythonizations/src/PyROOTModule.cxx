@@ -14,6 +14,7 @@
 #include "PyROOTStrings.h"
 #include "PyROOTWrapper.h"
 #include "RPyROOTApplication.h"
+#include "FacadeHelpers.hxx"
 
 // Cppyy
 #include "CPyCppyy.h"
@@ -70,8 +71,6 @@ static PyMethodDef gPyROOTMethods[] = {
    {(char *)"GetDataPointer", (PyCFunction)PyROOT::GetDataPointer, METH_VARARGS,
     (char *)"Get pointer to data of a C++ object"},
    {(char *)"GetSizeOfType", (PyCFunction)PyROOT::GetSizeOfType, METH_VARARGS, (char *)"Get size of data-type"},
-   {(char *)"GetCppCallableClass", (PyCFunction)PyROOT::GetCppCallableClass, METH_VARARGS,
-    (char *)"Get class to wrap Python callable as C++ callable"},
    {(char *)"AsRVec", (PyCFunction)PyROOT::AsRVec, METH_O, (char *)"Get object with array interface as RVec"},
 #ifdef R__HAS_DATAFRAME
    {(char *)"AsRTensor", (PyCFunction)PyROOT::AsRTensor, METH_O, (char *)"Get object with array interface as RTensor"},
@@ -86,7 +85,16 @@ static PyMethodDef gPyROOTMethods[] = {
     (char *)"Deserialize a pickled object"},
    {(char *)"ClearProxiedObjects", (PyCFunction)PyROOT::ClearProxiedObjects, METH_NOARGS,
     (char *)"Clear proxied objects regulated by PyROOT"},
+   {(char *)"CreateBufferFromAddress", (PyCFunction)PyROOT::CreateBufferFromAddress, METH_O,
+    (char *)"Create a LowLevelView object on the received address"},
    {NULL, NULL, 0, NULL}};
+
+#define QuoteIdent(ident) #ident
+#define QuoteMacro(macro) QuoteIdent(macro)
+#define LIBROOTPYZ_NAME "libROOTPythonizations" QuoteMacro(PY_MAJOR_VERSION) "_" QuoteMacro(PY_MINOR_VERSION)
+
+#define CONCAT(a, b, c, d) a##b##c##d
+#define LIBROOTPYZ_INIT_FUNCTION(a, b, c, d) CONCAT(a, b, c, d)
 
 #if PY_VERSION_HEX >= 0x03000000
 struct module_state {
@@ -107,17 +115,17 @@ static int rootmodule_clear(PyObject *m)
    return 0;
 }
 
-static struct PyModuleDef moduledef = {PyModuleDef_HEAD_INIT,       "libROOTPythonizations",  NULL,
+static struct PyModuleDef moduledef = {PyModuleDef_HEAD_INIT,       LIBROOTPYZ_NAME,  NULL,
                                        sizeof(struct module_state), gPyROOTMethods,   NULL,
                                        rootmodule_traverse,         rootmodule_clear, NULL};
 
 /// Initialization of extension module libROOTPythonizations
 
 #define PYROOT_INIT_ERROR return NULL
-extern "C" PyObject *PyInit_libROOTPythonizations()
+LIBROOTPYZ_INIT_FUNCTION(extern "C" PyObject* PyInit_libROOTPythonizations, PY_MAJOR_VERSION, _, PY_MINOR_VERSION) ()
 #else // PY_VERSION_HEX >= 0x03000000
 #define PYROOT_INIT_ERROR return
-extern "C" void initlibROOTPythonizations()
+LIBROOTPYZ_INIT_FUNCTION(extern "C" void initlibROOTPythonizations, PY_MAJOR_VERSION, _, PY_MINOR_VERSION) ()
 #endif
 {
    using namespace PyROOT;
@@ -130,7 +138,7 @@ extern "C" void initlibROOTPythonizations()
 #if PY_VERSION_HEX >= 0x03000000
    gRootModule = PyModule_Create(&moduledef);
 #else
-   gRootModule = Py_InitModule(const_cast<char *>("libROOTPythonizations"), gPyROOTMethods);
+   gRootModule = Py_InitModule(const_cast<char *>(LIBROOTPYZ_NAME), gPyROOTMethods);
 #endif
    if (!gRootModule)
       PYROOT_INIT_ERROR;

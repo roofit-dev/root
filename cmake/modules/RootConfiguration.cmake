@@ -274,7 +274,7 @@ set(gvizlib ${GVIZ_LIBRARY})
 set(gvizincdir ${GVIZ_INCLUDE_DIR})
 set(gvizcflags)
 
-set(buildpython ${value${python}})
+set(buildpython ${value${pyroot}})
 set(pythonlibdir ${PYTHON_LIBRARY_DIR})
 set(pythonlib ${PYTHON_LIBRARY})
 set(pythonincdir ${PYTHON_INCLUDE_DIR})
@@ -422,6 +422,11 @@ if(dataframe)
 else()
   set(hasdataframe undef)
 endif()
+if(dev)
+  set(use_less_includes define)
+else()
+  set(use_less_includes undef)
+endif()
 
 set(uselz4 undef)
 set(usezlib undef)
@@ -475,6 +480,11 @@ if (tmva-gpu)
   set(hastmvagpu define)
 else()
   set(hastmvagpu undef)
+endif()
+if (tmva-cudnn)
+   set(hastmvacudnn define)
+else()
+   set(hastmvacudnn undef)
 endif()
 
 # clear cache to allow reconfiguring
@@ -598,8 +608,8 @@ get_filename_component(altld ${CMAKE_CXX_COMPILER} NAME)
 set(pythonvers ${PYTHON_VERSION_STRING})
 
 #---RConfigure.h---------------------------------------------------------------------------------------------
-configure_file(${PROJECT_SOURCE_DIR}/config/RConfigure.in include/RConfigure.h NEWLINE_STYLE UNIX)
-install(FILES ${CMAKE_BINARY_DIR}/include/RConfigure.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+configure_file(${PROJECT_SOURCE_DIR}/config/RConfigure.in ginclude/RConfigure.h NEWLINE_STYLE UNIX)
+install(FILES ${CMAKE_BINARY_DIR}/ginclude/RConfigure.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 #---Configure and install various files----------------------------------------------------------------------
 execute_Process(COMMAND hostname OUTPUT_VARIABLE BuildNodeInfo OUTPUT_STRIP_TRAILING_WHITESPACE )
@@ -608,7 +618,8 @@ configure_file(${CMAKE_SOURCE_DIR}/config/rootrc.in ${CMAKE_BINARY_DIR}/etc/syst
 configure_file(${CMAKE_SOURCE_DIR}/config/rootauthrc.in ${CMAKE_BINARY_DIR}/etc/system.rootauthrc @ONLY NEWLINE_STYLE UNIX)
 configure_file(${CMAKE_SOURCE_DIR}/config/rootdaemonrc.in ${CMAKE_BINARY_DIR}/etc/system.rootdaemonrc @ONLY NEWLINE_STYLE UNIX)
 
-configure_file(${CMAKE_SOURCE_DIR}/config/RConfigOptions.in include/RConfigOptions.h NEWLINE_STYLE UNIX)
+# file used in TROOT.cxx, not need in include/ dir and not need to install
+configure_file(${CMAKE_SOURCE_DIR}/config/RConfigOptions.in ginclude/RConfigOptions.h NEWLINE_STYLE UNIX)
 
 configure_file(${CMAKE_SOURCE_DIR}/config/Makefile-comp.in config/Makefile.comp NEWLINE_STYLE UNIX)
 configure_file(${CMAKE_SOURCE_DIR}/config/Makefile.in config/Makefile.config NEWLINE_STYLE UNIX)
@@ -678,22 +689,30 @@ file(RELATIVE_PATH ROOT_CMAKE_TO_INCLUDE_DIR "${CMAKE_INSTALL_FULL_CMAKEDIR}" "$
 file(RELATIVE_PATH ROOT_CMAKE_TO_LIB_DIR "${CMAKE_INSTALL_FULL_CMAKEDIR}" "${CMAKE_INSTALL_FULL_LIBDIR}")
 file(RELATIVE_PATH ROOT_CMAKE_TO_BIN_DIR "${CMAKE_INSTALL_FULL_CMAKEDIR}" "${CMAKE_INSTALL_FULL_BINDIR}")
 
+# '_' prefixed variables are used to construct the paths,
+# while the normal variants evaluate to full paths at runtime
 set(ROOT_INCLUDE_DIR_SETUP "
 # ROOT configured for the install with relative paths, so use these
-get_filename_component(ROOT_INCLUDE_DIRS \"\${_thisdir}/${ROOT_CMAKE_TO_INCLUDE_DIR}\" ABSOLUTE)
+get_filename_component(_ROOT_INCLUDE_DIRS \"\${_thisdir}/${ROOT_CMAKE_TO_INCLUDE_DIR}\" REALPATH)
+# resolve relative paths to absolute system paths
+get_filename_component(ROOT_INCLUDE_DIRS \"\${_ROOT_INCLUDE_DIRS}\" REALPATH)
 ")
 set(ROOT_LIBRARY_DIR_SETUP "
 # ROOT configured for the install with relative paths, so use these
-get_filename_component(ROOT_LIBRARY_DIR \"\${_thisdir}/${ROOT_CMAKE_TO_LIB_DIR}\" ABSOLUTE)
+get_filename_component(_ROOT_LIBRARY_DIR \"\${_thisdir}/${ROOT_CMAKE_TO_LIB_DIR}\" REALPATH)
+# resolve relative paths to absolute system paths
+get_filename_component(ROOT_LIBRARY_DIR \"\${_ROOT_LIBRARY_DIR}\" REALPATH)
 ")
 set(ROOT_BINDIR_SETUP "
 # ROOT configured for the install with relative paths, so use these
-get_filename_component(ROOT_BINDIR \"\${_thisdir}/${ROOT_CMAKE_TO_BIN_DIR}\" ABSOLUTE)
+get_filename_component(_ROOT_BINDIR \"\${_thisdir}/${ROOT_CMAKE_TO_BIN_DIR}\" REALPATH)
+# resolve relative paths to absolute system paths
+get_filename_component(ROOT_BINDIR \"\${_ROOT_BINDIR}\" REALPATH)
 ")
 # Deprecated value ROOT_BINARY_DIR
 set(ROOT_BINARY_DIR_SETUP "
 # Deprecated value, please don't use it and use ROOT_BINDIR instead.
-get_filename_component(ROOT_BINARY_DIR \"\${ROOT_BINDIR}\" ABSOLUTE)
+get_filename_component(ROOT_BINARY_DIR \"\${ROOT_BINDIR}\" REALPATH)
 ")
 
 # used by ROOTConfig.cmake from the build directory
@@ -732,10 +751,10 @@ endif()
 
 if(WIN32)
   # We cannot use the compiledata.sh script for windows
-  configure_file(${CMAKE_SOURCE_DIR}/cmake/scripts/compiledata.win32.in ${CMAKE_BINARY_DIR}/include/compiledata.h NEWLINE_STYLE UNIX)
+  configure_file(${CMAKE_SOURCE_DIR}/cmake/scripts/compiledata.win32.in ${CMAKE_BINARY_DIR}/ginclude/compiledata.h NEWLINE_STYLE UNIX)
 else()
   execute_process(COMMAND ${CMAKE_SOURCE_DIR}/build/unix/compiledata.sh
-    ${CMAKE_BINARY_DIR}/include/compiledata.h "${CMAKE_CXX_COMPILER}"
+    ${CMAKE_BINARY_DIR}/ginclude/compiledata.h "${CMAKE_CXX_COMPILER}"
         "${CMAKE_CXX_FLAGS_RELEASE}" "${CMAKE_CXX_FLAGS_DEBUG}" "${CMAKE_CXX_FLAGS}"
         "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS}" "${CMAKE_EXE_FLAGS}" "so"
         "${libdir}" "-lCore" "-lRint" "${incdir}" "" "" "${ROOT_ARCHITECTURE}" "")
@@ -800,8 +819,8 @@ if (XROOTD_FOUND AND XROOTD_NOMAIN)
                  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-install(FILES ${CMAKE_BINARY_DIR}/include/RConfigOptions.h
-              ${CMAKE_BINARY_DIR}/include/compiledata.h
+install(FILES ${CMAKE_BINARY_DIR}/ginclude/RConfigOptions.h
+              ${CMAKE_BINARY_DIR}/ginclude/compiledata.h
               DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 install(FILES ${CMAKE_BINARY_DIR}/etc/root.mimes
