@@ -16,21 +16,23 @@
 #ifndef ROO_VECTOR_DATA_STORE
 #define ROO_VECTOR_DATA_STORE
 
-#include <list>
-#include <vector>
-#include <algorithm>
 #include "RooAbsDataStore.h"
 #include "RooAbsCategory.h"
 #include "RooAbsReal.h"
 #include "RooChangeTracker.h"
+#include "RooRealVar.h"
 
-#define VECTOR_BUFFER_SIZE 1024
+#include <list>
+#include <vector>
+#include <algorithm>
 
 class RooAbsArg ;
 class RooArgList ;
 class TTree ;
 class RooFormulaVar ;
 class RooArgSet ;
+
+#define VECTOR_BUFFER_SIZE 1024
 
 class RooVectorDataStore : public RooAbsDataStore {
 public:
@@ -70,13 +72,22 @@ public:
 
   virtual const RooArgSet* getNative(Int_t index) const;
 
-  virtual Double_t weight() const override;
+  /// Return the weight of the last-retrieved data point.
+  Double_t weight() const override
+  {
+    if (_extWgtArray)
+      return _extWgtArray[_currentWeightIndex];
+    if (_wgtVar)
+      return _wgtVar->getVal();
+
+    return 1.0;
+  }
   virtual Double_t weightError(RooAbsData::ErrorType etype=RooAbsData::Poisson) const override;
   virtual void weightError(Double_t& lo, Double_t& hi, RooAbsData::ErrorType etype=RooAbsData::Poisson) const override;
   virtual Double_t weight(Int_t index) const override;
-  virtual Bool_t isWeighted() const override { return (_wgtVar!=0||_extWgtArray!=0) ; }
+  virtual Bool_t isWeighted() const override { return _wgtVar || _extWgtArray; }
 
-  virtual std::vector<RooSpan<const double>> getBatch(std::size_t first, std::size_t last) const override;
+  RooBatchCompute::RunContext getBatches(std::size_t first, std::size_t len) const override;
   virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t len) const override;
 
   // Change observable name
@@ -285,8 +296,8 @@ public:
 
   private:
     friend class RooVectorDataStore ;
-    RooAbsReal* _nativeReal ;
-    RooAbsReal* _real ;
+    RooAbsReal* _nativeReal ; // Instance which our data belongs to. This is the variable in the dataset.
+    RooAbsReal* _real ; // Instance where we should write data into when load() is called.
     Double_t* _buf ; //!
     Double_t* _nativeBuf ; //!
     RooChangeTracker* _tracker ; //
@@ -627,17 +638,14 @@ public:
   const Double_t* _extWgtErrHiArray ;    //! External weight array - high error
   const Double_t* _extSumW2Array ;       //! External sum of weights array
 
-  mutable Double_t  _curWgt ;      // Weight of current event
-  mutable Double_t  _curWgtErrLo ; // Weight of current event
-  mutable Double_t  _curWgtErrHi ; // Weight of current event
-  mutable Double_t  _curWgtErr ;   // Weight of current event
+  mutable std::size_t _currentWeightIndex{0}; //
 
   RooVectorDataStore* _cache ; //! Optimization cache
   RooAbsArg* _cacheOwner ; //! Cache owner
 
   Bool_t _forcedUpdate ; //! Request for forced cache update 
 
-  ClassDefOverride(RooVectorDataStore,4) // STL-vector-based Data Storage class
+  ClassDefOverride(RooVectorDataStore, 5) // STL-vector-based Data Storage class
 };
 
 

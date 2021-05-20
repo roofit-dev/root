@@ -48,13 +48,12 @@ namespace ROOT {
 namespace Experimental {
 
 class RCollectionField;
-class RCollectionNTuple;
+class RCollectionNTupleWriter;
 class REntry;
 class RNTupleModel;
 
 namespace Detail {
 
-class RFieldFuse;
 class RFieldVisitor;
 class RPageStorage;
 
@@ -71,8 +70,7 @@ The field knows based on its type and the field name the type(s) and name(s) of 
 */
 // clang-format on
 class RFieldBase {
-   friend class ROOT::Experimental::Detail::RFieldFuse; // to connect the columns to a page storage
-   friend class ROOT::Experimental::RCollectionField; // to change the field names when collections are attached
+   friend class ROOT::Experimental::RCollectionField; // to move the fields from the collection model
 
 private:
    /// The field name relative to its parent field
@@ -85,6 +83,12 @@ private:
    std::size_t fNRepetitions;
    /// A field on a trivial type that maps as-is to a single column
    bool fIsSimple;
+   /// When the columns are connected to a page source or page sink, the field represents a field id in the
+   /// corresponding RNTuple descriptor. This on-disk ID is set in RPageSink::Create() for writing and by
+   /// RFieldDescriptor::CreateField() when recreating a field / model from the stored descriptor.
+   DescriptorId_t fOnDiskId = kInvalidDescriptorId;
+   /// Free text set by the user
+   std::string fDescription;
 
 protected:
    /// Collections and classes own sub fields
@@ -100,6 +104,9 @@ protected:
 
    /// Creates the backing columns corresponsing to the field type and name
    virtual void GenerateColumnsImpl() = 0;
+
+   /// Called by Clone(), which additionally copies the on-disk ID
+   virtual std::unique_ptr<RFieldBase> CloneImpl(std::string_view newName) const = 0;
 
    /// Operations on values of complex types, e.g. ones that involve multiple columns or for which no direct
    /// column type exists.
@@ -153,11 +160,11 @@ public:
    RFieldBase& operator =(RFieldBase&&) = default;
    virtual ~RFieldBase();
 
-   ///// Copies the field and its sub fields using a possibly new name and a new, unconnected set of columns
-   virtual RFieldBase *Clone(std::string_view newName) = 0;
+   /// Copies the field and its sub fields using a possibly new name and a new, unconnected set of columns
+   std::unique_ptr<RFieldBase> Clone(std::string_view newName) const;
 
    /// Factory method to resurrect a field from the stored on-disk type information
-   static RFieldBase *Create(const std::string &fieldName, const std::string &typeName);
+   static RResult<std::unique_ptr<RFieldBase>> Create(const std::string &fieldName, const std::string &typeName);
    /// Check whether a given string is a valid field name
    static RResult<void> EnsureValidFieldName(std::string_view fieldName);
 
@@ -220,9 +227,19 @@ public:
    ENTupleStructure GetStructure() const { return fStructure; }
    std::size_t GetNRepetitions() const { return fNRepetitions; }
    NTupleSize_t GetNElements() const { return fPrincipalColumn->GetNElements(); }
-   const RFieldBase *GetParent() const { return fParent; }
-   std::vector<const RFieldBase *> GetSubFields() const;
+   RFieldBase *GetParent() const { return fParent; }
+   std::vector<RFieldBase *> GetSubFields() const;
    bool IsSimple() const { return fIsSimple; }
+   /// Get the field's description
+   std::string GetDescription() const { return fDescription; }
+   void SetDescription(std::string_view description) { fDescription = std::string(description); }
+
+   DescriptorId_t GetOnDiskId() const { return fOnDiskId; }
+   void SetOnDiskId(DescriptorId_t id) { fOnDiskId = id; }
+
+   /// Fields and their columns live in the void until connected to a physical page storage.  Only once connected, data
+   /// can be read or written.  In order to find the field in the page storage, the field's on-disk ID has to be set.
+   void ConnectPageStorage(RPageStorage &pageStorage);
 
    /// Indicates an evolution of the mapping scheme from C++ type to columns
    virtual RNTupleVersion GetFieldVersion() const { return RNTupleVersion(); }
@@ -235,32 +252,17 @@ public:
    virtual void AcceptVisitor(RFieldVisitor &visitor) const;
 };
 
-// clang-format off
-/**
-\class ROOT::Experimental::RFieldFuse
-\ingroup NTuple
-\brief A friend of RFieldBase responsible for connecting a field's columns to the physical page storage
-
-Fields and their columns live in the void until connected to a physical page storage.  Only once connected, data
-can be read or written.
-*/
-// clang-format on
-class RFieldFuse {
-public:
-   static void Connect(DescriptorId_t fieldId, RPageStorage &pageStorage, RFieldBase &field);
-   /// Connect the field columns and all sub field columns
-   static void ConnectRecursively(DescriptorId_t fieldId, RPageSource &pageSource, RFieldBase &field);
-};
-
 } // namespace Detail
 
 
 
 /// The container field for an ntuple model, which itself has no physical representation
 class RFieldZero : public Detail::RFieldBase {
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const;
+
 public:
    RFieldZero() : Detail::RFieldBase("", "", ENTupleStructure::kRecord, false /* isSimple */) { }
-   RFieldBase* Clone(std::string_view newName);
 
    void GenerateColumnsImpl() final {}
    using Detail::RFieldBase::GenerateValue;
@@ -269,7 +271,7 @@ public:
    size_t GetValueSize() const final { return 0; }
 
    /// Generates managed values for the top-level sub fields
-   REntry* GenerateEntry();
+   std::unique_ptr<REntry> GenerateEntry() const;
    void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
@@ -280,6 +282,7 @@ private:
    std::size_t fMaxAlignment = 1;
 
 protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final;
    void AppendImpl(const Detail::RFieldValue& value) final;
    void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
    void ReadInClusterImpl(const RClusterIndex &clusterIndex, Detail::RFieldValue *value) final;
@@ -289,7 +292,6 @@ public:
    RClassField(RClassField&& other) = default;
    RClassField& operator =(RClassField&& other) = default;
    ~RClassField() = default;
-   RFieldBase* Clone(std::string_view newName) final;
 
    void GenerateColumnsImpl() final;
    using Detail::RFieldBase::GenerateValue;
@@ -302,6 +304,38 @@ public:
    void AcceptVisitor(Detail::RFieldVisitor &visitor) const override;
 };
 
+/// The field for an untyped record. The subfields are stored consequitively in a memory block, i.e.
+/// the memory layout is identical to one that a C++ struct would have
+class RRecordField : public Detail::RFieldBase {
+private:
+   std::size_t fMaxAlignment = 1;
+   std::size_t fSize = 0;
+
+   std::size_t GetItemPadding(std::size_t baseOffset, std::size_t itemAlignment) const;
+
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final;
+   void AppendImpl(const Detail::RFieldValue& value) final;
+   void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
+   void ReadInClusterImpl(const RClusterIndex &clusterIndex, Detail::RFieldValue *value) final;
+
+public:
+   RRecordField(std::string_view fieldName, std::vector<std::unique_ptr<Detail::RFieldBase>> &itemFields);
+   RRecordField(RRecordField&& other) = default;
+   RRecordField& operator =(RRecordField&& other) = default;
+   ~RRecordField() = default;
+
+   void GenerateColumnsImpl() final {}
+   using Detail::RFieldBase::GenerateValue;
+   Detail::RFieldValue GenerateValue(void* where) final;
+   void DestroyValue(const Detail::RFieldValue& value, bool dtorOnly = false) final;
+   Detail::RFieldValue CaptureValue(void *where) final;
+   std::vector<Detail::RFieldValue> SplitValue(const Detail::RFieldValue &value) const final;
+   size_t GetValueSize() const final { return fSize; }
+   size_t GetAlignment() const final { return fMaxAlignment; }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
+};
+
 /// The generic field for a (nested) std::vector<Type> except for std::vector<bool>
 class RVectorField : public Detail::RFieldBase {
 private:
@@ -309,6 +343,7 @@ private:
    ClusterSize_t fNWritten;
 
 protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final;
    void AppendImpl(const Detail::RFieldValue& value) final;
    void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
 
@@ -317,7 +352,6 @@ public:
    RVectorField(RVectorField&& other) = default;
    RVectorField& operator =(RVectorField&& other) = default;
    ~RVectorField() = default;
-   RFieldBase* Clone(std::string_view newName) final;
 
    void GenerateColumnsImpl() final;
    using Detail::RFieldBase::GenerateValue;
@@ -345,6 +379,7 @@ private:
    std::size_t fArrayLength;
 
 protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final;
    void AppendImpl(const Detail::RFieldValue& value) final;
    void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
    void ReadInClusterImpl(const RClusterIndex &clusterIndex, Detail::RFieldValue *value) final;
@@ -354,7 +389,6 @@ public:
    RArrayField(RArrayField &&other) = default;
    RArrayField& operator =(RArrayField &&other) = default;
    ~RArrayField() = default;
-   RFieldBase *Clone(std::string_view newName) final;
 
    void GenerateColumnsImpl() final;
    using Detail::RFieldBase::GenerateValue;
@@ -384,6 +418,7 @@ private:
    void SetTag(void *variantPtr, std::uint32_t tag) const;
 
 protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final;
    void AppendImpl(const Detail::RFieldValue& value) final;
    void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
 
@@ -393,7 +428,6 @@ public:
    RVariantField(RVariantField &&other) = default;
    RVariantField& operator =(RVariantField &&other) = default;
    ~RVariantField() = default;
-   RFieldBase *Clone(std::string_view newName) final;
 
    void GenerateColumnsImpl() final;
    using Detail::RFieldBase::GenerateValue;
@@ -429,19 +463,21 @@ public:
 };
 
 
+/// The collection field is only used for writing; when reading, untyped collections are projected to an std::vector
 class RCollectionField : public ROOT::Experimental::Detail::RFieldBase {
 private:
    /// Save the link to the collection ntuple in order to reset the offset counter when committing the cluster
-   std::shared_ptr<RCollectionNTuple> fCollectionNTuple;
+   std::shared_ptr<RCollectionNTupleWriter> fCollectionNTuple;
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final;
 public:
-   static std::string TypeName() { return ":RCollectionField:"; }
+   static std::string TypeName() { return ""; }
    RCollectionField(std::string_view name,
-                    std::shared_ptr<RCollectionNTuple> collectionNTuple,
+                    std::shared_ptr<RCollectionNTupleWriter> collectionNTuple,
                     std::unique_ptr<RNTupleModel> collectionModel);
    RCollectionField(RCollectionField&& other) = default;
    RCollectionField& operator =(RCollectionField&& other) = default;
    ~RCollectionField() = default;
-   RFieldBase* Clone(std::string_view newName) final;
 
    void GenerateColumnsImpl() final;
 
@@ -465,6 +501,11 @@ public:
 
 template <>
 class RField<ClusterSize_t> : public Detail::RFieldBase {
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField>(newName);
+   }
+
 public:
    static std::string TypeName() { return "ROOT::Experimental::ClusterSize_t"; }
    explicit RField(std::string_view name)
@@ -472,7 +513,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
    void GenerateColumnsImpl() final;
 
@@ -511,6 +551,11 @@ public:
 
 template <>
 class RField<bool> : public Detail::RFieldBase {
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField>(newName);
+   }
+
 public:
    static std::string TypeName() { return "bool"; }
    explicit RField(std::string_view name)
@@ -518,7 +563,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase *Clone(std::string_view newName) final { return new RField(newName); }
 
    void GenerateColumnsImpl() final;
 
@@ -548,6 +592,11 @@ public:
 
 template <>
 class RField<float> : public Detail::RFieldBase {
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField>(newName);
+   }
+
 public:
    static std::string TypeName() { return "float"; }
    explicit RField(std::string_view name)
@@ -555,7 +604,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
    void GenerateColumnsImpl() final;
 
@@ -586,6 +634,11 @@ public:
 
 template <>
 class RField<double> : public Detail::RFieldBase {
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField>(newName);
+   }
+
 public:
    static std::string TypeName() { return "double"; }
    explicit RField(std::string_view name)
@@ -593,7 +646,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
    void GenerateColumnsImpl() final;
 
@@ -623,6 +675,11 @@ public:
 
 template <>
 class RField<std::uint8_t> : public Detail::RFieldBase {
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField>(newName);
+   }
+
 public:
    static std::string TypeName() { return "std::uint8_t"; }
    explicit RField(std::string_view name)
@@ -630,7 +687,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
    void GenerateColumnsImpl() final;
 
@@ -660,6 +716,11 @@ public:
 
 template <>
 class RField<std::int32_t> : public Detail::RFieldBase {
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField>(newName);
+   }
+
 public:
    static std::string TypeName() { return "std::int32_t"; }
    explicit RField(std::string_view name)
@@ -667,7 +728,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
    void GenerateColumnsImpl() final;
 
@@ -697,6 +757,11 @@ public:
 
 template <>
 class RField<std::uint32_t> : public Detail::RFieldBase {
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField>(newName);
+   }
+
 public:
    static std::string TypeName() { return "std::uint32_t"; }
    explicit RField(std::string_view name)
@@ -704,7 +769,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
    void GenerateColumnsImpl() final;
 
@@ -734,6 +798,11 @@ public:
 
 template <>
 class RField<std::uint64_t> : public Detail::RFieldBase {
+protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField>(newName);
+   }
+
 public:
    static std::string TypeName() { return "std::uint64_t"; }
    explicit RField(std::string_view name)
@@ -741,7 +810,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
    void GenerateColumnsImpl() final;
 
@@ -776,6 +844,9 @@ private:
    ClusterSize_t fIndex;
    Detail::RColumnElement<ClusterSize_t, EColumnType::kIndex> fElemIndex;
 
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField>(newName);
+   }
    void AppendImpl(const ROOT::Experimental::Detail::RFieldValue& value) final;
    void ReadGlobalImpl(ROOT::Experimental::NTupleSize_t globalIndex,
                        ROOT::Experimental::Detail::RFieldValue *value) final;
@@ -788,7 +859,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
    void GenerateColumnsImpl() final;
 
@@ -920,6 +990,9 @@ private:
    ClusterSize_t fNWritten{0};
 
 protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField>(newName);
+   }
    void AppendImpl(const Detail::RFieldValue& value) final;
    void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
    void GenerateColumnsImpl() final;
@@ -930,7 +1003,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
    using Detail::RFieldBase::GenerateValue;
    template <typename... ArgsT>
@@ -954,7 +1026,8 @@ public:
    void GetCollectionInfo(NTupleSize_t globalIndex, RClusterIndex *collectionStart, ClusterSize_t *size) const {
       fPrincipalColumn->GetCollectionInfo(globalIndex, collectionStart, size);
    }
-   void GetCollectionInfo(const RClusterIndex &clusterIndex, RClusterIndex *collectionStart, ClusterSize_t *size) const {
+   void GetCollectionInfo(const RClusterIndex &clusterIndex, RClusterIndex *collectionStart, ClusterSize_t *size) const
+   {
       fPrincipalColumn->GetCollectionInfo(clusterIndex, collectionStart, size);
    }
 };
@@ -972,6 +1045,10 @@ private:
    ClusterSize_t fNWritten;
 
 protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      auto newItemField = fSubFields[0]->Clone(fSubFields[0]->GetName());
+      return std::make_unique<RField<ROOT::VecOps::RVec<ItemT>>>(newName, std::move(newItemField));
+   }
    void AppendImpl(const Detail::RFieldValue& value) final {
       auto typedValue = value.Get<ContainerT>();
       auto count = typedValue->size();
@@ -1010,10 +1087,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final {
-      auto newItemField = fSubFields[0]->Clone(fSubFields[0]->GetName());
-      return new RField<ROOT::VecOps::RVec<ItemT>>(newName, std::unique_ptr<Detail::RFieldBase>(newItemField));
-   }
 
    void GenerateColumnsImpl() final {
       RColumnModel modelIndex(EColumnType::kIndex, true /* isSorted*/);
@@ -1062,6 +1135,9 @@ private:
    ClusterSize_t fNWritten{0};
 
 protected:
+   std::unique_ptr<Detail::RFieldBase> CloneImpl(std::string_view newName) const final {
+      return std::make_unique<RField<ROOT::VecOps::RVec<bool>>>(newName);
+   }
    void AppendImpl(const Detail::RFieldValue& value) final {
       auto typedValue = value.Get<ContainerT>();
       auto count = typedValue->size();
@@ -1097,9 +1173,6 @@ public:
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
-   RFieldBase* Clone(std::string_view newName) final {
-      return new RField<ROOT::VecOps::RVec<bool>>(newName);
-   }
 
    void GenerateColumnsImpl() final {
       RColumnModel modelIndex(EColumnType::kIndex, true /* isSorted*/);

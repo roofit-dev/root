@@ -59,7 +59,7 @@ _jsCode = """
 if (typeof require !== 'undefined') {{
 
     // We are in jupyter notebooks, use require.js which should be configured already
-    require(['scripts/JSRootCore'],
+    require(['scripts/JSRoot.core'],
         function(Core) {{
            display_{jsDivId}(Core);
         }}
@@ -81,9 +81,9 @@ if (typeof require !== 'undefined') {{
     }}
 
     // Try loading a local version of requirejs and fallback to cdn if not possible.
-    script_load(base_url + 'static/scripts/JSRootCore.js', script_success, function(){{
+    script_load(base_url + 'static/scripts/JSRoot.core.js', script_success, function(){{
         console.error('Fail to load JSROOT locally, please check your jupyter_notebook_config.py file')
-        script_load('https://root.cern/js/5.8.1/scripts/JSRootCore.min.js', script_success, function(){{
+        script_load('https://root.cern/js/5.9.0/scripts/JSRootCore.min.js', script_success, function(){{
             document.getElementById("{jsDivId}").innerHTML = "Failed to load JSROOT";
         }});
     }});
@@ -102,8 +102,8 @@ function script_success() {{
 }}
 
 function display_{jsDivId}(Core) {{
-   var obj = Core.JSONR_unref({jsonContent});
-   Core.key_handling = false;
+   var obj = Core.parse({jsonContent});
+   Core.settings.HandleKeys = false;
    Core.draw("{jsDivId}", obj, "{jsDrawOptions}");
 }}
 </script>

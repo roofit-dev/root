@@ -14,7 +14,8 @@
 #include <ROOT/REveProjectionManager.hxx>
 
 #include "TClass.h"
-#include "json.hpp"
+
+#include <nlohmann/json.hpp>
 
 using namespace ROOT::Experimental;
 

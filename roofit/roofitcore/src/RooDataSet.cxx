@@ -67,6 +67,10 @@ being read stays in RAM.
 
 For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 
+
+### Creating a dataset using RDataFrame
+\see RooAbsDataHelper, rf408_RDataFrameToRooFit.C
+
 **/
 
 #include "RooDataSet.h"
@@ -90,6 +94,7 @@ For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 #include "RooTrace.h"
 #include "RooHelpers.h"
 
+#include "Math/Util.h"
 #include "TTree.h"
 #include "TH2.h"
 #include "TFile.h"
@@ -101,10 +106,6 @@ For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 #include <iostream>
 #include <fstream>
 
-
-#if (__GNUC__==3&&__GNUC_MINOR__==2&&__GNUC_PATCHLEVEL__==3)
-char* operator+( streampos&, char* );
-#endif
 
 using namespace std;
 
@@ -915,11 +916,13 @@ void RooDataSet::initialize(const char* wgtVarName)
   if (wgtVarName) {
     RooAbsArg* wgt = _varsNoWgt.find(wgtVarName) ;
     if (!wgt) {
-      coutW(DataHandling) << "RooDataSet::RooDataSet(" << GetName() << ") WARNING: designated weight variable " 
+      coutE(DataHandling) << "RooDataSet::RooDataSet(" << GetName() << "): designated weight variable "
 			  << wgtVarName << " not found in set of variables, no weighting will be assigned" << endl ;
+      throw std::invalid_argument("RooDataSet::initialize() weight variable could not be initialised.");
     } else if (!dynamic_cast<RooRealVar*>(wgt)) {
-      coutW(DataHandling) << "RooDataSet::RooDataSet(" << GetName() << ") WARNING: designated weight variable " 
+      coutE(DataHandling) << "RooDataSet::RooDataSet(" << GetName() << "): designated weight variable "
 			  << wgtVarName << " is not of type RooRealVar, no weighting will be assigned" << endl ;
+      throw std::invalid_argument("RooDataSet::initialize() weight variable could not be initialised.");
     } else {
       _varsNoWgt.remove(*wgt) ;
       _wgtVar = (RooRealVar*) wgt ;
@@ -1007,10 +1010,25 @@ Double_t RooDataSet::weightSquared() const
 }
 
 
-
-// See base class.
+////////////////////////////////////////////////////////////////////////////////
+/// \see RooAbsData::getWeightBatch().
 RooSpan<const double> RooDataSet::getWeightBatch(std::size_t first, std::size_t len) const {
   return _dstore->getWeightBatch(first, len);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Write information to retrieve data columns into `evalData.spans`.
+/// All spans belonging to variables of this dataset are overwritten. Spans to other
+/// variables remain intact.
+/// \param[out] evalData Store references to all data batches in this struct's `spans`.
+/// The key to retrieve an item is the pointer of the variable that owns the data.
+/// \param first Index of first event that ends up in the batch.
+/// \param len   Number of events in each batch.
+void RooDataSet::getBatches(RooBatchCompute::RunContext& evalData, std::size_t begin, std::size_t len) const {
+  for (auto&& batch : store()->getBatches(begin, len).spans) {
+    evalData.spans[batch.first] = std::move(batch.second);
+  }
 }
 
 
@@ -1047,26 +1065,6 @@ const RooArgSet* RooDataSet::get(Int_t index) const
 Double_t RooDataSet::sumEntries() const 
 {
   return store()->sumEntries() ;
-  
-  //---------
-
-  // Shortcut for unweighted unselected datasets
-  if (!isWeighted()) {
-    return numEntries() ;
-  }
-
-  // Otherwise sum the weights in the event
-  Double_t sumw(0), carry(0);
-  Int_t i ;
-  for (i=0 ; i<numEntries() ; i++) {
-    get(i) ;
-    Double_t y = weight() - carry;
-    Double_t t = sumw + y;
-    carry = (t - sumw) - y;
-    sumw = t;
-  }  
-
-  return sumw ;  
 }
 
 
@@ -1077,9 +1075,9 @@ Double_t RooDataSet::sumEntries() const
 Double_t RooDataSet::sumEntries(const char* cutSpec, const char* cutRange) const 
 {
   // Setup RooFormulaVar for cutSpec if it is present
-  RooFormula* select = 0 ;
+  std::unique_ptr<RooFormula> select = nullptr ;
   if (cutSpec && strlen(cutSpec) > 0) {
-    select = new RooFormula("select",cutSpec,*get()) ;
+    select = std::make_unique<RooFormula>("select",cutSpec,*get()) ;
   }
   
   // Shortcut for unweighted unselected datasets
@@ -1088,21 +1086,15 @@ Double_t RooDataSet::sumEntries(const char* cutSpec, const char* cutRange) const
   }
 
   // Otherwise sum the weights in the event
-  Double_t sumw(0), carry(0);
-  Int_t i ;
-  for (i=0 ; i<numEntries() ; i++) {
+  ROOT::Math::KahanSum<double> sumw{0.0};
+  for (int i = 0 ; i<numEntries() ; i++) {
     get(i) ;
     if (select && select->eval()==0.) continue ;
     if (cutRange && !_vars.allInRange(cutRange)) continue ;
-    Double_t y = weight() - carry;
-    Double_t t = sumw + y;
-    carry = (t - sumw) - y;
-    sumw = t;
+    sumw += weight();
   }
 
-  if (select) delete select ;
-
-  return sumw ;  
+  return sumw.Sum() ;
 }
 
 
