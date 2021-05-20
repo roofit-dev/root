@@ -113,6 +113,9 @@ public:
    /// Constructor from a `Normal` coordinate.
    RPadLength(Normal normal): RPadLength() { SetNormal(normal.fVal); }
 
+   /// By default all numeric values are normal values
+   RPadLength(double normal): RPadLength() { SetNormal(normal); }
+
    /// Constructor from a `Pixel` coordinate.
    RPadLength(Pixel px): RPadLength() { SetPixel(px.fVal); }
 
@@ -125,6 +128,9 @@ public:
    /// Constructor for normal, pixel and user coordinate.
    RPadLength(Normal normal, Pixel px, User user): RPadLength() { SetUser(user.fVal); SetPixel(px.fVal); SetNormal(normal.fVal);  }
 
+   /// Constructor from string representation
+   RPadLength(const std::string &csscode) : RPadLength() { if (!csscode.empty()) ParseString(csscode); }
+
    bool HasNormal() const { return fArr.size() > 0; }
    bool HasPixel() const { return fArr.size() > 1; }
    bool HasUser() const { return fArr.size() > 2; }
@@ -136,6 +142,7 @@ public:
       fArr[0] = v;
       return *this;
    }
+
    RPadLength &SetPixel(double v)
    {
       if (fArr.size() < 2)
@@ -143,6 +150,7 @@ public:
       fArr[1] = v;
       return *this;
    }
+
    RPadLength &SetUser(double v)
    {
       if (fArr.size() < 3)
@@ -155,9 +163,21 @@ public:
    double GetPixel() const { return fArr.size() > 1 ? fArr[1] : 0.; }
    double GetUser() const { return fArr.size() > 2 ? fArr[2] : 0.; }
 
-   void ClearUser() { if (fArr.size()>2) fArr.resize(2); }
+   void ClearUser()
+   {
+      if (fArr.size() > 2)
+         fArr.resize(2);
+   }
+
+   void ClearPixelAndUser()
+   {
+      if (fArr.size() > 1)
+         fArr.resize(1);
+   }
 
    void Clear() { fArr.clear(); }
+
+   bool Empty() const { return fArr.size() == 0; }
 
    /// Add two `RPadLength`s.
    friend RPadLength operator+(RPadLength lhs, const RPadLength &rhs)
@@ -219,6 +239,7 @@ public:
       return *this;
    };
 
+   /// Multiply a `RPadLength`.
    RPadLength &operator*=(double scale)
    {
       if (HasUser()) SetUser(scale*GetUser());
@@ -226,6 +247,10 @@ public:
       if (HasNormal()) SetNormal(scale*GetNormal());
       return *this;
    }
+
+   std::string AsString() const;
+
+   bool ParseString(const std::string &val);
 
 };
 

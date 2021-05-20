@@ -13,6 +13,7 @@
 #include "Riostream.h"
 #include "Strlen.h"
 #include "TDirectory.h"
+#include "TBuffer.h"
 #include "TClassTable.h"
 #include "TInterpreter.h"
 #include "THashList.h"
@@ -1060,8 +1061,7 @@ TDirectory *TDirectory::mkdir(const char *name, const char *title, Bool_t return
       delete[] workname;
       if (!tmpdir) return nullptr;
       if (!newdir) newdir = tmpdir;
-      tmpdir->mkdir(slash+1);
-      return newdir;
+      return tmpdir->mkdir(slash+1);
    }
 
    TDirectory::TContext ctxt(this);

@@ -1864,7 +1864,7 @@
       if (this.receiver && (typeof this.receiver[method] == 'function'))
          this.receiver[method](this, arg, arg2);
 
-      if (brdcst & this.channels) {
+      if (brdcst && this.channels) {
          var ks = Object.keys(this.channels);
          for (var n=0;n<ks.length;++n)
             this.channels[ks[n]].InvokeReceiver(false, method, arg, arg2);
@@ -1886,8 +1886,13 @@
             return channel.ProvideData(1, _msg, _len);
       }
 
-      if (!this.msgqueue || !this.msgqueue.length)
+      var force_queue = _len && (_len < 0);
+
+      if (!force_queue && (!this.msgqueue || !this.msgqueue.length))
          return this.InvokeReceiver(false, "OnWebsocketMsg", _msg, _len);
+
+      if (!this.msgqueue) this.msgqueue = [];
+      if (force_queue) _len = undefined;
 
       this.msgqueue.push({ ready: true, msg: _msg, len: _len});
    }
@@ -1907,7 +1912,12 @@
       item.ready = true;
       item.msg = _msg;
       item.len = _len;
-      if (this._loop_msgqueue) return;
+      this.ProcessQueue();
+   }
+
+   /** Process completed messages in the queue @private */
+   WebWindowHandle.prototype.ProcessQueue = function() {
+      if (this._loop_msgqueue || !this.msgqueue) return;
       this._loop_msgqueue = true;
       while ((this.msgqueue.length > 0) && this.msgqueue[0].ready) {
          var front = this.msgqueue.shift();
@@ -1967,6 +1977,24 @@
       }
 
       return true;
+   }
+
+   /** Inject message(s) into input queue, for debug purposes only
+     * @private */
+   WebWindowHandle.prototype.Inject = function(msg, chid, immediate) {
+      // use timeout to avoid too deep call stack
+      if (!immediate)
+         return setTimeout(this.Inject.bind(this, msg, chid, true), 0);
+
+      if (chid === undefined) chid = 1;
+
+      if (Array.isArray(msg)) {
+         for (var k=0;k<msg.length;++k)
+            this.ProvideData(chid, (typeof msg[k] == "string") ? msg[k] : JSON.stringify(msg[k]), -1);
+         this.ProcessQueue();
+      } else if (msg) {
+         this.ProvideData(chid, typeof msg == "string" ? msg : JSON.stringify(msg));
+      }
    }
 
    /** Send keepalive message.
@@ -2699,8 +2727,20 @@
 
    TObjectPainter.prototype = Object.create(TBasePainter.prototype);
 
+   /** @summary Assign object to the painter */
+
    TObjectPainter.prototype.AssignObject = function(obj) {
-      this.draw_object = ((obj!==undefined) && (typeof obj == 'object')) ? obj : null;
+      this.draw_object = ((obj !== undefined) && (typeof obj == 'object')) ? obj : null;
+   }
+
+   /** @summary Assign snapid to the painter
+   *
+   * @desc Identifier used to communicate with server side and identifies object on the server
+   * @private
+   */
+
+   TObjectPainter.prototype.AssignSnapId = function(id) {
+      this.snapid = id;
    }
 
    /** @summary Generic method to cleanup painter.
@@ -3569,8 +3609,12 @@
       if (svg_p.empty()) return true;
 
       var pp = svg_p.property('pad_painter');
-      if (pp && (pp !== this))
+      if (pp && (pp !== this)) {
          pp.painters.push(this);
+         // workround to provide style for next object draing
+         if (!this.rstyle && pp.next_rstyle)
+            this.rstyle = pp.next_rstyle;
+      }
 
       if (((is_main === 1) || (is_main === 4) || (is_main === 5)) && !svg_p.property('mainpainter'))
          // when this is first main painter in the pad
@@ -4142,12 +4186,9 @@
    TObjectPainter.prototype.WebCanvasExec = function(exec, snapid) {
       if (!exec || (typeof exec != 'string')) return;
 
-      if (!snapid) snapid = this.snapid;
-      if (!snapid || (typeof snapid != 'string')) return;
-
       var canp = this.canv_painter();
-      if (canp && !canp._readonly && canp._websocket)
-         canp.SendWebsocket("OBJEXEC:" + snapid + ":" + exec);
+      if (canp && (typeof canp.SubmitExec == "function"))
+         canp.SubmitExec(this, exec, snapid);
    }
 
    /** @summary Fill object menu in web canvas
@@ -4156,7 +4197,7 @@
 
       var canvp = this.canv_painter();
 
-      if (!this.snapid || !canvp || canvp._readonly || !canvp._websocket || canvp._getmenu_callback)
+      if (!this.snapid || !canvp || canvp._readonly || !canvp._websocket)
          return JSROOT.CallBack(call_back);
 
       function DoExecMenu(arg) {
@@ -4185,8 +4226,8 @@
       function DoFillMenu(_menu, _reqid, _call_back, reply) {
 
          // avoid multiple call of the callback after timeout
-         if (!canvp._getmenu_callback) return;
-         delete canvp._getmenu_callback;
+         if (this._got_menu) return;
+         this._got_menu = true;
 
          if (reply && (_reqid !== reply.fId))
             console.error('missmatch between request ' + _reqid + ' and reply ' + reply.fId + ' identifiers');
@@ -4194,7 +4235,8 @@
          var items = reply ? reply.fItems : null;
 
          if (items && items.length) {
-            _menu.add("separator");
+            if (_menu.size() > 0)
+              _menu.add("separator");
 
             this.args_menu_items = items;
             this.args_menu_id = reply.fId;
@@ -4228,15 +4270,18 @@
       var reqid = this.snapid;
       if (kind) reqid += "#" + kind; // use # to separate object id from member specifier like 'x' or 'z'
 
+      var menu_callback = DoFillMenu.bind(this, menu, reqid, call_back);
+
+      this._got_menu = false;
+
       // if menu painter differs from this, remember it for further usage
       if (menu.painter)
          menu.painter.exec_painter = (menu.painter !== this) ? this : undefined;
 
-      canvp._getmenu_callback = DoFillMenu.bind(this, menu, reqid, call_back);
+      canvp.SubmitMenuRequest(this, kind, reqid, menu_callback);
 
-      canvp.SendWebsocket('GETMENU:' + reqid); // request menu items for given painter
-
-      setTimeout(canvp._getmenu_callback, 2000); // set timeout to avoid menu hanging
+      // set timeout to avoid menu hanging
+      setTimeout(menu_callback, 2000);
    }
 
    /** @summary remove all created draw attributes
@@ -4482,13 +4527,13 @@
     * @desc used to find title drawing
     * @private */
    TObjectPainter.prototype.FindInPrimitives = function(objname) {
-
       var painter = this.pad_painter();
-      if (!painter || !painter.pad) return null;
 
-      if (painter.pad.fPrimitives)
-         for (var n=0;n<painter.pad.fPrimitives.arr.length;++n) {
-            var prim = painter.pad.fPrimitives.arr[n];
+      var arr = painter && painter.pad && painter.pad.fPrimitives ? painter.pad.fPrimitives.arr : null;
+
+      if (arr && arr.length)
+         for (var n=0;n<arr.length;++n) {
+            var prim = arr[n];
             if (('fName' in prim) && (prim.fName === objname)) return prim;
          }
 

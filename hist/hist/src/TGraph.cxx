@@ -13,13 +13,13 @@
 
 #include "Riostream.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TEnv.h"
 #include "TGraph.h"
 #include "TH1.h"
 #include "TF1.h"
 #include "TStyle.h"
 #include "TMath.h"
-#include "TVector.h"
 #include "TVectorD.h"
 #include "Foption.h"
 #include "TRandom.h"
@@ -28,7 +28,6 @@
 #include "TVirtualPad.h"
 #include "TVirtualGraphPainter.h"
 #include "TBrowser.h"
-#include "TClass.h"
 #include "TSystem.h"
 #include "TPluginManager.h"
 #include <stdlib.h>
@@ -1081,7 +1080,7 @@ TFitResultPtr TGraph::Fit(const char *fname, Option_t *option, Option_t *, Axis_
 ///
 /// option | description
 /// -------|------------
-/// "W" | Set all weights to 1; ignore error bars
+/// "W" | Ignore all point errors when fitting a TGraphErrors or TGraphAsymmErrors
 /// "U" | Use a User specified fitting algorithm (via SetFCN)
 /// "Q" | Quiet mode (minimum printing)
 /// "V" | Verbose mode (default is between Q and V)
@@ -1094,7 +1093,7 @@ TFitResultPtr TGraph::Fit(const char *fname, Option_t *option, Option_t *, Axis_
 /// "+" | Add this new fitted function to the list of fitted functions (by default, any previous function is deleted)
 /// "C" | In case of linear fitting, do not calculate the chisquare (saves time)
 /// "F" | If fitting a polN, use the minuit fitter
-/// "EX0" | When fitting a TGraphErrors or TGraphAsymErrors do not consider errors in the coordinate
+/// "EX0" | When fitting a TGraphErrors or TGraphAsymErrors do not consider errors in the X coordinates
 /// "ROB" | In case of linear fitting, compute the LTS regression coefficients (robust (resistant) regression), using the default fraction of good points "ROB=0.x" - compute the LTS regression coefficients, using 0.x as a fraction of good points
 /// "S" |  The result of the fit is returned in the TFitResultPtr (see below Access to the Fit Result)
 ///
@@ -1799,9 +1798,14 @@ void TGraph::InsertPointBefore(Int_t ipoint, Double_t x, Double_t y)
       return;
    }
 
-   if (ipoint > fNpoints-1) {
-      Error("TGraph", "Inserted point index should be <= %d", fNpoints-1);
+   if (ipoint > fNpoints) {
+      Error("TGraph", "Inserted point index should be <= %d", fNpoints);
       return;
+   }
+
+   if (ipoint == fNpoints) {
+       SetPoint(ipoint, x, y);
+       return;
    }
 
    Double_t **ps = ExpandAndCopy(fNpoints + 1, ipoint);

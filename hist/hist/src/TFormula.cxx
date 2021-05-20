@@ -10,7 +10,7 @@
  *************************************************************************/
 
 #include "TROOT.h"
-#include "TClass.h"
+#include "TBuffer.h"
 #include "TMethod.h"
 #include "TMath.h"
 #include "TF1.h"
@@ -26,6 +26,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <functional>
+#include <set>
 
 using namespace std;
 

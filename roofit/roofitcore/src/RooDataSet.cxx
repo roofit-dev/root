@@ -66,7 +66,6 @@ For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 #include "RooTreeDataStore.h"
 #include "RooVectorDataStore.h"
 #include "RooCompositeDataStore.h"
-#include "RooTreeData.h"
 #include "RooSentinel.h"
 #include "RooTrace.h"
 #include "RooHelpers.h"
@@ -76,6 +75,7 @@ For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 #include "TDirectory.h"
 #include "TROOT.h"
 #include "TFile.h"
+#include "TBuffer.h"
 #include "ROOT/RMakeUnique.hxx"
 
 #include <fstream>
@@ -306,7 +306,7 @@ RooDataSet::RooDataSet(const char* name, const char* title, const RooArgSet& var
         icat->defineType(hiter->first.c_str()) ;
       }
       icat->setLabel(hiter->first.c_str()) ;
-      storeMap[icat->getLabel()]=hiter->second->store() ;
+      storeMap[icat->getCurrentLabel()]=hiter->second->store() ;
 
       // Take ownership of slice if requested
       if (ownLinked) {
@@ -718,12 +718,12 @@ RooDataSet::RooDataSet(const char *name, const char *title, RooDataSet *dset,
 /// operating exclusively and directly on the data set dimensions, the equivalent
 /// constructor with a string based cut expression is recommended.
 
-RooDataSet::RooDataSet(const char *name, const char *title, TTree *intree, 
-		       const RooArgSet& vars, const RooFormulaVar& cutVar, const char* wgtVarName) :
+RooDataSet::RooDataSet(const char *name, const char *title, TTree *theTree,
+    const RooArgSet& vars, const RooFormulaVar& cutVar, const char* wgtVarName) :
   RooAbsData(name,title,vars)
 {
   // Create tree version of datastore 
-  RooTreeDataStore* tstore = new RooTreeDataStore(name,title,_vars,*intree,cutVar,wgtVarName) ;
+  RooTreeDataStore* tstore = new RooTreeDataStore(name,title,_vars,*theTree,cutVar,wgtVarName) ;
 
   // Convert to vector datastore if needed
   if (defaultStorageType==Tree) {
@@ -745,27 +745,33 @@ RooDataSet::RooDataSet(const char *name, const char *title, TTree *intree,
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Constructor of a data set from (part of) an ROOT TTRee. The dimensions
-/// of the data set are defined by the 'vars' RooArgSet. For each dimension
+/// Constructor of a data set from (part of) a ROOT TTree.
+///
+/// \param[in] name Name of this dataset.
+/// \param[in] title Title for e.g. plotting.
+/// \param[in] tree Tree to be imported.
+/// \param[in] vars Defines the columns of the data set. For each dimension
 /// specified, the TTree must have a branch with the same name. For category
 /// branches, this branch should contain the numeric index value. Real dimensions
 /// can be constructed from either 'Double_t' or 'Float_t' tree branches. In the
 /// latter case, an automatic conversion is applied.
-///
-/// The 'cuts' string is an optional
-/// RooFormula expression and can be used to select the subset of the data points 
-/// in 'dset' to be copied. The cut expression can refer to any variable in the
-/// vars argset. For cuts involving variables other than those contained in
-/// the vars argset, such as intermediate formula objects, use the 
-/// equivalent constructor accepting RooFormulaVar reference as cut specification
-///
-
-RooDataSet::RooDataSet(const char *name, const char *title, TTree *intree, 
-		       const RooArgSet& vars, const char *selExpr, const char* wgtVarName) :
+/// \param[in] cuts Optional RooFormula expression to select the subset of the data points
+/// to be imported. The cut expression can refer to any variable in `vars`.
+/// \warning The expression only evaluates variables that are also in `vars`.
+/// Passing e.g.
+/// ```
+/// RooDataSet("data", "data", tree, RooArgSet(x), "x>y")
+/// ```
+/// Will load `x` from the tree, but leave `y` at an undefined value.
+/// If other expressions are needed, such as intermediate formula objects, use
+/// RooDataSet::RooDataSet(const char*,const char*,TTree*,const RooArgSet&,const RooFormulaVar&,const char*)
+/// \param[in] wgtVarName Name of the variable in `vars` that represents an event weight.
+RooDataSet::RooDataSet(const char* name, const char* title, TTree* theTree,
+    const RooArgSet& vars, const char* cuts, const char* wgtVarName) :
   RooAbsData(name,title,vars)
 {
   // Create tree version of datastore 
-  RooTreeDataStore* tstore = new RooTreeDataStore(name,title,_vars,*intree,selExpr,wgtVarName) ;
+  RooTreeDataStore* tstore = new RooTreeDataStore(name,title,_vars,*theTree,cuts,wgtVarName);
 
   // Convert to vector datastore if needed
   if (defaultStorageType==Tree) {
@@ -803,7 +809,7 @@ RooDataSet::RooDataSet(RooDataSet const & other, const char* newname) :
 
 RooDataSet::RooDataSet(const char *name, const char *title, RooDataSet *dset, 
 		       const RooArgSet& vars, const RooFormulaVar* cutVar, const char* cutRange,
-		       Int_t nStart, Int_t nStop, Bool_t copyCache, const char* wgtVarName) :
+		       std::size_t nStart, std::size_t nStop, Bool_t copyCache, const char* wgtVarName) :
   RooAbsData(name,title,vars)
 {
    _dstore =
@@ -915,7 +921,7 @@ void RooDataSet::initialize(const char* wgtVarName)
 /// Implementation of RooAbsData virtual method that drives the RooAbsData::reduce() methods
 
 RooAbsData* RooDataSet::reduceEng(const RooArgSet& varSubset, const RooFormulaVar* cutVar, const char* cutRange, 
-				  Int_t nStart, Int_t nStop, Bool_t copyCache)
+				  std::size_t nStart, std::size_t nStop, Bool_t copyCache)
 {
   checkInit() ;
 
@@ -990,11 +996,9 @@ Double_t RooDataSet::weightSquared() const
 
 
 
-////////////////////////////////////////////////////////////////////////////////
-/// Return event weights of all events in range
-
-RooSpan<const double> RooDataSet::getWeightBatch(std::size_t first, std::size_t last) const {
-  return _dstore->getWeightBatch(first, last);
+// See base class.
+RooSpan<const double> RooDataSet::getWeightBatch(std::size_t first, std::size_t len) const {
+  return _dstore->getWeightBatch(first, len);
 }
 
 
@@ -1856,8 +1860,8 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
   if (indexCat) {
     // Copy dynamically defined types from new data set to indexCat in original list
     RooCategory* origIndexCat = (RooCategory*) variables.find(indexCatName) ;
-    for (const auto type : *indexCat) {
-      origIndexCat->defineType(type->GetName(), type->getVal());
+    for (const auto& type : *indexCat) {
+      origIndexCat->defineType(type.first, type.second);
     }
   }
   oocoutI(data.get(),DataHandling) << "RooDataSet::read: read " << data->numEntries()
@@ -2017,7 +2021,7 @@ void RooDataSet::Streamer(TBuffer &R__b)
        TTree* X_tree(0) ; R__b >> X_tree;
        RooArgSet X_truth ; X_truth.Streamer(R__b);
        TString X_blindString ; X_blindString.Streamer(R__b);
-       R__b.CheckByteCount(R__s1, R__c1, RooTreeData::Class());
+       R__b.CheckByteCount(R__s1, R__c1, TClass::GetClass("RooTreeData"));
        // --- End of RooTreeData-v1 streamer
        
        // Construct RooTreeDataStore from X_tree and complete initialization of new-style RooAbsData

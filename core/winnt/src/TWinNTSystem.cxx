@@ -35,9 +35,9 @@
 #include "TWin32SplashThread.h"
 #include "Win32Constants.h"
 #include "TInterpreter.h"
-#include "TObjString.h"
 #include "TVirtualX.h"
 #include "TUrl.h"
+#include "ThreadLocalStorage.h"
 
 #include <sys/utime.h>
 #include <sys/timeb.h>
@@ -1757,6 +1757,8 @@ void TWinNTSystem::DispatchSignals(ESignals sig)
          if (sig == kSigFloatingException) _fpreset();
          gExceptionHandler->HandleException(sig);
       } else {
+         if (sig == kSigAbort)
+            return;
          //map to the real signal code + set the
          //high order bit to indicate a signal (?)
          StackTrace();
@@ -3891,6 +3893,7 @@ void TWinNTSystem::Exit(int code, Bool_t mode)
 
 void TWinNTSystem::Abort(int)
 {
+   IgnoreSignal(kSigAbort);
    ::abort();
 }
 

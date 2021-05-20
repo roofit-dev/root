@@ -177,7 +177,7 @@ void RooCompositeDataStore::forceCacheUpdate()
 
 Int_t RooCompositeDataStore::fill()
 {
-  RooAbsDataStore* subset = _dataMap[_indexCat->getIndex()] ;
+  RooAbsDataStore* subset = _dataMap[_indexCat->getCurrentIndex()] ;
   const_cast<RooArgSet*>((subset->get()))->assignValueOnly(_vars) ;
   return subset->fill() ;
 }
@@ -289,9 +289,9 @@ Bool_t RooCompositeDataStore::isWeighted() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void RooCompositeDataStore::loadValues(const RooAbsDataStore*, const RooFormulaVar*, const char*, Int_t, Int_t) 
+void RooCompositeDataStore::loadValues(const RooAbsDataStore*, const RooFormulaVar*, const char*, std::size_t, std::size_t)
 {
-  throw(std::string("RooCompositeDataSore::loadValues() NOT IMPLEMENTED")) ;
+  throw(std::runtime_error("RooCompositeDataSore::loadValues() NOT IMPLEMENTED")) ;
 }
 
 

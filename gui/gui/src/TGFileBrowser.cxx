@@ -24,6 +24,8 @@
 #include "TGMimeTypes.h"
 #include "TClass.h"
 #include "TQClass.h"
+#include "TObjString.h"
+#include "TObjArray.h"
 #include "TInterpreter.h"
 #include "TRegexp.h"
 #include "TEnv.h"
@@ -45,6 +47,7 @@
 #include "TVirtualPadEditor.h"
 #include "TGedEditor.h"
 #include "TBaseClass.h"
+#include "TVirtualX.h"
 
 #include "RConfigure.h"
 

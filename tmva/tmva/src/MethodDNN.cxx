@@ -36,6 +36,7 @@ Deep Neural Network Implementation.
 #include "TTree.h"
 #include "TFile.h"
 #include "TFormula.h"
+#include "TObjString.h"
 
 #include "TMVA/ClassifierFactory.h"
 #include "TMVA/Configurable.h"
@@ -774,6 +775,7 @@ void TMVA::MethodDNN::Train()
          case EActivationFunction::kRelu:     g = EnumFunction::RELU;     break;
          case EActivationFunction::kSigmoid:  g = EnumFunction::SIGMOID;  break;
          case EActivationFunction::kTanh:     g = EnumFunction::TANH;     break;
+         case EActivationFunction::kFastTanh: g = EnumFunction::TANH;     break;
          case EActivationFunction::kSymmRelu: g = EnumFunction::SYMMRELU; break;
          case EActivationFunction::kSoftSign: g = EnumFunction::SOFTSIGN; break;
          case EActivationFunction::kGauss:    g = EnumFunction::GAUSS;    break;

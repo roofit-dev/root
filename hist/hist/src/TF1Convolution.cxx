@@ -13,6 +13,7 @@
 #include "TROOT.h"
 #include "TObject.h"
 #include "TObjString.h"
+#include "TObjArray.h"
 #include "TMath.h"
 #include "Math/Integrator.h"
 #include "Math/IntegratorMultiDim.h"
@@ -22,7 +23,6 @@
 #include "Math/AdaptiveIntegratorMultiDim.h"
 #include "Math/Functor.h"
 #include "TVirtualFFT.h"
-#include "TClass.h"
 
 /** \class TF1Convolution
     \ingroup Hist

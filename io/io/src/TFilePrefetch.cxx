@@ -11,6 +11,8 @@
 
 #include "TFilePrefetch.h"
 #include "TTimeStamp.h"
+#include "TSystem.h"
+#include "TMD5.h"
 #include "TVirtualPerfStats.h"
 #include "TVirtualMonitoring.h"
 
