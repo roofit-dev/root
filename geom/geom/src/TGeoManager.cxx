@@ -293,14 +293,15 @@ TGeoManager *gGeoManager = 0;
 ClassImp(TGeoManager);
 
 std::mutex TGeoManager::fgMutex;
-Bool_t TGeoManager::fgLock         = kFALSE;
-Bool_t TGeoManager::fgLockNavigators = kFALSE;
-Int_t  TGeoManager::fgVerboseLevel = 1;
-Int_t  TGeoManager::fgMaxLevel = 1;
-Int_t  TGeoManager::fgMaxDaughters = 1;
-Int_t  TGeoManager::fgMaxXtruVert = 1;
-Int_t  TGeoManager::fgNumThreads   = 0;
+Bool_t TGeoManager::fgLock            = kFALSE;
+Bool_t TGeoManager::fgLockNavigators  = kFALSE;
+Int_t  TGeoManager::fgVerboseLevel    = 1;
+Int_t  TGeoManager::fgMaxLevel        = 1;
+Int_t  TGeoManager::fgMaxDaughters    = 1;
+Int_t  TGeoManager::fgMaxXtruVert     = 1;
+Int_t  TGeoManager::fgNumThreads      = 0;
 UInt_t TGeoManager::fgExportPrecision = 17;
+TGeoManager::EDefaultUnits TGeoManager::fgDefaultUnits = TGeoManager::kG4Units;
 TGeoManager::ThreadsMap_t *TGeoManager::fgThreadId = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -746,6 +747,51 @@ Int_t TGeoManager::AddRegion(TGeoRegion *region)
   Int_t size = fRegions->GetEntriesFast();
   fRegions->Add(region);
   return size;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Add a user-defined property. Returns true if added, false if existing.
+
+Bool_t TGeoManager::AddProperty(const char* property, Double_t value)
+{
+   auto pos = fProperties.insert(ConstPropMap_t::value_type(property, value));
+   if (!pos.second) {
+      Warning("AddProperty", "Property \"%s\" already exists with value %g", property, (pos.first)->second);
+      return false;
+   }
+   return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get a user-defined property
+
+Double_t TGeoManager::GetProperty(const char *property, Bool_t *error) const
+{
+   auto pos = fProperties.find(property);
+   if (pos == fProperties.end()) {
+      if (error) *error = kTRUE;
+      return 0.;
+   }
+   if (error) *error = kFALSE;
+   return pos->second;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get a user-defined property from a given index
+
+Double_t TGeoManager::GetProperty(size_t i, TString &name, Bool_t *error) const
+{
+   // This is a quite inefficient way to access map elements, but needed for the GDML writer to 
+   if (i >= fProperties.size()) {
+      if (error) *error = kTRUE;
+      return 0.;
+   }
+   size_t pos = 0;
+   auto it = fProperties.begin();
+   while (pos < i) { ++it; ++pos; }
+   if (error) *error = kFALSE;
+   name = (*it).first;
+   return (*it).second;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4129,4 +4175,9 @@ void TGeoManager::SetUseParallelWorldNav(Bool_t flag)
    }
    // Closing the parallel world geometry is mandatory
    if (fParallelWorld->CloseGeometry()) fUsePWNav=kTRUE;
+}
+
+TGeoManager::EDefaultUnits TGeoManager::GetDefaultUnits()
+{
+  return fgDefaultUnits;
 }
