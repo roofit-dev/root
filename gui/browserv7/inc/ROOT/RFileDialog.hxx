@@ -17,7 +17,7 @@
 #define ROOT7_RFileDialog
 
 #include <ROOT/RWebWindow.hxx>
-#include <ROOT/RBrowsable.hxx>
+#include <ROOT/RBrowserData.hxx>
 
 #include <vector>
 #include <memory>
@@ -50,13 +50,15 @@ protected:
 
    EDialogTypes fKind{kOpenFile};      ///<! dialog kind OpenFile, SaveAs, NewFile
    std::string  fTitle;                ///<! title, when not specified default will be used
-   RBrowsable   fBrowsable;            ///<! central browsing element
+   RBrowserData   fBrowsable;            ///<! central browsing element
 
    std::shared_ptr<RWebWindow> fWebWindow;   ///<! web window for file dialog
 
-   bool fDidSelect{false};           ///<! true when dialog is selected or closed
-   std::string fSelect;              ///<! result of file selection
-   RFileDialogCallback_t fCallback;  ///<! function receiving result, called once
+   bool fDidSelect{false};                ///<! true when dialog is selected or closed
+   std::string fSelectedFilter;           ///<! name of selected filter
+   std::vector<std::string> fNameFilters; ///<! name filters
+   std::string fSelect;                   ///<! result of file selection
+   RFileDialogCallback_t fCallback;       ///<! function receiving result, called once
 
    static std::string TypeAsString(EDialogTypes kind);
 
@@ -66,6 +68,8 @@ protected:
    void ProcessMsg(unsigned connid, const std::string &arg);
 
    void InvokeCallBack();
+
+   std::string GetRegexp(const std::string &name) const;
 
    static std::string Dialog(EDialogTypes kind, const std::string &title, const std::string &fname);
 
@@ -77,6 +81,15 @@ public:
    const EDialogTypes &GetType() const { return fKind; }
 
    void SetCallback(RFileDialogCallback_t callback);
+
+   /** Set array of name filters like "Text files (*.txt)", "Any files (*)", "Image files (*png *.jpg)"
+    * Should be specified before starting dialog */
+   void SetNameFilters(const std::vector<std::string> &arr) { fNameFilters = arr; }
+   /** Returns array of name filters*/
+   const auto &GetNameFilters() const { return fNameFilters; }
+
+   void SetSelectedFilter(const std::string &name);
+   std::string GetSelectedFilter() const;
 
    void Show(const RWebDisplayArgs &args = "");
    void Hide();

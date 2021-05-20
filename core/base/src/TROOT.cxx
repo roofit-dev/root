@@ -71,7 +71,6 @@ of a main program creating an interactive version is shown below:
 #include "RConfigOptions.h"
 #include "RVersion.h"
 #include "RGitCommit.h"
-
 #include <string>
 #include <map>
 #include <stdlib.h>
@@ -628,7 +627,8 @@ namespace Internal {
 #endif
    }
 
-}
+
+} // end of ROOT namespace
 
 TROOT *ROOT::Internal::gROOTLocal = ROOT::GetROOT();
 
@@ -2142,11 +2142,6 @@ void TROOT::InitInterpreter()
    GetModuleHeaderInfoBuffer().clear();
 
    fInterpreter->Initialize();
-
-   // Read the rules before enabling the auto loading to not inadvertently
-   // load the libraries for the classes concerned even-though the user is
-   // *not* using them.
-   TClass::ReadRules(); // Read the default customization rules ...
 }
 
 ////////////////////////////////////////////////////////////////////////////////
