@@ -28,6 +28,7 @@
 #include <iostream>
 #include <string>
 #include <utility>
+#include <chrono>
 
 namespace {
 
@@ -895,7 +896,7 @@ struct RTFileControlBlock {
 } // namespace Internal
 
 
-ROOT::Experimental::Internal::RMiniFileReader::RMiniFileReader(Detail::RRawFile *rawFile)
+ROOT::Experimental::Internal::RMiniFileReader::RMiniFileReader(ROOT::Internal::RRawFile *rawFile)
    : fRawFile(rawFile)
 {
 }
