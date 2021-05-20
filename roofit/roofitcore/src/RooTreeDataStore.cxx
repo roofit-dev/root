@@ -46,16 +46,16 @@ RooAbsData::convertToVectorStore().
 
 #include "RooFit.h"
 #include "RooMsgService.h"
+#include "RooFormulaVar.h"
+#include "RooRealVar.h"
+#include "RooHistError.h"
+#include "RooHelpers.h"
 
-#include "Riostream.h"
 #include "TTree.h"
 #include "TFile.h"
 #include "TChain.h"
 #include "TDirectory.h"
 #include "TROOT.h"
-#include "RooFormulaVar.h"
-#include "RooRealVar.h"
-#include "RooHistError.h"
 
 #include <iomanip>
 using namespace std ;
@@ -561,9 +561,9 @@ void RooTreeDataStore::loadValues(const RooAbsDataStore *ads, const RooFormulaVa
 				  const char* rangeName, Int_t nStart, Int_t nStop)  
 {
   // Redirect formula servers to source data row
-  RooFormulaVar* selectClone(0) ;
+  std::unique_ptr<RooFormulaVar> selectClone;
   if (select) {
-    selectClone = (RooFormulaVar*) select->cloneTree() ;
+    selectClone.reset( static_cast<RooFormulaVar*>(select->cloneTree()) );
     selectClone->recursiveRedirectServers(*ads->get()) ;
     selectClone->setOperMode(RooAbsArg::ADirty,kTRUE) ;
   }
@@ -572,15 +572,18 @@ void RooTreeDataStore::loadValues(const RooAbsDataStore *ads, const RooFormulaVa
   ads->get(0) ;
 
   // Loop over events in source tree   
-  RooAbsArg* arg = 0;
-  TIterator* destIter = _varsww.createIterator() ;
   Int_t nevent = nStop < ads->numEntries() ? nStop : ads->numEntries() ;
-  Bool_t allValid ;
 
-  Bool_t isTDS = dynamic_cast<const RooTreeDataStore*>(ads) ;
-  if (isTDS) {
-    ((RooTreeDataStore*)(ads))->resetBuffers() ;
+  auto TDS = dynamic_cast<const RooTreeDataStore*>(ads) ;
+  if (TDS) {
+    const_cast<RooTreeDataStore*>(TDS)->resetBuffers();
   }
+
+  std::vector<std::string> ranges;
+  if (rangeName) {
+   ranges = RooHelpers::tokenise(rangeName, ",");
+  }
+
   for(Int_t i=nStart; i < nevent ; ++i) {
     ads->get(i) ;
 
@@ -590,37 +593,33 @@ void RooTreeDataStore::loadValues(const RooAbsDataStore *ads, const RooFormulaVa
     }
 
 
-    if (isTDS) {
-      _varsww.assignValueOnly(((RooTreeDataStore*)ads)->_varsww) ;
+    if (TDS) {
+      _varsww.assignValueOnly(TDS->_varsww) ;
     } else {
       _varsww.assignValueOnly(*ads->get()) ;
     }
 
-    destIter->Reset() ;
     // Check that all copied values are valid
-    allValid=kTRUE ;
-    while((arg=(RooAbsArg*)destIter->Next())) {
-      if (!arg->isValid() || (rangeName && !arg->inRange(rangeName))) {
-	//cout << "arg " << arg->GetName() << " is not valid" << endl ;
-	//arg->Print("v") ;
-	allValid=kFALSE ;
-	break ;
-      }
+    bool allValid = true;
+    for (const auto arg : _varsww) {
+      allValid = arg->isValid() && (ranges.empty() || std::any_of(ranges.begin(), ranges.end(),
+          [arg](const std::string& range){return arg->inRange(range.c_str());}) );
+      if (!allValid)
+        break ;
     }
-    //cout << "RooTreeData::loadValues(" << GetName() << ") allValid = " << (allValid?"T":"F") << endl ;
+
     if (!allValid) {
       continue ;
     }
-    
+
     _cachedVars = ((RooTreeDataStore*)ads)->_cachedVars ;
     fill() ;
-   }
-  delete destIter ;
-  if (isTDS) {
-    ((RooTreeDataStore*)(ads))->restoreAlternateBuffers() ;
   }
-  
-  delete selectClone ;
+
+  if (TDS) {
+    const_cast<RooTreeDataStore*>(TDS)->restoreAlternateBuffers();
+  }
+
   SetTitle(ads->GetTitle());
 }
 

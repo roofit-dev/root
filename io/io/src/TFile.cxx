@@ -652,6 +652,7 @@ void TFile::Init(Bool_t create)
          // humm fBEGIN is wrong ....
          Error("Init","file %s has an incorrect header length (%lld) or incorrect end of file length (%lld)",
                GetName(),fBEGIN,fEND);
+         delete [] header;
          goto zombie;
       }
       fSeekDir = fBEGIN;
@@ -673,6 +674,7 @@ void TFile::Init(Bool_t create)
          // humm fBEGIN is wrong ....
          Error("Init","file %s has an incorrect header length (%lld) or incorrect end of file length (%lld)",
               GetName(),fBEGIN+nbytes,fEND);
+         delete [] header;
          goto zombie;
       }
       if (nbytes+fBEGIN > kBEGIN+200) {
@@ -2576,7 +2578,7 @@ void TFile::MakeProject(const char *dirname, const char * /*classes*/,
       // Create a PAR file
       parname = gSystem->BaseName(dirname);
       if (parname.EndsWith(".par")) parname.ReplaceAll(".par","");
-      pardir = gSystem->DirName(dirname);
+      pardir = gSystem->GetDirName(dirname);
       // Cleanup or prepare the dirs
       TString path, filepath;
       void *dir = gSystem->OpenDirectory(pardir);
@@ -3739,7 +3741,7 @@ TFile *TFile::OpenFromCache(const char *name, Option_t *, const char *ftitle,
          TString cachefilepathbasedir;
          cachefilepath = fgCacheFileDir;
          cachefilepath += fileurl.GetFile();
-         cachefilepathbasedir = gSystem->DirName(cachefilepath);
+         cachefilepathbasedir = gSystem->GetDirName(cachefilepath);
          if ((gSystem->mkdir(cachefilepathbasedir, kTRUE) < 0) &&
                (gSystem->AccessPathName(cachefilepathbasedir, kFileExists))) {
             ::Warning("TFile::OpenFromCache","you want to read through a cache, but I "
@@ -4443,7 +4445,7 @@ void TFile::IncrementFileCounter() { fgFileCounter++; }
 Bool_t TFile::SetCacheFileDir(std::string_view cachedir, Bool_t operatedisconnected,
                               Bool_t forcecacheread )
 {
-   TString cached = cachedir;
+   TString cached{cachedir};
    if (!cached.EndsWith("/"))
       cached += "/";
 
