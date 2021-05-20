@@ -511,16 +511,16 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.14)
   # If so, it will be passed to find_package(Python) below. Otherwise,
   # check what `python` points to: Python 2 or 3:
   if(NOT PYTHON_EXECUTABLE)
-    find_program(PYTHON_BINARY_IN_PATH "python")
-    if(PYTHON_BINARY_IN_PATH)
-      execute_process(COMMAND ${PYTHON_BINARY_IN_PATH} -c "import sys;print(sys.version_info[0])"
-                      OUTPUT_VARIABLE PYTHON_PREFER_VERSION
-                      ERROR_VARIABLE PYTHON_PREFER_VERSION_ERR)
-      if(PYTHON_PREFER_VERSION_ERR)
-        message(WARNING "Unable to determine version of ${PYTHON_BINARY_IN_PATH}: ${PYTHON_PREFER_VERSION_ERR}")
-      endif()
-      string(STRIP "${PYTHON_PREFER_VERSION}" PYTHON_PREFER_VERSION)
+    find_program(PYTHON_EXECUTABLE "python")
+  endif()
+  if(PYTHON_EXECUTABLE)
+    execute_process(COMMAND ${PYTHON_EXECUTABLE} -c "import sys;print(sys.version_info[0])"
+                    OUTPUT_VARIABLE PYTHON_PREFER_VERSION
+                    ERROR_VARIABLE PYTHON_PREFER_VERSION_ERR)
+    if(PYTHON_PREFER_VERSION_ERR)
+      message(WARNING "Unable to determine version of ${PYTHON_EXECUTABLE}: ${PYTHON_PREFER_VERSION_ERR}")
     endif()
+    string(STRIP "${PYTHON_PREFER_VERSION}" PYTHON_PREFER_VERSION)
   endif()
 
   if(python)
@@ -1539,7 +1539,7 @@ if(cuda OR tmva-gpu)
     endif()
 
     enable_language(CUDA)
-    
+
     ### look for package CuDNN
     find_package(CuDNN)
 
@@ -1549,7 +1549,7 @@ if(cuda OR tmva-gpu)
       message(STATUS "CuDNN library not found")
     endif()
 
-    
+
   elseif(fail-on-missing)
     message(FATAL_ERROR "CUDA not found. Ensure that the installation of CUDA is in the CMAKE_PREFIX_PATH")
   endif()
@@ -1704,7 +1704,7 @@ if(webgui)
   ExternalProject_Add(
      OPENUI5
      URL ${CMAKE_SOURCE_DIR}/gui/webdisplay/res/openui5.tar.gz
-     URL_HASH SHA256=984d221d6a3246732ca75cc38de0d974b887f4bd6beb9346133face602398696
+     URL_HASH SHA256=b264661fb397906714b8253fc3a32ecb6ac0da575cc01ce61636354e6bfccf3c
      CONFIGURE_COMMAND ""
      BUILD_COMMAND ""
      INSTALL_COMMAND ""
