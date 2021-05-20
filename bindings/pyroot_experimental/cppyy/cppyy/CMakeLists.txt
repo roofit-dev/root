@@ -16,13 +16,18 @@ set(py_sources
   cppyy/ll.py
 )
 
-foreach(py_source ${py_sources})
-  file(COPY python/${py_source} DESTINATION ${py_localruntimedir}/cppyy)
-  install(FILES python/${py_source} DESTINATION ${CMAKE_INSTALL_LIBDIR}/cppyy)
-  install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -m py_compile ${d}/${py_source})")
-  install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -O -m py_compile ${d}/${py_source})")
+set(cppyyDirName python/cppyy)
+
+foreach(val RANGE ${how_many_pythons})
+  list(GET python_executables ${val} python_executable)
+
+  foreach(py_source ${py_sources})
+    install(CODE "execute_process(COMMAND ${python_executable} -m py_compile ${d}/${py_source})")
+    install(CODE "execute_process(COMMAND ${python_executable} -O -m py_compile ${d}/${py_source})")
+  endforeach()
 endforeach()
 
-# create egg with cppyy info
-set(cppyy_egg "${CMAKE_CURRENT_BINARY_DIR}/cppyy.egg")
-execute_process(COMMAND bash -c "touch ${cppyy_egg}; cat ${CMAKE_CURRENT_SOURCE_DIR}/python/cppyy/_version.py > ${cppyy_egg}")
+file(COPY ${cppyyDirName} DESTINATION ${localruntimedir})
+foreach(py_source ${py_sources})
+  install(FILES python/${py_source} DESTINATION ${runtimedir}/cppyy)
+endforeach()
