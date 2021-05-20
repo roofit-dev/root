@@ -8,11 +8,18 @@
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
+
+
 #include "TClass.h"
-#include <ROOT/REveTableInfo.hxx>
-#include <ROOT/REveManager.hxx>
+#include "TBaseClass.h"
 #include "TROOT.h"
 #include "TInterpreter.h"
+#include "TMethod.h"
+#include "TMethodArg.h"
+
+#include <ROOT/REveTableInfo.hxx>
+#include <ROOT/REveDataClasses.hxx>
+#include <ROOT/REveManager.hxx>
 
 #include "json.hpp"
 
@@ -69,6 +76,78 @@ void REveTableViewInfo::AddNewColumnToCurrentCollection(const std::string& expr,
    fConfigChanged = false;
 
    StampObjProps();
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Find column definitions for given class name.
+//  Look for definition also in base classes
+REveTableHandle::Entries_t& REveTableViewInfo::RefTableEntries(std::string cname)
+{
+   struct SimpleMethodFill
+   {
+      void fill(REveTableHandle::Entries_t& entries, TClass* c)
+      {
+         TMethod *meth;
+         TIter    next(c->GetListOfAllPublicMethods());
+         while ((meth = (TMethod*) next())) {
+            // take only methods without arguments
+            if (!meth->GetListOfMethodArgs()->First())
+            {
+               std::string mn = meth->GetName();
+               std::string exp = "i." + mn + "()";
+
+               TDataType* dt  = gROOT->GetType(meth->GetReturnTypeName());
+               if (dt) {
+                  int t = dt->GetType();
+                  if (
+                      t == EDataType::kInt_t  || t == EDataType::kUInt_t   ||
+                      t == EDataType::kLong_t ||  t == EDataType::kULong_t ||
+                      t == EDataType::kLong64_t ||  t == EDataType::kULong64_t ||
+                      t == EDataType::kBool_t )
+                     entries.push_back(REveTableEntry(mn, 0, exp));
+                  else if (
+                           t == EDataType::kFloat_t  ||
+                           t == EDataType::kDouble_t ||  t == EDataType::kDouble32_t )
+                     entries.push_back(REveTableEntry(mn, 3, exp));
+               }
+            }
+         }
+
+         // look in the base classes
+         TBaseClass *base;
+         TIter       blnext(c->GetListOfBases());
+         while ((base = (TBaseClass*) blnext()))
+         {
+            fill(entries, base->GetClassPointer());
+         }
+
+      }
+   };
+
+   auto search = fSpecs.find(cname);
+   if (search != fSpecs.end())
+   {
+      return search->second;
+   }
+   else {
+      TClass* c = TClass::GetClass(cname.c_str());
+      TBaseClass *base;
+      TIter       blnext(c->GetListOfBases());
+      while ((base = (TBaseClass*) blnext()))
+      {
+         auto bs = fSpecs.find(base->GetName());
+         if (bs != fSpecs.end())
+         {
+            return bs->second;
+         }
+      }
+   }
+
+   // create new entry if not existing
+   SimpleMethodFill methodFinder;
+   methodFinder.fill(fSpecs[cname], TClass::GetClass(cname.c_str()));
+   return fSpecs[cname];
 }
 
 ////////////////////////////////////////////////////////////////////////////////

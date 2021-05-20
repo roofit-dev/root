@@ -968,6 +968,7 @@ Int_t TBranch::FillEntryBuffer(TBasket* basket, TBuffer* buf, Int_t& lnew)
             s = new char[maxsize];
             fEntryBuffer->ReadString(s, maxsize); // Reads at most maxsize - 1 characters, plus null at end
          }
+         delete[] s;
       } else {
          fEntryBuffer->SetBufferOffset(objectStart);
       }
@@ -1419,8 +1420,8 @@ Bool_t TBranch::SupportsBulkRead() const {
 /// NOTES:
 /// - This interface is meant to be used by higher-level, type-safe wrappers, not
 ///   by end-users.
-/// - This only returns events 
-/// 
+/// - This only returns events
+///
 
 Int_t TBranch::GetBulkEntries(Long64_t entry, TBuffer &user_buf)
 {
@@ -1917,7 +1918,7 @@ TString TBranch::GetRealFileName() const
          // to the branch file name
          char *tname = gSystem->ExpandPathName(tfn);
          if (gSystem->IsAbsoluteFileName(tname) || strstr(tname, ":/")) {
-            bFileName = gSystem->DirName(tname);
+            bFileName = gSystem->GetDirName(tname);
             bFileName += "/";
             bFileName += fFileName;
          }
