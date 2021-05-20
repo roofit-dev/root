@@ -114,7 +114,7 @@ sap.ui.define(['sap/ui/core/Component',
                return new sap.ui.xmlview({
                   id: viewid,
                   viewName: vtype,
-                  viewData: { mgr: main.mgr, elementid: elem.fElementId, kind: elem.view_kind },
+                  viewData: { mgr: main.mgr, eveViewerId: elem.fElementId, kind: elem.view_kind },
                   layoutData: oLd
                });
             });
@@ -201,11 +201,8 @@ sap.ui.define(['sap/ui/core/Component',
             return;
          }
 
-         var obj = { "mir": cmd.func, "fElementId": cmd.elementid, "class": cmd.elementclass };
-         // only for real connections send commands to server
-         // only with NextEvent command meaningful handling is possible
-         if ((this.mgr.handle.kind != "file") || (cmd.name == "NextEvent"))
-            this.mgr.SendMIR(obj);
+         this.mgr.SendMIR(cmd.func, cmd.elementid, cmd.elementclass);
+
          if ((cmd.name == "QuitRoot") && window) {
              window.close();
          }

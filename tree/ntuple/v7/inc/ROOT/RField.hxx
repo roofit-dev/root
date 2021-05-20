@@ -56,7 +56,7 @@ class RNTupleModel;
 namespace Detail {
 
 class RFieldFuse;
-class RNTupleVisitor;
+class RFieldVisitor;
 class RPageStorage;
 
 // clang-format off
@@ -74,6 +74,7 @@ The field knows based on its type and the field name the type(s) and name(s) of 
 class RFieldBase {
    friend class ROOT::Experimental::Detail::RFieldFuse; // to connect the columns to a page storage
    friend class ROOT::Experimental::RFieldCollection; // to change the field names when collections are attached
+
 private:
    /// The field name relative to its parent field
    std::string fName;
@@ -85,46 +86,7 @@ private:
    std::size_t fNRepetitions;
    /// A field on a trivial type that maps as-is to a single column
    bool fIsSimple;
-   /// Describes where the field is located inside the ntuple.
-   struct RLevelInfo {
-   private:
-      /// Tells how deep the field is in the ntuple. Rootfield has fLevel 0, direct subfield of Rootfield has fLevel 1, etc.
-      int fLevel = 1;
-      /// First subfield of parentfield has fOrder 1, the next fOrder 2, etc. Value set by RFieldBase::fOrder
-      int fOrder = 1;
-      /// The field itself is also included in this number.
-      int fNumSiblingFields = 1;
-   public:
-      RLevelInfo() = default;
-      RLevelInfo(const RFieldBase *field) : RLevelInfo() {
-         fLevel = GetLevel(field);
-         fOrder = GetOrder(field);
-         fNumSiblingFields = GetNumSiblings(field);
-      }
-      int GetNumSiblings(const RFieldBase *field = nullptr) const {
-         if (field && field->GetParent())
-            return static_cast<int>(field->GetParent()->fSubFields.size());
-         return fNumSiblingFields;
-      }
-      int GetLevel(const RFieldBase *field = nullptr) const {
-         if(!field)
-            return fLevel;
-         int level{0};
-         const RFieldBase *parentPtr{field->GetParent()};
-         while (parentPtr) {
-            parentPtr = parentPtr->GetParent();
-            ++level;
-         }
-         return level;
-      }
-      int GetOrder(const RFieldBase *field = nullptr) const {
-         if(field)
-            return field->fOrder;
-         return fOrder;
-      }
-   };
-   /// First subfield of parentfield has fOrder 1, the next fOrder 2, etc. Value set by RFieldBase::Attach()
-   int fOrder = 1;
+
 protected:
    /// Collections and classes own sub fields
    std::vector<std::unique_ptr<RFieldBase>> fSubFields;
@@ -138,21 +100,21 @@ protected:
    std::vector<std::unique_ptr<RColumn>> fColumns;
 
    /// Creates the backing columns corresponsing to the field type and name
-   virtual void DoGenerateColumns() = 0;
+   virtual void GenerateColumnsImpl() = 0;
 
    /// Operations on values of complex types, e.g. ones that involve multiple columns or for which no direct
    /// column type exists.
-   virtual void DoAppend(const RFieldValue &value);
-   virtual void DoReadGlobal(NTupleSize_t globalIndex, RFieldValue *value);
-   virtual void DoReadInCluster(const RClusterIndex &clusterIndex, RFieldValue *value) {
-      DoReadGlobal(fPrincipalColumn->GetGlobalIndex(clusterIndex), value);
+   virtual void AppendImpl(const RFieldValue &value);
+   virtual void ReadGlobalImpl(NTupleSize_t globalIndex, RFieldValue *value);
+   virtual void ReadInClusterImpl(const RClusterIndex &clusterIndex, RFieldValue *value) {
+      ReadGlobalImpl(fPrincipalColumn->GetGlobalIndex(clusterIndex), value);
    }
 
 public:
-   /// Iterates over the sub fields in depth-first search order
-   class RIterator : public std::iterator<std::forward_iterator_tag, Detail::RFieldBase> {
+   /// Iterates over the sub tree of fields in depth-first search order
+   class RSchemaIterator : public std::iterator<std::forward_iterator_tag, Detail::RFieldBase> {
    private:
-      using iterator = RIterator;
+      using iterator = RSchemaIterator;
       struct Position {
          Position() : fFieldPtr(nullptr), fIdxInParent(-1) { }
          Position(pointer fieldPtr, int idxInParent) : fFieldPtr(fieldPtr), fIdxInParent(idxInParent) { }
@@ -162,9 +124,9 @@ public:
       /// The stack of nodes visited when walking down the tree of fields
       std::vector<Position> fStack;
    public:
-      RIterator() { fStack.emplace_back(Position()); }
-      RIterator(pointer val, int idxInParent) { fStack.emplace_back(Position(val, idxInParent)); }
-      ~RIterator() {}
+      RSchemaIterator() { fStack.emplace_back(Position()); }
+      RSchemaIterator(pointer val, int idxInParent) { fStack.emplace_back(Position(val, idxInParent)); }
+      ~RSchemaIterator() {}
       /// Given that the iterator points to a valid field which is not the end iterator, go to the next field
       /// in depth-first search order
       void Advance();
@@ -202,6 +164,10 @@ public:
    virtual void DestroyValue(const RFieldValue &value, bool dtorOnly = false);
    /// Creates a value from a memory location with an already constructed object
    virtual RFieldValue CaptureValue(void *where) = 0;
+   /// Creates the list of direct child values given a value for this field.  E.g. a single value for the
+   /// correct variant or all the elements of a collection.  The default implementation assumes no sub values
+   /// and returns an empty vector.
+   virtual std::vector<RFieldValue> SplitValue(const RFieldValue &value) const;
    /// The number of bytes taken by a value of the appropriate type
    virtual size_t GetValueSize() const = 0;
    /// For many types, the alignment requirement is equal to the size; otherwise override.
@@ -210,10 +176,9 @@ public:
    /// Write the given value into columns. The value object has to be of the same type as the field.
    void Append(const RFieldValue& value) {
       if (!fIsSimple) {
-         DoAppend(value);
+         AppendImpl(value);
          return;
       }
-      //printf("Appending simple value for %lu %s\n", *(unsigned long *)(value.GetRawPtr()), fName.c_str());
       fPrincipalColumn->Append(value.fMappedElement);
    }
 
@@ -221,7 +186,7 @@ public:
    /// Reading copies data into the memory wrapped by the ntuple value.
    void Read(NTupleSize_t globalIndex, RFieldValue *value) {
       if (!fIsSimple) {
-         DoReadGlobal(globalIndex, value);
+         ReadGlobalImpl(globalIndex, value);
          return;
       }
       fPrincipalColumn->Read(globalIndex, &value->fMappedElement);
@@ -229,7 +194,7 @@ public:
 
    void Read(const RClusterIndex &clusterIndex, RFieldValue *value) {
       if (!fIsSimple) {
-         DoReadInCluster(clusterIndex, value);
+         ReadInClusterImpl(clusterIndex, value);
          return;
       }
       fPrincipalColumn->Read(clusterIndex, &value->fMappedElement);
@@ -240,13 +205,15 @@ public:
    /// Perform housekeeping tasks for global to cluster-local index translation
    virtual void CommitCluster() {}
 
+   /// Add a new subfield to the list of nested fields
    void Attach(std::unique_ptr<Detail::RFieldBase> child);
 
    std::string GetName() const { return fName; }
    std::string GetType() const { return fType; }
    ENTupleStructure GetStructure() const { return fStructure; }
    std::size_t GetNRepetitions() const { return fNRepetitions; }
-   const RFieldBase* GetParent() const { return fParent; }
+   const RFieldBase *GetParent() const { return fParent; }
+   std::vector<const RFieldBase *> GetSubFields() const;
    bool IsSimple() const { return fIsSimple; }
 
    /// Indicates an evolution of the mapping scheme from C++ type to columns
@@ -254,17 +221,10 @@ public:
    /// Indicates an evolution of the C++ type itself
    virtual RNTupleVersion GetTypeVersion() const { return RNTupleVersion(); }
 
-   RIterator begin();
-   RIterator end();
+   RSchemaIterator begin();
+   RSchemaIterator end();
 
-   /// Used for the visitor design pattern, see for example RNTupleReader::Print()
-   virtual void TraverseVisitor(RNTupleVisitor &visitor, int level = 0) const;
-   virtual void AcceptVisitor(RNTupleVisitor &visitor, int level) const;
-
-   RLevelInfo GetLevelInfo() const {
-      return RLevelInfo(this);
-   }
-   void SetOrder(int o) { fOrder = o; }
+   virtual void AcceptVisitor(RFieldVisitor &visitor) const;
 };
 
 // clang-format off
@@ -289,10 +249,10 @@ public:
 /// The container field for an ntuple model, which itself has no physical representation
 class RFieldRoot : public Detail::RFieldBase {
 public:
-   RFieldRoot() : Detail::RFieldBase("", "", ENTupleStructure::kRecord, false /* isSimple */) { SetOrder(-1); }
+   RFieldRoot() : Detail::RFieldBase("", "", ENTupleStructure::kRecord, false /* isSimple */) { }
    RFieldBase* Clone(std::string_view newName);
 
-   void DoGenerateColumns() final {}
+   void GenerateColumnsImpl() final {}
    using Detail::RFieldBase::GenerateValue;
    Detail::RFieldValue GenerateValue(void*) { return Detail::RFieldValue(); }
    Detail::RFieldValue CaptureValue(void*) final { return Detail::RFieldValue(); }
@@ -300,7 +260,7 @@ public:
 
    /// Generates managed values for the top-level sub fields
    REntry* GenerateEntry();
-   void AcceptVisitor(Detail::RNTupleVisitor &visitor, int level) const final;
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 /// The field for a class with dictionary
@@ -310,9 +270,10 @@ private:
    std::size_t fMaxAlignment = 1;
 
 protected:
-   void DoAppend(const Detail::RFieldValue& value) final;
-   void DoReadGlobal(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
-   void DoReadInCluster(const RClusterIndex &clusterIndex, Detail::RFieldValue *value) final;
+   void AppendImpl(const Detail::RFieldValue& value) final;
+   void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
+   void ReadInClusterImpl(const RClusterIndex &clusterIndex, Detail::RFieldValue *value) final;
+
 public:
    RFieldClass(std::string_view fieldName, std::string_view className);
    RFieldClass(RFieldClass&& other) = default;
@@ -320,13 +281,15 @@ public:
    ~RFieldClass() = default;
    RFieldBase* Clone(std::string_view newName) final;
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
    using Detail::RFieldBase::GenerateValue;
    Detail::RFieldValue GenerateValue(void* where) override;
    void DestroyValue(const Detail::RFieldValue& value, bool dtorOnly = false) final;
    Detail::RFieldValue CaptureValue(void *where) final;
+   std::vector<Detail::RFieldValue> SplitValue(const Detail::RFieldValue &value) const final;
    size_t GetValueSize() const override;
    size_t GetAlignment() const final { return fMaxAlignment; }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const override;
 };
 
 /// The generic field for a (nested) std::vector<Type> except for std::vector<bool>
@@ -336,8 +299,8 @@ private:
    ClusterSize_t fNWritten;
 
 protected:
-   void DoAppend(const Detail::RFieldValue& value) final;
-   void DoReadGlobal(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
+   void AppendImpl(const Detail::RFieldValue& value) final;
+   void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
 
 public:
    RFieldVector(std::string_view fieldName, std::unique_ptr<Detail::RFieldBase> itemField);
@@ -346,14 +309,22 @@ public:
    ~RFieldVector() = default;
    RFieldBase* Clone(std::string_view newName) final;
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
    using Detail::RFieldBase::GenerateValue;
    Detail::RFieldValue GenerateValue(void* where) override;
    void DestroyValue(const Detail::RFieldValue& value, bool dtorOnly = false) final;
    Detail::RFieldValue CaptureValue(void *where) override;
+   std::vector<Detail::RFieldValue> SplitValue(const Detail::RFieldValue &value) const final;
    size_t GetValueSize() const override { return sizeof(std::vector<char>); }
    size_t GetAlignment() const final { return std::alignment_of<std::vector<char>>(); }
    void CommitCluster() final;
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
+   void GetCollectionInfo(NTupleSize_t globalIndex, RClusterIndex *collectionStart, ClusterSize_t *size) const {
+      fPrincipalColumn->GetCollectionInfo(globalIndex, collectionStart, size);
+   }
+   void GetCollectionInfo(const RClusterIndex &clusterIndex, RClusterIndex *collectionStart, ClusterSize_t *size) const {
+      fPrincipalColumn->GetCollectionInfo(clusterIndex, collectionStart, size);
+   }
 };
 
 
@@ -364,9 +335,9 @@ private:
    std::size_t fArrayLength;
 
 protected:
-   void DoAppend(const Detail::RFieldValue& value) final;
-   void DoReadGlobal(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
-   void DoReadInCluster(const RClusterIndex &clusterIndex, Detail::RFieldValue *value) final;
+   void AppendImpl(const Detail::RFieldValue& value) final;
+   void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
+   void ReadInClusterImpl(const RClusterIndex &clusterIndex, Detail::RFieldValue *value) final;
 
 public:
    RFieldArray(std::string_view fieldName, std::unique_ptr<Detail::RFieldBase> itemField, std::size_t arrayLength);
@@ -375,13 +346,16 @@ public:
    ~RFieldArray() = default;
    RFieldBase *Clone(std::string_view newName) final;
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
    using Detail::RFieldBase::GenerateValue;
    Detail::RFieldValue GenerateValue(void *where) override;
    void DestroyValue(const Detail::RFieldValue &value, bool dtorOnly = false) final;
    Detail::RFieldValue CaptureValue(void *where) final;
+   std::vector<Detail::RFieldValue> SplitValue(const Detail::RFieldValue &value) const final;
+   size_t GetLength() const { return fArrayLength; }
    size_t GetValueSize() const final { return fItemSize * fArrayLength; }
    size_t GetAlignment() const final { return fSubFields[0]->GetAlignment(); }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 #if __cplusplus >= 201703L
@@ -400,8 +374,8 @@ private:
    void SetTag(void *variantPtr, std::uint32_t tag) const;
 
 protected:
-   void DoAppend(const Detail::RFieldValue& value) final;
-   void DoReadGlobal(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
+   void AppendImpl(const Detail::RFieldValue& value) final;
+   void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
 
 public:
    // TODO(jblomer): use std::span in signature
@@ -411,7 +385,7 @@ public:
    ~RFieldVariant() = default;
    RFieldBase *Clone(std::string_view newName) final;
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
    using Detail::RFieldBase::GenerateValue;
    Detail::RFieldValue GenerateValue(void *where) override;
    void DestroyValue(const Detail::RFieldValue &value, bool dtorOnly = false) final;
@@ -459,7 +433,7 @@ public:
    ~RFieldCollection() = default;
    RFieldBase* Clone(std::string_view newName) final;
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
 
    using Detail::RFieldBase::GenerateValue;
    ROOT::Experimental::Detail::RFieldValue GenerateValue(void* where) final {
@@ -490,7 +464,7 @@ public:
    ~RField() = default;
    RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
 
    ClusterSize_t *Map(NTupleSize_t globalIndex) {
       return fPrincipalColumn->Map<ClusterSize_t, EColumnType::kIndex>(globalIndex);
@@ -521,6 +495,7 @@ public:
    void GetCollectionInfo(const RClusterIndex &clusterIndex, RClusterIndex *collectionStart, ClusterSize_t *size) {
       fPrincipalColumn->GetCollectionInfo(clusterIndex, collectionStart, size);
    }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 
@@ -535,7 +510,7 @@ public:
    ~RField() = default;
    RFieldBase *Clone(std::string_view newName) final { return new RField(newName); }
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
 
    bool *Map(NTupleSize_t globalIndex) {
       return fPrincipalColumn->Map<bool, EColumnType::kBit>(globalIndex);
@@ -558,6 +533,7 @@ public:
          Detail::RColumnElement<bool, EColumnType::kBit>(static_cast<bool*>(where)), this, where);
    }
    size_t GetValueSize() const final { return sizeof(bool); }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 template <>
@@ -571,7 +547,7 @@ public:
    ~RField() = default;
    RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
 
    float *Map(NTupleSize_t globalIndex) {
       return fPrincipalColumn->Map<float, EColumnType::kReal32>(globalIndex);
@@ -594,6 +570,7 @@ public:
          Detail::RColumnElement<float, EColumnType::kReal32>(static_cast<float*>(where)), this, where);
    }
    size_t GetValueSize() const final { return sizeof(float); }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 
@@ -608,7 +585,7 @@ public:
    ~RField() = default;
    RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
 
    double *Map(NTupleSize_t globalIndex) {
       return fPrincipalColumn->Map<double, EColumnType::kReal64>(globalIndex);
@@ -631,6 +608,7 @@ public:
          Detail::RColumnElement<double, EColumnType::kReal64>(static_cast<double*>(where)), this, where);
    }
    size_t GetValueSize() const final { return sizeof(double); }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 template <>
@@ -644,7 +622,7 @@ public:
    ~RField() = default;
    RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
 
    std::uint8_t *Map(NTupleSize_t globalIndex) {
       return fPrincipalColumn->Map<std::uint8_t, EColumnType::kByte>(globalIndex);
@@ -667,6 +645,7 @@ public:
          Detail::RColumnElement<std::uint8_t, EColumnType::kByte>(static_cast<std::uint8_t*>(where)), this, where);
    }
    size_t GetValueSize() const final { return sizeof(std::uint8_t); }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 template <>
@@ -680,7 +659,7 @@ public:
    ~RField() = default;
    RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
 
    std::int32_t *Map(NTupleSize_t globalIndex) {
       return fPrincipalColumn->Map<std::int32_t, EColumnType::kInt32>(globalIndex);
@@ -703,6 +682,7 @@ public:
          Detail::RColumnElement<std::int32_t, EColumnType::kInt32>(static_cast<std::int32_t*>(where)), this, where);
    }
    size_t GetValueSize() const final { return sizeof(std::int32_t); }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 template <>
@@ -716,7 +696,7 @@ public:
    ~RField() = default;
    RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
 
    std::uint32_t *Map(NTupleSize_t globalIndex) {
       return fPrincipalColumn->Map<std::uint32_t, EColumnType::kInt32>(globalIndex);
@@ -739,6 +719,7 @@ public:
          Detail::RColumnElement<std::uint32_t, EColumnType::kInt32>(static_cast<std::uint32_t*>(where)), this, where);
    }
    size_t GetValueSize() const final { return sizeof(std::uint32_t); }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 template <>
@@ -752,7 +733,7 @@ public:
    ~RField() = default;
    RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
 
    std::uint64_t *Map(NTupleSize_t globalIndex) {
       return fPrincipalColumn->Map<std::uint64_t, EColumnType::kInt64>(globalIndex);
@@ -775,6 +756,7 @@ public:
          Detail::RColumnElement<std::uint64_t, EColumnType::kInt64>(static_cast<std::uint64_t*>(where)), this, where);
    }
    size_t GetValueSize() const final { return sizeof(std::uint64_t); }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 
@@ -784,9 +766,9 @@ private:
    ClusterSize_t fIndex;
    Detail::RColumnElement<ClusterSize_t, EColumnType::kIndex> fElemIndex;
 
-   void DoAppend(const ROOT::Experimental::Detail::RFieldValue& value) final;
-   void DoReadGlobal(ROOT::Experimental::NTupleSize_t globalIndex,
-                     ROOT::Experimental::Detail::RFieldValue *value) final;
+   void AppendImpl(const ROOT::Experimental::Detail::RFieldValue& value) final;
+   void ReadGlobalImpl(ROOT::Experimental::NTupleSize_t globalIndex,
+                       ROOT::Experimental::Detail::RFieldValue *value) final;
 
 public:
    static std::string TypeName() { return "std::string"; }
@@ -798,7 +780,7 @@ public:
    ~RField() = default;
    RFieldBase* Clone(std::string_view newName) final { return new RField(newName); }
 
-   void DoGenerateColumns() final;
+   void GenerateColumnsImpl() final;
 
    using Detail::RFieldBase::GenerateValue;
    template <typename... ArgsT>
@@ -819,6 +801,7 @@ public:
    size_t GetValueSize() const final { return sizeof(std::string); }
    size_t GetAlignment() const final { return std::alignment_of<std::string>(); }
    void CommitCluster() final;
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
 };
 
 
@@ -927,9 +910,9 @@ private:
    ClusterSize_t fNWritten{0};
 
 protected:
-   void DoAppend(const Detail::RFieldValue& value) final;
-   void DoReadGlobal(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
-   void DoGenerateColumns() final;
+   void AppendImpl(const Detail::RFieldValue& value) final;
+   void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
+   void GenerateColumnsImpl() final;
 
 public:
    static std::string TypeName() { return "std::vector<bool>"; }
@@ -951,11 +934,19 @@ public:
    Detail::RFieldValue CaptureValue(void *where) final {
       return Detail::RFieldValue(true /* captureFlag */, this, where);
    }
+   std::vector<Detail::RFieldValue> SplitValue(const Detail::RFieldValue &value) const final;
    void DestroyValue(const Detail::RFieldValue& value, bool dtorOnly = false) final;
 
    size_t GetValueSize() const final { return sizeof(std::vector<bool>); }
    size_t GetAlignment() const final { return std::alignment_of<std::vector<bool>>(); }
    void CommitCluster() final { fNWritten = 0; }
+   void AcceptVisitor(Detail::RFieldVisitor &visitor) const final;
+   void GetCollectionInfo(NTupleSize_t globalIndex, RClusterIndex *collectionStart, ClusterSize_t *size) const {
+      fPrincipalColumn->GetCollectionInfo(globalIndex, collectionStart, size);
+   }
+   void GetCollectionInfo(const RClusterIndex &clusterIndex, RClusterIndex *collectionStart, ClusterSize_t *size) const {
+      fPrincipalColumn->GetCollectionInfo(clusterIndex, collectionStart, size);
+   }
 };
 
 
@@ -971,7 +962,7 @@ private:
    ClusterSize_t fNWritten;
 
 protected:
-   void DoAppend(const Detail::RFieldValue& value) final {
+   void AppendImpl(const Detail::RFieldValue& value) final {
       auto typedValue = value.Get<ContainerT>();
       auto count = typedValue->size();
       for (unsigned i = 0; i < count; ++i) {
@@ -982,7 +973,7 @@ protected:
       fNWritten += count;
       fColumns[0]->Append(elemIndex);
    }
-   void DoReadGlobal(NTupleSize_t globalIndex, Detail::RFieldValue *value) final {
+   void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final {
       auto typedValue = value->Get<ContainerT>();
       ClusterSize_t nItems;
       RClusterIndex collectionStart;
@@ -1014,7 +1005,7 @@ public:
       return new RField<ROOT::VecOps::RVec<ItemT>>(newName, std::unique_ptr<Detail::RFieldBase>(newItemField));
    }
 
-   void DoGenerateColumns() final {
+   void GenerateColumnsImpl() final {
       RColumnModel modelIndex(EColumnType::kIndex, true /* isSorted*/);
       fColumns.emplace_back(std::unique_ptr<Detail::RColumn>(
          Detail::RColumn::Create<ClusterSize_t, EColumnType::kIndex>(modelIndex, 0)));
@@ -1061,7 +1052,7 @@ private:
    ClusterSize_t fNWritten{0};
 
 protected:
-   void DoAppend(const Detail::RFieldValue& value) final {
+   void AppendImpl(const Detail::RFieldValue& value) final {
       auto typedValue = value.Get<ContainerT>();
       auto count = typedValue->size();
       for (unsigned i = 0; i < count; ++i) {
@@ -1073,7 +1064,7 @@ protected:
       fNWritten += count;
       fColumns[0]->Append(elemIndex);
    }
-   void DoReadGlobal(NTupleSize_t globalIndex, Detail::RFieldValue *value) final {
+   void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final {
       auto typedValue = value->Get<ContainerT>();
       ClusterSize_t nItems;
       RClusterIndex collectionStart;
@@ -1100,7 +1091,7 @@ public:
       return new RField<ROOT::VecOps::RVec<bool>>(newName);
    }
 
-   void DoGenerateColumns() final {
+   void GenerateColumnsImpl() final {
       RColumnModel modelIndex(EColumnType::kIndex, true /* isSorted*/);
       fColumns.emplace_back(std::unique_ptr<Detail::RColumn>(
          Detail::RColumn::Create<ClusterSize_t, EColumnType::kIndex>(modelIndex, 0)));

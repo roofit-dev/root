@@ -14,6 +14,15 @@
 #pragma link C++ class RooRealIntegral+ ;
 #pragma link C++ class RooRealMPFE+ ;
 #pragma link C++ class RooRealProxy+ ;
+#pragma link C++ class RooPdfProxy+;
+#pragma read sourceClass="RooRealProxy" targetClass="RooPdfProxy" version="[1]" \
+  source="" target=""
+#pragma link C++ class RooLVarProxy+;
+#pragma read sourceClass="RooRealProxy" targetClass="RooLVarProxy" version="[1]" \
+  source="" target=""
+#pragma link C++ class RooRealVarProxy+;
+#pragma read sourceClass="RooRealProxy" targetClass="RooRealVarProxy" version="[1]" \
+  source="" target=""
 #pragma link C++ class RooRealVar- ;
 #pragma link C++ class RooRealVarSharedProperties+ ;
 #pragma link C++ class RooRefCountList+ ;
