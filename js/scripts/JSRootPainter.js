@@ -265,6 +265,9 @@
                 // only required for MathJax to provide correct replacement
                 '#sqrt': '\u221A',
                 '#bar': '',
+                '#overline' : '',
+                '#underline' : '',
+                '#strike' : '',
 
                 // from TLatex tables #2 & #3
                 '#leq': '\u2264',
@@ -5000,6 +5003,9 @@
       var features = [
           { name: "#it{" }, // italic
           { name: "#bf{" }, // bold
+          { name: "#underline{", deco: "underline" }, // underline
+          { name: "#overline{", deco: "overline" }, // overline
+          { name: "#strike{", deco: "line-through" }, // line through
           { name: "kern[", arg: 'float' }, // horizontal shift
           { name: "lower[", arg: 'float' },  // vertical shift
           { name: "scale[", arg: 'float' },  // font scale
@@ -5007,7 +5013,7 @@
           { name: "#font[", arg: 'int' },
           { name: "_{" },  // subscript
           { name: "^{" },   // superscript
-          { name: "#bar{", accent: "\u02C9" }, // "\u0305"
+          { name: "#bar{", deco: "overline" /* accent: "\u02C9" */ }, // "\u0305"
           { name: "#hat{", accent: "\u02C6" }, // "\u0302"
           { name: "#check{", accent: "\u02C7" }, // "\u030C"
           { name: "#acute{", accent: "\u02CA" }, // "\u0301"
@@ -5136,6 +5142,8 @@
                left_brace = found.name;
                right_brace = found.right;
             }
+         } else if (found.deco) {
+            subpos.deco = found.deco;
          } else if (found.accent) {
             subpos.accent = found.accent;
          } else
@@ -5176,6 +5184,12 @@
                     break;
                  }
               subnode.attr('font-weight', curr.bold ? 'bold' : 'normal');
+              break;
+           case "#underline{":
+              subnode.attr('text-decoration', 'underline');
+              break;
+           case "#overline{":
+              subnode.attr('text-decoration', 'overline');
               break;
            case "_{":
               scale = 0.6;
@@ -5336,6 +5350,29 @@
 
                subpos.square_root.append('svg:tspan').attr("dy", makeem(0.25-sqrt_dy)).attr("dx", makeem(-a.length/3-0.2)).text('\u2009'); // unicode tiny space
 
+               break;
+            }
+
+            if (subpos.deco) {
+
+               // use text-decoration attribute when there are no extra elements inside
+               if (subnode1.selectAll('tspan').size() == 0) {
+                  subnode1.attr('text-decoration', subpos.deco);
+                  break;
+               }
+
+               var be = get_boundary(this, subnode1, subpos.rect),
+                   len = be.width / subpos.fsize, fact, dy, symb;
+               switch (subpos.deco) {
+                  case "underline": dy = 0.35; fact = 1.2; symb = '\uFF3F'; break; // '\u2014'; // underline
+                  case "overline": dy = -0.35; fact = 3; symb = '\u203E'; break; // overline
+                  default: dy = 0; fact = 1.8; symb = '\u23AF'; break;
+               }
+               var nn = Math.round(Math.max(len*fact,1)), a = "";
+               while (nn--) a += symb;
+
+               subnode1.append('svg:tspan').attr("dx",  makeem(-len - 0.2)).attr("dy", makeem(dy)).text(a);
+               curr.dy -= dy;
                break;
             }
 
@@ -6254,7 +6291,8 @@
    JSROOT.addDrawFunc({ name: "kind:TopFolder", icon: "img_base" });
    JSROOT.addDrawFunc({ name: "kind:Folder", icon: "img_folder", icon2: "img_folderopen", noinspect:true });
 
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::TCanvas", icon: "img_canvas", prereq: "v7", func: "JSROOT.v7.drawCanvas", opt: "", expand_item: "fPrimitives" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RCanvas", icon: "img_canvas", prereq: "v7", func: "JSROOT.v7.drawCanvas", opt: "", expand_item: "fPrimitives" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::RCanvasDisplayItem", icon: "img_canvas", prereq: "v7", func: "JSROOT.v7.drawPadSnapshot", opt: "", expand_item: "fPrimitives" });
 
 
    JSROOT.getDrawHandle = function(kind, selector) {
@@ -6671,7 +6709,7 @@
       }
 
       if (!JSROOT.nodejs) {
-         build(d3.select(window.document).append("div").style("visible", "hidden"));
+         build(d3.select('body').append("div").style("visible", "hidden"));
       } else if (JSROOT.nodejs_document) {
          build(JSROOT.nodejs_window.d3.select('body').append('div'));
       } else {

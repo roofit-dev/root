@@ -47,11 +47,7 @@ sap.ui.define([], function() {
    /** Returns element with given ID */
    EveManager.prototype.GetElement = function(id)
    {
-      // AMT todo ... I think this check should be optional
-      if (id in this.map)
-	 return this.map[id];
-      else
-	 return undefined;
+      return this.map[id];
    }
 
    /** Attach websocket handle to manager, all communication runs through manager */
@@ -104,7 +100,7 @@ sap.ui.define([], function() {
          return;
       }
 
-      // console.log("OnWebsocketMsg msg len=", msg.length, " txt:", msg.substr(0,120), "...");
+      // console.log("OnWebsocketMsg msg len=", msg.length, "txt:", (msg.length < 300) ? msg : (msg.substr(0,300) + "..."));
 
       let resp = JSON.parse(msg);
 
@@ -139,12 +135,26 @@ sap.ui.define([], function() {
    }
 
 
-   EveManager.prototype.SendMIR = function(mir)
+   /** Sending Method Invocation Request
+    * Special handling for offline case - some methods can be tried to handle without server */
+   EveManager.prototype.SendMIR = function(mir_call, element_id, element_class)
    {
-      if (!mir || ! this.handle) return;
+      if (!mir_call || ! this.handle || !element_class) return;
 
-      if (this.handle.kind != "file")
-         this.handle.Send(JSON.stringify(mir));
+      // Sergey: NextEvent() here just to handle data recording in event_demo.C
+
+      if ((this.handle.kind != "file") || (mir_call == "NextEvent()")) {
+
+         // console.log('SendMIR', element_id, mir_call);
+
+         var req = {
+            "mir" : mir_call,
+            "fElementId" : element_id,
+            "class" : element_class
+         }
+
+         this.handle.Send(JSON.stringify(req));
+      }
    }
 
    /** Configure receiver for scene-respective events. Following event used:
@@ -358,8 +368,8 @@ sap.ui.define([], function() {
 
          if (em.changeBit & this.EChangeBits.kCBObjProps) {
             delete obj.render_data;
-	    // AMT note ... the REveSelection changes fall here
-	    // I think this should be a separate change bit
+            // AMT note ... the REveSelection changes fall here
+            // I think this should be a separate change bit
             delete obj.sel_list;
             jQuery.extend(obj, em);
             this.ParseUpdateTriggersAndProcessPostStream(obj);
@@ -683,9 +693,3 @@ sap.ui.define([], function() {
    return EveManager;
 
 });
-
-// Matevz's notes ... here for lack of better ideas.
-//
-// 1. elementid, fElementId, eveId --> this is ultra confusing, decide and use consistently.
-//    Maybe also on the eve side. m_eid ?
-//    Ditto for fMasterId, mstrId, something else, probably
