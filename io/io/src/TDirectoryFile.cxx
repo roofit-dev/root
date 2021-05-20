@@ -1232,6 +1232,8 @@ TDirectory *TDirectoryFile::mkdir(const char *name, const char *title, Bool_t re
 ///
 /// By default, only the highest cycle of a key is kept. Keys for which
 /// the "KEEP" flag has been set are not removed. See TKey::Keep().
+/// NOTE: This does not reduce the size of a TFile--
+/// the space is simply freed up to be overwritten.
 
 void TDirectoryFile::Purge(Short_t)
 {
