@@ -13,13 +13,13 @@
 #include "TF2.h"
 #include "TMath.h"
 #include "TRandom.h"
+#include "TBuffer.h"
 #include "TH2.h"
 #include "TVirtualPad.h"
 #include "TStyle.h"
 #include "Riostream.h"
 #include "TColor.h"
 #include "TVirtualFitter.h"
-#include "TClass.h"
 #include "Math/IntegratorOptions.h"
 
 ClassImp(TF2);

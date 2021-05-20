@@ -30,6 +30,7 @@
 #include <TROOT.h>
 #include <TFile.h>
 #include <TTree.h>
+#include <TKey.h>
 #include <TLeaf.h>
 #include <TEventList.h>
 #include <TH2.h>
@@ -40,10 +41,8 @@
 #include <TMatrixF.h>
 #include <TMatrixDSym.h>
 #include <TMultiGraph.h>
-#include <TPaletteAxis.h>
 #include <TPrincipal.h>
 #include <TMath.h>
-#include <TObjString.h>
 #include <TSystem.h>
 #include <TCanvas.h>
 #include <iostream>

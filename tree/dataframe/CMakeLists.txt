@@ -27,6 +27,10 @@ if(root7)
   list(APPEND RDATAFRAME_EXTRA_DEPS ROOTNTuple)
 endif()
 
+if (imt)
+  list(APPEND RDATAFRAME_EXTRA_DEPS Imt)
+endif(imt)
+
 ROOT_STANDARD_LIBRARY_PACKAGE(ROOTDataFrame
   HEADERS
     ROOT/RCsvDS.hxx
@@ -99,7 +103,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTDataFrame
     Hist
     RIO
     ROOTVecOps
-    Imt
     ${RDATAFRAME_EXTRA_DEPS}
 )
 
@@ -113,18 +116,6 @@ if(sqlite)
   target_sources(ROOTDataFrame PRIVATE src/RSqliteDS.cxx)
   target_include_directories(ROOTDataFrame PRIVATE ${SQLITE_INCLUDE_DIR})
   target_link_libraries(ROOTDataFrame PRIVATE ${SQLITE_LIBRARIES})
-  if (davix)
-    # TODO(jblomer): Use Davix through an abstraction layer in RDAVIX to avoid linking issues
-    if (builtin_davix)
-      # The builtin version is statically linked, thus we link against RDAVIX to avoid a symbol conflict
-      # if libROOTDataFrame and libRDAVIX are used together.
-      target_include_directories(ROOTDataFrame PRIVATE ${DAVIX_INCLUDE_DIRS})
-      target_link_libraries(ROOTDataFrame PRIVATE RDAVIX)
-    else()
-      # If the system libDavix is used, RDAVIX does not contain the Davix symbols itself
-      target_link_libraries(ROOTDataFrame PRIVATE Davix::Davix)
-    endif()
-  endif()
 endif()
 
 if(root7)

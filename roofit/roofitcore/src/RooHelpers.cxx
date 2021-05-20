@@ -19,11 +19,45 @@
 
 namespace RooHelpers {
 
+LocalChangeMsgLevel::LocalChangeMsgLevel(RooFit::MsgLevel lvl,
+    unsigned int extraTopics, unsigned int removeTopics, bool overrideExternalLevel) {
+  auto& msg = RooMsgService::instance();
+  fOldKillBelow = msg.globalKillBelow();
+  if (overrideExternalLevel) msg.setGlobalKillBelow(lvl);
+
+  for (int i = 0; i < msg.numStreams(); ++i) {
+    fOldConf.push_back(msg.getStream(i));
+    if (overrideExternalLevel) msg.getStream(i).minLevel = lvl;
+    msg.getStream(i).removeTopic(static_cast<RooFit::MsgTopic>(removeTopics));
+    msg.setStreamStatus(i, true);
+  }
+
+  if (extraTopics != 0) {
+    fExtraStream = msg.addStream(lvl);
+    msg.getStream(fExtraStream).addTopic(static_cast<RooFit::MsgTopic>(extraTopics));
+  }
+}
+
+LocalChangeMsgLevel::~LocalChangeMsgLevel() {
+  auto& msg = RooMsgService::instance();
+  msg.setGlobalKillBelow(fOldKillBelow);
+  for (int i=0; i < msg.numStreams(); ++i) {
+    if (i < static_cast<int>(fOldConf.size()))
+      msg.getStream(i) = fOldConf[i];
+  }
+
+  if (fExtraStream > 0)
+    msg.deleteStream(fExtraStream);
+}
+
+
 /// Tokenise the string by splitting at the characters in delims.
 /// Consecutive delimiters are collapsed, so that no delimiters will appear in the
 /// tokenised strings, and no emtpy strings are returned.
 std::vector<std::string> tokenise(const std::string &str, const std::string &delims) {
   std::vector<std::string> tokens;
+  if (str.empty())
+    return tokens;
 
   auto beg = str.find_first_not_of(delims, 0);
   auto end = str.find_first_of(delims, beg);

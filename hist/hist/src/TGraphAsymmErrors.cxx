@@ -14,18 +14,16 @@
 #include "Riostream.h"
 #include "TEfficiency.h"
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TGraphAsymmErrors.h"
 #include "TGraphErrors.h"
 #include "TStyle.h"
 #include "TMath.h"
-#include "TArrow.h"
-#include "TBox.h"
 #include "TVirtualPad.h"
 #include "TF1.h"
 #include "TH1.h"
 #include "TVector.h"
 #include "TVectorD.h"
-#include "TClass.h"
 #include "TSystem.h"
 #include "Math/QuantFuncMathCore.h"
 
@@ -304,7 +302,7 @@ TGraphAsymmErrors::TGraphAsymmErrors(const char *filename, const char *format, O
    std::ifstream infile(fname.Data());
    if (!infile.good()) {
       MakeZombie();
-      Error("TGraphErrors", "Cannot open file: %s, TGraphErrors is Zombie", filename);
+      Error("TGraphAsymmErrors", "Cannot open file: %s, TGraphAsymmErrors is Zombie", filename);
       fNpoints = 0;
       return;
    }

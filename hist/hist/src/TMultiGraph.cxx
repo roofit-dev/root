@@ -16,14 +16,13 @@
 #include "TGraph.h"
 #include "TH1.h"
 #include "TH2.h"
-#include "TPolyLine3D.h"
 #include "TVirtualPad.h"
 #include "Riostream.h"
 #include "TVirtualFitter.h"
 #include "TPluginManager.h"
-#include "TClass.h"
 #include "TMath.h"
 #include "TSystem.h"
+#include "TF1.h"
 #include <stdlib.h>
 
 #include "HFitInterface.h"
@@ -584,7 +583,7 @@ TFitResultPtr TMultiGraph::Fit(const char *fname, Option_t *option, Option_t *, 
 ///  The list of fit options is given in parameter `option`which may takes the
 ///  following values:
 ///
-///   - "W"  Set all errors to 1
+///   - "W" Ignore all the point errors
 ///   - "U" Use a User specified fitting algorithm (via SetFCN)
 ///   - "Q" Quiet mode (minimum printing)
 ///   - "V" Verbose mode (default is between Q and V)

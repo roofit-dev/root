@@ -55,6 +55,7 @@ element type.
 #include "TRef.h"
 #include "TProcessID.h"
 #include "TSystem.h"
+#include "TObjString.h"
 
 #include "TStreamer.h"
 #include "TContainerConverters.h"
@@ -142,7 +143,7 @@ enum class EUniquePtrOffset : char
 
 TStreamerInfo::TStreamerInfo()
 {
-   fNumber   = fgCount;
+   fNumber   = -2;
    fClass    = 0;
    fElements = 0;
    fComp     = 0;
@@ -1194,6 +1195,10 @@ void TStreamerInfo::BuildCheck(TFile *file /* = 0 */)
       // We got here, thus we are a perfect alias for the current streamerInfo,
       // but we might had odd v5 style name spelling, so let's prefer the
       // current one.
+      auto maininfo = fClass->GetStreamerInfo();
+      if (maininfo) {
+         fNumber = maininfo->GetNumber(); // For ReadStreamerInfo to record the expected slot.
+      }
       SetBit(kCanDelete);
       return;
    }
@@ -2760,6 +2765,8 @@ TObject *TStreamerInfo::Clone(const char *newname) const
          }
       }
    }
+   ++fgCount;
+   newinfo->fNumber = fgCount;
    return newinfo;
 }
 
@@ -3087,7 +3094,7 @@ void TStreamerInfo::ComputeSize()
 
 void TStreamerInfo::ForceWriteInfo(TFile* file, Bool_t force)
 {
-   if (!file) {
+   if (!file || fNumber < 0) {
       return;
    }
    // Get the given file's list of streamer infos marked for writing.

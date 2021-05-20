@@ -58,8 +58,7 @@ def RDataFrameAsNumpy(df, columns=None, exclude=None):
 
     # Find all column names in the dataframe if no column are specified
     if not columns:
-        column_names = df.GetColumnNames()
-        columns = [c for c in column_names]
+        columns = [str(c) for c in df.GetColumnNames()]
 
     # Exclude the specified columns
     if exclude == None:
@@ -161,11 +160,3 @@ def pythonize_rdataframe(klass, name):
             setattr(klass, method_name, partialmethod(_histo_profile, fixed_args))
 
     return True
-
-# Add MakeNumpyDataFrame feature as free function to the ROOT module
-try:
-    from libROOTPythonizations import MakeNumpyDataFrame
-    import cppyy
-    cppyy.gbl.ROOT.RDF.MakeNumpyDataFrame = MakeNumpyDataFrame
-except:
-    pass

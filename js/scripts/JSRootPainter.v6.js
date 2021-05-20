@@ -3124,9 +3124,14 @@
 
    TPadPainter.prototype.CheckSpecial = function(obj) {
 
-      if (!obj || (obj._typename!=="TObjArray")) return false;
+      if (!obj) return false;
 
-      if (obj.name == "ListOfColors") {
+      if (obj._typename == "TStyle") {
+         JSROOT.extend(JSROOT.gStyle, style);
+         return true;
+      }
+
+      if ((obj._typename == "TObjArray") && (obj.name == "ListOfColors")) {
 
          if (this.options && this.options.CreatePalette) {
             var arr = [];
@@ -3147,7 +3152,7 @@
          return true;
       }
 
-      if (obj.name == "CurrentColorPalette") {
+      if ((obj._typename == "TObjArray") && (obj.name == "CurrentColorPalette")) {
          var arr = [], missing = false;
          for (var n = 0; n < obj.arr.length; ++n) {
             var col = obj.arr[n];
@@ -4591,6 +4596,22 @@
       this.SendWebsocket("PRODUCE:" + fname);
    }
 
+   TCanvasPainter.prototype.SubmitMenuRequest = function(painter, kind, reqid, call_back) {
+      // only single request can be handled
+      this._getmenu_callback = call_back;
+
+      this.SendWebsocket('GETMENU:' + reqid); // request menu items for given painter
+   }
+
+   TCanvasPainter.prototype.SubmitExec = function(painter, exec, snapid) {
+      if (this._readonly || !painter) return;
+
+      if (!snapid) snapid = painter.snapid;
+      if (!snapid || (typeof snapid != 'string')) return;
+
+      this.SendWebsocket("OBJEXEC:" + snapid + ":" + exec);
+   }
+
    TCanvasPainter.prototype.WindowBeforeUnloadHanlder = function() {
       // when window closed, close socket
       this.CloseWebsocket(true);
@@ -4659,8 +4680,10 @@
       } else if (msg.substr(0,5)=='MENU:') {
          // this is menu with exact identifier for object
          var lst = JSROOT.parse(msg.substr(5));
-         if (typeof this._getmenu_callback == 'function')
+         if (typeof this._getmenu_callback == 'function') {
             this._getmenu_callback(lst);
+            delete this._getmenu_callback;
+         }
       } else if (msg.substr(0,4)=='CMD:') {
          msg = msg.substr(4);
          var p1 = msg.indexOf(":"),

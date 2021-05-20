@@ -78,6 +78,7 @@ using namespace std;
 #include "TQueryResultManager.h"
 #include "TRegexp.h"
 #include "TROOT.h"
+#include "TObjArray.h"
 #include "TSocket.h"
 #include "TStopwatch.h"
 #include "TSystem.h"
@@ -97,7 +98,6 @@ using namespace std;
 #include "TParameter.h"
 #include "TMap.h"
 #include "TSortedList.h"
-#include "TParameter.h"
 #include "TFileCollection.h"
 #include "TLockFile.h"
 #include "TDataSetManagerFile.h"
@@ -2320,6 +2320,7 @@ Bool_t TProofServ::AcceptResults(Int_t connections, TVirtualProofPlayer *mergerP
       PDB(kSubmerger, 2) Info("AcceptResults", "closing socket");
       delete ((TSocket*)(sockets->At(i)));
    }
+   delete sockets;
 
    fMergingMonitor->RemoveAll();
    SafeDelete(fMergingMonitor);
