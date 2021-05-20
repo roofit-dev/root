@@ -734,7 +734,7 @@ bool Fitter::CalculateMinosErrors() {
    // compute the Minos errors according to configuration
    // set in the parameters and append value in fit result
    // normally Minos errors are computed just after the minimization
-   // (in DoMinimization) when creating the FItResult if the
+   // (in DoMinimization) aftewr minimizing if the
    //  FitConfig::MinosErrors() flag is set
 
    if (!fMinimizer) {
@@ -760,7 +760,7 @@ bool Fitter::CalculateMinosErrors() {
 
    // set flag to compute Minos error to false in FitConfig to avoid that
    // following minimizaiton calls perform unwanted Minos error calculations
-   fConfig.SetMinosErrors(false);
+   /// fConfig.SetMinosErrors(false);
 
 
    const std::vector<unsigned int> & ipars = fConfig.MinosParams();
@@ -779,6 +779,7 @@ bool Fitter::CalculateMinosErrors() {
 
    // re-give a minimizer instance in case it has been changed
    // but maintain previous valid status. Do not set result to false if minos failed
+
    ok &= fResult->Update(fMinimizer, fConfig, fResult->IsValid());
 
    return ok;
@@ -885,17 +886,24 @@ bool Fitter::DoMinimization(const ROOT::Math::IMultiGenFunction * chi2func) {
 
    assert(fMinimizer );
 
-   bool ret = fMinimizer->Minimize();
+   bool isValid = fMinimizer->Minimize();
 
    // unsigned int ncalls =  ObjFuncTrait<ObjFunc>::NCalls(*fcn);
    // int fitType =  ObjFuncTrait<ObjFunc>::Type(objFunc);
 
    if (!fResult) fResult = std::make_shared<FitResult>();
-   fResult->FillResult(fMinimizer,fConfig, fFunc, ret, fDataSize, fBinFit, chi2func );
 
-   // when possible get ncalls from FCN and set in fit result
-   if (fResult->fNCalls == 0 && fFitType != ROOT::Math::FitMethodFunction::kUndefined ) {
-      fResult->fNCalls = GetNCallsFromFCN();
+   fResult->FillResult(fMinimizer,fConfig, fFunc, isValid, fDataSize, fBinFit, chi2func );
+
+   // if requested run Minos after minimization
+   if (isValid && fConfig.MinosErrors()) {
+      // minos error calculation will update also FitResult
+      CalculateMinosErrors();
+   }
+
+      // when possible get ncalls from FCN and set in fit result
+      if (fResult->fNCalls == 0 && fFitType != ROOT::Math::FitMethodFunction::kUndefined) {
+         fResult->fNCalls = GetNCallsFromFCN();
    }
 
    // fill information in fit result
@@ -911,9 +919,9 @@ bool Fitter::DoMinimization(const ROOT::Math::IMultiGenFunction * chi2func) {
       fResult->NormalizeErrors();
 
    // set also new parameter values and errors in FitConfig
-   if (fConfig.UpdateAfterFit() && ret) DoUpdateFitConfig();
+   if (fConfig.UpdateAfterFit() &&  isValid) DoUpdateFitConfig();
 
-   return ret;
+   return isValid;
 }
 
 bool Fitter::DoMinimization(const BaseFunc & objFunc, const ROOT::Math::IMultiGenFunction * chi2func) {

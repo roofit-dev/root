@@ -19,6 +19,8 @@
 #include <ROOT/RDisplayItem.hxx>
 #include <ROOT/RPadDisplayItem.hxx>
 #include <ROOT/RMenuItem.hxx>
+#include <ROOT/RWebDisplayArgs.hxx>
+#include <ROOT/RWebDisplayHandle.hxx>
 #include <ROOT/RWebWindow.hxx>
 
 #include <memory>
@@ -29,6 +31,8 @@
 #include <chrono>
 #include <fstream>
 #include <algorithm>
+#include <cstdlib>
+#include <regex>
 
 #include "TList.h"
 #include "TEnv.h"
@@ -36,6 +40,9 @@
 #include "TClass.h"
 #include "TBufferJSON.h"
 #include "TBase64.h"
+#include "TSystem.h"
+
+using namespace std::string_literals;
 
 // ==========================================================================================================
 
@@ -105,7 +112,6 @@ private:
    uint64_t fSnapshotDelivered{0};   ///<! minimal version delivered to all connections
    std::list<WebUpdate> fUpdatesLst; ///<! list of callbacks for canvas update
 
-   std::string fNextDumpName;     ///<! next filename for dumping JSON
    int fJsonComp{23};             ///<! json compression for data send to client
 
    /// Disable copy construction.
@@ -143,24 +149,25 @@ public:
    //      fDisplayList.Add(std::move(item));
    //   }
 
-   virtual void CanvasUpdated(uint64_t ver, bool async, ROOT::Experimental::CanvasCallback_t callback) override;
+   void CanvasUpdated(uint64_t ver, bool async, ROOT::Experimental::CanvasCallback_t callback) final;
 
    /// return true if canvas modified since last painting
-   virtual bool IsCanvasModified(uint64_t id) const override { return fSnapshotDelivered != id; }
+   bool IsCanvasModified(uint64_t id) const final { return fSnapshotDelivered != id; }
 
    /// perform special action when drawing is ready
-   virtual void
-   DoWhenReady(const std::string &name, const std::string &arg, bool async, CanvasCallback_t callback) override;
+   void DoWhenReady(const std::string &name, const std::string &arg, bool async, CanvasCallback_t callback) final;
 
-   virtual void NewDisplay(const std::string &where) override;
+   bool ProduceBatchOutput(const std::string &fname, int width, int height) final;
 
-   virtual int NumDisplays() const override;
+   void NewDisplay(const std::string &where) final;
 
-   virtual std::string GetWindowAddr() const override;
+   int NumDisplays() const final;
 
-   virtual void Run(double tm = 0.) override;
+   std::string GetWindowAddr() const final;
 
-   virtual bool AddPanel(std::shared_ptr<RWebWindow>) override;
+   void Run(double tm = 0.) final;
+
+   bool AddPanel(std::shared_ptr<RWebWindow>) final;
 
    /** \class CanvasPainterGenerator
           Creates RCanvasPainter objects.
@@ -385,12 +392,6 @@ void ROOT::Experimental::RCanvasPainter::CanvasUpdated(uint64_t ver, bool async,
 void ROOT::Experimental::RCanvasPainter::DoWhenReady(const std::string &name, const std::string &arg, bool async,
                                                      CanvasCallback_t callback)
 {
-   if (name == "JSON") {
-      // it is only for debugging, JSON does not invoke callback
-      fNextDumpName = arg;
-      return;
-   }
-
    // ensure that window exists
    CreateWindow();
 
@@ -437,6 +438,14 @@ void ROOT::Experimental::RCanvasPainter::DoWhenReady(const std::string &name, co
       R__ERROR_HERE("CanvasPainter") << name << " fail with " << arg << " result = " << res;
 }
 
+
+//////////////////////////////////////////////////////////////////////////
+/// Produce batch output, runs always sync
+
+bool ROOT::Experimental::RCanvasPainter::ProduceBatchOutput(const std::string &fname, int width, int height)
+{
+   return ROOT::Experimental::RWebDisplayHandle::ProduceImage(fname, fSnapshot, width, height);
+}
 
 //////////////////////////////////////////////////////////////////////////
 /// Process data from the client
@@ -643,11 +652,6 @@ std::string ROOT::Experimental::RCanvasPainter::CreateSnapshot(const ROOT::Exper
    canvitem->SetObjectID("canvas"); // for canvas itself use special id
 
    TString res = TBufferJSON::ToJSON(canvitem.get(), fJsonComp);
-
-   if (!fNextDumpName.empty()) {
-      TBufferJSON::ExportToFile(fNextDumpName.c_str(), canvitem.get(), TClass::GetClass<ROOT::Experimental::RCanvasDisplayItem>());
-      fNextDumpName.clear();
-   }
 
    return std::string(res.Data());
 }
