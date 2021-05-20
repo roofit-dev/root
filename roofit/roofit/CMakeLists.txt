@@ -1,11 +1,13 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT rootfit package
 # @author Pere Mato, CERN
 ############################################################################
-
-if(mathmore OR ROOT_mathmore_FOUND)
-  set(ROOT_MATHMORE_LIBRARY MathMore)
-endif()
 
 ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
   HEADERS
@@ -42,7 +44,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
     RooJeffreysPrior.h
     RooKeysPdf.h
     RooLandau.h
-    RooLegendre.h
     RooLognormal.h
     RooMathCoreReg.h
     RooMathMoreReg.h
@@ -52,14 +53,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
     RooMomentMorphND.h
     RooMultiBinomial.h
     RooNDKeysPdf.h
-    RooNonCentralChiSquare.h
     RooNonCPEigenDecay.h
     RooNovosibirsk.h
     RooParametricStepFunction.h
     RooParamHistFunc.h
     RooPoisson.h
     RooPolynomial.h
-    RooSpHarmonic.h
     RooStepFunction.h
     RooTFnBinding.h
     RooTFnPdfBinding.h
@@ -70,6 +69,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
     RooUnblindUniform.h
     RooUniform.h
     RooVoigtian.h
+    RooJohnson.h
   SOURCES
     src/Roo2DKeysPdf.cxx
     src/RooArgusBG.cxx
@@ -104,7 +104,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
     src/RooJeffreysPrior.cxx
     src/RooKeysPdf.cxx
     src/RooLandau.cxx
-    src/RooLegendre.cxx
     src/RooLognormal.cxx
     src/RooMathCoreReg.cxx
     src/RooMathMoreReg.cxx
@@ -114,14 +113,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
     src/RooMomentMorphND.cxx
     src/RooMultiBinomial.cxx
     src/RooNDKeysPdf.cxx
-    src/RooNonCentralChiSquare.cxx
     src/RooNonCPEigenDecay.cxx
     src/RooNovosibirsk.cxx
     src/RooParametricStepFunction.cxx
     src/RooParamHistFunc.cxx
     src/RooPoisson.cxx
     src/RooPolynomial.cxx
-    src/RooSpHarmonic.cxx
     src/RooStepFunction.cxx
     src/RooTFnBinding.cxx
     src/RooTFnPdfBinding.cxx
@@ -132,12 +129,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
     src/RooUnblindUniform.cxx
     src/RooUniform.cxx
     src/RooVoigtian.cxx
+    src/RooJohnson.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
   LINKDEF
     LinkDef1.h
   DEPENDENCIES
-    ${ROOT_MATHMORE_LIBRARY}
     Core
     RooFitCore
     Tree
@@ -146,5 +143,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFit
     MathCore
 )
 
-ROOT_ADD_TEST_SUBDIRECTORY(test)
+if(vdt AND NOT builtin_vdt)
+  target_include_directories(RooFit PRIVATE ${VDT_INCLUDE_DIR})
+endif()
 
+ROOT_ADD_TEST_SUBDIRECTORY(test)

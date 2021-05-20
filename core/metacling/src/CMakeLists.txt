@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 # TInterpreter implementation for cling. Only in libCling; needs to resolve
 # symbols from libCore.
 
@@ -21,8 +27,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CLING_CXXFLAGS}")
 
 if(MSVC)
   set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/TClingCallbacks.cxx COMPILE_FLAGS -GR-)
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/TClingRdictModuleFileExtension.cxx COMPILE_FLAGS -GR-)
 else()
   set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/TClingCallbacks.cxx COMPILE_FLAGS -fno-rtti)
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/TClingRdictModuleFileExtension.cxx COMPILE_FLAGS -fno-rtti)
 endif()
 
 # This to avoid warning coming from llvm/src/tools/clang/include/clang/Sema/Lookup.h:441
@@ -44,8 +52,10 @@ ROOT_OBJECT_LIBRARY(MetaCling
   TClingClassInfo.cxx
   TCling.cxx
   TClingDataMemberInfo.cxx
+  TClingDeclInfo.cxx
   TClingMethodArgInfo.cxx
   TClingMethodInfo.cxx
+  TClingRdictModuleFileExtension.cxx
   TClingTypedefInfo.cxx
   TClingTypeInfo.cxx
   TClingValue.cxx
@@ -90,6 +100,10 @@ ROOT_LINKER_LIBRARY(Cling
 if(MSVC)
   set_target_properties(Cling PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
   set(cling_exports
+      __std_reverse_trivially_swappable_1
+      __std_reverse_trivially_swappable_2
+      __std_reverse_trivially_swappable_4
+      __std_reverse_trivially_swappable_8
       __std_terminate
       ??2@YAPAXI@Z
       ??3@YAXPAX@Z
@@ -103,7 +117,11 @@ if(MSVC)
       ??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QAEAAV01@H@Z
       ??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QAEAAV01@M@Z
       ??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QAEAAV01@N@Z
+      ??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QAEAAV01@PBX@Z
+      ??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QAEAAV01@P6AAAV01@AAV01@@Z@Z
       ??$?6U?$char_traits@D@std@@@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@0@AAV10@D@Z
+      ??$?6U?$char_traits@D@std@@@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@0@AAV10@PBD@Z
+      ??$endl@DU?$char_traits@D@std@@@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@0@AAV10@@Z
       cling_runtime_internal_throwIfInvalidPointer
       ?_Facet_Register@std@@YAXPAV_Facet_base@1@@Z
       ??1Value@cling@@QAE@XZ
@@ -117,6 +135,7 @@ if(MSVC)
       ?setValueNoAlloc@internal@runtime@cling@@YAXPAX00D_K@Z
       ?setValueNoAlloc@internal@runtime@cling@@YAXPAX00DPBX@Z
       ?setValueWithAlloc@internal@runtime@cling@@YAPAXPAX00D@Z
+      ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PBI@Z
       ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PBM@Z
       ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PBN@Z
       ?printValue@cling@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PBH@Z
