@@ -20,6 +20,7 @@
 #include "ROOT/RPageStorage.hxx"
 
 #include <algorithm>
+#include <exception>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -27,21 +28,8 @@
 #include <unordered_map>
 #include <utility>
 
-#include <TFile.h>
-#include <ROOT/RPageStorageRoot.hxx>
+#include <TError.h>
 
-
-ROOT::Experimental::Detail::RNTuple::RNTuple(std::unique_ptr<ROOT::Experimental::RNTupleModel> model)
-   : fModel(std::move(model))
-   , fNEntries(0)
-{
-}
-
-ROOT::Experimental::Detail::RNTuple::~RNTuple()
-{
-}
-
-//------------------------------------------------------------------------------
 
 void ROOT::Experimental::RNTupleReader::ConnectModel() {
    std::unordered_map<const Detail::RFieldBase *, DescriptorId_t> fieldPtr2Id;
@@ -58,32 +46,28 @@ void ROOT::Experimental::RNTupleReader::ConnectModel() {
 ROOT::Experimental::RNTupleReader::RNTupleReader(
    std::unique_ptr<ROOT::Experimental::RNTupleModel> model,
    std::unique_ptr<ROOT::Experimental::Detail::RPageSource> source)
-   : ROOT::Experimental::Detail::RNTuple(std::move(model))
-   , fSource(std::move(source))
+   : fSource(std::move(source))
+   , fModel(std::move(model))
    , fMetrics("RNTupleReader")
 {
    fSource->Attach();
    ConnectModel();
-   fNEntries = fSource->GetNEntries();
    fMetrics.ObserveMetrics(fSource->GetMetrics());
 }
 
 ROOT::Experimental::RNTupleReader::RNTupleReader(std::unique_ptr<ROOT::Experimental::Detail::RPageSource> source)
-   : ROOT::Experimental::Detail::RNTuple(nullptr)
-   , fSource(std::move(source))
+   : fSource(std::move(source))
+   , fModel(nullptr)
    , fMetrics("RNTupleReader")
 {
    fSource->Attach();
    fModel = fSource->GetDescriptor().GenerateModel();
    ConnectModel();
-   fNEntries = fSource->GetNEntries();
    fMetrics.ObserveMetrics(fSource->GetMetrics());
 }
 
 ROOT::Experimental::RNTupleReader::~RNTupleReader()
 {
-   // needs to be destructed before the page source
-   fModel = nullptr;
 }
 
 std::unique_ptr<ROOT::Experimental::RNTupleReader> ROOT::Experimental::RNTupleReader::Open(
@@ -116,7 +100,7 @@ void ROOT::Experimental::RNTupleReader::PrintInfo(const ENTupleInfo what, std::o
    //prepVisitor traverses through all fields to gather information needed for printing.
    RPrepareVisitor prepVisitor;
    //printVisitor traverses through all fields to do the actual printing.
-   RPrintVisitor printVisitor(output);
+   RPrintSchemaVisitor printVisitor(output);
    switch (what) {
    case ENTupleInfo::kSummary:
       for (int i = 0; i < (width/2 + width%2 - 4); ++i)
@@ -126,16 +110,19 @@ void ROOT::Experimental::RNTupleReader::PrintInfo(const ENTupleInfo what, std::o
          output << frameSymbol;
       output << std::endl;
       // FitString defined in RFieldVisitor.cxx
-         output << frameSymbol << " N-Tuple : " << RNTupleFormatter::FitString(name, width-13) << frameSymbol << std::endl; // prints line with name of ntuple
-         output << frameSymbol << " Entries : " << RNTupleFormatter::FitString(std::to_string(GetNEntries()), width - 13) << frameSymbol << std::endl;  // prints line with number of entries
-      GetModel()->GetRootField()->TraverseVisitor(prepVisitor);
+      output << frameSymbol << " N-Tuple : " << RNTupleFormatter::FitString(name, width-13) << frameSymbol << std::endl; // prints line with name of ntuple
+      output << frameSymbol << " Entries : " << RNTupleFormatter::FitString(std::to_string(GetNEntries()), width - 13) << frameSymbol << std::endl;  // prints line with number of entries
+      GetModel()->GetRootField()->AcceptVisitor(prepVisitor);
 
       printVisitor.SetFrameSymbol(frameSymbol);
       printVisitor.SetWidth(width);
       printVisitor.SetDeepestLevel(prepVisitor.GetDeepestLevel());
       printVisitor.SetNumFields(prepVisitor.GetNumFields());
-      GetModel()->GetRootField()->TraverseVisitor(printVisitor);
 
+      for (int i = 0; i < width; ++i)
+         output << frameSymbol;
+      output << std::endl;
+      GetModel()->GetRootField()->AcceptVisitor(printVisitor);
       for (int i = 0; i < width; ++i)
          output << frameSymbol;
       output << std::endl;
@@ -148,18 +135,52 @@ void ROOT::Experimental::RNTupleReader::PrintInfo(const ENTupleInfo what, std::o
       break;
    default:
       // Unhandled case, internal error
-      assert(false);
+      R__ASSERT(false);
    }
 }
+
+
+void ROOT::Experimental::RNTupleReader::Show(NTupleSize_t index, const ENTupleFormat format, std::ostream &output)
+{
+   auto entry = fModel->CreateEntry();
+   LoadEntry(index, entry.get());
+
+   switch(format) {
+      case ENTupleFormat::kJSON: {
+         output << "{";
+         for (auto iValue = entry->begin(); iValue != entry->end(); ) {
+            output << std::endl;
+            RPrintValueVisitor visitor(*iValue, output, 1 /* level */);
+            iValue->GetField()->AcceptVisitor(visitor);
+
+            if (++iValue == entry->end()) {
+               output << std::endl;
+               break;
+            } else {
+               output << ",";
+            }
+         }
+         output << "}" << std::endl;
+         break;
+      }
+      default:
+         // Unhandled case, internal error
+         R__ASSERT(false);
+   }
+}
+
+
 //------------------------------------------------------------------------------
+
 
 ROOT::Experimental::RNTupleWriter::RNTupleWriter(
    std::unique_ptr<ROOT::Experimental::RNTupleModel> model,
    std::unique_ptr<ROOT::Experimental::Detail::RPageSink> sink)
-   : ROOT::Experimental::Detail::RNTuple(std::move(model))
-   , fSink(std::move(sink))
+   : fSink(std::move(sink))
+   , fModel(std::move(model))
    , fClusterSizeEntries(kDefaultClusterSizeEntries)
    , fLastCommitted(0)
+   , fNEntries(0)
 {
    fSink->Create(*fModel.get());
 }
@@ -168,8 +189,6 @@ ROOT::Experimental::RNTupleWriter::~RNTupleWriter()
 {
    CommitCluster();
    fSink->CommitDataset();
-   // needs to be destructed before the page sink
-   fModel = nullptr;
 }
 
 std::unique_ptr<ROOT::Experimental::RNTupleWriter> ROOT::Experimental::RNTupleWriter::Recreate(
