@@ -207,6 +207,7 @@ protected:
 
 
 private:
+  void _adjustBinning(RooRealVar &theirVar, const TAxis &axis, RooRealVar *ourVar, Int_t *offset);
 
   ClassDef(RooDataHist,4) // Binned data set
 };
