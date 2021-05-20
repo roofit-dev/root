@@ -31,16 +31,9 @@
 #include "Minuit2/AnalyticalGradientCalculator.h"
 #include "Minuit2/Numerical2PGradientCalculator.h"
 #include "Minuit2/HessianGradientCalculator.h"
-
-//#define DEBUG
-
-//#if defined(DEBUG) || defined(WARNINGMSG)
 #include "Minuit2/MnPrint.h"
-//#endif
 
-
-
-#include <math.h>
+#include <cmath>
 
 
 namespace ROOT {
@@ -50,17 +43,13 @@ namespace ROOT {
 
 MinimumSeed MnSeedGenerator::operator()(const MnFcn& fcn, const GradientCalculator& gc, const MnUserParameterState& st, const MnStrategy& stra) const {
 
-//  std::cout << "MnSeedGenerator::operator() for general GradientCalculator" << std::endl;
+   MnPrint print("MnSeedGenerator");
 
    // find seed (initial minimization point) using the calculated gradient
-   unsigned int n = st.VariableParameters();
+   const unsigned int n = st.VariableParameters();
    const MnMachinePrecision& prec = st.Precision();
 
-#ifdef DEBUG
-   std::cout << "MnSeedGenerator: operator() - var par = " << n << " mnfcn pointer " << &fcn << std::endl;
-#endif
-
-   int printLevel = MnPrint::Level();
+   print.Debug(n, "free parameters, FCN pointer", &fcn);
 
    // initial starting values
    MnAlgebraicVector x(n);
@@ -73,11 +62,6 @@ MinimumSeed MnSeedGenerator::operator()(const MnFcn& fcn, const GradientCalculat
 //  std::cout << ")" << std::endl;
 
   double fcnmin = fcn(x);
-
-   if (printLevel > 1) {
-      std::cout << "MnSeedGenerator: for initial parameters FCN = ";
-      MnPrint::PrintFcn(std::cout,fcnmin);
-   }
 
    MinimumParameters pa(x, fcnmin);
 //  std::cout << "... doing gc(pa) ..." << std::endl;
@@ -96,49 +80,36 @@ MinimumSeed MnSeedGenerator::operator()(const MnFcn& fcn, const GradientCalculat
    } else {
 //     std::cout << "has no covariance" << std::endl;
       for(unsigned int i = 0; i < n; i++)
-         mat(i,i) = (fabs(dgrad.G2()(i)) > prec.Eps2() ? 1./dgrad.G2()(i) : 1.);
+         mat(i,i) = (std::fabs(dgrad.G2()(i)) > prec.Eps2() ? 1./dgrad.G2()(i) : 1.);
    }
    MinimumError err(mat, dcovar);
 
    double edm = VariableMetricEDMEstimator().Estimate(dgrad, err);
    MinimumState state(pa, err, dgrad, edm, fcn.NumOfCalls());
 
-   if (printLevel >1) {
-      MnPrint::PrintState(std::cout, state, "MnSeedGenerator: Initial state:  ");
-   }
+   print.Info("Initial state:", MnPrint::Oneline(state));
 
    NegativeG2LineSearch ng2ls;
-//  std::cout << dgrad.Vec() << std::endl;
-//  std::cout << prec << std::endl;
-//  std::cout << ng2ls.HasNegativeG2(dgrad, prec) << std::endl;
-//  std::cout << dgrad.Vec().size() << std::endl;
+   if(ng2ls.HasNegativeG2(dgrad, prec)) {
+      print.Debug("Negative G2 Found",
+        "\n  point:", x,
+        "\n  grad :", dgrad.Grad(),
+        "\n  g2   :", dgrad.G2());
 
-  if(ng2ls.HasNegativeG2(dgrad, prec)) {
-#ifdef DEBUG
-      std::cout << "MnSeedGenerator: Negative G2 Found: " << std::endl;
-      std::cout << x << std::endl;
-      std::cout << dgrad.Grad() << std::endl;
-      std::cout << dgrad.G2() << std::endl;
-#endif
       state = ng2ls(fcn, state, gc, prec);
 
-      if (printLevel >1) {
-         MnPrint::PrintState(std::cout, state, "MnSeedGenerator: Negative G2 found - new state:  ");
-      }
-
+      print.Info("Negative G2 found - new state:", state);
    }
 
 
    if(stra.Strategy() == 2 && !st.HasCovariance()) {
       //calculate full 2nd derivative
-#ifdef DEBUG
-      std::cout << "MnSeedGenerator: calling MnHesse  " << std::endl;
-#endif
+
+      print.Debug("calling MnHesse");
+
       MinimumState tmp = MnHesse(stra)(fcn, state, st.Trafo());
 
-      if (printLevel >1) {
-         MnPrint::PrintState(std::cout, tmp, "MnSeedGenerator: run Hesse - new state:  ");
-      }
+      print.Info("run Hesse - new state:", tmp);
 
 //     std::cout << "-- MnSeedGenerator::operator(.., GradientCalculator, ..), strategy 2 end state:" << std::endl;
 //     for (int i = 0; i < n; ++i) {
@@ -160,10 +131,9 @@ MinimumSeed MnSeedGenerator::operator()(const MnFcn& fcn, const GradientCalculat
 
 
 MinimumSeed MnSeedGenerator::operator()(const MnFcn& fcn, const AnalyticalGradientCalculator& gc, const MnUserParameterState& st, const MnStrategy& stra) const {
+   MnPrint print("MnSeedGenerator");
 
-//  std::cout << "MnSeedGenerator::operator() for AnalyticalGradientCalculator" << std::endl;
-
-  // find seed (initial point for minimization) using analytical gradient
+   // find seed (initial point for minimization) using analytical gradient
    unsigned int n = st.VariableParameters();
    const MnMachinePrecision& prec = st.Precision();
 
@@ -202,22 +172,20 @@ MinimumSeed MnSeedGenerator::operator()(const MnFcn& fcn, const AnalyticalGradie
       HessianGradientCalculator hgc(fcn, st.Trafo(), MnStrategy(2));
       std::pair<FunctionGradient, MnAlgebraicVector> hgrd = hgc.DeltaGradient(pa, dgrad);
       for(unsigned int i = 0; i < n; i++) {
-         if(fabs(hgrd.first.Grad()(i) - grd.Grad()(i)) > hgrd.second(i)) {
-#ifdef WARNINGMSG
-            MN_INFO_MSG("MnSeedGenerator:gradient discrepancy of external Parameter too large");
+         if(std::fabs(hgrd.first.Grad()(i) - grd.Grad()(i)) > hgrd.second(i)) {
             int externalParameterIndex = st.Trafo().ExtOfInt(i);
             const char * parameter_name = st.Trafo().Name(externalParameterIndex);
-            MN_INFO_VAL(parameter_name);
-            MN_INFO_VAL(externalParameterIndex);
-            MN_INFO_VAL2("internal",i);
-#endif
+            print.Warn("Gradient discrepancy of external Parameter too large:"
+              "parameter_name =", parameter_name,
+              "externalParameterIndex =", externalParameterIndex,
+              "internal =", i
+            );
             good = false;
          }
       }
       if(!good) {
-#ifdef WARNINGMSG
-         MN_ERROR_MSG("Minuit does not accept user specified Gradient. To force acceptance, override 'virtual bool CheckGradient() const' of FCNGradientBase.h in the derived class.");
-#endif
+         print.Error("Minuit does not accept user specified Gradient. To force acceptance, override 'virtual bool CheckGradient() const' of FCNGradientBase.h in the derived class.");
+
          assert(good);
       }
    }
@@ -232,7 +200,7 @@ MinimumSeed MnSeedGenerator::operator()(const MnFcn& fcn, const AnalyticalGradie
    } else {
 //     std::cout << "has no covariance" << std::endl;
       for(unsigned int i = 0; i < n; i++)
-         mat(i,i) = (fabs(dgrad.G2()(i)) > prec.Eps2() ? 1./dgrad.G2()(i) : 1.);
+         mat(i,i) = (std::fabs(dgrad.G2()(i)) > prec.Eps2() ? 1./dgrad.G2()(i) : 1.);
    }
    MinimumError err(mat, dcovar);
    double edm = VariableMetricEDMEstimator().Estimate(dgrad, err);

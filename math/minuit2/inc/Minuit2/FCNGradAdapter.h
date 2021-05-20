@@ -12,13 +12,9 @@
 #define ROOT_Minuit2_FCNGradAdapter
 
 #include "Minuit2/FCNGradientBase.h"
+#include "Minuit2/MnPrint.h"
 
 #include <vector>
-
-//#define DEBUG
-#ifdef DEBUG
-#include <iostream>
-#endif
 
 namespace ROOT {
 
@@ -63,12 +59,11 @@ namespace ROOT {
       std::vector<double> Gradient(const std::vector<double>& v) const override {
         fFunc.Gradient(v.data(), fGrad.data());
 
-#ifdef DEBUG
-        std::cout << " gradient in FCNAdapter = { " ;
-      for (unsigned int i = 0; i < fGrad.size(); ++i)
-         std::cout << fGrad[i] << "\t";
-      std::cout << "}" << std::endl;
-#endif
+        MnPrint("FCNGradAdapter").Debug([&](std::ostream& os) {
+          os << "gradient in FCNAdapter = {";
+          for (unsigned int i = 0; i < fGrad.size(); ++i)
+            os << fGrad[i] << (i == fGrad.size() - 1 ? '}' : '\t');
+        });
         return fGrad;
       }
       // forward interface
@@ -101,15 +96,15 @@ namespace ROOT {
         }
       }
 
-    private:
-      const Function & fFunc;
-      double fUp;
-      mutable std::vector<double> fGrad;
-      mutable std::vector<double> fG2;
-      mutable std::vector<double> fGStep;
-    };
+private:
+   const Function & fFunc;
+   double fUp;
+   mutable std::vector<double> fGrad;
+   mutable std::vector<double> fG2;
+   mutable std::vector<double> fGStep;
+};
 
-  } // end namespace Minuit2
+   } // end namespace Minuit2
 
 } // end namespace ROOT
 
