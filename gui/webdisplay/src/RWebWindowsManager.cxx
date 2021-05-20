@@ -28,7 +28,6 @@
 #include "TString.h"
 #include "TApplication.h"
 #include "TTimer.h"
-#include "TObjArray.h"
 #include "TROOT.h"
 #include "TEnv.h"
 
@@ -494,5 +493,5 @@ void ROOT::Experimental::RWebWindowsManager::Terminate()
       fServer->SetTerminate();
 
    if (gApplication)
-      gApplication->Terminate();
+      TTimer::SingleShot(100, "TApplication",  gApplication, "Terminate()");
 }

@@ -17,11 +17,12 @@ extra libraries (Histogram, display, etc).
 
 #include "TTreePlayer.h"
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <iostream>
+#include <fstream>
 
-#include "Riostream.h"
 #include "TROOT.h"
 #include "TSystem.h"
 #include "TFile.h"
@@ -40,8 +41,6 @@ extra libraries (Histogram, display, etc).
 #include "TLeafS.h"
 #include "TMath.h"
 #include "TH1.h"
-#include "TH2.h"
-#include "TH3.h"
 #include "TPolyMarker.h"
 #include "TPolyMarker3D.h"
 #include "TText.h"
@@ -62,7 +61,6 @@ extra libraries (Histogram, display, etc).
 #include "TChainElement.h"
 #include "TF1.h"
 #include "TVirtualFitter.h"
-#include "TEnv.h"
 #include "THLimitsFinder.h"
 #include "TSelectorDraw.h"
 #include "TSelectorEntries.h"
@@ -76,20 +74,20 @@ extra libraries (Histogram, display, etc).
 #include "TRefArrayProxy.h"
 #include "TVirtualMonitoring.h"
 #include "TTreeCache.h"
-#include "TStyle.h"
 #include "TVirtualMutex.h"
+#include "ThreadLocalStorage.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 #include "HFitInterface.h"
-#include "Foption.h"
 #include "Fit/BinData.h"
 #include "Fit/UnBinData.h"
 #include "Math/MinimizerOptions.h"
 
 
-
 R__EXTERN Foption_t Foption;
 
-TVirtualFitter *tFitter=0;
+TVirtualFitter *tFitter = nullptr;
 
 ClassImp(TTreePlayer);
 
@@ -2595,7 +2593,8 @@ Long64_t TTreePlayer::Scan(const char *varexp, const char *selection,
                cnames[ncols].Append( lf->GetBranch()->GetName() );
             }
          }
-         if (strcmp( lf->GetBranch()->GetName(), lf->GetName() ) != 0 ) {
+         if (lf->GetBranch()->IsA() == TBranch::Class() ||
+             strcmp( lf->GetBranch()->GetName(), lf->GetName() ) != 0 ) {
             cnames[ncols].Append('.');
             cnames[ncols].Append( lf->GetName() );
          }

@@ -45,6 +45,8 @@
 #include "TVirtualMutex.h"
 #include "TVirtualPad.h"
 #include "TVirtualPerfStats.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 #include "TBranchIMTHelper.h"
 
@@ -52,8 +54,8 @@
 
 #include <atomic>
 #include <cstddef>
-#include <string.h>
-#include <stdio.h>
+#include <cstring>
+#include <cstdio>
 
 
 Int_t TBranch::fgCount = 0;
@@ -1224,7 +1226,7 @@ TBasket* TBranch::GetBasketImpl(Int_t basketnumber, TBuffer *user_buffer)
    if (fTree->GetMaxVirtualSize() < 0 || fTree->GetClusterPrefetch())
       basket = GetFreshCluster();
    else
-      basket = GetFreshBasket(user_buffer);
+      basket = GetFreshBasket(basketnumber, user_buffer);
 
    // fSkipZip is old stuff still maintained for CDF
    if (fSkipZip) basket->SetBit(TBufferFile::kNotDecompressed);
@@ -1323,6 +1325,10 @@ const char* TBranch::GetIconName() const
 /// the user_buffer will back the memory of the newly-constructed basket.
 ///
 /// Assumes that this branch is enabled.
+///
+/// Returns -1 if the entry does not exist
+/// Returns -2 in case of error
+/// Returns the index of the basket in case of success.
 Int_t TBranch::GetBasketAndFirst(TBasket *&basket, Long64_t &first,
                                  TBuffer *user_buffer)
 {
@@ -1333,9 +1339,10 @@ Int_t TBranch::GetBasketAndFirst(TBasket *&basket, Long64_t &first,
       // make sure basket buffers are in memory.
       basket = fCurrentBasket;
       first = fFirstBasketEntry;
+      return fReadBasket;
    } else {
       if ((entry < fFirstEntry) || (entry >= fEntryNumber)) {
-         return 0;
+         return -1;
       }
       first = fFirstBasketEntry;
       Long64_t last = fNextBasketEntry - 1;
@@ -1345,7 +1352,7 @@ Int_t TBranch::GetBasketAndFirst(TBasket *&basket, Long64_t &first,
          if (fReadBasket < 0) {
             fNextBasketEntry = -1;
             Error("GetBasketAndFirst", "In the branch %s, no basket contains the entry %lld\n", GetName(), entry);
-            return -1;
+            return -2;
          }
          if (fReadBasket == fWriteBasket) {
             fNextBasketEntry = fEntryNumber;
@@ -1364,7 +1371,7 @@ Int_t TBranch::GetBasketAndFirst(TBasket *&basket, Long64_t &first,
             fCurrentBasket = 0;
             fFirstBasketEntry = -1;
             fNextBasketEntry = -1;
-            return -1;
+            return -2;
          }
          if (fTree->GetClusterPrefetch()) {
             TTree::TClusterIterator clusterIterator = fTree->GetClusterIterator(entry);
@@ -1378,18 +1385,20 @@ Int_t TBranch::GetBasketAndFirst(TBasket *&basket, Long64_t &first,
          // cause a reset of the first / next basket entries back to -1.
          fFirstBasketEntry = first;
          fNextBasketEntry = updatedNext;
-      }
-      if (user_buffer) {
-         // Disassociate basket from memory buffer for bulk IO
-         // When the user provides a memory buffer (i.e., for bulk IO), we should
-         // make sure to drop all references to that buffer in the TTree afterward.
-         fCurrentBasket = nullptr;
-         fBaskets[fReadBasket] = nullptr;
+         if (user_buffer) {
+            // Disassociate basket from memory buffer for bulk IO
+            // When the user provides a memory buffer (i.e., for bulk IO), we should
+            // make sure to drop all references to that buffer in the TTree afterward.
+            fCurrentBasket = nullptr;
+            fBaskets[fReadBasket] = nullptr;
+         } else {
+            fCurrentBasket = basket;
+         }
       } else {
          fCurrentBasket = basket;
       }
+      return fReadBasket;
    }
-   return 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1438,7 +1447,7 @@ Int_t TBranch::GetBulkEntries(Long64_t entry, TBuffer &user_buf)
    TBasket *basket = nullptr;
    Long64_t first;
    Int_t result = GetBasketAndFirst(basket, first, &user_buf);
-   if (R__unlikely(result <= 0)) return -1;
+   if (R__unlikely(result < 0)) return -1;
    // Only support reading from full clusters.
    if (R__unlikely(entry != first)) {
        //printf("Failed to read from full cluster; first entry is %ld; requested entry is %ld.\n", first, entry);
@@ -1459,22 +1468,41 @@ Int_t TBranch::GetBulkEntries(Long64_t entry, TBuffer &user_buf)
       return -1;
    }
 
+   if (&user_buf != buf) {
+      // The basket was already in memory and might (and might not) be backed by persistent
+      // storage.
+      R__ASSERT(result == fReadBasket);
+      if (fBasketSeek[fReadBasket]) {
+         // It is backed, so we can be destructive
+         user_buf.SetBuffer(buf->Buffer(), buf->BufferSize());
+         buf->ResetBit(TBufferIO::kIsOwner);
+         fCurrentBasket = nullptr;
+         fBaskets[fReadBasket] = nullptr;
+      } else {
+         // This is the only copy, we can't return it as is to the user, just make a copy.
+         if (user_buf.BufferSize() < buf->BufferSize()) {
+            user_buf.AutoExpand(buf->BufferSize());
+         }
+         memcpy(user_buf.Buffer(), buf->Buffer(), buf->BufferSize());
+      }
+   }
+
    Int_t bufbegin = basket->GetKeylen();
-   buf->SetBufferOffset(bufbegin);
+   user_buf.SetBufferOffset(bufbegin);
 
    Int_t N = ((fNextBasketEntry < 0) ? fEntryNumber : fNextBasketEntry) - first;
    //printf("Requesting %d events; fNextBasketEntry=%lld; first=%lld.\n", N, fNextBasketEntry, first);
-   if (R__unlikely(!leaf->ReadBasketFast(*buf, N))) {
+   if (R__unlikely(!leaf->ReadBasketFast(user_buf, N))) {
       Error("GetBulkEntries", "Leaf failed to read.\n");
       return -1;
    }
    user_buf.SetBufferOffset(bufbegin);
 
-   fCurrentBasket = nullptr;
-   fBaskets[fReadBasket] = nullptr;
-   R__ASSERT(fExtraBasket == nullptr && "fExtraBasket should have been set to nullptr by GetFreshBasket");
-   fExtraBasket = basket;
-   basket->DisownBuffer();
+   if (fCurrentBasket == nullptr) {
+      R__ASSERT(fExtraBasket == nullptr && "fExtraBasket should have been set to nullptr by GetFreshBasket");
+      fExtraBasket = basket;
+      basket->DisownBuffer();
+   }
 
    return N;
 }
@@ -1499,7 +1527,7 @@ Int_t TBranch::GetEntriesSerialized(Long64_t entry, TBuffer &user_buf, TBuffer *
    TBasket *basket = nullptr;
    Long64_t first;
    Int_t result = GetBasketAndFirst(basket, first, &user_buf);
-   if (R__unlikely(result <= 0)) { return -1; }
+   if (R__unlikely(result < 0)) { return -1; }
    // Only support reading from full clusters.
    if (R__unlikely(entry != first)) {
        Error("GetEntriesSerialized", "Failed to read from full cluster; first entry is %lld; requested entry is %lld.\n", first, entry);
@@ -1520,13 +1548,32 @@ Int_t TBranch::GetEntriesSerialized(Long64_t entry, TBuffer &user_buf, TBuffer *
       return -1;
    }
 
+   if (&user_buf != buf) {
+      // The basket was already in memory and might (and might not) be backed by persistent
+      // storage.
+      R__ASSERT(result == fReadBasket);
+      if (fBasketSeek[fReadBasket]) {
+         // It is backed, so we can be destructive
+         user_buf.SetBuffer(buf->Buffer(), buf->BufferSize());
+         buf->ResetBit(TBufferIO::kIsOwner);
+         fCurrentBasket = nullptr;
+         fBaskets[fReadBasket] = nullptr;
+      } else {
+         // This is the only copy, we can't return it as is to the user, just make a copy.
+         if (user_buf.BufferSize() < buf->BufferSize()) {
+            user_buf.AutoExpand(buf->BufferSize());
+         }
+         memcpy(user_buf.Buffer(), buf->Buffer(), buf->BufferSize());
+      }
+   }
+
    Int_t bufbegin = basket->GetKeylen();
-   buf->SetBufferOffset(bufbegin);
+   user_buf.SetBufferOffset(bufbegin);
 
    Int_t N = ((fNextBasketEntry < 0) ? fEntryNumber : fNextBasketEntry) - first;
    //Info("GetEntriesSerialized", "Requesting %d events; fNextBasketEntry=%lld; first=%lld.\n", N, fNextBasketEntry, first);
 
-   if (R__unlikely(!leaf->ReadBasketSerialized(*buf, N))) {
+   if (R__unlikely(!leaf->ReadBasketSerialized(user_buf, N))) {
       Error("GetEntriesSerialized", "Leaf failed to read.\n");
       return -1;
    }
@@ -1588,7 +1635,7 @@ Int_t TBranch::GetEntry(Long64_t entry, Int_t getall)
    Long64_t first;
 
    Int_t result = GetBasketAndFirst(basket, first, nullptr);
-   if (R__unlikely(result <= 0)) { return result; }
+   if (R__unlikely(result < 0)) { return result + 1; }
 
    basket->PrepareBasket(entry);
    TBuffer* buf = basket->GetBufferRef();
@@ -1761,8 +1808,11 @@ TFile* TBranch::GetFile(Int_t mode)
 ///
 /// If the user_buffer argument is non-null, then the memory in the
 /// user-provided buffer will be utilized by the underlying basket.
+///
+/// The basket number is used to estimate the required buffer size
+/// and try to optimize memory usage and number of memory allocation.
 
-TBasket* TBranch::GetFreshBasket(TBuffer* user_buffer)
+TBasket* TBranch::GetFreshBasket(Int_t basketnumber, TBuffer* user_buffer)
 {
    TBasket *basket = 0;
    if (user_buffer && fExtraBasket) {
@@ -1791,6 +1841,11 @@ TBasket* TBranch::GetFreshBasket(TBuffer* user_buffer)
                fBaskets.AddAt(0,oldindex);
                fBaskets.SetLast(-1);
                fNBaskets = 0;
+               basket->ReadResetBuffer(basketnumber);
+#ifdef R__TRACK_BASKET_ALLOC_TIME
+               fTree->AddAllocationTime(basket->GetResetAllocationTime());
+#endif
+               fTree->AddAllocationCount(basket->GetResetAllocationCount());
             } else {
                basket = fTree->CreateBasket(this);
             }
@@ -1876,6 +1931,22 @@ TBasket *TBranch::GetFreshCluster()
    }
    fBaskets.SetLast(-1);
    return basket;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return the 'full' name of the branch.  In particular prefix  the mother's name
+/// when it does not end in a trailing dot and thus is not part of the branch name
+TString TBranch::GetFullName() const
+{
+   TBranch* mother = GetMother();
+   if (!mother || mother==this) {
+      return fName;
+   }
+   TString motherName(mother->GetName());
+   if (motherName.Length() && (motherName[motherName.Length()-1] == '.')) {
+      return fName;
+   }
+   return motherName + "." + fName;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2130,7 +2201,7 @@ Int_t TBranch::LoadBaskets()
    for (Int_t i=0;i<nbaskets;i++) {
       basket = (TBasket*)fBaskets.UncheckedAt(i);
       if (basket) continue;
-      basket = GetFreshBasket(nullptr);
+      basket = GetFreshBasket(i, nullptr);
       if (fBasketBytes[i] == 0) {
          fBasketBytes[i] = basket->ReadBasketBytes(fBasketSeek[i],file);
       }
@@ -2452,7 +2523,7 @@ void TBranch::ResetAfterMerge(TFileMergeInfo *)
    fBaskets.Delete();
    if (reusebasket) {
       fNBaskets = 1;
-      reusebasket->Reset();
+      reusebasket->WriteReset();
       fBaskets[0] = reusebasket;
    } else {
       fNBaskets = 0;
@@ -3036,7 +3107,7 @@ Int_t TBranch::WriteBasketImpl(TBasket* basket, Int_t where, ROOT::Internal::TBr
          fBaskets[where] = 0;
 
          reusebasket = basket;
-         reusebasket->Reset();
+         reusebasket->WriteReset();
 
          fZipBytes += nout;
          fTotBytes += addbytes;
@@ -3103,7 +3174,7 @@ void TBranch::SetFirstEntry(Long64_t entry)
 
 void TBranch::SetupAddresses()
 {
-   // Nothing to do for regular branch, the TLeaf already did it.
+   SetAddress(nullptr); // in some cases, this triggers setting of the address
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -23,20 +23,19 @@
 #else
 
 #include "ROOT/TExecutor.hxx"
-#include "ROOT/TPoolManager.hxx"
-#include "TROOT.h"
+#include "RTaskArena.hxx"
 #include "TError.h"
 #include <functional>
 #include <memory>
 #include <numeric>
 
+
 namespace ROOT {
 
    class TThreadExecutor: public TExecutor<TThreadExecutor> {
    public:
-      explicit TThreadExecutor();
 
-      explicit TThreadExecutor(UInt_t nThreads);
+      explicit TThreadExecutor(UInt_t nThreads = 0u);
 
       TThreadExecutor(TThreadExecutor &) = delete;
       TThreadExecutor &operator=(TThreadExecutor &) = delete;
@@ -105,7 +104,7 @@ namespace ROOT {
       template<class T, class R>
       auto SeqReduce(const std::vector<T> &objs, R redfunc) -> decltype(redfunc(objs));
 
-      std::shared_ptr<ROOT::Internal::TPoolManager> fSched = nullptr;
+      std::shared_ptr<ROOT::Internal::RTaskArenaWrapper> fTaskArenaW = nullptr;
    };
 
    /************ TEMPLATE METHODS IMPLEMENTATION ******************/

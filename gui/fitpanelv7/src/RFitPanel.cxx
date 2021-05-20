@@ -21,7 +21,6 @@
 
 #include "Fit/BinData.h"
 #include "Fit/Fitter.h"
-// #include "TBackCompFitter.h"
 
 #include "TString.h"
 #include "TGraph.h"
@@ -38,11 +37,10 @@
 #include "TF3.h"
 #include "TFitResult.h"
 #include "TList.h"
+#include "TVirtualPad.h"
 #include "TCanvas.h"
-#include "TPad.h"
 #include "TDirectory.h"
 #include "TBufferJSON.h"
-#include "TMath.h"
 #include "Math/Minimizer.h"
 #include "HFitInterface.h"
 #include "TColor.h"

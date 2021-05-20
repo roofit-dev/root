@@ -36,15 +36,14 @@
 #include "TSocket.h"
 #include "Bytes.h"
 #include "TError.h"
-#include "TSystem.h"
 #include "TEnv.h"
 #include "TBase64.h"
 #include "TVirtualPerfStats.h"
 #include "TDavixFileInternal.h"
-#include "TSocket.h"
+#include "snprintf.h"
 
-#include <errno.h>
-#include <stdlib.h>
+#include <cerrno>
+#include <cstdlib>
 #include <unistd.h>
 #include <fcntl.h>
 #include <davix.hpp>

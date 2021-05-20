@@ -79,6 +79,9 @@
 #include "TVirtualPadEditor.h"
 #include "HelpText.h"
 #include "Getline.h"
+#include "TVirtualX.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 #ifdef WIN32
 #include <TWin32SplashThread.h>

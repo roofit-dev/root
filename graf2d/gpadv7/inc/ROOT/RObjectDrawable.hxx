@@ -36,18 +36,19 @@ protected:
 
    void CollectShared(Internal::RIOSharedVector_t &vect) final { vect.emplace_back(&fObj); }
 
-   std::unique_ptr<RDisplayItem> Display() const override;
+   std::unique_ptr<RDisplayItem> Display(const RDisplayContext &) override;
+
+   void PopulateMenu(RMenuItems &) final;
+
+   void Execute(const std::string &) final;
 
 public:
    RObjectDrawable() : RDrawable("tobject") {}
 
+   virtual ~RObjectDrawable();
+
    RObjectDrawable(const std::shared_ptr<TObject> &obj, const std::string &opt) : RDrawable("tobject"), fObj(obj), fOpts(opt) {}
 
-   /// Fill menu items for the object
-   void PopulateMenu(RMenuItems &) final;
-
-   /// Executes menu item
-   void Execute(const std::string &) final;
 };
 
 } // namespace Experimental
