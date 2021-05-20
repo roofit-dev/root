@@ -40,29 +40,35 @@ ROOT::Experimental::RNTupleModel::RNTupleModel()
   , fDefaultEntry(std::make_unique<REntry>())
 {}
 
-ROOT::Experimental::RNTupleModel* ROOT::Experimental::RNTupleModel::Clone()
+std::unique_ptr<ROOT::Experimental::RNTupleModel> ROOT::Experimental::RNTupleModel::Clone() const
 {
-   auto cloneModel = new RNTupleModel();
-   auto cloneFieldZero = static_cast<RFieldZero*>(fFieldZero->Clone(""));
-   cloneModel->fFieldZero = std::unique_ptr<RFieldZero>(cloneFieldZero);
-   cloneModel->fDefaultEntry = std::unique_ptr<REntry>(cloneFieldZero->GenerateEntry());
+   auto cloneModel = std::make_unique<RNTupleModel>();
+   auto cloneFieldZero = fFieldZero->Clone("");
+   cloneModel->fFieldZero = std::unique_ptr<RFieldZero>(static_cast<RFieldZero *>(cloneFieldZero.release()));
+   cloneModel->fDefaultEntry = cloneModel->fFieldZero->GenerateEntry();
    return cloneModel;
 }
 
 
 void ROOT::Experimental::RNTupleModel::AddField(std::unique_ptr<Detail::RFieldBase> field)
 {
+   if (!field) {
+      throw RException(R__FAIL("null field"));
+   }
    EnsureValidFieldName(field->GetName());
    fDefaultEntry->AddValue(field->GenerateValue());
    fFieldZero->Attach(std::move(field));
 }
 
 
-std::shared_ptr<ROOT::Experimental::RCollectionNTuple> ROOT::Experimental::RNTupleModel::MakeCollection(
+std::shared_ptr<ROOT::Experimental::RCollectionNTupleWriter> ROOT::Experimental::RNTupleModel::MakeCollection(
    std::string_view fieldName, std::unique_ptr<RNTupleModel> collectionModel)
 {
    EnsureValidFieldName(fieldName);
-   auto collectionNTuple = std::make_shared<RCollectionNTuple>(std::move(collectionModel->fDefaultEntry));
+   if (!collectionModel) {
+      throw RException(R__FAIL("null collectionModel"));
+   }
+   auto collectionNTuple = std::make_shared<RCollectionNTupleWriter>(std::move(collectionModel->fDefaultEntry));
    auto field = std::make_unique<RCollectionField>(fieldName, collectionNTuple, std::move(collectionModel));
    fDefaultEntry->CaptureValue(field->CaptureValue(collectionNTuple->GetOffsetPtr()));
    fFieldZero->Attach(std::move(field));

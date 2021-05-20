@@ -27,6 +27,7 @@ endif()
 
 ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
   HEADERS
+    Floats.h
     Roo1DTable.h
     RooAbsAnaConvPdf.h
     RooAbsArg.h
@@ -139,6 +140,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooIntegratorBinding.h
     RooInt.h
     RooInvTransform.h
+    RooLinearCombination.h
     RooLinearVar.h
     RooLinkedListElem.h
     RooLinkedList.h
@@ -186,6 +188,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooProofDriverSelector.h
     RooPullVar.h
     RooQuasiRandomGenerator.h
+    RooRatio.h
     RooRandom.h
     RooRandomizeParamMCSModule.h
     RooRangeBinning.h
@@ -228,7 +231,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooThresholdCategory.h
     RooTObjWrap.h
     RooTrace.h
-    RooTreeData.h
     RooTreeDataStore.h
     RooTruthModel.h
     RooUniformBinning.h
@@ -266,13 +268,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         TestStatistics/kahan_sum.h
         RooAbsMinimizerFcn.h
     RooHelpers.h
-    RooSpan.h
-    BatchData.h
-    BatchHelpers.h
-    RooVDTHeaders.h
     RooWrapperPdf.h
+    RooNaNPacker.h
+    RooBinSamplingPdf.h
     RooFitLegacy/RooCatTypeLegacy.h
     RooFitLegacy/RooCategorySharedProperties.h
+    RooFitLegacy/RooTreeData.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -383,6 +384,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooIntegrator2D.cxx
     src/RooIntegratorBinding.cxx
     src/RooInvTransform.cxx
+    src/RooLinearCombination.cxx
     src/RooLinearVar.cxx
     src/RooLinkedList.cxx
     src/RooLinkedListElem.cxx
@@ -429,6 +431,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooProofDriverSelector.cxx
     src/RooPullVar.cxx
     src/RooQuasiRandomGenerator.cxx
+    src/RooRatio.cxx
     src/RooRandom.cxx
     src/RooRandomizeParamMCSModule.cxx
     src/RooRangeBinning.cxx
@@ -469,7 +472,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooThresholdCategory.cxx
     src/RooTObjWrap.cxx
     src/RooTrace.cxx
-    src/RooTreeData.cxx
     src/RooTreeDataStore.cxx
     src/RooTruthModel.cxx
     src/RooUniformBinning.cxx
@@ -504,15 +506,18 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/TestStatistics/RooUnbinnedL.cxx
         src/RooAbsMinimizerFcn.cxx
     src/RooHelpers.cxx
-    src/BatchData.cxx
-    src/BatchHelpers.cxx
     src/RooWrapperPdf.cxx
+    src/RooBinSamplingPdf.cxx
     src/RooFitLegacy/RooCatTypeLegacy.cxx
     src/RooFitLegacy/RooCategorySharedProperties.cxx
     src/RooFitLegacy/RooMultiCatIter.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
 #    -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
+  LIBRARIES
+    RooBatchCompute
+    ${RT_LIBRARY}
+    ${ZeroMQ_LIBRARY}
   DEPENDENCIES
     Core
     Hist
@@ -528,32 +533,17 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         RooFitZMQ  # necessary for ppoll and zmqSvc that are necessary via MultiProcess includes
         RooFitMultiProcess
 #        ZeroMQ # as noted above, this doesn't work here, so we instead list it as a library below
-  LIBRARIES
-        ${RT_LIBRARY}
-        ${ZeroMQ_LIBRARY}
-  LINKDEF inc/LinkDef.h
+  LINKDEF
+    inc/LinkDef.h
 )
 
+# For recent clang, this can facilitate auto-vectorisation.
+# In RooFit, the errno side effect is not needed, anyway:
+if(NOT MSVC)
+  target_compile_options(RooFitCore PUBLIC -fno-math-errno)
+endif()
+
 target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
-
-list(APPEND fitcore_incl ${CMAKE_SOURCE_DIR}/roofit/roofitcore/inc)
-
-if(vdt OR builtin_vdt)
-   target_include_directories(RooFitCore PRIVATE ${VDT_INCLUDE_DIRS})
-   list(APPEND fitcore_incl ${VDT_INCLUDE_DIRS})
-endif()
-
-foreach(incl ${fitcore_incl})
-   target_include_directories(RooFitCore PUBLIC $<BUILD_INTERFACE:${incl}>)
-endforeach()
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 5 AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 6)
-  # gcc 5 has a bug in that it fails to put its internal -lgcc into the right place when linking.
-  # We need it to check cpu flags in src/Initialisation.cxx
-  # Here, we add an explicit link instruction according to the workaround posted here:
-  # https://bugs.launchpad.net/ubuntu/+source/gcc-5/+bug/1568899
-  target_link_libraries(RooFitCore PRIVATE -lgcc_s -lgcc)
-endif()
 
 if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)

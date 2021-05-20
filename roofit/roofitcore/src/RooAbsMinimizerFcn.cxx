@@ -30,6 +30,7 @@
 #include "RooAbsRealLValue.h"
 #include "RooMsgService.h"
 #include "RooMinimizer.h"
+#include "RooNaNPacker.h"
 
 #include "TMatrixDSym.h"
 
@@ -58,7 +59,7 @@ RooAbsMinimizerFcn::RooAbsMinimizerFcn(RooArgList paramList, RooMinimizer *conte
   for (unsigned int i = 0; i < _floatParamList->size(); ) { // Note: Counting loop, since removing from collection!
     const RooAbsArg* arg = (*_floatParamList).at(i);
     if (!arg->IsA()->InheritsFrom(RooAbsRealLValue::Class())) {
-      oocoutW(_context,Minimization) << "RooMinimizerFcn::RooMinimizerFcn: removing parameter " 
+      oocoutW(_context,Minimization) << "RooMinimizerFcn::RooMinimizerFcn: removing parameter "
 				     << arg->GetName() << " from list because it is not of type RooRealVar" << endl;
       _floatParamList->remove(*arg);
     } else {
@@ -75,7 +76,10 @@ RooAbsMinimizerFcn::RooAbsMinimizerFcn(RooArgList paramList, RooMinimizer *conte
 
 RooAbsMinimizerFcn::RooAbsMinimizerFcn(const RooAbsMinimizerFcn &other)
    : ROOT::Math::IBaseFunctionMultiDim(other),
-     _context(other._context), _maxFCN(other._maxFCN), _numBadNLL(other._numBadNLL),
+     _context(other._context), _maxFCN(other._maxFCN),
+     _funcOffset(other._funcOffset),
+     _recoverFromNaNStrength(other._recoverFromNaNStrength),
+     _numBadNLL(other._numBadNLL),
      _printEvalErrors(other._printEvalErrors), _evalCounter(other._evalCounter), _doEvalErrorWall(other._doEvalErrorWall),
      _nDim(other._nDim), _logfile(other._logfile), _verbose(other._verbose)
 {
@@ -172,6 +176,10 @@ Bool_t RooAbsMinimizerFcn::synchronize_parameter_settings(std::vector<ROOT::Fit:
             _nDim--;
             continue;
          }
+         // make sure the parameter are in dirty state to enable
+         // a real NLL computation when the minimizer calls the function the first time
+         // (see issue #7659)
+         par->setValueDirty();
 
          // Set the limits, if not infinite
          if (par->hasMin())

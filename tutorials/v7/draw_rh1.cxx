@@ -8,7 +8,7 @@
 ///
 /// \date 2015-03-22
 /// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
-/// \authors Axel Naumann <axel@cern.ch> Sergey Linev <s.linev@gsi.de>
+/// \authors Axel Naumann <axel@cern.ch>, Sergey Linev <s.linev@gsi.de>
 
 /*************************************************************************
  * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
@@ -22,6 +22,7 @@
 #include "ROOT/RHistDrawable.hxx"
 #include "ROOT/RFrameTitle.hxx"
 #include "ROOT/RCanvas.hxx"
+#include "ROOT/RPad.hxx"
 #include "TRandom.h"
 
 // macro must be here while cling is not capable to load
