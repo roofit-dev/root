@@ -14,6 +14,11 @@ JSROOT.define(['d3'], (d3) => {
    else if (d3.version !== '6.1.1')
       console.log(`Reuse existing d3.js version ${d3.version}, expected 6.1.1`);
 
+
+   function isPromise(obj) {
+      return obj && (typeof obj == 'object') && (typeof obj.then == 'function');
+   }
+
    // ==========================================================================================
 
    /** @summary Draw options interpreter
@@ -24,8 +29,11 @@ JSROOT.define(['d3'], (d3) => {
       this.part = "";
    }
 
-   /** @summary Returns true if remaining options are empty. */
-   DrawOptions.prototype.empty = function() { return this.opt.length === 0; }
+   /** @summary Returns true if remaining options are empty or contain only seperators symbols. */
+   DrawOptions.prototype.empty = function() {
+      if (this.opt.length === 0) return true;
+      return this.opt.replace(/[ ;_,]/g,"").length == 0;
+   }
 
    /** @summary Returns remaining part of the draw options. */
    DrawOptions.prototype.remain = function() { return this.opt; }
@@ -51,14 +59,14 @@ JSROOT.define(['d3'], (d3) => {
    DrawOptions.prototype.partAsInt = function(offset, dflt) {
       let val = this.part.replace(/^\D+/g, '');
       val = val ? parseInt(val, 10) : Number.NaN;
-      return isNaN(val) ? (dflt || 0) : val + (offset || 0);
+      return !Number.isInteger(val) ? (dflt || 0) : val + (offset || 0);
    }
 
    /** @summary Returns remaining part of found option as float. */
    DrawOptions.prototype.partAsFloat = function(offset, dflt) {
       let val = this.part.replace(/^\D+/g, '');
       val = val ? parseFloat(val) : Number.NaN;
-      return isNaN(val) ? (dflt || 0) : val + (offset || 0);
+      return !Number.isFinite(val) ? (dflt || 0) : val + (offset || 0);
    }
 
    // ============================================================================================
@@ -127,7 +135,7 @@ JSROOT.define(['d3'], (d3) => {
          let optimize = d.get("optimize");
          if (optimize) {
             optimize = parseInt(optimize);
-            if (!isNaN(optimize)) s.OptimizeDraw = optimize;
+            if (Number.isInteger(optimize)) s.OptimizeDraw = optimize;
          }
       }
 
@@ -188,9 +196,12 @@ JSROOT.define(['d3'], (d3) => {
          s.ToolBar = val || ((toolbar.indexOf("0") < 0) && (toolbar.indexOf("false") < 0) && (toolbar.indexOf("off") < 0));
       }
 
+      if (d.has("skipsi") || d.has("skipstreamerinfos"))
+         s.SkipStreamerInfos = true;
+
       if (d.has("palette")) {
          let palette = parseInt(d.get("palette"));
-         if (!isNaN(palette) && (palette > 0) && (palette < 113)) s.Palette = palette;
+         if (Number.isInteger(palette) && (palette > 0) && (palette < 113)) s.Palette = palette;
       }
 
       let render3d = d.get("render3d");
@@ -738,8 +749,9 @@ JSROOT.define(['d3'], (d3) => {
    /** @summary Method used when color or pattern were changed with OpenUi5 widgets
      * @private */
    TAttFillHandler.prototype.verifyDirectChange = function(painter) {
-      if (typeof this.pattern == 'string') this.pattern = parseInt(this.pattern);
-      if (isNaN(this.pattern)) this.pattern = 0;
+      if (typeof this.pattern == 'string')
+         this.pattern = parseInt(this.pattern);
+      if (!Number.isInteger(this.pattern)) this.pattern = 0;
 
       this.change(this.color, this.pattern, painter ? painter.getCanvSvg() : null, true, painter);
    }
@@ -754,10 +766,10 @@ JSROOT.define(['d3'], (d3) => {
       delete this.pattern_url;
       this.changed = true;
 
-      if ((color !== undefined) && !isNaN(color) && !color_as_svg)
+      if ((color !== undefined) && Number.isInteger(parseInt(color)) && !color_as_svg)
          this.colorindx = parseInt(color);
 
-      if ((pattern !== undefined) && !isNaN(pattern)) {
+      if ((pattern !== undefined) && Number.isInteger(parseInt(pattern))) {
          this.pattern = parseInt(pattern);
          delete this.opacity;
          delete this.antialias;
@@ -1040,7 +1052,7 @@ JSROOT.define(['d3'], (d3) => {
    /** @summary Allign angle to step raster, add optional offset */
    FontHandler.prototype.roundAngle = function(step, offset) {
       this.angle = parseInt(this.angle || 0);
-      if (isNaN(this.angle)) this.angle = 0;
+      if (!Number.isInteger(this.angle)) this.angle = 0;
       this.angle = Math.round(this.angle/step) * step + (offset || 0);
       if (this.angle < 0)
          this.angle += 360;
@@ -1100,10 +1112,10 @@ JSROOT.define(['d3'], (d3) => {
       // decode time from ROOT string
       function next(separ, min, max) {
          let pos = sof.indexOf(separ);
-         if (pos < 0) { pos = ""; return min; }
+         if (pos < 0) return min;
          let val = parseInt(sof.substr(0, pos));
          sof = sof.substr(pos + 1);
-         if (isNaN(val) || (val < min) || (val > max)) { pos = ""; return min; }
+         if (!Number.isInteger(val) || (val < min) || (val > max)) return min;
          return val;
       }
 
@@ -1153,7 +1165,8 @@ JSROOT.define(['d3'], (d3) => {
       function jsroot_d3_svg_lineFiniteDifferences(points) {
          let i = 0, j = points.length - 1, m = [], p0 = points[0], p1 = points[1], d = m[0] = jsroot_d3_svg_lineSlope(p0, p1);
          while (++i < j) {
-            m[i] = (d + (d = jsroot_d3_svg_lineSlope(p0 = p1, p1 = points[i + 1]))) / 2;
+            p0 = p1; p1 = points[i + 1];
+            m[i] = (d + (d = jsroot_d3_svg_lineSlope(p0, p1))) / 2;
          }
          m[i] = d;
          return m;
@@ -1260,7 +1273,6 @@ JSROOT.define(['d3'], (d3) => {
             if (cminy != curry) res.path += "v" + (cminy - curry);
             res.path += "v" + (cmaxy - cminy);
             if (cmaxy != prevy) res.path += "v" + (prevy - cmaxy);
-            curry = prevy;
          }
 
       }
@@ -1288,7 +1300,7 @@ JSROOT.define(['d3'], (d3) => {
          let value = elem.style(name);
          if (!value || (typeof value !== 'string')) return 0;
          value = parseFloat(value.replace("px", ""));
-         return isNaN(value) ? 0 : Math.round(value);
+         return !Number.isFinite(value) ? 0 : Math.round(value);
       }
 
       let rect = elem.node().getBoundingClientRect();
@@ -2259,33 +2271,41 @@ JSROOT.define(['d3'], (d3) => {
 
    /** @summary indicate that redraw was invoked via interactive action (like context menu or zooming)
      * @desc Use to catch such action by GED and by server-side
+     * @returns {Promise} when completed
      * @private */
    ObjectPainter.prototype.interactiveRedraw = function(arg, info, subelem) {
 
-      let reason;
+      let reason, res;
       if ((typeof info == "string") && (info.indexOf("exec:") != 0)) reason = info;
       if (arg == "pad")
-         this.redrawPad(reason);
+         res = this.redrawPad(reason);
       else if (arg !== false)
-         this.redraw(reason);
+         res = this.redraw(reason);
 
-      // inform GED that something changes
-      let canp = this.getCanvPainter();
+      if (!isPromise(res)) res = Promise.resolve(false);
 
-      if (canp && (typeof canp.producePadEvent == 'function'))
-         canp.producePadEvent("redraw", this.getPadPainter(), this, null, subelem);
+      return res.then(() => {
+         // inform GED that something changes
+         let canp = this.getCanvPainter();
 
-      // inform server that drawopt changes
-      if (canp && (typeof canp.processChanges == 'function'))
-         canp.processChanges(info, this, subelem);
+         if (canp && (typeof canp.producePadEvent == 'function'))
+            canp.producePadEvent("redraw", this.getPadPainter(), this, null, subelem);
+
+         // inform server that drawopt changes
+         if (canp && (typeof canp.processChanges == 'function'))
+            canp.processChanges(info, this, subelem);
+
+         return this;
+      });
    }
 
    /** @summary Redraw all objects in the current pad
      * @param {string} [reason] - like 'resize' or 'zoom'
+     * @returns {Promise} when pad redraw completed
      * @protected */
    ObjectPainter.prototype.redrawPad = function(reason) {
       let pp = this.getPadPainter();
-      if (pp) pp.redraw(reason);
+      return pp ? pp.redrawPad(reason) : Promise.resolve(false);
    }
 
    /** @summary execute selected menu command, either locally or remotely
@@ -2768,8 +2788,20 @@ JSROOT.define(['d3'], (d3) => {
 
          if (execp.executeMenuCommand(item)) return;
 
-         if (execp.args_menu_id)
-            execp.submitCanvExec(item.fExec, execp.args_menu_id);
+         if (!execp.args_menu_id) return;
+
+          if (!item.fArgs)
+             return execp.submitCanvExec(item.fExec, execp.args_menu_id);
+
+         item.fClassName = execp.getClassName();
+         if ((execp.args_menu_id.indexOf("#x")>0) || (execp.args_menu_id.indexOf("#y")>0) || (execp.args_menu_id.indexOf("#z")>0)) item.fClassName = "TAxis";
+
+          menu.showMethodArgsDialog(item).then(args => {
+             if (!args) return;
+             if (execp.executeMenuCommand(item, args)) return;
+             let exec = item.fExec.substr(0, item.fExec.length-1) + args + ')';
+             if (cp) cp.sendWebsocket('OBJEXEC:' + execp.args_menu_id + ":" + exec);
+         });
       }
 
       let DoFillMenu = (_menu, _reqid, _resolveFunc, reply) => {
@@ -2804,7 +2836,7 @@ JSROOT.define(['d3'], (d3) => {
                   let p = lastclname.lastIndexOf("::"),
                       shortname = (p > 0) ? lastclname.substr(p+2) : lastclname;
 
-                  _menu.add("sub:" + shortname.replace("<","_").replace(">","_"));
+                  _menu.add("sub:" + shortname.replace(/[<>]/g,"_"));
                }
 
                if ((item.fChecked === undefined) || (item.fChecked < 0))
@@ -3111,7 +3143,7 @@ JSROOT.define(['d3'], (d3) => {
       if (!delta || (test_ignore && item.ignore)) return;
 
       delta = (delta < 0) ? -0.2 : 0.2;
-      delta_left *= delta
+      delta_left *= delta;
       delta_right *= delta;
 
       let lmin = item.min = this.scale_min,
@@ -3321,6 +3353,7 @@ JSROOT.define(['d3'], (d3) => {
       { name: /^RooHist/, sameas: "TGraph" },
       { name: /^RooCurve/, sameas: "TGraph" },
       { name: "RooPlot", icon: "img_canvas", prereq: "more", func: ".drawRooPlot" },
+      { name: "TRatioPlot", icon: "img_mgraph", prereq: "more", func: ".drawRatioPlot", opt: "" },
       { name: "TMultiGraph", icon: "img_mgraph", prereq: "more", func: ".drawMultiGraph", expand_item: "fGraphs" },
       { name: "TStreamerInfoList", icon: 'img_question', prereq: "hierarchy", func: ".drawStreamerInfo" },
       { name: "TPaletteAxis", icon: "img_colz", prereq: "hist", func: ".drawPave" },
@@ -3353,12 +3386,12 @@ JSROOT.define(['d3'], (d3) => {
       { name: "TPolyMarker", icon: 'img_graph', prereq: "more", func: ".drawPolyMarker", direct: true },
       { name: "TASImage", icon: 'img_mgraph', prereq: "more", func: ".drawASImage", opt: ";z" },
       { name: "TJSImage", icon: 'img_mgraph', prereq: "more", func: ".drawJSImage", opt: ";scale;center" },
-      { name: "TGeoVolume", icon: 'img_histo3d', prereq: "geom", func: ".drawGeoObject", expand: "JSROOT.GEO.expandObject", opt: ";more;all;count;projx;projz;wire;dflt", ctrl: "dflt" },
+      { name: "TGeoVolume", icon: 'img_histo3d', prereq: "geom", func: ".drawGeoObject", expand: "JSROOT.GEO.expandObject", opt: ";more;all;count;projx;projz;wire;no_screen;dflt", ctrl: "dflt" },
       { name: "TEveGeoShapeExtract", icon: 'img_histo3d', prereq: "geom", func: ".drawGeoObject", expand: "JSROOT.GEO.expandObject", opt: ";more;all;count;projx;projz;wire;dflt", ctrl: "dflt" },
       { name: "ROOT::Experimental::REveGeoShapeExtract", icon: 'img_histo3d', prereq: "geom", func: ".drawGeoObject", expand: "JSROOT.GEO.expandObject", opt: ";more;all;count;projx;projz;wire;dflt", ctrl: "dflt" },
       { name: "TGeoOverlap", icon: 'img_histo3d', prereq: "geom", expand: "JSROOT.GEO.expandObject", func: ".drawGeoObject", opt: ";more;all;count;projx;projz;wire;dflt", dflt: "dflt", ctrl: "expand" },
-      { name: "TGeoManager", icon: 'img_histo3d', prereq: "geom", expand: "JSROOT.GEO.expandObject", func: ".drawGeoObject", opt: ";more;all;count;projx;projz;wire;tracks;dflt", dflt: "expand", ctrl: "dflt" },
-      { name: /^TGeo/, icon: 'img_histo3d', prereq: "geom", func: ".drawGeoObject", opt: ";more;all;axis;compa;count;projx;projz;wire;dflt", ctrl: "dflt" },
+      { name: "TGeoManager", icon: 'img_histo3d', prereq: "geom", expand: "JSROOT.GEO.expandObject", func: ".drawGeoObject", opt: ";more;all;count;projx;projz;wire;tracks;no_screen;dflt", dflt: "expand", ctrl: "dflt" },
+      { name: /^TGeo/, icon: 'img_histo3d', prereq: "geom", func: ".drawGeoObject", expand: "JSROOT.GEO.expandObject", opt: ";more;all;axis;compa;count;projx;projz;wire;no_screen;dflt", dflt: "dflt", ctrl: "expand" },
       // these are not draw functions, but provide extra info about correspondent classes
       { name: "kind:Command", icon: "img_execute", execute: true },
       { name: "TFolder", icon: "img_folder", icon2: "img_folderopen", noinspect: true, prereq: "hierarchy", expand: ".folderHierarchy" },
@@ -3595,10 +3628,6 @@ JSROOT.define(['d3'], (d3) => {
          }
 
          return Promise.reject(Error(`Function not specified to draw object ${type_info}`));
-      }
-
-      function isPromise(obj) {
-         return obj && (typeof obj == 'object') && (typeof obj.then == 'function');
       }
 
       function performDraw() {
@@ -3918,7 +3947,7 @@ JSROOT.define(['d3'], (d3) => {
          box.node().appendChild(msg);
       }
 
-      if (!isNaN(tmout) && (tmout > 0)) {
+      if (Number.isFinite(tmout) && (tmout > 0)) {
          box.property("with_timeout", true);
          setTimeout(() => jsrp.showProgress('', -1), tmout);
       }
@@ -3940,7 +3969,7 @@ JSROOT.define(['d3'], (d3) => {
       fmt = fmt.slice(0,len-1);
       let isexp, prec = fmt.indexOf(".");
       prec = (prec<0) ? 4 : parseInt(fmt.slice(prec+1));
-      if (isNaN(prec) || (prec <=0)) prec = 4;
+      if (!Number.isInteger(prec) || (prec <=0)) prec = 4;
 
       let significance = false;
       if ((last=='e') || (last=='E')) { isexp = true; } else
