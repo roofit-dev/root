@@ -668,6 +668,8 @@ TProof::~TProof()
                gSystem->Unlink(pck->String());
          }
       }
+      epl->Delete();
+      delete epl;
    }
 
    Close();
@@ -696,9 +698,14 @@ TProof::~TProof()
    SafeDelete(fRecvMessages);
    SafeDelete(fInputData);
    SafeDelete(fRunningDSets);
+   SafeDelete(fEnabledPackagesOnCluster);
    if (fWrksOutputReady) {
       fWrksOutputReady->SetOwner(kFALSE);
       delete fWrksOutputReady;
+   }
+   if (fQueries) {
+      fQueries->Delete();
+      delete fQueries;
    }
 
    // remove file with redirected logs
@@ -1508,8 +1515,9 @@ Int_t TProof::AddWorkers(TList *workerList)
 
 void TProof::SetupWorkersEnv(TList *addedWorkers, Bool_t increasingWorkers)
 {
+   TList *server_packs = gProofServ ? gProofServ->GetEnabledPackages() : nullptr;
    // Packages
-   TList *packs = gProofServ ? gProofServ->GetEnabledPackages() : GetEnabledPackages();
+   TList *packs = server_packs ? server_packs : GetEnabledPackages();
    if (packs && packs->GetSize() > 0) {
       TIter nxp(packs);
       TPair *pck = 0;
@@ -1529,6 +1537,11 @@ void TProof::SetupWorkersEnv(TList *addedWorkers, Bool_t increasingWorkers)
                EnablePackage(pck->GetName(), (TList *) pck->Value(), kTRUE);
          }
       }
+   }
+
+   if (server_packs) {
+      server_packs->Delete();
+      delete server_packs;
    }
 
    // Loaded macros
@@ -2799,6 +2812,7 @@ Int_t TProof::Collect(TMonitor *mon, Long_t timeout, Int_t endtype, Bool_t deact
                                                         xs->GetInetAddress().GetPort());
                }
             }
+            delete al;
          }
       }
 
@@ -2825,19 +2839,23 @@ Int_t TProof::Collect(TMonitor *mon, Long_t timeout, Int_t endtype, Bool_t deact
          if (rc  == 1 || (rc == 2 && !savedMonitor)) {
             // Deactivate it if we are done with it
             mon->DeActivate(s);
+            TList *al = mon->GetListOfActives();
             PDB(kCollect, 2)
                Info("Collect","#%04d: deactivating %p (active: %d, %p)", collectId,
                               s, mon->GetActive(),
-                              mon->GetListOfActives()->First());
+                              al->First());
+            delete al;
          } else if (rc == 2) {
             // This end message was for the saved monitor
             // Deactivate it if we are done with it
             if (savedMonitor) {
                savedMonitor->DeActivate(s);
+               TList *al = mon->GetListOfActives();
                PDB(kCollect, 2)
                   Info("Collect","save monitor: deactivating %p (active: %d, %p)",
                                  s, savedMonitor->GetActive(),
-                                 savedMonitor->GetListOfActives()->First());
+                                 al->First());
+               delete al;
             }
          }
 
@@ -2908,6 +2926,7 @@ Int_t TProof::Collect(TMonitor *mon, Long_t timeout, Int_t endtype, Bool_t deact
                                                   xs->GetInetAddress().GetPort());
          }
       }
+      delete al;
       mon->DeActivateAll();
    }
 

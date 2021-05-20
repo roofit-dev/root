@@ -133,11 +133,6 @@ if(NOT ROOT_r_FOUND)
   set(r_veto  r/*.C)
 endif()
 
-# FIXME: Temporary workaround for runtime_cxxmodule
-if (FIXME_TEMPORARILY_EXCLUDED_FOR_RUNTIME_CXXMODULES)
-  set(runtime_cxxmodules_veto r/Function.C)
-endif()
-
 if(WIN32)
   set(histfactory_veto histfactory/*.C
                        roostats/StandardFrequentistDiscovery.C) # histfactory doesn't work on Windows
@@ -375,6 +370,7 @@ set(unfold-testUnfold5b-depends tutorial-unfold-testUnfold5a)
 set(unfold-testUnfold7d-depends tutorial-unfold-testUnfold7c)
 set(unfold-testUnfold7c-depends tutorial-unfold-testUnfold7b)
 set(unfold-testUnfold7b-depends tutorial-unfold-testUnfold7a)
+set(xml-xmlmodifyfile-depends tutorial-xml-xmlnewfile)
 set(xml-xmlreadfile-depends tutorial-xml-xmlnewfile)
 set(roofit-rf503_wspaceread-depends tutorial-roofit-rf502_wspacewrite)
 set(histfactory-example-depends tutorial-roostats-CreateExampleFile)
@@ -483,7 +479,7 @@ foreach(t ${mpi_tutorials})
 endforeach()
 
 #---Python tutorials-----------------------------------------------------
-if(ROOT_python_FOUND)
+if(ROOT_pyroot_FOUND)
   if(NOT PYTHON_EXECUTABLE)
     find_package(PythonInterp REQUIRED)
   endif()
@@ -513,7 +509,9 @@ if(ROOT_python_FOUND)
  if(NOT XROOTD_FOUND)
    list(APPEND pyveto
        dataframe/df102_NanoAODDimuonAnalysis.py
-       dataframe/df103_NanoAODHiggsAnalysis.py)
+       dataframe/df103_NanoAODHiggsAnalysis.py
+       dataframe/df104_HiggsToTwoPhotons.py
+       dataframe/df105_WBosonAnalysis.py)
  endif()
 
   list(REMOVE_ITEM pytutorials ${pyveto})

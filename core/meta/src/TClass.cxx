@@ -2974,7 +2974,7 @@ TClass *TClass::GetClass(const char *name, Bool_t load, Bool_t silent)
 
    if (!cl) {
       {
-         TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
+         TInterpreter::SuspendAutoLoadingRAII autoloadOff(gInterpreter);
          TClassEdit::GetNormalizedName(normalizedName, name);
       }
       // Try the normalized name.
@@ -3178,15 +3178,15 @@ TClass *TClass::GetClass(const std::type_info& typeinfo, Bool_t load, Bool_t /* 
       }
    }
 
-   // try autoloading the typeinfo
-   int autoload_old = gCling->SetClassAutoloading(1);
+   // try AutoLoading the typeinfo
+   int autoload_old = gCling->SetClassAutoLoading(1);
    if (!autoload_old) {
       // Re-disable, we just meant to test
-      gCling->SetClassAutoloading(0);
+      gCling->SetClassAutoLoading(0);
    }
    if (autoload_old && gInterpreter->AutoLoad(typeinfo,kTRUE)) {
       // Disable autoload to avoid potential infinite recursion
-      TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
+      TInterpreter::SuspendAutoLoadingRAII autoloadOff(gInterpreter);
       cl = GetClass(typeinfo, load);
       if (cl) {
          return cl;
@@ -4031,7 +4031,7 @@ void TClass::ReplaceWith(TClass *newcl) const
    // Since we are in the process of replacing a TClass by a TClass
    // coming from a dictionary, there is no point in loading any
    // libraries during this search.
-   TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
+   TInterpreter::SuspendAutoLoadingRAII autoloadOff(gInterpreter);
    while ((acl = (TClass*)nextClass())) {
       if (acl == newcl) continue;
 
@@ -6076,7 +6076,7 @@ void TClass::SetUnloaded()
    // Disable the autoloader while calling SetClassInfo, to prevent
    // the library from being reloaded!
    {
-      TInterpreter::SuspendAutoloadingRAII autoloadOff(gInterpreter);
+      TInterpreter::SuspendAutoLoadingRAII autoloadOff(gInterpreter);
       TInterpreter::SuspendAutoParsing autoParseRaii(gCling);
       gInterpreter->SetClassInfo(this,kTRUE);
    }
@@ -7092,7 +7092,7 @@ Bool_t ROOT::Internal::HasConsistentHashMember(TClass &clRef)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return true if we have access to a constructor useable for I/O.  This is
+/// Return true if we have access to a constructor usable for I/O.  This is
 /// typically the default constructor but can also be a constructor specifically
 /// marked for I/O (for example a constructor taking a TRootIOCtor* as an
 /// argument).  In other words, if this routine returns true, TClass::New is
@@ -7108,14 +7108,14 @@ Bool_t ROOT::Internal::HasConsistentHashMember(TClass &clRef)
 ///    gInterpreter->ClassInfo_HasDefaultConstructor(aClass->GetClassInfo());
 /// \code
 
-Bool_t TClass::HasDefaultConstructor() const
+Bool_t TClass::HasDefaultConstructor(Bool_t testio) const
 {
 
    if (fNew) return kTRUE;
 
    if (HasInterpreterInfo()) {
       R__LOCKGUARD(gInterpreterMutex);
-      return gCling->ClassInfo_HasDefaultConstructor(GetClassInfo());
+      return gCling->ClassInfo_HasDefaultConstructor(GetClassInfo(), testio);
    }
    if (fCollectionProxy) {
       return kTRUE;

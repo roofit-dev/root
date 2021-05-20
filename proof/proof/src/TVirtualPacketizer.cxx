@@ -40,12 +40,11 @@ proof->SetParameter("PROOF_Packetizer", "TPacketizer");
 #include "TEntryList.h"
 #include "TMap.h"
 #include "TMessage.h"
-#include "TObjString.h"
 #include "TParameter.h"
 
 #include "TProof.h"
 #include "TProofDebug.h"
-#include "TProofPlayer.h"
+#include "TVirtualProofPlayer.h"
 #include "TProofServ.h"
 #include "TSlave.h"
 #include "TSocket.h"
@@ -55,7 +54,7 @@ proof->SetParameter("PROOF_Packetizer", "TPacketizer");
 #include "TMonitor.h"
 #include "TNtuple.h"
 #include "TNtupleD.h"
-#include "TPerfStats.h"
+#include "TVirtualPerfStats.h"
 
 ClassImp(TVirtualPacketizer);
 

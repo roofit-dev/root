@@ -17,6 +17,20 @@ sap.ui.define([
 
       constructor: GlViewerThree,
 
+      g_highlight_update: function(mgr)
+      {
+         let sa = THREE.OutlinePass.selection_atts;
+         let gs = mgr.GetElement(mgr.global_selection_id);
+         let gh = mgr.GetElement(mgr.global_highlight_id);
+
+         if (gs && gh) {
+            sa[0].visibleEdgeColor.setStyle(JSROOT.Painter.root_colors[gs.fVisibleEdgeColor]);
+            sa[0].hiddenEdgeColor .setStyle(JSROOT.Painter.root_colors[gs.fHiddenEdgeColor]);
+            sa[1].visibleEdgeColor.setStyle(JSROOT.Painter.root_colors[gh.fVisibleEdgeColor]);
+            sa[1].hiddenEdgeColor .setStyle(JSROOT.Painter.root_colors[gh.fHiddenEdgeColor]);
+         }
+      },
+
       init: function(controller)
       {
          GlViewer.prototype.init.call(this, controller);
@@ -25,9 +39,12 @@ sap.ui.define([
          this.creator = new EveElements(controller);
          this.creator.useIndexAsIs = (JSROOT.GetUrlOption('useindx') !== null);
 
-         if( ! GlViewerThree.g_global_init_done)
+         if(!GlViewerThree.g_global_init_done)
          {
-            GlViewerThree.g_global_init(this.controller.mgr);
+            GlViewerThree.g_global_init_done = true;
+
+            this.controller.mgr.RegisterSelectionChangeFoo(this.g_highlight_update.bind(this));
+            this.g_highlight_update(this.controller.mgr);
          }
 
          this.createThreejsRenderer();
@@ -147,13 +164,13 @@ sap.ui.define([
             if (event.movementX == 0 && event.movementY == 0)
                return;
 
-            glc.removeMouseMoveTimeout();
-            glc.clearHighlight();
             glc.removeMouseupListener();
 
-            if (event.buttons === 0)
-            {
-               glc.mousemove_timeout = setTimeout(glc.onMouseMoveTimeout.bind(glc, event), 250);
+            if (event.buttons === 0) {
+               glc.removeMouseMoveTimeout();
+               glc.mousemove_timeout = setTimeout(glc.onMouseMoveTimeout.bind(glc, event.offsetX, event.offsetY), glc.controller.htimeout);
+            } else {
+               glc.clearHighlight();
             }
          });
 
@@ -193,9 +210,8 @@ sap.ui.define([
          });
 
          this.renderer.domElement.addEventListener('dblclick', function(event) {
-
-            // console.log("GLC::dblclick", glc, event);
-            glc.resetThreejsRenderer();
+            if (glc.controller.dblclick_action == "Reset")
+               glc.resetThreejsRenderer();
          });
 
          // Key-handlers go on window ...
@@ -257,10 +273,6 @@ sap.ui.define([
 
          // This will also call render().
          this.resetThreejsRenderer();
-
-         // XXXX???? esp the last this. should be in controller?
-         // probably is here because viewer is not "ready" until now
-         this.controller.resize_handler.register(this.get_view(), this.controller.onResize.bind(this));
       },
 
       /** Reset camera, lights based on scene bounding box. */
@@ -382,16 +394,12 @@ sap.ui.define([
          if (this.mousemove_timeout)
          {
             clearTimeout(this.mousemove_timeout);
-            this.mousemove_timeout = 0;
+            delete this.mousemove_timeout;
          }
       },
 
-      onMouseMoveTimeout: function(event)
-      {
-         this.mousemove_timeout = 0;
-
-         let x = event.offsetX;
-         let y = event.offsetY;
+      /** Get three.js intersect object at specified mouse position */
+      getIntersectAt: function(x, y) {
          let w = this.get_width();
          let h = this.get_height();
 
@@ -407,44 +415,57 @@ sap.ui.define([
 
          for (let i = 0; i < intersects.length; ++i)
          {
-            o = intersects[i].object;
-            if (o.get_ctrl)
+            if (intersects[i].object.get_ctrl)
             {
-               c = o.get_ctrl();
-               c.elementHighlighted(c.extractIndex(intersects[i]));
-
-               this.highlighted_scene = c.obj3d.scene;
-
-               break;
+               intersects[i].mouse = mouse;
+               intersects[i].w = w;
+               intersects[i].h = h;
+               return intersects[i];
             }
          }
+      },
 
-         if (c)
-         {
-            if (c.obj3d && c.obj3d.eve_el)
-               this.ttip_text.innerHTML = c.obj3d.eve_el.fTitle || c.obj3d.eve_el.fName || "";
-            else
-               this.ttip_text.innerHTML = "";
+      onMouseMoveTimeout: function(x, y)
+      {
+         delete this.mousemove_timeout;
 
-            let del  = this.get_view().getDomRef();
-            let offs = (mouse.x > 0 || mouse.y < 0) ? this.getRelativeOffsets(del) : null;
+         var intersect = this.getIntersectAt(x,y);
 
-            if (mouse.x <= 0) {
-               this.ttip.style.left  = (x + del.offsetLeft + 10) + "px";
-               this.ttip.style.right = null;
-            } else {
-               this.ttip.style.right = (w - x + offs.right + 10) + "px";
-               this.ttip.style.left  = null;
-            }
-            if (mouse.y >= 0) {
-               this.ttip.style.top    = (y + del.offsetTop + 10) + "px";
-               this.ttip.style.bottom = null;
-            } else {
-               this.ttip.style.bottom = (h - y + offs.bottom + 10) + "px";
-               this.ttip.style.top = null;
-            }
-            this.ttip.style.display= "block";
+         if (!intersect)
+            return this.clearHighlight();
+
+         var c = intersect.object.get_ctrl();
+
+         var mouse = intersect.mouse;
+
+         c.elementHighlighted(c.extractIndex(intersect));
+
+         this.highlighted_scene = c.obj3d.scene;
+
+         if (c.obj3d && c.obj3d.eve_el)
+            this.ttip_text.innerHTML = c.getTooltipText(intersect);
+         else
+            this.ttip_text.innerHTML = "";
+
+         let del  = this.controller.getView().getDomRef();
+         let offs = (mouse.x > 0 || mouse.y < 0) ? this.getRelativeOffsets(del) : null;
+
+         if (mouse.x <= 0) {
+            this.ttip.style.left  = (x + del.offsetLeft + 10) + "px";
+            this.ttip.style.right = null;
+         } else {
+            this.ttip.style.right = (intersect.w - x + offs.right + 10) + "px";
+            this.ttip.style.left  = null;
          }
+         if (mouse.y >= 0) {
+            this.ttip.style.top    = (y + del.offsetTop + 10) + "px";
+            this.ttip.style.bottom = null;
+         } else {
+            this.ttip.style.bottom = (intersect.h - y + offs.bottom + 10) + "px";
+            this.ttip.style.top = null;
+         }
+
+         this.ttip.style.display= "block";
       },
 
       getRelativeOffsets: function(elem)
@@ -489,7 +510,15 @@ sap.ui.define([
 
          // See js/scripts/JSRootPainter.jquery.js JSROOT.Painter.createMenu(), menu.add()
 
+
+         var intersect = this.getIntersectAt(event.offsetX, event.offsetY);
+
          menu.add("header:Context Menu");
+
+         if (intersect) {
+            if (intersect.object.eve_el)
+               menu.add("Browse to " + (intersect.object.eve_el.fName || "element"), intersect.object.eve_el.fElementId, this.controller.invokeBrowseOf.bind(this.controller));
+         }
 
          menu.add("Reset camera", this.resetThreejsRenderer);
 
@@ -512,40 +541,14 @@ sap.ui.define([
 
       handleMouseSelect: function(event)
       {
-         let x = event.offsetX;
-         let y = event.offsetY;
-         let w = this.get_width();
-         let h = this.get_height();
+         var intersect = this.getIntersectAt(event.offsetX, event.offsetY);
 
-         // console.log("GLC::handleMouseSelect", this, event, x, y);
-
-         let mouse = new THREE.Vector2( ((x + 0.5) / w) * 2 - 1, -((y + 0.5) / h) * 2 + 1 );
-
-         this.raycaster.setFromCamera(mouse, this.camera);
-
-         let intersects = this.raycaster.intersectObjects(this.scene.children, true);
-
-         let o = null, c = null;
-
-         for (let i = 0; i < intersects.length; ++i)
-         {
-            o = intersects[i].object;
-
-            if (o.get_ctrl)
-            {
-               c = o.get_ctrl();
-               c.event = event;
-
-               c.elementSelected(c.extractIndex(intersects[i]));
-
-               this.highlighted_scene = o.scene;
-
-               break;
-            }
-         }
-
-         if ( ! c)
-         {
+         if (intersect) {
+            var c = intersect.object.get_ctrl();
+            c.event = event;
+            c.elementSelected(c.extractIndex(intersect));
+            this.highlighted_scene = intersect.object.scene;
+         } else {
             // XXXX HACK - handlersMIR senders should really be in the mgr
 
             this.controller.created_scenes[0].processElementSelected(null, [], event);
@@ -553,33 +556,6 @@ sap.ui.define([
       },
 
    });
-
-   //==============================================================================
-   // Global / non-prototype members
-   //==============================================================================
-
-   let LOX = GlViewerThree;
-
-   LOX.g_highlight_update = function(mgr)
-   {
-      let sa = THREE.OutlinePass.selection_atts;
-      let gs = mgr.GetElement(mgr.global_selection_id);
-      let gh = mgr.GetElement(mgr.global_highlight_id);
-
-      sa[0].visibleEdgeColor.setStyle(JSROOT.Painter.root_colors[gs.fVisibleEdgeColor]);
-      sa[0].hiddenEdgeColor .setStyle(JSROOT.Painter.root_colors[gs.fHiddenEdgeColor]);
-      sa[1].visibleEdgeColor.setStyle(JSROOT.Painter.root_colors[gh.fVisibleEdgeColor]);
-      sa[1].hiddenEdgeColor .setStyle(JSROOT.Painter.root_colors[gh.fHiddenEdgeColor]);
-   };
-
-   LOX.g_global_init = function(mgr)
-   {
-      mgr.RegisterSelectionChangeFoo(LOX.g_highlight_update);
-
-      LOX.g_highlight_update(mgr);
-
-      LOX.g_global_init_done = true;
-   };
 
    return GlViewerThree;
 

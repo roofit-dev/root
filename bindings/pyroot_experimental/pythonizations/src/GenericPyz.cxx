@@ -18,25 +18,25 @@
 #include "TInterpreter.h"
 #include "TInterpreterValue.h"
 
-#include <sstream>
-
 using namespace CPyCppyy;
 
-std::string GetCppName(const CPPInstance *self)
+static std::string GetCppName(const CPPInstance *self)
 {
    return Cppyy::GetScopedFinalName(self->ObjectIsA());
 }
 
 PyObject *ClingPrintValue(CPPInstance *self, PyObject * /* args */)
 {
+   auto cppObj = self->GetObject();
+   if (!cppObj)
+      // Proxied cpp object is null, use cppyy's generic __repr__
+      return PyObject_Repr((PyObject*)self);
+
    const std::string className = GetCppName(self);
-   auto printResult = gInterpreter->ToString(className.c_str(), self->GetObject());
+   auto printResult = gInterpreter->ToString(className.c_str(), cppObj);
    if (printResult.find("@0x") == 0) {
       // Fall back to __repr__ if we just get an address from cling
-      auto method = PyObject_GetAttrString((PyObject*)self, "__repr__");
-      auto res = PyObject_CallObject(method, nullptr);
-      Py_DECREF(method);
-      return res;
+      return PyObject_Repr((PyObject*)self);
    } else {
       return CPyCppyy_PyText_FromString(printResult.c_str());
    }
