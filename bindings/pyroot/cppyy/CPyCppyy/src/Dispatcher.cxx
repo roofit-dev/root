@@ -8,6 +8,7 @@
 #include "Utility.h"
 
 // Standard
+#include <set>
 #include <sstream>
 
 
@@ -42,7 +43,8 @@ static inline void InjectMethod(Cppyy::TCppMethod_t method, const std::string& m
 #else
     code << "    PyObject* mtPyName = PyUnicode_FromString(\"" << mtCppName << "\");\n"
 #endif
-            "    PyObject* pyresult = PyObject_CallMethodObjArgs((PyObject*)m_self, mtPyName";
+            "    PyObject* pyresult = PyObject_CallMethodObjArgs((PyObject*)_internal_self, mtPyName";
+
     for (Cppyy::TCppIndex_t i = 0; i < nArgs; ++i)
         code << ", pyargs[" << i << "]";
     code << ", NULL);\n    Py_DECREF(mtPyName);\n";
@@ -52,27 +54,74 @@ static inline void InjectMethod(Cppyy::TCppMethod_t method, const std::string& m
 }
 
 //----------------------------------------------------------------------------
-bool CPyCppyy::InsertDispatcher(CPPScope* klass, PyObject* dct)
+namespace {
+    struct BaseInfo {
+        BaseInfo(Cppyy::TCppType_t t, std::string&& bn, std::string&& bns) :
+            btype(t), bname(bn), bname_scoped(bns) {}
+        Cppyy::TCppType_t btype;
+        std::string bname;
+        std::string bname_scoped;
+    };
+
+    typedef std::vector<BaseInfo> BaseInfos_t;
+} // unnamed namespace
+
+//----------------------------------------------------------------------------
+bool CPyCppyy::InsertDispatcher(CPPScope* klass, PyObject* bases, PyObject* dct, std::ostringstream& err)
 {
 // Scan all methods in dct and where it overloads base methods in klass, create
 // dispatchers on the C++ side. Then interject the dispatcher class.
-    if (Cppyy::IsNamespace(klass->fCppType) || !PyDict_Check(dct)) {
-        PyErr_Format(PyExc_TypeError,
-            "%s not an acceptable base: is namespace or has no dict", Cppyy::GetScopedFinalName(klass->fCppType).c_str());
+    if (!PyTuple_Check(bases) || !PyTuple_GET_SIZE(bases) || !dct || !PyDict_Check(dct)) {
+        err << "internal error: expected tuple of bases and proper dictionary";
         return false;
     }
 
-    if (!Cppyy::HasVirtualDestructor(klass->fCppType)) {
-        PyErr_Format(PyExc_TypeError,
-            "%s not an acceptable base: no virtual destructor", Cppyy::GetScopedFinalName(klass->fCppType).c_str());
+    if (!Utility::IncludePython()) {
+        err << "failed to include Python.h";
         return false;
     }
 
-    if (!Utility::IncludePython())
-        return false;
+    const Py_ssize_t nBases = PyTuple_GET_SIZE(bases);
+    BaseInfos_t base_infos; base_infos.reserve(nBases);
+    for (Py_ssize_t ibase = 0; ibase < nBases; ++ibase) {
+	auto currentBase = PyTuple_GET_ITEM(bases, ibase);
+        if (!CPPScope_Check(currentBase))
+        // Python base class
+            continue;
 
-    const std::string& baseName       = TypeManip::template_base(Cppyy::GetFinalName(klass->fCppType));
-    const std::string& baseNameScoped = Cppyy::GetScopedFinalName(klass->fCppType);
+        Cppyy::TCppType_t basetype = ((CPPScope*)currentBase)->fCppType;
+        if (!basetype) {
+            err << "base class is incomplete";
+            break;
+        }
+
+        if (Cppyy::IsNamespace(basetype)) {
+            err << Cppyy::GetScopedFinalName(basetype) << " is a namespace";
+            break;
+        }
+
+        if (!Cppyy::HasVirtualDestructor(basetype)) {
+            const std::string& bname = Cppyy::GetScopedFinalName(basetype);
+            PyErr_Warn(PyExc_RuntimeWarning, (char*)("class \""+bname+"\" has no virtual destructor").c_str());
+        }
+
+        base_infos.emplace_back(
+            basetype, TypeManip::template_base(Cppyy::GetFinalName(basetype)), Cppyy::GetScopedFinalName(basetype));
+    }
+
+    if ((Py_ssize_t)base_infos.size() == 0)
+        return false;
+    else if ((Py_ssize_t)base_infos.size() > 1) {
+        err << "multi cross-inheritance not supported";
+        return false;
+    }
+
+    const auto& binfo = base_infos[0];
+    const Cppyy::TCppType_t baseType  = binfo.btype;
+    const std::string& baseName       = binfo.bname;
+    const std::string& baseNameScoped = binfo.bname_scoped;
+
+    bool isDeepHierarchy = klass->fCppType && baseType != klass->fCppType;
 
 // once classes can be extended, should consider re-use; for now, since derived
 // python classes can differ in what they override, simply use different shims
@@ -86,9 +135,10 @@ bool CPyCppyy::InsertDispatcher(CPPScope* klass, PyObject* dct)
 
 // start class declaration
     code << "namespace __cppyy_internal {\n"
-         << "class " << derivedName << " : public ::" << baseNameScoped << " {\n"
-            "  CPyCppyy::DispatchPtr m_self;\n"
-            "public:\n";
+         << "class " << derivedName << " : public ::" << baseNameScoped << " {\n";
+    if (!isDeepHierarchy)
+        code << "protected:\n  CPyCppyy::DispatchPtr _internal_self;\n";
+    code << "public:\n";
 
 // add a virtual destructor for good measure
     code << "  virtual ~" << derivedName << "() {}\n";
@@ -108,15 +158,15 @@ bool CPyCppyy::InsertDispatcher(CPPScope* klass, PyObject* dct)
 
 // protected methods and data need their access changed in the C++ trampoline and then
 // exposed on the Python side; so, collect their names as we go along
-    std::vector<std::string> protected_names;
+    std::set<std::string> protected_names;
 
 // simple case: methods from current class
     bool has_default = false;
     bool has_cctor = false;
     bool has_constructors = false;
-    const Cppyy::TCppIndex_t nMethods = Cppyy::GetNumMethods(klass->fCppType);
+    const Cppyy::TCppIndex_t nMethods = Cppyy::GetNumMethods(baseType);
     for (Cppyy::TCppIndex_t imeth = 0; imeth < nMethods; ++imeth) {
-        Cppyy::TCppMethod_t method = Cppyy::GetMethod(klass->fCppType, imeth);
+        Cppyy::TCppMethod_t method = Cppyy::GetMethod(baseType, imeth);
 
         if (Cppyy::IsConstructor(method) && (Cppyy::IsPublicMethod(method) || Cppyy::IsProtectedMethod(method))) {
             has_constructors = true;
@@ -138,10 +188,25 @@ bool CPyCppyy::InsertDispatcher(CPPScope* klass, PyObject* dct)
         if (contains != 1) {
             Py_DECREF(key);
 
-        // if the method is protected, we expose it with a 'using'
+        // if the method is protected, we expose it through re-declaration and forwarding (using
+        // does not work here b/c there may be private overloads)
             if (Cppyy::IsProtectedMethod(method)) {
-                protected_names.push_back(mtCppName);
-                code << "  using " << baseName << "::" << mtCppName << ";\n";
+                protected_names.insert(mtCppName);
+
+                code << "  " << Cppyy::GetMethodResultType(method) << " " << mtCppName << "(";
+                Cppyy::TCppIndex_t nArgs = Cppyy::GetMethodNumArgs(method);
+                for (Cppyy::TCppIndex_t i = 0; i < nArgs; ++i) {
+                    if (i != 0) code << ", ";
+                    code << Cppyy::GetMethodArgType(method, i) << " arg" << i;
+                }
+                code << ") ";
+                if (Cppyy::IsConstMethod(method)) code << "const ";
+                code << "{\n    return " << baseName << "::" << mtCppName << "(";
+                for (Cppyy::TCppIndex_t i = 0; i < nArgs; ++i) {
+                    if (i != 0) code << ", ";
+                    code << "arg" << i;
+                }
+                code << ");\n  }\n";
             }
 
             continue;
@@ -156,10 +221,10 @@ bool CPyCppyy::InsertDispatcher(CPPScope* klass, PyObject* dct)
 
 // try to locate left-overs in base classes
     if (PyDict_Size(clbs)) {
-        size_t nbases = Cppyy::GetNumBases(klass->fCppType);
+        size_t nbases = Cppyy::GetNumBases(baseType);
         for (size_t ibase = 0; ibase < nbases; ++ibase) {
             Cppyy::TCppScope_t tbase = (Cppyy::TCppScope_t)Cppyy::GetScope( \
-                Cppyy::GetBaseName(klass->fCppType, ibase));
+                Cppyy::GetBaseName(baseType, ibase));
 
             PyObject* keys = PyDict_Keys(clbs);
             for (Py_ssize_t i = 0; i < PyList_GET_SIZE(keys); ++i) {
@@ -187,40 +252,53 @@ bool CPyCppyy::InsertDispatcher(CPPScope* klass, PyObject* dct)
     if (has_default || !has_constructors)
         code << "  " << derivedName << "() {}\n";
     if (has_default || has_cctor || !has_constructors) {
-        code << "  " << derivedName << "(const " << derivedName << "& other) : ";
+        code << "  " << derivedName << "(const " << derivedName << "& other)";
         if (has_cctor)
-            code << baseName << "(other), ";
-        code << "m_self(other.m_self, this) {}\n";
+            code << " : " << baseName << "(other)";
+        if (!isDeepHierarchy) {
+            if (has_cctor) code << ", ";
+            else code << " : ";
+            code << "_internal_self(other._internal_self, this)";
+        }
+        code << " {}\n";
     }
 
 // destructor: default is fine
 
 // pull in data members that are protected
-    Cppyy::TCppIndex_t nData = Cppyy::GetNumDatamembers(klass->fCppType);
+    Cppyy::TCppIndex_t nData = Cppyy::GetNumDatamembers(baseType);
     if (nData) code << "public:\n";
     for (Cppyy::TCppIndex_t idata = 0; idata < nData; ++idata) {
-        if (Cppyy::IsProtectedData(klass->fCppType, idata)) {
-            protected_names.push_back(Cppyy::GetDatamemberName(klass->fCppType, idata));
-            code << "  using " << baseName << "::" << protected_names.back() << ";\n";
+        if (Cppyy::IsProtectedData(baseType, idata)) {
+            const std::string dm_name = Cppyy::GetDatamemberName(baseType, idata);
+            if (dm_name != "_internal_self") {
+                protected_names.insert(dm_name);
+                code << "  using " << baseName << "::" << dm_name << ";\n";
+            }
         }
     }
 
-// add an offset calculator for the dispatch ptr as needed
-    code << "public:\n"
-         << "static size_t _dispatchptr_offset() { return (size_t)&(("
-         << derivedName << "*)(0x0))->m_self; }";
+// initialize the dispatch pointer for base
+    code << "public:\n  static void _init_dispatchptr(" << derivedName << "* inst, PyObject* self) {\n"
+            "    new ((void*)&inst->_internal_self) CPyCppyy::DispatchPtr{self};\n"
+            "  }\n";
 
 // finish class declaration
     code << "};\n}";
 
 // finally, compile the code
-    if (!Cppyy::Compile(code.str()))
+    if (!Cppyy::Compile(code.str())) {
+        err << "failed to compile the dispatcher code";
         return false;
+    }
 
 // keep track internally of the actual C++ type (this is used in
 // CPPConstructor to call the dispatcher's one instead of the base)
     Cppyy::TCppScope_t disp = Cppyy::GetScope("__cppyy_internal::"+derivedName);
-    if (!disp) return false;
+    if (!disp) {
+        err << "failed to retrieve the internal dispatcher";
+        return false;
+    }
     klass->fCppType = disp;
 
 // at this point, the dispatcher only lives in C++, as opposed to regular classes

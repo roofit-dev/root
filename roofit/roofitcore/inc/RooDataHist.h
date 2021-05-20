@@ -25,6 +25,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <functional>
 
 class TObject ;
 class RooAbsArg;
@@ -96,11 +97,16 @@ public:
   virtual Bool_t isNonPoissonWeighted() const ;
 
   virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t len) const;
-  void getBatches(BatchHelpers::RunContext& evalData, std::size_t begin, std::size_t len) const;
+  void getBatches(RooBatchCompute::RunContext& evalData, std::size_t begin, std::size_t len) const;
 
   Double_t sum(Bool_t correctForBinSize, Bool_t inverseCorr=kFALSE) const ;
   Double_t sum(const RooArgSet& sumSet, const RooArgSet& sliceSet, Bool_t correctForBinSize, Bool_t inverseCorr=kFALSE) ;
-  Double_t sum(const RooArgSet& sumSet, const RooArgSet& sliceSet, Bool_t correctForBinSize, Bool_t inverseCorr, const std::map<const RooAbsArg*, std::pair<Double_t, Double_t> >& ranges);
+  Double_t sum(const RooArgSet& sumSet,
+               const RooArgSet& sliceSet,
+               Bool_t correctForBinSize,
+               Bool_t inverseCorr,
+               const std::map<const RooAbsArg*, std::pair<Double_t, Double_t> >& ranges,
+               std::function<double(int)> getBinScale = [](int){ return 1.0; } );
 
   virtual Double_t weight() const { 
     // Return weight of current bin
