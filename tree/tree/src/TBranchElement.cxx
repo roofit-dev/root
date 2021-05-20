@@ -53,12 +53,14 @@ ClassImp(TBranchElement);
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace {
-   void RemovePrefix(TString& str, const char* prefix) {
+   void RemovePrefix(TString& str, const TString &prefix) {
       // -- Remove a prefix from a string.
-      if (str.Length() && prefix && strlen(prefix)) {
-         if (!str.Index(prefix)) {
-            str.Remove(0, strlen(prefix));
-         }
+      // -- Require a '.' after the prefix.
+      if (prefix.Length() && prefix.Length() <= str.Length()
+          && (str.Data()[prefix.Length()] == '.' || (prefix[prefix.Length()-1]=='.')))
+      {
+         if (!str.Index(prefix))
+            str.Remove(0, prefix.Length());
       }
    }
    struct R__PushCache {
@@ -2155,7 +2157,7 @@ void TBranchElement::SetupInfo()
 
          TStreamerInfo* info;
          if( targetClass != cl )
-            info = (TStreamerInfo*)targetClass->GetConversionStreamerInfo( cl, fCheckSum );
+            info = (TStreamerInfo*)targetClass->FindConversionStreamerInfo( cl, fCheckSum );
          else {
             info = (TStreamerInfo*)cl->FindStreamerInfo( fCheckSum );
             if (info) {

@@ -96,48 +96,29 @@ public:
    ClassDef(RecHit, 1);
 };
 
-class CaloTower : public TObject
+class RCaloTower : public TObject
 {
 public:
    float fEta{0};
    float fPhi{0};
    float fEt{0};
 
-   CaloTower(float eta, float phi, float et): fEta(eta), fPhi(phi), fEt(et) {}
-   ClassDef(CaloTower, 1);
+   RCaloTower(float eta, float phi, float et): fEta(eta), fPhi(phi), fEt(et) {}
+   ClassDef(RCaloTower, 1);
 };
 
-class REveCaloTowerSelector : public REveCaloDataSelector
+class REveCaloTowerSliceSelector : public REveCaloDataSliceSelector
 {
-public:
-   struct SliceInfo
-   {
-      REveDataCollection* fCollection;
-      int fSliceIdx;
-
-      SliceInfo():fCollection(nullptr), fSliceIdx(-1){}
-      SliceInfo(REveDataCollection* c, int s) :fCollection(c), fSliceIdx(s) {}
-   };
 private:
-   REveCaloDataHist* fCaloData;
-   std::vector<SliceInfo> fSliceInfos;
-   int fActiveSlice {-1};
+   REveDataCollection* fCollection{nullptr};
+   REveCaloDataHist*   fCaloData{nullptr};
 
 public:
-   REveCaloTowerSelector(REveCaloDataHist* cd) : fCaloData(cd){}
-   void AddSliceInfo(REveDataCollection* c, int s) { fSliceInfos.emplace_back(c,s); }
-   void SetActiveSlice(int a) { fActiveSlice = a; }
+   REveCaloTowerSliceSelector(int s, REveDataCollection* c, REveCaloDataHist* h):REveCaloDataSliceSelector(s), fCollection(c), fCaloData(h) {}
 
-   using REveCaloDataSelector::ProcessSelection;
+   using REveCaloDataSliceSelector::ProcessSelection;
    void ProcessSelection(REveCaloData::vCellId_t& sel_cells, UInt_t selectionId, Bool_t multi) override
    {
-      fActiveSlice = sel_cells.front().fSlice;
-      REveDataCollection* collection = nullptr;
-      for (auto &si : fSliceInfos)
-      {
-         if (si.fSliceIdx == fActiveSlice)
-            collection = si.fCollection;
-      }
       std::set<int> item_set;
       REveCaloData::CellData_t cd;
       for (auto &cellId : sel_cells)
@@ -145,39 +126,32 @@ public:
          fCaloData->GetCellData(cellId, cd);
 
          // loop over enire collection and check its eta/phi range
-         for (int t = 0; t < collection->GetNItems(); ++t)
+         for (int t = 0; t < fCollection->GetNItems(); ++t)
          {
-            CaloTower* tower = (CaloTower*) collection->GetDataPtr(t);
+            RCaloTower* tower = (RCaloTower*) fCollection->GetDataPtr(t);
             if (tower->fEta > cd.fEtaMin && tower->fEta < cd.fEtaMax &&
                 tower->fPhi > cd.fPhiMin && tower->fPhi < cd.fPhiMax)
                item_set.insert(t);
          }
       }
       REveSelection* sel = (REveSelection*)eveMng->FindElementById(selectionId);
-      sel->NewElementPicked(collection->GetItemList()->GetElementId(),  multi, true, item_set);
+      sel->NewElementPicked(fCollection->GetItemList()->GetElementId(),  multi, true, item_set);
    }
 
-   using REveCaloDataSelector::GetCellsFromSecondaryIndices;
+   using REveCaloDataSliceSelector::GetCellsFromSecondaryIndices;
    void GetCellsFromSecondaryIndices(const std::set<int>& idcs, REveCaloData::vCellId_t& out) override
    {
-      REveDataCollection* collection = nullptr;
-      for (auto &si : fSliceInfos)
-      {
-         if (si.fSliceIdx == fActiveSlice)
-            collection = si.fCollection;
-      }
-
-      TH2F* hist  =  fCaloData->GetHist(fActiveSlice);
+      TH2F* hist  =  fCaloData->GetHist(GetSliceIndex());
       std::set<int> cbins;
       float total = 0;
       for( auto &i : idcs ) {
-         CaloTower* tower = (CaloTower*)collection->GetDataPtr(i);
+         RCaloTower* tower = (RCaloTower*)fCollection->GetDataPtr(i);
          int bin = hist->FindBin(tower->fEta, tower->fPhi);
          float frac =  tower->fEt/hist->GetBinContent(bin);
          bool ex = false;
          for (size_t ci = 0; ci < out.size(); ++ci)
          {
-            if (out[ci].fTower == bin && out[ci].fSlice == fActiveSlice)
+            if (out[ci].fTower == bin && out[ci].fSlice == GetSliceIndex())
             {
                float oldv =  out[ci].fFraction;
                out[ci].fFraction = oldv + frac;
@@ -186,7 +160,7 @@ public:
             }
          }
          if (!ex) {
-            out.push_back(REveCaloData::CellId_t(bin, fActiveSlice, frac));
+            out.push_back(REveCaloData::CellId_t(bin, GetSliceIndex(), frac));
          }
       }
    }
@@ -208,7 +182,7 @@ public:
       fCaloData = new REveCaloDataHist();
       fCaloData->AddHistogram(baseHist);
 
-      auto selector = new REveCaloTowerSelector(fCaloData);
+      auto selector = new REveCaloDataSelector();
       fCaloData->SetSelector(selector);
 
       eveMng->GetEventScene()->AddElement(fCaloData);
@@ -317,9 +291,9 @@ public:
             x = gRandom->Uniform(-j->GetEtaSize(), j->GetEtaSize());
             y = gRandom->Uniform(-j->GetPhiSize(),j->GetPhiSize());
             v = j->Pt();
-            auto etower = new CaloTower(offX + x, offY + y, v + gRandom->Uniform(2,3));
+            auto etower = new RCaloTower(offX + x, offY + y, v + gRandom->Uniform(2,3));
             elist->Add(etower);
-            auto htower = new CaloTower(offX + x, offY + y, v + gRandom->Uniform(1,2));
+            auto htower = new RCaloTower(offX + x, offY + y, v + gRandom->Uniform(1,2));
             hlist->Add(htower);
          }
       }
@@ -340,7 +314,7 @@ class JetProxyBuilder: public REveDataSimpleProxyBuilderTemplate<Jet>
    using REveDataSimpleProxyBuilderTemplate<Jet>::BuildViewType;
 
    void BuildViewType(const Jet& dj, int idx, REveElement* iItemHolder,
-                      std::string viewType, const REveViewContext* context) override
+                      const std::string& viewType, const REveViewContext* context) override
    {
       auto jet = new REveJetCone();
       jet->SetCylinder(context->GetMaxR(), context->GetMaxZ());
@@ -505,7 +479,8 @@ private:
                    Collection()->GetMainColor(),
                    Collection()->GetMainTransparency());
 
-         ((REveCaloTowerSelector*)fCaloData->GetSelector())->AddSliceInfo(Collection(), fSliceIndex);
+         fCaloData->GetSelector()->AddSliceSelector(std::unique_ptr<REveCaloDataSliceSelector>
+                                                    (new REveCaloTowerSliceSelector(fSliceIndex, Collection(), fCaloData)));
       }
    }
 
@@ -528,7 +503,7 @@ public:
 
          for (int h = 0; h < collection->GetNItems(); ++h)
          {
-            CaloTower* tower = (CaloTower*)collection->GetDataPtr(h);
+            RCaloTower* tower = (RCaloTower*)collection->GetDataPtr(h);
             const REveDataItem* item = Collection()->GetDataItem(h);
 
             if (!item->GetVisible())
@@ -542,7 +517,7 @@ public:
    using REveDataProxyBuilderBase::FillImpliedSelected;
    void FillImpliedSelected(REveElement::Set_t& impSet, Product*) override
    {
-      ((REveCaloTowerSelector*)fCaloData->GetSelector())->SetActiveSlice(fSliceIndex);
+      fCaloData->GetSelector()->SetActiveSlice(fSliceIndex);
       impSet.insert(fCaloData);
       fCaloData->FillImpliedSelectedSet(impSet);
    }
@@ -606,7 +581,7 @@ public:
       tableInfo->table("RecHit").
          column("pt",     1, "i.fPt");
 
-      tableInfo->table("CaloTower").
+      tableInfo->table("RCaloTower").
          column("eta",  3, "i.fEta").
          column("phi",  3, "i.fPhi").
          column("Et",   3, "i.fEt");
@@ -868,12 +843,12 @@ void collection_proxies(bool proj=true)
    REveCalo2D* calo2d = (REveCalo2D*) g_projMng->ImportElements(calo3d, rhoZEventScene);
 
    REveDataCollection* ecalCollection = new REveDataCollection("ECAL");
-   ecalCollection->SetItemClass(CaloTower::Class());
+   ecalCollection->SetItemClass(RCaloTower::Class());
    ecalCollection->SetMainColor(kRed);
    collectionMng->addCollection(ecalCollection, new CaloTowerProxyBuilder(event->fCaloData));
 
    REveDataCollection* hcalCollection = new REveDataCollection("HCAL");
-   hcalCollection->SetItemClass(CaloTower::Class());
+   hcalCollection->SetItemClass(RCaloTower::Class());
    hcalCollection->SetMainColor(kBlue);
    collectionMng->addCollection(hcalCollection, new CaloTowerProxyBuilder(event->fCaloData));
 

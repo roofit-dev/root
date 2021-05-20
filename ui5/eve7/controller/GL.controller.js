@@ -149,21 +149,27 @@ sap.ui.define([
       {
          if (!this.mgr || !this._load_scripts || !this._render_html || !this.eveViewerId || this.viewer_class) return;
 
-         this.viewer_class = this.mgr.handle.GetUserArgs("GLViewer");
+         this.viewer_class = this.mgr.handle.getUserArgs("GLViewer");
          if ((this.viewer_class != "JSRoot") && (this.viewer_class != "Three") && (this.viewer_class != "RCore"))
             this.viewer_class = "Three";
 
-         this.htimeout = this.mgr.handle.GetUserArgs("HTimeout");
+         this.htimeout = this.mgr.handle.getUserArgs("HTimeout");
          if (this.htimeout === undefined) this.htimeout = 250;
 
          // when "Reset" - reset camera position
-         this.dblclick_action = this.mgr.handle.GetUserArgs("DblClick");
+         this.dblclick_action = this.mgr.handle.getUserArgs("DblClick");
 
          sap.ui.require(['rootui5/eve7/lib/GlViewer' + this.viewer_class],
                function(GlViewer) {
                   this.viewer = new GlViewer(this.viewer_class);
                   this.viewer.init(this);
                }.bind(this));
+      },
+
+      // Callback from GlViewer class after initialization is complete
+      glViewerInitDone: function()
+      {
+         ResizeHandler.register(this.getView(), this.onResize.bind(this));
       },
 
       //==============================================================================
@@ -215,21 +221,20 @@ sap.ui.define([
       /// invoked from ResizeHandler
       onResize: function(event)
       {
+         // TODO: should be specified somehow in XML file
+         this.getView().$().css("overflow", "hidden").css("width", "100%").css("height", "100%");
+
          if (this.resize_tmout) clearTimeout(this.resize_tmout);
-         this.resize_tmout = setTimeout(this.onResizeTimeout.bind(this), 250); // small latency
+
+         // MT 2020/09/09: On Chrome, delay up to 200ms gets executed immediately.
+         this.resize_tmout = setTimeout(this.onResizeTimeout.bind(this), 250);
       },
 
       onResizeTimeout: function()
       {
          delete this.resize_tmout;
 
-         // console.log("onResizeTimeout", this.camera);
-
-         // TODO: should be specified somehow in XML file
-         this.getView().$().css("overflow", "hidden").css("width", "100%").css("height", "100%");
-
-         if (this.viewer)
-            this.viewer.onResizeTimeout();
+         this.viewer.onResizeTimeout();
       },
 
       /** Called from JSROOT context menu when object selected for browsing */
