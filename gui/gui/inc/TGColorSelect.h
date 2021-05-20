@@ -12,29 +12,6 @@
 #ifndef ROOT_TGColorSelect
 #define ROOT_TGColorSelect
 
-//////////////////////////////////////////////////////////////////////////
-//                                                                      //
-// TGColorFrame, TG16ColorSelector, TGColorPopup and TGColorSelect.     //
-//                                                                      //
-// The TGColorFrame is a small frame with border showing a specific     //
-// color.                                                               //
-//                                                                      //
-// The TG16ColorSelector is a composite frame with 16 TGColorFrames.    //
-//                                                                      //
-// The TGColorPopup is a popup containing a TG16ColorSelector and a     //
-// "More..." button which popups up a TGColorDialog allowing custom     //
-// color selection.                                                     //
-//                                                                      //
-// The TGColorSelect widget is like a checkbutton but instead of the    //
-// check mark there is color area with a little down arrow. When        //
-// clicked on the arrow the TGColorPopup pops up.                       //
-//                                                                      //
-// Selecting a color in this widget will generate the event:            //
-// kC_COLORSEL, kCOL_SELCHANGED, widget id, pixel.                      //
-// and the signal:                                                      //
-// ColorSelected(Pixel_t pixel)                                         //
-//                                                                      //
-//////////////////////////////////////////////////////////////////////////
 
 #include "TGFrame.h"
 #include "TGButton.h"
@@ -45,11 +22,11 @@
 class TGColorFrame : public TGFrame {
 
 protected:
-   const TGWindow *fMsgWindow;   // window handling container messages
-   Pixel_t         fPixel;       // color value of this cell
-   Bool_t          fActive;      // kTRUE if this color cell is active
-   GContext_t      fGrayGC;      // Shadow GC
-   Pixel_t         fColor;       // returned color value
+   const TGWindow *fMsgWindow;   ///< window handling container messages
+   Pixel_t         fPixel;       ///< color value of this cell
+   Bool_t          fActive;      ///< kTRUE if this color cell is active
+   GContext_t      fGrayGC;      ///< Shadow GC
+   Pixel_t         fColor;       ///< returned color value
 
 private:
    TGColorFrame(const TGColorFrame&) = delete;
@@ -73,9 +50,9 @@ public:
 class TG16ColorSelector : public TGCompositeFrame {
 
 protected:
-   Int_t            fActive;     // index of active color cell
-   const TGWindow  *fMsgWindow;  // window handling container messages
-   TGColorFrame    *fCe[16];     // matrix of color cells
+   Int_t            fActive;     ///< index of active color cell
+   const TGWindow  *fMsgWindow;  ///< window handling container messages
+   TGColorFrame    *fCe[16];     ///< matrix of color cells
 
 private:
    TG16ColorSelector(const TG16ColorSelector&) = delete;
@@ -98,10 +75,10 @@ public:
 class TGColorPopup : public TGCompositeFrame {
 
 protected:
-   Int_t            fActive;        // active color index
-   Int_t            fLaunchDialog;  // flag used for launching color dialog
-   const TGWindow  *fMsgWindow;     // window handling container messages
-   Pixel_t          fCurrentColor;  // currently selected color value
+   Int_t            fActive;        ///< active color index
+   Int_t            fLaunchDialog;  ///< flag used for launching color dialog
+   const TGWindow  *fMsgWindow;     ///< window handling container messages
+   Pixel_t          fCurrentColor;  ///< currently selected color value
 
 private:
    TGColorPopup(const TGColorPopup&) = delete;
@@ -127,10 +104,10 @@ public:
 class TGColorSelect : public TGCheckButton {
 
 protected:
-   Pixel_t       fColor;         // color value of the button
-   TGGC          fDrawGC;        // drawing GC
-   TGColorPopup *fColorPopup;    // color popup associated
-   TGPosition    fPressPos;      // psotion of frame on button press event
+   Pixel_t       fColor;         ///< color value of the button
+   TGGC          fDrawGC;        ///< drawing GC
+   TGColorPopup *fColorPopup;    ///< color popup associated
+   TGPosition    fPressPos;      ///< position of frame on button press event
 
    virtual void DoRedraw();
 
