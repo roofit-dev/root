@@ -89,35 +89,32 @@ protected:
    void ClearPdfParamAsymErr(Int_t index);
    void SetPdfParamErr(Int_t index, Double_t loVal, Double_t hiVal);
 
-   // doesn't seem to be used, TODO: make sure
-//   Double_t GetPdfParamVal(Int_t index);
-//   Double_t GetPdfParamErr(Int_t index);
+   Bool_t SetPdfParamVal(int index, double value) const;
+   void printEvalErrors() const;
 
-   void updateFloatVec();
+    void updateFloatVec();
 
    // members
-   RooMinimizer *_context;
+   const RooMinimizer *_context;
 
    // the following four are mutable because DoEval is const (in child classes)
-   mutable Int_t _evalCounter = 0;
    // Reset the *largest* negative log-likelihood value we have seen so far:
-   mutable double _maxFCN = -1e30;
+   mutable double _maxFCN = -std::numeric_limits<double>::infinity();
    mutable int _numBadNLL = 0;
    mutable int _printEvalErrors = 10;
+   mutable int _evalCounter{0};
 
-   Bool_t _doEvalErrorWall = kTRUE;
    unsigned int _nDim = 0;
 
-   Bool_t _optConst = kFALSE;
-
-   std::ofstream *_logfile = nullptr;
-   bool _verbose;
 
    RooArgList *_floatParamList;
-   std::vector<RooAbsArg *> _floatParamVec;
    RooArgList *_constParamList;
    RooArgList *_initFloatParamList;
    RooArgList *_initConstParamList;
+
+   std::ofstream *_logfile = nullptr;
+   bool _doEvalErrorWall = kTRUE;
+   bool _verbose;
 };
 
 #endif
