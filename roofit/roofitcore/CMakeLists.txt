@@ -69,7 +69,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooArgList.h
     RooArgProxy.h
     RooArgSet.h
-    InitUtils.h
     RooBinIntegrator.h
     RooBinnedGenContext.h
     RooBinningCategory.h
@@ -268,11 +267,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         TestStatistics/likelihood_builders.h
         RooAbsMinimizerFcn.h
     RooHelpers.h
-    RooSpan.h
-    BatchHelpers.h
-    RooVDTHeaders.h
     RooWrapperPdf.h
-    RunContext.h
     RooNaNPacker.h
     RooBinSamplingPdf.h
     RooFitLegacy/RooCatTypeLegacy.h
@@ -320,7 +315,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooArgList.cxx
     src/RooArgProxy.cxx
     src/RooArgSet.cxx
-    src/InitUtils.cxx
+    src/Initialisation.cxx
     src/RooBinIntegrator.cxx
     src/RooBinnedGenContext.cxx
     src/RooBinningCategory.cxx
@@ -511,7 +506,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/RooAbsMinimizerFcn.cxx
     src/RooHelpers.cxx
     src/RooWrapperPdf.cxx
-    src/RunContext.cxx
     src/RooBinSamplingPdf.cxx
     src/RooFitLegacy/RooCatTypeLegacy.cxx
     src/RooFitLegacy/RooCategorySharedProperties.cxx
@@ -519,6 +513,10 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
 #    -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
+  LIBRARIES
+    RooBatchCompute
+    ${RT_LIBRARY}
+    ${ZeroMQ_LIBRARY}
   DEPENDENCIES
     Core
     Hist
@@ -534,36 +532,17 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         RooFitZMQ  # necessary for ppoll and zmqSvc that are necessary via MultiProcess includes
         RooFitMultiProcess
 #        ZeroMQ # as noted above, this doesn't work here, so we instead list it as a library below
-  LIBRARIES
-        ${RT_LIBRARY}
-        ${ZeroMQ_LIBRARY}
-  LINKDEF inc/LinkDef.h
+  LINKDEF
+    inc/LinkDef.h
 )
 
+# For recent clang, this can facilitate auto-vectorisation.
+# In RooFit, the errno side effect is not needed, anyway:
+if(NOT MSVC)
+  target_compile_options(RooFitCore PUBLIC -fno-math-errno)
+endif()
+
 target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
-
-list(APPEND fitcore_incl ${CMAKE_SOURCE_DIR}/roofit/roofitcore/inc)
-
-if(vdt OR builtin_vdt)
-   target_include_directories(RooFitCore PRIVATE ${VDT_INCLUDE_DIRS})
-   list(APPEND fitcore_incl ${VDT_INCLUDE_DIRS})
-endif()
-
-foreach(incl ${fitcore_incl})
-   target_include_directories(RooFitCore PUBLIC $<BUILD_INTERFACE:${incl}>)
-endforeach()
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  # gcc has a bug in that it fails to put its internal -lgcc into the right place when linking.
-  # We need it to check cpu flags in src/InitUtils.cxx
-  # Here, we add an explicit link instruction according to the workaround posted here:
-  # https://bugs.launchpad.net/ubuntu/+source/gcc-5/+bug/1568899
-  target_link_libraries(RooFitCore PRIVATE -lgcc_s -lgcc)
-endif()
-
-if(roofit-arch-libs)
-  target_compile_options(RooFitCore PUBLIC -DR__RF_ARCHITECTURE_SPECIFIC_LIBS)
-endif()
 
 if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)

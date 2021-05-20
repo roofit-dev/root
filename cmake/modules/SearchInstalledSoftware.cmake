@@ -1214,6 +1214,11 @@ if(builtin_tbb)
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
     set(_tbb_compiler compiler=gcc)
   endif()
+  if(${ROOT_ARCHITECTURE} MATCHES "macosxarm64")
+    set(tbb_command patch -p1 -i ${CMAKE_SOURCE_DIR}/builtins/tbb/patches/apple-m1.patch)
+  else()
+    set(tbb_command "")
+  endif()
   if(MSVC)
     set(vsdir "vs2013")
     set(TBB_LIBRARIES ${CMAKE_BINARY_DIR}/lib/tbb.lib)
@@ -1256,6 +1261,7 @@ if(builtin_tbb)
       URL_HASH SHA256=${tbb_sha256}
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       PATCH_COMMAND sed -i -e "/clang -v/s@-v@--version@" build/macos.inc
+      COMMAND ${tbb_command}
       CONFIGURE_COMMAND ""
       BUILD_COMMAND make ${_tbb_compiler} cpp0x=1 "CXXFLAGS=${_tbb_cxxflags}" CPLUS=${CMAKE_CXX_COMPILER} CONLY=${CMAKE_C_COMPILER} "LDFLAGS=${_tbb_ldflags}"
       INSTALL_COMMAND ${CMAKE_COMMAND} -Dinstall_dir=<INSTALL_DIR> -Dsource_dir=<SOURCE_DIR>
@@ -1390,7 +1396,7 @@ elseif(veccore)
 endif()
 
 if(builtin_veccore)
-  set(VecCore_VERSION "0.6.0")
+  set(VecCore_VERSION "0.7.0")
   set(VecCore_PROJECT "VecCore-${VecCore_VERSION}")
   set(VecCore_SRC_URI "${lcgpackages}/${VecCore_PROJECT}.tar.gz")
   set(VecCore_DESTDIR "${CMAKE_BINARY_DIR}/externals")
@@ -1398,7 +1404,7 @@ if(builtin_veccore)
 
   ExternalProject_Add(VECCORE
     URL     ${VecCore_SRC_URI}
-    URL_HASH SHA256=db404d745906efec2a76175995e847af9174df5a8da1e5ccdb241c773d7c8df9
+    URL_HASH SHA256=61d9fc4be815c5c98088c2796763d3ed82ba4bad5a69b7892c1c2e7e1e53d311
     BUILD_IN_SOURCE 0
     LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1
     CMAKE_ARGS -G ${CMAKE_GENERATOR}
@@ -1805,7 +1811,7 @@ if(webgui)
       ExternalProject_Add(
         OPENUI5
         URL ${CMAKE_SOURCE_DIR}/builtins/openui5/openui5.tar.gz
-        URL_HASH SHA256=0cde25387047163fe2ed5f32eb7224628be10c3b6afa07d0b2a42002543909c2
+        URL_HASH SHA256=f40910aae22afb80f0d1a0ff07577ff8073896dd4415e4c64a125b7c29b89b0e
         CONFIGURE_COMMAND ""
         BUILD_COMMAND ""
         INSTALL_COMMAND ""
