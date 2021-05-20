@@ -349,10 +349,16 @@ clang::QualType AddDefaultParameters(clang::QualType instanceType,
 //______________________________________________________________________________
 llvm::StringRef DataMemberInfo__ValidArrayIndex(const clang::DeclaratorDecl &m, int *errnum = 0, llvm::StringRef  *errstr = 0);
 
-enum class EIOCtorCategory : short {kAbsent, kDefault, kIOPtrType, kIORefType};
+enum class EIOCtorCategory : short { kAbsent, kDefault, kIOPtrType, kIORefType };
 
 //______________________________________________________________________________
 EIOCtorCategory CheckConstructor(const clang::CXXRecordDecl*, const RConstructorType&, const cling::Interpreter& interp);
+
+//______________________________________________________________________________
+bool CheckDefaultConstructor(const clang::CXXRecordDecl*, const cling::Interpreter& interp);
+
+//______________________________________________________________________________
+EIOCtorCategory CheckIOConstructor(const clang::CXXRecordDecl*, const char *, const clang::CXXRecordDecl *, const cling::Interpreter& interp);
 
 //______________________________________________________________________________
 const clang::FunctionDecl* ClassInfo__HasMethod(const clang::DeclContext *cl, char const*, const cling::Interpreter& interp);

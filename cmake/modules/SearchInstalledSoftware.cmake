@@ -492,115 +492,6 @@ if(mathmore OR builtin_gsl)
   endif()
 endif()
 
-#---Check for Python installation-------------------------------------------------------
-
-message(STATUS "Looking for python")
-
-if(pyroot_experimental)
-  unset(PYTHON_INCLUDE_DIR CACHE)
-  unset(PYTHON_LIBRARY CACHE)
-endif()
-
-# Python is required by header and manpage generation
-
-if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.14)
-
-  # Determine whether we should prefer Python 2 or Python 3:
-  set(PYTHON_PREFER_VERSION "3")
-  # Check whether old `find_package(PythonInterp)` variable was passed.
-  # If so, it will be passed to find_package(Python) below. Otherwise,
-  # check what `python` points to: Python 2 or 3:
-  if(NOT PYTHON_EXECUTABLE)
-    find_program(PYTHON_EXECUTABLE "python")
-  endif()
-  if(PYTHON_EXECUTABLE)
-    execute_process(COMMAND ${PYTHON_EXECUTABLE} -c "import sys;print(sys.version_info[0])"
-                    OUTPUT_VARIABLE PYTHON_PREFER_VERSION
-                    ERROR_VARIABLE PYTHON_PREFER_VERSION_ERR)
-    if(PYTHON_PREFER_VERSION_ERR)
-      message(WARNING "Unable to determine version of ${PYTHON_EXECUTABLE}: ${PYTHON_PREFER_VERSION_ERR}")
-    endif()
-    string(STRIP "${PYTHON_PREFER_VERSION}" PYTHON_PREFER_VERSION)
-  endif()
-
-  if(python)
-    set(REQUIRED_PYTHON_Development Development)
-  endif()
-
-  message(STATUS "Preferring Python version ${PYTHON_PREFER_VERSION}")
-
-  if("${PYTHON_PREFER_VERSION}" MATCHES "2")
-    # Means PYTHON_EXECUTABLE wasn't defined.
-    if(PYTHON_INCLUDE_DIRS AND NOT Python2_INCLUDE_DIRS)
-      set(Python2_INCLUDE_DIRS "${PYTHON_INCLUDE_DIRS}")
-    endif()
-    if(PYTHON_LIBRARIES AND NOT Python2_LIBRARIES)
-      set(Python2_LIBRARIES "${PYTHON_LIBRARIES}")
-    endif()
-    find_package(Python2 COMPONENTS Interpreter ${REQUIRED_PYTHON_Development} REQUIRED)
-    if(Python2_Development_FOUND)
-      # Re-run, now with NumPy, but not required:
-      find_package(Python2 COMPONENTS Interpreter Development NumPy)
-      # Compat with find_package(PythonInterp), find_package(PythonLibs)
-      set(PYTHON_EXECUTABLE "${Python2_EXECUTABLE}")
-      set(PYTHON_INCLUDE_DIRS "${Python2_INCLUDE_DIRS}")
-      set(PYTHON_LIBRARIES "${Python2_LIBRARIES}")
-      set(PYTHON_VERSION_STRING "${Python2_VERSION}")
-      set(PYTHON_VERSION_MAJOR "${Python2_VERSION_MAJOR}")
-      set(PYTHON_VERSION_MINOR "${Python2_VERSION_MINOR}")
-      set(NUMPY_FOUND ${Python2_NumPy_FOUND})
-      set(NUMPY_INCLUDE_DIRS "${Python2_NumPy_INCLUDE_DIRS}")
-    endif()
-  else()
-    if(PYTHON_EXECUTABLE AND NOT Python_EXECUTABLE)
-      set(Python_EXECUTABLE "${PYTHON_EXECUTABLE}")
-    endif()
-    if(PYTHON_INCLUDE_DIRS AND NOT Python_INCLUDE_DIRS)
-      set(Python_INCLUDE_DIRS "${PYTHON_INCLUDE_DIRS}")
-    endif()
-    if(PYTHON_LIBRARIES AND NOT Python_LIBRARIES)
-      set(Python_LIBRARIES "${PYTHON_LIBRARIES}")
-    endif()
-    find_package(Python COMPONENTS Interpreter ${REQUIRED_PYTHON_Development} REQUIRED)
-    if(Python_Development_FOUND)
-      # Re-run, now with NumPy, but not required:
-      find_package(Python COMPONENTS Interpreter Development NumPy)
-      # Compat with find_package(PythonInterp), find_package(PythonLibs), find_package(NumPy)
-      set(PYTHON_EXECUTABLE "${Python_EXECUTABLE}")
-      set(PYTHON_INCLUDE_DIRS "${Python_INCLUDE_DIRS}")
-      set(PYTHON_LIBRARIES "${Python_LIBRARIES}")
-      set(PYTHON_VERSION_STRING "${Python_VERSION}")
-      set(PYTHON_VERSION_MAJOR "${Python_VERSION_MAJOR}")
-      set(PYTHON_VERSION_MINOR "${Python_VERSION_MINOR}")
-      set(NUMPY_FOUND ${Python_NumPy_FOUND})
-      set(NUMPY_INCLUDE_DIRS "${Python_NumPy_INCLUDE_DIRS}")
-    endif()
-  endif()
-
-else()
-  find_package(PythonInterp ${python_version} REQUIRED)
-
-  if(python)
-    find_package(PythonLibs ${python_version} REQUIRED)
-
-    if(NOT "${PYTHONLIBS_VERSION_STRING}" MATCHES "${PYTHON_VERSION_STRING}")
-      message(FATAL_ERROR "Version mismatch between Python interpreter (${PYTHON_VERSION_STRING})"
-      " and libraries (${PYTHONLIBS_VERSION_STRING}).\nROOT cannot work with this configuration. "
-      "Please specify only PYTHON_EXECUTABLE to CMake with an absolute path to ensure matching versions are found.")
-    endif()
-
-    find_package(NumPy)
-  endif()
-endif()
-
-# set variables necessary for MultiPython
-set(python_dir "python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}")
-if(WIN32)
-  set(py_localruntimedir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${python_dir})
-else()
-  set(py_localruntimedir ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${python_dir})
-endif()
-
 #---Check for OpenGL installation-------------------------------------------------------
 if(opengl)
   message(STATUS "Looking for OpenGL")
@@ -1281,7 +1172,7 @@ if(builtin_tbb)
       INSTALL_DIR ${CMAKE_BINARY_DIR}
       PATCH_COMMAND sed -i -e "/clang -v/s@-v@--version@" build/macos.inc
       CONFIGURE_COMMAND ""
-      BUILD_COMMAND make ${_tbb_compiler} "CXXFLAGS=${_tbb_cxxflags}" CPLUS=${CMAKE_CXX_COMPILER} CONLY=${CMAKE_C_COMPILER}
+      BUILD_COMMAND make ${_tbb_compiler} cpp0x=1 "CXXFLAGS=${_tbb_cxxflags}" CPLUS=${CMAKE_CXX_COMPILER} CONLY=${CMAKE_C_COMPILER}
       INSTALL_COMMAND ${CMAKE_COMMAND} -Dinstall_dir=<INSTALL_DIR> -Dsource_dir=<SOURCE_DIR>
                                        -P ${CMAKE_SOURCE_DIR}/cmake/scripts/InstallTBB.cmake
       INSTALL_COMMAND ""
@@ -1326,9 +1217,14 @@ if(vc AND NOT Vc_FOUND)
   set(Vc_LIBNAME "${CMAKE_STATIC_LIBRARY_PREFIX}Vc${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(Vc_LIBRARY "${Vc_ROOTDIR}/lib/${Vc_LIBNAME}")
 
+  if(UNIX)
+    set(VC_PATCH_COMMAND patch -p1 < ${CMAKE_SOURCE_DIR}/cmake/patches/vc-bit-scan-forward.patch)
+  endif()
+
   ExternalProject_Add(VC
     URL     ${Vc_SRC_URI}
     URL_HASH SHA256=68e609a735326dc3625e98bd85258e1329fb2a26ce17f32c432723b750a4119f
+    PATCH_COMMAND ${VC_PATCH_COMMAND}
     BUILD_IN_SOURCE 0
     BUILD_BYPRODUCTS ${Vc_LIBRARY}
     LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1
@@ -1529,43 +1425,54 @@ if (vecgeom)
 endif()
 
 #---Check for CUDA-----------------------------------------------------------------------
-
+# if tmva-gpu is off and cuda is on cuda is searched but not used in tmva
+#  if cuda is off but tmva-gpu is on cuda is searched and activated if found !
+#
 if(cuda OR tmva-gpu)
   find_package(CUDA)
-
   if(CUDA_FOUND)
     if(NOT DEFINED CMAKE_CUDA_STANDARD)
       set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
     endif()
-
     enable_language(CUDA)
-
+    set(cuda ON CACHE BOOL "Found Cuda for TMVA GPU" FORCE)
+    ###
     ### look for package CuDNN
-    find_package(CuDNN)
-
-    if (CUDNN_FOUND)
-      message(STATUS "CuDNN library found: " ${CUDNN_LIBRARIES})
-    else()
-      message(STATUS "CuDNN library not found")
+    if (cudnn)
+      if (fail-on-missing)
+        find_package(CuDNN REQUIRED)
+      else()
+        find_package(CuDNN)
+      endif()
+      if (CUDNN_FOUND)
+        message(STATUS "CuDNN library found: " ${CUDNN_LIBRARIES})
+	### set tmva-cudnn flag only if tmva-gpu is on!
+        if (tmva-gpu)
+          set(tmva-cudnn ON)
+        endif()
+      else()
+        message(STATUS "CuDNN library not found")
+        set(cudnn OFF CACHE BOOL "Disabled because cudnn is not found" FORCE)
+      endif()
     endif()
-
-
   elseif(fail-on-missing)
     message(FATAL_ERROR "CUDA not found. Ensure that the installation of CUDA is in the CMAKE_PREFIX_PATH")
   endif()
-
+else()
+  if (cudnn)
+    message(STATUS "Cannot select cudnn without selecting cuda or tmva-gpu. Option is ignored")
+    set(cudnn OFF)
+  endif()
 endif()
-
+#
 #---TMVA and its dependencies------------------------------------------------------------
 if (tmva AND NOT mlp)
   message(FATAL_ERROR "The 'tmva' option requires 'mlp', please enable mlp with -Dmlp=ON")
 endif()
-
 if(tmva)
   if(tmva-cpu AND imt)
     message(STATUS "Looking for BLAS for optional parts of TMVA")
     find_package(BLAS)
-
     if(NOT BLAS_FOUND)
       if (GSL_FOUND)
         message(STATUS "Using GSL CBLAS for optional parts of TMVA")
@@ -1576,12 +1483,10 @@ if(tmva)
   else()
     set(tmva-cpu OFF CACHE BOOL "Disabled because 'imt' is disabled (${tmva-cpu_description})" FORCE)
   endif()
-
   if(tmva-gpu AND NOT CUDA_FOUND)
     set(tmva-gpu OFF CACHE BOOL "Disabled because cuda not found" FORCE)
   endif()
-
-  if(python AND tmva-pymva)
+  if(tmva-pymva)
     if(fail-on-missing AND NOT NUMPY_FOUND)
       message(FATAL_ERROR "TMVA: numpy python package not found and tmva-pymva component required"
                           " (python executable: ${PYTHON_EXECUTABLE})")
@@ -1590,7 +1495,6 @@ if(tmva)
       set(tmva-pymva OFF CACHE BOOL "Disabled because Numpy was not found (${tmva-pymva_description})" FORCE)
     endif()
   endif()
-
   if(tmva-rmva AND NOT R_FOUND)
     set(tmva-rmva  OFF CACHE BOOL "Disabled because R was not found (${tmva-rmva_description})"  FORCE)
   endif()
