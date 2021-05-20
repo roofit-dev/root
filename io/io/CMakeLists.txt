@@ -16,6 +16,10 @@ else ()
   set(rawfile_local_sources src/RRawFileUnix.cxx)
 endif ()
 
+if (uring)
+  list(APPEND rawfile_local_headers ROOT/RIoUring.hxx)
+endif ()
+
 ROOT_LINKER_LIBRARY(RIO
   src/RRawFile.cxx
   ${rawfile_local_sources}
@@ -67,6 +71,10 @@ if(root7)
   target_sources(RIO PRIVATE v7/src/RFile.cxx)
 endif()
 
+if(uring)
+  target_link_libraries(RIO PUBLIC uring)
+endif()
+
 ROOT_GENERATE_DICTIONARY(G__RIO
   ROOT/RRawFile.hxx
   ${rawfile_local_headers}
@@ -99,8 +107,6 @@ ROOT_GENERATE_DICTIONARY(G__RIO
   TStreamerInfoActions.h
   TVirtualCollectionIterators.h
   TStreamerInfo.h
-  TVirtualObject.h
-  TVirtualArray.h
   TZIPFile.h
   ${RIO_EXTRA_HEADERS}
   STAGE1

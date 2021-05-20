@@ -73,26 +73,22 @@ evaluation phases.
 #include "TMVA/ResultsMulticlass.h"
 #include <list>
 #include <bitset>
+#include <set>
 
 #include "TMVA/Types.h"
 
 #include "TROOT.h"
 #include "TFile.h"
-#include "TTree.h"
 #include "TLeaf.h"
 #include "TEventList.h"
 #include "TH2.h"
-#include "TText.h"
-#include "TLegend.h"
 #include "TGraph.h"
 #include "TStyle.h"
 #include "TMatrixF.h"
 #include "TMatrixDSym.h"
 #include "TMultiGraph.h"
-#include "TPaletteAxis.h"
 #include "TPrincipal.h"
 #include "TMath.h"
-#include "TObjString.h"
 #include "TSystem.h"
 #include "TCanvas.h"
 
@@ -687,9 +683,9 @@ void TMVA::Factory::WriteDataInformation(DataSetInfo&     fDataSetInfo)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Iterates through all booked methods and sees if they use parameter tuning and if so..
-/// does just that  i.e. calls "Method::Train()" for different parameter settings and
-/// keeps in mind the "optimal one"... and that's the one that will later on be used
+/// Iterates through all booked methods and sees if they use parameter tuning and if so
+/// does just that, i.e.\ calls "Method::Train()" for different parameter settings and
+/// keeps in mind the "optimal one"...\ and that's the one that will later on be used
 /// in the main training loop.
 
 std::map<TString,Double_t> TMVA::Factory::OptimizeAllMethods(TString fomType, TString fitType)
@@ -2249,7 +2245,7 @@ TH1F* TMVA::Factory::EvaluateImportanceAll(DataLoader *loader, Types::EMVA theMe
   {
     SROC=ROC[x];
     for (uint32_t i = 0; i < VIBITS; ++i) {
-      if (x & (1 << i)) {
+      if (x & (uint64_t(1) << i)) {
    y = x & ~(1 << i);
    std::bitset<VIBITS>  ybitset(y);
    //need at least one variable
@@ -2339,7 +2335,7 @@ TH1F* TMVA::Factory::EvaluateImportanceShort(DataLoader *loader, Types::EMVA the
 
   for (uint32_t i = 0; i < VIBITS; ++i) {
     if (x & (1 << i)) {
-      y = x & ~(1 << i);
+      y = x & ~(uint64_t(1) << i);
       std::bitset<VIBITS>  ybitset(y);
       //need at least one variable
       //NOTE: if sub-seed is zero then is the special case
@@ -2447,7 +2443,7 @@ TH1F* TMVA::Factory::EvaluateImportanceRandom(DataLoader *loader, UInt_t nseeds,
       //removing global result because it is requiring a lot of RAM for all seeds
 
       for (uint32_t i = 0; i < 32; ++i) {
-         if (x & (1 << i)) {
+         if (x & (uint64_t(1) << i)) {
             y = x & ~(1 << i);
             std::bitset<32>  ybitset(y);
             //need at least one variable

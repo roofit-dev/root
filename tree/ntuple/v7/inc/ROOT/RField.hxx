@@ -17,8 +17,8 @@
 #define ROOT7_RField
 
 #include <ROOT/RColumn.hxx>
+#include <ROOT/RError.hxx>
 #include <ROOT/RColumnElement.hxx>
-#include <ROOT/RField.hxx>
 #include <ROOT/RFieldValue.hxx>
 #include <ROOT/RNTupleUtil.hxx>
 #include <ROOT/RSpan.hxx>
@@ -27,7 +27,6 @@
 #include <ROOT/TypeTraits.hxx>
 
 #include <TGenericClassInfo.h>
-#include <TError.h>
 
 #include <algorithm>
 #include <array>
@@ -48,9 +47,9 @@ class TClass;
 namespace ROOT {
 namespace Experimental {
 
+class RCollectionField;
 class RCollectionNTuple;
 class REntry;
-class RFieldCollection;
 class RNTupleModel;
 
 namespace Detail {
@@ -73,7 +72,7 @@ The field knows based on its type and the field name the type(s) and name(s) of 
 // clang-format on
 class RFieldBase {
    friend class ROOT::Experimental::Detail::RFieldFuse; // to connect the columns to a page storage
-   friend class ROOT::Experimental::RFieldCollection; // to change the field names when collections are attached
+   friend class ROOT::Experimental::RCollectionField; // to change the field names when collections are attached
 
 private:
    /// The field name relative to its parent field
@@ -112,18 +111,24 @@ protected:
 
 public:
    /// Iterates over the sub tree of fields in depth-first search order
-   class RSchemaIterator : public std::iterator<std::forward_iterator_tag, Detail::RFieldBase> {
+   class RSchemaIterator {
    private:
-      using iterator = RSchemaIterator;
       struct Position {
          Position() : fFieldPtr(nullptr), fIdxInParent(-1) { }
-         Position(pointer fieldPtr, int idxInParent) : fFieldPtr(fieldPtr), fIdxInParent(idxInParent) { }
-         pointer fFieldPtr;
+         Position(RFieldBase *fieldPtr, int idxInParent) : fFieldPtr(fieldPtr), fIdxInParent(idxInParent) { }
+         RFieldBase *fFieldPtr;
          int fIdxInParent;
       };
       /// The stack of nodes visited when walking down the tree of fields
       std::vector<Position> fStack;
    public:
+      using iterator = RSchemaIterator;
+      using iterator_category = std::forward_iterator_tag;
+      using value_type = RFieldBase;
+      using difference_type = std::ptrdiff_t;
+      using pointer = RFieldBase*;
+      using reference = RFieldBase&;
+
       RSchemaIterator() { fStack.emplace_back(Position()); }
       RSchemaIterator(pointer val, int idxInParent) { fStack.emplace_back(Position(val, idxInParent)); }
       ~RSchemaIterator() {}
@@ -153,8 +158,10 @@ public:
 
    /// Factory method to resurrect a field from the stored on-disk type information
    static RFieldBase *Create(const std::string &fieldName, const std::string &typeName);
+   /// Check whether a given string is a valid field name
+   static RResult<void> EnsureValidFieldName(std::string_view fieldName);
 
-   /// Generates a tree value of the field type and allocates new initialized memory according to the type.
+   /// Generates an object of the field type and allocates new initialized memory according to the type.
    RFieldValue GenerateValue();
    /// Generates a tree value in a given location of size at least GetValueSize(). Assumes that where has been
    /// allocated by malloc().
@@ -241,6 +248,8 @@ can be read or written.
 class RFieldFuse {
 public:
    static void Connect(DescriptorId_t fieldId, RPageStorage &pageStorage, RFieldBase &field);
+   /// Connect the field columns and all sub field columns
+   static void ConnectRecursively(DescriptorId_t fieldId, RPageSource &pageSource, RFieldBase &field);
 };
 
 } // namespace Detail
@@ -248,9 +257,9 @@ public:
 
 
 /// The container field for an ntuple model, which itself has no physical representation
-class RFieldRoot : public Detail::RFieldBase {
+class RFieldZero : public Detail::RFieldBase {
 public:
-   RFieldRoot() : Detail::RFieldBase("", "", ENTupleStructure::kRecord, false /* isSimple */) { }
+   RFieldZero() : Detail::RFieldBase("", "", ENTupleStructure::kRecord, false /* isSimple */) { }
    RFieldBase* Clone(std::string_view newName);
 
    void GenerateColumnsImpl() final {}
@@ -265,7 +274,7 @@ public:
 };
 
 /// The field for a class with dictionary
-class RFieldClass : public Detail::RFieldBase {
+class RClassField : public Detail::RFieldBase {
 private:
    TClass* fClass;
    std::size_t fMaxAlignment = 1;
@@ -276,10 +285,10 @@ protected:
    void ReadInClusterImpl(const RClusterIndex &clusterIndex, Detail::RFieldValue *value) final;
 
 public:
-   RFieldClass(std::string_view fieldName, std::string_view className);
-   RFieldClass(RFieldClass&& other) = default;
-   RFieldClass& operator =(RFieldClass&& other) = default;
-   ~RFieldClass() = default;
+   RClassField(std::string_view fieldName, std::string_view className);
+   RClassField(RClassField&& other) = default;
+   RClassField& operator =(RClassField&& other) = default;
+   ~RClassField() = default;
    RFieldBase* Clone(std::string_view newName) final;
 
    void GenerateColumnsImpl() final;
@@ -294,7 +303,7 @@ public:
 };
 
 /// The generic field for a (nested) std::vector<Type> except for std::vector<bool>
-class RFieldVector : public Detail::RFieldBase {
+class RVectorField : public Detail::RFieldBase {
 private:
    std::size_t fItemSize;
    ClusterSize_t fNWritten;
@@ -304,10 +313,10 @@ protected:
    void ReadGlobalImpl(NTupleSize_t globalIndex, Detail::RFieldValue *value) final;
 
 public:
-   RFieldVector(std::string_view fieldName, std::unique_ptr<Detail::RFieldBase> itemField);
-   RFieldVector(RFieldVector&& other) = default;
-   RFieldVector& operator =(RFieldVector&& other) = default;
-   ~RFieldVector() = default;
+   RVectorField(std::string_view fieldName, std::unique_ptr<Detail::RFieldBase> itemField);
+   RVectorField(RVectorField&& other) = default;
+   RVectorField& operator =(RVectorField&& other) = default;
+   ~RVectorField() = default;
    RFieldBase* Clone(std::string_view newName) final;
 
    void GenerateColumnsImpl() final;
@@ -330,7 +339,7 @@ public:
 
 
 /// The generic field for fixed size arrays, which do not need an offset column
-class RFieldArray : public Detail::RFieldBase {
+class RArrayField : public Detail::RFieldBase {
 private:
    std::size_t fItemSize;
    std::size_t fArrayLength;
@@ -341,10 +350,10 @@ protected:
    void ReadInClusterImpl(const RClusterIndex &clusterIndex, Detail::RFieldValue *value) final;
 
 public:
-   RFieldArray(std::string_view fieldName, std::unique_ptr<Detail::RFieldBase> itemField, std::size_t arrayLength);
-   RFieldArray(RFieldArray &&other) = default;
-   RFieldArray& operator =(RFieldArray &&other) = default;
-   ~RFieldArray() = default;
+   RArrayField(std::string_view fieldName, std::unique_ptr<Detail::RFieldBase> itemField, std::size_t arrayLength);
+   RArrayField(RArrayField &&other) = default;
+   RArrayField& operator =(RArrayField &&other) = default;
+   ~RArrayField() = default;
    RFieldBase *Clone(std::string_view newName) final;
 
    void GenerateColumnsImpl() final;
@@ -361,7 +370,7 @@ public:
 
 #if __cplusplus >= 201703L
 /// The generic field for std::variant types
-class RFieldVariant : public Detail::RFieldBase {
+class RVariantField : public Detail::RFieldBase {
 private:
    size_t fMaxItemSize = 0;
    size_t fMaxAlignment = 1;
@@ -380,10 +389,10 @@ protected:
 
 public:
    // TODO(jblomer): use std::span in signature
-   RFieldVariant(std::string_view fieldName, const std::vector<Detail::RFieldBase *> &itemFields);
-   RFieldVariant(RFieldVariant &&other) = default;
-   RFieldVariant& operator =(RFieldVariant &&other) = default;
-   ~RFieldVariant() = default;
+   RVariantField(std::string_view fieldName, const std::vector<Detail::RFieldBase *> &itemFields);
+   RVariantField(RVariantField &&other) = default;
+   RVariantField& operator =(RVariantField &&other) = default;
+   ~RVariantField() = default;
    RFieldBase *Clone(std::string_view newName) final;
 
    void GenerateColumnsImpl() final;
@@ -400,10 +409,10 @@ public:
 
 /// Classes with dictionaries that can be inspected by TClass
 template <typename T, typename=void>
-class RField : public RFieldClass {
+class RField : public RClassField {
 public:
    static std::string TypeName() { return ROOT::Internal::GetDemangledTypeName(typeid(T)); }
-   RField(std::string_view name) : RFieldClass(name, TypeName()) {
+   RField(std::string_view name) : RClassField(name, TypeName()) {
       static_assert(std::is_class<T>::value, "no I/O support for this basic C++ type");
    }
    RField(RField&& other) = default;
@@ -420,18 +429,18 @@ public:
 };
 
 
-class RFieldCollection : public ROOT::Experimental::Detail::RFieldBase {
+class RCollectionField : public ROOT::Experimental::Detail::RFieldBase {
 private:
    /// Save the link to the collection ntuple in order to reset the offset counter when committing the cluster
    std::shared_ptr<RCollectionNTuple> fCollectionNTuple;
 public:
-   static std::string TypeName() { return ":RFieldCollection:"; }
-   RFieldCollection(std::string_view name,
+   static std::string TypeName() { return ":RCollectionField:"; }
+   RCollectionField(std::string_view name,
                     std::shared_ptr<RCollectionNTuple> collectionNTuple,
                     std::unique_ptr<RNTupleModel> collectionModel);
-   RFieldCollection(RFieldCollection&& other) = default;
-   RFieldCollection& operator =(RFieldCollection&& other) = default;
-   ~RFieldCollection() = default;
+   RCollectionField(RCollectionField&& other) = default;
+   RCollectionField& operator =(RCollectionField&& other) = default;
+   ~RCollectionField() = default;
    RFieldBase* Clone(std::string_view newName) final;
 
    void GenerateColumnsImpl() final;
@@ -807,14 +816,14 @@ public:
 
 
 template <typename ItemT, std::size_t N>
-class RField<std::array<ItemT, N>> : public RFieldArray {
+class RField<std::array<ItemT, N>> : public RArrayField {
    using ContainerT = typename std::array<ItemT, N>;
 public:
    static std::string TypeName() {
       return "std::array<" + RField<ItemT>::TypeName() + "," + std::to_string(N) + ">";
    }
    explicit RField(std::string_view name)
-      : RFieldArray(name, std::make_unique<RField<ItemT>>(RField<ItemT>::TypeName()), N)
+      : RArrayField(name, std::make_unique<RField<ItemT>>(RField<ItemT>::TypeName()), N)
    {}
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
@@ -834,7 +843,7 @@ public:
 
 #if __cplusplus >= 201703L
 template <typename... ItemTs>
-class RField<std::variant<ItemTs...>> : public RFieldVariant {
+class RField<std::variant<ItemTs...>> : public RVariantField {
    using ContainerT = typename std::variant<ItemTs...>;
 private:
    template <typename HeadT, typename... TailTs>
@@ -860,7 +869,7 @@ private:
 
 public:
    static std::string TypeName() { return "std::variant<" + BuildItemTypes<ItemTs...>() + ">"; }
-   explicit RField(std::string_view name) : RFieldVariant(name, BuildItemFields<ItemTs...>()) {}
+   explicit RField(std::string_view name) : RVariantField(name, BuildItemFields<ItemTs...>()) {}
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;
    ~RField() = default;
@@ -878,12 +887,12 @@ public:
 #endif
 
 template <typename ItemT>
-class RField<std::vector<ItemT>> : public RFieldVector {
+class RField<std::vector<ItemT>> : public RVectorField {
    using ContainerT = typename std::vector<ItemT>;
 public:
    static std::string TypeName() { return "std::vector<" + RField<ItemT>::TypeName() + ">"; }
    explicit RField(std::string_view name)
-      : RFieldVector(name, std::make_unique<RField<ItemT>>(RField<ItemT>::TypeName()))
+      : RVectorField(name, std::make_unique<RField<ItemT>>(RField<ItemT>::TypeName()))
    {}
    RField(RField&& other) = default;
    RField& operator =(RField&& other) = default;

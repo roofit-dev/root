@@ -8,12 +8,13 @@ sap.ui.define([
    'sap/ui/table/Column',
    'sap/m/Input',
    'sap/m/Button',
+   "sap/m/FormattedText",
    "sap/ui/core/ResizeHandler",
    "sap/ui/layout/VerticalLayout",
    "sap/ui/layout/HorizontalLayout",
    "sap/m/MessageBox"
 ], function (Controller, JSONModel, CheckBox, Menu, MenuItem, coreItem, Column,
-             mInput, mButton, ResizeHandler, VerticalLayout, HorizontalLayout, MessageBox) {
+             mInput, mButton, FormattedText, ResizeHandler, VerticalLayout, HorizontalLayout, MessageBox) {
 
    "use strict";
 
@@ -46,6 +47,63 @@ sap.ui.define([
             this.onSceneCreate();
          }
       },
+      sortTable: function(e) {
+	   var col = e.mParameters.column;
+	   var colId = col.getId();
+
+	   var col = e.mParameters.column;
+	   var bDescending = (e.mParameters.sortOrder ==  sap.ui.core.SortOrder.Descending);
+	   var sv = bDescending;
+
+	   var oSorter0 = new sap.ui.model.Sorter({
+	       path: "Filtered",
+	       descending: true
+	   });
+
+	   var oSorter1 = new sap.ui.model.Sorter({
+	       path: col.mProperties.sortProperty,
+	       descending: sv
+	   });
+
+          if ( col.mProperties.sortProperty === "Name")
+          {
+             let off = this.collection.fName.length;
+             oSorter1.fnCompare = function(value1In, value2In) {
+               let value1 = value1In.substring(off);
+               let value2 = value2In.substring(off);
+	       value2 = parseInt(value2);
+	       value1 = parseInt(value1);
+	       if (value1 < value2) return -1;
+	       if (value1 == value2) return 0;
+	       if (value1 > value2) return 1;
+	     };
+          }
+          else {
+	   oSorter1.fnCompare = function(value1, value2) {
+	       value2 = parseFloat(value2);
+	       value1 = parseFloat(value1);
+	       if (value1 < value2) return -1;
+	       if (value1 == value2) return 0;
+	       if (value1 > value2) return 1;
+	   };
+          }
+          var oTable = this.getView().byId("table");
+	  var oItemsBinding = oTable.getBinding("rows");
+          // Do one-level sort on Filtered entry
+          if ( col.mProperties.sortProperty === "Filtered")
+               oItemsBinding.sort([oSorter1]);
+          else
+	   oItemsBinding.sort([oSorter0, oSorter1]);
+
+          // show indicators in column header
+           col.setSorted(true);
+           if (sv)
+               col.setSortOrder(sap.ui.table.SortOrder.Descending);
+           else
+               col.setSortOrder(sap.ui.table.SortOrder.Ascending);
+
+	   e.preventDefault();
+      },
 
       locateEveTable: function()
       {
@@ -72,7 +130,9 @@ sap.ui.define([
          }
 
       },
-
+      getCellText : function(value, filtered) {
+	 return "<span class='" + (filtered ? "eveTableCellFiltered" : "eveTableCellUnfiltered") + "'>" + value + "</span>"
+      },
       buildTableBody: function()
       {
          var oTable = this.getView().byId("table");
@@ -94,7 +154,7 @@ sap.ui.define([
          for (var i = 0; i < this.collection.childs.length; i++)
          {
             rowData[i].Name =  this.collection.childs[i].fName;
-            rowData[i].Filtered =  this.collection.childs[i].fFiltered === true ? "--" : "*";
+            rowData[i].Filtered =  this.collection.childs[i].fFiltered === true ? 0 : 1;
          }
 
          if (this.bindTableColumns) {
@@ -119,16 +179,36 @@ sap.ui.define([
             });
             oTable.setModel(oModel);
 
-            oTable.bindAggregation("columns", "/columns", function(sId, oContext) {
-               return new sap.ui.table.Column(sId, {
-	          label: "{columnName}",
-	          sortProperty: "{columnName}",
-	          template: new sap.m.Text().bindText(oContext.getProperty("columnName")),
-                  showFilterMenuEntry: true,
-                  width: "100px"
+	     var pthis = this;
+             oTable.bindAggregation("columns", "/columns", function(sId, oContext) {
+                 return new sap.ui.table.Column(sId, {
+	             label: "{columnName}",
+	             sortProperty: "{columnName}",
+		     template: new FormattedText({
+		         htmlText: {
+			     parts: [
+			         {path: oContext.getProperty("columnName")},
+			         {path: "Filtered"}
+			     ],
+			     formatter: pthis.getCellText
+		         }
+		     }),
+                     showFilterMenuEntry: true,
+                     width: "100px"
                });
             });
-            oTable.bindRows("/rows");
+
+	     // bind the Table items to the data collection
+	     var oBinding = oTable.bindRows({
+		 path : "/rows",
+		 sorter: [
+		     new sap.ui.model.Sorter({
+			 path: 'Filtered',
+			 descending: true
+		     })
+		 ]
+
+	     });
             this.bindTableColumns = false;
          }
          else
@@ -138,7 +218,6 @@ sap.ui.define([
             model.setData({"rows":rowData, "columns":data.columns});
          }
       },
-
       buildTableHeader: function()
       {
          var oModel = new JSONModel();

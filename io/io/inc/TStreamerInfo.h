@@ -13,12 +13,13 @@
 #define ROOT_TStreamerInfo
 
 #include <atomic>
+#include <vector>
 
 #include "TVirtualStreamerInfo.h"
 
-#include "ThreadLocalStorage.h"
-
 #include "TVirtualCollectionProxy.h"
+
+#include "TObjArray.h"
 
 /**
 \class TStreamerInfo

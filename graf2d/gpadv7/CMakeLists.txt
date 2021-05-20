@@ -13,19 +13,25 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTGpadv7
   HEADERS
     ROOT/RCanvas.hxx
     ROOT/RFrame.hxx
-    ROOT/RMenuItem.hxx
+    ROOT/RMenuItems.hxx
     ROOT/RObjectDrawable.hxx
     ROOT/RColor.hxx
     ROOT/RDisplayItem.hxx
     ROOT/RAttrMap.hxx
     ROOT/RAttrBase.hxx
+    ROOT/RAttrAxis.hxx
     ROOT/RAttrBox.hxx
+    ROOT/RAttrColor.hxx
     ROOT/RAttrLine.hxx
     ROOT/RAttrFill.hxx
     ROOT/RAttrMarker.hxx
+    ROOT/RAttrMargins.hxx
     ROOT/RAttrText.hxx
+    ROOT/RAttrValue.hxx
     ROOT/RPalette.hxx
+    ROOT/RPaletteDrawable.hxx
     ROOT/RDrawable.hxx
+    ROOT/RDrawableRequest.hxx
     ROOT/RStyle.hxx
     ROOT/RPadDisplayItem.hxx
     ROOT/RPadExtent.hxx
@@ -34,15 +40,17 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTGpadv7
     ROOT/RPadLength.hxx
     ROOT/RPadPos.hxx
     ROOT/RPadUserAxis.hxx
+    ROOT/RPave.hxx
     ROOT/RVirtualCanvasPainter.hxx
   SOURCES
     src/RCanvas.cxx
     src/RFrame.cxx
-    src/RMenuItem.cxx
+    src/RMenuItems.cxx
     src/RObjectDrawable.cxx
     src/RColor.cxx
     src/RDisplayItem.cxx
     src/RDrawable.cxx
+    src/RDrawableRequest.cxx
     src/RAttrMap.cxx
     src/RAttrBase.cxx
     src/RPalette.cxx

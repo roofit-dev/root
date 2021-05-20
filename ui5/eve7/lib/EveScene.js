@@ -274,7 +274,7 @@ sap.ui.define([
 
       // other change bits
       if (el.render_data) {
-         if ((el.changeBit & this.mgr.EChangeBits.kCBObjProp) || (el.changeBit & this.mgr.EChangeBits.kCBColorSelection))
+         if ((el.changeBit & this.mgr.EChangeBits.kCBObjProps) || (el.changeBit & this.mgr.EChangeBits.kCBColorSelection))
          {
             this.replaceElement(el);
          }
@@ -421,7 +421,7 @@ sap.ui.define([
       else
       {
          let ctrl = obj3d.get_ctrl();
-         ctrl.DrawForSelection(sec_idcs, res.geom);
+         ctrl.DrawForSelection(sec_idcs, res);
          res.sec_sel = true;
       }
       opass.id2obj_map[element_id][selection_obj.fElementId] = res;

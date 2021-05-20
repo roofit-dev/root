@@ -30,7 +30,6 @@ constructed from all the categories in the dataset
 **/
 
 #include "RooFit.h"
-#include "Riostream.h"
 
 #include "RooDataProjBinding.h"
 #include "RooAbsReal.h"
@@ -41,9 +40,8 @@ constructed from all the categories in the dataset
 #include "RooAbsPdf.h"
 #include "RooMsgService.h"
 
-#include <assert.h>
-
-
+#include <iostream>
+#include <cassert>
 
 using namespace std;
 
@@ -106,20 +104,17 @@ Double_t RooDataProjBinding::operator()(const Double_t xvector[]) const
   if (_catTable) {
 
     // Data contains only categories, sum over weighted supercategory states
-    TIterator* iter = _superCat->typeIterator() ;
-    RooCatType* type ;
-    while((type=(RooCatType*)iter->Next())) {
+    for (const auto& nameIdx : *_superCat) {
       // Backprop state to data set so that _real takes appropriate value
-      _superCat->setIndex(type->getVal()) ;
+      _superCat->setIndex(nameIdx) ;
 
       // Add weighted sum
-      Double_t wgt = _catTable->get(type->GetName()) ;
+      Double_t wgt = _catTable->get(nameIdx.first.c_str());
       if (wgt) {
 	result += wgt * _real->getVal(_nset) ;
 	wgtSum += wgt ;
       }
     }
-    delete iter ;
     
   } else {
 

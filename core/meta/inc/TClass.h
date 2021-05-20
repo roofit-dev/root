@@ -22,17 +22,22 @@
 
 #include "TDictionary.h"
 #include "TString.h"
+
+#ifdef R__LESS_INCLUDES
+class TObjArray;
+#else
 #include "TObjArray.h"
-#include "TObjString.h"
+// Not used in this header file; user code should #include this directly.
+// #include "TObjString.h"
+// #include "ThreadLocalStorage.h"
+// #include <set>
+#endif
 
 #include <map>
 #include <string>
-#include <set>
 #include <unordered_set>
 #include <vector>
-
 #include <atomic>
-#include "ThreadLocalStorage.h"
 
 class TBaseClass;
 class TBrowser;
@@ -174,7 +179,8 @@ private:
    mutable ConvSIMap_t fConversionStreamerInfo; //Array of the streamer infos derived from another class.
    TList              *fRealData;        //linked list for persistent members including base classes
    std::atomic<TList*> fBase;            //linked list for base classes
-   TListOfDataMembers *fData;            //linked list for data members
+   std::atomic<TListOfDataMembers*> fData;            //linked list for data members; non-owning.
+   std::atomic<TListOfDataMembers*> fUsingData;//linked list for data members pulled in through using decls.
 
    std::atomic<TListOfEnums*> fEnums;        //linked list for the enums
    TListOfFunctionTemplates  *fFuncTemplate; //linked list for function templates [Not public until implemented as active list]
@@ -299,25 +305,6 @@ private:
    // Internal streamer type.
    enum EStreamerType {kDefault=0, kEmulatedStreamer=1, kTObject=2, kInstrumented=4, kForeign=8, kExternal=16};
 
-   // When a new class is created, we need to be able to find
-   // if there are any existing classes that have the same name
-   // after any typedefs are expanded.  (This only really affects
-   // template arguments.)  To avoid having to search through all classes
-   // in that case, we keep a hash table mapping from the fully
-   // typedef-expanded names to the original class names.
-   // An entry is made in the table only if they are actually different.
-   //
-   // In these objects, the TObjString base holds the typedef-expanded
-   // name (the hash key), and fOrigName holds the original class name
-   // (the value to which the key maps).
-   //
-   class TNameMapNode : public TObjString
-   {
-   public:
-      TNameMapNode (const char* typedf, const char* orig);
-      TString fOrigName;
-   };
-
    // These are the above-referenced hash tables.  (The pointers are null
    // if no entries have been made.)
    static THashTable* fgClassTypedefHash;
@@ -325,6 +312,9 @@ private:
 private:
    TClass(const TClass& tc) = delete;
    TClass& operator=(const TClass&) = delete;
+
+   bool IsClassStructOrUnion() const { return Property() & (kIsClass|kIsStruct|kIsUnion); }
+   TList *CreateListOfDataMembers(std::atomic<TListOfDataMembers*> &data, TDictionary::EMemberSelection selection, bool load);
 
 protected:
    TVirtualStreamerInfo *FindStreamerInfo(TObjArray *arr, UInt_t checksum) const;
@@ -376,7 +366,7 @@ public:
    TVirtualStreamerInfo     *GetConversionStreamerInfo( const TClass* onfile_cl, Int_t version ) const;
    TVirtualStreamerInfo     *FindConversionStreamerInfo( const TClass* onfile_cl, UInt_t checksum ) const;
    Bool_t             HasDataMemberInfo() const { return fHasRootPcmInfo || HasInterpreterInfo(); }
-   Bool_t             HasDefaultConstructor() const;
+   Bool_t             HasDefaultConstructor(Bool_t testio = kFALSE) const;
    Bool_t             HasInterpreterInfoInMemory() const { return 0 != fClassInfo; }
    Bool_t             HasInterpreterInfo() const { return fCanLoadClassInfo || fClassInfo; }
    UInt_t             GetCheckSum(ECheckSum code = kCurrentCheckSum) const;
@@ -388,7 +378,11 @@ public:
    TMethod           *GetClassMethodWithPrototype(const char *name, const char *proto,
                                                   Bool_t objectIsConst = kFALSE,
                                                   ROOT::EFunctionMatchMode mode = ROOT::kConversionMatch);
-   Version_t          GetClassVersion() const { fVersionUsed = kTRUE; return fClassVersion; }
+   Version_t          GetClassVersion() const {
+      if (!fVersionUsed.load(std::memory_order_relaxed))
+         fVersionUsed = kTRUE;
+      return fClassVersion;
+   }
    Int_t              GetClassSize() const { return Size(); }
    TDataMember       *GetDataMember(const char *datamember) const;
    Long_t             GetDataMemberOffset(const char *membername) const;
@@ -404,12 +398,14 @@ public:
    }
    const char        *GetContextMenuTitle() const { return fContextMenuTitle; }
    TVirtualStreamerInfo     *GetCurrentStreamerInfo() {
-      if (fCurrentInfo.load()) return fCurrentInfo;
+      auto current = fCurrentInfo.load(std::memory_order_relaxed);
+      if (current) return current;
       else return DetermineCurrentStreamerInfo();
    }
    TVirtualStreamerInfo     *GetLastReadInfo() const { return fLastReadInfo; }
    void                      SetLastReadInfo(TVirtualStreamerInfo *info) { fLastReadInfo = info; }
    TList             *GetListOfDataMembers(Bool_t load = kTRUE);
+   TList             *GetListOfUsingDataMembers(Bool_t load = kTRUE);
    TList             *GetListOfEnums(Bool_t load = kTRUE);
    TList             *GetListOfFunctionTemplates(Bool_t load = kTRUE);
    TList             *GetListOfBases();

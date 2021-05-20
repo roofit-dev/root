@@ -66,6 +66,8 @@
 #include "TBufferFile.h"
 #include "TFolder.h"
 #include "Getline.h"
+#include "snprintf.h"
+#include "TVirtualX.h"
 
 #include "HelpText.h"
 

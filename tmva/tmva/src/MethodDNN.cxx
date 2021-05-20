@@ -33,9 +33,8 @@ Deep Neural Network Implementation.
 #include "TMVA/MethodDNN.h"
 
 #include "TString.h"
-#include "TTree.h"
-#include "TFile.h"
 #include "TFormula.h"
+#include "TObjString.h"
 
 #include "TMVA/ClassifierFactory.h"
 #include "TMVA/Configurable.h"
@@ -119,7 +118,13 @@ Bool_t TMVA::MethodDNN::HasAnalysisType(Types::EAnalysisType type,
 ////////////////////////////////////////////////////////////////////////////////
 /// default initializations
 
-void TMVA::MethodDNN::Init() {}
+void TMVA::MethodDNN::Init() {
+      Log() << kWARNING
+            << "MethodDNN is deprecated and it will be removed in future ROOT version. "
+               "Please use MethodDL ( TMVA::kDL)"
+            << Endl;
+
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Options to be set in the option string:
@@ -774,6 +779,7 @@ void TMVA::MethodDNN::Train()
          case EActivationFunction::kRelu:     g = EnumFunction::RELU;     break;
          case EActivationFunction::kSigmoid:  g = EnumFunction::SIGMOID;  break;
          case EActivationFunction::kTanh:     g = EnumFunction::TANH;     break;
+         case EActivationFunction::kFastTanh: g = EnumFunction::TANH;     break;
          case EActivationFunction::kSymmRelu: g = EnumFunction::SYMMRELU; break;
          case EActivationFunction::kSoftSign: g = EnumFunction::SOFTSIGN; break;
          case EActivationFunction::kGauss:    g = EnumFunction::GAUSS;    break;

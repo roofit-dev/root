@@ -32,14 +32,13 @@ acquisition, simulation and data analysis systems.
 ## Build Status
 | Branch | Nightly build status |
 |--------|------------|
-| master | [![Build Status](https://epsft-jenkins.cern.ch/buildStatus/icon?job=root-nightly-master)](https://epsft-jenkins.cern.ch/view/ROOT/job/root-nightly-master/) |
-| v6-18-00-patches | [![Build Status](https://epsft-jenkins.cern.ch/buildStatus/icon?job=root-nightly-v6-18-00-patches)](https://epsft-jenkins.cern.ch/view/ROOT/job/root-nightly-v6-18-00-patches/) |
-| v6-16-00-patches | [![Build Status](https://epsft-jenkins.cern.ch/buildStatus/icon?job=root-nightly-v6-16-00-patches)](https://epsft-jenkins.cern.ch/view/ROOT/job/root-nightly-v6-16-00-patches/) |
+| master | [![Build Status](http://lcgapp-services.cern.ch/root-jenkins/buildStatus/icon?job=root-nightly-master)](https://lcgapp-services.cern.ch/root-jenkins/view/ROOT/job/root-nightly-master/) |
+| v6-22-00-patches | [![Build Status](http://lcgapp-services.cern.ch/root-jenkins/buildStatus/icon?job=root-nightly-v6-22-00-patches)](https://lcgapp-services.cern.ch/root-jenkins/view/ROOT/job/root-nightly-v6-22-00-patches/) |
+| v6-20-00-patches | [![Build Status](http://lcgapp-services.cern.ch/root-jenkins/buildStatus/icon?job=root-nightly-v6-20-00-patches)](https://lcgapp-services.cern.ch/root-jenkins/view/ROOT/job/root-nightly-v6-20-00-patches/) |
 
 ## Cite
-We are [![DOI](https://zenodo.org/badge/10994345.svg)](https://zenodo.org/badge/latestdoi/10994345)
 
-Please cite us as
+When citing ROOT, please use both the reference reported below and the DOI specific to your ROOT version available [on Zenodo](https://zenodo.org/badge/latestdoi/10994345) [![DOI](https://zenodo.org/badge/10994345.svg)](https://zenodo.org/badge/latestdoi/10994345). For example, you can copy-paste and fill in the following citation:
 
     Rene Brun and Fons Rademakers, ROOT - An Object Oriented Data Analysis Framework,
     Proceedings AIHENP'96 Workshop, Lausanne, Sep. 1996,
@@ -53,9 +52,9 @@ Please cite us as
 ## Screenshots
 These screenshots shows some of the plots (produced using ROOT) presented when the Higgs boson discovery was [announced at CERN](http://home.cern/topics/higgs-boson):
 
-![CMS Data MC Ratio Plot](https://d35c7d8c.web.cern.ch/sites/d35c7d8c.web.cern.ch/files/CMS04_1.png)
+![CMS Data MC Ratio Plot](https://root.cern/gallery/higgs_plots/CMS_Data_MC_Ratio_Plot.png)
 
-![Atlas P0 Trends](https://d35c7d8c.web.cern.ch/sites/d35c7d8c.web.cern.ch/files/Atlas06_0.png)
+![Atlas P0 Trends](https://root.cern/gallery/higgs_plots/Atlas_P0_Trends.png)
 
 See more screenshots on our [gallery](https://root.cern/gallery).
 
@@ -88,8 +87,8 @@ Setup and run ROOT
 
 ## Help and Support
 - [Forum](https://root.cern/forum/)
-- [Issue tracker](https://sft.its.cern.ch/jira/projects/ROOT/issues/ROOT-5820?filter=allopenissues)
-- [Report a bug](https://root.cern/bugs) (Requires a [CERN lightweight account](https://account.cern.ch/account/Externals/RegisterAccount.aspx))
+- [Issue tracker](https://github.com/root-project/root/issues)
+  * [Previous now read-only Jira issue tracker](https://sft.its.cern.ch/jira/projects/ROOT/issues/ROOT-5820?filter=allopenissues)
 - [Mailing lists](https://groups.cern.ch/group/root-dev/default.aspx)
 - [Documentation](https://root.cern/guides/reference-guide)
 - [Tutorials](https://root.cern/doc/master/group__Tutorials.html)

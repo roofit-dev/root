@@ -17,11 +17,10 @@ Base class describing materials.
 \image html geom_material.jpg
 */
 
-#include "Riostream.h"
+#include <iostream>
 #include "TMath.h"
 #include "TObjArray.h"
-#include "TStyle.h"
-#include "TList.h"
+#include "TGeoElement.h"
 #include "TGeoManager.h"
 #include "TGeoExtension.h"
 #include "TGeoMaterial.h"
@@ -724,39 +723,6 @@ TGeoMixture::TGeoMixture(const char *name, Int_t /*nel*/, Double_t rho)
    fDensity = rho;
    fElements   = 0;
    if (fDensity < 0) fDensity = 0.001;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///copy constructor
-
-TGeoMixture::TGeoMixture(const TGeoMixture& gm) :
-  TGeoMaterial(gm),
-  fNelements(gm.fNelements),
-  fZmixture(gm.fZmixture),
-  fAmixture(gm.fAmixture),
-  fWeights(gm.fWeights),
-  fNatoms(gm.fNatoms),
-  fVecNbOfAtomsPerVolume(gm.fVecNbOfAtomsPerVolume),
-  fElements(gm.fElements)
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///assignment operator
-
-TGeoMixture& TGeoMixture::operator=(const TGeoMixture& gm)
-{
-   if(this!=&gm) {
-      TGeoMaterial::operator=(gm);
-      fNelements=gm.fNelements;
-      fZmixture=gm.fZmixture;
-      fAmixture=gm.fAmixture;
-      fWeights=gm.fWeights;
-      fNatoms = gm.fNatoms;
-      fVecNbOfAtomsPerVolume = gm.fVecNbOfAtomsPerVolume;
-      fElements = gm.fElements;
-   }
-   return *this;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
