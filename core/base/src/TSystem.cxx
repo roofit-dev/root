@@ -1839,6 +1839,7 @@ static bool R__MatchFilename(const char *left, const char *right)
 #endif
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Load a shared library. Returns 0 on successful loading, 1 in
 /// case lib was already loaded, -1 in case lib does not exist
@@ -2134,9 +2135,7 @@ const char *TSystem::GetLinkedLibraries()
 ///  - S: shared libraries loaded at the start of the executable, because
 ///       they were specified on the link line.
 ///  - D: shared libraries dynamically loaded after the start of the program.
-/// For MacOS only:
-///  - L: list the .dylib rather than the .so (this is intended for linking)
-///       This options is not the default
+///  - L: this option is ignored, and available for backward compatibility.
 
 const char *TSystem::GetLibraries(const char *regexp, const char *options,
                                   Bool_t isRegexp)
@@ -2283,39 +2282,6 @@ const char *TSystem::GetLibraries(const char *regexp, const char *options,
    }
    fListLibs = maclibs;
 }
-#endif
-
-#if defined(R__MACOSX) && !defined(MAC_OS_X_VERSION_10_5)
-   if (so2dylib) {
-      TString libs2 = fListLibs;
-      TString maclibs;
-
-      static TRegexp separator("[^ \\t\\s]+");
-      static TRegexp user_so("\\.so$");
-
-      Ssiz_t start, index, end;
-      start = index = end = 0;
-
-      while ((start < libs2.Length()) && (index != kNPOS)) {
-         index = libs2.Index(separator, &end, start);
-         if (index >= 0) {
-            // Change .so into .dylib and remove the
-            // path info if it is not accessible
-            TString s = libs2(index, end);
-            if (s.Index(user_so) != kNPOS) {
-               s.ReplaceAll(".so",".dylib");
-               if ( GetPathInfo( s, 0, (Long_t*)0, 0, 0 ) != 0 ) {
-                  s.Replace( 0, s.Last('/')+1, 0, 0);
-                  s.Replace( 0, s.Last('\\')+1, 0, 0);
-               }
-            }
-            if (!maclibs.IsNull()) maclibs.Append(" ");
-            maclibs.Append(s);
-         }
-         start += end+1;
-      }
-      fListLibs = maclibs;
-   }
 #endif
 
    return fListLibs.Data();
@@ -2875,7 +2841,7 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
    // ======= Analyze the options
    Bool_t keep = kFALSE;
    Bool_t recompile = kFALSE;
-   EAclicMode mode = fAclicMode;
+   int mode = fAclicMode;
    Bool_t loadLib = kTRUE;
    Bool_t withInfo = kTRUE;
    Bool_t verbose = kFALSE;
@@ -2884,10 +2850,10 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
       keep = (strchr(opt,'k')!=0);
       recompile = (strchr(opt,'f')!=0);
       if (strchr(opt,'O')!=0) {
-         mode = kOpt;
+         mode |= kOpt;
       }
       if (strchr(opt,'g')!=0) {
-         mode = kDebug;
+         mode |= kDebug;
       }
       if (strchr(opt,'c')!=0) {
          loadLib = kFALSE;
@@ -2899,13 +2865,13 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
    if (mode==kDefault) {
       TString rootbuild = ROOTBUILD;
       if (rootbuild.Index("debug",0,TString::kIgnoreCase)==kNPOS) {
-         mode=kOpt;
+         mode = kOpt;
       } else {
-         mode=kDebug;
+         mode = kDebug;
       }
    }
    UInt_t verboseLevel = verbose ? 7 : gDebug;
-   Bool_t flatBuildDir = (fAclicProperties & kFlatBuildDir) || (strchr(opt,'-')!=0);
+   Bool_t flatBuildDir = (fAclicProperties & kFlatBuildDir) || (opt && strchr(opt,'-')!=0);
 
    // if non-zero, build_loc indicates where to build the shared library.
    TString build_loc = ExpandFileName(GetBuildDir());
@@ -3694,7 +3660,7 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
    Bool_t collectingSingleLibraryNameTokens = kFALSE;
    for (auto tokenObj : *linkLibrariesNoQuotes.Tokenize(" ")) {
       singleLibrary = ((TObjString*)tokenObj)->GetString();
-      if (!AccessPathName(singleLibrary) || singleLibrary[0]=='-') {
+      if (singleLibrary[0]=='-' || !AccessPathName(singleLibrary)) {
          if (collectingSingleLibraryNameTokens) {
             librariesWithQuotes.Chop();
             librariesWithQuotes += "\" \"" + singleLibrary + "\"";
@@ -3741,11 +3707,12 @@ int TSystem::CompileMacro(const char *filename, Option_t *opt,
    cmd.ReplaceAll("\"$BuildDir","$BuildDir");
    cmd.ReplaceAll("$BuildDir","\"$BuildDir\"");
    cmd.ReplaceAll("$BuildDir",build_loc);
-   if (mode==kDebug) {
-      cmd.ReplaceAll("$Opt",fFlagsDebug);
-   } else {
-      cmd.ReplaceAll("$Opt",fFlagsOpt);
-   }
+   TString optdebFlags;
+   if (mode & kDebug)
+      optdebFlags = fFlagsDebug + " ";
+   if (mode & kOpt)
+      optdebFlags += fFlagsOpt;
+   cmd.ReplaceAll("$Opt", optdebFlags);
 #ifdef WIN32
    R__FixLink(cmd);
    cmd.ReplaceAll("-std=", "-std:");
@@ -4166,7 +4133,7 @@ void TSystem::SetMakeSharedLib(const char *directives)
 /// \param[in] includePath The path to the directory.
 /// \note This interface is mostly relevant for ACLiC and it does *not* inform
 ///       gInterpreter for this include path. If the TInterpreter needs to know
-///       about the include path please use \c gInterpreter->AddIncludePath .
+///       about the include path please use TInterpreter::AddIncludePath() .
 /// \warning The path should start with the \c -I prefix, i.e.
 ///          <tt>gSystem->AddIncludePath("-I /path/to/my/includes")</tt>.
 void TSystem::AddIncludePath(const char *includePath)

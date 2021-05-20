@@ -29,6 +29,7 @@
 #include "RooMsgService.h"
 #include "RooMinimizer.h"
 #include "RooGaussMinimizer.h"
+#include "RooNaNPacker.h"
 
 #include "TClass.h"
 #include "TMatrixDSym.h"
@@ -54,8 +55,8 @@ RooMinimizerFcn::~RooMinimizerFcn()
 {}
 
 
-ROOT::Math::IBaseFunctionMultiDim* RooMinimizerFcn::Clone() const 
-{  
+ROOT::Math::IBaseFunctionMultiDim* RooMinimizerFcn::Clone() const
+{
   return new RooMinimizerFcn(*this) ;
 }
 
@@ -109,7 +110,7 @@ double RooMinimizerFcn::DoEval(const double *x) const {
     SetPdfParamVal(index,x[index]);
   }
 
-  // Calculate the function for these parameters  
+  // Calculate the function for these parameters
   RooAbsReal::setHideOffset(kFALSE) ;
   double fvalue = _funct->getVal();
   RooAbsReal::setHideOffset(kTRUE) ;
@@ -120,18 +121,25 @@ double RooMinimizerFcn::DoEval(const double *x) const {
     _numBadNLL++ ;
 
     if (_doEvalErrorWall) {
-      fvalue = _maxFCN+1;
+      const double badness = RooNaNPacker::unpackNaN(fvalue);
+      fvalue = (std::isfinite(_maxFCN) ? _maxFCN : 0.) + _recoverFromNaNStrength * badness;
     }
-
   } else {
+    if (_evalCounter > 0 && _evalCounter == _numBadNLL) {
+      // This is the first time we get a valid function value; while before, the
+      // function was always invalid. For invalid  cases, we returned values > 0.
+      // Now, we offset valid values such that they are < 0.
+      _funcOffset = -fvalue;
+    }
+    fvalue += _funcOffset;
     _maxFCN = std::max(fvalue, _maxFCN);
   }
-      
+
   // Optional logging
-  if (_logfile) 
+  if (_logfile)
     (*_logfile) << setprecision(15) << fvalue << setprecision(4) << endl;
   if (_verbose) {
-    cout << "\nprevFCN" << (_funct->isOffsetting()?"-offset":"") << " = " << setprecision(10) 
+    cout << "\nprevFCN" << (_funct->isOffsetting()?"-offset":"") << " = " << setprecision(10)
          << fvalue << setprecision(4) << "  " ;
     cout.flush() ;
   }
@@ -152,4 +160,3 @@ std::string RooMinimizerFcn::getFunctionTitle() const
 }
 
 #endif
-

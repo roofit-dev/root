@@ -37,8 +37,8 @@ namespace TStreamerInfoActions {
 
 class TVirtualCollectionProxy {
 private:
-   TVirtualCollectionProxy(const TVirtualCollectionProxy&); // Not implemented
-   TVirtualCollectionProxy& operator=(const TVirtualCollectionProxy&); // Not implemented
+   TVirtualCollectionProxy(const TVirtualCollectionProxy&) = delete;
+   TVirtualCollectionProxy& operator=(const TVirtualCollectionProxy&) = delete;
 
 protected:
    TClassRef fClass;
@@ -64,8 +64,8 @@ public:
          void *objectstart) : fProxy(proxy) { fProxy->PushProxy(objectstart); }
       inline ~TPushPop() { fProxy->PopProxy(); }
    private:
-      TPushPop(const TPushPop&); // Not implemented
-      TPushPop& operator=(const TPushPop&); // Not implemented
+      TPushPop(const TPushPop&) = delete;
+      TPushPop& operator=(const TPushPop&) = delete;
    };
 
    TVirtualCollectionProxy() : fClass(), fProperties(0) {};
@@ -94,6 +94,14 @@ public:
       // Execute the container constructor
       return fClass.GetClass()==0 ? 0 : fClass->New(arena);
    }
+   virtual TClass::ObjectPtr NewObject() const {
+      // Return a new container object
+      return fClass.GetClass()==0 ? TClass::ObjectPtr{} : fClass->NewObject();
+   }
+   virtual TClass::ObjectPtr NewObject(void *arena) const {
+      // Execute the container constructor
+      return fClass.GetClass()==0 ? TClass::ObjectPtr{} : fClass->NewObject(arena);
+   }
 
    virtual void     *NewArray(Int_t nElements) const {
       // Return a new container object
@@ -102,6 +110,14 @@ public:
    virtual void     *NewArray(Int_t nElements, void *arena) const {
       // Execute the container constructor
       return fClass.GetClass()==0 ? 0 : fClass->NewArray(nElements, arena);
+   }
+   virtual TClass::ObjectPtr NewObjectArray(Int_t nElements) const {
+      // Return a new container object
+      return fClass.GetClass()==0 ? TClass::ObjectPtr{} : fClass->NewObjectArray(nElements);
+   }
+   virtual TClass::ObjectPtr NewObjectArray(Int_t nElements, void *arena) const {
+      // Execute the container constructor
+      return fClass.GetClass()==0 ? TClass::ObjectPtr{} : fClass->NewObjectArray(nElements, arena);
    }
 
    virtual void      Destructor(void *p, Bool_t dtorOnly = kFALSE) const {

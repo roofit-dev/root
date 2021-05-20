@@ -591,7 +591,7 @@ const char *TAxis::GetTicks() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// this helper function checks if there is a bin without a label
+/// This helper function checks if there is a bin without a label
 /// if all bins have labels, the axis can / will become alphanumeric
 
 Bool_t TAxis::HasBinWithoutLabel() const
@@ -1131,7 +1131,10 @@ void TAxis::Streamer(TBuffer &R__b)
 
 void TAxis::UnZoom()
 {
-   if (!gPad) return;
+   if (!gPad) {
+      Warning("TAxis::UnZoom","Cannot UnZoom if gPad does not exist. Did you mean to draw the TAxis first?");
+      return;
+   }
    gPad->SetView();
 
    //unzoom object owning this axis

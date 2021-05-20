@@ -36,6 +36,9 @@ class TList ;
 class RooLinkedList ;
 class RooNumGenConfig ;
 class RooRealIntegral ;
+namespace RooBatchCompute {
+struct RunContext;
+}
 
 class RooAbsPdf : public RooAbsReal {
 public:
@@ -199,10 +202,10 @@ public:
   virtual Double_t getValV(const RooArgSet* set=0) const ;
   virtual Double_t getLogVal(const RooArgSet* set=0) const ;
 
-  RooSpan<const double> getValBatch(std::size_t begin, std::size_t batchSize,
-      const RooArgSet* normSet = nullptr) const final;
+  RooSpan<const double> getValues(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const;
   RooSpan<const double> getLogValBatch(std::size_t begin, std::size_t batchSize,
       const RooArgSet* normSet = nullptr) const;
+  RooSpan<const double> getLogProbabilities(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet = nullptr) const;
 
   /// \copydoc getNorm(const RooArgSet*) const
   Double_t getNorm(const RooArgSet& nset) const { 
@@ -227,23 +230,21 @@ public:
 
   // Support for extended maximum likelihood, switched off by default
   enum ExtendMode { CanNotBeExtended, CanBeExtended, MustBeExtended } ;
-  virtual ExtendMode extendMode() const { 
-    // Returns ability of p.d.f to provided extended likelihood terms. Possible
-    // answers are CanNotBeExtended, CanBeExtended or MustBeExtended. This
-    // default implementation always return CanNotBeExtended
-    return CanNotBeExtended ; 
-  } 
-  inline Bool_t canBeExtended() const { 
-    // If true p.d.f can provide extended likelihood term
+  /// Returns ability of PDF to provide extended likelihood terms. Possible
+  /// answers are in the enumerator RooAbsPdf::ExtendMode.
+  /// This default implementation always returns CanNotBeExtended.
+  virtual ExtendMode extendMode() const { return CanNotBeExtended; }
+  /// If true, PDF can provide extended likelihood term.
+  inline Bool_t canBeExtended() const {
     return (extendMode() != CanNotBeExtended) ; 
   }
-  inline Bool_t mustBeExtended() const { 
-    // If true p.d.f must extended likelihood term
+  /// If true PDF must provide extended likelihood term.
+  inline Bool_t mustBeExtended() const {
     return (extendMode() == MustBeExtended) ; 
   }
   virtual Double_t expectedEvents(const RooArgSet* nset) const ; 
-  virtual Double_t expectedEvents(const RooArgSet& nset) const { 
-    // Return expecteded number of p.d.fs to be used in calculated of extended likelihood
+  /// Return expected number of events to be used in calculation of extended likelihood.
+  virtual Double_t expectedEvents(const RooArgSet& nset) const {
     return expectedEvents(&nset) ; 
   }
 
@@ -323,7 +324,6 @@ protected:
   class CacheElem : public RooAbsCacheElement {
   public:
     CacheElem(RooAbsReal& norm) : _norm(&norm) {} ;
-    void operModeHook(RooAbsArg::OperMode) ;
     virtual ~CacheElem() ; 
     virtual RooArgList containedArgs(Action) { return RooArgList(*_norm) ; }
     RooAbsReal* _norm ;
@@ -352,7 +352,14 @@ protected:
   RooNumGenConfig* _specGeneratorConfig ; //! MC generator configuration specific for this object
   
   TString _normRange ; // Normalization range
-  static TString _normRangeOverride ;
+  static TString _normRangeOverride ; 
+
+private:
+  template<class Minimizer>
+  int calculateAsymptoticCorrectedCovMatrix(Minimizer& minimizer, RooAbsData const& data);
+
+  template<class Minimizer>
+  int calculateSumW2CorrectedCovMatrix(Minimizer& minimizer, RooAbsReal const& nll) const;
 
 public:
   Bool_t num_int_timing_flag() const;

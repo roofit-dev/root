@@ -126,11 +126,11 @@ the proxy holds a function, and will trigger an assert.
 ### Batched function evaluations (Advanced usage)
 
 To speed up computations with large numbers of data events in unbinned fits,
-it is beneficial to override `evaluateBatch()`. Like this, large batches of
+it is beneficial to override `evaluateSpan()`. Like this, large spans of
 computations can be done, without having to call `evaluate()` for each single data event.
-`evaluateBatch()` should execute the same computation as `evaluate()`, but it
+`evaluateSpan()` should execute the same computation as `evaluate()`, but it
 may choose an implementation that is capable of SIMD computations.
-If evaluateBatch is not implemented, the classic and slower `evaluate()` will be
+If evaluateSpan is not implemented, the classic and slower `evaluate()` will be
 called for each data event.
 */
 
@@ -170,9 +170,10 @@ called for each data event.
 #include "RooMinimizer.h"
 #include "RooRealIntegral.h"
 #include "RooWorkspace.h"
-
+#include "RooNaNPacker.h"
 #include "RooHelpers.h"
-#include "RooVDTHeaders.h"
+#include "RooBatchCompute.h"
+#include "RooFormulaVar.h"
 
 #include "TClass.h"
 #include "TMath.h"
@@ -185,6 +186,8 @@ called for each data event.
 
 #include <iostream>
 #include <string>
+#include <cmath>
+#include <stdexcept>
 
 using namespace std;
 
@@ -284,12 +287,8 @@ Double_t RooAbsPdf::getValV(const RooArgSet* nset) const
     _normSet = 0 ;
     Double_t val = evaluate() ;
     _normSet = tmp ;
-    Bool_t error = traceEvalPdf(val) ;
 
-    if (error) {
-      return 0 ;
-    }
-    return val ;
+    return TMath::IsNaN(val) ? 0. : val;
   }
 
 
@@ -303,26 +302,32 @@ Double_t RooAbsPdf::getValV(const RooArgSet* nset) const
   if (isValueDirty() || nsetChanged || _norm->isValueDirty()) {
 
     // Evaluate numerator
-    Double_t rawVal = evaluate() ;
-    Bool_t error = traceEvalPdf(rawVal) ; // Error checking and printing
+    const double rawVal = evaluate();
 
     // Evaluate denominator
-    Double_t normVal(_norm->getVal()) ;
+    const double normVal = _norm->getVal();
 
     if (normVal < 0. || (normVal == 0. && rawVal != 0)) {
-      //Unreasonable normalisations. A zero integral can be tolerated if the function vanishes.
-      error=kTRUE ;
-      std::stringstream msg;
-      msg << "p.d.f normalization integral is zero or negative: " << normVal;
-      logEvalError(msg.str().c_str());
+      //Unreasonable normalisations. A zero integral can be tolerated if the function vanishes, though.
+      const std::string msg = "p.d.f normalization integral is zero or negative: " + std::to_string(normVal);
+      logEvalError(msg.c_str());
+      clearValueAndShapeDirty();
+      return _value = RooNaNPacker::packFloatIntoNaN(-normVal + (rawVal < 0. ? -rawVal : 0.));
     }
 
-    // Raise global error flag if problems occur
-    if (error || (rawVal == 0. && normVal == 0.)) {
-      _value = 0 ;
-    } else {
-      _value = rawVal / normVal ;
+    if (rawVal < 0.) {
+      logEvalError(Form("p.d.f value is less than zero (%f), trying to recover", rawVal));
+      clearValueAndShapeDirty();
+      return _value = RooNaNPacker::packFloatIntoNaN(-rawVal);
     }
+
+    if (TMath::IsNaN(rawVal)) {
+      logEvalError("p.d.f value is Not-a-Number");
+      clearValueAndShapeDirty();
+      return _value = rawVal;
+    }
+
+    _value = (rawVal == 0. && normVal == 0.) ? 0. : rawVal / normVal;
 
     clearValueAndShapeDirty();
   }
@@ -332,70 +337,68 @@ Double_t RooAbsPdf::getValV(const RooArgSet* nset) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Compute batch of values for given range, and normalise by integrating over
-/// the observables in `nset`. If `nset` is `nullptr`, unnormalized values
-/// are returned. All elements of `nset` must be lvalues.
+/// Compute batch of values for given input data, and normalise by integrating over
+/// the observables in `normSet`. Store result in `evalData`, and return a span pointing to
+/// it.
+/// This uses evaluateSpan() to perform an (unnormalised) computation of data points. This computation
+/// is finalised by normalising the bare values, and by checking for computation errors.
+/// Derived classes should override evaluateSpan() to reach maximal performance.
 ///
-/// \param[in] begin Begin of the batch.
-/// \param[in] maxSize Size of the requested range. May come out smaller.
-/// \param[in] normSet   If not nullptr, normalise results by integrating over
+/// \param[in,out] evalData Object holding data that should be used in computations. Results are also stored here.
+/// \param[in] normSet      If not nullptr, normalise results by integrating over
 /// the variables in this set. The normalisation is only computed once, and applied
 /// to the full batch.
-///
-RooSpan<const double> RooAbsPdf::getValBatch(std::size_t begin, std::size_t maxSize,
-    const RooArgSet* normSet) const
-{
-  // Some PDFs do preprocessing here, e.g. of the norm
-  getValV(normSet);
-
-  if (_allBatchesDirty || _operMode == ADirty) {
-    _batchData.markDirty();
-    _allBatchesDirty = false;
+/// \return RooSpan with probabilities. The memory of this span is owned by `evalData`.
+/// \see RooAbsReal::getValues().
+RooSpan<const double> RooAbsPdf::getValues(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const {
+  auto item = evalData.spans.find(this);
+  if (item != evalData.spans.end()) {
+    return item->second;
   }
 
-  // Special handling of case without normalization set (used in numeric integration of pdfs)
-  if (!normSet) {
-    RooArgSet* tmp = _normSet ;
-    _normSet = nullptr;
-    auto outputs = evaluateBatch(begin, maxSize);
-    maxSize = outputs.size();
-    _normSet = tmp;
+  auto outputs = evaluateSpan(evalData, normSet);
+  assert(evalData.spans.count(this) > 0);
 
-    _batchData.setStatus(begin, maxSize, BatchHelpers::BatchData::kReady);
-
-    return outputs;
-  }
-
-
-  // TODO wait if batch is computing?
-  if (_batchData.status(begin, normSet, BatchHelpers::BatchData::kgetVal) <= BatchHelpers::BatchData::kDirty
-      || _norm->isValueDirty()) {
-
-    auto outputs = evaluateBatch(begin, maxSize);
-    maxSize = outputs.size();
-
-    // Evaluate denominator
-    const double normVal = _norm->getVal();
-
-    if (normVal < 0.
-        || (normVal == 0. && std::any_of(outputs.begin(), outputs.end(), [](double val){return val != 0;}))) {
-      logEvalError(Form("p.d.f normalization integral is zero or negative."
-          "\n\tInt(%s) = %f", GetName(), normVal));
+  if (normSet != nullptr) {
+    if (normSet != _normSet || _norm == nullptr) {
+      syncNormalization(normSet);
     }
+    // Evaluate denominator
+    // In most cases, the integral will be a scalar.  But it can still happen
+    // that the integral is a vector, for example in a conditional fit where
+    // pdf is parametrized by another observable that is also a batch. That's
+    // why we have to use the batch interface also for the integral.
+    auto const& normVals = _norm->getValues(evalData);
 
-    if (normVal != 1. && normVal > 0.) {
-      const double invNorm = 1./normVal;
-      for (double& val : outputs) { //CHECK_VECTORISE
-        val *= invNorm;
+    if(normVals.size() > 1) {
+      for(std::size_t i = 0; i < outputs.size(); ++i) {
+        if (normVals[i] < 0. || (normVals[i] == 0. && outputs[i] != 0)) {
+          logEvalError(Form("p.d.f normalization integral is zero or negative."
+              "\n\tInt(%s) = %f", GetName(), normVals[i]));
+        }
+        if(normVals[i] != 1. && normVals[i] > 0.) {
+          outputs[i] /= normVals[i];
+        }
+      }
+
+    } else {
+      const double normVal = normVals[0];
+      if (normVal < 0.
+          || (normVal == 0. && std::any_of(outputs.begin(), outputs.end(), [](double val){return val != 0;}))) {
+        logEvalError(Form("p.d.f normalization integral is zero or negative."
+            "\n\tInt(%s) = %f", GetName(), normVal));
+      }
+
+      if (normVal != 1. && normVal > 0.) {
+        const double invNorm = 1./normVal;
+        for (double& val : outputs) { //CHECK_VECTORISE
+          val *= invNorm;
+        }
       }
     }
-
-    _batchData.setStatus(begin, maxSize, BatchHelpers::BatchData::kReady);
   }
 
-  const auto ret = _batchData.getBatch(begin, maxSize);
-
-  return ret;
+  return outputs;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -494,9 +497,8 @@ const RooAbsReal* RooAbsPdf::getNormObj(const RooArgSet* nset, const RooArgSet* 
   }
 
   // If not create it now
-  RooArgSet* depList = getObservables(iset) ;
+  std::unique_ptr<RooArgSet> depList{getObservables(iset)} ;
   RooAbsReal* norm = createIntegral(*depList,*nset, *getIntegratorConfig(), RooNameReg::str(rangeName)) ;
-  delete depList ;
 
   // Store it in the cache
   cache = new CacheElem(*norm) ;
@@ -563,9 +565,9 @@ Bool_t RooAbsPdf::syncNormalization(const RooArgSet* nset, Bool_t adjustProxies)
 
   // Destroy old normalization & create new
   if (selfNormalized() || !dependsOn(*depList)) {
-    TString ntitle(GetTitle()) ; ntitle.Append(" Unit Normalization") ;
-    TString nname(GetName()) ; nname.Append("_UnitNorm") ;
-    _norm = new RooRealVar(nname.Data(),ntitle.Data(),1) ;
+    auto ntitle = std::string(GetTitle()) + " Unit Normalization";
+    auto nname = std::string(GetName()) + "_UnitNorm";
+    _norm = new RooRealVar(nname.c_str(),ntitle.c_str(),1) ;
   } else {
     const char* nr = (_normRangeOverride.Length()>0 ? _normRangeOverride.Data() : (_normRange.Length()>0 ? _normRange.Data() : 0)) ;
 
@@ -577,11 +579,11 @@ Bool_t RooAbsPdf::syncNormalization(const RooArgSet* nset, Bool_t adjustProxies)
     const char* cacheParamsStr = getStringAttribute("CACHEPARAMINT") ;
     if (cacheParamsStr && strlen(cacheParamsStr)) {
 
-      RooArgSet* intParams = normInt->getVariables() ;
+      std::unique_ptr<RooArgSet> intParams{normInt->getVariables()} ;
 
       RooNameSet cacheParamNames ;
       cacheParamNames.setNameList(cacheParamsStr) ;
-      RooArgSet* cacheParams = cacheParamNames.select(*intParams) ;
+      std::unique_ptr<RooArgSet> cacheParams{cacheParamNames.select(*intParams)} ;
 
       if (cacheParams->getSize()>0) {
 	cxcoutD(Caching) << "RooAbsReal::createIntObj(" << GetName() << ") INFO: constructing " << cacheParams->getSize()
@@ -597,8 +599,6 @@ Bool_t RooAbsPdf::syncNormalization(const RooArgSet* nset, Bool_t adjustProxies)
 	normInt= cachedIntegral ;
       }
 
-      delete cacheParams ;
-      delete intParams ;
     }
     _norm = normInt ;
   }
@@ -666,8 +666,7 @@ Double_t RooAbsPdf::getLogVal(const RooArgSet* nset) const
 
   if(prob < 0) {
     logEvalError("getLogVal() top-level p.d.f evaluates to a negative number") ;
-
-    return std::numeric_limits<double>::quiet_NaN();
+    return RooNaNPacker::packFloatIntoNaN(-prob);
   }
 
   if(prob == 0) {
@@ -679,7 +678,7 @@ Double_t RooAbsPdf::getLogVal(const RooArgSet* nset) const
   if (TMath::IsNaN(prob)) {
     logEvalError("getLogVal() top-level p.d.f evaluates to NaN") ;
 
-    return -std::numeric_limits<double>::infinity();
+    return prob;
   }
 
   return log(prob);
@@ -730,37 +729,43 @@ void RooAbsPdf::logBatchComputationErrors(RooSpan<const double>& outputs, std::s
   }
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Compute the log-likelihoods for all events in the requested batch.
-/// The arguments are passed over to getValBatch().
-/// \param[in] begin Start of the batch.
-/// \param[in] maxSize  Maximum size of the batch. Depending on data layout and memory, the batch
-/// may come back smaller.
+/// The arguments are passed over to getValues().
+/// \param[in] evalData Struct with data that should be used for evaluation.
+/// \param[in] normSet Optional normalisation set to be used during computations.
 /// \return    Returns a batch of doubles that contains the log probabilities.
-RooSpan<const double> RooAbsPdf::getLogValBatch(std::size_t begin, std::size_t maxSize,
-    const RooArgSet* normSet) const
+RooSpan<const double> RooAbsPdf::getLogProbabilities(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const
 {
-  auto pdfValues = getValBatch(begin, maxSize, normSet);
+  auto pdfValues = getValues(evalData, normSet);
+
+  evalData.logProbabilities.resize(pdfValues.size());
+  RooSpan<double> output( evalData.logProbabilities );
 
   if (checkInfNaNNeg(pdfValues)) {
-    logBatchComputationErrors(pdfValues, begin);
-  }
+    logBatchComputationErrors(pdfValues, 0);
 
-  auto output = _batchData.makeWritableBatchUnInit(begin, pdfValues.size(),
-      normSet, BatchHelpers::BatchData::kgetLogVal);
+    for (std::size_t i = 0; i < pdfValues.size(); ++i) {
+      const double prob = pdfValues[i];
+      double theLog = RooBatchCompute::fast_log(prob);
+
+      if (prob <= 0.) {
+        // Pass magnitude of undershoot to minimiser:
+        theLog = RooNaNPacker::packFloatIntoNaN(-prob);
+      } else if (std::isnan(prob)) {
+        theLog = prob;
+      }
+
+      output[i] = theLog;
+    }
+
+    return output;
+  }
 
   for (std::size_t i = 0; i < pdfValues.size(); ++i) { //CHECK_VECTORISE
     const double prob = pdfValues[i];
-
-    double theLog = _rf_fast_log(prob);
-
-    if (prob < 0) {
-      theLog = std::numeric_limits<double>::quiet_NaN();
-    } else if (prob == 0 || TMath::IsNaN(prob)) {
-      theLog = -std::numeric_limits<double>::infinity();
-    }
-
-    output[i] = theLog;
+    output[i] = RooBatchCompute::fast_log(prob);;
   }
 
   return output;
@@ -888,6 +893,15 @@ Double_t RooAbsPdf::extendedTerm(Double_t observed, const RooArgSet* nset) const
 /// <tr><td> `CloneData(Bool flag)`           <td> Use clone of dataset in NLL (default is true)
 /// <tr><td> `Offset(Bool_t)`                 <td> Offset likelihood by initial value (so that starting value of FCN in minuit is zero).
 ///                                              This can improve numeric stability in simultaneous fits with components with large likelihood values
+/// <tr><td> `IntegrateBins(double precision)` <td> In binned fits, integrate the PDF over the bins instead of using the probability density at the bin centre.
+///                                                 This can reduce the bias observed when fitting functions with high curvature to binned data.
+///                                                 - precision > 0: Activate bin integration everywhere. Use precision between 0.01 and 1.E-6, depending on binning.
+///                                                   Note that a low precision such as 0.01 might yield identical results to 1.E-4, since the integrator might reach 1.E-4 already in its first
+///                                                   integration step. If lower precision is desired (more speed), a RooBinSamplingPdf has to be created manually, and its integrator
+///                                                   has to be manipulated directly.
+///                                                 - precision = 0: Activate bin integration only for continuous PDFs fit to a RooDataHist.
+///                                                 - precision < 0: Deactivate.
+///                                                 \see RooBinSamplingPdf
 /// </table>
 ///
 ///
@@ -903,7 +917,47 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooCmdArg& arg1, const 
   return createNLL(data,l) ;
 }
 
+namespace {
 
+RooAbsReal *createMultiRangeNLLCorrectionTerm(RooAbsPdf const &pdf, RooAbsData const &data, std::string const &baseName,
+                                              std::string const &rangeNames)
+{
+   double sumEntriesTotal = 0.0;
+
+   RooArgList termList;
+   RooArgList integralList;
+
+   for (const auto &currentRangeName : RooHelpers::tokenise(rangeNames, ",")) {
+      const std::string currentName = baseName + "_" + currentRangeName;
+
+      auto sumEntriesCurrent = data.sumEntries("1", currentRangeName.c_str());
+      sumEntriesTotal += sumEntriesCurrent;
+
+      auto pdfIntegralCurrent =
+         pdf.createIntegral(*pdf.getObservables(data), nullptr, nullptr, currentRangeName.c_str());
+
+      auto term = new RooFormulaVar((currentName + "_correctionTerm").c_str(),
+                                    (std::string("-(") + std::to_string(sumEntriesCurrent) + " * log(x[0]))").c_str(),
+                                    RooArgList(*pdfIntegralCurrent));
+
+      termList.add(*term);
+      integralList.add(*pdfIntegralCurrent);
+   }
+
+   auto integralFull = new RooAddition((baseName + "_correctionFullIntegralTerm").c_str(),
+                                       "integral",
+                                       integralList,
+                                       true);
+
+   auto fullRangeTerm = new RooFormulaVar((baseName + "_foobar").c_str(),
+                                          (std::string("(") + std::to_string(sumEntriesTotal) + " * log(x[0]))").c_str(),
+                                          RooArgList(*integralFull));
+
+   termList.add(*fullRangeTerm);
+   return new RooAddition((baseName + "_correction").c_str(), "correction", termList, true);
+}
+
+} // namespace
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -940,6 +994,7 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
   pc.defineInt("doOffset","OffsetLikelihood",0,0) ;
   pc.defineSet("extCons","ExternalConstraints",0,0) ;
   pc.defineInt("BatchMode", "BatchMode", 0, 0);
+  pc.defineDouble("IntegrateBins", "IntegrateBins", 0, -1.);
   pc.defineMutex("Range","RangeWithName") ;
 //  pc.defineMutex("Constrain","Constrained") ;
   pc.defineMutex("GlobalObservables","GlobalObservablesTag") ;
@@ -1047,27 +1102,52 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
   RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::CollectErrors) ;
   RooAbsReal* nll ;
   string baseName = Form("nll_%s_%s",GetName(),data.GetName()) ;
+  RooAbsTestStatistic::Configuration cfg;
+  cfg.addCoefRangeName = addCoefRangeName ? addCoefRangeName : "";
+  cfg.nCPU = numcpu;
+  cfg.interleave = interl;
+  cfg.CPUAffinity = cpuAffinity;
+  cfg.verbose = verbose;
+  cfg.splitCutRange = static_cast<bool>(splitr);
+  cfg.cloneInputData = static_cast<bool>(cloneData);
+  cfg.integrateOverBinsPrecision = pc.getDouble("IntegrateBins");
+  cfg.binnedL = false;
   if (!rangeName || strchr(rangeName,',')==0) {
     // Simple case: default range, or single restricted range
     //cout<<"FK: Data test 1: "<<data.sumEntries()<<endl;
 
-    auto theNLL = new RooNLLVar(baseName.c_str(),"-log(likelihood)",
-        *this,data,projDeps,ext,rangeName,addCoefRangeName,numcpu,interl,
-        cpuAffinity,verbose,splitr,cloneData);
+    cfg.rangeName = rangeName ? rangeName : "";
+    auto theNLL = new RooNLLVar(baseName.c_str(),"-log(likelihood)",*this,data,projDeps,cfg, ext);
     theNLL->batchMode(pc.getInt("BatchMode"));
     nll = theNLL;
   } else {
     // Composite case: multiple ranges
     RooArgList nllList ;
     auto tokens = RooHelpers::tokenise(rangeName, ",");
+    if (RooHelpers::checkIfRangesOverlap(*this, data, tokens)) {
+      throw std::runtime_error(
+              std::string("Error in RooAbsPdf::createNLL! The ranges ") + rangeName + " are overlapping!");
+    }
     for (const auto& token : tokens) {
-      auto nllComp = new RooNLLVar(Form("%s_%s",baseName.c_str(),token.c_str()),"-log(likelihood)",
-          *this,data,projDeps,ext,token.c_str(),addCoefRangeName,numcpu,interl,
-          cpuAffinity,verbose,splitr,cloneData);
+      cfg.rangeName = token;
+      auto nllComp = new RooNLLVar((baseName + "_" + token).c_str(),"-log(likelihood)",
+                                   *this,data,projDeps,cfg,ext);
       nllComp->batchMode(pc.getInt("BatchMode"));
       nllList.add(*nllComp) ;
     }
-    nll = new RooAddition(baseName.c_str(),"-log(likelihood)",nllList,kTRUE) ;
+
+    if (!ext) {
+      // Each RooNLLVar was created with the normalization set corresponding to
+      // the subrange, not the union range like it should be. We have to add an
+      // extra term to cancel this normalization problem. However, this is
+      // only necessarry for the non-extended case, because adding an extension
+      // term to the individual NLLs as done here is mathematicall equivalent
+      // to adding the normalization correction terms plus a global extension
+      // term.
+      nllList.add(*createMultiRangeNLLCorrectionTerm(*this, data, baseName, rangeName));
+    }
+
+    nll = new RooAddition(baseName.c_str(),"-log(likelihood)",nllList,true) ;
   }
   RooAbsReal::setEvalErrorLoggingMode(RooAbsReal::PrintErrors) ;
 
@@ -1079,7 +1159,7 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
      // retrieve from cache
      const RooArgSet *constr =
         _myws->set(Form("CACHE_CONSTR_OF_PDF_%s_FOR_OBS_%s", GetName(), RooNameSet(*data.get()).content()));
-     coutI(Minimization) << "createNLL picked up cached consraints from workspace with " << constr->getSize()
+     coutI(Minimization) << "createNLL picked up cached constraints from workspace with " << constr->getSize()
                          << " entries" << endl;
      allConstraints.add(*constr);
 
@@ -1138,8 +1218,128 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
 }
 
 
+template <class Minimizer>
+int RooAbsPdf::calculateAsymptoticCorrectedCovMatrix(Minimizer &minimizer, RooAbsData const &data)
+{
+   // Calculated corrected errors for weighted likelihood fits
+   std::unique_ptr<RooFitResult> rw(minimizer.save());
+   // Weighted inverse Hessian matrix
+   const TMatrixDSym &matV = rw->covarianceMatrix();
+   coutI(Fitting)
+      << "RooAbsPdf::fitTo(" << this->GetName()
+      << ") Calculating covariance matrix according to the asymptotically correct approach. If you find this "
+         "method useful please consider citing https://arxiv.org/abs/1911.01303."
+      << endl;
 
+   // Initialise matrix containing first derivatives
+   auto nFloatPars = rw->floatParsFinal().getSize();
+   TMatrixDSym num(nFloatPars);
+   for (int k = 0; k < nFloatPars; k++) {
+      for (int l = 0; l < nFloatPars; l++) {
+         num(k, l) = 0.0;
+      }
+   }
+   RooArgSet *obs = this->getObservables(data);
+   // Create derivative objects
+   std::vector<std::unique_ptr<RooDerivative>> derivatives;
+   const RooArgList &floated = rw->floatParsFinal();
+   std::unique_ptr<RooArgSet> floatingparams{
+      static_cast<RooArgSet *>(this->getParameters(data)->selectByAttrib("Constant", false))};
+   for (const auto paramresult : floated) {
+      auto paraminternal = static_cast<RooRealVar *>(floatingparams->find(*paramresult));
+      assert(floatingparams->find(*paramresult)->IsA() == RooRealVar::Class());
+      derivatives.emplace_back(this->derivative(*paraminternal, *obs, 1));
+   }
 
+   // Loop over data
+   for (int j = 0; j < data.numEntries(); j++) {
+      // Sets obs to current data point, this is where the pdf will be evaluated
+      *obs = *data.get(j);
+      // Determine first derivatives
+      std::vector<double> diffs(floated.getSize(), 0.0);
+      for (int k = 0; k < floated.getSize(); k++) {
+         const auto paramresult = static_cast<RooRealVar *>(floated.at(k));
+         auto paraminternal = static_cast<RooRealVar *>(floatingparams->find(*paramresult));
+         // first derivative to parameter k at best estimate point for this measurement
+         double diff = derivatives[k]->getVal();
+         // need to reset to best fit point after differentiation
+         *paraminternal = paramresult->getVal();
+         diffs[k] = diff;
+      }
+      // Fill numerator matrix
+      double prob = getVal(obs);
+      for (int k = 0; k < floated.getSize(); k++) {
+         for (int l = 0; l < floated.getSize(); l++) {
+            num(k, l) += data.weight() * data.weight() * diffs[k] * diffs[l] / (prob * prob);
+         }
+      }
+   }
+   num.Similarity(matV);
+
+   // Propagate corrected errors to parameters objects
+   minimizer.applyCovarianceMatrix(num);
+
+   // The derivatives are found in RooFit and not with the minimizer (e.g.
+   // minuit), so the quality of the corrected covariance matrix corresponds to
+   // the quality of the original covariance matrix
+   return rw->covQual();
+}
+
+template <class Minimizer>
+int RooAbsPdf::calculateSumW2CorrectedCovMatrix(Minimizer &minimizer, RooAbsReal const &nll) const
+{
+
+   // Make list of RooNLLVar components of FCN
+   std::vector<RooNLLVar *> nllComponents;
+   std::unique_ptr<RooArgSet> comps{nll.getComponents()};
+   for (auto const &arg : *comps) {
+      if (RooNLLVar *nllComp = dynamic_cast<RooNLLVar *>(arg)) {
+         nllComponents.push_back(nllComp);
+      }
+   }
+
+   // Calculated corrected errors for weighted likelihood fits
+   std::unique_ptr<RooFitResult> rw{minimizer.save()};
+   for (auto &comp : nllComponents) {
+      comp->applyWeightSquared(true);
+   }
+   coutI(Fitting) << "RooAbsPdf::fitTo(" << this->GetName()
+                  << ") Calculating sum-of-weights-squared correction matrix for covariance matrix"
+                  << std::endl;
+   minimizer.hesse();
+   std::unique_ptr<RooFitResult> rw2{minimizer.save()};
+   for (auto &comp : nllComponents) {
+      comp->applyWeightSquared(false);
+   }
+
+   // Apply correction matrix
+   const TMatrixDSym &matV = rw->covarianceMatrix();
+   TMatrixDSym matC = rw2->covarianceMatrix();
+   ROOT::Math::CholeskyDecompGenDim<double> decomp(matC.GetNrows(), matC);
+   if (!decomp) {
+      coutE(Fitting) << "RooAbsPdf::fitTo(" << this->GetName()
+                     << ") ERROR: Cannot apply sum-of-weights correction to covariance matrix: correction "
+                        "matrix calculated with weight-squared is singular"
+                     << std::endl;
+      return -1;
+   }
+
+   // replace C by its inverse
+   decomp.Invert(matC);
+   // the class lies about the matrix being symmetric, so fill in the
+   // part above the diagonal
+   for (int i = 0; i < matC.GetNrows(); ++i) {
+      for (int j = 0; j < i; ++j) {
+         matC(j, i) = matC(i, j);
+      }
+   }
+   matC.Similarity(matV);
+   // C now contiains V C^-1 V
+   // Propagate corrected errors to parameters objects
+   minimizer.applyCovarianceMatrix(matC);
+
+   return std::min(rw->covQual(), rw2->covQual());
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1157,6 +1357,10 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
 /// <tr><td> `ConditionalObservables(const RooArgSet& set)`  <td>  Do not normalize PDF over listed observables
 /// <tr><td> `Extended(Bool_t flag)`           <td>  Add extended likelihood term, off by default
 /// <tr><td> `Range(const char* name)`         <td>  Fit only data inside range with given name. Multiple comma-separated range names can be specified.
+///                                                  In this case, the unnormalized PDF \f$f(x)\f$ is normalized by the integral over all ranges \f$r_i\f$:
+///                                                  \f[
+///                                                      p(x) = \frac{f(x)}{\sum_i \int_{r_i} f(x) dx}.
+///                                                  \f]
 /// <tr><td> `Range(Double_t lo, Double_t hi)` <td>  Fit only data inside given range. A range named "fit" is created on the fly on all observables.
 /// <tr><td> `SumCoefRange(const char* name)`  <td>  Set the range in which to interpret the coefficients of RooAddPdf components
 /// <tr><td> `NumCPU(int num, int strat)`      <td> Parallelize NLL calculation on `num` CPUs
@@ -1195,6 +1399,15 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
 ///                                                          implemented for the PDFs of the model, likelihood computations are 2x to 10x faster.
 ///                                                          The relative difference of the single log-likelihoods w.r.t. the legacy mode is usually better than 1.E-12,
 ///                                                          and fit parameters usually agree to better than 1.E-6.
+/// <tr><td> `IntegrateBins(double precision)` <td> In binned fits, integrate the PDF over the bins instead of using the probability density at the bin centre.
+///                                                 This can reduce the bias observed when fitting functions with high curvature to binned data.
+///                                                 - precision > 0: Activate bin integration everywhere. Use precision between 0.01 and 1.E-6, depending on binning.
+///                                                   Note that a low precision such as 0.01 might yield identical results to 1.E-4, since the integrator might reach 1.E-4 already in its first
+///                                                   integration step. If lower precision is desired (more speed), a RooBinSamplingPdf has to be created manually, and its integrator
+///                                                   has to be manipulated directly.
+///                                                 - precision = 0: Activate bin integration only for continuous PDFs fit to a RooDataHist.
+///                                                 - precision < 0: Deactivate.
+///                                                 \see RooBinSamplingPdf
 ///
 /// <tr><th><th> Options to control flow of fit procedure
 /// <tr><td> `Minimizer(type,algo)`   <td>  Choose minimization package and algorithm to use. Default is MINUIT/MIGRAD through the RooMinimizer interface,
@@ -1218,6 +1431,8 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
 /// <tr><td> `EvalErrorWall(bool flag=true)`    <td>  When parameters are in disallowed regions (e.g. PDF is negative), return very high value to fitter
 ///                                                  to force it out of that region. This can, however, mean that the fitter gets lost in this region. If
 ///                                                  this happens, try switching it off.
+/// <tr><td> `RecoverFromUndefinedRegions(double strength)` <td> When PDF is invalid (e.g. parameter in undefined region), try to direct minimiser away from that region.
+///                                                              `strength` controls the magnitude of the penalty term. Leaving out this argument defaults to 10. Switch off with `strength = 0.`.
 /// <tr><td> `FitOptions(const char* optStr)`  <td>  \deprecated Steer fit with classic options string (for backward compatibility).
 ///                                                \attention Use of this option excludes use of any of the new style steering options.
 ///
@@ -1241,6 +1456,9 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
 ///                                **Example** (Data as above):
 ///                                The errors are as big as if one fitted to 100 events.
 ///       </table>
+///       \note If the `SumW2Error` correction is enabled, the covariance matrix quality stored in the RooFitResult
+///             object will be the minimum of the original covariance matrix quality and the quality of the covariance
+///             matrix calculated with the squared weights.
 /// <tr><td> `AsymptoticError()`               <td> Use the asymptotically correct approach to estimate errors in the presence of weights.
 ///                                                 This is slower but more accurate than `SumW2Error`. See also https://arxiv.org/abs/1911.01303).
 /// <tr><td> `PrefitDataFraction(double fraction)`
@@ -1290,9 +1508,10 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
   RooLinkedList fitCmdList(cmdList) ;
   RooLinkedList nllCmdList = pc.filterCmdList(fitCmdList,"ProjectedObservables,Extended,Range,"
       "RangeWithName,SumCoefRange,NumCPU,CPUAffinity,SplitRange,Constrained,Constrain,ExternalConstraints,"
-      "CloneData,GlobalObservables,GlobalObservablesTag,OffsetLikelihood,BatchMode");
+      "CloneData,GlobalObservables,GlobalObservablesTag,OffsetLikelihood,BatchMode,IntegrateBins");
 
   pc.defineDouble("prefit", "Prefit",0,0);
+  pc.defineDouble("RecoverFromUndefinedRegions", "RecoverFromUndefinedRegions",0,10.);
   pc.defineString("fitOpt","FitOptions",0,"") ;
   pc.defineInt("optConst","Optimize",0,2) ;
   pc.defineInt("verbose","Verbose",0,0) ;
@@ -1335,6 +1554,7 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 
   // Decode command line arguments
   Double_t prefit = pc.getDouble("prefit");
+  const double recoverFromNaN = pc.getDouble("RecoverFromUndefinedRegions");
   const char* fitOpt = pc.getString("fitOpt",0,kTRUE) ;
   Int_t optConst = pc.getInt("optConst") ;
   Int_t verbose  = pc.getInt("verbose") ;
@@ -1390,14 +1610,13 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 			  << endl ;
   }
 
-
-  // Warn user that sum-of-weights correction does not apply to MINOS errrors
-  if (doSumW2==1 && minos) {
-    coutW(InputArguments) << "RooAbsPdf::fitTo(" << GetName() << ") WARNING: sum-of-weights correction does not apply to MINOS errors" << endl ;
+  if (minos && (doSumW2==1 || doAsymptotic == 1)) {
+    coutE(InputArguments) << "RooAbsPdf::fitTo(" << GetName() << "): sum-of-weights and asymptotic error correction do not work with MINOS errors. Not fitting." << endl;
+    return nullptr;
   }
   if (doAsymptotic==1 && minos) {
-      coutW(InputArguments) << "RooAbsPdf::fitTo(" << GetName() << ") WARNING: asymptotic correction does not apply to MINOS errors" << endl ;
-    }
+    coutW(InputArguments) << "RooAbsPdf::fitTo(" << GetName() << ") WARNING: asymptotic correction does not apply to MINOS errors" << endl ;
+  }
 
   if (prefit != 0)  {
     size_t nEvents = static_cast<size_t>(prefit*data.numEntries());
@@ -1453,6 +1672,7 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
     m.setMinimizerType(minType) ;
 
     m.setEvalErrorWall(doEEWall) ;
+    m.setRecoverFromNaNStrength(recoverFromNaN);
     if (doWarn==0) {
       // m.setNoWarn() ; WVE FIX THIS
     }
@@ -1501,110 +1721,15 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 	m.hesse() ;
       }
 
+      int corrCovQual = -1;
+
       //asymptotically correct approach
       if (doAsymptotic==1 && m.getNPar()>0) {
-	//Calculated corrected errors for weighted likelihood fits
-	std::unique_ptr<RooFitResult> rw(m.save());
-	//Weighted inverse Hessian matrix
-	const TMatrixDSym& matV = rw->covarianceMatrix();
-	coutI(Fitting) << "RooAbsPdf::fitTo(" << GetName() << ") Calculating covariance matrix according to the asymptotically correct approach. If you find this method useful please consider citing https://arxiv.org/abs/1911.01303." << endl;
-
-	//Initialise matrix containing first derivatives
-	TMatrixDSym num(rw->floatParsFinal().getSize());
-	for (int k=0; k<rw->floatParsFinal().getSize(); k++)
-	   for (int l=0; l<rw->floatParsFinal().getSize(); l++)
-	      num(k,l) = 0.0;
-	RooArgSet* obs = getObservables(data);
-	//Create derivative objects
-	std::vector<std::unique_ptr<RooDerivative> > derivatives;
-	const RooArgList& floated = rw->floatParsFinal();
-	std::unique_ptr<RooArgSet> floatingparams( (RooArgSet*)getParameters(data)->selectByAttrib("Constant", false) );
-	for (const auto paramresult : floated) {
-	   auto paraminternal = static_cast<RooRealVar*>(floatingparams->find(*paramresult));
-	   assert(floatingparams->find(*paramresult)->IsA() == RooRealVar::Class());
-	   std::unique_ptr<RooDerivative> deriv( derivative(*paraminternal, *obs, 1) );
-	   derivatives.push_back(std::move(deriv));
-	}
-
-	//Loop over data
-	for (int j=0; j<data.numEntries(); j++) {
-	   //Sets obs to current data point, this is where the pdf will be evaluated
-	   *obs = *data.get(j);
-	   //Determine first derivatives
-	   std::vector<Double_t> diffs(floated.getSize(), 0.0);
-	   for (int k=0; k < floated.getSize(); k++) {
-	      const auto paramresult = static_cast<RooRealVar*>(floated.at(k));
-	      auto paraminternal = static_cast<RooRealVar*>(floatingparams->find(*paramresult));
-	      //first derivative to parameter k at best estimate point for this measurement
-	      Double_t diff = derivatives.at(k)->getVal();
-	      //need to reset to best fit point after differentiation
-	      *paraminternal = paramresult->getVal();
-	      diffs.at(k) = diff;
-	   }
-	   //Fill numerator matrix
-	   Double_t prob = getVal(obs);
-	   for (int k=0; k<floated.getSize(); k++) {
-	      for (int l=0; l<floated.getSize(); l++) {
-	         num(k,l) += data.weight()*data.weight()*diffs.at(k)*diffs.at(l)/(prob*prob);
-	      }
-	   }
-	}
-	num.Similarity(matV);
-
-	//Propagate corrected errors to parameters objects
-	m.applyCovarianceMatrix(num);
+        corrCovQual = calculateAsymptoticCorrectedCovMatrix(m, data);
       }
 
       if (doSumW2==1 && m.getNPar()>0) {
-	// Make list of RooNLLVar components of FCN
-	RooArgSet* comps = nll->getComponents();
-	vector<RooNLLVar*> nllComponents;
-	nllComponents.reserve(comps->getSize());
-	TIterator* citer = comps->createIterator();
-	RooAbsArg* arg;
-	while ((arg=(RooAbsArg*)citer->Next())) {
-	  RooNLLVar* nllComp = dynamic_cast<RooNLLVar*>(arg);
-	  if (!nllComp) continue;
-	  nllComponents.push_back(nllComp);
-	}
-	delete citer;
-	delete comps;
-
-	// Calculated corrected errors for weighted likelihood fits
-	RooFitResult* rw = m.save();
-	for (vector<RooNLLVar*>::iterator it = nllComponents.begin(); nllComponents.end() != it; ++it) {
-	  (*it)->applyWeightSquared(kTRUE);
-	}
-	coutI(Fitting) << "RooAbsPdf::fitTo(" << GetName() << ") Calculating sum-of-weights-squared correction matrix for covariance matrix" << endl ;
-	m.hesse();
-	RooFitResult* rw2 = m.save();
-	for (vector<RooNLLVar*>::iterator it = nllComponents.begin(); nllComponents.end() != it; ++it) {
-	  (*it)->applyWeightSquared(kFALSE);
-	}
-
-	// Apply correction matrix
-	const TMatrixDSym& matV = rw->covarianceMatrix();
-	TMatrixDSym matC = rw2->covarianceMatrix();
-	using ROOT::Math::CholeskyDecompGenDim;
-	CholeskyDecompGenDim<Double_t> decomp(matC.GetNrows(), matC);
-	if (!decomp) {
-	  coutE(Fitting) << "RooAbsPdf::fitTo(" << GetName()
-			 << ") ERROR: Cannot apply sum-of-weights correction to covariance matrix: correction matrix calculated with weight-squared is singular" <<endl ;
-	} else {
-	  // replace C by its inverse
-	  decomp.Invert(matC);
-	  // the class lies about the matrix being symmetric, so fill in the
-	  // part above the diagonal
-	  for (int i = 0; i < matC.GetNrows(); ++i)
-	      for (int j = 0; j < i; ++j) matC(j, i) = matC(i, j);
-	  matC.Similarity(matV);
-	  // C now contiains V C^-1 V
-	  // Propagate corrected errors to parameters objects
-	  m.applyCovarianceMatrix(matC);
-	}
-
-	delete rw;
-	delete rw2;
+         corrCovQual = calculateSumW2CorrectedCovMatrix(m, *nll);
       }
 
       if (minos) {
@@ -1621,9 +1746,13 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 	string name = Form("fitresult_%s_%s",GetName(),data.GetName()) ;
 	string title = Form("Result of fit of p.d.f. %s to dataset %s",GetName(),data.GetName()) ;
 	ret = m.save(name.c_str(),title.c_str()) ;
+         if((doSumW2==1 || doAsymptotic==1) && m.getNPar()>0) {
+            ret->setCovQual(corrCovQual);
+         }
       }
 
     }
+
     if (optConst) {
       m.optimizeConst(0) ;
     }
@@ -1683,111 +1812,15 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 	m.hesse() ;
       }
 
+      int corrCovQual = -1;
+
       //asymptotically correct approach
       if (doAsymptotic==1 && m.getNPar()>0) {
-	//Calculated corrected errors for weighted likelihood fits
-	std::unique_ptr<RooFitResult> rw(m.save());
-	//Weighted inverse Hessian matrix
-	const TMatrixDSym& matV = rw->covarianceMatrix();
-	coutI(Fitting) << "RooAbsPdf::fitTo(" << GetName() << ") Calculating covariance matrix according to the asymptotically correct approach. If you find this method useful please consider citing https://arxiv.org/abs/1911.01303." << endl;
-
-	//Initialise matrix containing first derivatives
-	TMatrixDSym num(rw->floatParsFinal().getSize());
-	for (int k=0; k<rw->floatParsFinal().getSize(); k++)
-	   for (int l=0; l<rw->floatParsFinal().getSize(); l++)
-	      num(k,l) = 0.0;
-	RooArgSet* obs = getObservables(data);
-	//Create derivative objects
-	std::vector<std::unique_ptr<RooDerivative> > derivatives;
-	const RooArgList& floated = rw->floatParsFinal();
-	std::unique_ptr<RooArgSet> floatingparams( (RooArgSet*)getParameters(data)->selectByAttrib("Constant", false) );
-	for (int k=0; k<floated.getSize(); k++) {
-	   RooRealVar* paramresult = (RooRealVar*)floated.at(k);
-	   RooRealVar* paraminternal = (RooRealVar*)floatingparams->find(paramresult->getTitle());
-	   std::unique_ptr<RooDerivative> deriv( derivative(*paraminternal, *obs, 1) );
-	   derivatives.push_back(std::move(deriv));
-	}
-
-	//Loop over data
-	for (int j=0; j<data.numEntries(); j++) {
-	   //Sets obs to current data point, this is where the pdf will be evaluated
-	   *obs = *data.get(j);
-	   //Determine first derivatives
-	   std::vector<Double_t> diffs(floated.getSize(), 0.0);
-	   for (int k=0; k<floated.getSize(); k++) {
-	      RooRealVar* paramresult = (RooRealVar*)floated.at(k);
-	      RooRealVar* paraminternal = (RooRealVar*)floatingparams->find(paramresult->getTitle());
-	      //First derivative to parameter k at best estimate point for this measurement
-	      Double_t diff = derivatives.at(k)->getVal();
-	      //Need to reset to best fit point after differentiation
-	      *paraminternal = paramresult->getVal();
-	      diffs.at(k) = diff;
-	   }
-	   //Fill numerator matrix
-	   Double_t prob = getVal(obs);
-	   for (int k=0; k<floated.getSize(); k++) {
-	      for (int l=0; l<floated.getSize(); l++) {
-	         num(k,l) += data.weight()*data.weight()*diffs.at(k)*diffs.at(l)/(prob*prob);
-	      }
-	   }
-	}
-	num.Similarity(matV);
-
-	//Propagate corrected errors to parameters objects
-	m.applyCovarianceMatrix(num);
+        corrCovQual = calculateAsymptoticCorrectedCovMatrix(m, data);
       }
 
       if (doSumW2==1 && m.getNPar()>0) {
-
-	// Make list of RooNLLVar components of FCN
-	list<RooNLLVar*> nllComponents ;
-	RooArgSet* comps = nll->getComponents() ;
-	RooAbsArg* arg ;
-	TIterator* citer = comps->createIterator() ;
-	while((arg=(RooAbsArg*)citer->Next())) {
-	  RooNLLVar* nllComp = dynamic_cast<RooNLLVar*>(arg) ;
-	  if (nllComp) {
-	    nllComponents.push_back(nllComp) ;
-	  }
-	}
-	delete citer ;
-	delete comps ;
-
-	// Calculated corrected errors for weighted likelihood fits
-	RooFitResult* rw = m.save() ;
-	for (list<RooNLLVar*>::iterator iter1=nllComponents.begin() ; iter1!=nllComponents.end() ; ++iter1) {
-	  (*iter1)->applyWeightSquared(kTRUE) ;
-	}
-	coutI(Fitting) << "RooAbsPdf::fitTo(" << GetName() << ") Calculating sum-of-weights-squared correction matrix for covariance matrix" << endl ;
-	m.hesse() ;
-	RooFitResult* rw2 = m.save() ;
-	for (list<RooNLLVar*>::iterator iter2=nllComponents.begin() ; iter2!=nllComponents.end() ; ++iter2) {
-	  (*iter2)->applyWeightSquared(kFALSE) ;
-	}
-
-	// Apply correction matrix
-	const TMatrixDSym& matV = rw->covarianceMatrix();
-	TMatrixDSym matC = rw2->covarianceMatrix();
-	using ROOT::Math::CholeskyDecompGenDim;
-	CholeskyDecompGenDim<Double_t> decomp(matC.GetNrows(), matC);
-	if (!decomp) {
-	  coutE(Fitting) << "RooAbsPdf::fitTo(" << GetName()
-			 << ") ERROR: Cannot apply sum-of-weights correction to covariance matrix: correction matrix calculated with weight-squared is singular" <<endl ;
-	} else {
-	  // replace C by its inverse
-	  decomp.Invert(matC);
-	  // the class lies about the matrix being symmetric, so fill in the
-	  // part above the diagonal
-	  for (int i = 0; i < matC.GetNrows(); ++i)
-	      for (int j = 0; j < i; ++j) matC(j, i) = matC(i, j);
-	  matC.Similarity(matV);
-	  // C now contiains V C^-1 V
-	  // Propagate corrected errors to parameters objects
-	  m.applyCovarianceMatrix(matC);
-	}
-
-	delete rw ;
-	delete rw2 ;
+         corrCovQual = calculateSumW2CorrectedCovMatrix(m, *nll);
       }
 
       if (minos) {
@@ -1804,6 +1837,9 @@ RooFitResult* RooAbsPdf::fitTo(RooAbsData& data, const RooLinkedList& cmdList)
 	string name = Form("fitresult_%s_%s",GetName(),data.GetName()) ;
 	string title = Form("Result of fit of p.d.f. %s to dataset %s",GetName(),data.GetName()) ;
 	ret = m.save(name.c_str(),title.c_str()) ;
+         if((doSumW2==1 || doAsymptotic==1) && m.getNPar()>0) {
+            ret->setCovQual(corrCovQual);
+         }
       }
 
     }
@@ -1833,7 +1869,7 @@ RooFitResult* RooAbsPdf::chi2FitTo(RooDataHist& data, const RooLinkedList& cmdLi
 
   // Pull arguments to be passed to chi2 construction from list
   RooLinkedList fitCmdList(cmdList) ;
-  RooLinkedList chi2CmdList = pc.filterCmdList(fitCmdList,"Range,RangeWithName,NumCPU,CPUAffinity,Optimize,ProjectedObservables,AddCoefRange,SplitRange,DataError,Extended") ;
+  RooLinkedList chi2CmdList = pc.filterCmdList(fitCmdList,"Range,RangeWithName,NumCPU,CPUAffinity,Optimize,ProjectedObservables,AddCoefRange,SplitRange,DataError,Extended,IntegrateBins") ;
 
   RooAbsReal* chi2 = createChi2(data,chi2CmdList) ;
   RooFitResult* ret = chi2FitDriver(*chi2,fitCmdList) ;
@@ -1978,6 +2014,9 @@ RooAbsReal* RooAbsPdf::createChi2(RooDataSet& data, const RooLinkedList& cmdList
 
 void RooAbsPdf::printValue(ostream& os) const
 {
+  // silent warning messages coming when evaluating a RooAddPdf without a normalization set
+  RooHelpers::LocalChangeMsgLevel locmsg(RooFit::WARNING, 0u, RooFit::Eval, false);
+
   getVal() ;
 
   if (_norm) {
@@ -1999,8 +2038,8 @@ void RooAbsPdf::printMultiline(ostream& os, Int_t contents, Bool_t verbose, TStr
   os << indent << "Cached value = " << _value << endl ;
   if (_norm) {
     os << indent << " Normalization integral: " << endl ;
-    TString moreIndent(indent) ; moreIndent.Append("   ") ;
-    _norm->printStream(os,kName|kAddress|kTitle|kValue|kArgs,kSingleLine,moreIndent.Data()) ;
+    auto moreIndent = std::string(indent.Data()) + "   " ;
+    _norm->printStream(os,kName|kAddress|kTitle|kValue|kArgs,kSingleLine,moreIndent.c_str()) ;
   }
 }
 
@@ -2499,7 +2538,8 @@ Bool_t RooAbsPdf::isDirectGenSafe(const RooAbsArg& arg) const
 /// | `Name(const char* name)`  | Name of the output dataset
 /// | `Verbose(Bool_t flag)`    | Print informational messages during event generation
 /// | `NumEvent(int nevt)`      | Generate specified number of events
-/// | `Extended()`              | The actual number of events generated will be sampled from a Poisson distribution with mu=nevt. For use with extended maximum likelihood fits
+/// | `Extended()`              | The actual number of events generated will be sampled from a Poisson distribution with mu=nevt.
+/// This can be *much* faster for peaked PDFs, but the number of events is not exactly what was requested.
 /// | `ExpectedData()`          | Return a binned dataset _without_ statistical fluctuations (also aliased as Asimov())
 ///
 
@@ -2562,17 +2602,29 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet& whatVars, const RooCmdAr
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Generate a new dataset containing the specified variables with
-/// events sampled from our distribution. Generate the specified
-/// number of events or else try to use expectedEvents() if nEvents <= 0.
+/// events sampled from our distribution.
 ///
-/// If expectedData is kTRUE (it is kFALSE by default), the returned histogram returns the 'expected'
+/// \param[in] whatVars Variables that values should be generated for.
+/// \param[in] nEvents  How many events to generate. If `nEvents <=0`, use the value returned by expectedEvents() as target.
+/// \param[in] expectedData If set to true (false by default), the returned histogram returns the 'expected'
 /// data sample, i.e. no statistical fluctuations are present.
+/// \param[in] extended For each bin, generate Poisson(x, mu) events, where `mu` is chosen such that *on average*,
+/// one would obtain `nEvents` events. This means that the true number of events will fluctuate around the desired value,
+/// but the generation happens a lot faster.
+/// Especially if the PDF is sharply peaked, the multinomial event generation necessary to generate *exactly* `nEvents` events can
+/// be very slow.
 ///
-/// Any variables of this PDF that are not in whatVars will use their
-/// current values and be treated as fixed parameters. Returns zero
-/// in case of an error. The caller takes ownership of the returned
-/// dataset.
-
+/// The binning used for generation of events is the currently set binning for the variables.
+/// It can e.g. be changed using
+/// ```
+/// x.setBins(15);
+/// x.setRange(-5., 5.);
+/// pdf.generateBinned(RooArgSet(x), 1000);
+/// ```
+///
+/// Any variables of this PDF that are not in `whatVars` will use their
+/// current values and be treated as fixed parameters.
+/// \return RooDataHist* owned by the caller. Returns `nullptr` in case of an error.
 RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEvents, Bool_t expectedData, Bool_t extended) const
 {
   // Create empty RooDataHist
@@ -2588,9 +2640,9 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEven
 
       // Don't round in expectedData or extended mode
       if (expectedData || extended) {
-	nEvents = expectedEvents(&whatVars) ;
+        nEvents = expectedEvents(&whatVars) ;
       } else {
-	nEvents = Int_t(expectedEvents(&whatVars)+0.5) ;
+        nEvents = std::round(expectedEvents(&whatVars));
       }
     }
   }
@@ -2607,7 +2659,7 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEven
 
       // Expected data, multiply p.d.f by nEvents
       Double_t w=hist->weight()*nEvents ;
-      hist->set(w,sqrt(w)) ;
+      hist->set(i, w, sqrt(w));
 
     } else if (extended) {
 
@@ -2620,7 +2672,7 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEven
       // Regular mode, fill array of weights with Poisson(pdf*nEvents), but to not fill
       // histogram yet.
       if (hist->weight()>histMax) {
-	histMax = hist->weight() ;
+        histMax = hist->weight() ;
       }
       histOut[i] = RooRandom::randomGenerator()->Poisson(hist->weight()*nEvents) ;
       histOutSum += histOut[i] ;
@@ -2637,6 +2689,8 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEven
     Int_t wgt = (histOutSum>nEvents) ? -1 : 1 ;
 
     // Perform simple binned accept/reject procedure to get to exact event count
+    std::size_t counter = 0;
+    bool havePrintedInfo = false;
     while(nEvtExtra>0) {
 
       Int_t ibinRand = RooRandom::randomGenerator()->Integer(hist->numEntries()) ;
@@ -2644,17 +2698,23 @@ RooDataHist *RooAbsPdf::generateBinned(const RooArgSet &whatVars, Double_t nEven
       Double_t ranY = RooRandom::randomGenerator()->Uniform(histMax) ;
 
       if (ranY<hist->weight()) {
-	if (wgt==1) {
-	  histOut[ibinRand]++ ;
-	} else {
-	  // If weight is negative, prior bin content must be at least 1
-	  if (histOut[ibinRand]>0) {
-	    histOut[ibinRand]-- ;
-	  } else {
-	    continue ;
-	  }
-	}
-	nEvtExtra-- ;
+        if (wgt==1) {
+          histOut[ibinRand]++ ;
+        } else {
+          // If weight is negative, prior bin content must be at least 1
+          if (histOut[ibinRand]>0) {
+            histOut[ibinRand]-- ;
+          } else {
+            continue ;
+          }
+        }
+        nEvtExtra-- ;
+      }
+
+      if ((counter++ > 10*nEvents || nEvents > 1.E7) && !havePrintedInfo) {
+        havePrintedInfo = true;
+        coutP(Generation) << "RooAbsPdf::generateBinned(" << GetName() << ") Performing costly accept/reject sampling. If this takes too long, use "
+            << "extended mode to speed up the process." << std::endl;
       }
     }
 
@@ -2879,15 +2939,15 @@ RooPlot* RooAbsPdf::plotOn(RooPlot* frame, RooLinkedList& cmdList) const
   Bool_t haveCompSel = ( (compSpec && strlen(compSpec)>0) || compSet) ;
 
   // Suffix for curve name
-  TString nameSuffix ;
+  std::string nameSuffix ;
   if (compSpec && strlen(compSpec)>0) {
-    nameSuffix.Append("_Comp[") ;
-    nameSuffix.Append(compSpec) ;
-    nameSuffix.Append("]") ;
+    nameSuffix.append("_Comp[") ;
+    nameSuffix.append(compSpec) ;
+    nameSuffix.append("]") ;
   } else if (compSet) {
-    nameSuffix.Append("_Comp[") ;
-    nameSuffix.Append(compSet->contentsString().c_str()) ;
-    nameSuffix.Append("]") ;
+    nameSuffix.append("_Comp[") ;
+    nameSuffix.append(compSet->contentsString().c_str()) ;
+    nameSuffix.append("]") ;
   }
 
   // Remove PDF-only commands from command list
@@ -2895,7 +2955,7 @@ RooPlot* RooAbsPdf::plotOn(RooPlot* frame, RooLinkedList& cmdList) const
 
   // Adjust normalization, if so requested
   if (asymCat) {
-    RooCmdArg cnsuffix("CurveNameSuffix",0,0,0,0,nameSuffix.Data(),0,0,0) ;
+    RooCmdArg cnsuffix("CurveNameSuffix",0,0,0,0,nameSuffix.c_str(),0,0,0) ;
     cmdList.Add(&cnsuffix);
     return  RooAbsReal::plotOn(frame,cmdList) ;
   }
@@ -2936,7 +2996,7 @@ RooPlot* RooAbsPdf::plotOn(RooPlot* frame, RooLinkedList& cmdList) const
           ccoutI(Plotting) << endl ;
         }
 
-        nameSuffix.Append(Form("_Range[%f_%f]",rangeLo,rangeHi)) ;
+        nameSuffix.append(Form("_Range[%f_%f]",rangeLo,rangeHi)) ;
 
       } else if (pc.hasProcessed("RangeWithName")) {
 
@@ -2959,7 +3019,7 @@ RooPlot* RooAbsPdf::plotOn(RooPlot* frame, RooLinkedList& cmdList) const
           ccoutI(Plotting) << endl ;
         }
 
-        nameSuffix.Append(Form("_Range[%s]",pc.getString("rangeName"))) ;
+        nameSuffix.append(Form("_Range[%s]",pc.getString("rangeName"))) ;
       }
       // Specification of a normalization range override those in a regular range
       if (pc.hasProcessed("NormRange")) {
@@ -2977,7 +3037,7 @@ RooPlot* RooAbsPdf::plotOn(RooPlot* frame, RooLinkedList& cmdList) const
         hasCustomRange = kTRUE ;
         coutI(Plotting) << "RooAbsPdf::plotOn(" << GetName() << ") p.d.f. curve is normalized using explicit choice of ranges '" << pc.getString("normRangeName", "", false) << "'" << endl ;
 
-        nameSuffix.Append(Form("_NormRange[%s]",pc.getString("rangeName"))) ;
+        nameSuffix.append(Form("_NormRange[%s]",pc.getString("rangeName"))) ;
 
       }
 
@@ -3077,7 +3137,7 @@ RooPlot* RooAbsPdf::plotOn(RooPlot* frame, RooLinkedList& cmdList) const
   }
 
 
-  RooCmdArg cnsuffix("CurveNameSuffix",0,0,0,0,nameSuffix.Data(),0,0,0) ;
+  RooCmdArg cnsuffix("CurveNameSuffix",0,0,0,0,nameSuffix.c_str(),0,0,0) ;
   cmdList.Add(&cnsuffix);
 
   RooPlot* ret =  RooAbsReal::plotOn(frame,cmdList) ;
@@ -3217,25 +3277,22 @@ RooPlot* RooAbsPdf::paramOn(RooPlot* frame, const RooCmdArg& arg1, const RooCmdA
   // Decode command line arguments
   RooArgSet* params = static_cast<RooArgSet*>(pc.getObject("params")) ;
   if (!params) {
-    params = getParameters(frame->getNormVars()) ;
+    std::unique_ptr<RooArgSet> paramsPtr{getParameters(frame->getNormVars())} ;
     if (pc.hasProcessed("FormatArgs")) {
       const RooCmdArg* formatCmd = static_cast<RooCmdArg*>(cmdList.FindObject("FormatArgs")) ;
-      paramOn(frame,*params,showc,label,0,0,xmin,xmax,ymax,formatCmd) ;
+      paramOn(frame,*paramsPtr,showc,label,0,0,xmin,xmax,ymax,formatCmd) ;
     } else {
-      paramOn(frame,*params,showc,label,sigDigit,formatStr,xmin,xmax,ymax) ;
+      paramOn(frame,*paramsPtr,showc,label,sigDigit,formatStr,xmin,xmax,ymax) ;
     }
-    delete params ;
   } else {
-    RooArgSet* pdfParams = getParameters(frame->getNormVars()) ;
-    RooArgSet* selParams = static_cast<RooArgSet*>(pdfParams->selectCommon(*params)) ;
+    std::unique_ptr<RooArgSet> pdfParams{getParameters(frame->getNormVars())} ;
+    std::unique_ptr<RooArgSet> selParams{static_cast<RooArgSet*>(pdfParams->selectCommon(*params))} ;
     if (pc.hasProcessed("FormatArgs")) {
       const RooCmdArg* formatCmd = static_cast<RooCmdArg*>(cmdList.FindObject("FormatArgs")) ;
       paramOn(frame,*selParams,showc,label,0,0,xmin,xmax,ymax,formatCmd) ;
     } else {
       paramOn(frame,*selParams,showc,label,sigDigit,formatStr,xmin,xmax,ymax) ;
     }
-    delete selParams ;
-    delete pdfParams ;
   }
 
   return frame ;
@@ -3251,10 +3308,9 @@ RooPlot* RooAbsPdf::paramOn(RooPlot* frame, const RooAbsData* data, const char *
 			    Int_t sigDigits, Option_t *options, Double_t xmin,
 			    Double_t xmax ,Double_t ymax)
 {
-  RooArgSet* params = getParameters(data) ;
+  std::unique_ptr<RooArgSet> params{getParameters(data)} ;
   TString opts(options) ;
   paramOn(frame,*params,opts.Contains("c"),label,sigDigits,options,xmin,xmax,ymax) ;
-  delete params ;
   return frame ;
 }
 
@@ -3359,16 +3415,7 @@ Int_t RooAbsPdf::verboseEval()
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Dummy implementation
-
-void RooAbsPdf::CacheElem::operModeHook(RooAbsArg::OperMode)
-{
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor of normalization cache element. If this element
+/// Destructor of normalization cache element. If this element 
 /// provides the 'current' normalization stored in RooAbsPdf::_norm
 /// zero _norm pointer here before object pointed to is deleted here
 
@@ -3393,26 +3440,23 @@ RooAbsPdf::CacheElem::~CacheElem()
 RooAbsPdf* RooAbsPdf::createProjection(const RooArgSet& iset)
 {
   // Construct name for new object
-  TString name(GetName()) ;
-  name.Append("_Proj[") ;
+  std::string name(GetName()) ;
+  name.append("_Proj[") ;
   if (iset.getSize()>0) {
-    TIterator* iter = iset.createIterator() ;
-    RooAbsArg* arg ;
-    Bool_t first(kTRUE) ;
-    while((arg=(RooAbsArg*)iter->Next())) {
+    bool first = true;
+    for(auto const& arg : iset) {
       if (first) {
-	first=kFALSE ;
+        first = false ;
       } else {
-	name.Append(",") ;
+        name.append(",") ;
       }
-      name.Append(arg->GetName()) ;
+      name.append(arg->GetName()) ;
     }
-    delete iter ;
   }
-  name.Append("]") ;
+  name.append("]") ;
 
   // Return projected p.d.f.
-  return new RooProjectedPdf(name.Data(),name.Data(),*this,iset) ;
+  return new RooProjectedPdf(name.c_str(),name.c_str(),*this,iset) ;
 }
 
 
@@ -3490,9 +3534,8 @@ RooAbsReal* RooAbsPdf::createCdf(const RooArgSet& iset, const RooCmdArg& arg1, c
     return createScanCdf(iset,nset,numScanBins,intOrder) ;
   }
   if (doScanNum) {
-    RooRealIntegral* tmp = (RooRealIntegral*) createIntegral(iset) ;
+    std::unique_ptr<RooRealIntegral> tmp{static_cast<RooRealIntegral*>(createIntegral(iset))} ;
     Int_t isNum= (tmp->numIntRealVars().getSize()>0) ;
-    delete tmp ;
 
     if (isNum) {
       coutI(NumIntegration) << "RooAbsPdf::createCdf(" << GetName() << ") integration over observable(s) " << iset << " involves numeric integration," << endl
