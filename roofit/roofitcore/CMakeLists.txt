@@ -521,7 +521,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/BatchData.cxx
     src/BatchHelpers.cxx
     src/RooWrapperPdf.cxx
-    DICTIONARY_OPTIONS
+  DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
 #    -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
   DEPENDENCIES
@@ -541,6 +541,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
   LIBRARIES
         ${RT_LIBRARY}
         ${ZeroMQ_LIBRARY}
+  LINKDEF inc/LinkDef.h
 )
 
 target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
