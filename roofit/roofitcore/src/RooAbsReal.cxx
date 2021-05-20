@@ -83,8 +83,9 @@
 #include "RooVectorDataStore.h"
 #include "RooCachedReal.h"
 #include "RooHelpers.h"
-
-#include "Riostream.h"
+#include "BatchHelpers.h"
+#include "RunContext.h"
+#include "ValueChecking.h"
 
 #include "Compression.h"
 #include "Math/IFunction.h"
@@ -102,8 +103,15 @@
 #include "TF3.h"
 #include "TMatrixD.h"
 #include "TVector.h"
+#include "ROOT/RMakeUnique.hxx"
+#include "strlcpy.h"
+#ifndef NDEBUG
+#include <TSystem.h> // To print stack traces when caching errors are detected
+#endif
 
 #include <sstream>
+#include <iostream>
+#include <iomanip>
 
 using namespace std ;
 
@@ -124,7 +132,7 @@ map<const RooAbsArg*,pair<string,list<RooAbsReal::EvalError> > > RooAbsReal::_ev
 /// coverity[UNINIT_CTOR]
 /// Default constructor
 
-RooAbsReal::RooAbsReal() : _specIntegratorConfig(0), _treeVar(kFALSE), _selectComp(kTRUE), _lastNSet(0)
+RooAbsReal::RooAbsReal() : _specIntegratorConfig(0), _selectComp(kTRUE), _lastNSet(0)
 {
 }
 
@@ -135,7 +143,7 @@ RooAbsReal::RooAbsReal() : _specIntegratorConfig(0), _treeVar(kFALSE), _selectCo
 
 RooAbsReal::RooAbsReal(const char *name, const char *title, const char *unit) :
   RooAbsArg(name,title), _plotMin(0), _plotMax(0), _plotBins(100),
-  _value(0),  _unit(unit), _forceNumInt(kFALSE), _specIntegratorConfig(0), _treeVar(kFALSE), _selectComp(kTRUE), _lastNSet(0)
+  _value(0),  _unit(unit), _forceNumInt(kFALSE), _specIntegratorConfig(0), _selectComp(kTRUE), _lastNSet(0)
 {
   setValueDirty() ;
   setShapeDirty() ;
@@ -150,7 +158,7 @@ RooAbsReal::RooAbsReal(const char *name, const char *title, const char *unit) :
 RooAbsReal::RooAbsReal(const char *name, const char *title, Double_t inMinVal,
 		       Double_t inMaxVal, const char *unit) :
   RooAbsArg(name,title), _plotMin(inMinVal), _plotMax(inMaxVal), _plotBins(100),
-  _value(0), _unit(unit), _forceNumInt(kFALSE), _specIntegratorConfig(0), _treeVar(kFALSE), _selectComp(kTRUE), _lastNSet(0)
+  _value(0), _unit(unit), _forceNumInt(kFALSE), _specIntegratorConfig(0), _selectComp(kTRUE), _lastNSet(0)
 {
   setValueDirty() ;
   setShapeDirty() ;
@@ -164,7 +172,7 @@ RooAbsReal::RooAbsReal(const char *name, const char *title, Double_t inMinVal,
 RooAbsReal::RooAbsReal(const RooAbsReal& other, const char* name) :
   RooAbsArg(other,name), _plotMin(other._plotMin), _plotMax(other._plotMax),
   _plotBins(other._plotBins), _value(other._value), _unit(other._unit), _label(other._label),
-  _forceNumInt(other._forceNumInt), _treeVar(other._treeVar), _selectComp(other._selectComp), _lastNSet(0)
+  _forceNumInt(other._forceNumInt), _selectComp(other._selectComp), _lastNSet(0)
 {
   if (other._specIntegratorConfig) {
     _specIntegratorConfig = new RooNumIntConfig(*other._specIntegratorConfig) ;
@@ -186,7 +194,6 @@ RooAbsReal& RooAbsReal::operator=(const RooAbsReal& other) {
   _unit = other._unit;
   _label = other._label;
   _forceNumInt = other._forceNumInt;
-  _treeVar = other._treeVar;
   _selectComp = other._selectComp;
   _lastNSet = other._lastNSet;
 
@@ -275,7 +282,7 @@ Double_t RooAbsReal::getValV(const RooArgSet* nset) const
   }
 
   if (isValueDirtyAndClear()) {
-    _value = traceEval(nset) ;
+    _value = traceEval(nullptr) ;
     //     clearValueDirty() ;
   }
   //   cout << "RooAbsReal::getValV(" << GetName() << ") writing _value = " << _value << endl ;
@@ -316,6 +323,35 @@ RooSpan<const double> RooAbsReal::getValBatch(std::size_t begin, std::size_t max
   return _batchData.getBatch(begin, maxSize);
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// Compute batch of values for given input data, store result in `evalData`,
+/// and return a span pointing to it.
+///
+/// \param[in] evalData  Object holding spans of input data. Store our output here.
+/// \param[in] normSet   Pass this normSet on to objects that are serving values to
+/// the one where this function is called.
+RooSpan<const double> RooAbsReal::getValues(BatchHelpers::RunContext& evalData, const RooArgSet* normSet) const {
+  auto item = evalData.spans.find(this);
+  if (item != evalData.spans.end()) {
+    return item->second;
+  }
+
+  if (normSet && normSet != _lastNSet) {
+    // TODO Implement better:
+    // The proxies, i.e. child nodes in the computation graph, sometimes need to know
+    // what to normalise over. I hope that passing the normalisation set through all
+    // interfaces will do the trick, but cross-checks that the correct normalisation set
+    // is used should nevertheless be implemented.
+    const_cast<RooAbsReal*>(this)->setProxyNormSet(normSet);
+    // This member only seems to be in use in RooFormulaVar. Consider removing it:
+    _lastNSet = (RooArgSet*) normSet;
+  }
+
+  auto results = evaluateSpan(evalData, normSet ? normSet : _lastNSet);
+
+  return results;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1605,29 +1641,32 @@ void RooAbsReal::plotOnCompSelect(RooArgSet* selNodes) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Plot (project) PDF on specified frame. If a PDF is plotted in an empty frame, it
 /// will show a unit normalized curve in the frame variable, taken at the present value
-/// of other observables defined for this PDF
+/// of other observables defined for this PDF.
 ///
 /// If a PDF is plotted in a frame in which a dataset has already been plotted, it will
 /// show a projected curve integrated over all variables that were present in the shown
 /// dataset except for the one on the x-axis. The normalization of the curve will also
 /// be adjusted to the event count of the plotted dataset. An informational message
-/// will be printed for each projection step that is performed
+/// will be printed for each projection step that is performed.
 ///
 /// This function takes the following named arguments
 /// <table>
 /// <tr><th><th> Projection control
-/// <tr><td> `Slice(const RooArgSet& set)`     <td> Override default projection behaviour by omittting observables listed
-///                                    in set from the projection, resulting a 'slice' plot. Slicing is usually
-///                                    only sensible in discrete observables. The slice is position at the 'current'
-///                                    value of the observable objects
+/// <tr><td> `Slice(const RooArgSet& set)`     <td> Override default projection behaviour by omitting observables listed
+///                                    in set from the projection, i.e. by not integrating over these.
+///                                    Slicing is usually only sensible in discrete observables, by e.g. creating a slice
+///                                    of the PDF at the current value of the category observable.
 ///
-/// <tr><td> `Slice(RooCategory& cat, const char* label)`        <td> Override default projection behaviour by omittting specified category
-///                                    observable from the projection, resulting in a 'slice' plot. The slice is positioned
-///                                    at the given label value. Multiple Slice() commands can be given to specify slices
-///                                    in multiple observables
+/// <tr><td> `Slice(RooCategory& cat, const char* label)`        <td> Override default projection behaviour by omitting the specified category
+///                                    observable from the projection, i.e., by not integrating over all states of this category.
+///                                    The slice is positioned at the given label value. Multiple Slice() commands can be given to specify slices
+///                                    in multiple observables, e.g.
+/// ```{.cpp}
+///   pdf.plotOn(frame, Slice(tagCategory, "2tag"), Slice(jetCategory, "3jet"));
+/// ```
 ///
 /// <tr><td> `Project(const RooArgSet& set)`   <td> Override default projection behaviour by projecting over observables
-///                                    given in set and complete ignoring the default projection behavior. Advanced use only.
+///                                    given in the set, ignoring the default projection behavior. Advanced use only.
 ///
 /// <tr><td> `ProjWData(const RooAbsData& d)`  <td> Override default projection _technique_ (integration). For observables present in given dataset
 ///                                    projection of PDF is achieved by constructing an average over all observable values in given set.
@@ -1648,7 +1687,7 @@ void RooAbsReal::plotOnCompSelect(RooArgSet* selNodes) const
 ///                                    value suppress output completely, a zero value will only print the error count per p.d.f component,
 ///                                    a positive value is will print details of each error up to numErr messages per p.d.f component.
 ///
-/// <tr><td> `EvalErrorValue(Double_t value)`  <td> Set curve points at which (pdf) evaluation error occur to specified value. By default the
+/// <tr><td> `EvalErrorValue(Double_t value)`  <td> Set curve points at which (pdf) evaluation errors occur to specified value. By default the
 ///                                    function value is plotted.
 ///
 /// <tr><td> `Normalization(Double_t scale, ScaleType code)`   <td> Adjust normalization by given scale factor. Interpretation of number depends on code:
@@ -1864,24 +1903,18 @@ RooPlot* RooAbsReal::plotOn(RooPlot* frame, RooLinkedList& argList) const
       sliceSet = new RooArgSet ;
     }
 
-    // Prepare comma separated label list for parsing
-    char buf[1024] ;
-    strlcpy(buf,sliceCatState,1024) ;
-    const char* slabel = strtok(buf,",") ;
-
     // Loop over all categories provided by (multiple) Slice() arguments
-    TIterator* iter = sliceCatList.MakeIterator() ;
-    RooCategory* scat ;
-    while((scat=(RooCategory*)iter->Next())) {
-      if (slabel) {
-	// Set the slice position to the value indicate by slabel
-	scat->setLabel(slabel) ;
-	// Add the slice category to the master slice set
-	sliceSet->add(*scat,kFALSE) ;
+    auto catTokens = RooHelpers::tokenise(sliceCatState, ",");
+    std::unique_ptr<TIterator> iter( sliceCatList.MakeIterator() );
+    for (unsigned int i=0; i < catTokens.size(); ++i) {
+      auto scat = static_cast<RooCategory*>(iter->Next());
+      if (scat) {
+        // Set the slice position to the value indicate by slabel
+        scat->setLabel(catTokens[i]) ;
+        // Add the slice category to the master slice set
+        sliceSet->add(*scat,kFALSE) ;
       }
-      slabel = strtok(0,",") ;
     }
-    delete iter ;
   }
 
   o.precision = pc.getDouble("precision") ;
@@ -1928,18 +1961,15 @@ RooPlot* RooAbsReal::plotOn(RooPlot* frame, RooLinkedList& argList) const
     makeProjectionSet(frame->getPlotVar(),frame->getNormVars(),projectedVars,kTRUE) ;
 
     // Take out the sliced variables
-    TIterator* iter = sliceSet->createIterator() ;
-    RooAbsArg* sliceArg ;
-    while((sliceArg=(RooAbsArg*)iter->Next())) {
+    for (const auto sliceArg : *sliceSet) {
       RooAbsArg* arg = projectedVars.find(sliceArg->GetName()) ;
       if (arg) {
-	projectedVars.remove(*arg) ;
+        projectedVars.remove(*arg) ;
       } else {
-	coutI(Plotting) << "RooAbsReal::plotOn(" << GetName() << ") slice variable "
-			<< sliceArg->GetName() << " was not projected anyway" << endl ;
+        coutI(Plotting) << "RooAbsReal::plotOn(" << GetName() << ") slice variable "
+            << sliceArg->GetName() << " was not projected anyway" << endl ;
       }
     }
-    delete iter ;
   } else if (projSet) {
     cxcoutD(Plotting) << "RooAbsReal::plotOn(" << GetName() << ") Preprocessing: have projSet " << *projSet << endl ;
     makeProjectionSet(frame->getPlotVar(),projSet,projectedVars,kFALSE) ;
@@ -2693,14 +2723,16 @@ RooPlot* RooAbsReal::plotAsymOn(RooPlot *frame, const RooAbsCategoryLValue& asym
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Calculate error on self by propagated errors on parameters with correlations as given by fit result
-/// The linearly propagated error is calculated as follows
+/// Calculate error on self by *linearly* propagating errors on parameters using the covariance matrix
+/// from a fit result.
+/// The error is calculated as follows
 /// \f[
-///     \mathrm{error}(x) = F_a(x) * \mathrm{Corr}(a,a')  * F_{a'}^{\mathrm{T}}(x)
+///     \mathrm{error}^2(x) = F_\mathbf{a}(x) \cdot \mathrm{Cov}(\mathbf{a},\mathbf{a}') \cdot F_{\mathbf{a}'}^{\mathrm{T}}(x)
 /// \f]
-/// where \f$ F_a(x) = \frac{ f(x, a + \mathrm{d}a) - f(x, a - \mathrm{d}a) }{2} \f$,
-/// with \f$ f(x) \f$ this function and \f$ \mathrm{d}a \f$ taken from the fit result and
-/// \f$ \mathrm{Corr}(a,a') \f$ = the correlation matrix from the fit result
+/// where \f$ F_mathbf{a}(x) = \frac{ f(x, mathbf{a} + \mathrm{d}mathbf{a}) - f(x, mathbf{a} - \mathrm{d}mathbf{a}) }{2} \f$,
+/// with \f$ f(x) = \f$ `this` and \f$ \mathrm{d}mathbf{a} \f$ the vector of one-sigma uncertainties of all
+/// fit parameters taken from the fit result and
+/// \f$ \mathrm{Cov}(mathbf{a},mathbf{a}') \f$ = the covariance matrix from the fit result.
 ///
 
 Double_t RooAbsReal::getPropagatedError(const RooFitResult &fr, const RooArgSet &nset_in) const
@@ -3215,6 +3247,12 @@ RooAbsFunc *RooAbsReal::bindVars(const RooArgSet &vars, const RooArgSet* nset, B
 
 
 
+struct TreeReadBuffer {
+  virtual ~TreeReadBuffer() = default;
+  virtual operator double() = 0;
+};
+
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Copy the cached value of another RooAbsArg to our cache.
 /// Warning: This function just copies the cached values of source,
@@ -3225,23 +3263,8 @@ void RooAbsReal::copyCache(const RooAbsArg* source, Bool_t /*valueOnly*/, Bool_t
   auto other = static_cast<const RooAbsReal*>(source);
   assert(dynamic_cast<const RooAbsReal*>(source));
 
-  if (!other->_treeVar) {
-    _value = other->_value ;
-  } else {
-    if (source->getAttribute("FLOAT_TREE_BRANCH")) {
-      _value = other->_floatValue ;
-    } else if (source->getAttribute("INTEGER_TREE_BRANCH")) {
-      _value = other->_intValue ;
-    } else if (source->getAttribute("BYTE_TREE_BRANCH")) {
-      _value = other->_byteValue ;
-    } else if (source->getAttribute("BOOL_TREE_BRANCH")) {
-      _value = other->_boolValue ;
-    } else if (source->getAttribute("SIGNEDBYTE_TREE_BRANCH")) {
-      _value = other->_sbyteValue ;
-    } else if (source->getAttribute("UNSIGNED_INTEGER_TREE_BRANCH")) {
-      _value = other->_uintValue ;
-    }
-  }
+  _value = other->_treeReadBuffer ? other->_treeReadBuffer->operator double() : other->_value;
+
   if (setValDirty) {
     setValueDirty() ;
   }
@@ -3260,6 +3283,28 @@ void RooAbsReal::attachToVStore(RooVectorDataStore& vstore)
 }
 
 
+namespace {
+/// Helper for reading branches with various types from a TTree, and convert all to double.
+template<typename T>
+struct TypedTreeReadBuffer final : public TreeReadBuffer {
+  operator double() override {
+    return _value;
+  }
+  T _value;
+};
+
+/// Create a TreeReadBuffer to hold the specified type, and attach to the branch passed as argument.
+/// \tparam T Type of branch to be read.
+/// \param[in] branchName Attach to this branch.
+/// \param[in] tree Tree to attach to.
+template<typename T>
+std::unique_ptr<TreeReadBuffer> createTreeReadBuffer(const TString& branchName, TTree& tree) {
+  auto buf = new TypedTreeReadBuffer<T>();
+  tree.SetBranchAddress(branchName.Data(), &buf->_value);
+  return std::unique_ptr<TreeReadBuffer>(buf);
+}
+
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3267,13 +3312,11 @@ void RooAbsReal::attachToVStore(RooVectorDataStore& vstore)
 /// register the internal value cache RooAbsReal::_value as branch
 /// buffer for a Double_t tree branch with the same name as this
 /// object. If no Double_t branch is found with the name of this
-/// object, this method looks for a Float_t Int_t, UChar_t and UInt_t
-/// branch in that order. If any of these are found the buffer for
-/// that branch is set to a correctly typed conversion buffer in this
-/// RooRealVar.  A flag is set that will cause copyCache to copy the
-/// object value from the appropriate conversion buffer instead of
-/// the _value buffer.
-
+/// object, this method looks for a Float_t Int_t, UChar_t and UInt_t, etc
+/// branch. If any of these are found, a TreeReadBuffer
+/// that branch is created, and saved in _treeReadBuffer.
+/// TreeReadBuffer::operator double() can be used to convert the values.
+/// This is used by copyCache().
 void RooAbsReal::attachToTree(TTree& t, Int_t bufSize)
 {
   // First determine if branch is taken
@@ -3295,56 +3338,44 @@ void RooAbsReal::attachToTree(TTree& t, Int_t bufSize)
 
     TString typeName(leaf->GetTypeName()) ;
 
-    if (!typeName.CompareTo("Float_t")) {
-      coutI(Eval) << "RooAbsReal::attachToTree(" << GetName() << ") TTree Float_t branch " << GetName()
-		  << " will be converted to double precision" << endl ;
-      setAttribute("FLOAT_TREE_BRANCH",kTRUE) ;
-      _treeVar = kTRUE ;
-      t.SetBranchAddress(cleanName,&_floatValue) ;
-    } else if (!typeName.CompareTo("Int_t")) {
-      coutI(Eval) << "RooAbsReal::attachToTree(" << GetName() << ") TTree Int_t branch " << GetName()
-		  << " will be converted to double precision" << endl ;
-      setAttribute("INTEGER_TREE_BRANCH",kTRUE) ;
-      _treeVar = kTRUE ;
-      t.SetBranchAddress(cleanName,&_intValue) ;
-    } else if (!typeName.CompareTo("UChar_t")) {
-      coutI(Eval) << "RooAbsReal::attachToTree(" << GetName() << ") TTree UChar_t branch " << GetName()
-		  << " will be converted to double precision" << endl ;
-      setAttribute("BYTE_TREE_BRANCH",kTRUE) ;
-      _treeVar = kTRUE ;
-      t.SetBranchAddress(cleanName,&_byteValue) ;
-    } else if (!typeName.CompareTo("Bool_t")) {
-      coutI(Eval) << "RooAbsReal::attachToTree(" << GetName() << ") TTree Bool_t branch " << GetName()
-		  << " will be converted to double precision" << endl ;
-      setAttribute("BOOL_TREE_BRANCH",kTRUE) ;
-      _treeVar = kTRUE ;
-      t.SetBranchAddress(cleanName,&_boolValue) ;
-    } else if (!typeName.CompareTo("Char_t")) {
-      coutI(Eval) << "RooAbsReal::attachToTree(" << GetName() << ") TTree Char_t branch " << GetName()
-		  << " will be converted to double precision" << endl ;
-      setAttribute("SIGNEDBYTE_TREE_BRANCH",kTRUE) ;
-      _treeVar = kTRUE ;
-      t.SetBranchAddress(cleanName,&_sbyteValue) ;
-    }  else if (!typeName.CompareTo("UInt_t")) {
-      coutI(Eval) << "RooAbsReal::attachToTree(" << GetName() << ") TTree UInt_t branch " << GetName()
-		  << " will be converted to double precision" << endl ;
-      setAttribute("UNSIGNED_INTEGER_TREE_BRANCH",kTRUE) ;
-      _treeVar = kTRUE ;
-      t.SetBranchAddress(cleanName,&_uintValue) ;
-    } else if (!typeName.CompareTo("Double_t")) {
-      t.SetBranchAddress(cleanName,&_value) ;
+
+    // For different type names, store three items:
+    // first: A tag attached to this instance. Not used inside RooFit, any more, but users might rely on it.
+    // second: A function to attach
+    std::map<std::string, std::pair<std::string, std::function<std::unique_ptr<TreeReadBuffer>()>>> typeMap {
+      {"Float_t",   {"FLOAT_TREE_BRANCH",            [&](){ return createTreeReadBuffer<Float_t  >(cleanName, t); }}},
+      {"Int_t",     {"INTEGER_TREE_BRANCH",          [&](){ return createTreeReadBuffer<Int_t    >(cleanName, t); }}},
+      {"UChar_t",   {"BYTE_TREE_BRANCH",             [&](){ return createTreeReadBuffer<UChar_t  >(cleanName, t); }}},
+      {"Bool_t",    {"BOOL_TREE_BRANCH",             [&](){ return createTreeReadBuffer<Bool_t   >(cleanName, t); }}},
+      {"Char_t",    {"SIGNEDBYTE_TREE_BRANCH",       [&](){ return createTreeReadBuffer<Char_t   >(cleanName, t); }}},
+      {"UInt_t",    {"UNSIGNED_INTEGER_TREE_BRANCH", [&](){ return createTreeReadBuffer<UInt_t   >(cleanName, t); }}},
+      {"Long64_t",  {"LONG_TREE_BRANCH",             [&](){ return createTreeReadBuffer<Long64_t >(cleanName, t); }}},
+      {"ULong64_t", {"UNSIGNED_LONG_TREE_BRANCH",    [&](){ return createTreeReadBuffer<ULong64_t>(cleanName, t); }}},
+      {"Short_t",   {"SHORT_TREE_BRANCH",            [&](){ return createTreeReadBuffer<Short_t  >(cleanName, t); }}},
+      {"UShort_t",  {"UNSIGNED_SHORT_TREE_BRANCH",   [&](){ return createTreeReadBuffer<UShort_t >(cleanName, t); }}},
+    };
+
+    auto typeDetails = typeMap.find(typeName.Data());
+    if (typeDetails != typeMap.end()) {
+      coutI(DataHandling) << "RooAbsReal::attachToTree(" << GetName() << ") TTree " << typeDetails->first << " branch " << GetName()
+                  << " will be converted to double precision." << endl ;
+      setAttribute(typeDetails->second.first.c_str(), true);
+      _treeReadBuffer = typeDetails->second.second();
     } else {
-      coutE(InputArguments) << "RooAbsReal::attachToTree(" << GetName() << ") data type " << typeName << " is not supported" << endl ;
+      _treeReadBuffer = nullptr;
+
+      if (!typeName.CompareTo("Double_t")) {
+        t.SetBranchAddress(cleanName, &_value);
+      }
+      else {
+        coutE(InputArguments) << "RooAbsReal::attachToTree(" << GetName() << ") data type " << typeName << " is not supported." << endl ;
+      }
     }
-
-//      cout << "RooAbsReal::attachToTree(" << cleanName << "): branch already exists in tree " << (void*)&t << ", changing address" << endl ;
-
   } else {
 
     TString format(cleanName);
     format.Append("/D");
     branch = t.Branch(cleanName, &_value, (const Text_t*)format, bufSize);
-    //      cout << "RooAbsReal::attachToTree(" << cleanName << "): creating new branch in tree " << (void*)&t << endl ;
   }
 
 }
@@ -4298,7 +4329,7 @@ RooAbsMoment* RooAbsReal::moment(RooRealVar& obs, Int_t order, Bool_t central, B
 /// \param[in] order Order of the moment
 /// \param[in] central If true, the central moment is given by \f$ \langle (x- \langle x \rangle )^2 \rangle \f$
 /// \param[in] takeRoot Calculate the square root
-/// \param[in] intNormOb If true, the moment of the function integrated over all normalization observables is returned.
+/// \param[in] intNormObs If true, the moment of the function integrated over all normalization observables is returned.
 
 RooAbsMoment* RooAbsReal::moment(RooRealVar& obs, const RooArgSet& normObs, Int_t order, Bool_t central, Bool_t takeRoot, Bool_t intNormObs)
 {
@@ -4867,7 +4898,6 @@ void RooAbsReal::setParameterizeIntegral(const RooArgSet& paramVars)
 }
 
 
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Evaluate function for a batch of input data points. If not overridden by
 /// derived classes, this will call the slow, single-valued evaluate() in a loop.
@@ -4881,13 +4911,11 @@ RooSpan<double> RooAbsReal::evaluateBatch(std::size_t begin, std::size_t maxSize
   RooArgSet allLeafs;
   leafNodeServerList(&allLeafs);
 
-  if (RooMsgService::instance().isActive(this, RooFit::Optimization, RooFit::INFO)) {
-    coutI(Optimization) << "The class " << IsA()->GetName() << " does not have the faster batch evaluation interface."
-          << " Consider requesting this feature on ROOT's JIRA tracker." << std::endl;
+  if (RooMsgService::instance().isActive(this, RooFit::FastEvaluations, RooFit::INFO)) {
+    coutI(FastEvaluations) << "The class " << IsA()->GetName() << " could benefit from implementing the faster batch evaluation interface."
+        << " If it is part of ROOT, consider requesting this on https://root.cern." << std::endl;
   }
 
-
-  // TODO Make faster by using batch computation results also on intermediate nodes?
   std::vector<std::tuple<RooRealVar*, RooSpan<const double>, double>> batchLeafs;
   for (auto leaf : allLeafs) {
     auto leafRRV = dynamic_cast<RooRealVar*>(leaf);
@@ -4907,16 +4935,23 @@ RooSpan<double> RooAbsReal::evaluateBatch(std::size_t begin, std::size_t maxSize
 
 
   auto output = _batchData.makeWritableBatchUnInit(begin, maxSize);
+  {
+    // Side track all caching that RooFit might think is necessary.
+    // When used with batch computations, we depend on computation
+    // graphs actually evaluating correctly, instead of having
+    // pre-calculated values side-loaded into nodes event-per-event.
+    RooHelpers::DisableCachingRAII disableCaching(inhibitDirty());
 
-  for (std::size_t i = 0; i < output.size(); ++i) {
-    for (auto& tup : batchLeafs) {
-      RooRealVar* leaf = std::get<0>(tup);
-      auto batch = std::get<1>(tup);
+    for (std::size_t i = 0; i < output.size(); ++i) {
+      for (auto& tup : batchLeafs) {
+        RooRealVar* leaf = std::get<0>(tup);
+        auto batch = std::get<1>(tup);
 
-      leaf->setVal(batch[i]);
+        leaf->setVal(batch[i]);
+      }
+
+      output[i] = evaluate();
     }
-
-    output[i] = evaluate();
   }
 
   // Reset values
@@ -4928,12 +4963,77 @@ RooSpan<double> RooAbsReal::evaluateBatch(std::size_t begin, std::size_t maxSize
 }
 
 
+////////////////////////////////////////////////////////////////////////////////
+/// Evaluate function for a batch of data points. If not overridden by
+/// derived classes, this will call the slow, single-valued evaluate() in a loop.
+/// \param[in/out]  evalData Object holding data that should be used in computations.
+/// If data of a specific object is needed, it is looked up in `evalData.spans[&object]`.
+/// If such a span exists, no computation will be triggered.
+/// When the `this` object is done computing its values, it registers the results under `evalData.spans[this]`.
+/// \param[in]  normSet  Optional normalisation set for computations in terms this one depends on.
+/// \return     Span pointing to the results. The memory is owned by `evalData`.
+RooSpan<double> RooAbsReal::evaluateSpan(BatchHelpers::RunContext& evalData, const RooArgSet* normSet) const {
+  if (RooMsgService::instance().isActive(this, RooFit::FastEvaluations, RooFit::INFO)) {
+    coutI(FastEvaluations) << "The class " << IsA()->GetName() << " does not implement the faster batch evaluation interface."
+        << " Consider requesting or implementing it to benefit from a speed up." << std::endl;
+  }
 
+  // Find leaves of the computation graph. Assign known data values to these.
+  RooArgSet allLeafs;
+  leafNodeServerList(&allLeafs);
 
-#include "TSystem.h"
+  std::vector<RooAbsRealLValue*> settableLeaves;
+  std::vector<RooSpan<const double>> leafValues;
+  std::vector<double> oldLeafValues;
 
-using RooHelpers::CachingError;
-using RooHelpers::FormatPdfTree;
+  for (auto item : allLeafs) {
+    if (!item->IsA()->InheritsFrom(RooAbsRealLValue::Class()))
+      continue;
+
+    auto leaf = static_cast<RooAbsRealLValue*>(item);
+
+    settableLeaves.push_back(leaf);
+    oldLeafValues.push_back(leaf->getVal());
+
+    auto knownLeaf = evalData.spans.find(leaf);
+    if (knownLeaf != evalData.spans.end()) {
+      // Data are already known
+      leafValues.push_back(knownLeaf->second);
+    } else {
+      auto result = leaf->getValues(evalData, normSet);
+      leafValues.push_back(result);
+    }
+  }
+
+  const auto dataSize = std::max<std::size_t>(1, BatchHelpers::findSmallestBatch(leafValues));
+  auto outputData = evalData.makeBatch(this, dataSize);
+
+  {
+    // Side track all caching that RooFit might think is necessary.
+    // When used with batch computations, we depend on computation
+    // graphs actually evaluating correctly, instead of having
+    // pre-calculated values side-loaded into nodes event-per-event.
+    RooHelpers::DisableCachingRAII disableCaching(inhibitDirty());
+
+    // For each event, assign values to the leaves, and run the single-value computation.
+    for (std::size_t i=0; i < outputData.size(); ++i) {
+      for (unsigned int j=0; j < settableLeaves.size(); ++j) {
+        if (leafValues[j].size() > i)
+          settableLeaves[j]->setVal(leafValues[j][i], evalData.rangeName);
+      }
+
+      outputData[i] = evaluate();
+    }
+  }
+
+  // Reset values
+  for (unsigned int j=0; j < settableLeaves.size(); ++j) {
+    settableLeaves[j]->setVal(oldLeafValues[j]);
+  }
+
+  return outputData;
+}
+
 
 
 Double_t RooAbsReal::_DEBUG_getVal(const RooArgSet* normalisationSet) const {
@@ -4953,7 +5053,9 @@ Double_t RooAbsReal::_DEBUG_getVal(const RooArgSet* normalisationSet) const {
   const double ret = (_fast && !_inhibitDirty) ? _value : fullEval;
 
   if (std::isfinite(ret) && ( ret != 0. ? (ret - fullEval)/ret : ret - fullEval) > 1.E-9) {
+#ifndef NDEBUG
     gSystem->StackTrace();
+#endif
     FormatPdfTree formatter;
     formatter << "--> (Scalar computation wrong here:)\n"
             << GetName() << " " << this << " _fast=" << tmpFast
@@ -5033,3 +5135,74 @@ void RooAbsReal::checkBatchComputation(std::size_t evtNo, const RooArgSet* normS
   }
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// Walk through expression tree headed by the `this` object, and check a batch computation.
+///
+/// Check if the results in `evalData` for event `evtNo` are identical to the current value of the nodes.
+/// If a difference is found, an exception is thrown, and propagates up the expression tree. The tree is formatted
+/// to see where the computation error happened.
+/// @param evalData Data with results of batch computation. This is checked against the current value of the expression tree.
+/// @param evtNo    Event from `evalData` to check for.
+/// @param normSet  Optional normalisation set that was used in computation.
+/// @param relAccuracy Accuracy required for passing the check.
+void RooAbsReal::checkBatchComputation(const BatchHelpers::RunContext& evalData, std::size_t evtNo, const RooArgSet* normSet, double relAccuracy) const {
+  for (const auto server : _serverList) {
+    try {
+      auto realServer = dynamic_cast<RooAbsReal*>(server);
+      if (realServer)
+        realServer->checkBatchComputation(evalData, evtNo, normSet, relAccuracy);
+    } catch (CachingError& error) {
+      throw CachingError(std::move(error),
+          FormatPdfTree() << *this);
+    }
+  }
+
+  const auto item = evalData.spans.find(this);
+  if (item == evalData.spans.end())
+    return;
+
+  auto batch = item->second;
+  const double value = getVal(normSet);
+  const double batchVal = batch.size() == 1 ? batch[0] : batch[evtNo];
+  const double relDiff = value != 0. ? (value - batchVal)/value : value - batchVal;
+
+  if (fabs(relDiff) > relAccuracy && fabs(value) > 1.E-300) {
+    FormatPdfTree formatter;
+    formatter << "--> (Batch computation wrong:)\n";
+    printStream(formatter.stream(), kName | kClassName | kArgs | kExtras | kAddress, kInline);
+    formatter << std::setprecision(17)
+    << "\n batch[" << std::setw(7) << evtNo-1 << "]=     " << (evtNo > 0 && evtNo - 1 < batch.size() ? std::to_string(batch[evtNo-1]) : "---")
+    << "\n batch[" << std::setw(7) << evtNo   << "]=     " << batchVal << " !!!"
+    << "\n expected ('value'): " << value
+    << "\n eval(unnorm.)     : " << evaluate()
+    << "\n delta         " <<                     " =     " << value - batchVal
+    << "\n rel delta     " <<                     " =     " << relDiff
+    << "\n _batch[" << std::setw(7) << evtNo+1 << "]=     " << (batch.size() > evtNo+1 ? std::to_string(batch[evtNo+1]) : "---");
+
+
+
+    formatter << "\nServers: ";
+    for (const auto server : _serverList) {
+      formatter << "\n - ";
+      server->printStream(formatter.stream(), kName | kClassName | kArgs | kExtras | kAddress | kValue, kInline);
+      formatter << std::setprecision(17);
+
+      auto serverAsReal = dynamic_cast<RooAbsReal*>(server);
+      if (serverAsReal) {
+        auto serverBatch = evalData.spans.count(serverAsReal) != 0 ? evalData.spans.find(serverAsReal)->second : RooSpan<const double>();
+        if (serverBatch.size() > evtNo) {
+          formatter << "\n   _batch[" << evtNo-1 << "]=" << (serverBatch.size() > evtNo-1 ? std::to_string(serverBatch[evtNo-1]) : "---")
+                    << "\n   _batch[" << evtNo << "]=" << serverBatch[evtNo]
+                    << "\n   _batch[" << evtNo+1 << "]=" << (serverBatch.size() > evtNo+1 ? std::to_string(serverBatch[evtNo+1]) : "---");
+        }
+        else {
+          formatter << std::setprecision(17)
+          << "\n   getVal()=" << serverAsReal->getVal(normSet);
+        }
+      }
+    }
+
+    throw CachingError(formatter);
+  }
+}

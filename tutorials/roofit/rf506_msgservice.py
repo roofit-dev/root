@@ -1,7 +1,6 @@
 ## \file
 ## \ingroup tutorial_roofit
 ## \notebook -nodraw
-##
 ## Organization and simultaneous fits: tuning and customizing the ROOT.RooFit message logging facility
 ##
 ## \macro_code

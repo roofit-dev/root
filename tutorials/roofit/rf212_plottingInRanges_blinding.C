@@ -1,7 +1,6 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook -js
-///
 /// Plot a PDF in disjunct ranges, and get normalisation right.
 ///
 /// Usually, when comparing a fit to data, one should first plot the data, and then the PDF.
@@ -17,7 +16,7 @@
 /// \macro_code
 /// \macro_output
 ///
-/// \date 03/2020
+/// \date March 2020
 /// \author Stephan Hageboeck
 
 #include <RooDataSet.h>

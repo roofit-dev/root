@@ -1,7 +1,6 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook -js
-///
 /// Likelihood and minimization: Parameter uncertainties for weighted unbinned ML fits
 ///
 /// ## Parameter uncertainties for weighted unbinned ML fits
@@ -52,7 +51,7 @@
 /// \macro_output
 /// \macro_code
 ///
-/// \date 11/2019
+/// \date November 2019
 /// \author Christoph Langenbruch
 
 #include "TH1D.h"

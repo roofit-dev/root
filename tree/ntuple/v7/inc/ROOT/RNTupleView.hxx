@@ -42,11 +42,17 @@ private:
    const NTupleSize_t fStart;
    const NTupleSize_t fEnd;
 public:
-   class RIterator : public std::iterator<std::forward_iterator_tag, NTupleSize_t> {
+   class RIterator {
    private:
-      using iterator = RIterator;
       NTupleSize_t fIndex = kInvalidNTupleIndex;
    public:
+      using iterator = RIterator;
+      using iterator_category = std::forward_iterator_tag;
+      using value_type = NTupleSize_t;
+      using difference_type = NTupleSize_t;
+      using pointer = NTupleSize_t*;
+      using reference = NTupleSize_t&;
+
       RIterator() = default;
       explicit RIterator(NTupleSize_t index) : fIndex(index) {}
       ~RIterator() = default;
@@ -78,11 +84,17 @@ private:
    const ClusterSize_t::ValueType fStart;
    const ClusterSize_t::ValueType fEnd;
 public:
-   class RIterator : public std::iterator<std::forward_iterator_tag, RClusterIndex> {
+   class RIterator {
    private:
-      using iterator = RIterator;
       RClusterIndex fIndex;
    public:
+      using iterator = RIterator;
+      using iterator_category = std::forward_iterator_tag;
+      using value_type = RClusterIndex;
+      using difference_type = RClusterIndex;
+      using pointer = RClusterIndex*;
+      using reference = RClusterIndex&;
+
       RIterator() = default;
       explicit RIterator(const RClusterIndex &index) : fIndex(index) {}
       ~RIterator() = default;
@@ -130,7 +142,7 @@ public:
 \brief An RNTupleView provides read-only access to a single field of the ntuple
 
 The view owns a field and its underlying columns in order to fill an ntuple value object with data. Data can be
-accessed by index. For top level fields, the index refers to the entry number. Fields that are part of
+accessed by index. For top-level fields, the index refers to the entry number. Fields that are part of
 nested collections have global index numbers that are derived from their parent indexes.
 
 Fields of simple types with a Map() method will use that and thus expose zero-copy access.
@@ -152,14 +164,7 @@ private:
    RNTupleView(DescriptorId_t fieldId, Detail::RPageSource* pageSource)
      : fField(pageSource->GetDescriptor().GetFieldDescriptor(fieldId).GetFieldName()), fValue(fField.GenerateValue())
    {
-      Detail::RFieldFuse::Connect(fieldId, *pageSource, fField);
-      std::unordered_map<const Detail::RFieldBase *, DescriptorId_t> field2Id;
-      field2Id[&fField] = fieldId;
-      for (auto &f : fField) {
-         auto subFieldId = pageSource->GetDescriptor().FindFieldId(f.GetName(), field2Id[f.GetParent()]);
-         Detail::RFieldFuse::Connect(subFieldId, *pageSource, f);
-         field2Id[&f] = subFieldId;
-      }
+      Detail::RFieldFuse::ConnectRecursively(fieldId, *pageSource, fField);
    }
 
 public:

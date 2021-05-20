@@ -1,7 +1,6 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook -js
-///
 /// Multidimensional models: working with parametrized ranges to define non-rectangular
 /// regions for fitting and integration
 ///
@@ -9,7 +8,7 @@
 /// \macro_output
 /// \macro_code
 ///
-/// \date 07/2008
+/// \date July 2008
 /// \author Wouter Verkerke
 
 #include "RooRealVar.h"

@@ -33,7 +33,7 @@
 #include "TGTextEntry.h"
 #include "TGNumberEntry.h"
 #include "TGTableLayout.h"
-#include "TGComboBox.h"
+#include "TGListBox.h"
 #include "TGSplitter.h"
 #include "TGProgressBar.h"
 #include "TGListView.h"
@@ -66,12 +66,14 @@
 #include "TSelector.h"
 #include "TFileCollection.h"
 #include "TVirtualX.h"
+#include "snprintf.h"
 #ifdef WIN32
 #include "TWin32SplashThread.h"
 #endif
-#include <stdlib.h>
 
-TSessionViewer *gSessionViewer = 0;
+#include <cstdlib>
+
+TSessionViewer *gSessionViewer = nullptr;
 
 const char *kConfigFile = ".proofgui.conf";
 
