@@ -36,6 +36,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitMore
     "-writeEmptyRootPCM"
   LINKDEF
     LinkDef.h
+  LIBRARIES
+    RooBatchCompute
   DEPENDENCIES
     ${ROOT_MATHMORE_LIBRARY}
     Core
@@ -50,5 +52,10 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitMore
     Foam
 )
 
+# For recent clang, this can facilitate auto-vectorisation.
+# In RooFit, the errno side effect is not needed, anyway:
+if(NOT MSVC)
+  target_compile_options(RooFitMore PUBLIC -fno-math-errno)
+endif()
 
 #ROOT_ADD_TEST_SUBDIRECTORY(test)

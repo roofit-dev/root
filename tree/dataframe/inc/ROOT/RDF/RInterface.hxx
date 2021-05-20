@@ -437,6 +437,12 @@ public:
    /// When writing a variable size array through Snapshot, it is required that the column indicating its size is also
    /// written out and it appears before the array in the columnList.
    ///
+   /// \attention In multi-thread runs (i.e. when EnableImplicitMT() has been called) threads will loop over clusters of
+   /// entries in an undefined order, so Snapshot will produce outputs in which (clusters of) entries will be shuffled with
+   /// respect to the input TTree. Using such "shuffled" TTrees as friends of the original trees would result in wrong
+   /// associations between entries in the main TTree and entries in the "shuffled" friend. Since v6.22, ROOT will
+   /// error out if such a "shuffled" TTree is used in a friendship.
+   ///
    /// ### Example invocations:
    ///
    /// ~~~{.cpp}
@@ -1854,12 +1860,19 @@ public:
    ///
    std::string GetColumnType(std::string_view column)
    {
-      const auto col = std::string(column);
+      auto col = std::string(column);
+
+      // if "col" is an alias, resolve it before doing anything else
+      const auto aliasMap = fLoopManager->GetAliasMap();
+      const auto it = aliasMap.find(col);
+      if (it != aliasMap.end())
+         col = it->second;
+
+      RDFDetail::RDefineBase *define = fDefines.HasName(col) ? fDefines.GetColumns().at(col).get() : nullptr;
+
       const bool convertVector2RVec = true;
-      RDFDetail::RDefineBase *define =
-         fDefines.HasName(column) ? fDefines.GetColumns().at(col).get() : nullptr;
-      return RDFInternal::ColumnName2ColumnTypeName(col, fLoopManager->GetTree(), fLoopManager->GetDataSource(),
-                                                    define, convertVector2RVec);
+      return RDFInternal::ColumnName2ColumnTypeName(col, fLoopManager->GetTree(), fLoopManager->GetDataSource(), define,
+                                                    convertVector2RVec);
    }
 
    /// \brief Returns the names of the filters created.
