@@ -3649,13 +3649,13 @@ enum VerboseLevel {
 };
 static llvm::cl::opt<VerboseLevel>
 gOptVerboseLevel(llvm::cl::desc("Choose verbosity level:"),
-                llvm::cl::values(clEnumVal(v, "Show errors (default)."),
+                llvm::cl::values(clEnumVal(v, "Show errors."),
                                  clEnumVal(v0, "Show only fatal errors."),
                                  clEnumVal(v1, "Show errors (the same as -v)."),
-                                 clEnumVal(v2, "Show warnings."),
+                                 clEnumVal(v2, "Show warnings (default)."),
                                  clEnumVal(v3, "Show notes."),
                                  clEnumVal(v4, "Show information.")),
-                llvm::cl::init(v),
+                llvm::cl::init(v2),
                 llvm::cl::cat(gRootclingOptions));
 
 static llvm::cl::opt<bool>
@@ -4009,33 +4009,6 @@ int RootClingMain(int argc,
    if (gOptReflex)
       isGenreflex = true;
 
-#if ROOT_VERSION_CODE < ROOT_VERSION(6,21,00)
-   if (gOptCint)
-      fprintf(stderr, "warning: Please remove the deprecated flag -cint.\n");
-   if (gOptGccXml)
-      fprintf(stderr, "warning: Please remove the deprecated flag -gccxml.\n");
-   if (gOptC)
-      fprintf(stderr, "warning: Please remove the deprecated flag -c.\n");
-   if (gOptP)
-      fprintf(stderr, "warning: Please remove the deprecated flag -p.\n");
-   if (gOptIgnoreExistingDict)
-      fprintf(stderr, "warning: Please remove the deprecated flag -r.\n");
-
-   for (auto I = gOptDictionaryHeaderFiles.begin(), E = gOptDictionaryHeaderFiles.end(); I != E; ++I) {
-      if ((*I)[0] == '+') {
-         // Mostly for +P, +V, +STUB which are legacy CINT flags.
-         fprintf(stderr, "warning: Please remove the deprecated flag %s\n", I->c_str());
-         // Remove it from the list because it will mess up our header input.
-         gOptDictionaryHeaderFiles.erase(I);
-      }
-   }
-
-   for (const std::string& Opt : gOptSink)
-      fprintf(stderr, "warning: Please remove the deprecated flag %s\n", Opt.c_str());
-#else
-# error "Remove this deprecated code"
-#endif
-
    if (!gOptLibListPrefix.empty()) {
       string filein = gOptLibListPrefix + ".in";
       FILE *fp;
@@ -4243,6 +4216,8 @@ int RootClingMain(int argc,
 #endif
          remove((moduleCachePath + llvm::sys::path::get_separator() + "std.pcm").str().c_str());
          remove((moduleCachePath + llvm::sys::path::get_separator() + "cuda.pcm").str().c_str());
+         remove((moduleCachePath + llvm::sys::path::get_separator() + "boost.pcm").str().c_str());
+         remove((moduleCachePath + llvm::sys::path::get_separator() + "tinyxml2.pcm").str().c_str());
          remove((moduleCachePath + llvm::sys::path::get_separator() + "ROOT_Config.pcm").str().c_str());
          remove((moduleCachePath + llvm::sys::path::get_separator() + "ROOT_Rtypes.pcm").str().c_str());
          remove((moduleCachePath + llvm::sys::path::get_separator() + "ROOT_Foundation_C.pcm").str().c_str());
@@ -4350,25 +4325,15 @@ int RootClingMain(int argc,
 
    interp.getOptions().ErrorOut = true;
    interp.enableRawInput(true);
-   if (isGenreflex) {
-      if (interp.declare("namespace std {} using namespace std;") != cling::Interpreter::kSuccess) {
-         // There was an error.
-         ROOT::TMetaUtils::Error(0, "Error loading the default header files.\n");
-         return 1;
-      }
-   } else {
-      // rootcling
-      if (interp.declare("namespace std {} using namespace std;") != cling::Interpreter::kSuccess
-            // CINT uses to define a few header implicitly, we need to do it explicitly.
-            || interp.declare("#include <assert.h>\n"
-                              "#include <stdlib.h>\n"
-                              "#include <stddef.h>\n"
-                              "#include <string.h>\n"
-                             ) != cling::Interpreter::kSuccess
-            || interp.declare("#include \"Rtypes.h\"\n"
-                              "#include \"TClingRuntime.h\"\n"
-                              "#include \"TObject.h\""
-                             ) != cling::Interpreter::kSuccess
+   if (interp.declare("namespace std {} using namespace std;") != cling::Interpreter::kSuccess) {
+      ROOT::TMetaUtils::Error(0, "Error loading the default header files.\n");
+      return 1;
+   }
+   if (!isGenreflex) { // rootcling
+      // ROOTCINT uses to define a few header implicitly, we need to do it explicitly.
+      if (interp.declare("#include <assert.h>\n") != cling::Interpreter::kSuccess
+          || interp.declare("#include \"Rtypes.h\"\n"
+                            "#include \"TObject.h\"") != cling::Interpreter::kSuccess
          ) {
          // There was an error.
          ROOT::TMetaUtils::Error(0, "Error loading the default header files.\n");
@@ -4378,6 +4343,8 @@ int RootClingMain(int argc,
 
    // For the list of 'opaque' typedef to also include string, we have to include it now.
    interp.declare("#include <string>");
+   // For initializing TNormalizedCtxt.
+   interp.declare("#include <RtypesCore.h>");
 
    // We are now ready (enough is loaded) to init the list of opaque typedefs.
    ROOT::TMetaUtils::TNormalizedCtxt normCtxt(interp.getLookupHelper());
@@ -4443,12 +4410,6 @@ int RootClingMain(int argc,
       if (gOptDictionaryHeaderFiles.size() > expectedHeaderFilesSize)
          ROOT::TMetaUtils::Error(0, "Option %s used but more than one header file specified.\n",
                                  gOptUmbrellaInput.ArgStr.data());
-   }
-
-
-   if (gDriverConfig->fAddAncestorPCMROOTFile) {
-      for (const auto & baseModule : gOptModuleDependencies)
-         gDriverConfig->fAddAncestorPCMROOTFile(baseModule.c_str());
    }
 
    // We have a multiDict request. This implies generating a pcm which is of the form
@@ -4828,9 +4789,9 @@ int RootClingMain(int argc,
       // is significant.  The list is sorted by with the highest
       // priority first.
       if (!gOptInterpreterOnly) {
-         constructorTypes.push_back(ROOT::TMetaUtils::RConstructorType("TRootIOCtor", interp));
-         constructorTypes.push_back(ROOT::TMetaUtils::RConstructorType("__void__", interp)); // ROOT-7723
-         constructorTypes.push_back(ROOT::TMetaUtils::RConstructorType("", interp));
+         constructorTypes.emplace_back("TRootIOCtor", interp);
+         constructorTypes.emplace_back("__void__", interp); // ROOT-7723
+         constructorTypes.emplace_back("", interp);
       }
    }
 
@@ -5688,18 +5649,6 @@ int GenReflexMain(int argc, char **argv)
          ROOT::option::FullArg::Required,
          "-m \tPcm file loaded before any header (option can be repeated).\n"
       },
-
-      {
-#if ROOT_VERSION_CODE >= ROOT_VERSION(6,20,00)
-# error "Remove this deprecated code"
-#endif
-         DEEP,  // Not active. Will be removed for 6.2
-         NOTYPE ,
-         "" , "deep",
-         ROOT::option::Arg::None,
-         ""
-      },
-      //"--deep\tGenerate dictionaries for all dependent classes (ignored).\n"
 
       {
          VERBOSE,

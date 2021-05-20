@@ -95,7 +95,7 @@
 
    "use strict";
 
-   JSROOT.version = "dev 4/02/2020";
+   JSROOT.version = "dev 11/03/2020";
 
    JSROOT.source_dir = "";
    JSROOT.source_min = false;
@@ -663,6 +663,8 @@
       var pos = url.indexOf("?"), nquotes;
       if (pos<0) return dflt;
       url = decodeURI(url.slice(pos+1));
+      pos = url.lastIndexOf("#");
+      if (pos>=0) url = url.substr(0,pos);
 
       while (url.length>0) {
 
@@ -2161,6 +2163,13 @@
       return m;
    }
 
+   /** @summary Add methods for specified type.
+    * Will be automatically applied when decoding JSON string
+    * @private */
+   JSROOT.registerMethods = function(typename, m) {
+      JSROOT.methodsCache[typename] = m;
+   }
+
    /** @summary Returns true if object represents basic ROOT collections
     * @private */
    JSROOT.IsRootCollection = function(lst, typename) {
@@ -2181,7 +2190,7 @@
     * @private
     */
    JSROOT.addMethods = function(obj, typename) {
-      this.extend(obj, JSROOT.getMethods(typename || obj._typename, obj));
+      this.extend(obj, this.getMethods(typename || obj._typename, obj));
    }
 
    JSROOT.lastFFormat = "";

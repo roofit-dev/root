@@ -57,8 +57,8 @@ protected:
    static UInt_t         fgExportPrecision; //! Precision to be used in ASCII exports
    static EDefaultUnits  fgDefaultUnits;    //! Default units in GDML if not explicit in some tags
 
-   TGeoManager(const TGeoManager&);
-   TGeoManager& operator=(const TGeoManager&);
+   TGeoManager(const TGeoManager&) = delete;
+   TGeoManager& operator=(const TGeoManager&) = delete;
 
 private :
    Double_t              fPhimin;           //! lowest range for phi cut
@@ -132,7 +132,6 @@ private :
    TGeoShape            *fClippingShape;    //! clipping shape for raytracing
    TGeoElementTable     *fElementTable;     //! table of elements
 
-   Int_t                *fNodeIdArray;      //! array of node id's
    Int_t                 fNLevel;           // maximum accepted level in geometry
    TGeoVolume           *fPaintVolume;      //! volume currently painted
    TGeoVolume           *fUserPaintVolume;  //!

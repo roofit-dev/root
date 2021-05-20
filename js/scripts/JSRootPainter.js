@@ -1864,7 +1864,7 @@
       if (this.receiver && (typeof this.receiver[method] == 'function'))
          this.receiver[method](this, arg, arg2);
 
-      if (brdcst & this.channels) {
+      if (brdcst && this.channels) {
          var ks = Object.keys(this.channels);
          for (var n=0;n<ks.length;++n)
             this.channels[ks[n]].InvokeReceiver(false, method, arg, arg2);
@@ -1886,8 +1886,13 @@
             return channel.ProvideData(1, _msg, _len);
       }
 
-      if (!this.msgqueue || !this.msgqueue.length)
+      var force_queue = _len && (_len < 0);
+
+      if (!force_queue && (!this.msgqueue || !this.msgqueue.length))
          return this.InvokeReceiver(false, "OnWebsocketMsg", _msg, _len);
+
+      if (!this.msgqueue) this.msgqueue = [];
+      if (force_queue) _len = undefined;
 
       this.msgqueue.push({ ready: true, msg: _msg, len: _len});
    }
@@ -1907,7 +1912,12 @@
       item.ready = true;
       item.msg = _msg;
       item.len = _len;
-      if (this._loop_msgqueue) return;
+      this.ProcessQueue();
+   }
+
+   /** Process completed messages in the queue @private */
+   WebWindowHandle.prototype.ProcessQueue = function() {
+      if (this._loop_msgqueue || !this.msgqueue) return;
       this._loop_msgqueue = true;
       while ((this.msgqueue.length > 0) && this.msgqueue[0].ready) {
          var front = this.msgqueue.shift();
@@ -1967,6 +1977,24 @@
       }
 
       return true;
+   }
+
+   /** Inject message(s) into input queue, for debug purposes only
+     * @private */
+   WebWindowHandle.prototype.Inject = function(msg, chid, immediate) {
+      // use timeout to avoid too deep call stack
+      if (!immediate)
+         return setTimeout(this.Inject.bind(this, msg, chid, true), 0);
+
+      if (chid === undefined) chid = 1;
+
+      if (Array.isArray(msg)) {
+         for (var k=0;k<msg.length;++k)
+            this.ProvideData(chid, (typeof msg[k] == "string") ? msg[k] : JSON.stringify(msg[k]), -1);
+         this.ProcessQueue();
+      } else if (msg) {
+         this.ProvideData(chid, typeof msg == "string" ? msg : JSON.stringify(msg));
+      }
    }
 
    /** Send keepalive message.
@@ -3569,8 +3597,12 @@
       if (svg_p.empty()) return true;
 
       var pp = svg_p.property('pad_painter');
-      if (pp && (pp !== this))
+      if (pp && (pp !== this)) {
          pp.painters.push(this);
+         // workround to provide style for next object draing
+         if (!this.rstyle && pp.next_rstyle)
+            this.rstyle = pp.next_rstyle;
+      }
 
       if (((is_main === 1) || (is_main === 4) || (is_main === 5)) && !svg_p.property('mainpainter'))
          // when this is first main painter in the pad
@@ -4194,7 +4226,8 @@
          var items = reply ? reply.fItems : null;
 
          if (items && items.length) {
-            _menu.add("separator");
+            if (_menu.size() > 0)
+              _menu.add("separator");
 
             this.args_menu_items = items;
             this.args_menu_id = reply.fId;
@@ -4482,13 +4515,13 @@
     * @desc used to find title drawing
     * @private */
    TObjectPainter.prototype.FindInPrimitives = function(objname) {
-
       var painter = this.pad_painter();
-      if (!painter || !painter.pad) return null;
 
-      if (painter.pad.fPrimitives)
-         for (var n=0;n<painter.pad.fPrimitives.arr.length;++n) {
-            var prim = painter.pad.fPrimitives.arr[n];
+      var arr = painter && painter.pad && painter.pad.fPrimitives ? painter.pad.fPrimitives.arr : null;
+
+      if (arr && arr.length)
+         for (var n=0;n<arr.length;++n) {
+            var prim = arr[n];
             if (('fName' in prim) && (prim.fName === objname)) return prim;
          }
 
