@@ -21,9 +21,11 @@
 
 using namespace ROOT::Experimental;
 
-std::unique_ptr<RDisplayItem> RObjectDrawable::Display(const RPadBase &, Version_t vers) const
+RObjectDrawable::~RObjectDrawable() {}
+
+std::unique_ptr<RDisplayItem> RObjectDrawable::Display(const RDisplayContext &ctxt)
 {
-   if (GetVersion() > vers)
+   if (GetVersion() > ctxt.GetLastVersion())
       return std::make_unique<RObjectDisplayItem>(fObj.get(), fOpts);
    return nullptr;
 }

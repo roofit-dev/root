@@ -28,6 +28,7 @@ Plain Gaussian p.d.f
 #include "RooRealVar.h"
 #include "RooRandom.h"
 #include "RooMath.h"
+#include "RooHelpers.h"
 
 #include "RooVDTHeaders.h"
 
@@ -46,6 +47,7 @@ RooGaussian::RooGaussian(const char *name, const char *title,
   mean("mean","Mean",this,_mean),
   sigma("sigma","Width",this,_sigma)
 {
+  RooHelpers::checkRangeOfParameters(this, {&_sigma}, 0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,7 +94,7 @@ void compute(RooSpan<double> output, Tx x, TMean mean, TSig sigma) {
 /// and if found, the computation will be batched over their
 /// values. If batch data are not found for one of the proxies, the proxies value is assumed to
 /// be constant over the batch.
-/// \param[in] batchIndex Index of the batch to be computed.
+/// \param[in] begin Index of the batch to be computed.
 /// \param[in] batchSize Size of each batch. The last batch may be smaller.
 /// \return A span with the computed values.
 
@@ -136,6 +138,33 @@ RooSpan<double> RooGaussian::evaluateBatch(std::size_t begin, std::size_t batchS
 
   return output;
 }
+
+
+
+RooSpan<double> RooGaussian::evaluateSpan(BatchHelpers::RunContext& evalData, const RooArgSet* normSet) const {
+  auto xData = x->getValues(evalData, normSet);
+  auto meanData = mean->getValues(evalData, normSet);
+  auto sigmaData = sigma->getValues(evalData, normSet);
+
+  std::size_t batchLength = BatchHelpers::findSmallestBatch({xData, meanData, sigmaData});
+  auto output = evalData.makeBatch(this, batchLength);
+
+  if (xData.size() >= 1 && meanData.size() == 1 && sigmaData.size() == 1) {
+    compute(output, xData,
+        BracketAdapter<double>(meanData[0]),
+        BracketAdapter<double>(sigmaData[0]));
+  }
+  else {
+    compute(output,
+        BracketAdapterWithMask(xData[0], xData),
+        BracketAdapterWithMask(meanData[0], meanData),
+        BracketAdapterWithMask(sigmaData[0], sigmaData));
+  }
+
+  return output;
+}
+
+
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -1,7 +1,6 @@
 ## \file
 ## \ingroup tutorial_roofit
 ## \notebook
-##
 ## Basic functionality: demonstration of various plotting styles of data, functions in a RooPlot
 ##
 ## \macro_code

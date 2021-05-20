@@ -24,6 +24,12 @@
 #include "RooObjCacheManager.h"
 #include "RooCmdArg.h"
 #include <vector>
+#include <list>
+#include <string>
+
+namespace BatchHelpers {
+struct RunContext;
+}
 
 typedef RooArgList* pRooArgList ;
 typedef RooLinkedList* pRooLinkedList ;
@@ -98,6 +104,7 @@ private:
 
   Double_t evaluate() const ;
   virtual RooSpan<double> evaluateBatch(std::size_t begin, std::size_t size) const;
+  virtual RooSpan<double> evaluateSpan(BatchHelpers::RunContext& evalData, const RooArgSet* normSet) const;
 
   RooAbsReal* makeCondPdfRatioCorr(RooAbsReal& term, const RooArgSet& termNset, const RooArgSet& termImpSet, const char* normRange, const char* refRange) const ;
 

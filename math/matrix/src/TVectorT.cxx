@@ -14,7 +14,9 @@
 
  TVectorT
 
- Template class of Vectors in the linear algebra package
+ Template class of Vectors in the linear algebra package.
+
+ See \ref MatrixPage for the documentation of the linear algebra package
 
  Unless otherwise specified, vector indices always start with 0,
  spanning up to the specified limit-1.
@@ -37,7 +39,6 @@
 
 #include "TVectorT.h"
 #include "TBuffer.h"
-#include "TClass.h"
 #include "TMath.h"
 #include "TROOT.h"
 #include "Varargs.h"

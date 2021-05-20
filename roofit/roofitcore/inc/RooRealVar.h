@@ -17,6 +17,7 @@
 #define ROO_REAL_VAR
 
 #include "RooAbsRealLValue.h"
+#include "RunContext.h"
 
 #include "TString.h"
 
@@ -24,6 +25,7 @@
 #include <string>
 #include <map>
 #include <memory>
+#include <unordered_map>
 
 
 class RooArgSet ;
@@ -57,8 +59,10 @@ public:
   RooSpan<const double> getValBatch(std::size_t begin, std::size_t batchSize, const RooArgSet* = nullptr) const final {
     return _batchData.getBatch(begin, batchSize);
   }
+  RooSpan<const double> getValues(BatchHelpers::RunContext& inputData, const RooArgSet*) const final;
 
   virtual void setVal(Double_t value);
+  virtual void setVal(Double_t value, const char* rangeName);
   inline Double_t getError() const { return _error>=0?_error:0. ; }
   inline Bool_t hasError(Bool_t allowZero=kTRUE) const { return allowZero ? (_error>=0) : (_error>0) ; }
   inline void setError(Double_t value) { _error= value ; }
@@ -80,7 +84,9 @@ public:
   void setRange(const char* name, RooAbsReal& min, RooAbsReal& max) ;
   inline void setMin(Double_t value) { setMin(0,value) ; }
   inline void setMax(Double_t value) { setMax(0,value) ; }
+  /// Set the limits of the default range.
   inline void setRange(Double_t min, Double_t max) { setRange(0,min,max) ; }
+  /// Set parameterised limits of the default range. See setRange(const char*, RooAbsReal&, RooAbsReal&).
   inline void setRange(RooAbsReal& min, RooAbsReal& max) { setRange(0,min,max) ; }
 
   void setBins(Int_t nBins, const char* name=0);
@@ -137,8 +143,6 @@ public:
   static Bool_t _printScientific ;
   static Int_t  _printSigDigits ;
 
-  virtual void setVal(Double_t value, const char* rangeName) ;
-
   friend class RooAbsRealLValue ;
   virtual void setValFast(Double_t value) { _value = value ; setValueDirty() ; }
 
@@ -155,7 +159,7 @@ public:
   Double_t _asymErrLo ; // Low side of asymmetric error associated with current value
   Double_t _asymErrHi ; // High side of asymmetric error associated with current value
   std::unique_ptr<RooAbsBinning> _binning;
-  RooLinkedList _altNonSharedBinning ; // Non-shareable alternative binnings
+  std::unordered_map<std::string,std::unique_ptr<RooAbsBinning>> _altNonSharedBinning ; //! Non-shareable alternative binnings
 
   std::shared_ptr<RooRealVarSharedProperties> sharedProp() const;
   void installSharedProp(std::shared_ptr<RooRealVarSharedProperties>&& prop);
@@ -166,7 +170,7 @@ public:
   static const std::unique_ptr<RooRealVarSharedProperties> _nullProp ; // Null property
   std::shared_ptr<RooRealVarSharedProperties> _sharedProp; //! Shared binnings associated with this instance
 
-  ClassDef(RooRealVar,6) // Real-valued variable
+  ClassDef(RooRealVar,7) // Real-valued variable
 };
 
 

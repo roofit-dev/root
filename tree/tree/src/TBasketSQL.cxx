@@ -12,17 +12,13 @@
 #ifndef TBASKETSQL_CXX
 #define TBASKETSQL_CXX
 
-#include "TBasket.h"
-#include "TBuffer.h"
-#include "TTree.h"
+#include "TBasketSQL.h"
 #include "TBranch.h"
 #include "TFile.h"
-#include "TMath.h"
-#include "TBasketSQL.h"
-#include <Riostream.h>
-#include <vector>
 #include "TTreeSQL.h"
 #include "TBufferSQL.h"
+
+#include <vector>
 
 ClassImp(TBasketSQL);
 
@@ -141,13 +137,6 @@ Int_t TBasketSQL::ReadBasketBuffers(Long64_t , Int_t, TFile *)
    return 0;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// See TBasket::Reset
-
-void TBasketSQL::Reset()
-{
-   TBasket::Reset();
-}
 ////////////////////////////////////////////////////////////////////////////////
 /// See TBasket::Update.
 

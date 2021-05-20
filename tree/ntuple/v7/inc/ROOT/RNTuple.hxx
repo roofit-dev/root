@@ -16,6 +16,7 @@
 #ifndef ROOT7_RNTuple
 #define ROOT7_RNTuple
 
+#include <ROOT/RConfig.hxx> // for R__unlikely
 #include <ROOT/RNTupleMetrics.hxx>
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleOptions.hxx>
@@ -28,6 +29,8 @@
 #include <memory>
 #include <sstream>
 #include <utility>
+
+class TFile;
 
 namespace ROOT {
 namespace Experimental {
@@ -53,8 +56,9 @@ enum class ENTupleInfo {
 /**
  * Listing of the different entry output formats of RNTupleReader::Show()
  */
-enum class ENTupleFormat {
-   kJSON, // prints a single entry/row in JSON format.
+enum class ENTupleShowFormat {
+   kCurrentModelJSON, // prints a single entry/row with the current active model in JSON format.
+   kCompleteJSON,  // prints a single entry/row with all the fields in JSON format.
 };
 
 
@@ -75,17 +79,28 @@ private:
    std::unique_ptr<Detail::RPageSource> fSource;
    /// Needs to be destructed before fSource
    std::unique_ptr<RNTupleModel> fModel;
+   /// We use a dedicated on-demand reader for Show() and Scan(). Printing data uses all the fields
+   /// from the full model even if the analysis code uses only a subset of fields. The display reader
+   /// is a clone of the original reader.
+   std::unique_ptr<RNTupleReader> fDisplayReader;
    Detail::RNTupleMetrics fMetrics;
 
-   void ConnectModel();
+   void ConnectModel(const RNTupleModel &model);
+   RNTupleReader *GetDisplayReader();
 
 public:
    // Browse through the entries
-   class RIterator : public std::iterator<std::forward_iterator_tag, NTupleSize_t> {
+   class RIterator {
    private:
-      using iterator = RIterator;
       NTupleSize_t fIndex = kInvalidNTupleIndex;
    public:
+      using iterator = RIterator;
+      using iterator_category = std::forward_iterator_tag;
+      using value_type = NTupleSize_t;
+      using difference_type = NTupleSize_t;
+      using pointer = NTupleSize_t*;
+      using reference = NTupleSize_t&;
+
       RIterator() = default;
       explicit RIterator(NTupleSize_t index) : fIndex(index) {}
       ~RIterator() = default;
@@ -101,8 +116,11 @@ public:
 
    static std::unique_ptr<RNTupleReader> Open(std::unique_ptr<RNTupleModel> model,
                                               std::string_view ntupleName,
-                                              std::string_view storage);
-   static std::unique_ptr<RNTupleReader> Open(std::string_view ntupleName, std::string_view storage);
+                                              std::string_view storage,
+                                              const RNTupleReadOptions &options = RNTupleReadOptions());
+   static std::unique_ptr<RNTupleReader> Open(std::string_view ntupleName,
+                                              std::string_view storage,
+                                              const RNTupleReadOptions &options = RNTupleReadOptions());
 
    /// The user imposes an ntuple model, which must be compatible with the model found in the data on storage
    RNTupleReader(std::unique_ptr<RNTupleModel> model, std::unique_ptr<Detail::RPageSource> source);
@@ -111,7 +129,7 @@ public:
    std::unique_ptr<RNTupleReader> Clone() { return std::make_unique<RNTupleReader>(fSource->Clone()); }
    ~RNTupleReader();
 
-   RNTupleModel *GetModel() { return fModel.get(); }
+   RNTupleModel *GetModel();
    NTupleSize_t GetNEntries() const { return fSource->GetNEntries(); }
    const RNTupleDescriptor &GetDescriptor() const { return fSource->GetDescriptor(); }
 
@@ -121,14 +139,21 @@ public:
    /// Shows the values of the i-th entry/row, starting with 0 for the first entry. By default,
    /// prints the output in JSON format.
    /// Uses the visitor pattern to traverse through each field of the given entry.
-   void Show(NTupleSize_t index, const ENTupleFormat format = ENTupleFormat::kJSON, std::ostream &output = std::cout);
+   void Show(NTupleSize_t index, const ENTupleShowFormat format = ENTupleShowFormat::kCurrentModelJSON,
+             std::ostream &output = std::cout);
 
    /// Analogous to Fill(), fills the default entry of the model. Returns false at the end of the ntuple.
-   /// On I/O errors, raises an expection.
-   void LoadEntry(NTupleSize_t index) { LoadEntry(index, fModel->GetDefaultEntry()); }
+   /// On I/O errors, raises an exception.
+   void LoadEntry(NTupleSize_t index) { LoadEntry(index, *fModel->GetDefaultEntry()); }
    /// Fills a user provided entry after checking that the entry has been instantiated from the ntuple model
-   void LoadEntry(NTupleSize_t index, REntry* entry) {
-      for (auto& value : *entry) {
+   void LoadEntry(NTupleSize_t index, REntry &entry) {
+      // TODO(jblomer): can be templated depending on the factory method / constructor
+      if (R__unlikely(!fModel)) {
+         fModel = fSource->GetDescriptor().GenerateModel();
+         ConnectModel(*fModel);
+      }
+
+      for (auto& value : entry) {
          value.GetField()->Read(index, &value);
       }
    }
@@ -152,6 +177,7 @@ public:
    RIterator end() { return RIterator(GetNEntries()); }
 
    void EnableMetrics() { fMetrics.Enable(); }
+   const Detail::RNTupleMetrics &GetMetrics() const { return fMetrics; }
 };
 
 // clang-format off
@@ -181,17 +207,21 @@ public:
                                                   std::string_view ntupleName,
                                                   std::string_view storage,
                                                   const RNTupleWriteOptions &options = RNTupleWriteOptions());
+   static std::unique_ptr<RNTupleWriter> Append(std::unique_ptr<RNTupleModel> model,
+                                                std::string_view ntupleName,
+                                                TFile &file,
+                                                const RNTupleWriteOptions &options = RNTupleWriteOptions());
    RNTupleWriter(std::unique_ptr<RNTupleModel> model, std::unique_ptr<Detail::RPageSink> sink);
    RNTupleWriter(const RNTupleWriter&) = delete;
    RNTupleWriter& operator=(const RNTupleWriter&) = delete;
    ~RNTupleWriter();
 
    /// The simplest user interface if the default entry that comes with the ntuple model is used
-   void Fill() { Fill(fModel->GetDefaultEntry()); }
+   void Fill() { Fill(*fModel->GetDefaultEntry()); }
    /// Multiple entries can have been instantiated from the tnuple model.  This method will perform
    /// a light check whether the entry comes from the ntuple's own model
-   void Fill(REntry *entry) {
-      for (auto& value : *entry) {
+   void Fill(REntry &entry) {
+      for (auto& value : entry) {
          value.GetField()->Append(value);
       }
       fNEntries++;

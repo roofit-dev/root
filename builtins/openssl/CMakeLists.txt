@@ -25,7 +25,11 @@ foreach(lib ssl crypto)
 endforeach()
 
 if(APPLE)
-  set(OPENSSL_CONFIG_CMD ./Configure darwin64-x86_64-cc)
+  if(${ROOT_ARCHITECTURE} MATCHES "macosxarm64")
+    set(OPENSSL_CONFIG_CMD ./Configure darwin64-aarch64-cc)
+  else()
+    set(OPENSSL_CONFIG_CMD ./Configure darwin64-x86_64-cc)
+  endif()
   if (CMAKE_OSX_SYSROOT)
     set(OSX_SYSROOT "-isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
@@ -35,6 +39,7 @@ endif()
 
 ExternalProject_Add(OPENSSL
   URL ${OPENSSL_URL} URL_HASH ${OPENSSL_URLHASH}
+  PATCH_COMMAND patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/openssl-darwin64-aarch64-cc.diff
   CONFIGURE_COMMAND ${OPENSSL_CONFIG_CMD} no-shared --prefix=<INSTALL_DIR>
   BUILD_COMMAND make -j1 CC=${CMAKE_C_COMPILER}\ -fPIC\ ${OSX_SYSROOT}
   INSTALL_COMMAND make install_sw

@@ -22,7 +22,7 @@
 /// Helper function to create input images data
 /// we create a signal and background 2D histograms from 2d gaussians
 /// with a location (means in X and Y)  different for each event
-/// The difference between signal and background is in the gaussian width..
+/// The difference between signal and background is in the gaussian width.
 /// The width for the bakground gaussian is slightly larger than the signal width by few % values
 ///
 ///
@@ -125,16 +125,27 @@ void TMVA_CNN_Classification(std::vector<bool> opt = {1, 1, 1, 1})
 
    bool writeOutputFile = true;
 
+   int num_threads = 0;  // use default threads
+
    TMVA::Tools::Instance();
 
    // do enable MT running
-   ROOT::EnableImplicitMT();
+   if (num_threads >= 0) {
+      ROOT::EnableImplicitMT(num_threads);
+      if (num_threads > 0) gSystem->Setenv("OMP_NUM_THREADS", TString::Format("%d",num_threads));
+   }
+   else
+      gSystem->Setenv("OMP_NUM_THREADS", "1");
 
-   // for using Keras
+   std::cout << "Running with nthreads  = " << ROOT::GetThreadPoolSize() << std::endl;
+
+#ifdef R__HAS_PYMVA
    gSystem->Setenv("KERAS_BACKEND", "tensorflow");
-   // for setting openblas in single thread on SWAN
-   gSystem->Setenv("OMP_NUM_THREADS", "1");
+   // for using Keras
    TMVA::PyMethodBase::PyInitialize();
+#else
+   useKerasCNN = false;
+#endif
 
    TFile *outputFile = nullptr;
    if (writeOutputFile)
@@ -292,8 +303,6 @@ void TMVA_CNN_Classification(std::vector<bool> opt = {1, 1, 1, 1})
 
    if (useTMVADNN) {
 
-      TString inputLayoutString = "InputLayout=1|1|256";
-      TString batchLayoutString = "BatchLayout=1|100|256";
       TString layoutString(
          "Layout=DENSE|100|RELU,BNORM,DENSE|100|RELU,BNORM,DENSE|100|RELU,BNORM,DENSE|100|RELU,DENSE|1|LINEAR");
 
@@ -312,10 +321,6 @@ void TMVA_CNN_Classification(std::vector<bool> opt = {1, 1, 1, 1})
 
       TString dnnOptions("!H:V:ErrorStrategy=CROSSENTROPY:VarTransform=None:"
                          "WeightInitialization=XAVIER");
-      dnnOptions.Append(":");
-      dnnOptions.Append(inputLayoutString);
-      dnnOptions.Append(":");
-      dnnOptions.Append(batchLayoutString);
       dnnOptions.Append(":");
       dnnOptions.Append(layoutString);
       dnnOptions.Append(":");
@@ -368,8 +373,6 @@ void TMVA_CNN_Classification(std::vector<bool> opt = {1, 1, 1, 1})
       TString inputLayoutString("InputLayout=1|16|16");
 
       // Batch Layout
-      TString batchLayoutString("BatchLayout=100|1|256");
-
       TString layoutString("Layout=CONV|10|3|3|1|1|1|1|RELU,BNORM,CONV|10|3|3|1|1|1|1|RELU,MAXPOOL|2|2|1|1,"
                            "RESHAPE|FLAT,DENSE|100|RELU,DENSE|1|LINEAR");
 
@@ -389,8 +392,6 @@ void TMVA_CNN_Classification(std::vector<bool> opt = {1, 1, 1, 1})
 
       cnnOptions.Append(":");
       cnnOptions.Append(inputLayoutString);
-      cnnOptions.Append(":");
-      cnnOptions.Append(batchLayoutString);
       cnnOptions.Append(":");
       cnnOptions.Append(layoutString);
       cnnOptions.Append(":");

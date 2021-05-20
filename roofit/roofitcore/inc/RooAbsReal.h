@@ -24,6 +24,7 @@
 #include "RooGlobalFunc.h"
 #include "RooSpan.h"
 #include "BatchData.h"
+#include <map>
 
 class RooArgList ;
 class RooDataSet ;
@@ -42,9 +43,11 @@ class RooFitResult ;
 class RooAbsMoment ;
 class RooDerivative ;
 class RooVectorDataStore ;
-namespace RooHelpers {
+namespace BatchHelpers {
 class BatchInterfaceAccessor;
+struct RunContext;
 }
+struct TreeReadBuffer; /// A space to attach TBranches
 
 class TH1;
 class TH1F;
@@ -106,6 +109,7 @@ public:
   virtual Double_t getValV(const RooArgSet* normalisationSet = nullptr) const ;
 
   virtual RooSpan<const double> getValBatch(std::size_t begin, std::size_t maxSize, const RooArgSet* normSet = nullptr) const;
+  virtual RooSpan<const double> getValues(BatchHelpers::RunContext& evalData, const RooArgSet* normSet = nullptr) const;
 
   Double_t getPropagatedError(const RooFitResult &fr, const RooArgSet &nset = RooArgSet()) const;
 
@@ -404,10 +408,11 @@ protected:
   /// Evaluate this PDF / function / constant. Needs to be overridden by all derived classes.
   virtual Double_t evaluate() const = 0;
   virtual RooSpan<double> evaluateBatch(std::size_t begin, std::size_t maxSize) const;
+  virtual RooSpan<double> evaluateSpan(BatchHelpers::RunContext& evalData, const RooArgSet* normSet) const;
 
   //---------- Interface to access batch data ---------------------------
   //
-  friend class RooHelpers::BatchInterfaceAccessor;
+  friend class BatchHelpers::BatchInterfaceAccessor;
   void clearBatchMemory() {
     _batchData.clear();
     for (auto arg : _serverList) {
@@ -420,6 +425,7 @@ protected:
 
  private:
   void checkBatchComputation(std::size_t evtNo, const RooArgSet* normSet = nullptr, double relAccuracy = 1.E-13) const;
+  void checkBatchComputation(const BatchHelpers::RunContext& evalData, std::size_t evtNo, const RooArgSet* normSet = nullptr, double relAccuracy = 1.E-13) const;
 
   const BatchHelpers::BatchData& batchData() const {
     return _batchData;
@@ -451,19 +457,10 @@ protected:
   TString  _label ;         // Plot label for objects value
   Bool_t   _forceNumInt ;   // Force numerical integration if flag set
 
-  mutable Float_t _floatValue{0.}; //! Transient cache for floating point values from tree branches
-  mutable Int_t   _intValue{0};    //! Transient cache for integer values from tree branches
-  mutable Bool_t  _boolValue{false}; //! Transient cache for bool values from tree branches
-  mutable UChar_t _byteValue{'\0'};  //! Transient cache for byte values from tree branches
-  mutable Char_t  _sbyteValue{'\0'}; //! Transient cache for signed byte values from tree branches
-  mutable UInt_t  _uintValue{0u};  //! Transient cache for unsigned integer values from tree branches
-
   friend class RooAbsPdf ;
   friend class RooAbsAnaConvPdf ;
 
   RooNumIntConfig* _specIntegratorConfig ; // Numeric integrator configuration specific for this object
-
-  Bool_t   _treeVar ;       // !do not persist
 
   friend class RooDataProjBinding ;
   friend class RooAbsOptGoodnessOfFit ;
@@ -522,6 +519,8 @@ private:
   static Int_t _evalErrorCount ;
 
   Bool_t matchArgsByName(const RooArgSet &allArgs, RooArgSet &matchedArgs, const TList &nameList) const;
+
+  std::unique_ptr<TreeReadBuffer> _treeReadBuffer; //! A buffer for reading values from trees
 
 protected:
 

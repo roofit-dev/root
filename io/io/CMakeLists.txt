@@ -16,6 +16,10 @@ else ()
   set(rawfile_local_sources src/RRawFileUnix.cxx)
 endif ()
 
+if (uring)
+  list(APPEND rawfile_local_headers ROOT/RIoUring.hxx)
+endif ()
+
 ROOT_LINKER_LIBRARY(RIO
   src/RRawFile.cxx
   ${rawfile_local_sources}
@@ -65,6 +69,10 @@ target_include_directories(RIO PRIVATE ${CMAKE_SOURCE_DIR}/core/clib/res)
 if(root7)
   set(RIO_EXTRA_HEADERS ROOT/RFile.hxx)
   target_sources(RIO PRIVATE v7/src/RFile.cxx)
+endif()
+
+if(uring)
+  target_link_libraries(RIO PUBLIC uring)
 endif()
 
 ROOT_GENERATE_DICTIONARY(G__RIO

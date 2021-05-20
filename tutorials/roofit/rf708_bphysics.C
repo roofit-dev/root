@@ -1,14 +1,13 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook -js
-///
-/// Special p.d.f.'s: special decay pdf for B physics with mixing and/or CP violation
+/// Special pdf's: special decay pdf for B physics with mixing and/or CP violation
 ///
 /// \macro_image
 /// \macro_output
 /// \macro_code
 ///
-/// \date 07/2008
+/// \date July 2008
 /// \author Wouter Verkerke
 
 #include "RooRealVar.h"
