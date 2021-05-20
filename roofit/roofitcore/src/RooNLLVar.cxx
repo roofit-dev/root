@@ -44,6 +44,7 @@ In extended mode, a
 
 #ifdef ROOFIT_CHECK_CACHED_VALUES
 #include "BatchHelpers.h"
+#include <iomanip>
 #endif
 
 #include "TMath.h"
@@ -72,7 +73,7 @@ RooNLLVar::RooNLLVar()
 ///  Verbose()                | Verbose output of GOF framework classes
 ///  CloneData()              | Clone input dataset for internal use (default is kTRUE)
 ///  BatchMode()              | Evaluate batches of data events (faster if PDFs support it)
-
+///  IntegrateBins() | Integrate PDF within each bin. This sets the desired precision. Only useful for binned fits.
 RooNLLVar::RooNLLVar(const char *name, const char* title, RooAbsPdf& pdf, RooAbsData& indata,
 		     const RooCmdArg& arg1, const RooCmdArg& arg2,const RooCmdArg& arg3,
 		     const RooCmdArg& arg4, const RooCmdArg& arg5,const RooCmdArg& arg6,
@@ -87,7 +88,8 @@ RooNLLVar::RooNLLVar(const char *name, const char* title, RooAbsPdf& pdf, RooAbs
                          static_cast<Bool_t>(RooCmdConfig::decodeIntOnTheFly("RooNLLVar::RooNLLVar","CPUAffinity",0,1,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9)),
 			 RooCmdConfig::decodeIntOnTheFly("RooNLLVar::RooNLLVar","Verbose",0,1,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9),
 			 RooCmdConfig::decodeIntOnTheFly("RooNLLVar::RooNLLVar","SplitRange",0,0,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9),
-			 RooCmdConfig::decodeIntOnTheFly("RooNLLVar::RooNLLVar","CloneData",0,1,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9))
+			 RooCmdConfig::decodeIntOnTheFly("RooNLLVar::RooNLLVar","CloneData",0,1,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9),
+			 RooCmdConfig::decodeDoubleOnTheFly("RooNLLVar::RooNLLVar", "IntegrateBins", 0, -1., {arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9}))
 {
   RooCmdConfig pc("RooNLLVar::RooNLLVar") ;
   pc.allowUndefined() ;
@@ -118,8 +120,10 @@ RooNLLVar::RooNLLVar(const char *name, const char* title, RooAbsPdf& pdf, RooAbs
 
 RooNLLVar::RooNLLVar(const char *name, const char *title, RooAbsPdf& pdf, RooAbsData& indata,
 		     Bool_t extended, const char* rangeName, const char* addCoefRangeName,
-		     Int_t nCPU, RooFit::MPSplit interleave, Bool_t CPUAffinity, Bool_t verbose, Bool_t splitRange, Bool_t cloneData, Bool_t binnedL) :
-  RooAbsOptTestStatistic(name,title,pdf,indata,RooArgSet(),rangeName,addCoefRangeName,nCPU,interleave,CPUAffinity,verbose,splitRange,cloneData),
+		     Int_t nCPU, RooFit::MPSplit interleave, Bool_t CPUAffinity, Bool_t verbose, Bool_t splitRange, Bool_t cloneData, Bool_t binnedL,
+		     double integrateBinsPrecision) :
+  RooAbsOptTestStatistic(name,title,pdf,indata,RooArgSet(),rangeName,addCoefRangeName,nCPU,interleave,CPUAffinity,verbose,splitRange,cloneData,
+      integrateBinsPrecision),
   _extended(extended),
   _weightSq(kFALSE),
   _first(kTRUE), _offsetSaveW2(0.), _offsetCarrySaveW2(0.)
@@ -163,8 +167,10 @@ RooNLLVar::RooNLLVar(const char *name, const char *title, RooAbsPdf& pdf, RooAbs
 
 RooNLLVar::RooNLLVar(const char *name, const char *title, RooAbsPdf& pdf, RooAbsData& indata,
 		     const RooArgSet& projDeps, Bool_t extended, const char* rangeName,const char* addCoefRangeName,
-		     Int_t nCPU,RooFit::MPSplit interleave, Bool_t CPUAffinity, Bool_t verbose, Bool_t splitRange, Bool_t cloneData, Bool_t binnedL) :
-  RooAbsOptTestStatistic(name,title,pdf,indata,projDeps,rangeName,addCoefRangeName,nCPU,interleave,CPUAffinity,verbose,splitRange,cloneData),
+		     Int_t nCPU,RooFit::MPSplit interleave, Bool_t CPUAffinity, Bool_t verbose, Bool_t splitRange, Bool_t cloneData, Bool_t binnedL,
+		     double integrateBinsPrecision) :
+  RooAbsOptTestStatistic(name,title,pdf,indata,projDeps,rangeName,addCoefRangeName,nCPU,interleave,CPUAffinity,verbose,splitRange,cloneData,
+      integrateBinsPrecision),
   _extended(extended),
   _weightSq(kFALSE),
   _first(kTRUE), _offsetSaveW2(0.), _offsetCarrySaveW2(0.)
@@ -220,9 +226,12 @@ RooNLLVar::RooNLLVar(const RooNLLVar& other, const char* name) :
 RooAbsTestStatistic* RooNLLVar::create(const char *name, const char *title, RooAbsReal& pdf, RooAbsData& adata,
             const RooArgSet& projDeps, const char* rangeName, const char* addCoefRangeName,
             Int_t nCPU, RooFit::MPSplit interleave, Bool_t CPUAffinity, bool verbose, bool splitRange, bool binnedL) {
-  auto testStat = new RooNLLVar(name, title,
-      dynamic_cast<RooAbsPdf&>(pdf), adata,
-      projDeps, _extended, rangeName, addCoefRangeName, nCPU, interleave, CPUAffinity, verbose, splitRange, false, binnedL);
+  RooAbsPdf & thePdf = dynamic_cast<RooAbsPdf&>(pdf);
+  // check if pdf can be extended
+  bool extendedPdf = _extended && thePdf.canBeExtended();
+  auto testStat = new RooNLLVar(name, title, thePdf, adata,
+      projDeps, extendedPdf , rangeName, addCoefRangeName, nCPU, interleave, CPUAffinity, verbose, splitRange, false, binnedL,
+      _integrateBinsPrecision);
   testStat->batchMode(_batchEvaluations);
   return testStat;
 }
@@ -344,12 +353,12 @@ Double_t RooNLLVar::evaluatePartition(std::size_t firstEvent, std::size_t lastEv
 
       constexpr bool alwaysPrint = false;
 
-      if (alwaysPrint || fabs(result - resultScalar)/resultScalar > 1.E-15) {
+      if (alwaysPrint || fabs(result - resultScalar)/resultScalar > 5.E-15) {
         std::cerr << "RooNLLVar: result is off\n\t" << std::setprecision(15) << result
             << "\n\t" << resultScalar << std::endl;
       }
 
-      if (alwaysPrint || fabs(carry - carryScalar)/carryScalar > 10.) {
+      if (alwaysPrint || fabs(carry - carryScalar)/carryScalar > 500.) {
         std::cerr << "RooNLLVar: carry is far off\n\t" << std::setprecision(15) << carry
             << "\n\t" << carryScalar << std::endl;
       }
@@ -472,7 +481,6 @@ std::tuple<double, double, double> RooNLLVar::computeBatched(std::size_t stepSiz
 
   auto pdfClone = static_cast<const RooAbsPdf*>(_funcClone);
 
-#ifdef ROOFIT_NEW_BATCH_INTERFACE
   // Create a RunContext that will own the memory where computation results are stored.
   // Holding on to this struct in between function calls will make sure that the memory
   // is only allocated once.
@@ -483,37 +491,27 @@ std::tuple<double, double, double> RooNLLVar::computeBatched(std::size_t stepSiz
   _dataClone->getBatches(*_evalData, firstEvent, lastEvent-firstEvent);
 
   auto results = pdfClone->getLogProbabilities(*_evalData, _normSet);
-#else
-  auto results = pdfClone->getLogValBatch(firstEvent, lastEvent-firstEvent, _normSet);
-#endif
 
 #ifdef ROOFIT_CHECK_CACHED_VALUES
 
-#ifdef ROOFIT_NEW_BATCH_INTERFACE
-  for (std::size_t evtNo = firstEvent; evtNo < lastEvent; evtNo += (lastEvent-firstEvent)/100) {
+  for (std::size_t evtNo = firstEvent; evtNo < std::min(lastEvent, firstEvent + 10); ++evtNo) {
     _dataClone->get(evtNo);
     assert(_dataClone->valid());
-    pdfClone->getValV(_normSet);
     try {
-      BatchHelpers::BatchInterfaceAccessor::checkBatchComputation(*pdfClone, *_evalData, evtNo-firstEvent, _normSet);
+      // Cross check results with strict tolerance and complain
+      BatchHelpers::BatchInterfaceAccessor::checkBatchComputation(*pdfClone, *_evalData, evtNo-firstEvent, _normSet, 1.E-13);
     } catch (std::exception& e) {
-      std::cerr << "ERROR when checking batch computation for event " << evtNo << ":\n"
+      std::cerr << __FILE__ << ":" << __LINE__ << " ERROR when checking batch computation for event " << evtNo << ":\n"
           << e.what() << std::endl;
+
+      // It becomes a real problem if it's very wrong. We fail in this case:
+      try {
+        BatchHelpers::BatchInterfaceAccessor::checkBatchComputation(*pdfClone, *_evalData, evtNo-firstEvent, _normSet, 1.E-9);
+      } catch (std::exception& e2) {
+        assert(false);
+      }
     }
   }
-#else
-  for (std::size_t evtNo = firstEvent; evtNo < lastEvent; ++evtNo) {
-    _dataClone->get(evtNo);
-    assert(_dataClone->valid());
-    pdfClone->getValV(_normSet);
-    try {
-      BatchHelpers::BatchInterfaceAccessor::checkBatchComputation(*pdfClone, evtNo, _normSet);
-    } catch (std::exception& e) {
-      std::cerr << "ERROR when checking batch computation for event " << evtNo << ":\n"
-          << e.what() << std::endl;
-    }
-  }
-#endif
 
 #endif
 
