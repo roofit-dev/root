@@ -479,7 +479,7 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
 
       if (d.check("TRACKS")) res.tracks = true; // only for TGeoManager
       if (d.check("SHOWTOP")) res.showtop = true; // only for TGeoManager
-      if (d.check("NO_SCREEN")) res.no_screen = true; // use kVisOnScreen bits as visibility
+      if (d.check("NO_SCREEN")) res.no_screen = true; // ignore kVisOnScreen bits for visibility
 
       if (d.check("ORTHO_CAMERA_ROTATE")) { res.ortho_camera = true; res.can_rotate = true; }
       if (d.check("ORTHO_CAMERA")) { res.ortho_camera = true; res.can_rotate = false; }
@@ -679,7 +679,7 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
       menu.add("Reset camera position", () => this.focusCamera());
 
       if (!this._geom_viewer)
-         menu.add("Get camera position", () => alert("Position (as url): &opt=" + this.produceCameraUrl()));
+         menu.add("Get camera position", () => menu.info("Position (as url)", "&opt=" + this.produceCameraUrl()));
 
       if (!this.ctrl.project)
          menu.addchk(this.ctrl.rotate, "Autorotate", () => this.setAutoRotate(!this.ctrl.rotate));
@@ -1313,7 +1313,7 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
 
       let get_ctrl = mesh => {
          return mesh.get_ctrl ? mesh.get_ctrl() : new GeoDrawingControl(mesh, this.ctrl.bloom.enabled);
-      }
+      };
 
       // check if selections are the same
       if (!curr_mesh && !active_mesh) return false;
@@ -1878,7 +1878,8 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
       }
 
       // remember additional nodes only if they include shape - otherwise one can ignore them
-      if (real_nodes) this._more_nodes = real_nodes;
+      if (real_nodes.length > 0)
+         this._more_nodes = real_nodes;
 
       if (!from_drawing) this.render3D();
    }
@@ -2012,7 +2013,7 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
       }
 
       // keep light power of all soources constant
-      plights.forEach(ll => { ll.power = p*4*Math.PI/plights.length; })
+      plights.forEach(ll => { ll.power = p*4*Math.PI/plights.length; });
 
       if (need_render) this.render3D();
    }
@@ -2171,7 +2172,7 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
          let box = this.getGeomBoundingBox(this._toplevel);
 
          // if detect of coordinates fails - ignore
-         if (isNaN(box.min.x)) return 1000;
+         if (!Number.isFinite(box.min.x)) return 1000;
 
          let sizex = box.max.x - box.min.x,
              sizey = box.max.y - box.min.y,
@@ -2252,7 +2253,7 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
       let box = this.getGeomBoundingBox(this._toplevel);
 
       // if detect of coordinates fails - ignore
-      if (isNaN(box.min.x)) return;
+      if (!Number.isFinite(box.min.x)) return;
 
       let sizex = box.max.x - box.min.x,
           sizey = box.max.y - box.min.y,
@@ -2354,7 +2355,7 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
       this.ctrl.rotatey = rotatey || 0;
       this.ctrl.rotatez = rotatez || 0;
       let preserve_zoom = false;
-      if (zoom && !isNaN(zoom)) {
+      if (zoom && Number.isFinite(zoom)) {
          this.ctrl.zoom = zoom;
       } else {
          preserve_zoom = true;
@@ -2464,7 +2465,7 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
          if ((step==0) && (tm2-tm1 > 200)) frames = 20;
          step++;
          this._animating = step < frames;
-      }
+      };
 
       animate();
 
@@ -4371,7 +4372,7 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
                geo.createItem(node, node._shape.fNode.fLeft, 'Left');
                geo.createItem(node, node._shape.fNode.fRight, 'Right');
                return true;
-            }
+            };
          }
 
          if (!sub._title && (obj._typename != "TGeoVolume")) sub._title = obj._typename;
@@ -4422,11 +4423,11 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
           _more: true,
           _geoobj: lst,
           _parent: parent,
-      }
+      };
 
       item._get = function(item /*, itemname */) {
          return Promise.resolve(item._geoobj || null);
-      }
+      };
 
       item._expand = function(node, lst) {
          // only childs
@@ -4444,7 +4445,7 @@ JSROOT.define(['d3', 'three', 'geobase', 'painter', 'base3d'], (d3, THREE, geo, 
             geo.createItem(node, lst.arr[n]);
 
          return true;
-      }
+      };
 
       if (!parent._childs) parent._childs = [];
       parent._childs.push(item);

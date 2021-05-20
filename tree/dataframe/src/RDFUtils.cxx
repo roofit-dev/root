@@ -220,6 +220,11 @@ std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, R
 {
    std::string colType;
 
+   // must check defines first: we want Redefines to have precedence over everything else
+   if (colType.empty() && define) {
+      colType = define->GetTypeName();
+   }
+
    if (ds && ds->HasColumn(colName))
       colType = ds->GetTypeName(colName);
 
@@ -232,10 +237,6 @@ std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, R
          auto &valueType = split[1];
          colType = ComposeRVecTypeName(valueType);
       }
-   }
-
-   if (colType.empty() && define) {
-      colType = define->GetTypeName();
    }
 
    if (colType.empty())
@@ -346,6 +347,18 @@ bool IsInternalColumn(std::string_view colName)
                            ('r' == str[0] || 't' == str[0]) && // starts with r or t
                            0 == strncmp("df", str + 1, 2);     // 2nd and 3rd letters are df
    return goodPrefix && '_' == colName.back();                 // also ends with '_'
+}
+
+unsigned int GetColumnWidth(const std::vector<std::string>& names, const unsigned int minColumnSpace)
+{
+   auto columnWidth = 0u;
+   for (const auto& name : names) {
+      const auto length = name.length();
+      if (length > columnWidth)
+         columnWidth = length;
+   }
+   columnWidth = (columnWidth / minColumnSpace + 1) * minColumnSpace;
+   return columnWidth;
 }
 
 } // end NS RDF

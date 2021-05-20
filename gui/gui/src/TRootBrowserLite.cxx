@@ -9,14 +9,15 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-//////////////////////////////////////////////////////////////////////////
-//                                                                      //
-// TRootBrowserLite                                                     //
-//                                                                      //
-// This class creates a ROOT object browser (looking like Windows       //
-// Explorer). The widgets used are the new native ROOT GUI widgets.     //
-//                                                                      //
-//////////////////////////////////////////////////////////////////////////
+
+/** \class TRootBrowserLite
+    \ingroup guiwidgets
+
+This class creates a ROOT object browser (looking like Windows
+Explorer). The widgets used are the new native ROOT GUI widgets.
+
+*/
+
 
 #include "RConfigure.h"
 
@@ -1714,10 +1715,7 @@ void TRootBrowserLite::ExecuteDefaultAction(TObject *obj)
 
          TIconBoxThumb *thumb = (TIconBoxThumb*)fIconBox->fThumbnails->FindObject(path.Data());
 
-         if (thumb) {
-            spic = thumb->fSmall;
-            pic = thumb->fLarge;
-         } else {
+         if (!thumb) {
             TImage *img = TImage::Create();
             nowp->Modified();
             nowp->Update();
@@ -2277,12 +2275,11 @@ void TRootBrowserLite::HighlightListLevel()
 
 void TRootBrowserLite::AddToHistory(TGListTreeItem *item)
 {
+   TRootBrowserHistoryCursor *cur;
    TGButton *btn = fToolBar->GetButton(kHistoryBack);
 
    if (!item || (fHistoryCursor &&
        (item == ((TRootBrowserHistoryCursor*)fHistoryCursor)->fItem))) return;
-
-   TRootBrowserHistoryCursor *cur = (TRootBrowserHistoryCursor*)fHistoryCursor;
 
    while ((cur = (TRootBrowserHistoryCursor*)fHistory->After(fHistoryCursor))) {
       fHistory->Remove(cur);
