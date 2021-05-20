@@ -32,8 +32,18 @@ clean_environment()
       return 1
    fi
 
-   local version=$1
-   local exp_pyroot=$2
+   local exp_pyroot=$1
+   local pyroot_dir=$2
+
+   # Check if we are using ZSH
+   if [ ! -z $ZSH_VERSION ] ; then
+      # Check if nonomatch option is set, enable if not and save
+      # the initial status
+      if ! setopt | grep -q nonomatch; then
+         setopt +o nomatch
+         unset_nomatch=true
+      fi
+   fi
 
    if [ -n "${old_rootsys}" ] ; then
       if [ -n "${PATH}" ]; then
@@ -44,6 +54,8 @@ clean_environment()
          drop_from_path "$LD_LIBRARY_PATH" "${old_rootsys}/lib"
          LD_LIBRARY_PATH=$newpath
          if [ ! -z "${exp_pyroot}" ] ; then
+            drop_from_path "$LD_LIBRARY_PATH" "$pyroot_dir"
+            LD_LIBRARY_PATH=$newpath
             for pyroot_libs_dir in ${old_rootsys}/lib/python*
             do
                drop_from_path "$LD_LIBRARY_PATH" "$pyroot_libs_dir"
@@ -55,6 +67,8 @@ clean_environment()
          drop_from_path "$DYLD_LIBRARY_PATH" "${old_rootsys}/lib"
          DYLD_LIBRARY_PATH=$newpath
          if [ ! -z "${exp_pyroot}" ] ; then
+            drop_from_path "$DYLD_LIBRARY_PATH" "$pyroot_dir"
+            DYLD_LIBRARY_PATH=$newpath
             for pyroot_libs_dir in ${old_rootsys}/lib/python*
             do
                drop_from_path "$DYLD_LIBRARY_PATH" "$pyroot_libs_dir"
@@ -66,6 +80,8 @@ clean_environment()
          drop_from_path "$SHLIB_PATH" "${old_rootsys}/lib"
          SHLIB_PATH=$newpath
          if [ ! -z "${exp_pyroot}" ] ; then
+            drop_from_path "$SHLIB_PATH" "$pyroot_dir"
+            SHLIB_PATH=$newpath
             for pyroot_libs_dir in ${old_rootsys}/lib/python*
             do
                drop_from_path "$SHLIB_PATH" "$pyroot_libs_dir"
@@ -77,6 +93,8 @@ clean_environment()
          drop_from_path "$LIBPATH" "${old_rootsys}/lib"
          LIBPATH=$newpath
          if [ ! -z "${exp_pyroot}" ] ; then
+            drop_from_path "$LIBPATH" "$pyroot_dir"
+            LIBPATH=$newpath
             for pyroot_libs_dir in ${old_rootsys}/lib/python*
             do
                drop_from_path "$LIBPATH" "$pyroot_libs_dir"
@@ -88,6 +106,8 @@ clean_environment()
          drop_from_path "$PYTHONPATH" "${old_rootsys}/lib"
          PYTHONPATH=$newpath
          if [ ! -z "${exp_pyroot}" ] ; then
+            drop_from_path "$PYTHONPATH" "$pyroot_dir"
+            PYTHONPATH=$newpath
             for pyroot_libs_dir in ${old_rootsys}/lib/python*
             do
                drop_from_path "$PYTHONPATH" "$pyroot_libs_dir"
@@ -118,6 +138,12 @@ clean_environment()
          default_manpath=""
       fi
    fi
+
+   # Check value of $unset_nomatch and unset if needed
+   if [ ! -z "${unset_nomatch}" ]; then
+      setopt -o nomatch
+   fi
+
 }
 
 set_environment()
@@ -128,8 +154,8 @@ set_environment()
       return 1
    fi
 
-   local version=$1
-   local exp_pyroot=$2
+   local exp_pyroot=$1
+   local pyroot_dir=$2
 
    if [ -z "${PATH}" ]; then
       PATH=@bindir@; export PATH
@@ -175,39 +201,38 @@ set_environment()
       fi
    else
       if [ -z "${LD_LIBRARY_PATH}" ]; then
-         LD_LIBRARY_PATH=@libdir@:@libdir@/python${version}
+         LD_LIBRARY_PATH=@libdir@:$pyroot_dir
          export LD_LIBRARY_PATH       # Linux, ELF HP-UX
       else
-         LD_LIBRARY_PATH=@libdir@:@libdir@/python${version}:$LD_LIBRARY_PATH
+         LD_LIBRARY_PATH=@libdir@:$pyroot_dir:$LD_LIBRARY_PATH
          export LD_LIBRARY_PATH
       fi
       if [ -z "${DYLD_LIBRARY_PATH}" ]; then
-         DYLD_LIBRARY_PATH=@libdir@:@libdir@/python${version}
+         DYLD_LIBRARY_PATH=@libdir@:$pyroot_dir
          export DYLD_LIBRARY_PATH       # Linux, ELF HP-UX
       else
-         DYLD_LIBRARY_PATH=@libdir@:@libdir@/python${version}:$DYLD_LIBRARY_PATH
+         DYLD_LIBRARY_PATH=@libdir@:$pyroot_dir:$DYLD_LIBRARY_PATH
          export DYLD_LIBRARY_PATH
       fi
       if [ -z "${SHLIB_PATH}" ]; then
-         SHLIB_PATH=@libdir@:@libdir@/python${version}
+         SHLIB_PATH=@libdir@:$pyroot_dir
          export SHLIB_PATH       # Linux, ELF HP-UX
       else
-         SHLIB_PATH=@libdir@:@libdir@/python${version}:$SHLIB_PATH
+         SHLIB_PATH=@libdir@:$pyroot_dir:$SHLIB_PATH
          export SHLIB_PATH
       fi
       if [ -z "${LIBPATH}" ]; then
-         LIBPATH=@libdir@:@libdir@/python${version}
+         LIBPATH=@libdir@:$pyroot_dir
          export LIBPATH       # Linux, ELF HP-UX
       else
-         LIBPATH=@libdir@:@libdir@/python${version}:$LIBPATH
+         LIBPATH=@libdir@:$pyroot_dir:$LIBPATH
          export LIBPATH
       fi
       if [ -z "${PYTHONPATH}" ]; then
-         PYTHONPATH=@libdir@:@libdir@/python${version}
+         PYTHONPATH=$pyroot_dir
          export PYTHONPATH       # Linux, ELF HP-UX
       else
-         PYTHONPATH=@libdir@:@libdir@/python${version}:$PYTHONPATH
-         export PYTHONPATH
+         PYTHONPATH=$pyroot_dir:$PYTHONPATH
       fi
    fi
 
@@ -288,10 +313,24 @@ fi
 if [ -d "@libdir@/python${ROOT_PYTHON_VERSION}" ]; then
    exp_pyroot=true
 fi
+# Check if an option EXP_PYROOT=true is passed by command line
+# this covers the case of installation directory that would not be
+# covered with the previous check
+if [ "$EXP_PYROOT" = true ]; then
+    exp_pyroot=true
+fi
 
 
-clean_environment "${ROOT_PYTHON_VERSION}" "${exp_pyroot}"
-set_environment "${ROOT_PYTHON_VERSION}" "${exp_pyroot}"
+# Check if we are in build or installation directory
+if [ ! -d "$ROOTSYS/CMakeFiles" ]; then
+   pyroot_dir=@CMAKE_INSTALL_FULL_PYROOTDIR@
+else
+   pyroot_dir=@libdir@/python${ROOT_PYTHON_VERSION}
+fi
+
+
+clean_environment "${exp_pyroot}" "${pyroot_dir}"
+set_environment "${exp_pyroot}" "${pyroot_dir}"
 
 
 # Prevent Cppyy from checking the PCH (and avoid warning)
@@ -301,9 +340,13 @@ if [ "x`root-config --arch | grep -v win32gcc | grep -i win32`" != "x" ]; then
    ROOTSYS="`cygpath -w $ROOTSYS`"
 fi
 
+
 unset old_rootsys
 unset thisroot
 unset -f drop_from_path
 unset -f clean_environment
 unset -f set_environment
 unset ROOT_PYTHON_VERSION
+unset pyroot_dir
+unset exp_pyroot
+unset EXP_PYROOT
