@@ -30,6 +30,7 @@
 #include "RooAbsRealLValue.h"
 #include "RooMsgService.h"
 #include "RooMinimizer.h"
+#include "RooNaNPacker.h"
 
 #include "TMatrixDSym.h"
 
@@ -75,7 +76,10 @@ RooAbsMinimizerFcn::RooAbsMinimizerFcn(RooArgList paramList, RooMinimizer *conte
 
 RooAbsMinimizerFcn::RooAbsMinimizerFcn(const RooAbsMinimizerFcn &other)
    : ROOT::Math::IBaseFunctionMultiDim(other),
-     _context(other._context), _maxFCN(other._maxFCN), _numBadNLL(other._numBadNLL),
+     _context(other._context), _maxFCN(other._maxFCN),
+     _funcOffset(other._funcOffset),
+     _recoverFromNaNStrength(other._recoverFromNaNStrength),
+     _numBadNLL(other._numBadNLL),
      _printEvalErrors(other._printEvalErrors), _evalCounter(other._evalCounter), _doEvalErrorWall(other._doEvalErrorWall),
      _nDim(other._nDim), _logfile(other._logfile), _verbose(other._verbose)
 {
