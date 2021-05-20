@@ -1,30 +1,24 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 set(ROOT_ARCHITECTURE macosx)
 set(ROOT_PLATFORM macosx)
-
-set(SYSLIBS "-lm ${EXTRA_LDFLAGS} ${FINK_LDFLAGS} ${CMAKE_THREAD_LIBS_INIT} -ldl")
-set(XLIBS "${XPMLIBDIR} ${XPMLIB} ${X11LIBDIR} -lXext -lX11")
-set(CILIBS "-lm ${EXTRA_LDFLAGS} ${FINK_LDFLAGS} -ldl")
-#set(CRYPTLIBS "-lcrypt")
-set(CMAKE_M_LIBS -lm)
-
-#---This is needed to help CMake to locate the X11 headers in the correct place and not under /usr/include
-set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} /usr/X11R6)
-#---------------------------------------------------------------------------------------------------------
 
 if (CMAKE_SYSTEM_NAME MATCHES Darwin)
   EXECUTE_PROCESS(COMMAND sw_vers "-productVersion"
                   COMMAND cut -d . -f 1-2
                   OUTPUT_VARIABLE MACOSX_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
+
   MESSAGE(STATUS "Found a Mac OS X System ${MACOSX_VERSION}")
-  EXECUTE_PROCESS(COMMAND sw_vers "-productVersion"
-                  COMMAND cut -d . -f 2
-                  OUTPUT_VARIABLE MACOSX_MINOR OUTPUT_STRIP_TRAILING_WHITESPACE)
 
   if(MACOSX_VERSION VERSION_GREATER 10.7 AND ${CMAKE_CXX_COMPILER_ID} MATCHES Clang)
     set(libcxx ON CACHE BOOL "Build using libc++" FORCE)
   endif()
 
-  if(${MACOSX_MINOR} GREATER 4)
+  if(MACOSX_VERSION VERSION_GREATER 10.4)
     #TODO: check haveconfig and rpath -> set rpath true
     #TODO: check Thread, define link command
     #TODO: more stuff check configure script
@@ -53,10 +47,6 @@ if (CMAKE_SYSTEM_NAME MATCHES Darwin)
   endif()
   if(MACOSX_VERSION VERSION_GREATER 10.8)
     set(MACOSX_GLU_DEPRECATED ON)
-    set(MACOSX_KRB5_DEPRECATED ON)
-  endif()
-  if(MACOSX_VERSION VERSION_GREATER 10.9)
-    set(MACOSX_LDAP_DEPRECATED ON)
   endif()
 
   if (CMAKE_COMPILER_IS_GNUCXX)
@@ -75,16 +65,10 @@ if (CMAKE_SYSTEM_NAME MATCHES Darwin)
      # Select flags.
      set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG")
      set(CMAKE_CXX_FLAGS_RELEASE        "-O2 -DNDEBUG")
-     set(CMAKE_CXX_FLAGS_OPTIMIZED      "-O3 -ffast-math -DNDEBUG")
      set(CMAKE_CXX_FLAGS_DEBUG          "-g")
-     set(CMAKE_CXX_FLAGS_DEBUGFULL      "-g3")
-     set(CMAKE_CXX_FLAGS_PROFILE        "-g3 -ftest-coverage -fprofile-arcs")
      set(CMAKE_C_FLAGS_RELWITHDEBINFO   "-O2 -g -DNDEBUG")
      set(CMAKE_C_FLAGS_RELEASE          "-O2 -DNDEBUG")
-     set(CMAKE_C_FLAGS_OPTIMIZED        "-O3 -ffast-math -DNDEBUG")
      set(CMAKE_C_FLAGS_DEBUG            "-g")
-     set(CMAKE_C_FLAGS_DEBUGFULL        "-g3")
-     set(CMAKE_C_FLAGS_PROFILE          "-g3 -ftest-coverage -fprofile-arcs")
   elseif(${CMAKE_CXX_COMPILER_ID} MATCHES Clang)
      message(STATUS "Found LLVM compiler collection")
 
@@ -105,16 +89,10 @@ if (CMAKE_SYSTEM_NAME MATCHES Darwin)
      # Select flags.
      set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG")
      set(CMAKE_CXX_FLAGS_RELEASE        "-O2 -DNDEBUG")
-     set(CMAKE_CXX_FLAGS_OPTIMIZED      "-O3 -ffast-math -DNDEBUG")
      set(CMAKE_CXX_FLAGS_DEBUG          "-g")
-     set(CMAKE_CXX_FLAGS_DEBUGFULL      "-g3")
-     set(CMAKE_CXX_FLAGS_PROFILE        "-g3 -ftest-coverage -fprofile-arcs")
      set(CMAKE_C_FLAGS_RELWITHDEBINFO   "-O2 -g -DNDEBUG")
      set(CMAKE_C_FLAGS_RELEASE          "-O2 -DNDEBUG")
-     set(CMAKE_C_FLAGS_OPTIMIZED        "-O3 -ffast-math -DNDEBUG")
      set(CMAKE_C_FLAGS_DEBUG            "-g")
-     set(CMAKE_C_FLAGS_DEBUGFULL        "-g3")
-     set(CMAKE_C_FLAGS_PROFILE          "-g3 -ftest-coverage -fprofile-arcs")
   else()
     MESSAGE(FATAL_ERROR "There is no setup for this compiler with ID=${CMAKE_CXX_COMPILER_ID} up to now. Don't know what to do. Stop cmake at this point.")
   endif()
