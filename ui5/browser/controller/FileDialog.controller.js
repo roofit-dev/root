@@ -36,24 +36,44 @@ sap.ui.define(['rootui5/panel/Controller',
          */
 
          this.kind = "None"; // not yet known
-         this.oModel = new JSONModel({ dialogTitle: "Dialog Title", fileName: "", filesList: [{name:"first.txt", counter: 11}, {name:"second.txt", counter: 22}, {name:"third.xml", counter: 33}]});
+         this.oModel = new JSONModel({ canEditName: (this.kind == "SaveAs") || (this.kind == "NewFile"),
+                                       dialogTitle: "Dialog Title",
+                                       fileName: "",
+                                       filesList: [{name:"first.txt", counter: 11}, {name:"second.txt", counter: 22}, {name:"third.xml", counter: 33}],
+                                       fileExt: "AllFiles",
+                                       showFileExt: false,
+                                       fileExtList: [] });
+                                      // fileExtList: [{ id: "AllFiles", text: "All files (*.*)" }, { id: "png", text: "png files (*.png)"}, { id: "cxx", text: "CXX files (*.cxx)"}] });
          this.getView().setModel(this.oModel);
 
-         var pthis = this;
+         Fragment.load({
+            name: "rootui5.browser.view.filedialog",
+            controller: this,
+            id: "FileDialogFragment"
+         }).then(function (oFragment) {
+            this.fragment = oFragment;
+            this.getView().addDependent(this.fragment);
+            this.getView().byId("dialogPage").addContent(this.fragment);
+            this.fragment.setModel(this.oModel);
 
-         Fragment.load({name: "rootui5.browser.view.filedialog", controller: this, id: "FileDialogFragment"}).then(function (oFragment) {
-            pthis.getView().addDependent(oFragment);
+            if (this._init_msg) {
+               this.processInitMsg(this._init_msg);
+               delete this._init_msg;
+            }
 
-            pthis.getView().byId("dialogPage").addContent(oFragment);
-            oFragment.setModel(pthis.oModel);
-         });
+         }.bind(this));
 
          this.own_window = true;
       },
 
       /** Set path to the Breadcrumb element */
       updateBReadcrumbs: function(split) {
+         this._currentPath = split;
+
          var oBreadcrumbs = sap.ui.core.Fragment.byId("FileDialogFragment", "breadcrumbs");
+         if (!oBreadcrumbs)
+            return;
+
          oBreadcrumbs.removeAllLinks();
          oBreadcrumbs.setCurrentLocationText("");
          for (let i=-1; i<split.length; i++) {
@@ -71,18 +91,16 @@ sap.ui.define(['rootui5/panel/Controller',
       /** Returns coded in Breadcrumb path
        * If selectedId specified, return path up to that element id */
       getBreadcrumbPath: function(selectedId) {
-         var oBreadcrumbs = sap.ui.core.Fragment.byId("FileDialogFragment", "breadcrumbs"),
-             oLinks = oBreadcrumbs.getLinks(),
-             path = [];
-
-         for (var i = 0; i < oLinks.length; i++) {
-            if (i>0) path.push(oLinks[i].getText());
-            if (selectedId && (oLinks[i].getId() === selectedId)) return path;
+         var oBreadcrumbs = sap.ui.core.Fragment.byId("FileDialogFragment", "breadcrumbs");
+         if (selectedId && oBreadcrumbs) {
+            var oLinks = oBreadcrumbs.getLinks(), path = [];
+            for (var i = 0; i < oLinks.length; i++) {
+               if (i>0) path.push(oLinks[i].getText());
+               if (oLinks[i].getId() === selectedId) return path;
+            }
          }
 
-         var lastdir = oBreadcrumbs.getCurrentLocationText();
-         if (lastdir) path.push(lastdir);
-         return path;
+         return this._currentPath.slice(); // make copy of original array
       },
 
       // returns full file name as array
@@ -120,6 +138,11 @@ sap.ui.define(['rootui5/panel/Controller',
          this.oModel.setProperty("/fileName", item.getTitle());
       },
 
+      /** When selected file extenstion changed */
+      onFileExtChanged: function() {
+         var extName = this.oModel.getProperty("/fileExt");
+         this.websocket.Send("CHEXT:" + extName);
+      },
 
       processInitMsg: function(msg) {
          var cfg = JSON.parse(msg);
@@ -131,10 +154,25 @@ sap.ui.define(['rootui5/panel/Controller',
             this.oModel.setProperty("/canEditName", (this.kind == "SaveAs") || (this.kind == "NewFile"));
          }
 
-         if (cfg.fname)
-            this.oModel.setProperty("/fileName", cfg.fname);
-
          this.updateBReadcrumbs(cfg.path);
+
+         this.oModel.setProperty("/fileName", cfg.fname);
+
+         if (cfg.filters && cfg.filters.length) {
+            var arr = [];
+            for (var k=0;k<cfg.filters.length;++k) {
+               var fname = cfg.filters[k];
+               var p = fname.indexOf("(");
+               if (p>0) fname = fname.substr(0,p);
+               arr.push({id: fname.trim(), text: cfg.filters[k]});
+            }
+            this.oModel.setProperty("/fileExt", cfg.filter);
+            this.oModel.setProperty("/fileExtList", arr);
+            this.oModel.setProperty("/showFileExt", true);
+         } else {
+            this.oModel.setProperty("/fileExt", "All files");
+            this.oModel.setProperty("/showFileExt", false);
+         }
 
          this.oModel.setProperty("/filesList", cfg.brepl.nodes);
       },
@@ -193,7 +231,10 @@ sap.ui.define(['rootui5/panel/Controller',
 
          switch (mhdr) {
          case "INMSG":
-            this.processInitMsg(msg);
+            if (!this.fragment)
+               this._init_msg = msg;
+            else
+               this.processInitMsg(msg);
             break;
          case "CHMSG":
             this.processChangePathMsg(msg);
@@ -270,30 +311,30 @@ sap.ui.define(['rootui5/panel/Controller',
          var p = Math.max(fname.lastIndexOf("/"), fname.lastIndexOf("\\"));
          if (p>0) fname = fname.substr(p+1);
 
-         this.kind = kind; // not yet known
-         this.oModel = new JSONModel({
-                              canEditName: (this.kind == "SaveAs") || (this.kind == "NewFile"),
-                              dialogTitle: args.title || "Title",
-                              fileName: fname, // will be returned from the server, just for initialization
-                              filesList: [{name:"first.txt", counter: 11}, {name:"second.txt", counter: 22}, {name:"third.xml", counter: 33}]
-         });
+         this.kind = kind;
+         this.oModel = new JSONModel({ canEditName: (this.kind == "SaveAs") || (this.kind == "NewFile"),
+                                       dialogTitle: args.title || "Title",
+                                       fileName: fname, // will be returned from the server, just for initialization
+                                       filesList: [{name:"first.txt", counter: 11}, {name:"second.txt", counter: 22}, {name:"third.xml", counter: 33}],
+                                       fileExt: "All files",
+                                       showFileExt: false,
+                                       fileExtList: [] });
+                                       // fileExtList: [{ id: "AllFiles", text: "All files (*.*)" }, { id: "png", text: "png files (*.png)"}, { id: "cxx", text: "CXX files (*.cxx)"}] });
 
          // create extra channel for the FileDialog
          this.websocket = args.websocket.CreateChannel();
          // assign ourself as receiver of all
          this.websocket.SetReceiver(this);
 
-         var fragment;
-
          await Fragment.load({
             name: "rootui5.browser.view.filedialog",
             controller: this,
             id: "FileDialogFragment"
          }).then(function (oFragment) {
-            fragment = oFragment;
-         });
+            this.fragment = oFragment;
+         }.bind(this));
 
-         fragment.setModel(this.oModel);
+         this.fragment.setModel(this.oModel);
 
          this.dialog = new Dialog({
             title: "{/dialogTitle}",
@@ -301,7 +342,7 @@ sap.ui.define(['rootui5/panel/Controller',
             contentHeight: args.height || "50%",
             resizable: (args.resizable === undefined) ? true : args.resizable,
             draggable: (args.draggable === undefined) ? true : args.draggable,
-            content: fragment,
+            content: this.fragment,
             beginButton: new Button({
                text: 'Cancel',
                press: this.onCancelPress.bind(this)
@@ -319,7 +360,21 @@ sap.ui.define(['rootui5/panel/Controller',
 
          this.dialog.open();
 
-         args.websocket.Send("FILEDIALOG:" + JSON.stringify([ this.kind, args.filename,  this.websocket.getChannelId().toString() ]));
+         if (this._init_msg) {
+            // probably never happens here, but keep it for completnece
+            this.processInitMsg(this._init_msg);
+            delete this._init_msg;
+         }
+
+         var server_args = [ this.kind, args.filename || "", this.websocket.getChannelId().toString() ];
+
+         // add at the end filter and filter array
+         if (args.filter || args.filters) {
+            server_args.push(args.filter || "Any files");
+            server_args = server_args.concat(args.filters || ["Any files (*)"]);
+         }
+
+         args.websocket.Send("FILEDIALOG:" + JSON.stringify(server_args));
 
          return this;
       },
