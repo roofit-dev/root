@@ -26,14 +26,17 @@ the trees in the chain.
 
 #include "TChain.h"
 
+#include <iostream>
+#include <cfloat>
+
 #include "TBranch.h"
 #include "TBrowser.h"
+#include "TBuffer.h"
 #include "TChainElement.h"
 #include "TClass.h"
 #include "TColor.h"
 #include "TCut.h"
 #include "TError.h"
-#include "TMath.h"
 #include "TFile.h"
 #include "TFileInfo.h"
 #include "TFriendElement.h"
@@ -55,6 +58,8 @@ the trees in the chain.
 #include "TFileStager.h"
 #include "TFilePrefetch.h"
 #include "TVirtualMutex.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 ClassImp(TChain);
 
@@ -192,7 +197,7 @@ TChain::~TChain()
    fFiles = 0;
 
    //first delete cache if exists
-   auto tc = fFile ? fTree->GetReadCache(fFile) : nullptr;
+   auto tc = fFile && fTree ? fTree->GetReadCache(fFile) : nullptr;
    if (tc) {
       delete tc;
       fFile->SetCacheRead(0, fTree);
@@ -1368,6 +1373,15 @@ Long64_t TChain::LoadTree(Long64_t entry)
                      *pp = br;
                   }
                   if (br) {
+                     if (!frelement->GetCheckedType()) {
+                        Int_t res = CheckBranchAddressType(br, TClass::GetClass(frelement->GetBaddressClassName()),
+                                                         (EDataType) frelement->GetBaddressType(), frelement->GetBaddressIsPtr());
+                        if ((res & kNeedEnableDecomposedObj) && !br->GetMakeClass()) {
+                           br->SetMakeClass(kTRUE);
+                        }
+                        frelement->SetDecomposedObj(br->GetMakeClass());
+                        frelement->SetCheckedType(kTRUE);
+                     }
                      // FIXME: We may have to tell the branch it should
                      //        not be an owner of the object pointed at.
                      br->SetAddress(addr);
@@ -1639,6 +1653,15 @@ Long64_t TChain::LoadTree(Long64_t entry)
             *pp = br;
          }
          if (br) {
+            if (!element->GetCheckedType()) {
+               Int_t res = CheckBranchAddressType(br, TClass::GetClass(element->GetBaddressClassName()),
+                                                  (EDataType) element->GetBaddressType(), element->GetBaddressIsPtr());
+               if ((res & kNeedEnableDecomposedObj) && !br->GetMakeClass()) {
+                  br->SetMakeClass(kTRUE);
+               }
+               element->SetDecomposedObj(br->GetMakeClass());
+               element->SetCheckedType(kTRUE);
+            }
             // FIXME: We may have to tell the branch it should
             //        not be an owner of the object pointed at.
             br->SetAddress(addr);
@@ -2096,13 +2119,14 @@ void TChain::ParseTreeFilename(const char *name, TString &filename, TString &tre
                                Bool_t) const
 {
    Ssiz_t pIdx = kNPOS;
-   filename = name;
+   filename.Clear();
    treename.Clear();
    query.Clear();
    suffix.Clear();
 
    // General case
    TUrl url(name, kTRUE);
+   filename = (strcmp(url.GetProtocol(), "file")) ? url.GetUrl() : url.GetFileAndOptions();
 
    TString fn = url.GetFile();
    // Extract query, if any
@@ -2121,9 +2145,10 @@ void TChain::ParseTreeFilename(const char *name, TString &filename, TString &tre
    }
    // Suffix
    suffix = url.GetFileAndOptions();
+   // Get options from suffix by removing the file name
    suffix.Replace(suffix.Index(fn), fn.Length(), "");
-   // Remove it from the file name
-   filename.Remove(filename.Index(fn) + fn.Length());
+   // Remove the options suffix from the original file name
+   filename.Replace(filename.Index(suffix), suffix.Length(), "");
 
    // Special case: [...]file.root/treename
    static const char *dotr = ".root";
@@ -2293,7 +2318,7 @@ void TChain::ResetAfterMerge(TFileMergeInfo *info)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Save TChain as a C++ statements on output stream out.
-/// With the option "friend" save the description of all the 
+/// With the option "friend" save the description of all the
 /// TChain's friend trees or chains as well.
 
 void TChain::SavePrimitive(std::ostream &out, Option_t *option)
@@ -2479,6 +2504,11 @@ Int_t TChain::SetBranchAddress(const char *bname, void* add, TBranch** ptr)
       }
       if (branch) {
          res = CheckBranchAddressType(branch, TClass::GetClass(element->GetBaddressClassName()), (EDataType) element->GetBaddressType(), element->GetBaddressIsPtr());
+         if ((res & kNeedEnableDecomposedObj) && !branch->GetMakeClass()) {
+            branch->SetMakeClass(kTRUE);
+         }
+         element->SetDecomposedObj(branch->GetMakeClass());
+         element->SetCheckedType(kTRUE);
          if (fClones) {
             void* oldAdd = branch->GetAddress();
             for (TObjLink* lnk = fClones->FirstLink(); lnk; lnk = lnk->Next()) {
@@ -2487,9 +2517,13 @@ Int_t TChain::SetBranchAddress(const char *bname, void* add, TBranch** ptr)
                if (cloneBr && (cloneBr->GetAddress() == oldAdd)) {
                   // the clone's branch is still pointing to us
                   cloneBr->SetAddress(add);
+                  if ((res & kNeedEnableDecomposedObj) && !cloneBr->GetMakeClass()) {
+                     cloneBr->SetMakeClass(kTRUE);
+                  }
                }
             }
          }
+
          branch->SetAddress(add);
       } else {
          Error("SetBranchAddress", "unknown branch -> %s", bname);

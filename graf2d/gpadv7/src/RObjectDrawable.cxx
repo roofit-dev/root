@@ -10,28 +10,33 @@
 
 #include <ROOT/RDisplayItem.hxx>
 #include <ROOT/RLogger.hxx>
-#include <ROOT/RMenuItem.hxx>
+#include <ROOT/RMenuItems.hxx>
 
 #include "TROOT.h"
-
 
 #include <exception>
 #include <sstream>
 #include <iostream>
 
 
-std::unique_ptr<ROOT::Experimental::RDisplayItem> ROOT::Experimental::RObjectDrawable::Display() const
+using namespace ROOT::Experimental;
+
+RObjectDrawable::~RObjectDrawable() {}
+
+std::unique_ptr<RDisplayItem> RObjectDrawable::Display(const RDisplayContext &ctxt)
 {
-   return std::make_unique<RObjectDisplayItem>(fObj.get(), fOpts);
+   if (GetVersion() > ctxt.GetLastVersion())
+      return std::make_unique<RObjectDisplayItem>(fObj.get(), fOpts);
+   return nullptr;
 }
 
-void ROOT::Experimental::RObjectDrawable::PopulateMenu(RMenuItems &items)
+void RObjectDrawable::PopulateMenu(RMenuItems &items)
 {
    // fill context menu items for the ROOT class
    items.PopulateObjectMenu(fObj.get(), fObj.get()->IsA());
 }
 
-void ROOT::Experimental::RObjectDrawable::Execute(const std::string &exec)
+void RObjectDrawable::Execute(const std::string &exec)
 {
    TObject *obj = fObj.get();
 
@@ -40,6 +45,3 @@ void ROOT::Experimental::RObjectDrawable::Execute(const std::string &exec)
    std::cout << "RObjectDrawable::Execute Obj " << obj->GetName() << "Cmd " << cmd.str() << std::endl;
    gROOT->ProcessLine(cmd.str().c_str());
 }
-
-
-

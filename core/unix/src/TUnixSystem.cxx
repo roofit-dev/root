@@ -33,9 +33,13 @@
 #include "TInterpreter.h"
 #include "TApplication.h"
 #include "TObjString.h"
-#include "Riostream.h"
 #include "TVirtualMutex.h"
+#include "ThreadLocalStorage.h"
 #include "TObjArray.h"
+#include "snprintf.h"
+#include "strlcpy.h"
+#include <iostream>
+#include <fstream>
 #include <map>
 #include <algorithm>
 #include <atomic>
@@ -519,8 +523,15 @@ static void DylibAdded(const struct mach_header *mh, intptr_t /* vmaddr_slide */
    // explicitly linked against the executable. Additional dylibs
    // come when they are explicitly linked against loaded so's, currently
    // we are not interested in these
-   if (lib.EndsWith("/libSystem.B.dylib"))
+   if (lib.EndsWith("/libSystem.B.dylib")) {
       gotFirstSo = kTRUE;
+      if (linkedDylibs.IsNull()) {
+         // TSystem::GetLibraries() assumes that an empty GetLinkedLibraries()
+         // means failure to extract the linked libraries. Signal "we did
+         // manage, but it's empty" by returning a single space.
+         linkedDylibs = ' ';
+      }
+   }
 
    // add all libs loaded before libSystem.B.dylib
    if (!gotFirstSo && (lib.EndsWith(".dylib") || lib.EndsWith(".so"))) {
@@ -2153,6 +2164,7 @@ void TUnixSystem::Exit(int code, Bool_t mode)
 
 void TUnixSystem::Abort(int)
 {
+   IgnoreSignal(kSigAbort);
    ::abort();
 }
 
@@ -3631,6 +3643,8 @@ void TUnixSystem::DispatchSignals(ESignals sig)
       if (gExceptionHandler)
          gExceptionHandler->HandleException(sig);
       else {
+         if (sig == kSigAbort)
+            return;
          Break("TUnixSystem::DispatchSignals", "%s", UnixSigname(sig));
          StackTrace();
          if (gApplication)

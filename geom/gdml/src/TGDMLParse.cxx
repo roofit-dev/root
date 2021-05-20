@@ -99,8 +99,6 @@ When most solids or volumes are added to the geometry they
 #include "TGeoXtru.h"
 #include "TGeoScaledShape.h"
 #include "TGeoTessellated.h"
-#include "TGeoVolume.h"
-#include "TROOT.h"
 #include "TMath.h"
 #include "TMap.h"
 #include "TObjString.h"
@@ -115,7 +113,7 @@ When most solids or volumes are added to the geometry they
 #include "TGeoOpticalSurface.h"
 #include "TGeoSystemOfUnits.h"
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <string>
 #include <sstream>
 #include <locale>
@@ -4214,6 +4212,7 @@ XMLNodePointer_t TGDMLParse::Tessellated(TXMLEngine *gdml, XMLNodePointer_t node
       tempattr.ToLower();
       if (tempattr == "triangular") {
          attr = gdml->GetFirstAttr(child);
+         bool relative = false;
 
          while (attr != nullptr) {
             tempattr = gdml->GetAttrName(attr);
@@ -4248,17 +4247,17 @@ XMLNodePointer_t TGDMLParse::Tessellated(TXMLEngine *gdml, XMLNodePointer_t node
             else if (tempattr == "type") {
                type = gdml->GetAttrValue(attr);
                type.ToLower();
-               bool relative = (type == "relative") ? true : false;
-               AddTriangularFacet(relative);
+               relative = (type == "relative") ? true : false;
             }
 
             attr = gdml->GetNextAttr(attr);
          }
-
+         AddTriangularFacet(relative);
       }
 
       else if (tempattr == "quadrangular") {
          attr = gdml->GetFirstAttr(child);
+         bool relative = false;
 
          while (attr != nullptr) {
             tempattr = gdml->GetAttrName(attr);
@@ -4302,12 +4301,12 @@ XMLNodePointer_t TGDMLParse::Tessellated(TXMLEngine *gdml, XMLNodePointer_t node
             else if (tempattr == "type") {
                type = gdml->GetAttrValue(attr);
                type.ToLower();
-               bool relative = (type == "relative") ? true : false;
-               AddQuadrangularFacet(relative);
+               relative = (type == "relative") ? true : false;
             }
 
             attr = gdml->GetNextAttr(attr);
          }
+         AddQuadrangularFacet(relative);
       }
       child = gdml->GetNext(child);
    }

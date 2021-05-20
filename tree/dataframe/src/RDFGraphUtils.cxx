@@ -48,12 +48,6 @@ std::string GraphCreatorHelper::FromGraphActionsToDot(std::vector<std::shared_pt
    return "digraph {\n" + dotStringLabels.str() + dotStringGraph.str() + "}";
 }
 
-bool CheckIfDefaultOrDSColumn(const std::string &name,
-                              const std::shared_ptr<ROOT::Detail::RDF::RCustomColumnBase> &column)
-{
-   return (ROOT::Internal::RDF::IsInternalColumn(name) || column->IsDataSourceColumn());
-}
-
 std::string GraphCreatorHelper::RepresentGraph(ROOT::RDataFrame &rDataFrame)
 {
    auto loopManager = rDataFrame.GetLoopManager();
@@ -77,7 +71,7 @@ std::string GraphCreatorHelper::RepresentGraph(RLoopManager *loopManager)
 }
 
 std::shared_ptr<GraphNode>
-CreateDefineNode(const std::string &columnName, const ROOT::Detail::RDF::RCustomColumnBase *columnPtr)
+CreateDefineNode(const std::string &columnName, const ROOT::Detail::RDF::RDefineBase *columnPtr)
 {
    // If there is already a node for this define (recognized by the custom column it is defining) return it. If there is
    // not, return a new one.

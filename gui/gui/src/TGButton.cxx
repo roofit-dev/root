@@ -94,24 +94,27 @@
 #include "TGToolTip.h"
 #include "TGButtonGroup.h"
 #include "TGResourcePool.h"
-#include "Riostream.h"
 #include "TSystem.h"
 #include "TImage.h"
 #include "TEnv.h"
 #include "TClass.h"
 #include "TGMenu.h"
 #include "KeySymbols.h"
+#include "TVirtualX.h"
 
-const TGGC *TGButton::fgHibckgndGC = 0;
-const TGGC *TGButton::fgDefaultGC = 0;
+#include <iostream>
 
-const TGFont *TGTextButton::fgDefaultFont = 0;
 
-const TGFont *TGCheckButton::fgDefaultFont = 0;
-const TGGC   *TGCheckButton::fgDefaultGC = 0;
+const TGGC *TGButton::fgHibckgndGC = nullptr;
+const TGGC *TGButton::fgDefaultGC = nullptr;
 
-const TGFont *TGRadioButton::fgDefaultFont = 0;
-const TGGC   *TGRadioButton::fgDefaultGC = 0;
+const TGFont *TGTextButton::fgDefaultFont = nullptr;
+
+const TGFont *TGCheckButton::fgDefaultFont = nullptr;
+const TGGC   *TGCheckButton::fgDefaultGC = nullptr;
+
+const TGFont *TGRadioButton::fgDefaultFont = nullptr;
+const TGGC   *TGRadioButton::fgDefaultGC = nullptr;
 
 Window_t TGButton::fgReleaseBtn = 0;
 
