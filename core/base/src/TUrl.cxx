@@ -30,8 +30,8 @@ an URL. The supported url format is:
 #include "TMap.h"
 #include "TROOT.h"
 
-TObjArray *TUrl::fgSpecialProtocols = 0;
-THashList *TUrl::fgHostFQDNs = 0;
+TObjArray *TUrl::fgSpecialProtocols = nullptr;
+THashList *TUrl::fgHostFQDNs = nullptr;
 
 #ifdef R__COMPLETE_MEM_TERMINATION
 namespace {
@@ -107,7 +107,8 @@ TUrl::~TUrl()
 
 void TUrl::SetUrl(const char *url, Bool_t defaultIsFile)
 {
-   fOptionsMap = 0;
+   delete fOptionsMap;
+   fOptionsMap = nullptr;
 
    if (!url || !url[0]) {
       fPort = -1;
@@ -352,7 +353,7 @@ TUrl::TUrl(const TUrl &url) : TObject(url)
    fPort       = url.fPort;
    fFileOA     = url.fFileOA;
    fHostFQ     = url.fHostFQ;
-   fOptionsMap = 0;
+   fOptionsMap = nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -373,7 +374,8 @@ TUrl &TUrl::operator=(const TUrl &rhs)
       fPort       = rhs.fPort;
       fFileOA     = rhs.fFileOA;
       fHostFQ     = rhs.fHostFQ;
-      fOptionsMap = 0;
+      delete fOptionsMap;
+      fOptionsMap = nullptr;
    }
    return *this;
 }
@@ -617,6 +619,9 @@ void TUrl::ParseOptions() const
    if (fOptionsMap) return;
 
    TString urloptions = GetOptions();
+   if (urloptions.IsNull())
+      return;
+
    TObjArray *objOptions = urloptions.Tokenize("&");
    for (Int_t n = 0; n < objOptions->GetEntries(); n++) {
       TString loption = ((TObjString *) objOptions->At(n))->GetName();
@@ -631,7 +636,7 @@ void TUrl::ParseOptions() const
          fOptionsMap->Add(new TObjString(key), new TObjString(value));
       } else {
          TString key = ((TObjString *) objTags->At(0))->GetName();
-         fOptionsMap->Add(new TObjString(key), 0);
+         fOptionsMap->Add(new TObjString(key), nullptr);
       }
       delete objTags;
    }
@@ -645,10 +650,10 @@ void TUrl::ParseOptions() const
 
 const char *TUrl::GetValueFromOptions(const char *key) const
 {
-   if (!key) return 0;
+   if (!key) return nullptr;
    ParseOptions();
-   TObject *option = fOptionsMap ? fOptionsMap->GetValue(key) : 0;
-   return (option ? ((TObjString*)fOptionsMap->GetValue(key))->GetName(): 0);
+   TObject *option = fOptionsMap ? fOptionsMap->GetValue(key) : nullptr;
+   return option ? option->GetName() : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -659,8 +664,8 @@ Int_t TUrl::GetIntValueFromOptions(const char *key) const
 {
    if (!key) return -1;
    ParseOptions();
-   TObject *option = fOptionsMap ? fOptionsMap->GetValue(key) : 0;
-   return (option ? (atoi(((TObjString*)fOptionsMap->GetValue(key))->GetName())) : -1);
+   TObject *option = fOptionsMap ? fOptionsMap->GetValue(key) : nullptr;
+   return option ? atoi(option->GetName()) : -1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -671,9 +676,7 @@ Bool_t TUrl::HasOption(const char *key) const
    if (!key) return kFALSE;
    ParseOptions();
 
-   if (fOptionsMap && fOptionsMap->FindObject(key))
-      return kTRUE;
-   return kFALSE;
+   return fOptionsMap && fOptionsMap->FindObject(key);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
