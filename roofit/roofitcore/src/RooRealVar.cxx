@@ -1079,8 +1079,6 @@ void RooRealVar::attachToVStore(RooVectorDataStore& vstore)
     RooVectorDataStore::RealFullVector* rfv = vstore.addRealFull(this) ;
     rfv->setBuffer(this,&_value);
 
-    _batchData.attachForeignStorage(rfv->data());
-
     // Attach/create additional branch for error
     if (getAttribute("StoreError") || vstore.hasError(this) ) {
       rfv->setErrorBuffer(&_error) ;
