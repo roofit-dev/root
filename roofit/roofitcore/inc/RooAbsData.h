@@ -22,6 +22,7 @@
 #include "RooFormulaVar.h"
 #include <cmath>
 #include "TMatrixDSym.h"
+#include "RooSpan.h"
 
 class RooAbsArg;
 class RooAbsReal ;
@@ -39,6 +40,7 @@ class RooAbsL;
 }
 }
 
+
 class RooAbsData : public TNamed, public RooPrintable {
 public:
 
@@ -46,6 +48,7 @@ public:
   RooAbsData() ; 
   RooAbsData(const char *name, const char *title, const RooArgSet& vars, RooAbsDataStore* store=0) ;
   RooAbsData(const RooAbsData& other, const char* newname = 0) ;
+  RooAbsData& operator=(const RooAbsData& other);
   virtual ~RooAbsData() ;
   virtual RooAbsData* emptyClone(const char* newName=0, const char* newTitle=0, const RooArgSet* vars=0, const char* wgtVarName=0) const = 0 ;
 
@@ -63,7 +66,7 @@ public:
   TTree *GetClonedTree() const;
 
   void convertToVectorStore() ;
-  void convertToTreeStore();
+  virtual void convertToTreeStore();
 
   void attachBuffers(const RooArgSet& extObs) ;
   void resetBuffers() ;
@@ -92,6 +95,8 @@ public:
   virtual Double_t weightError(ErrorType etype=Poisson) const ;
   virtual void weightError(Double_t& lo, Double_t& hi, ErrorType etype=Poisson) const ; 
   virtual const RooArgSet* get(Int_t index) const ;
+
+  virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t last) const = 0;
 
   virtual Int_t numEntries() const ;
   virtual Double_t sumEntries() const = 0 ;
@@ -264,9 +269,6 @@ protected:
   // Column structure definition
   RooArgSet _vars;         // Dimensions of this data set
   RooArgSet _cachedVars ;  //! External variables cached with this data set
-
-  TIterator *_iterator;    //! Iterator over dimension variables
-  TIterator *_cacheIter ;  //! Iterator over cached variables
 
   RooAbsDataStore* _dstore ; // Data storage implementation
 

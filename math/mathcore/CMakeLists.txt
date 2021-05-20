@@ -1,3 +1,9 @@
+# Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.
+# All rights reserved.
+#
+# For the licensing terms see $ROOTSYS/LICENSE.
+# For the list of contributors see $ROOTSYS/README/CREDITS.
+
 ############################################################################
 # CMakeLists.txt file for building ROOT math/mathcore package
 ############################################################################
@@ -92,6 +98,7 @@ set(HEADERS
   TRandom3.h
   TRandomGen.h
   TStatistic.h
+  VectorizedTMath.h
 )
 
 if(runtime_cxxmodules)
@@ -176,6 +183,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(MathCore
     src/TStatistic.cxx
     src/UnBinData.cxx
     src/triangle.c
+    src/VectorizedTMath.cxx
   LIBRARIES
     ${MATHCORE_LIBRARIES}
   DICTIONARY_OPTIONS
@@ -188,6 +196,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(MathCore
 )
 
 target_compile_definitions(MathCore INTERFACE ${VecCore_DEFINITIONS})
-target_link_libraries(MathCore PUBLIC ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(MathCore PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)
