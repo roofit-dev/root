@@ -54,11 +54,11 @@ public:
       return std::make_unique<RRawFileMock>(fContent, fOptions);
    }
 
-   void DoOpen() final
+   void OpenImpl() final
    {
    }
 
-   size_t DoReadAt(void *buffer, size_t nbytes, std::uint64_t offset) final
+   size_t ReadAtImpl(void *buffer, size_t nbytes, std::uint64_t offset) final
    {
       fNumReadAt++;
       if (offset > fContent.length())
@@ -69,7 +69,7 @@ public:
       return slice.length();
    }
 
-   std::uint64_t DoGetSize() final { return fContent.size(); }
+   std::uint64_t GetSizeImpl() final { return fContent.size(); }
 
    int GetFeatures() const final { return kFeatureHasSize; }
 };
@@ -142,6 +142,29 @@ TEST(RRawFile, Readln)
    EXPECT_TRUE(f->Readln(line));
    EXPECT_TRUE(line.empty());
    EXPECT_FALSE(f->Readln(line));
+}
+
+
+TEST(RRawFile, ReadV)
+{
+   FileRaii readvGuard("test_rawfile_readv", "Hello, World");
+   std::unique_ptr<RRawFile> f(RRawFile::Create("test_rawfile_readv"));
+
+   char buffer[2];
+   buffer[0] = buffer[1] = 0;
+   RRawFile::RIOVec iovec[2];
+   iovec[0].fBuffer = &buffer[0];
+   iovec[0].fOffset = 0;
+   iovec[0].fSize = 1;
+   iovec[1].fBuffer = &buffer[1];
+   iovec[1].fOffset = 11;
+   iovec[1].fSize = 2;
+   f->ReadV(iovec, 2);
+
+   EXPECT_EQ(1U, iovec[0].fOutBytes);
+   EXPECT_EQ(1U, iovec[1].fOutBytes);
+   EXPECT_EQ('H', buffer[0]);
+   EXPECT_EQ('d', buffer[1]);
 }
 
 
