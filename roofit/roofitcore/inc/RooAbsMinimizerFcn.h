@@ -50,7 +50,7 @@ public:
    RooArgList *GetConstParamList();
    RooArgList *GetInitFloatParamList();
    RooArgList *GetInitConstParamList();
-   Int_t GetNumInvalidNLL();
+   Int_t GetNumInvalidNLL() const;
 
    // need access from Minimizer:
    void SetEvalErrorWall(Bool_t flag);
