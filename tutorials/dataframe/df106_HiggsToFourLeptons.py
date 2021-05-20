@@ -1,6 +1,8 @@
 ## \file
 ## \ingroup tutorial_dataframe
 ## \notebook -draw
+## The Higgs to four lepton analysis from the ATLAS Open Data release of 2020, with RDataFrame.
+##
 ## This tutorial is the Higgs to four lepton analysis from the ATLAS Open Data release in 2020
 ## (http://opendata.atlas.cern/release/2020/documentation/). The data was taken with the ATLAS detector
 ## during 2016 at a center-of-mass energy of 13 TeV. The decay of the Standard Model Higgs boson
@@ -22,9 +24,9 @@ import json
 import os
 
 # Create a ROOT dataframe for each dataset
-# Note that we load the filenames from an external json file.
+# Note that we load the filenames from the external json file placed in the same folder than this script.
 path = "root://eospublic.cern.ch//eos/opendata/atlas/OutreachDatasets/2020-01-22"
-files = json.load(open(os.path.join(os.environ["ROOTSYS"], "tutorials/dataframe", "df106_HiggsToFourLeptons.json")))
+files = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "df106_HiggsToFourLeptons.json")))
 processes = files.keys()
 df = {}
 xsecs = {}
@@ -111,6 +113,12 @@ for s in samples:
 
 # Run the event loop and merge histograms of the respective processes
 
+# RunGraphs allows to run the event loops of the separate RDataFrame graphs
+# concurrently. This results in an improved usage of the available resources
+# if each separate RDataFrame can not utilize all available resources, e.g.,
+# because not enough data is available.
+ROOT.RDF.RunGraphs([histos[s] for s in samples])
+
 def merge_histos(label):
     h = None
     for i, d in enumerate(files[label]):
@@ -191,4 +199,5 @@ text.SetTextSize(0.04)
 text.DrawLatex(0.21, 0.80, "#sqrt{s} = 13 TeV, 10 fb^{-1}")
 
 # Save the plot
-c.SaveAs("HiggsToFourLeptons.pdf")
+c.SaveAs("df106_HiggsToFourLeptons.png")
+print("Saved figure to df106_HiggsToFourLeptons.png")

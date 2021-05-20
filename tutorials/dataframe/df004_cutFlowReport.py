@@ -1,6 +1,8 @@
 ## \file
 ## \ingroup tutorial_dataframe
 ## \notebook
+## Display cut/Filter efficiencies with RDataFrame.
+##
 ## This tutorial shows how to get information about the efficiency of the filters
 ## applied
 ##
@@ -8,7 +10,7 @@
 ## \macro_output
 ##
 ## \date May 2017
-## \author Danilo Piparo
+## \author Danilo Piparo (CERN)
 
 import ROOT
 

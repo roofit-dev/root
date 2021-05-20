@@ -16,10 +16,10 @@
 
 #include "TMath.h"
 #include "TError.h"
-#include <math.h>
-#include <string.h>
+#include <cmath>
+#include <cstring>
 #include <algorithm>
-#include "Riostream.h"
+#include <iostream>
 #include "TString.h"
 
 #include <Math/SpecFuncMathCore.h>
@@ -857,7 +857,7 @@ Double_t TMath::KolmogorovTest(Int_t na, const Double_t *a, Int_t nb, const Doub
 /// \f[
 /// lorentz(xx) = \frac{ \frac{1}{\pi} \frac{lg}{2} }{ (xx^{2} + \frac{lg^{2}}{4}) }
 /// \f]
-/// .
+/// \.
 ///
 /// The Voigt function is known to be the real part of Faddeeva function also
 /// called complex error function [2].

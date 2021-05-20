@@ -1,7 +1,6 @@
 ## \file
 ## \ingroup tutorial_roofit
 ## \notebook
-##
 ## Basic functionality: adding boxes with parameters to RooPlots and decorating with arrows, etc...
 ##
 ## \macro_code
@@ -27,7 +26,7 @@ data = gauss.generate(ROOT.RooArgSet(x), 1000)
 # Fit pdf to data
 gauss.fitTo(data)
 
-# Plot p.d.f. and data
+# Plot pdf and data
 # -------------------------------------
 
 # Overlay projection of gauss on data

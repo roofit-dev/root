@@ -26,6 +26,7 @@
 #include <atomic>
 #include <cstddef>
 #include <memory>
+#include <unordered_set>
 
 namespace ROOT {
 namespace Experimental {
@@ -35,6 +36,7 @@ class RNTupleModel;
 
 namespace Detail {
 
+class RCluster;
 class RColumn;
 class RPagePool;
 class RFieldBase;
@@ -65,11 +67,16 @@ public:
    RPageStorage& operator =(const RPageStorage &other) = delete;
    virtual ~RPageStorage();
 
+   /// Whether the concrete implementation is a sink or a source
+   virtual EPageStorageType GetType() = 0;
+
    struct RColumnHandle {
-      RColumnHandle() : fId(-1), fColumn(nullptr) {}
-      RColumnHandle(int id, const RColumn *column) : fId(id), fColumn(column) {}
-      int fId;
-      const RColumn *fColumn;
+      DescriptorId_t fId = kInvalidDescriptorId;
+      const RColumn *fColumn = nullptr;
+
+      /// Returns true for a valid column handle; fColumn and fId should always either both
+      /// be valid or both be invalid.
+      operator bool() const { return fId != kInvalidDescriptorId && fColumn; }
    };
    /// The column handle identifies a column with the current open page storage
    using ColumnHandle_t = RColumnHandle;
@@ -77,15 +84,16 @@ public:
    /// Register a new column.  When reading, the column must exist in the ntuple on disk corresponding to the meta-data.
    /// When writing, every column can only be attached once.
    virtual ColumnHandle_t AddColumn(DescriptorId_t fieldId, const RColumn &column) = 0;
-   /// Whether the concrete implementation is a sink or a source
-   virtual EPageStorageType GetType() = 0;
+   /// Unregisters a column.  A page source decreases the reference counter for the corresponding active column.
+   /// For a page sink, dropping columns is currently a no-op.
+   virtual void DropColumn(ColumnHandle_t columnHandle) = 0;
 
    /// Every page store needs to be able to free pages it handed out.  But Sinks and sources have different means
    /// of allocating pages.
    virtual void ReleasePage(RPage &page) = 0;
 
-   /// Page storage implementations usually have their own metrics
-   virtual RNTupleMetrics &GetMetrics() = 0;
+   /// Returns an empty metrics.  Page storage implementations usually have their own metrics.
+   virtual RNTupleMetrics &GetMetrics();
 };
 
 // clang-format off
@@ -101,7 +109,7 @@ up to the given entry number are committed.
 // clang-format on
 class RPageSink : public RPageStorage {
 protected:
-   const RNTupleWriteOptions fOptions;
+   RNTupleWriteOptions fOptions;
 
    /// Building the ntuple descriptor while writing is done in the same way for all the storage sink implementations.
    /// Field, column, cluster ids and page indexes per cluster are issued sequentially starting with 0
@@ -129,6 +137,7 @@ public:
    EPageStorageType GetType() final { return EPageStorageType::kSink; }
 
    ColumnHandle_t AddColumn(DescriptorId_t fieldId, const RColumn &column) final;
+   void DropColumn(ColumnHandle_t /*columnHandle*/) final {}
 
    /// Physically creates the storage container to hold the ntuple (e.g., a keys a TFile or an S3 bucket)
    /// To do so, Create() calls CreateImpl() after updating the descriptor.
@@ -157,9 +166,15 @@ mapped into memory. The page source also gives access to the ntuple's meta-data.
 */
 // clang-format on
 class RPageSource : public RPageStorage {
+public:
+   /// Derived from the model (fields) that are actually being requested at a given point in time
+   using ColumnSet_t = std::unordered_set<DescriptorId_t>;
+
 protected:
-   const RNTupleReadOptions fOptions;
+   RNTupleReadOptions fOptions;
    RNTupleDescriptor fDescriptor;
+   /// The active columns are implicitly defined by the model fields or views
+   ColumnSet_t fActiveColumns;
 
    virtual RNTupleDescriptor AttachImpl() = 0;
 
@@ -175,6 +190,7 @@ public:
    EPageStorageType GetType() final { return EPageStorageType::kSource; }
    const RNTupleDescriptor &GetDescriptor() const { return fDescriptor; }
    ColumnHandle_t AddColumn(DescriptorId_t fieldId, const RColumn &column) final;
+   void DropColumn(ColumnHandle_t columnHandle) final;
 
    /// Open the physical storage container for the tree
    void Attach() { fDescriptor = AttachImpl(); }
@@ -186,6 +202,15 @@ public:
    virtual RPage PopulatePage(ColumnHandle_t columnHandle, NTupleSize_t globalIndex) = 0;
    /// Another version of PopulatePage that allows to specify cluster-relative indexes
    virtual RPage PopulatePage(ColumnHandle_t columnHandle, const RClusterIndex &clusterIndex) = 0;
+
+   /// Populates all the pages of the given cluster id and columns; it is possible that some columns do not
+   /// contain any pages.  The pages source may load more columns than the minimal necessary set from `columns`.
+   /// To indicate which columns have been loaded, LoadCluster() must mark them with SetColumnAvailable().
+   /// That includes the ones from the `columns` that don't have pages; otherwise subsequent requests
+   /// for the cluster would assume an incomplete cluster and trigger loading again.
+   /// LoadCluster() is typically called from the I/O thread of a cluster pool, i.e. the method runs
+   /// concurrently to other methods of the page source.
+   virtual std::unique_ptr<RCluster> LoadCluster(DescriptorId_t clusterId, const ColumnSet_t &columns) = 0;
 };
 
 } // namespace Detail

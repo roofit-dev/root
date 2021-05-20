@@ -1,6 +1,9 @@
 /****** Run RDataFrame tests both with and without IMT enabled *******/
 #include <gtest/gtest.h>
 #include <ROOT/RDataFrame.hxx>
+#include <TTree.h>
+
+#include <utility> // std::pair
 
 using namespace ROOT;
 using namespace ROOT::RDF;
@@ -173,4 +176,56 @@ TEST(RDFDisplayTests, DisplayPrintString)
 
    // Testing the string returned
    EXPECT_EQ(dd->AsString(), DisplayAsStringString);
+}
+
+TEST(RDFDisplayTests, CharArray)
+{
+   {
+      TFile f("chararray.root", "recreate");
+      TTree t("t", "t");
+      char str[4] = "asd";
+      t.Branch("str", str, "str[4]/C");
+      t.Fill();
+      char otherstr[4] = "bar";
+      std::copy(otherstr, otherstr + 4, str);
+      t.Fill();
+      f.Write();
+   }
+
+   const auto str = ROOT::RDataFrame("t", "chararray.root").Display()->AsString();
+   EXPECT_EQ(str, "str | \nasd | \nbar | \n    | \n");
+}
+
+TEST(RDFDisplayTests, BoolArray)
+{
+   auto r = ROOT::RDataFrame(3)
+      .Define("v", [] { return ROOT::RVec<bool>{true,false}; })
+      .Display<ROOT::RVec<bool>>({"v"});
+   const auto expected = "v     | \ntrue  | \nfalse | \ntrue  | \nfalse | \ntrue  | \nfalse | \ntrue  | \nfalse | "
+                         "\ntrue  | \nfalse | \ntrue  | \nfalse | \n      | \n";
+   EXPECT_EQ(r->AsString(), expected);
+}
+
+TEST(RDFDisplayTests, UniquePtr)
+{
+   auto r = ROOT::RDataFrame(1)
+               .Define("uptr", []() -> std::unique_ptr<int> { return nullptr; })
+               .Display<std::unique_ptr<int>>({"uptr"});
+   const auto expected =
+      "uptr                       | \nstd::unique_ptr -> nullptr | \n                           | \n";
+   EXPECT_EQ(r->AsString(), expected);
+}
+
+
+// GitHub issue #6371
+TEST(RDFDisplayTests, SubBranch)
+{
+   auto p = std::make_pair(42, 84);
+   TTree t("t", "t");
+   t.Branch("p", &p, "a/I:b/I");
+   t.Fill();
+   ROOT::RDataFrame df(t);
+   const auto res = df.Display()->AsString();
+   const auto expected = "p.a | p.b | \n42  | 84  | \n    |     | \n";
+   EXPECT_EQ(res, expected);
 }

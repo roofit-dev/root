@@ -12,6 +12,7 @@
 #include "cling/Interpreter/InterpreterCallbacks.h"
 
 #include <stack>
+#include <string>
 
 namespace clang {
    class Decl;
@@ -48,6 +49,7 @@ private:
    bool fPPChanged = false;
    bool fIsCodeGening = false;
    bool fIsLoadingModule = false;
+   llvm::DenseMap<llvm::StringRef, clang::DeclarationName> m_LoadedModuleFiles;
 
 public:
    TClingCallbacks(cling::Interpreter* interp, bool hasCodeGen);

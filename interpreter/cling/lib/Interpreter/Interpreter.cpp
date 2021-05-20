@@ -883,7 +883,6 @@ namespace cling {
     Preprocessor& PP = getCI()->getPreprocessor();
     IdentifierInfo* II = PP.getIdentifierInfo(M->Name);
     SourceLocation ValidLoc = getNextAvailableLoc();
-    Interpreter::PushTransactionRAII RAII(this);
     bool success =
        !getSema().ActOnModuleImport(ValidLoc, ValidLoc,
                                     std::make_pair(II, ValidLoc)).isInvalid();
@@ -1519,8 +1518,11 @@ namespace cling {
     assert((T.getState() != Transaction::kRolledBack ||
             T.getState() != Transaction::kRolledBackWithErrors) &&
            "Transaction already rolled back.");
-    if (getOptions().ErrorOut)
+    if (getOptions().ErrorOut) {
+      // Tag the transaction as "won't need to be committed" (ROOT-10798).
+      T.setState(Transaction::kRolledBack);
       return;
+    }
 
     if (InterpreterCallbacks* callbacks = getCallbacks())
       callbacks->TransactionRollback(T);

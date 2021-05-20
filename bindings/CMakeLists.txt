@@ -5,8 +5,14 @@
 # For the list of contributors see $ROOTSYS/README/CREDITS.
 
 if(pyroot)
-  if(NOT pyroot_experimental)
-    add_subdirectory(pyroot)
+  if ((MSVC AND NOT CMAKE_INSTALL_BINDIR STREQUAL CMAKE_INSTALL_PYTHONDIR) OR
+      (NOT CMAKE_INSTALL_LIBDIR STREQUAL CMAKE_INSTALL_PYTHONDIR AND (how_many_pythons GREATER 1)))
+    message(STATUS "CMAKE_INSTALL_BINDIR = ${CMAKE_INSTALL_BINDIR}; CMAKE_INSTALL_PYTHONDIR = ${CMAKE_INSTALL_PYTHONDIR} ")
+    message(FATAL_ERROR "Using a custom CMAKE_INSTALL_PYTHONDIR is not supported for multi-python builds or on Windows. Please check your build configuration.")
+  endif()
+
+  if(pyroot_legacy)
+    add_subdirectory(pyroot_legacy)
   else()
     # Machinery necessary to loop in parallel over multiple lists
     # This will be used in the CMakeLists of pythonizations,
@@ -15,16 +21,7 @@ if(pyroot)
     list(LENGTH python_executables len)
     math(EXPR how_many_pythons "${len} - 1")
 
-    # install_dir_lib contains the path to installation_directory/lib
-    # where the python packages like ROOT, cppyy, cppyy_backend are
-    # installed
-    if(IS_ABSOLUTE ${runtimedir})
-      set(install_dir_lib $ENV{DESTDIR}/${runtimedir})
-    else()
-      set(install_dir_lib $ENV{DESTDIR}/${CMAKE_INSTALL_PREFIX}/${runtimedir})
-    endif()
-
-    add_subdirectory(pyroot_experimental)
+    add_subdirectory(pyroot)
     add_subdirectory(tpython)
     add_subdirectory(jupyroot)
     add_subdirectory(jsmva)

@@ -11,25 +11,27 @@
 
 #include "ROOT/RDrawable.hxx"
 
+#include "ROOT/RDrawableRequest.hxx"
 #include "ROOT/RAttrLine.hxx"
 #include "ROOT/RAttrFill.hxx"
 #include "ROOT/RAttrMargins.hxx"
 #include "ROOT/RAttrAxis.hxx"
-
+#include "ROOT/RAttrValue.hxx"
 #include "ROOT/RPadUserAxis.hxx"
 
 #include <memory>
+#include <map>
 
 class TRootIOCtor;
 
 namespace ROOT {
 namespace Experimental {
 
+
 /** \class RFrame
 \ingroup GpadROOT7
 \brief Holds an area where drawing on user coordinate-system can be performed.
-\author Axel Naumann <axel@cern.ch>
-\author Sergey Linev <s.linev@gsi.de>
+\authors Axel Naumann <axel@cern.ch> Sergey Linev <s.linev@gsi.de>
 \date 2017-09-26
 \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 */
@@ -38,20 +40,120 @@ class RFrame : public RDrawable  {
 
    friend class RPadBase;
 
-   class RFrameAttrs : public RAttrBase {
-      friend class RFrame;
-      R__ATTR_CLASS(RFrameAttrs, "", AddBool("gridx", false).AddBool("gridy",false));
+public:
+
+   class RUserRanges {
+      std::vector<double> values;  ///< min/max values for all dimensions
+      std::vector<bool> flags;     ///< flag if values available
+
+      void UpdateDim(unsigned ndim, const RUserRanges &src)
+      {
+         if (src.IsUnzoom(ndim)) {
+            ClearMinMax(ndim);
+         } else {
+            if (src.HasMin(ndim))
+               AssignMin(ndim, src.GetMin(ndim));
+            if (src.HasMax(ndim))
+               AssignMax(ndim, src.GetMax(ndim));
+         }
+      }
+
+   public:
+      // Default constructor - for I/O
+      RUserRanges() = default;
+
+      // Constructor for 1-d ranges
+      RUserRanges(double xmin, double xmax)
+      {
+         AssignMin(0, xmin);
+         AssignMax(0, xmax);
+      }
+
+      // Constructor for 2-d ranges
+      RUserRanges(double xmin, double xmax, double ymin, double ymax)
+      {
+         AssignMin(0, xmin);
+         AssignMax(0, xmax);
+         AssignMin(1, ymin);
+         AssignMax(1, ymax);
+      }
+
+      // Extend number of dimensions which can be stored in the object
+      void Extend(unsigned ndim = 3)
+      {
+         if (ndim*2 > values.size()) {
+            values.resize(ndim*2, 0.);
+            flags.resize(ndim*2, false);
+         }
+      }
+
+      bool HasMin(unsigned ndim) const { return (ndim*2 < flags.size()) && flags[ndim*2]; }
+      double GetMin(unsigned ndim) const { return (ndim*2 < values.size()) ? values[ndim*2] : 0.; }
+
+      // Assign minimum for specified dimension
+      void AssignMin(unsigned ndim, double value)
+      {
+          Extend(ndim+1);
+          values[ndim*2] = value;
+          flags[ndim*2] = true;
+      }
+
+      bool HasMax(unsigned ndim) const { return (ndim*2+1 < flags.size()) && flags[ndim*2+1]; }
+      double GetMax(unsigned ndim) const { return (ndim*2+1 < values.size()) ? values[ndim*2+1] : 0.; }
+
+      // Assign maximum for specified dimension
+      void AssignMax(unsigned ndim, double value)
+      {
+          Extend(ndim+1);
+          values[ndim*2+1] = value;
+          flags[ndim*2+1] = true;
+      }
+
+      void ClearMinMax(unsigned ndim)
+      {
+         if (ndim*2+1 < flags.size())
+            flags[ndim*2] = flags[ndim*2+1] = false;
+
+         if (ndim*2+1 < values.size())
+            values[ndim*2] = values[ndim*2+1] = 0.;
+      }
+
+      /** Returns true if axis configured as unzoomed, can be specified from client */
+      bool IsUnzoom(unsigned ndim) const
+      {
+         return (ndim*2+1 < flags.size()) && (ndim*2+1 < values.size()) &&
+               !flags[ndim*2] && !flags[ndim*2+1] &&
+               (values[ndim*2] < -0.5) && (values[ndim*2+1] < -0.5);
+      }
+
+      // Returns true if any value is specified
+      bool IsAny() const
+      {
+         for (auto fl : flags)
+            if (fl) return true;
+         return false;
+      }
+
+      void Update(const RUserRanges &src)
+      {
+         UpdateDim(0, src);
+         UpdateDim(1, src);
+         UpdateDim(2, src);
+      }
+
    };
 
 private:
-   RAttrMargins fMargins{this, "margin_"};     ///<!
-   RAttrLine fAttrBorder{this, "border_"};     ///<!
-   RAttrFill fAttrFill{this, "fill_"};         ///<!
-   RAttrAxis fAttrX{this, "x_"};               ///<!
-   RAttrAxis fAttrY{this, "y_"};               ///<!
-   RAttrAxis fAttrZ{this, "z_"};               ///<!
-   RFrameAttrs fAttr{this,""};                 ///<! own frame attributes
 
+   RAttrMargins                     fMargins{this, "margin_"};        ///<!
+   RAttrLine                        fAttrBorder{this, "border_"};     ///<!
+   RAttrFill                        fAttrFill{this, "fill_"};         ///<!
+   RAttrAxis                        fAttrX{this, "x_"};               ///<!
+   RAttrAxis                        fAttrY{this, "y_"};               ///<!
+   RAttrAxis                        fAttrZ{this, "z_"};               ///<!
+   RAttrValue<bool>                 fGridX{this, "gridx", false};     ///<!
+   RAttrValue<bool>                 fGridY{this, "gridy", false};     ///<!
+   std::map<unsigned, RUserRanges>  fClientRanges;                    ///<! individual client ranges
 
    /// Mapping of user coordinates to normal coordinates, one entry per dimension.
    std::vector<std::unique_ptr<RPadUserAxisBase>> fUserCoord;
@@ -68,11 +170,29 @@ private:
    /// Constructor taking user coordinate system, position and extent.
    explicit RFrame(std::vector<std::unique_ptr<RPadUserAxisBase>> &&coords);
 
+   void SetClientRanges(unsigned connid, const RUserRanges &ranges, bool ismainconn);
+
 protected:
 
    void PopulateMenu(RMenuItems &) override;
 
+   void GetAxisRanges(unsigned ndim, const RAttrAxis &axis, RUserRanges &ranges) const;
+   void AssignZoomRange(unsigned ndim, RAttrAxis &axis, const RUserRanges &ranges);
+
 public:
+
+   class RZoomRequest : public RDrawableRequest {
+      RUserRanges ranges; // specified ranges
+   public:
+      RZoomRequest() = default;
+      std::unique_ptr<RDrawableReply> Process() override
+      {
+         auto frame = dynamic_cast<RFrame *>(GetContext().GetDrawable());
+         if (frame) frame->SetClientRanges(GetContext().GetConnId(), ranges, GetContext().IsMainConn());
+         return nullptr;
+      }
+   };
+
 
    RFrame(TRootIOCtor*) : RFrame() {}
 
@@ -100,13 +220,13 @@ public:
    RFrame &SetAttrZ(const RAttrAxis &axis) { fAttrZ = axis; return *this; }
    RAttrAxis &AttrZ() { return fAttrZ; }
 
-   RFrame &SetGridX(bool on = true) { fAttr.SetValue("gridx", on); return *this; }
-   bool GetGridX() const { return fAttr.GetValue<bool>("gridx"); }
+   RFrame &SetGridX(bool on = true) { fGridX = on; return *this; }
+   bool GetGridX() const { return fGridX; }
 
-   RFrame &SetGridY(bool on = true) { fAttr.SetValue("gridy", on); return *this; }
-   bool GetGridY() const { return fAttr.GetValue<bool>("gridy"); }
+   RFrame &SetGridY(bool on = true) { fGridY = on; return *this; }
+   bool GetGridY() const { return fGridY; }
 
-   void Execute(const std::string &) override;
+   void GetClientRanges(unsigned connid, RUserRanges &ranges);
 
    /// Create `nDimensions` default axes for the user coordinate system.
    void GrowToDimensions(size_t nDimensions);
@@ -126,6 +246,7 @@ public:
       return {{fUserCoord[0]->ToNormal(pos[0]), fUserCoord[1]->ToNormal(pos[1])}};
    }
 };
+
 
 } // namespace Experimental
 } // namespace ROOT
