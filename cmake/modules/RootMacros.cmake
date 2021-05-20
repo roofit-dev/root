@@ -428,14 +428,12 @@ function(ROOT_GENERATE_DICTIONARY dictionary)
     endif(ARG_MULTIDICT)
 
     if(runtime_cxxmodules)
-      set(pcm_name)
+      # If we specify NO_CXXMODULE we should be able to still install the produced _rdict.pcm file.
+      if(NOT ARG_NO_CXXMODULE)
+        set(pcm_name)
+      endif()
       if(cpp_module)
         set(cpp_module_file ${library_output_dir}/${cpp_module}.pcm)
-        if (APPLE)
-          if (${cpp_module} MATCHES "(GCocoa|GQuartz)")
-            set(cpp_module_file)
-          endif()
-        endif(APPLE)
         # The module depends on its modulemap file.
         if (cpp_module_file)
           set (runtime_cxxmodule_dependencies copymodulemap "${CMAKE_BINARY_DIR}/include/module.modulemap")
@@ -630,10 +628,8 @@ function (ROOT_CXXMODULES_APPEND_TO_MODULEMAP library library_headers)
     set (modulemap_entry "${modulemap_entry}\n  use ROOT_Foundation_C\n")
   endif()
 
-  # For modules GCocoa and GQuartz we need objc context.
-  if (${library} MATCHES "(GCocoa|GQuartz)")
-    set (modulemap_entry "${modulemap_entry}\n  requires objc\n")
-  else()
+  # For modules GCocoa and GQuartz we need objc and cplusplus context.
+  if (NOT ${library} MATCHES "(GCocoa|GQuartz)")
     set (modulemap_entry "${modulemap_entry}\n  requires cplusplus\n")
   endif()
   if (library_headers)
