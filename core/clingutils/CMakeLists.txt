@@ -13,7 +13,6 @@
 
 set(ClingUtils_dict_headers
   root_std_complex.h
-  TClingRuntime.h
   PARENT_SCOPE
 )
 
@@ -101,7 +100,15 @@ install(DIRECTORY ${CMAKE_BINARY_DIR}/etc/cling/lib/clang/${CLANG_RESOURCE_DIR_V
 #---Install a bunch of files to /etc/cling------------------------------------
 set(clinginclude ${CMAKE_SOURCE_DIR}/interpreter/cling/include)
 
-foreach(file libc.modulemap cuda.modulemap std.modulemap module.modulemap.build
+set(custom_modulemaps)
+if (runtime_cxxmodules)
+  set(custom_modulemaps boost.modulemap tinyxml2.modulemap cuda.modulemap module.modulemap.build)
+  if (NOT APPLE)
+    set(custom_modulemaps ${custom_modulemaps} libc.modulemap std.modulemap)
+  endif()
+endif(runtime_cxxmodules)
+
+foreach(file ${custom_modulemaps}
         Interpreter/DynamicExprInfo.h
         Interpreter/DynamicLookupRuntimeUniverse.h
         Interpreter/DynamicLookupLifetimeHandler.h
@@ -145,6 +152,9 @@ if(MSVC)
   add_custom_command(OUTPUT ${stamp_file}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/etc/cling/lib/clang/${CLANG_RESOURCE_DIR_VERSION}/include
         ${copy_commands}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CLANG_RESOURCE_DIR}
+        ${CMAKE_BINARY_DIR}/etc/cling/lib/clang/${CLANG_RESOURCE_DIR_VERSION}/include		
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp_file}
         DEPENDS ${files_to_copy}
         COMMENT "Copying LLVM resource and header files")

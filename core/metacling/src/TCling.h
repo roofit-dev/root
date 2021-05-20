@@ -195,7 +195,6 @@ public: // Public Interface
    void    ClearFileBusy();
    void    ClearStack(); // Delete existing temporary values
    Bool_t  Declare(const char* code);
-   void    EnableAutoLoading();
    void    EndOfLineAction();
    TClass *GetClass(const std::type_info& typeinfo, Bool_t load) const;
    Int_t   GetExitCode() const { return fExitCode; }
@@ -337,7 +336,7 @@ public: // Public Interface
    virtual const char* MapCppName(const char*) const;
    virtual void   SetAlloclockfunc(void (*)()) const;
    virtual void   SetAllocunlockfunc(void (*)()) const;
-   virtual int    SetClassAutoloading(int) const;
+   virtual int    SetClassAutoLoading(int) const;
    virtual int    SetClassAutoparsing(int) ;
            Bool_t IsAutoParsingSuspended() const { return fIsAutoParsingSuspended; }
    virtual void   SetErrmsgcallback(void* p) const;
@@ -409,7 +408,7 @@ public: // Public Interface
    virtual ClassInfo_t*  ClassInfo_Factory(DeclId_t declid) const;
    virtual Long_t   ClassInfo_GetBaseOffset(ClassInfo_t* fromDerived, ClassInfo_t* toBase, void * address, bool isDerivedObject) const;
    virtual int    ClassInfo_GetMethodNArg(ClassInfo_t* info, const char* method, const char* proto, Bool_t objectIsConst = false, ROOT::EFunctionMatchMode mode = ROOT::kConversionMatch) const;
-   virtual bool   ClassInfo_HasDefaultConstructor(ClassInfo_t* info) const;
+   virtual bool   ClassInfo_HasDefaultConstructor(ClassInfo_t* info, Bool_t testio = kFALSE) const;
    virtual bool   ClassInfo_HasMethod(ClassInfo_t* info, const char* name) const;
    virtual void   ClassInfo_Init(ClassInfo_t* info, const char* funcname) const;
    virtual void   ClassInfo_Init(ClassInfo_t* info, int tagnum) const;
@@ -573,13 +572,13 @@ private: // Private Utility Functions and Classes
                                         TListOfFunctionTemplates*,
                                         TListOfEnums*> &Lists, const clang::Decl *D);
 
-   class SuspendAutoloadingRAII {
+   class SuspendAutoLoadingRAII {
       TCling *fTCling = nullptr;
       bool fOldValue;
 
    public:
-      SuspendAutoloadingRAII(TCling *tcling) : fTCling(tcling) { fOldValue = fTCling->SetClassAutoloading(false); }
-      ~SuspendAutoloadingRAII() { fTCling->SetClassAutoloading(fOldValue); }
+      SuspendAutoLoadingRAII(TCling *tcling) : fTCling(tcling) { fOldValue = fTCling->SetClassAutoLoading(false); }
+      ~SuspendAutoLoadingRAII() { fTCling->SetClassAutoLoading(fOldValue); }
    };
 
    class TUniqueString {
@@ -615,7 +614,7 @@ private: // Private Utility Functions and Classes
    void InitRootmapFile(const char *name);
    int  ReadRootmapFile(const char *rootmapfile, TUniqueString* uniqueString = nullptr);
    Bool_t HandleNewTransaction(const cling::Transaction &T);
-   bool IsClassAutoloadingEnabled() const;
+   bool IsClassAutoLoadingEnabled() const;
    void ProcessClassesToUpdate();
    cling::Interpreter *GetInterpreterImpl() const { return fInterpreter.get(); }
    cling::MetaProcessor *GetMetaProcessorImpl() const { return fMetaProcessor.get(); }

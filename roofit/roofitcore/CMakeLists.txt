@@ -200,8 +200,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooRealConstant.h
     RooRealIntegral.h
     RooRealMPFE.h
+    RooProxy.h
     RooRealProxy.h
-    RooTemplateProxy.h
     RooRealSumFunc.h
     RooRealSumPdf.h
     RooRealVar.h
@@ -310,7 +310,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooAbsRootFinder.cxx
     src/RooAbsSelfCachedPdf.cxx
     src/RooAbsSelfCachedReal.cxx
-    src/RooAbsString.cxx
     src/RooAbsStudy.cxx
     src/RooAbsTestStatistic.cxx
     src/RooAcceptReject.cxx
@@ -333,7 +332,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooCachedReal.cxx
     src/RooCacheManager.cxx
     src/RooCategory.cxx
-    src/RooCategoryProxy.cxx
     src/RooCategorySharedProperties.cxx
     src/RooCatType.cxx
     src/RooChangeTracker.cxx
@@ -525,7 +523,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/BatchData.cxx
     src/BatchHelpers.cxx
     src/RooWrapperPdf.cxx
-    DICTIONARY_OPTIONS
+  DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
 #    -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
   DEPENDENCIES
@@ -545,6 +543,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
   LIBRARIES
         ${RT_LIBRARY}
         ${ZeroMQ_LIBRARY}
+  LINKDEF inc/LinkDef.h
 )
 
 target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})

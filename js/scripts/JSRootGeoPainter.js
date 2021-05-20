@@ -467,6 +467,7 @@
 
       if (d.check("ORTHO_CAMERA_ROTATE")) { res.ortho_camera = true; res.can_rotate = true; }
       if (d.check("ORTHO_CAMERA")) { res.ortho_camera = true; res.can_rotate = false; }
+      if (d.check("MOUSE_CLICK")) res.mouse_click = true;
 
       if (d.check("DEPTHRAY") || d.check("DRAY")) res.depthMethod = "ray";
       if (d.check("DEPTHBOX") || d.check("DBOX")) res.depthMethod = "box";
@@ -657,9 +658,10 @@
       menu.add("Reset camera position", function() {
          this.focusCamera();
       });
-      menu.add("Get camera position", function() {
-         alert("Position (as url): &opt=" + this.produceCameraUrl());
-      });
+      if (!this._geom_viewer)
+         menu.add("Get camera position", function() {
+            alert("Position (as url): &opt=" + this.produceCameraUrl());
+         });
       if (!this.ctrl.project)
          menu.addchk(this.ctrl.rotate, "Autorotate", function() {
             this.setAutoRotate(!this.ctrl.rotate);
@@ -2382,7 +2384,7 @@
 
    TGeoPainter.prototype.focusCamera = function( focus, autoClip ) {
 
-      if (this.ctrl.project)
+      if (this.ctrl.project || this.ctrl.ortho_camera)
          return this.adjustCameraPosition();
 
       var box = new THREE.Box3();
