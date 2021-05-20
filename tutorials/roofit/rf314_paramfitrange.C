@@ -1,7 +1,6 @@
 /// \file
 /// \ingroup tutorial_roofit
 /// \notebook -js
-///
 /// Multidimensional models: working with parametrized ranges in a fit.
 /// This an example of a fit with an acceptance that changes per-event
 ///
@@ -13,7 +12,7 @@
 /// \macro_output
 /// \macro_code
 ///
-/// \date 07/2008
+/// \date July 2008
 /// \author Wouter Verkerke
 
 #include "RooRealVar.h"

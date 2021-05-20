@@ -27,6 +27,7 @@ the trees in the chain.
 #include "TChain.h"
 
 #include <iostream>
+#include <cfloat>
 
 #include "TBranch.h"
 #include "TBrowser.h"
@@ -36,7 +37,6 @@ the trees in the chain.
 #include "TColor.h"
 #include "TCut.h"
 #include "TError.h"
-#include "TMath.h"
 #include "TFile.h"
 #include "TFileInfo.h"
 #include "TFriendElement.h"
@@ -58,6 +58,8 @@ the trees in the chain.
 #include "TFileStager.h"
 #include "TFilePrefetch.h"
 #include "TVirtualMutex.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 
 ClassImp(TChain);
 
@@ -1371,6 +1373,15 @@ Long64_t TChain::LoadTree(Long64_t entry)
                      *pp = br;
                   }
                   if (br) {
+                     if (!frelement->GetCheckedType()) {
+                        Int_t res = CheckBranchAddressType(br, TClass::GetClass(frelement->GetBaddressClassName()),
+                                                         (EDataType) frelement->GetBaddressType(), frelement->GetBaddressIsPtr());
+                        if ((res & kNeedEnableDecomposedObj) && !br->GetMakeClass()) {
+                           br->SetMakeClass(kTRUE);
+                        }
+                        frelement->SetDecomposedObj(br->GetMakeClass());
+                        frelement->SetCheckedType(kTRUE);
+                     }
                      // FIXME: We may have to tell the branch it should
                      //        not be an owner of the object pointed at.
                      br->SetAddress(addr);
@@ -1642,6 +1653,15 @@ Long64_t TChain::LoadTree(Long64_t entry)
             *pp = br;
          }
          if (br) {
+            if (!element->GetCheckedType()) {
+               Int_t res = CheckBranchAddressType(br, TClass::GetClass(element->GetBaddressClassName()),
+                                                  (EDataType) element->GetBaddressType(), element->GetBaddressIsPtr());
+               if ((res & kNeedEnableDecomposedObj) && !br->GetMakeClass()) {
+                  br->SetMakeClass(kTRUE);
+               }
+               element->SetDecomposedObj(br->GetMakeClass());
+               element->SetCheckedType(kTRUE);
+            }
             // FIXME: We may have to tell the branch it should
             //        not be an owner of the object pointed at.
             br->SetAddress(addr);
@@ -2484,6 +2504,11 @@ Int_t TChain::SetBranchAddress(const char *bname, void* add, TBranch** ptr)
       }
       if (branch) {
          res = CheckBranchAddressType(branch, TClass::GetClass(element->GetBaddressClassName()), (EDataType) element->GetBaddressType(), element->GetBaddressIsPtr());
+         if ((res & kNeedEnableDecomposedObj) && !branch->GetMakeClass()) {
+            branch->SetMakeClass(kTRUE);
+         }
+         element->SetDecomposedObj(branch->GetMakeClass());
+         element->SetCheckedType(kTRUE);
          if (fClones) {
             void* oldAdd = branch->GetAddress();
             for (TObjLink* lnk = fClones->FirstLink(); lnk; lnk = lnk->Next()) {
@@ -2492,9 +2517,13 @@ Int_t TChain::SetBranchAddress(const char *bname, void* add, TBranch** ptr)
                if (cloneBr && (cloneBr->GetAddress() == oldAdd)) {
                   // the clone's branch is still pointing to us
                   cloneBr->SetAddress(add);
+                  if ((res & kNeedEnableDecomposedObj) && !cloneBr->GetMakeClass()) {
+                     cloneBr->SetMakeClass(kTRUE);
+                  }
                }
             }
          }
+
          branch->SetAddress(add);
       } else {
          Error("SetBranchAddress", "unknown branch -> %s", bname);

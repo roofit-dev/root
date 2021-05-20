@@ -10,7 +10,7 @@
 
 #include "RConfigure.h" // R__USE_IMT
 #include "ROOT/RDataSource.hxx"
-#include "ROOT/RDF/RCustomColumnBase.hxx"
+#include "ROOT/RDF/RDefineBase.hxx"
 #include "ROOT/RDF/RLoopManager.hxx"
 #include "RtypesCore.h"
 #include "TBranch.h"
@@ -18,6 +18,7 @@
 #include "TClass.h"
 #include "TClassEdit.h"
 #include "TClassRef.h"
+#include "TError.h" // Info
 #include "TInterpreter.h"
 #include "TLeaf.h"
 #include "TROOT.h" // IsImplicitMTEnabled, GetThreadPoolSize
@@ -42,6 +43,12 @@ namespace RDF {
 const std::type_info &TypeName2TypeID(const std::string &name)
 {
    if (auto c = TClass::GetClass(name.c_str())) {
+      if (!c->GetTypeInfo()) {
+         std::string msg("Cannot extract type_info of type ");
+         msg += name.c_str();
+         msg += ".";
+         throw std::runtime_error(msg);
+      }
       return *c->GetTypeInfo();
    } else if (name == "char" || name == "Char_t")
       return typeid(char);
@@ -174,7 +181,7 @@ std::string GetBranchOrLeafTypeName(TTree &t, const std::string &colName)
             // Here we have a special case for getting right the type of data members
             // of classes sorted in TClonesArrays: ROOT-9674
             auto mother = be->GetMother();
-            if (mother && mother->InheritsFrom(tbranchelement)) {
+            if (mother && mother->InheritsFrom(tbranchelement) && mother != be) {
                auto beMom = static_cast<TBranchElement *>(mother);
                auto beMomClass = beMom->GetClass();
                if (beMomClass && 0 == std::strcmp("TClonesArray", beMomClass->GetName()))
@@ -193,10 +200,10 @@ std::string GetBranchOrLeafTypeName(TTree &t, const std::string &colName)
 /// column created by Define. Throws if type name deduction fails.
 /// Note that for fixed- or variable-sized c-style arrays the returned type name will be RVec<T>.
 /// vector2rvec specifies whether typename 'std::vector<T>' should be converted to 'RVec<T>' or returned as is
-/// customColID is only used if isCustomColumn is true, and must correspond to the custom column's unique identifier
+/// customColID is only used if isDefine is true, and must correspond to the custom column's unique identifier
 /// returned by its `GetID()` method.
-std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, RDataSource *ds,
-                                      RCustomColumnBase *customColumn, bool vector2rvec)
+std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, RDataSource *ds, RDefineBase *define,
+                                      bool vector2rvec)
 {
    std::string colType;
 
@@ -214,8 +221,8 @@ std::string ColumnName2ColumnTypeName(const std::string &colName, TTree *tree, R
       }
    }
 
-   if (colType.empty() && customColumn) {
-      colType = customColumn->GetTypeName();
+   if (colType.empty() && define) {
+      colType = define->GetTypeName();
    }
 
    if (colType.empty())
@@ -245,10 +252,14 @@ char TypeName2ROOTTypeName(const std::string &b)
       return 'F';
    if (b == "Double_t" || b == "double")
       return 'D';
-   if (b == "Long64_t" || b == "long" || b == "long int")
+   if (b == "Long64_t" || b == "long long" || b == "long long int")
       return 'L';
-   if (b == "ULong64_t" || b == "unsigned long" || b == "unsigned long int")
+   if (b == "ULong64_t" || b == "unsigned long long" || b == "unsigned long long int")
       return 'l';
+   if (b == "Long_t" || b == "long" || b == "long int")
+      return 'G';
+   if (b == "ULong_t" || b == "unsigned long" || b == "unsigned long int")
+      return 'g';
    if (b == "Bool_t" || b == "bool")
       return 'O';
    return ' ';
@@ -309,6 +320,15 @@ Long64_t InterpreterCalc(const std::string &code, const std::string &context)
       throw std::runtime_error(msg);
    }
    return res;
+}
+
+bool IsInternalColumn(std::string_view colName)
+{
+   const auto str = colName.data();
+   const auto goodPrefix = colName.size() > 3 &&               // has at least more characters than {r,t}df
+                           ('r' == str[0] || 't' == str[0]) && // starts with r or t
+                           0 == strncmp("df", str + 1, 2);     // 2nd and 3rd letters are df
+   return goodPrefix && '_' == colName.back();                 // also ends with '_'
 }
 
 } // end NS RDF

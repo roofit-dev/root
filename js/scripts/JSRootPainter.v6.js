@@ -32,7 +32,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.TObjectPainter
+    * @arguments JSROOT.TObjectPainter
     * @param {object} axis - object to draw
     * @param {boolean} embedded - if true, painter used in other objects painters
     */
@@ -840,7 +840,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.TObjectPainter
+    * @arguments JSROOT.TObjectPainter
     * @param {object} tframe - TFrame object to draw
     */
 
@@ -1077,7 +1077,7 @@
       var smin = 'scale_' + aname + 'min',
           smax = 'scale_' + aname + 'max';
 
-      var eps = (this[smax] - this[smin]) * 1e-7;
+      eps = (this[smax] - this[smin]) * 1e-7;
 
       if ((Math.abs(umin - this[smin]) > eps) || (Math.abs(umax - this[smax]) > eps)) {
          this["zoom_" + aname + "min"] = umin;
@@ -1589,12 +1589,10 @@
       JSROOT.TooltipHandler.prototype.Cleanup.call(this);
    }
 
-   TFramePainter.prototype.Redraw = function() {
+   TFramePainter.prototype.Redraw = function(reason) {
 
       var pp = this.pad_painter();
       if (pp) pp.frame_painter_ref = this; // keep direct reference to the frame painter
-
-      if (this.mode3d) return; // no need to create any elements in 3d mode
 
       // first update all attributes from objects
       this.UpdateAttributes();
@@ -1605,12 +1603,24 @@
           w = Math.round(width * (this.fX2NDC - this.fX1NDC)),
           tm = Math.round(height * (1 - this.fY2NDC)),
           h = Math.round(height * (this.fY2NDC - this.fY1NDC)),
-          rotate = false, fixpos = false;
+          rotate = false, fixpos = false, trans = "translate(" + lm + "," + tm + ")";
 
       if (pp && pp.options) {
          if (pp.options.RotateFrame) rotate = true;
          if (pp.options.FixFrame) fixpos = true;
       }
+
+      if (rotate) {
+         trans += " rotate(-90) " + "translate(" + -h + ",0)";
+         var d = w; w = h; h = d;
+      }
+
+      this._frame_x = lm;
+      this._frame_y = tm;
+      this._frame_width = w;
+      this._frame_height = h;
+
+      if (this.mode3d) return; // no need to create any elements in 3d mode
 
       // this is svg:g object - container for every other items belonging to frame
       this.draw_g = this.svg_layer("primitives_layer").select(".root_frame");
@@ -1644,17 +1654,6 @@
       }
 
       this.axes_drawn = false;
-
-      var trans = "translate(" + lm + "," + tm + ")";
-      if (rotate) {
-         trans += " rotate(-90) " + "translate(" + -h + ",0)";
-         var d = w; w = h; h = d;
-      }
-
-      this._frame_x = lm;
-      this._frame_y = tm;
-      this._frame_width = w;
-      this._frame_height = h;
 
       this.draw_g.attr("transform", trans);
 
@@ -1908,9 +1907,8 @@
    }
 
    TFramePainter.prototype.ProcessKeyPress = function(evnt) {
-
       var main = this.select_main();
-      if (main.empty()) return;
+      if (!JSROOT.key_handling || main.empty()) return;
 
       var key = "";
       switch (evnt.keyCode) {
@@ -2095,8 +2093,7 @@
       } else {
          switch (kind) {
             case 1:
-               var fp = this.frame_painter();
-               if (fp) fp.ProcessFrameClick(pnt);
+               this.ProcessFrameClick(pnt);
                break;
             case 2:
                var pp = this.pad_painter();
@@ -2504,7 +2501,7 @@
 
          var diff = now.getTime() - this.last_touch.getTime();
 
-         if ((diff > 500) && (diff<2000) && !this.frame_painter().IsTooltipShown()) {
+         if ((diff > 500) && (diff < 2000) && !this.IsTooltipShown()) {
             this.ShowContextMenu('main', { clientX: this.zoom_curr[0], clientY: this.zoom_curr[1] });
             this.last_touch = new Date(0);
          } else {
@@ -2598,9 +2595,6 @@
          }
       }
 
-      // one need to copy event, while after call back event may be changed
-      menu_painter.ctx_menu_evnt = evnt;
-
       if (!exec_painter) exec_painter = menu_painter;
 
       JSROOT.Painter.createMenu(menu_painter, function(menu) {
@@ -2614,10 +2608,9 @@
             exec_painter.FillObjectExecMenu(menu, kind, function() {
                 // suppress any running zooming
                 menu.painter.SwitchTooltip(false);
-                menu.show(menu.painter.ctx_menu_evnt, menu.painter.SwitchTooltip.bind(menu.painter, true));
+                menu.show(null, menu.painter.SwitchTooltip.bind(menu.painter, true));
             });
-
-      });  // end menu creation
+      }, evnt);  // end menu creation
    }
 
    /** @summary Show axis status message
@@ -2712,7 +2705,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.TObjectPainter
+    * @arguments JSROOT.TObjectPainter
     * @param {object} pad - TPad object to draw
     * @param {boolean} iscan - if TCanvas object
     */
@@ -3127,7 +3120,7 @@
       if (!obj) return false;
 
       if (obj._typename == "TStyle") {
-         JSROOT.extend(JSROOT.gStyle, style);
+         JSROOT.extend(JSROOT.gStyle, obj);
          return true;
       }
 
@@ -3359,14 +3352,12 @@
       }
 
       JSROOT.Painter.createMenu(this, function(menu) {
-
          menu.painter.FillContextMenu(menu);
-
-         menu.painter.FillObjectExecMenu(menu, "", function() { menu.show(evnt); });
-      }); // end menu creation
+         menu.painter.FillObjectExecMenu(menu, "", function() { menu.show(); });
+      }, evnt); // end menu creation
    }
 
-   TPadPainter.prototype.Redraw = function(resize) {
+   TPadPainter.prototype.Redraw = function(reason) {
 
       // prevent redrawing
       if (this._doing_pad_draw)
@@ -3383,7 +3374,7 @@
       // even sub-pad is not visible, we should redraw sub-sub-pads to hide them as well
       for (var i = 0; i < this.painters.length; ++i) {
          var sub = this.painters[i];
-         if (showsubitems || sub.this_pad_name) sub.Redraw(resize);
+         if (showsubitems || sub.this_pad_name) sub.Redraw(reason);
       }
    }
 
@@ -3426,7 +3417,7 @@
       // If redrawing was forced for canvas, same applied for sub-elements
       if (changed)
          for (var i = 0; i < this.painters.length; ++i)
-            this.painters[i].Redraw(force ? false : true);
+            this.painters[i].Redraw(force ? "redraw" : "resize");
 
       return changed;
    }
@@ -3982,8 +3973,8 @@
 
        JSROOT.Painter.createMenu(selp, function(menu) {
           if (selp.FillContextMenu(menu, selkind))
-             setTimeout(menu.show.bind(menu, evnt), 50);
-       });
+             setTimeout(menu.show.bind(menu), 50);
+       }, evnt);
    }
 
    TPadPainter.prototype.SaveAs = function(kind, full_canvas, filename) {
@@ -4044,7 +4035,7 @@
 
          var sz2 = main.size_for_3d(2); // get size of DOM element as it will be embed
 
-         var sz = (can3d == 2) ? sz : main.size_for_3d(1);
+         var sz = (can3d == 2) ? sz2 : main.size_for_3d(1);
 
          var canvas = main.renderer.domElement;
          main.Render3D(0); // WebGL clears buffers, therefore we should render scene and convert immediately
@@ -4153,9 +4144,9 @@
 
          if (JSROOT.Painter.closeMenu()) return;
 
-         var pthis = this, evnt = d3.event;
+         var pthis = this;
 
-         JSROOT.Painter.createMenu(pthis, function(menu) {
+         JSROOT.Painter.createMenu(this, function(menu) {
             menu.add("header:Menus");
 
             if (pthis.iscan)
@@ -4190,8 +4181,8 @@
                }
             }
 
-            menu.show(evnt);
-         });
+            menu.show();
+         }, d3.event);
 
          return;
       }
@@ -4446,7 +4437,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.TPadPainter
+    * @arguments JSROOT.TPadPainter
     * @param {object} canvas - TCanvas object to draw
     */
 

@@ -35,6 +35,7 @@
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/Mangle.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeVisitor.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -363,6 +364,58 @@ void TNormalizedCtxt::keepTypedef(const cling::LookupHelper &lh, const char* nam
    return fImpl->keepTypedef(lh, name, replace);
 }
 
+std::string AnnotatedRecordDecl::BuildDemangledTypeInfo(const clang::RecordDecl *rDecl,
+                                                        const std::string &normalizedName)
+{
+   // Types with strong typedefs must not be findable through demangled type names, or else
+   // the demangled name will resolve to both sinblings double / Double32_t.
+   if (normalizedName.find("Double32_t") != std::string::npos
+       || normalizedName.find("Float16_t") != std::string::npos)
+       return {};
+   std::unique_ptr<clang::MangleContext> mangleCtx(rDecl->getASTContext().createMangleContext());
+   std::string mangledName;
+   {
+      llvm::raw_string_ostream sstr(mangledName);
+      if (const clang::TypeDecl* TD = llvm::dyn_cast<clang::TypeDecl>(rDecl)) {
+         mangleCtx->mangleCXXRTTI(clang::QualType(TD->getTypeForDecl(), 0), sstr);
+      }
+   }
+   if (!mangledName.empty()) {
+      int errDemangle = 0;
+#ifdef WIN32
+      if (mangledName[0] == '\01')
+         mangledName.erase(0, 1);
+      char *demangledTIName = TClassEdit::DemangleName(mangledName.c_str(), errDemangle);
+      if (!errDemangle && demangledTIName) {
+         static const char typeinfoNameFor[] = " `RTTI Type Descriptor'";
+         if (strstr(demangledTIName, typeinfoNameFor)) {
+            std::string demangledName = demangledTIName;
+            demangledName.erase(demangledName.end() - strlen(typeinfoNameFor), demangledName.end());
+#else
+      char* demangledTIName = TClassEdit::DemangleName(mangledName.c_str(), errDemangle);
+      if (!errDemangle && demangledTIName) {
+         static const char typeinfoNameFor[] = "typeinfo for ";
+         if (!strncmp(demangledTIName, typeinfoNameFor, strlen(typeinfoNameFor))) {
+            std::string demangledName = demangledTIName + strlen(typeinfoNameFor);
+#endif
+            free(demangledTIName);
+            return demangledName;
+         } else {
+#ifdef WIN32
+            ROOT::TMetaUtils::Error("AnnotatedRecordDecl::BuildDemangledTypeInfo",
+                                    "Demangled typeinfo name '%s' does not contain `RTTI Type Descriptor'\n",
+                                    demangledTIName);
+#else
+            ROOT::TMetaUtils::Error("AnnotatedRecordDecl::BuildDemangledTypeInfo",
+                                    "Demangled typeinfo name '%s' does not start with 'typeinfo for'\n",
+                                    demangledTIName);
+#endif
+         } // if demangled type_info starts with "typeinfo for "
+      } // if demangling worked
+      free(demangledTIName);
+   } // if mangling worked
+   return {};
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -382,7 +435,7 @@ AnnotatedRecordDecl::AnnotatedRecordDecl(long index,
    fRequestNoInputOperator(rRequestNoInputOperator), fRequestOnlyTClass(rRequestOnlyTClass), fRequestedVersionNumber(rRequestedVersionNumber)
 {
    TMetaUtils::GetNormalizedName(fNormalizedName, decl->getASTContext().getTypeDeclType(decl), interpreter,normCtxt);
-
+   fDemangledTypeInfo = BuildDemangledTypeInfo(decl, fNormalizedName);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -412,8 +465,9 @@ AnnotatedRecordDecl::AnnotatedRecordDecl(long index,
       ROOT::TMetaUtils::Warning("AnnotatedRecordDecl",
                                 "Could not remove the requested template arguments.\n");
    }
-
+   fDemangledTypeInfo = BuildDemangledTypeInfo(decl, fNormalizedName);
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Normalize the requested type name.
 
@@ -436,8 +490,9 @@ AnnotatedRecordDecl::AnnotatedRecordDecl(long index,
    splitname1.ShortType(fRequestedName, 0);
 
    TMetaUtils::GetNormalizedName( fNormalizedName, clang::QualType(requestedType,0), interpreter, normCtxt);
-
+   fDemangledTypeInfo = BuildDemangledTypeInfo(decl, fNormalizedName);
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Normalize the requested name.
 
@@ -468,8 +523,7 @@ AnnotatedRecordDecl::AnnotatedRecordDecl(long index,
    } else {
       TMetaUtils::GetNormalizedName( fNormalizedName, decl->getASTContext().getTypeDeclType(decl),interpreter,normCtxt);
    }
-
-
+   fDemangledTypeInfo = BuildDemangledTypeInfo(decl, fNormalizedName);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -683,10 +737,11 @@ ROOT::TMetaUtils::TNormalizedCtxtImpl::TNormalizedCtxtImpl(const cling::LookupHe
    keepTypedef(lh, "ULong64_t", true);
 
    clang::QualType toSkip = lh.findType("string", cling::LookupHelper::WithDiagnostics);
-   if (const clang::TypedefType* TT
-       = llvm::dyn_cast_or_null<clang::TypedefType>(toSkip.getTypePtr()))
-      fConfig.m_toSkip.insert(TT->getDecl());
-
+   if (!toSkip.isNull()) {
+      if (const clang::TypedefType* TT
+          = llvm::dyn_cast_or_null<clang::TypedefType>(toSkip.getTypePtr()))
+         fConfig.m_toSkip.insert(TT->getDecl());
+   }
    toSkip = lh.findType("std::string", cling::LookupHelper::WithDiagnostics);
    if (!toSkip.isNull()) {
       if (const clang::TypedefType* TT
@@ -1027,6 +1082,8 @@ ROOT::TMetaUtils::EIOCtorCategory ROOT::TMetaUtils::CheckIOConstructor(const cla
    if (!expectedArgType)
       return EIOCtorCategory::kAbsent;
 
+   // FIXME: We should not iterate here. That costs memory!
+   cling::Interpreter::PushTransactionRAII clingRAII(const_cast<cling::Interpreter*>(&interpreter));
    for (auto iter = cl->ctor_begin(), end = cl->ctor_end(); iter != end; ++iter)
       {
          if ((iter->getAccess() != clang::AS_public) || (iter->getNumParams() != 1))
@@ -1988,6 +2045,14 @@ void ROOT::TMetaUtils::WriteClassInit(std::ostream& finalString,
    if (cl.GetRequestedName()[0] && classname != cl.GetRequestedName()) {
       finalString << "\n" << "      ::ROOT::AddClassAlternate(\""
                   << classname << "\",\"" << cl.GetRequestedName() << "\");\n";
+   }
+
+   if (!cl.GetDemangledTypeInfo().empty()
+         && cl.GetDemangledTypeInfo() != classname
+         && cl.GetDemangledTypeInfo() != cl.GetRequestedName()) {
+      finalString << "\n" << "      ::ROOT::AddClassAlternate(\""
+                  << classname << "\",\"" << cl.GetDemangledTypeInfo() << "\");\n";
+
    }
 
    //---------------------------------------------------------------------------
