@@ -273,6 +273,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         TestStatistics/RooUnbinnedL.h
         TestStatistics/kahan_sum.h
         RooAbsMinimizerFcn.h
+    RooHelpers.h
+    RooSpan.h
   SOURCES
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
@@ -514,6 +516,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
         src/TestStatistics/RooRealL.cxx
         src/TestStatistics/RooUnbinnedL.cxx
         src/RooAbsMinimizerFcn.cxx
+    src/RooHelpers.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
 #    -I${ZeroMQ_INCLUDE_DIR} # necessary because zmq.h is included in the RooFitCore dictionary as well via MultiProcess
@@ -540,4 +543,12 @@ target_include_directories(RooFitCore PRIVATE ${ZeroMQ_INCLUDE_DIR})
 
 if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)
+endif()
+
+if(builtin_vdt)
+#  target_link_libraries(RooFitCore PUBLIC $<INSTALL_INTERFACE:vdt>)
+  target_include_directories(RooFitCore PUBLIC $<INSTALL_INTERFACE:include>)
+elseif(vdt)
+#  target_link_libraries(RooFitCore PUBLIC ${VDT_LIBRARIES})
+  target_include_directories(RooFitCore PUBLIC ${VDT_INCLUDE_DIRS})
 endif()
