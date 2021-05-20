@@ -16,14 +16,13 @@
 #include "TGraph.h"
 #include "TH1.h"
 #include "TH2.h"
-#include "TPolyLine3D.h"
 #include "TVirtualPad.h"
 #include "Riostream.h"
 #include "TVirtualFitter.h"
 #include "TPluginManager.h"
-#include "TClass.h"
 #include "TMath.h"
 #include "TSystem.h"
+#include "TF1.h"
 #include <stdlib.h>
 
 #include "HFitInterface.h"
