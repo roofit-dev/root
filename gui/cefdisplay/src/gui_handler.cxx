@@ -1,9 +1,7 @@
 /// \file gui_handler.cxx
-/// \ingroup WebGui
-/// \author Sergey Linev <S.Linev@gsi.de>
-/// \date 2017-06-29
-/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
-/// is welcome!
+// Author: Sergey Linev <S.Linev@gsi.de>
+// Date: 2017-06-29
+// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 /*************************************************************************
  * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
@@ -41,6 +39,13 @@
 #include "TSystem.h"
 #include "TBase64.h"
 #include <ROOT/RLogger.hxx>
+
+
+ROOT::Experimental::RLogChannel &CefWebDisplayLog()
+{
+   static ROOT::Experimental::RLogChannel sChannel("ROOT.CefWebDisplay");
+   return sChannel;
+}
 
 
 GuiHandler::GuiHandler(bool use_views) : fUseViews(use_views), is_closing_(false)
@@ -169,15 +174,15 @@ bool GuiHandler::OnConsoleMessage(CefRefPtr<CefBrowser> browser,
    switch (level) {
    case LOGSEVERITY_WARNING:
       if (fConsole > -1)
-         R__WARNING_HERE("CEF") << Form("CEF: %s:%d: %s", src.c_str(), line, message.ToString().c_str());
+         R__LOG_WARNING(CefWebDisplayLog()) << Form("CEF: %s:%d: %s", src.c_str(), line, message.ToString().c_str());
       break;
    case LOGSEVERITY_ERROR:
       if (fConsole > -2)
-         R__ERROR_HERE("CEF") << Form("CEF: %s:%d: %s", src.c_str(), line, message.ToString().c_str());
+         R__LOG_ERROR(CefWebDisplayLog()) << Form("CEF: %s:%d: %s", src.c_str(), line, message.ToString().c_str());
       break;
    default:
       if (fConsole > 0)
-         R__DEBUG_HERE("CEF") << Form("CEF: %s:%d: %s", src.c_str(), line, message.ToString().c_str());
+         R__LOG_DEBUG(0, CefWebDisplayLog()) << Form("CEF: %s:%d: %s", src.c_str(), line, message.ToString().c_str());
       break;
    }
 
@@ -205,16 +210,14 @@ protected:
 
    CefRefPtr<CefCallback> fCallBack{nullptr};
 
-   void CheckWSPageContent(THttpWSHandler *) override
-   {
-      std::string search = "JSROOT.ConnectWebWindow({";
-      std::string replace = search + "platform:\"cef3\",socket_kind:\"longpoll\",";
-
-      ReplaceAllinContent(search, replace, true);
-   }
-
 public:
    explicit TCefHttpCallArg() = default;
+
+   /** provide WS kind  */
+   const char *GetWSKind() const override { return "longpoll"; }
+
+   /** provide WS platform */
+   const char *GetWSPlatform() const override { return "cef3"; }
 
    void AssignCallback(CefRefPtr<CefCallback> cb) { fCallBack = cb; }
 
@@ -345,14 +348,14 @@ CefRefPtr<CefResourceHandler> GuiHandler::GetResourceHandler(
   int indx = std::stoi(addr.substr(prefix.length(), addr.find("/", prefix.length()) - prefix.length()));
 
   if ((indx < 0) || (indx >= (int) fServers.size()) || !fServers[indx]) {
-     R__ERROR_HERE("CEF") << "No THttpServer with index " << indx;
+     R__LOG_ERROR(CefWebDisplayLog()) << "No THttpServer with index " << indx;
      return nullptr;
   }
 
   THttpServer *serv = fServers[indx];
   if (serv->IsZombie()) {
      fServers[indx] = nullptr;
-     R__ERROR_HERE("CEF") << "THttpServer with index " << indx << " is zombie now";
+     R__LOG_ERROR(CefWebDisplayLog()) << "THttpServer with index " << indx << " is zombie now";
      return nullptr;
   }
 
@@ -394,7 +397,7 @@ CefRefPtr<CefResourceHandler> GuiHandler::GetResourceHandler(
      CefRefPtr< CefPostData > post_data = request->GetPostData();
 
      if (!post_data) {
-        R__ERROR_HERE("CEF") << "FATAL - NO POST DATA in CEF HANDLER!!!";
+        R__LOG_ERROR(CefWebDisplayLog()) << "FATAL - NO POST DATA in CEF HANDLER!!!";
         exit(1);
      } else {
         CefPostData::ElementVector elements;

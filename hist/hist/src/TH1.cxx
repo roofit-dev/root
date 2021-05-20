@@ -13,6 +13,7 @@
 #include <cstring>
 #include <cstdio>
 #include <cctype>
+#include <climits>
 #include <sstream>
 #include <cmath>
 #include <iostream>
@@ -68,15 +69,33 @@
 */
 
 /** \class TH1
-TH1 is the base class of all histogramm classes in ROOT. It provides the common interface for
-operations such as binning, filling, drawing, which will be detailed below.
+TH1 is the base class of all histogram classes in %ROOT.
+
+It provides the common interface for operations such as binning, filling, drawing, which
+will be detailed below.
 
 -# [Creating histograms](\ref creating-histograms)
+   -  [Labelling axes](\ref labelling-axis)
 -# [Binning](\ref binning)
+   - [Fix or variable bin size](\ref fix-var)
+   - [Convention for numbering bins](\ref convention)
+   - [Alphanumeric Bin Labels](\ref alpha)
+   - [Histograms with automatic bins](\ref auto-bin)
+   - [Rebinning](\ref rebinning)
 -# [Filling histograms](\ref filling-histograms)
--# [Operations on histograms](\ref operations-on-histograms)
+   - [Associated errors](\ref associated-errors)
+   - [Associated functions](\ref associated-functions)
+   - [Projections of histograms](\ref prof-hist)
+   - [Random Numbers and histograms](\ref random-numbers)
+   - [Making a copy of an histogram](\ref making-a-copy)
+   - [Normalizing histograms](\ref normalizing)
 -# [Drawing histograms](\ref drawing-histograms)
+   - [Setting Drawing histogram contour levels (2-D hists only)](\ref cont-level)
+   - [Setting histogram graphics attributes](\ref graph-att)
+   - [Customising how axes are drawn](\ref axis-drawing)
 -# [Saving/reading histograms to/from a ROOT file](\ref saving-histograms)
+-# [Operations on histograms](\ref operations-on-histograms)
+   - [Fitting histograms](\ref fitting-histograms)
 -# [Miscellaneous operations](\ref misc)
 
 ROOT supports the following histogram types:
@@ -84,19 +103,19 @@ ROOT supports the following histogram types:
   - 1-D histograms:
       - TH1C : histograms with one byte per channel.   Maximum bin content = 127
       - TH1S : histograms with one short per channel.  Maximum bin content = 32767
-      - TH1I : histograms with one int per channel.    Maximum bin content = 2147483647
+      - TH1I : histograms with one int per channel.    Maximum bin content = INT_MAX (\ref intmax "*")
       - TH1F : histograms with one float per channel.  Maximum precision 7 digits
       - TH1D : histograms with one double per channel. Maximum precision 14 digits
   - 2-D histograms:
       - TH2C : histograms with one byte per channel.   Maximum bin content = 127
       - TH2S : histograms with one short per channel.  Maximum bin content = 32767
-      - TH2I : histograms with one int per channel.    Maximum bin content = 2147483647
+      - TH2I : histograms with one int per channel.    Maximum bin content = INT_MAX (\ref intmax "*")
       - TH2F : histograms with one float per channel.  Maximum precision 7 digits
       - TH2D : histograms with one double per channel. Maximum precision 14 digits
   - 3-D histograms:
       - TH3C : histograms with one byte per channel.   Maximum bin content = 127
       - TH3S : histograms with one short per channel.  Maximum bin content = 32767
-      - TH3I : histograms with one int per channel.    Maximum bin content = 2147483647
+      - TH3I : histograms with one int per channel.    Maximum bin content = INT_MAX (\ref intmax "*")
       - TH3F : histograms with one float per channel.  Maximum precision 7 digits
       - TH3D : histograms with one double per channel. Maximum precision 14 digits
   - Profile histograms: See classes  TProfile, TProfile2D and TProfile3D.
@@ -108,42 +127,13 @@ ROOT supports the following histogram types:
       approximate function of X, this function is displayed by a profile
       histogram with much better precision than by a scatter-plot.
 
+<sup>
+\anchor intmax (*) INT_MAX = 2147483647 is the [maximum value for a variable of type int.](https://docs.microsoft.com/en-us/cpp/c-language/cpp-integer-limits)
+</sup>
+
 The inheritance hierarchy looks as follows:
-~~~
-                                TH1
-                                 ^
-                                 |
-                                 |
-                                 |
-                +----------------+-------+------+------+-----+-----+
-                |                |       |      |      |     |     |
-                |                |      TH1C   TH1S   TH1I  TH1F  TH1D
-                |                |                                 |
-                |                |                                 |
-                |               TH2                             TProfile
-                |                |
-                |                |
-                |                +-------+------+------+-----+-----+
-                |                        |      |      |     |     |
-                |                       TH2C   TH2S   TH2I  TH2F  TH2D
-                |                                                  |
-               TH3                                                 |
-                |                                               TProfile2D
-                |
-                +-------+------+------+------+------+
-                        |      |      |      |      |
-                       TH3C   TH3S   TH3I   TH3F   TH3D
-                                                    |
-                                                    |
-                                                 TProfile3D
 
-      The TH*C classes also inherit from the array class TArrayC.
-      The TH*S classes also inherit from the array class TArrayS.
-      The TH*I classes also inherit from the array class TArrayI.
-      The TH*F classes also inherit from the array class TArrayF.
-      The TH*D classes also inherit from the array class TArrayD.
-~~~
-
+\image html classTH1__inherit__graph_org.svg width=100%
 
 \anchor creating-histograms
 ## Creating histograms
@@ -171,6 +161,7 @@ Histograms may also be created by:
  When a file is closed, all histograms in memory associated with this file
  are automatically deleted.
 
+\anchor labelling-axis
 ### Labelling axes
 
  Axis titles can be specified in the title argument of the constructor.
@@ -200,7 +191,8 @@ For bin labels see \ref binning.
 \anchor binning
 ## Binning
 
-#### Fix or variable bin size
+\anchor fix-var
+### Fix or variable bin size
 
  All histogram types support either fix or variable bin sizes.
  2-D histograms may have fix size bins along X and variable size bins
@@ -216,7 +208,8 @@ For bin labels see \ref binning.
  See class TAxis for a description of all the access functions.
  The axis range is always stored internally in double precision.
 
-#### Convention for numbering bins
+\anchor convention
+### Convention for numbering bins
 
  For all histogram types: nbins, xlow, xup
 ~~~ {.cpp}
@@ -240,7 +233,8 @@ For bin labels see \ref binning.
  returns the center along z of bin number 27 (not the global bin)
  in the 3-D histogram h3.
 
-#### Alphanumeric Bin Labels
+\anchor alpha
+### Alphanumeric Bin Labels
 
  By default, an histogram axis is drawn with its numeric bin labels.
  One can specify alphanumeric labels instead with:
@@ -296,7 +290,8 @@ When using the options 2 or 3 above, the labels are automatically
  Once bin labels have been created, they become persistent if the histogram
  is written to a file or when generating the C++ code via SavePrimitive.
 
-#### Histograms with automatic bins
+\anchor auto-bin
+### Histograms with automatic bins
 
  When an histogram is created with an axis lower limit greater or equal
  to its upper limit, the SetBuffer is automatically called with an
@@ -305,12 +300,12 @@ When using the options 2 or 3 above, the labels are automatically
  The axis limits will be automatically computed when the buffer will
  be full or when the function BufferEmpty is called.
 
-#### Rebinning
+\anchor rebinning
+### Rebinning
 
  At any time, an histogram can be rebinned via TH1::Rebin. This function
  returns a new histogram with the rebinned contents.
  If bin errors were stored, they are recomputed during the rebinning.
-
 
 
 \anchor filling-histograms
@@ -360,6 +355,7 @@ When using the options 2 or 3 above, the labels are automatically
  capacity (127 or 32767). Histograms of all types may have positive
  or/and negative bin contents.
 
+\anchor associated-errors
 ### Associated errors
  By default, for each bin, the sum of weights is computed at fill time.
  One can also call TH1::Sumw2 to force the storage and computation
@@ -372,6 +368,7 @@ When using the options 2 or 3 above, the labels are automatically
         Double_t error = h->GetBinError(bin);
 ~~~
 
+\anchor associated-functions
 ### Associated functions
  One or more object (typically a TF1*) can be added to the list
  of functions (fFunctions) associated to each histogram.
@@ -402,7 +399,8 @@ When using the options 2 or 3 above, the labels are automatically
    myhist.SetBit(TH1::kIsAverage);
  When adding (see TH1::Add) average histograms, the histograms are averaged and not summed.
 
-#### Fitting histograms
+\anchor fitting-histograms
+### Fitting histograms
 
  Histograms (1-D, 2-D, 3-D and Profiles) can be fitted with a user
  specified function via TH1::Fit. When an histogram is fitted, the
@@ -417,7 +415,8 @@ When using the options 2 or 3 above, the labels are automatically
        Double_t err0 = myfunc->GetParError(0);  error on first parameter
 ~~~
 
-#### Projections of histograms
+\anchor prof-hist
+### Projections of histograms
 
  One can:
 
@@ -431,7 +430,8 @@ When using the options 2 or 3 above, the labels are automatically
       TH2::FitSlicesX,Y, TH3::FitSlicesZ.
 ~~~
 
-#### Random Numbers and histograms
+\anchor random-numbers
+### Random Numbers and histograms
 
  TH1::FillRandom can be used to randomly fill an histogram using
  the contents of an existing TF1 function or another
@@ -445,7 +445,8 @@ When using the options 2 or 3 above, the labels are automatically
  TH1::GetRandom can be used to return a random number distributed
  according the contents of an histogram.
 
-#### Making a copy of an histogram
+\anchor making-a-copy
+### Making a copy of an histogram
  Like for any other ROOT object derived from TObject, one can use
  the Clone() function. This makes an identical copy of the original
  histogram including all associated errors and functions, e.g.:
@@ -453,7 +454,8 @@ When using the options 2 or 3 above, the labels are automatically
        TH1F *hnew = (TH1F*)h->Clone("hnew");
 ~~~
 
-#### Normalizing histograms
+\anchor normalizing
+### Normalizing histograms
 
  One can scale an histogram such that the bins integral is equal to
  the normalization parameter via TH1::Scale(Double_t norm), where norm
@@ -494,7 +496,8 @@ When using the options 2 or 3 above, the labels are automatically
  the histograms to inherit automatically the current graphics style
  by calling before gROOT->ForceStyle().
 
-#### Setting Drawing histogram contour levels (2-D hists only)
+\anchor cont-level
+### Setting Drawing histogram contour levels (2-D hists only)
 
  By default contours are automatically generated at equidistant
  intervals. A default value of 20 levels is used. This can be modified
@@ -502,13 +505,15 @@ When using the options 2 or 3 above, the labels are automatically
  the contours level info is used by the drawing options "cont", "surf",
  and "lego".
 
-#### Setting histogram graphics attributes
+\anchor graph-att
+### Setting histogram graphics attributes
 
  The histogram classes inherit from the attribute classes:
  TAttLine, TAttFill, and TAttMarker.
  See the member functions of these classes for the list of options.
 
-#### Customising how axes are drawn
+\anchor axis-drawing
+### Customising how axes are drawn
 
  Use the functions of TAxis, such as
 ~~~ {.cpp}
@@ -517,7 +522,7 @@ When using the options 2 or 3 above, the labels are automatically
 ~~~
 
 \anchor saving-histograms
-## Saving/Reading histograms in ROOT files
+## Saving/reading histograms to/from a ROOT file
 
  The following statements create a ROOT file and store an histogram
  on the file. Because TH1 derives from TNamed, the key identifier on
@@ -552,6 +557,13 @@ When using the options 2 or 3 above, the labels are automatically
         TH1::GetEntries() returns the number of entries
         TH1::Reset() resets the bin contents and errors of an histogram
 ~~~
+ IMPORTANT NOTE: The returned values for GetMean and GetStdDev depend on how the
+ histogram statistics are calculated. By default, if no range has been set, the
+ returned values are the (unbinned) ones calculated at fill time. If a range has been
+ set, however, the values are calculated using the bins in range; THIS IS TRUE EVEN
+ IF THE RANGE INCLUDES ALL BINS--use TAxis::SetRange(0, 0) to unset the range.
+ To ensure that the returned values are always those of the binned data stored in the
+ histogram, call TH1::ResetStats. See TH1::GetStats.
 */
 
 TF1 *gF1=0;  //left for back compatibility (use TVirtualFitter::GetUserFunc instead)
@@ -890,6 +902,12 @@ Bool_t TH1::Add(TF1 *f1, Double_t c1, Option_t *option)
 /// is used , ie  this = this + c1*factor*h1
 /// Use the other TH1::Add function if you do not want this feature
 ///
+/// IMPORTANT NOTE3: You should be careful about the statistics of the
+/// returned histogram, whose statistics may be binned or unbinned,
+/// depending on whether c1 is negative, whether TAxis::kAxisRange is true,
+/// and whether TH1::ResetStats has been called on either this or h1.
+/// See TH1::GetStats.
+///
 /// The function return kFALSE if the Add operation failed
 
 Bool_t TH1::Add(const TH1 *h1, Double_t c1)
@@ -1047,6 +1065,12 @@ Bool_t TH1::Add(const TH1 *h1, Double_t c1)
 /// IMPORTANT NOTE: If you intend to use the errors of this histogram later
 /// you should call Sumw2 before making this operation.
 /// This is particularly important if you fit the histogram after TH1::Add
+///
+/// IMPORTANT NOTE2: You should be careful about the statistics of the
+/// returned histogram, whose statistics may be binned or unbinned,
+/// depending on whether c1 is negative, whether TAxis::kAxisRange is true,
+/// and whether TH1::ResetStats has been called on either this or h1.
+/// See TH1::GetStats.
 ///
 /// ANOTHER SPECIAL CASE : h1 = h2 and c2 < 0
 /// do a scaling   this = c1 * h1 / (bin Volume)
@@ -1261,7 +1285,7 @@ void TH1::AddDirectory(Bool_t add)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Auxilliary function to get the power of 2 next (larger) or previous (smaller)
+/// Auxiliary function to get the power of 2 next (larger) or previous (smaller)
 /// a given x
 ///
 ///    next = kTRUE  : next larger
@@ -1278,7 +1302,7 @@ inline Double_t TH1::AutoP2GetPower2(Double_t x, Bool_t next)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Auxilliary function to get the next power of 2 integer value larger then n
+/// Auxiliary function to get the next power of 2 integer value larger then n
 ///
 /// Used by the autobin power of 2 algorithm
 
@@ -1302,8 +1326,7 @@ inline Int_t TH1::AutoP2GetBins(Int_t n)
 ///
 /// Overloaded by TH2 and TH3.
 ///
-/// Return -1 if internal inputs are incosistent, 0 otherwise.
-///
+/// Return -1 if internal inputs are inconsistent, 0 otherwise.
 
 Int_t TH1::AutoP2FindLimits(Double_t xmi, Double_t xma)
 {
@@ -1420,7 +1443,7 @@ Int_t TH1::BufferEmpty(Int_t action)
          if (TestBit(TH1::kAutoBinPTwo)) {
             if ((rc = AutoP2FindLimits(xmin, xmax)) < 0)
                Warning("BufferEmpty",
-                       "incosistency found by power-of-2 autobin algorithm: fallback to standard method");
+                       "inconsistency found by power-of-2 autobin algorithm: fallback to standard method");
          }
          if (rc < 0)
             THLimitsFinder::GetLimitsFinder()->FindGoodLimits(this, xmin, xmax);
@@ -3484,7 +3507,7 @@ void TH1::DoFillN(Int_t ntimes, const Double_t *x, const Double_t *w, Int_t stri
 ////////////////////////////////////////////////////////////////////////////////
 /// Fill histogram following distribution in function fname.
 ///
-///  @param fname  : Function name used for filling the historam
+///  @param fname  : Function name used for filling the histogram
 ///  @param ntimes : number of times the histogram is filled
 ///  @param rng    : (optional) Random number generator used to sample
 ///
@@ -3555,7 +3578,7 @@ void TH1::FillRandom(const char *fname, Int_t ntimes, TRandom * rng)
 ////////////////////////////////////////////////////////////////////////////////
 /// Fill histogram following distribution in histogram h.
 ///
-///  @param h      : Histogram  pointer used for smpling random number
+///  @param h      : Histogram  pointer used for sampling random number
 ///  @param ntimes : number of times the histogram is filled
 ///  @param rng    : (optional) Random number generator used for sampling
 ///
@@ -4060,7 +4083,7 @@ TFitResultPtr TH1::Fit(const char *fname ,Option_t *option ,Option_t *goption, D
 ///
 /// It is possible to fit a TH2 with a TF1 or a TH3 with a TF2.
 /// In this case the option "Integral" is not allowed and each cell has
-/// equal weight. Also in this case th eobtained parameter error are corrected as in the case when the
+/// equal weight. Also in this case the obtained parameter error are corrected as in the case when the
 /// option "W" is used (see above)
 ///
 /// #### Associated functions
@@ -5695,7 +5718,7 @@ void TH1::LabelsOption(Option_t *option, Option_t *ax)
          }
          if (axis == GetXaxis()) {
             // labels on x axis
-            for (i = 0; i < n; i++) { // for x we lool only on bins with the labels
+            for (i = 0; i < n; i++) { // for x we loop only on bins with the labels
                for (j = 0; j < ny; j++) {
                   for (k = 0; k < nz; k++) {
                      Int_t bin = GetBin(i + 1, j, k);
@@ -6526,12 +6549,12 @@ void TH1::RecursiveRemove(TObject *obj)
 ///
 /// `this = c1*this`
 ///
-/// Note that both contents and errors(if any) are scaled.
+/// Note that both contents and errors (if any) are scaled.
 /// This function uses the services of TH1::Add
 ///
-/// IMPORTANT NOTE: Sumw2() is called automatically when scaling
+/// IMPORTANT NOTE: Sumw2() is called automatically when scaling.
 /// If you are not interested in the histogram statistics you can call
-/// Sumw2(off) or use the option "nosw2"
+/// Sumw2(kFALSE) or use the option "nosw2"
 ///
 /// One can scale an histogram such that the bins integral is equal to
 /// the normalization parameter via TH1::Scale(Double_t norm), where norm
@@ -7386,6 +7409,15 @@ void TH1::UseCurrentStyle()
 /// call the static function TH1::StatOverflows(kTRUE) before filling
 /// the histogram.
 ///
+/// IMPORTANT NOTE: The returned value depends on how the histogram statistics
+/// are calculated. By default, if no range has been set, the returned mean is
+/// the (unbinned) one calculated at fill time. If a range has been set, however,
+/// the mean is calculated using the bins in range, as described above; THIS
+/// IS TRUE EVEN IF THE RANGE INCLUDES ALL BINS--use TAxis::SetRange(0, 0) to unset
+/// the range. To ensure that the returned mean (and all other statistics) is
+/// always that of the binned data stored in the histogram, call TH1::ResetStats.
+/// See TH1::GetStats.
+///
 /// Return mean value of this histogram along the X axis.
 ///
 /// Note that the mean value/StdDev is computed using the bins in the currently
@@ -7425,6 +7457,15 @@ Double_t TH1::GetMean(Int_t axis) const
 ///
 /// Also note, that although the definition of standard error doesn't include the
 /// assumption of normality, many uses of this feature implicitly assume it.
+///
+/// IMPORTANT NOTE: The returned value depends on how the histogram statistics
+/// are calculated. By default, if no range has been set, the returned value is
+/// the (unbinned) one calculated at fill time. If a range has been set, however,
+/// the value is calculated using the bins in range, as described above; THIS
+/// IS TRUE EVEN IF THE RANGE INCLUDES ALL BINS--use TAxis::SetRange(0, 0) to unset
+/// the range. To ensure that the returned value (and all other statistics) is
+/// always that of the binned data stored in the histogram, call TH1::ResetStats.
+/// See TH1::GetStats.
 
 Double_t TH1::GetMeanError(Int_t axis) const
 {
@@ -7448,6 +7489,15 @@ Double_t TH1::GetMeanError(Int_t axis) const
 /// To force the underflows and overflows in the computation, one must
 /// call the static function TH1::StatOverflows(kTRUE) before filling
 /// the histogram.
+///
+/// IMPORTANT NOTE: The returned value depends on how the histogram statistics
+/// are calculated. By default, if no range has been set, the returned standard
+/// deviation is the (unbinned) one calculated at fill time. If a range has been
+/// set, however, the standard deviation is calculated using the bins in range,
+/// as described above; THIS IS TRUE EVEN IF THE RANGE INCLUDES ALL BINS--use
+/// TAxis::SetRange(0, 0) to unset the range. To ensure that the returned standard
+/// deviation (and all other statistics) is always that of the binned data stored
+/// in the histogram, call TH1::ResetStats. See TH1::GetStats.
 
 Double_t TH1::GetStdDev(Int_t axis) const
 {
@@ -7487,6 +7537,15 @@ Double_t TH1::GetStdDev(Int_t axis) const
 /// original data distribution is Normal. The correct one would require
 /// the 4-th momentum value, which cannot be accurately estimated from an histogram since
 /// the x-information for all entries is not kept.
+///
+/// IMPORTANT NOTE: The returned value depends on how the histogram statistics
+/// are calculated. By default, if no range has been set, the returned value is
+/// the (unbinned) one calculated at fill time. If a range has been set, however,
+/// the value is calculated using the bins in range, as described above; THIS
+/// IS TRUE EVEN IF THE RANGE INCLUDES ALL BINS--use TAxis::SetRange(0, 0) to unset
+/// the range. To ensure that the returned value (and all other statistics) is
+/// always that of the binned data stored in the histogram, call TH1::ResetStats.
+/// See TH1::GetStats.
 
 Double_t TH1::GetStdDevError(Int_t axis) const
 {
@@ -7500,6 +7559,9 @@ Double_t TH1::GetStdDevError(Int_t axis) const
 ///
 ///Note, that since third and fourth moment are not calculated
 ///at the fill time, skewness and its standard error are computed bin by bin
+///
+/// IMPORTANT NOTE: The returned value depends on how the histogram statistics
+/// are calculated. See TH1::GetMean and TH1::GetStdDev.
 
 Double_t TH1::GetSkewness(Int_t axis) const
 {
@@ -7570,6 +7632,9 @@ Double_t TH1::GetSkewness(Int_t axis) const
 ////
 /// Note, that since third and fourth moment are not calculated
 /// at the fill time, kurtosis and its standard error are computed bin by bin
+///
+/// IMPORTANT NOTE: The returned value depends on how the histogram statistics
+/// are calculated. See TH1::GetMean and TH1::GetStdDev.
 
 Double_t TH1::GetKurtosis(Int_t axis) const
 {
@@ -7647,6 +7712,12 @@ Double_t TH1::GetKurtosis(Int_t axis) const
 /// If a sub-range is specified, the function recomputes these quantities
 /// from the bin contents in the current axis range.
 ///
+/// IMPORTANT NOTE: This means that the returned statistics are context-dependent.
+/// If TAxis::kAxisRange, the returned statistics are dependent on the binning;
+/// otherwise, they are a copy of the histogram statistics computed at fill time,
+/// which are unbinned by default (calling TH1::ResetStats forces them to use
+/// binned statistics). You can reset TAxis::kAxisRange using TAxis::SetRange(0, 0).
+///
 /// Note that the mean value/StdDev is computed using the bins in the currently
 /// defined range (see TAxis::SetRange). By default the range includes
 /// all bins from 1 to nbins included, excluding underflows and overflows.
@@ -7719,6 +7790,9 @@ void TH1::PutStats(Double_t *stats)
 ///
 /// The number of entries is set to the total bin content or (in case of weighted histogram)
 /// to number of effective entries
+///
+/// Note that, by default, before calling this function, statistics are those
+/// computed at fill time, which are unbinned. See TH1::GetStats.
 
 void TH1::ResetStats()
 {
@@ -8904,7 +8978,7 @@ Double_t TH1::GetBinErrorUp(Int_t bin) const
 //L.M. These following getters are useless and should be probably deprecated
 ////////////////////////////////////////////////////////////////////////////////
 /// Return bin center for 1D histogram.
-/// Better to use h1.GetXaxis().GetBinCenter(bin)
+/// Better to use h1.GetXaxis()->GetBinCenter(bin)
 
 Double_t TH1::GetBinCenter(Int_t bin) const
 {
@@ -8915,7 +8989,7 @@ Double_t TH1::GetBinCenter(Int_t bin) const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Return bin lower edge for 1D histogram.
-/// Better to use h1.GetXaxis().GetBinLowEdge(bin)
+/// Better to use h1.GetXaxis()->GetBinLowEdge(bin)
 
 Double_t TH1::GetBinLowEdge(Int_t bin) const
 {
@@ -8926,7 +9000,7 @@ Double_t TH1::GetBinLowEdge(Int_t bin) const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Return bin width for 1D histogram.
-/// Better to use h1.GetXaxis().GetBinWidth(bin)
+/// Better to use h1.GetXaxis()->GetBinWidth(bin)
 
 Double_t TH1::GetBinWidth(Int_t bin) const
 {
@@ -8937,7 +9011,7 @@ Double_t TH1::GetBinWidth(Int_t bin) const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Fill array with center of bins for 1D histogram
-/// Better to use h1.GetXaxis().GetCenter(center)
+/// Better to use h1.GetXaxis()->GetCenter(center)
 
 void TH1::GetCenter(Double_t *center) const
 {
@@ -8950,7 +9024,7 @@ void TH1::GetCenter(Double_t *center) const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Fill array with low edge of bins for 1D histogram
-/// Better to use h1.GetXaxis().GetLowEdge(edge)
+/// Better to use h1.GetXaxis()->GetLowEdge(edge)
 
 void TH1::GetLowEdge(Double_t *edge) const
 {
@@ -8967,7 +9041,7 @@ void TH1::GetLowEdge(Double_t *edge) const
 /// non-empty bin the bin error is set by default to the square root of their content.
 /// Note that in case the user sets after calling SetBinError explicitly a new bin content (e.g. using SetBinContent)
 /// he needs then to provide also the corresponding bin error (using SetBinError) since the bin error
-/// will not recalcualated after setting the content and a default error = 0 will be used for those bins.
+/// will not be recalculated after setting the content and a default error = 0 will be used for those bins.
 ///
 /// See convention for numbering bins in TH1::GetBin
 
@@ -9594,6 +9668,7 @@ TH1S operator/(const TH1S &h1, const TH1S &h2)
 //______________________________________________________________________________
 //                     TH1I methods
 // TH1I : histograms with one int per channel.    Maximum bin content = 2147483647
+// 2147483647 = INT_MAX
 //______________________________________________________________________________
 
 ClassImp(TH1I);
@@ -9666,7 +9741,7 @@ TH1I::TH1I(const TH1I &h1i) : TH1(), TArrayI()
 
 void TH1I::AddBinContent(Int_t bin)
 {
-   if (fArray[bin] < 2147483647) fArray[bin]++;
+   if (fArray[bin] < INT_MAX) fArray[bin]++;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -9675,9 +9750,9 @@ void TH1I::AddBinContent(Int_t bin)
 void TH1I::AddBinContent(Int_t bin, Double_t w)
 {
    Long64_t newval = fArray[bin] + Long64_t(w);
-   if (newval > -2147483647 && newval < 2147483647) {fArray[bin] = Int_t(newval); return;}
-   if (newval < -2147483647) fArray[bin] = -2147483647;
-   if (newval >  2147483647) fArray[bin] =  2147483647;
+   if (newval > -INT_MAX && newval < INT_MAX) {fArray[bin] = Int_t(newval); return;}
+   if (newval < -INT_MAX) fArray[bin] = -INT_MAX;
+   if (newval >  INT_MAX) fArray[bin] =  INT_MAX;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -10151,3 +10226,14 @@ TH1 *R__H(const char * hname)
 {
    return (TH1*)gDirectory->Get(hname);
 }
+
+
+/// \fn void TH1::SetBarOffset(Float_t offset)
+/// Set the bar offset as fraction of the bin width for drawing mode "B".
+/// This shifts bars to the right on the x axis, and helps to draw bars next to each other.
+/// \see THistPainter, SetBarWidth()
+
+/// \fn void TH1::SetBarWidth(Float_t width)
+/// Set the width of bars as fraction of the bin width for drawing mode "B".
+/// This allows for making bars narrower than the bin width. With SetBarOffset(), this helps to draw multiple bars next to each other.
+/// \see THistPainter, SetBarOffset()

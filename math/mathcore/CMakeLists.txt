@@ -73,6 +73,7 @@ set(HEADERS
   Math/QuantFuncMathCore.h
   Math/Random.h
   Math/RandomFunctions.h
+  Math/RanluxppEngine.h
   Math/RichardsonDerivator.h
   Math/RootFinder.h
   Math/SpecFuncMathCore.h
@@ -104,6 +105,10 @@ if(runtime_cxxmodules)
   # 'abs' shadow declaration (from stl math.h) is broken.
   # FIXME: Revise after a llvm upgrade or reproduce it outside rootcling.
   list(REMOVE_ITEM HEADERS "Math/Math.h")
+
+  if(veccore)
+    set(dictoptions "-mByproduct" "Vc")
+  endif(veccore)
 endif()
 
 ROOT_ADD_C_FLAG(_flags -Wno-strict-overflow)  # Avoid what it seems a compiler false positive warning
@@ -160,6 +165,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(MathCore
     src/ProbFuncMathCore.cxx
     src/QuantFuncMathCore.cxx
     src/RandomFunctions.cxx
+    src/RanluxppEngineImpl.cxx
     src/RichardsonDerivator.cxx
     src/RootFinder.cxx
     src/SparseData.cxx
@@ -185,6 +191,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(MathCore
     ${MATHCORE_LIBRARIES}
   DICTIONARY_OPTIONS
     -writeEmptyRootPCM
+    ${dictoptions}
   DEPENDENCIES
     Core
     ${MATHCORE_DEPENDENCIES}

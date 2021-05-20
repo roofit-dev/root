@@ -17,9 +17,11 @@
 #pragma link C++ class ROOT::RDF::RInterface<ROOT::Detail::RDF::RFilterBase>-;
 #pragma link C++ class ROOT::RDF::RInterface<ROOT::Detail::RDF::RDefineBase>-;
 #pragma link C++ namespace ROOT::Internal::RDF;
+#pragma link C++ namespace ROOT::Internal::RDF::GraphDrawing;
 #pragma link C++ namespace ROOT::Detail::RDF;
 #pragma link C++ namespace ROOT::RDF;
 #pragma link C++ class ROOT::Internal::RDF::RActionBase-;
+#pragma link C++ class ROOT::Internal::RDF::RJittedAction-;
 #pragma link C++ class ROOT::Detail::RDF::RFilterBase-;
 #pragma link C++ class ROOT::Detail::RDF::RJittedFilter-;
 #pragma link C++ class ROOT::Detail::RDF::RDefineBase-;

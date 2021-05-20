@@ -1,4 +1,17 @@
+// Author: Enrico Guiraud, Danilo Piparo, CERN, Massimo Tumolo Politecnico di Torino 08/2018
+
+/*************************************************************************
+ * Copyright (C) 1995-2020, Rene Brun and Fons Rademakers.               *
+ * All rights reserved.                                                  *
+ *                                                                       *
+ * For the licensing terms see $ROOTSYS/LICENSE.                         *
+ * For the list of contributors see $ROOTSYS/README/CREDITS.             *
+ *************************************************************************/
+
+#include "ROOT/RDF/RBookedDefines.hxx"
 #include "ROOT/RDF/GraphUtils.hxx"
+
+#include <algorithm> // std::find
 
 namespace ROOT {
 namespace Internal {
@@ -59,15 +72,18 @@ std::string GraphCreatorHelper::RepresentGraph(ROOT::RDataFrame &rDataFrame)
 
 std::string GraphCreatorHelper::RepresentGraph(RLoopManager *loopManager)
 {
+   const auto actions = loopManager->GetAllActions();
+   const auto edges = loopManager->GetGraphEdges();
 
-   auto actions = loopManager->GetAllActions();
-   std::vector<std::shared_ptr<GraphNode>> leaves;
-   for (auto action : actions) {
-      // Triggers the graph construction. When action->GetGraph() will return, the node will be linked to all the branch
-      leaves.push_back(action->GetGraph());
-   }
+   std::vector<std::shared_ptr<GraphNode>> nodes;
+   nodes.reserve(actions.size() + edges.size());
 
-   return FromGraphActionsToDot(leaves);
+   for (auto *action : actions)
+      nodes.emplace_back(action->GetGraph());
+   for (auto *edge : edges)
+      nodes.emplace_back(edge->GetGraph());
+
+   return FromGraphActionsToDot(nodes);
 }
 
 std::shared_ptr<GraphNode>
@@ -123,6 +139,33 @@ std::shared_ptr<GraphNode> CreateRangeNode(const ROOT::Detail::RDF::RRangeBase *
    sRangesMap[rangePtr] = node;
    return node;
 }
+
+std::shared_ptr<GraphNode> AddDefinesToGraph(std::shared_ptr<GraphNode> node,
+                                             const RDFInternal::RBookedDefines &defines,
+                                             const std::vector<std::string> &prevNodeDefines)
+{
+   auto upmostNode = node;
+   const auto &defineNames = defines.GetNames();
+   const auto &defineMap = defines.GetColumns();
+   for (auto i = int(defineNames.size()) - 1; i >= 0; --i) { // walk backwards through the names of defined columns
+      const auto colName = defineNames[i];
+      const bool isAlias = defineMap.find(colName) == defineMap.end();
+      if (isAlias || RDFInternal::IsInternalColumn(colName))
+         continue; // aliases appear in the list of defineNames but we don't support them yet
+      const bool isANewDefine =
+         std::find(prevNodeDefines.begin(), prevNodeDefines.end(), colName) == prevNodeDefines.end();
+      if (!isANewDefine)
+         break; // we walked back through all new defines, the rest is stuff that was already in the graph
+
+      // create a node for this new Define
+      auto defineNode = RDFGraphDrawing::CreateDefineNode(colName, defineMap.at(colName).get());
+      upmostNode->SetPrevNode(defineNode);
+      upmostNode = defineNode;
+   }
+
+   return upmostNode;
+}
+
 } // namespace GraphDrawing
 } // namespace RDF
 } // namespace Internal

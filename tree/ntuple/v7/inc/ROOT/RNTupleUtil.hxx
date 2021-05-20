@@ -20,8 +20,14 @@
 
 #include <string>
 
+#include <ROOT/RLogger.hxx>
+
 namespace ROOT {
 namespace Experimental {
+
+class RLogChannel;
+/// Log channel for RNTuple diagnostics.
+RLogChannel &NTupleLog();
 
 struct RNTuple;
 
@@ -37,12 +43,12 @@ void PrintRNTuple(const RNTuple& ntuple, std::ostream& output);
  * materialization on the primitive column layer.
  */
 enum ENTupleStructure {
-  kLeaf,
-  kCollection,
-  kRecord,
-  kVariant,
-  kReference, // unimplemented so far
-  kInvalid,
+   kLeaf,
+   kCollection,
+   kRecord,
+   kVariant,
+   kReference, // unimplemented so far
+   kInvalid,
 };
 
 /// Integer type long enough to hold the maximum number of entries in a column

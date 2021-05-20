@@ -159,7 +159,9 @@ namespace RooFit {
   RooCmdArg CPUAffinity(Bool_t flag) { return RooCmdArg("CPUAffinity",flag,0,0,0,0,0,0,0); }
 
   RooCmdArg BatchMode(bool flag) { return RooCmdArg("BatchMode", flag); }
-  
+  /// Integrate the PDF over bins. Improves accuracy for binned fits. Switch off using `0.` as argument. \see RooAbsPdf::fitTo().
+  RooCmdArg IntegrateBins(double precision) { return RooCmdArg("IntegrateBins", 0, 0, precision); }
+
   // RooAbsCollection::printLatex arguments
   RooCmdArg Columns(Int_t ncol)                           { return RooCmdArg("Columns",ncol,0,0,0,0,0,0,0) ; }
   RooCmdArg OutputFile(const char* fileName)              { return RooCmdArg("OutputFile",0,0,0,0,fileName,0,0,0) ; }
@@ -213,6 +215,9 @@ namespace RooFit {
   RooCmdArg Integrate(Bool_t flag)                       { return RooCmdArg("Integrate",flag,0,0,0,0,0,0,0) ; }
   RooCmdArg Minimizer(const char* type, const char* alg) { return RooCmdArg("Minimizer",0,0,0,0,type,alg,0,0) ; }
   RooCmdArg Offset(Bool_t flag)                          { return RooCmdArg("OffsetLikelihood",flag,0,0,0,0,0,0,0) ; }
+  /// When parameters are chosen such that a PDF is undefined, try to indicate to the minimiser how to leave this region.
+  /// \param strength Strength of hints for minimiser. Set to zero to switch off.
+  RooCmdArg RecoverFromUndefinedRegions(double strength) { return RooCmdArg("RecoverFromUndefinedRegions",0,0,strength,0,0,0,0,0) ; }
 
   
   // RooAbsPdf::paramOn arguments
