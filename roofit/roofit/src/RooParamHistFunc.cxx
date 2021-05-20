@@ -257,23 +257,13 @@ Double_t RooParamHistFunc::analyticalIntegralWN(Int_t code, const RooArgSet* /*n
   //
   //  - for simplicity, there is no check for the possibility of full-range integration with another overload of
   //    RooDataHist::sum
-  std::map<const RooAbsArg*, std::pair<Double_t, Double_t> > ranges;
+  std::map<const RooAbsArg*, std::pair<double, double> > ranges;
   for (const auto obs : _x) {
     ranges[obs] = RooHelpers::getRangeOrBinningInterval(obs, rangeName);
   }
 
   auto getBinScale = [&](int iBin){ return static_cast<const RooAbsReal&>(_p[iBin]).getVal(); };
 
-  auto integrationSet = _dh.get();
   RooArgSet sliceSet{};
-  Double_t ret = const_cast<RooDataHist&>(_dh).sum(*integrationSet, sliceSet, kFALSE, kTRUE, ranges, getBinScale);
-
-  // WVE fix this!!! Assume uniform binning for now!
-  Double_t binV(1) ;
-  for (const auto obs : _x) {
-    auto xx = static_cast<const RooRealVar*>(obs);
-    binV *= (xx->getMax()-xx->getMin())/xx->numBins() ;
-  }
-
-  return ret*binV ;
+  return const_cast<RooDataHist&>(_dh).sum(_x, sliceSet, true, false, ranges, getBinScale);
 }

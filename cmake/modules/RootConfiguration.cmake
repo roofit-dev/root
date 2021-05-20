@@ -435,6 +435,11 @@ if(dev)
 else()
   set(use_less_includes undef)
 endif()
+if((tbb OR builtin_tbb) AND NOT MSVC)
+  set(hastbb define)
+else()
+  set(hastbb undef)
+endif()
 
 set(uselz4 undef)
 set(usezlib undef)
@@ -635,6 +640,12 @@ else()
    set(has_found_attribute_noinline undef)
 endif()
 
+if(root7 AND webgui)
+   set(root_browser_class "ROOT::Experimental::RWebBrowserImp")
+else()
+   set(root_browser_class "TRootBrowser")
+endif()
+
 #---root-config----------------------------------------------------------------------------------------------
 ROOT_GET_OPTIONS(features ENABLED)
 set(features "cxx${CMAKE_CXX_STANDARD} ${features}")
@@ -832,6 +843,7 @@ if(WIN32)
 endif()
 
 #--Local root-configure
+set(all_features ${ROOT_ALL_OPTIONS})
 set(prefix $ROOTSYS)
 set(bindir $ROOTSYS/bin)
 set(libdir $ROOTSYS/lib)
