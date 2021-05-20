@@ -220,7 +220,7 @@ foreach(artifact_file ${artifact_files})
   # target below will interfere.
   if (NOT (artifact_file STREQUAL "tutorials/hsimple.root"))
     add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/${artifact_file}
-      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/${artifact_file} ${CMAKE_BINARY_DIR}/${artifact_file}
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/${artifact_file} ${CMAKE_BINARY_DIR}/${artifact_file}
       COMMENT "Copying ${CMAKE_SOURCE_DIR}/${artifact_file}"
       DEPENDS ${CMAKE_SOURCE_DIR}/${artifact_file})
     list(APPEND artifact_files_builddir ${CMAKE_BINARY_DIR}/${artifact_file})
@@ -414,11 +414,17 @@ else()
   install(DIRECTORY ${CMAKE_BINARY_DIR}/etc/dictpch DESTINATION ${CMAKE_INSTALL_SYSCONFDIR})
 endif()
 
+# FIXME: move installation of PCMS in ROOT_GENERATE_DICTIONARY().
+# We are excluding directories, which are accidentaly copied via unxpected behaviour of install(DIRECTORY ..)
 install(
    DIRECTORY ${CMAKE_BINARY_DIR}/lib/
    DESTINATION ${CMAKE_INSTALL_LIBDIR}
    FILES_MATCHING PATTERN "*.pcm"
-   PATTERN "*_rdict.pcm" EXCLUDE
+   PATTERN "JupyROOT" EXCLUDE
+   PATTERN "JsMVA" EXCLUDE
+   PATTERN "python*" EXCLUDE
+   PATTERN "cmake" EXCLUDE
+   PATTERN "pkgconfig" EXCLUDE
 )
 
 #---hsimple.root---------(use the executable for clearer dependencies and proper return code)---

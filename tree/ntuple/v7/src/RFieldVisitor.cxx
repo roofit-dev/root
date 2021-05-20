@@ -1,6 +1,6 @@
 /// \file RFieldVisitor.cxx
 /// \ingroup NTuple ROOT7
-/// \author Simon Leisibach <simon.satoshi.rene.leisibach@cern.ch>
+/// \author Simon Leisibach <simon.leisibach@gmail.com>
 /// \date 2019-06-11
 /// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
 /// is welcome!
@@ -13,108 +13,270 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <algorithm>
-#include <iomanip>
+#include <ROOT/RField.hxx>
+#include <ROOT/RFieldValue.hxx>
+#include <ROOT/RFieldVisitor.hxx>
+#include <ROOT/RNTuple.hxx>
+#include <ROOT/RNTupleUtil.hxx>
+#include <ROOT/RNTupleView.hxx>
+
+#include <cassert>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
 
-#include "ROOT/RField.hxx"
-#include "ROOT/RFieldVisitor.hxx"
-#include "ROOT/RNTuple.hxx"
+
+//----------------------------- RPrepareVisitor --------------------------------
 
 
-//---------------------------- RPrintVisitor ------------------------------------
-
-void ROOT::Experimental::RPrintVisitor::SetDeepestLevel(int d) {
-   fDeepestLevel = d;
-   fFlagForVerticalLines.resize(d - 1);
+void ROOT::Experimental::RPrepareVisitor::VisitField(const Detail::RFieldBase &field)
+{
+   auto subFields = field.GetSubFields();
+   for (auto f : subFields) {
+      RPrepareVisitor visitor;
+      f->AcceptVisitor(visitor);
+      fNumFields += visitor.fNumFields;
+      fDeepestLevel = std::max(fDeepestLevel, 1 + visitor.fDeepestLevel);
+   }
 }
 
-void ROOT::Experimental::RPrintVisitor::SetNumFields(int n) {
+
+void ROOT::Experimental::RPrepareVisitor::VisitRootField(const RFieldRoot &field)
+{
+   VisitField(field);
+   fNumFields--;
+   fDeepestLevel--;
+}
+
+
+//---------------------------- RPrintSchemaVisitor -----------------------------
+
+
+void ROOT::Experimental::RPrintSchemaVisitor::SetDeepestLevel(int d)
+{
+   fDeepestLevel = d;
+}
+
+void ROOT::Experimental::RPrintSchemaVisitor::SetNumFields(int n)
+{
    fNumFields = n;
    SetAvailableSpaceForStrings();
 }
 
-std::string ROOT::Experimental::RPrintVisitor::MakeKeyString(const Detail::RFieldBase &field, int level)
+void ROOT::Experimental::RPrintSchemaVisitor::VisitField(const Detail::RFieldBase &field)
 {
-   std::string result{""};
-   if (level==1) {
-      result += "Field ";
-      result += std::to_string(field.GetLevelInfo().GetOrder());
-   } else {
-      if (field.GetLevelInfo().GetOrder() == field.GetLevelInfo().GetNumSiblings()) { fFlagForVerticalLines.at(level-2) = false;
-      } else {
-         fFlagForVerticalLines.at(level-2) = true;
-      }
-      for(int i = 0; i < level-2; ++i) {
-         if (fFlagForVerticalLines.at(i)) {
-            result+= "| ";
-         } else {
-            result += "  ";
-         }
-      }
-      result += "|__Field ";
-      result += RNTupleFormatter::HierarchialFieldOrder(field);
-   }
-   return result;
-}
-
-std::string ROOT::Experimental::RPrintVisitor::MakeValueString(const Detail::RFieldBase &field)
-{
-   std::string nameAndType{field.GetName() + " (" + field.GetType() + ")"};
-   return nameAndType;
-}
-
-// Entire function only prints 1 Line, when if statement is disregarded.
-void ROOT::Experimental::RPrintVisitor::VisitField(const Detail::RFieldBase &field, int level)
-{
-   if (level == 1)
-   {
-      for (int i = 0; i < fWidth; ++i) {
-         fOutput << fFrameSymbol;
-      }
-      fOutput << std::endl;
-   }
    fOutput << fFrameSymbol << ' ';
-   fOutput << RNTupleFormatter::FitString(MakeKeyString(field, level), fAvailableSpaceKeyString);
+
+   std::string key = fTreePrefix;
+   key += "Field " + fFieldNoPrefix + std::to_string(fFieldNo);
+   fOutput << RNTupleFormatter::FitString(key, fAvailableSpaceKeyString);
    fOutput << " : ";
-   fOutput << RNTupleFormatter::FitString(MakeValueString(field), fAvailableSpaceValueString);
+
+   std::string value = field.GetName() + " (" + field.GetType() + ")";
+   fOutput << RNTupleFormatter::FitString(value, fAvailableSpaceValueString);
    fOutput << fFrameSymbol << std::endl;
+
+   auto subFields = field.GetSubFields();
+   auto fieldNo = 1;
+   for (auto iField = subFields.begin(); iField != subFields.end(); ) {
+      RPrintSchemaVisitor visitor(*this);
+      visitor.fFieldNo = fieldNo++;
+      visitor.fFieldNoPrefix += std::to_string(fFieldNo) + ".";
+
+      auto f = *iField;
+      ++iField;
+      // TODO(jblomer): implement tree drawing
+      visitor.fTreePrefix += "  ";
+      f->AcceptVisitor(visitor);
+   }
 }
 
-//---------------------- RPrepareVisitor -------------------------------
 
-
-void ROOT::Experimental::RPrepareVisitor::VisitField(const Detail::RFieldBase &/*field*/, int level)
+void ROOT::Experimental::RPrintSchemaVisitor::VisitRootField(const RFieldRoot &field)
 {
-   ++fNumFields;
-   if (level > fDeepestLevel)
-      fDeepestLevel = level;
+   auto subFields = field.GetSubFields();
+   for (auto f : subFields) {
+      RPrintSchemaVisitor visitor(*this);
+      f->AcceptVisitor(visitor);
+   }
 }
 
-//------------------------ RNTupleFormatter -----------------------------
 
-//E.g. ("ExampleString" , space= 8) => "Examp..."
-std::string ROOT::Experimental::RNTupleFormatter::FitString(const std::string &str, int availableSpace) {
+//--------------------------- RPrintValueVisitor -------------------------------
+
+void ROOT::Experimental::RPrintValueVisitor::PrintIndent()
+{
+   if (fPrintOptions.fPrintSingleLine)
+      return;
+
+   for (unsigned int i = 0; i < fLevel; ++i)
+      fOutput << "  ";
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::PrintName(const Detail::RFieldBase &field)
+{
+   if (fPrintOptions.fPrintName)
+      fOutput << "\"" << field.GetName() << "\": ";
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::PrintCollection(const Detail::RFieldBase &field)
+{
+   PrintIndent();
+   PrintName(field);
+   fOutput << "[";
+   auto elems = field.SplitValue(fValue);
+   for (auto iValue = elems.begin(); iValue != elems.end(); ) {
+      RPrintOptions options;
+      options.fPrintSingleLine = true;
+      options.fPrintName = false;
+      RPrintValueVisitor elemVisitor(*iValue, fOutput, 0 /* level */, options);
+      iValue->GetField()->AcceptVisitor(elemVisitor);
+
+      if (++iValue == elems.end())
+         break;
+      else
+         fOutput << ", ";
+   }
+   fOutput << "]";
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitField(const Detail::RFieldBase &field)
+{
+   PrintIndent();
+   PrintName(field);
+   fOutput << "\"<unsupported type: " << field.GetType() << ">\"";
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitBoolField(const RField<bool> &field)
+{
+   PrintIndent();
+   PrintName(field);
+   if (*fValue.Get<bool>())
+      fOutput << "true";
+   else
+      fOutput << "false";
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitDoubleField(const RField<double> &field)
+{
+   PrintIndent();
+   PrintName(field);
+   fOutput << *fValue.Get<double>();
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitFloatField(const RField<float> &field)
+{
+   PrintIndent();
+   PrintName(field);
+   fOutput << *fValue.Get<float>();
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitIntField(const RField<int> &field)
+{
+   PrintIndent();
+   PrintName(field);
+   fOutput << *fValue.Get<int>();
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitStringField(const RField<std::string> &field)
+{
+   PrintIndent();
+   PrintName(field);
+   // TODO(jblomer): escape double quotes
+   fOutput << "\"" << *fValue.Get<std::string>() << "\"";
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitUInt8Field(const RField<std::uint8_t> &field)
+{
+   PrintIndent();
+   PrintName(field);
+   fOutput << static_cast<int>(*fValue.Get<std::uint8_t>());
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitUInt32Field(const RField<std::uint32_t> &field)
+{
+   PrintIndent();
+   PrintName(field);
+   fOutput << *fValue.Get<std::uint32_t>();
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitUInt64Field(const RField<std::uint64_t> &field)
+{
+   PrintIndent();
+   PrintName(field);
+   fOutput << *fValue.Get<std::uint64_t>();
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitArrayField(const RFieldArray &field)
+{
+   PrintCollection(field);
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitClassField(const RFieldClass &field)
+{
+   PrintIndent();
+   PrintName(field);
+   fOutput << "{";
+   auto elems = field.SplitValue(fValue);
+   for (auto iValue = elems.begin(); iValue != elems.end(); ) {
+      if (!fPrintOptions.fPrintSingleLine)
+         fOutput << std::endl;
+
+      RPrintOptions options;
+      options.fPrintSingleLine = fPrintOptions.fPrintSingleLine;
+      RPrintValueVisitor visitor(*iValue, fOutput, fLevel + 1, options);
+      iValue->GetField()->AcceptVisitor(visitor);
+
+      if (++iValue == elems.end()) {
+         if (!fPrintOptions.fPrintSingleLine)
+            fOutput << std::endl;
+         break;
+      } else {
+         fOutput << ",";
+         if (fPrintOptions.fPrintSingleLine)
+           fOutput << " ";
+      }
+   }
+   PrintIndent();
+   fOutput << "}";
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitVectorField(const RFieldVector &field)
+{
+   PrintCollection(field);
+}
+
+
+void ROOT::Experimental::RPrintValueVisitor::VisitVectorBoolField(const RField<std::vector<bool>> &field)
+{
+   PrintCollection(field);
+}
+
+
+//---------------------------- RNTupleFormatter --------------------------------
+
+
+std::string ROOT::Experimental::RNTupleFormatter::FitString(const std::string &str, int availableSpace)
+{
    int strSize{static_cast<int>(str.size())};
    if (strSize <= availableSpace)
       return str + std::string(availableSpace - strSize, ' ');
    else if (availableSpace < 3)
       return std::string(availableSpace, '.');
    return std::string(str, 0, availableSpace - 3) + "...";
-}
-
-// Returns std::string of form "1" or "2.1.1"
-std::string ROOT::Experimental::RNTupleFormatter::HierarchialFieldOrder(const ROOT::Experimental::Detail::RFieldBase &field)
-{
-   std::string hierarchialOrder{std::to_string(field.GetLevelInfo().GetOrder())};
-   const ROOT::Experimental::Detail::RFieldBase* parentPtr{field.GetParent()};
-   // To avoid having the index of the RootField (-1) in the return value, it is checked if the grandparent is a nullptr (in that case RootField is parent)
-   while (parentPtr && (parentPtr->GetLevelInfo().GetOrder() != -1)) {
-      hierarchialOrder = std::to_string(parentPtr->GetLevelInfo().GetOrder()) + "." + hierarchialOrder;
-      parentPtr = parentPtr->GetParent();
-   }
-   return hierarchialOrder;
 }
