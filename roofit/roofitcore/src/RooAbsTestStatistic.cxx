@@ -114,8 +114,8 @@ RooAbsTestStatistic::RooAbsTestStatistic(const char *name, const char *title, Ro
   _func(&real),
   _data(&data),
   _projDeps((RooArgSet*)projDeps.Clone()),
-  _rangeName(*cfg.rangeName?*cfg.rangeName:""),
-  _addCoefRangeName(*cfg.addCoefRangeName?*cfg.addCoefRangeName:""),
+  _rangeName(*cfg.rangeName),
+  _addCoefRangeName(*cfg.addCoefRangeName),
   _splitRange(*cfg.splitCutRange),
   _simCount(1),
   _verbose(*cfg.verbose),
@@ -428,10 +428,9 @@ Bool_t RooAbsTestStatistic::initialize()
   }
 
   if (MPMaster == _gofOpMode) {
-    initMPMode(_func, _data, _projDeps, _rangeName.size() ? _rangeName.c_str() : 0,
-               _addCoefRangeName.size() ? _addCoefRangeName.c_str() : 0);
+    initMPMode(_func,_data,_projDeps,_rangeName,_addCoefRangeName) ;
   } else if (SimMaster == _gofOpMode) {
-    initSimMode((RooSimultaneous*)_func,_data,_projDeps,_rangeName.size()?_rangeName.c_str():0,_addCoefRangeName.size()?_addCoefRangeName.c_str():0) ;
+    initSimMode((RooSimultaneous*)_func,_data,_projDeps,_rangeName,_addCoefRangeName) ;
   }
   _init = kTRUE;
   return kFALSE;
@@ -575,8 +574,7 @@ void RooAbsTestStatistic::setMPSet(Int_t inSetNum, Int_t inNumSets)
 /// Initialize multi-processor calculation mode. Create component test statistics in separate
 /// processed that are connected to this process through a RooAbsRealMPFE front-end class.
 
-void RooAbsTestStatistic::initMPMode(RooAbsReal *real, RooAbsData *data, const RooArgSet *projDeps, const char *rangeName,
-                                     const char *addCoefRangeName)
+void RooAbsTestStatistic::initMPMode(RooAbsReal* real, RooAbsData* data, const RooArgSet* projDeps, std::string const& rangeName, std::string const& addCoefRangeName)
 {
   _mpfeArray = new pRooRealMPFE[_nCPU];
 
@@ -660,7 +658,8 @@ void RooAbsTestStatistic::_setNumIntTimingInPdfs(Bool_t flag) {
 /// each of them.
 
 void RooAbsTestStatistic::initSimMode(RooSimultaneous* simpdf, RooAbsData* data,
-				      const RooArgSet* projDeps, const char* rangeName, const char* addCoefRangeName)
+                                      const RooArgSet* projDeps,
+                                      std::string const& rangeName, std::string const& addCoefRangeName)
 {
 
   RooAbsCategoryLValue& simCat = const_cast<RooAbsCategoryLValue&>(simpdf->indexCat());
@@ -729,14 +728,14 @@ void RooAbsTestStatistic::initSimMode(RooSimultaneous* simpdf, RooAbsData* data,
       // Below here directly pass binnedPdf instead of PROD(binnedPdf,constraints) as constraints are evaluated elsewhere anyway
       // and omitting them reduces model complexity and associated handling/cloning times
       Configuration cfg;
-      cfg.addCoefRangeName=addCoefRangeName;
+      cfg.addCoefRangeName = addCoefRangeName;
       cfg.interleave = _mpinterl;
       cfg.CPUAffinity=_CPUAffinity;
       cfg.verbose = _verbose;
       cfg.splitCutRange = _splitRange;
       cfg.binnedL = binnedL;
-      if (_splitRange && rangeName) {
-        cfg.rangeName = Form("%s_%s",rangeName,catName.c_str());
+      if (_splitRange && !rangeName.empty()) {
+        cfg.rangeName = rangeName + "_" + catName;
         cfg.nCPU = _nCPU*(_mpinterl?-1:1);
       } else {
         cfg.rangeName = rangeName;
