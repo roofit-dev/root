@@ -67,6 +67,8 @@
 #pragma link C++ class TH2F-;
 #pragma link C++ class TH2Poly+;
 #pragma link C++ class TH2PolyBin+;
+#pragma link C++ class THistRange+;
+#pragma link C++ class TBinIterator+;
 #pragma link C++ class TProfile2Poly+;
 #pragma link C++ class TProfile2PolyBin+;
 #pragma link C++ class TH2S-;
@@ -340,6 +342,6 @@
   source="" target="fBinSumw2" \
   code="{ fBinSumw2.Reset(); }"
 
-
+#pragma read sourceClass="TF1" targetClass="TF1" version="[10]" source="TF1AbsComposition* fComposition_ptr" target="fComposition" code="{ fComposition.reset(onfile.fComposition_ptr); onfile.fComposition_ptr = nullptr; }"
 
 #endif

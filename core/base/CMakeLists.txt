@@ -17,7 +17,6 @@ endif()
 
 set(BASE_HEADERS
   ROOT/TErrorDefaultHandler.hxx
-  ROOT/TExecutor.hxx
   ROOT/TSequentialExecutor.hxx
   ROOT/StringConv.hxx
   Buttons.h
@@ -203,6 +202,8 @@ if(root7)
       ROOT/RIndexIter.hxx)
   set(BASE_V7_INC ${CMAKE_SOURCE_DIR}/core/base/v7/inc)
   set(BASE_HEADER_DIRS inc/ v7/inc/)
+  list(APPEND BASE_SOURCES
+      RDirectory.cxx)
 endif()
 
 

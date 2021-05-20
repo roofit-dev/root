@@ -103,6 +103,7 @@ RooMsgService::RooMsgService()
   _topicNames[Contents]="Contents" ;
   _topicNames[DataHandling]="DataHandling" ;
   _topicNames[NumIntegration]="NumericIntegration" ;
+  _topicNames[FastEvaluations] = "FastEvaluations";
   _topicNames[HistFactory]="HistFactory";
 
   reset();
@@ -119,7 +120,7 @@ void RooMsgService::reset() {
   _debugWorkspace = nullptr;
   _debugCode = 0 ;
 
-  for (auto item : _files) {
+  for (auto &item : _files) {
     delete item.second;
   }
   _files.clear();

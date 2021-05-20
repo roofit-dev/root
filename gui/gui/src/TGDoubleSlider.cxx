@@ -20,41 +20,59 @@
 
 **************************************************************************/
 
-//////////////////////////////////////////////////////////////////////////
-//                                                                      //
-// TGDoubleSlider, TGDoubleVSlider and TGDoubleHSlider                  //
-//                                                                      //
-// DoubleSlider widgets allow easy selection of a min and a max value   //
-// out of a range.                                                      //
-// DoubleSliders can be either horizontal or vertical oriented and      //
-// there is a choice of three different types of tick marks.            //
-//                                                                      //
-// To change the min value press the mouse near to the left / bottom    //
-// edge of the slider.                                                  //
-// To change the max value press the mouse near to the right / top      //
-// edge of the slider.                                                  //
-// To change both values simultaneously press the mouse near to the     //
-// center of the slider.                                                //
-//                                                                      //
-// TGDoubleSlider is an abstract base class. Use the concrete           //
-// TGDoubleVSlider and TGDoubleHSlider.                                 //
-//                                                                      //
-// Dragging the slider will generate the event:                         //
-// kC_VSLIDER, kSL_POS, slider id, 0  (for vertical slider)             //
-// kC_HSLIDER, kSL_POS, slider id, 0  (for horizontal slider)           //
-//                                                                      //
-// Pressing the mouse will generate the event:                          //
-// kC_VSLIDER, kSL_PRESS, slider id, 0  (for vertical slider)           //
-// kC_HSLIDER, kSL_PRESS, slider id, 0  (for horizontal slider)         //
-//                                                                      //
-// Releasing the mouse will generate the event:                         //
-// kC_VSLIDER, kSL_RELEASE, slider id, 0  (for vertical slider)         //
-// kC_HSLIDER, kSL_RELEASE, slider id, 0  (for horizontal slider)       //
-//                                                                      //
-// Use the functions GetMinPosition(), GetMaxPosition() and             //
-// GetPosition() to retrieve the position of the slider.                //
-//                                                                      //
-//////////////////////////////////////////////////////////////////////////
+
+/** \class TGDoubleSlider
+    \ingroup guiwidgets
+
+DoubleSlider widgets allow easy selection of a min and a max value
+out of a range.
+DoubleSliders can be either horizontal or vertical oriented and
+there is a choice of three different types of tick marks.
+
+To change the min value press the mouse near to the left / bottom
+edge of the slider.
+To change the max value press the mouse near to the right / top
+edge of the slider.
+To change both values simultaneously press the mouse near to the
+center of the slider.
+
+TGDoubleSlider is an abstract base class. Use the concrete
+TGDoubleVSlider and TGDoubleHSlider.
+
+
+\class  TGDoubleVSlider
+\ingroup guiwidgets
+
+Dragging the slider will generate the event:
+  - kC_VSLIDER, kSL_POS, slider id, 0
+
+Pressing the mouse will generate the event:
+  - kC_VSLIDER, kSL_PRESS, slider id, 0
+
+Releasing the mouse will generate the event:
+  - kC_VSLIDER, kSL_RELEASE, slider id, 0
+
+Use the functions GetMinPosition(), GetMaxPosition() and
+GetPosition() to retrieve the position of the slider.
+
+
+\class  TGDoubleHSlider
+\ingroup guiwidgets
+
+Dragging the slider will generate the event:
+  - kC_HSLIDER, kSL_POS, slider id, 0
+
+Pressing the mouse will generate the event:
+  - kC_HSLIDER, kSL_PRESS, slider id, 0
+
+Releasing the mouse will generate the event:
+  - kC_HSLIDER, kSL_RELEASE, slider id, 0
+
+Use the functions GetMinPosition(), GetMaxPosition() and
+GetPosition() to retrieve the position of the slider.
+
+*/
+
 
 #include "TGDoubleSlider.h"
 #include "TGPicture.h"
@@ -105,11 +123,11 @@ TGDoubleSlider::TGDoubleSlider(const TGWindow *p, UInt_t w, UInt_t h, UInt_t typ
 ////////////////////////////////////////////////////////////////////////////////
 /// Avoid boundaries to be equal.
 
-void TGDoubleSlider::FixBounds(Float_t &min, Float_t &max)
+void TGDoubleSlider::FixBounds(Double_t &min, Double_t &max)
 {
    if (min > max) min = max;
 
-   Float_t eps = 1e-6;
+   Double_t eps = 1e-6;
    if (max - min < eps) {
       if (max == 0)
          max += eps;
@@ -370,7 +388,7 @@ Bool_t TGDoubleVSlider::HandleMotion(Event_t *event)
    was = now;
 
    int       diff;
-   Float_t   oldMin, oldMax;
+   Double_t  oldMin, oldMax;
 
    diff    = event->fY - fPressPoint;
    oldMin  = fSmin;
@@ -388,7 +406,7 @@ Bool_t TGDoubleVSlider::HandleMotion(Event_t *event)
       if (fSmax < fSmin) fSmax = fSmin;
    } else if (fMove == 3) {
       // change of min and of max value
-      Float_t logicalDiff;
+      Double_t logicalDiff;
       logicalDiff = diff * (fVmax - fVmin) / (fHeight-16);
       if (fPressSmax + logicalDiff > fVmax)
          logicalDiff = fVmax - fPressSmax;
@@ -561,7 +579,7 @@ Bool_t TGDoubleHSlider::HandleMotion(Event_t *event)
    was = now;
 
    int     diff;
-   Float_t oldMin, oldMax;
+   Double_t oldMin, oldMax;
 
    diff    = event->fX - fPressPoint;
    oldMin  = fSmin;
@@ -579,7 +597,7 @@ Bool_t TGDoubleHSlider::HandleMotion(Event_t *event)
       if (fSmax < fSmin) fSmax = fSmin;
    } else if (fMove == 3) {
       // change of min and of max value
-      Float_t logicalDiff;
+      Double_t logicalDiff;
       logicalDiff = diff * (fVmax - fVmin) / (fWidth-16);
       if (fPressSmax + logicalDiff > fVmax)
          logicalDiff = fVmax - fPressSmax;
