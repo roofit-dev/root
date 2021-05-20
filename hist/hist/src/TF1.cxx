@@ -90,7 +90,7 @@ public:
             fFormula->SetParameters(from.GetParameters());
       } else {
          // case of a function pointers
-         fParams = new TF1Parameters(fNpar);
+         fParams.reset(new TF1Parameters(fNpar));
          fName = from.GetName();
          fTitle = from.GetTitle();
          // need to set parameter values
@@ -570,7 +570,7 @@ TF1::TF1(const char *name, const char *formula, Double_t xmin, Double_t xmax, EA
       fType = EFType::kCompositionFcn;
       fComposition = std::unique_ptr<TF1AbsComposition>(conv);
 
-      fParams = new TF1Parameters(fNpar); // default to zeros (TF1Convolution has no GetParameters())
+      fParams = std::unique_ptr<TF1Parameters>(new TF1Parameters(fNpar)); // default to zeros (TF1Convolution has no GetParameters())
       // set parameter names
       for (int i = 0; i < fNpar; i++)
          this->SetParName(i, conv->GetParName(i));
@@ -640,7 +640,7 @@ TF1::TF1(const char *name, const char *formula, Double_t xmin, Double_t xmax, EA
       fType = EFType::kCompositionFcn;
       fComposition = std::unique_ptr<TF1AbsComposition>(normSum);
 
-      fParams = new TF1Parameters(fNpar);
+      fParams = std::unique_ptr<TF1Parameters>(new TF1Parameters(fNpar));
       fParams->SetParameters(&(normSum->GetParameters())[0]); // inherit default parameters from normSum
 
       // Parameter names
@@ -654,7 +654,7 @@ TF1::TF1(const char *name, const char *formula, Double_t xmin, Double_t xmax, EA
       }
 
    } else { // regular TFormula
-      fFormula = new TFormula(name, formula, false, vectorize);
+      fFormula = std::unique_ptr<TFormula>(new TFormula(name, formula, false, vectorize));
       fNpar = fFormula->GetNpar();
       // TFormula can have dimension zero, but since this is a TF1 minimal dim is 1
       fNdim = fFormula->GetNdim() == 0 ? 1 : fFormula->GetNdim();
@@ -724,7 +724,7 @@ TF1::TF1(const char *name, Double_t xmin, Double_t xmax, Int_t npar, Int_t ndim,
       return;
    }
 
-   fMethodCall = new TMethodCall();
+   fMethodCall = std::unique_ptr<TMethodCall>(new TMethodCall());
    fMethodCall->InitWithPrototype(fName, "Double_t*,Double_t*");
 
    if (! fMethodCall->IsValid()) {
@@ -942,7 +942,6 @@ TF1 &TF1::operator=(const TF1 &rhs)
 TF1::~TF1()
 {
    if (fHistogram) delete fHistogram;
-   if (fMethodCall) delete fMethodCall;
 
    // this was before in TFormula destructor
    {
@@ -952,9 +951,6 @@ TF1::~TF1()
 
    if (fParent) fParent->RecursiveRemove(this);
 
-   if (fFormula) delete fFormula;
-   if (fParams) delete fParams;
-   if (fFunctor) delete fFunctor;
 }
 
 
@@ -998,7 +994,6 @@ void TF1::Browse(TBrowser *b)
 void TF1::Copy(TObject &obj) const
 {
    delete((TF1 &)obj).fHistogram;
-   delete((TF1 &)obj).fMethodCall;
 
    TNamed::Copy((TF1 &)obj);
    TAttLine::Copy((TF1 &)obj);
@@ -1029,36 +1024,25 @@ void TF1::Copy(TObject &obj) const
 
    if (fFormula) assert(fFormula->GetNpar() == fNpar);
 
-   if (fMethodCall) {
-      // use copy-constructor of TMethodCall
-      if (((TF1 &)obj).fMethodCall) delete((TF1 &)obj).fMethodCall;
-      TMethodCall *m = new TMethodCall(*fMethodCall);
-//       m->InitWithPrototype(fMethodCall->GetMethodName(),fMethodCall->GetProto());
-      ((TF1 &)obj).fMethodCall  = m;
-   }
-   if (fFormula) {
-      TFormula *formulaToCopy = ((TF1 &)obj).fFormula;
-      if (formulaToCopy) delete formulaToCopy;
-      formulaToCopy = new TFormula();
-      fFormula->Copy(*formulaToCopy);
-      ((TF1 &)obj).fFormula =  formulaToCopy;
-   }
-   if (fParams) {
-      TF1Parameters *paramsToCopy = ((TF1 &)obj).fParams;
-      if (paramsToCopy) *paramsToCopy = *fParams;
-      else ((TF1 &)obj).fParams = new TF1Parameters(*fParams);
-   }
-   if (fFunctor) {
-      // use clone of TF1FunctorPointer
-      if (((TF1 &)obj).fFunctor) delete((TF1 &)obj).fFunctor;
-      ((TF1 &)obj).fFunctor  = fFunctor->Clone();
-   }
+   // use copy-constructor of TMethodCall
+   TMethodCall *m = (fMethodCall) ? new TMethodCall(*fMethodCall) : nullptr;
+   ((TF1 &)obj).fMethodCall.reset(m);
 
+   TFormula *formulaToCopy = (fFormula) ? new TFormula(*fFormula) : nullptr;
+   ((TF1 &)obj).fFormula.reset(formulaToCopy);
+
+   TF1Parameters *paramsToCopy = (fParams) ? new TF1Parameters(*fParams) : nullptr;
+   ((TF1 &)obj).fParams.reset(paramsToCopy);
+
+   TF1FunctorPointer *functorToCopy = (fFunctor) ? fFunctor->Clone() : nullptr;
+   ((TF1 &)obj).fFunctor.reset(functorToCopy);
+
+   TF1AbsComposition *comp = nullptr;
    if (fComposition) {
-      TF1AbsComposition *comp = (TF1AbsComposition *)fComposition->IsA()->New();
+      comp = (TF1AbsComposition *)fComposition->IsA()->New();
       fComposition->Copy(*comp);
-      ((TF1 &)obj).fComposition = std::unique_ptr<TF1AbsComposition>(comp);
    }
+   ((TF1 &)obj).fComposition.reset(comp);
 }
 
 
@@ -1492,8 +1476,8 @@ Double_t TF1::EvalPar(const Double_t *x, const Double_t *params)
    if (fType == EFType::kPtrScalarFreeFcn || fType == EFType::kTemplScalar)  {
       if (fFunctor) {
          assert(fParams);
-         if (params) result = ((TF1FunctorPointerImpl<Double_t> *)fFunctor)->fImpl((Double_t *)x, (Double_t *)params);
-         else        result = ((TF1FunctorPointerImpl<Double_t> *)fFunctor)->fImpl((Double_t *)x, (Double_t *)fParams->GetParameters());
+         if (params) result = ((TF1FunctorPointerImpl<Double_t> *)fFunctor.get())->fImpl((Double_t *)x, (Double_t *)params);
+         else        result = ((TF1FunctorPointerImpl<Double_t> *)fFunctor.get())->fImpl((Double_t *)x, (Double_t *)fParams->GetParameters());
 
       } else          result = GetSave(x);
 
@@ -1581,6 +1565,11 @@ TF1 *TF1::GetCurrent()
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Return a pointer to the histogram used to visualise the function
+/// Note that this histogram is managed by the function and
+/// in same case it is automatically deleted when some TF1 functions are called
+///  such as TF1::SetParameters, TF1::SetNpx, TF1::SetRange
+/// It is then reccomended either to clone the return object or calling again teh GetHistogram
+/// function whenever is needed
 
 TH1 *TF1::GetHistogram() const
 {
@@ -3599,7 +3588,7 @@ void TF1::Streamer(TBuffer &b)
             R__LOCKGUARD(gROOTMutex);
             gROOT->GetListOfFunctions()->Add(this);
          }
-         if (v >= 10)
+         if (v >= 10 && v < 11)
             fComposition = std::unique_ptr<TF1AbsComposition>(fComposition_ptr);
          return;
       } else {
@@ -3619,10 +3608,6 @@ void TF1::Streamer(TBuffer &b)
          saved = 1;
          Save(fXmin, fXmax, 0, 0, 0, 0);
       }
-      if (fType == EFType::kCompositionFcn)
-         fComposition_ptr = fComposition.get();
-      else
-         fComposition_ptr = nullptr;
       b.WriteClassBuffer(TF1::Class(), this);
 
       // clear vector contents

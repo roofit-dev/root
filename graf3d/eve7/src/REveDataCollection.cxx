@@ -37,8 +37,14 @@ REveDataItemList::REveDataItemList(const std::string& n, const std::string& t):
 {
    fAlwaysSecSelect = true;
 
-   _handler_items_change = 0;
-   _handler_fillimp  = 0;
+   SetItemsChangeDelegate([&](REveDataItemList *collection, const REveDataCollection::Ids_t &ids) {
+      REveDataItemList::DummyItemsChange(collection, ids);
+   });
+
+   SetFillImpliedSelectedDelegate([&](REveDataItemList *collection, REveElement::Set_t &impSelSet) {
+      REveDataItemList::DummyFillImpliedSelected(collection, impSelSet);
+   });
+
    SetupDefaultColorAndTransparency(REveDataCollection::fgDefaultColor, true, true);
 }
 //______________________________________________________________________________
@@ -69,7 +75,7 @@ void REveDataItemList::ItemChanged(REveDataItem* iItem)
    {
       if (chld == iItem) {
          ids.push_back(idx);
-          _handler_items_change( this , ids);
+          fHandlerItemsChange( this , ids);
          return;
       }
       idx++;
@@ -82,7 +88,7 @@ void REveDataItemList::ItemChanged(Int_t idx)
 {
    std::vector<int> ids;
    ids.push_back(idx);
-   _handler_items_change( this , ids);
+   fHandlerItemsChange( this , ids);
 }
 
 //______________________________________________________________________________
@@ -94,7 +100,7 @@ void REveDataItemList::FillImpliedSelectedSet( Set_t& impSelSet)
    for (auto x : RefSelectedSet())
       printf("%d \n", x);
    */
-   _handler_fillimp( this ,  impSelSet);
+   fHandlerFillImplied( this ,  impSelSet);
 }
 
 //______________________________________________________________________________
@@ -128,7 +134,7 @@ Bool_t REveDataItemList::SetRnrState(Bool_t iRnrSelf)
       fItems[i]->SetRnrSelf(fRnrSelf);
    }
 
-   _handler_items_change( this , ids);
+   fHandlerItemsChange( this , ids);
    StampVisibility();
    StampObjProps();
 
@@ -146,6 +152,10 @@ void REveDataItemList::ProcessSelection(ElementId_t selectionId, bool multi, boo
 //______________________________________________________________________________
 std::string REveDataItemList::GetHighlightTooltip(const std::set<int>& secondary_idcs) const
 {
+   if (secondary_idcs.empty()) {
+    return GetName();
+  }
+
    // print info for first selected index
    int idx = *secondary_idcs.begin();
    auto col = dynamic_cast<REveDataCollection*>(fMother);
@@ -184,6 +194,34 @@ void REveDataItemList::AddTooltipExpression(const std::string &title, const std:
    fTooltipExpressions.push_back(tt);
 }
 
+//______________________________________________________________________________
+void REveDataItemList::SetItemsChangeDelegate (ItemsChangeFunc_t handler_func)
+{
+   fHandlerItemsChange = handler_func;
+}
+
+//______________________________________________________________________________
+void REveDataItemList::SetFillImpliedSelectedDelegate (FillImpliedSelectedFunc_t handler_func)
+{
+   fHandlerFillImplied = handler_func;
+}
+
+//______________________________________________________________________________
+void REveDataItemList::DummyItemsChange(REveDataItemList*, const std::vector<int>&)
+{
+   if (gDebug) {
+      printf("REveDataItemList::DummyItemsCahngeDelegate not implemented\n");
+   }
+}
+
+
+//______________________________________________________________________________
+void REveDataItemList::DummyFillImpliedSelected(REveDataItemList*, REveElement::Set_t&)
+{
+   if (gDebug) {
+      printf("REveDataItemList::DummyFillImpliedSelectedDelegate not implemented\n");
+   }
+}
 
 //==============================================================================
 // REveDataCollection
@@ -248,7 +286,7 @@ void REveDataCollection::ApplyFilter()
    }
    StampObjProps();
    fItemList->StampObjProps();
-   if (fItemList->_handler_items_change) fItemList->_handler_items_change( fItemList , ids);
+   fItemList->fHandlerItemsChange( fItemList , ids);
 }
 
 //______________________________________________________________________________
@@ -339,7 +377,7 @@ void REveDataCollection::SetMainColor(Color_t newv)
    }
    fItemList->StampObjProps();
    fItemList->SetMainColor(newv);
-   if ( fItemList->_handler_items_change) fItemList->_handler_items_change( fItemList , ids);
+   fItemList->fHandlerItemsChange( fItemList , ids);
 }
 
 //______________________________________________________________________________
@@ -354,7 +392,7 @@ Bool_t REveDataCollection::SetRnrState(Bool_t iRnrSelf)
    }
 
    fItemList->StampObjProps();
-   fItemList->_handler_items_change( fItemList , ids);
+   fItemList->fHandlerItemsChange( fItemList , ids);
 
    return ret;
 }

@@ -1553,7 +1553,8 @@ Double_t RooDataHist::sum(const RooArgSet& sumSet, const RooArgSet& sliceSet, Bo
 
 Double_t RooDataHist::sum(const RooArgSet& sumSet, const RooArgSet& sliceSet,
 	Bool_t correctForBinSize, Bool_t inverseBinCor,
-	const std::map<const RooAbsArg*, std::pair<Double_t, Double_t> >& ranges)
+	const std::map<const RooAbsArg*, std::pair<Double_t, Double_t> >& ranges,
+    std::function<double(int)> getBinScale)
 {
   checkInit();
   checkBinBounds();
@@ -1624,7 +1625,7 @@ Double_t RooDataHist::sum(const RooArgSet& sumSet, const RooArgSet& sliceSet,
     const Double_t corr = correctForBinSize ? (inverseBinCor ? 1. / _binv[ibin] : _binv[ibin] ) : 1.0;
     //cout << "adding bin[" << ibin << "] to sum wgt = " << _wgt[ibin] << " binv = " << theBinVolume << " _binv[" << ibin << "] " << _binv[ibin] << endl;
     // const Double_t y = _wgt[ibin] * corr * corrPartial - carry;
-    const Double_t y = get_wgt(ibin) * corr * corrPartial - carry;
+    const Double_t y = getBinScale(ibin)*(get_wgt(ibin) * corr * corrPartial) - carry;
     const Double_t t = total + y;
     carry = (t - total) - y;
     total = t;
@@ -2091,7 +2092,7 @@ RooSpan<const double> RooDataHist::getWeightBatch(std::size_t first, std::size_t
 /// The key to retrieve an item is the pointer of the variable that owns the data.
 /// \param first Index of first event that ends up in the batch.
 /// \param len   Number of events in each batch.
-void RooDataHist::getBatches(BatchHelpers::RunContext& evalData, std::size_t begin, std::size_t len) const {
+void RooDataHist::getBatches(RooBatchCompute::RunContext& evalData, std::size_t begin, std::size_t len) const {
   for (auto&& batch : store()->getBatches(begin, len).spans) {
     evalData.spans[batch.first] = std::move(batch.second);
   }
