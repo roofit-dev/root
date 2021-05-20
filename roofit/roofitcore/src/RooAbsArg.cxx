@@ -38,7 +38,6 @@ setting/clearing/testing named attributes.
 
 #include "TBuffer.h"
 #include "TClass.h"
-#include "TObjString.h"
 #include "TVirtualStreamerInfo.h"
 // #include "TGraphStruct.h"
 
@@ -56,7 +55,6 @@ setting/clearing/testing named attributes.
 #include "RooAbsCategoryLValue.h"
 #include "RooAbsRealLValue.h"
 #include "RooTrace.h"
-#include "RooStringVar.h"
 #include "RooRealIntegral.h"
 #include "RooConstVar.h"
 #include "RooMsgService.h"

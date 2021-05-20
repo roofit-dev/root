@@ -118,6 +118,7 @@ protected:
    TArrayI        fIndex;                 ///<  Index of sorted values
    TVirtualIndex *fTreeIndex;             ///<  Pointer to the tree Index (if any)
    TList         *fFriends;               ///<  pointer to list of friend elements
+   TList         *fExternalFriends;       ///<! List of TFriendsElement pointing to us and need to be notified of LoadTree.  Content not owned.
    TVirtualPerfStats *fPerfStats;         ///<! pointer to the current perf stats object
    TList         *fUserInfo;              ///<  pointer to a list of user objects associated to this Tree
    TVirtualTreePlayer *fPlayer;           ///<! Pointer to current Tree player
@@ -235,9 +236,15 @@ public:
    enum EStatusBits {
       kForceRead = BIT(11),
       kCircular = BIT(12),
-      kOnlyFlushAtCluster = BIT(14) // If set, the branch's buffers will grow until an event cluster boundary is hit,
-      // guaranteeing a basket per cluster.  This mode does not provide any guarantee on the
-      // memory bounds in the case of extremely large events.
+      /// If set, the branch's buffers will grow until an event cluster boundary is hit,
+      /// guaranteeing a basket per cluster.  This mode does not provide any guarantee on the
+      /// memory bounds in the case of extremely large events.
+      kOnlyFlushAtCluster = BIT(14),
+      /// If set, signals that this TTree is the output of the processing of another TTree, and
+      /// the entries are reshuffled w.r.t. to the original TTree. As a safety measure, a TTree
+      /// with this bit set cannot add friends nor can be added as a friend. If you know what
+      /// you are doing, you can manually unset this bit with `ResetBit(EStatusBits::kEntriesReshuffled)`.
+      kEntriesReshuffled = BIT(19) // bits 15-18 are used by TChain
    };
 
    // Split level modifier
@@ -546,8 +553,10 @@ public:
    virtual Long64_t        ReadFile(const char* filename, const char* branchDescriptor = "", char delimiter = ' ');
    virtual Long64_t        ReadStream(std::istream& inputStream, const char* branchDescriptor = "", char delimiter = ' ');
    virtual void            Refresh();
-   virtual void            RecursiveRemove(TObject *obj);
+   virtual void            RegisterExternalFriend(TFriendElement *);
+   virtual void            RemoveExternalFriend(TFriendElement *fe) { if (fExternalFriends) fExternalFriends->Remove((TObject*)fe); }
    virtual void            RemoveFriend(TTree*);
+   virtual void            RecursiveRemove(TObject *obj);
    virtual void            Reset(Option_t* option = "");
    virtual void            ResetAfterMerge(TFileMergeInfo *);
    virtual void            ResetBranchAddress(TBranch *);
