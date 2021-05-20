@@ -16,6 +16,7 @@
 #include "TH1.h"
 #include "TF2.h"
 #include "TH2.h"
+#include "TROOT.h"
 
 #include "TRandom3.h"
 
@@ -296,11 +297,11 @@ struct GradientTestEvaluation {
       //    std::cout << "  " << solution[i];
       // std::cout << std::endl;
 
-      
+
       std::chrono::duration<Double_t> timeElapsed = end - start;
 
       return timeElapsed.count() / fNumRepetitions;
-     
+
    }
 
    static const int fNumRepetitions = 2;
@@ -450,7 +451,7 @@ typedef ::testing::Types<> TestTypes;
 #endif
 
 
-TYPED_TEST_CASE(LogLikelihoodGradientTest, TestTypes);
+TYPED_TEST_SUITE(LogLikelihoodGradientTest, TestTypes);
 
 // Test EvalChi2Gradient and outputs its speedup against the scalar serial case.
 TYPED_TEST(LogLikelihoodGradientTest, LogLikelihoodGradient)
@@ -469,7 +470,7 @@ TYPED_TEST(LogLikelihoodGradientTest, LogLikelihoodGradient)
 }
 
 
-TYPED_TEST_CASE(Chi2GradientTest, TestTypes);
+TYPED_TEST_SUITE(Chi2GradientTest, TestTypes);
 
 // Test EvalChi2Gradient and outputs its speedup against the scalar serial case.
 TYPED_TEST(Chi2GradientTest, Chi2Gradient)
@@ -487,7 +488,7 @@ TYPED_TEST(Chi2GradientTest, Chi2Gradient)
    }
 }
 
-TYPED_TEST_CASE(PoissonLikelihoodGradientTest, TestTypes);
+TYPED_TEST_SUITE(PoissonLikelihoodGradientTest, TestTypes);
 
 // Test EvalChi2Gradient and outputs its speedup against the scalar serial case.
 TYPED_TEST(PoissonLikelihoodGradientTest, PoissonLikelihoodGradient)

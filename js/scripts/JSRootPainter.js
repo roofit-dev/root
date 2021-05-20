@@ -92,6 +92,7 @@
       rect: { path: "M80,80h352v352h-352z" },
       cross: { path: "M80,40l176,176l176,-176l40,40l-176,176l176,176l-40,40l-176,-176l-176,176l-40,-40l176,-176l-176,-176z" },
       vrgoggles: { size: "245.82 141.73", path: 'M175.56,111.37c-22.52,0-40.77-18.84-40.77-42.07S153,27.24,175.56,27.24s40.77,18.84,40.77,42.07S198.08,111.37,175.56,111.37ZM26.84,69.31c0-23.23,18.25-42.07,40.77-42.07s40.77,18.84,40.77,42.07-18.26,42.07-40.77,42.07S26.84,92.54,26.84,69.31ZM27.27,0C11.54,0,0,12.34,0,28.58V110.9c0,16.24,11.54,30.83,27.27,30.83H99.57c2.17,0,4.19-1.83,5.4-3.7L116.47,118a8,8,0,0,1,12.52-.18l11.51,20.34c1.2,1.86,3.22,3.61,5.39,3.61h72.29c15.74,0,27.63-14.6,27.63-30.83V28.58C245.82,12.34,233.93,0,218.19,0H27.27Z'},
+      th2colorz: { recs: [{x:128,y:486,w:256,h:26,f:'rgb(38,62,168)'},{y:461,f:'rgb(22,82,205)'},{y:435,f:'rgb(16,100,220)'},{y:410,f:'rgb(18,114,217)'},{y:384,f:'rgb(20,129,214)'},{y:358,f:'rgb(14,143,209)'},{y:333,f:'rgb(9,157,204)'},{y:307,f:'rgb(13,167,195)'},{y:282,f:'rgb(30,175,179)'},{y:256,f:'rgb(46,183,164)'},{y:230,f:'rgb(82,186,146)'},{y:205,f:'rgb(116,189,129)'},{y:179,f:'rgb(149,190,113)'},{y:154,f:'rgb(179,189,101)'},{y:128,f:'rgb(209,187,89)'},{y:102,f:'rgb(226,192,75)'},{y:77,f:'rgb(244,198,59)'},{y:51,f:'rgb(253,210,43)'},{y:26,f:'rgb(251,230,29)'},{y:0,f:'rgb(249,249,15)'}] },
       CreateSVG : function(group,btn,size,title) {
          var svg = group.append("svg:svg")
                      .attr("class", "svg_toolbar_btn")
@@ -447,12 +448,17 @@
      return Painter.symbols_map[charactere];
    }
 
-   Painter.createMenu = function(painter, maincallback) {
+   Painter.createMenu = function(painter, maincallback, evt) {
       // dummy functions, forward call to the jquery function
       document.body.style.cursor = 'wait';
+      var show_evnt;
+      // copy event values, otherwise they will gone after scripts loading
+      if (evt && (typeof evt == "object"))
+         if ((evt.clientX !== undefined) && (evt.clientY !== undefined))
+            show_evnt = { clientX: evt.clientX, clientY: evt.clientY };
       JSROOT.AssertPrerequisites('hierarchy;jq2d;', function() {
          document.body.style.cursor = 'auto';
-         Painter.createMenu(painter, maincallback);
+         Painter.createMenu(painter, maincallback, show_evnt);
       });
    }
 
@@ -2400,7 +2406,7 @@
    /** @summary Redraw all objects in current pad
     * @abstract
     * @private */
-   TBasePainter.prototype.RedrawPad = function(resize) {
+   TBasePainter.prototype.RedrawPad = function(reason) {
    }
 
    /** @summary Updates object and readraw it
@@ -2713,7 +2719,7 @@
     *
     * @constructor
     * @memberof JSROOT
-    * @augments JSROOT.TBasePainter
+    * @arguments JSROOT.TBasePainter
     * @param {object} obj - object to draw
     */
    function TObjectPainter(obj, opt) {
@@ -2727,8 +2733,20 @@
 
    TObjectPainter.prototype = Object.create(TBasePainter.prototype);
 
+   /** @summary Assign object to the painter */
+
    TObjectPainter.prototype.AssignObject = function(obj) {
-      this.draw_object = ((obj!==undefined) && (typeof obj == 'object')) ? obj : null;
+      this.draw_object = ((obj !== undefined) && (typeof obj == 'object')) ? obj : null;
+   }
+
+   /** @summary Assign snapid to the painter
+   *
+   * @desc Identifier used to communicate with server side and identifies object on the server
+   * @private
+   */
+
+   TObjectPainter.prototype.AssignSnapId = function(id) {
+      this.snapid = id;
    }
 
    /** @summary Generic method to cleanup painter.
@@ -2954,11 +2972,11 @@
     * @desc Redirects to {@link TPadPainter.CheckCanvasResize}
     * @private */
    TObjectPainter.prototype.CheckResize = function(arg) {
-      var pad_painter = this.canv_painter();
-      if (!pad_painter) return false;
+      var p = this.canv_painter();
+      if (!p) return false;
 
       // only canvas should be checked
-      pad_painter.CheckCanvasResize(arg);
+      p.CheckCanvasResize(arg);
       return true;
    }
 
@@ -3597,8 +3615,12 @@
       if (svg_p.empty()) return true;
 
       var pp = svg_p.property('pad_painter');
-      if (pp && (pp !== this))
+      if (pp && (pp !== this)) {
          pp.painters.push(this);
+         // workround to provide style for next object draing
+         if (!this.rstyle && pp.next_rstyle)
+            this.rstyle = pp.next_rstyle;
+      }
 
       if (((is_main === 1) || (is_main === 4) || (is_main === 5)) && !svg_p.property('mainpainter'))
          // when this is first main painter in the pad
@@ -3725,20 +3747,23 @@
    }
 
    /** @summary indicate that redraw was invoked via interactive action (like context menu or zooming)
-    * @desc Use to catch such action by GED
+    * @desc Use to catch such action by GED and by server-side
     * @private */
    TObjectPainter.prototype.InteractiveRedraw = function(arg, info, subelem) {
 
+      var reason;
+      if ((typeof info == "string") && (info.indexOf("exec:") != 0)) reason = info;
+
       if (arg == "pad") {
-         this.RedrawPad();
+         this.RedrawPad(reason);
       } else if (arg == "axes") {
          var main = this.main_painter(true, this.this_pad_name); // works for pad and any object drawn in the pad
          if (main && (typeof main.DrawAxes == 'function'))
             main.DrawAxes();
          else
-            this.RedrawPad();
+            this.RedrawPad(reason);
       } else if (arg !== false) {
-         this.Redraw();
+         this.Redraw(reason);
       }
 
       // inform GED that something changes
@@ -3753,9 +3778,9 @@
    }
 
    /** @summary Redraw all objects in correspondent pad */
-   TObjectPainter.prototype.RedrawPad = function() {
+   TObjectPainter.prototype.RedrawPad = function(reason) {
       var pad_painter = this.pad_painter();
-      if (pad_painter) pad_painter.Redraw();
+      if (pad_painter) pad_painter.Redraw(reason);
    }
 
    /** @summary Switch tooltip mode in frame painter
@@ -3851,10 +3876,14 @@
          make("sw-resize", "M2," + (height-2) + "h15v5h-20v-20h5Z");
          make("se-resize", "M" + (width-2) + "," + (height-2) + "h-15v5h20v-20h-5Z");
 
-         make("w-resize", "M-3,18h5v" + Math.max(0, height - 2*18) + "h-5Z");
-         make("e-resize", "M" + (width+3) + ",18h-5v" + Math.max(0, height - 2*18) + "h5Z");
-         make("n-resize", "M18,-3v5h" + Math.max(0, width - 2*18) + "v-5Z");
-         make("s-resize", "M18," + (height+3) + "v-5h" + Math.max(0, width - 2*18) + "v5Z");
+         if (!callback.no_change_x) {
+            make("w-resize", "M-3,18h5v" + Math.max(0, height - 2*18) + "h-5Z");
+            make("e-resize", "M" + (width+3) + ",18h-5v" + Math.max(0, height - 2*18) + "h5Z");
+         }
+         if (!callback.no_change_y) {
+            make("n-resize", "M18,-3v5h" + Math.max(0, width - 2*18) + "v-5Z");
+            make("s-resize", "M18," + (height+3) + "v-5h" + Math.max(0, width - 2*18) + "v5Z");
+         }
       }
 
       function complete_drag() {
@@ -3957,8 +3986,10 @@
 
                var handle = drag_rect.property('drag_handle');
 
-               handle.acc_x1 += d3.event.dx;
-               handle.acc_y1 += d3.event.dy;
+               if (!callback.no_change_x)
+                  handle.acc_x1 += d3.event.dx;
+               if (!callback.no_change_y)
+                  handle.acc_y1 += d3.event.dy;
 
                drag_rect.attr("x", Math.min( Math.max(handle.acc_x1, 0), handle.pad_w))
                         .attr("y", Math.min( Math.max(handle.acc_y1, 0), handle.pad_h));
@@ -4018,6 +4049,9 @@
 
             var handle = drag_rect.property('drag_handle'),
                 dx = d3.event.dx, dy = d3.event.dy, elem = d3.select(this);
+
+            if (callback.no_change_x) dx = 0;
+            if (callback.no_change_y) dy = 0;
 
             if (elem.classed('js_nw_resize')) { handle.acc_x1 += dx; handle.acc_y1 += dy; }
             else if (elem.classed('js_ne_resize')) { handle.acc_x2 += dx; handle.acc_y1 += dy; }
@@ -4170,21 +4204,21 @@
    TObjectPainter.prototype.WebCanvasExec = function(exec, snapid) {
       if (!exec || (typeof exec != 'string')) return;
 
-      if (!snapid) snapid = this.snapid;
-      if (!snapid || (typeof snapid != 'string')) return;
-
       var canp = this.canv_painter();
-      if (canp && !canp._readonly && canp._websocket)
-         canp.SendWebsocket("OBJEXEC:" + snapid + ":" + exec);
+      if (canp && (typeof canp.SubmitExec == "function"))
+         canp.SubmitExec(this, exec, snapid);
    }
 
    /** @summary Fill object menu in web canvas
     * @private */
    TObjectPainter.prototype.FillObjectExecMenu = function(menu, kind, call_back) {
 
+      if (this.UserContextMenuFunc)
+         return this.UserContextMenuFunc(menu, kind, call_back);
+
       var canvp = this.canv_painter();
 
-      if (!this.snapid || !canvp || canvp._readonly || !canvp._websocket || canvp._getmenu_callback)
+      if (!this.snapid || !canvp || canvp._readonly || !canvp._websocket)
          return JSROOT.CallBack(call_back);
 
       function DoExecMenu(arg) {
@@ -4213,8 +4247,8 @@
       function DoFillMenu(_menu, _reqid, _call_back, reply) {
 
          // avoid multiple call of the callback after timeout
-         if (!canvp._getmenu_callback) return;
-         delete canvp._getmenu_callback;
+         if (this._got_menu) return;
+         this._got_menu = true;
 
          if (reply && (_reqid !== reply.fId))
             console.error('missmatch between request ' + _reqid + ' and reply ' + reply.fId + ' identifiers');
@@ -4222,7 +4256,8 @@
          var items = reply ? reply.fItems : null;
 
          if (items && items.length) {
-            _menu.add("separator");
+            if (_menu.size() > 0)
+              _menu.add("separator");
 
             this.args_menu_items = items;
             this.args_menu_id = reply.fId;
@@ -4256,15 +4291,18 @@
       var reqid = this.snapid;
       if (kind) reqid += "#" + kind; // use # to separate object id from member specifier like 'x' or 'z'
 
+      var menu_callback = DoFillMenu.bind(this, menu, reqid, call_back);
+
+      this._got_menu = false;
+
       // if menu painter differs from this, remember it for further usage
       if (menu.painter)
          menu.painter.exec_painter = (menu.painter !== this) ? this : undefined;
 
-      canvp._getmenu_callback = DoFillMenu.bind(this, menu, reqid, call_back);
+      canvp.SubmitMenuRequest(this, kind, reqid, menu_callback);
 
-      canvp.SendWebsocket('GETMENU:' + reqid); // request menu items for given painter
-
-      setTimeout(canvp._getmenu_callback, 2000); // set timeout to avoid menu hanging
+      // set timeout to avoid menu hanging
+      setTimeout(menu_callback, 2000);
    }
 
    /** @summary remove all created draw attributes
@@ -4510,13 +4548,13 @@
     * @desc used to find title drawing
     * @private */
    TObjectPainter.prototype.FindInPrimitives = function(objname) {
-
       var painter = this.pad_painter();
-      if (!painter || !painter.pad) return null;
 
-      if (painter.pad.fPrimitives)
-         for (var n=0;n<painter.pad.fPrimitives.arr.length;++n) {
-            var prim = painter.pad.fPrimitives.arr[n];
+      var arr = painter && painter.pad && painter.pad.fPrimitives ? painter.pad.fPrimitives.arr : null;
+
+      if (arr && arr.length)
+         for (var n=0;n<arr.length;++n) {
+            var prim = arr[n];
             if (('fName' in prim) && (prim.fName === objname)) return prim;
          }
 
@@ -4578,6 +4616,22 @@
       this.UserTooltipCallback = call_back;
       this.UserTooltipTimeout = user_timeout;
    }
+
+   /** @summary Configure user-defined context menu for the object
+   *
+   * @desc fillmenu_func will be called when context menu is actiavted
+   * Arguments fillmenu_func are (menu,kind,call_back)
+   * First is JSROOT menu object, second is object subelement like axis "x" or "y"
+   * Third is call_back which must be called when menu items are filled
+   */
+
+  TObjectPainter.prototype.ConfigureUserContextMenu = function(fillmenu_func) {
+
+     if (!fillmenu_func || (typeof fillmenu_func !== 'function'))
+        delete this.UserContextMenuFunc;
+     else
+        this.UserContextMenuFunc = fillmenu_func;
+  }
 
    /** @summary Configure user-defined click handler
    *
@@ -4644,7 +4698,7 @@
     * @abstract
     */
 
-   TObjectPainter.prototype.Redraw = function() {
+   TObjectPainter.prototype.Redraw = function(reason) {
    }
 
    /** @summary Start text drawing
@@ -5089,7 +5143,7 @@
                    w = Math.min(rect.width/curr.fsize, 0.5); // at maximum, 0.5 should be used
 
                node.append('svg:tspan').attr('dx', makeem(curr.dx-w)).attr('dy', makeem(curr.dy-0.2)).text(curr.accent);
-               curr.dy = 0.2;; // compensate hat
+               curr.dy = 0.2; // compensate hat
                curr.dx = Math.max(0.2, w-0.2); // extra horizontal gap
                curr.accent = false;
             } else {
@@ -6292,7 +6346,7 @@
    JSROOT.addDrawFunc({ name: "TJSImage", icon: 'img_mgraph', prereq: "more2d", func: "JSROOT.Painter.drawJSImage", opt: ";scale;center" });
    JSROOT.addDrawFunc({ name: "TGeoVolume", icon: 'img_histo3d', prereq: "geom", func: "JSROOT.Painter.drawGeoObject", expand: "JSROOT.GEO.expandObject", opt:";more;all;count;projx;projz;wire;dflt", ctrl: "dflt" });
    JSROOT.addDrawFunc({ name: "TEveGeoShapeExtract", icon: 'img_histo3d', prereq: "geom", func: "JSROOT.Painter.drawGeoObject", expand: "JSROOT.GEO.expandObject", opt: ";more;all;count;projx;projz;wire;dflt", ctrl: "dflt"  });
-   JSROOT.addDrawFunc({ name: "ROOT::Experimental::TEveGeoShapeExtract", icon: 'img_histo3d', prereq: "geom", func: "JSROOT.Painter.drawGeoObject", expand: "JSROOT.GEO.expandObject", opt: ";more;all;count;projx;projz;wire;dflt", ctrl: "dflt" });
+   JSROOT.addDrawFunc({ name: "ROOT::Experimental::REveGeoShapeExtract", icon: 'img_histo3d', prereq: "geom", func: "JSROOT.Painter.drawGeoObject", expand: "JSROOT.GEO.expandObject", opt: ";more;all;count;projx;projz;wire;dflt", ctrl: "dflt" });
    JSROOT.addDrawFunc({ name: "TGeoOverlap", icon: 'img_histo3d', prereq: "geom", expand: "JSROOT.GEO.expandObject", func: "JSROOT.Painter.drawGeoObject", opt: ";more;all;count;projx;projz;wire;dflt", dflt: "dflt", ctrl: "expand" });
    JSROOT.addDrawFunc({ name: "TGeoManager", icon: 'img_histo3d', prereq: "geom", expand: "JSROOT.GEO.expandObject", func: "JSROOT.Painter.drawGeoObject", opt: ";more;all;count;projx;projz;wire;tracks;dflt", dflt: "expand", ctrl: "dflt" });
    JSROOT.addDrawFunc({ name: /^TGeo/, icon: 'img_histo3d', prereq: "geom", func: "JSROOT.Painter.drawGeoObject", opt: ";more;all;axis;compa;count;projx;projz;wire;dflt", ctrl: "dflt" });
@@ -6766,10 +6820,10 @@
    JSROOT.resize = function(divid, arg) {
       if (arg === true) arg = { force: true }; else
       if (typeof arg !== 'object') arg = null;
-      var dummy = new TObjectPainter(), done = false;
+      var done = false, dummy = new TObjectPainter();
       dummy.SetDivId(divid, -1);
       dummy.ForEachPainter(function(painter) {
-         if (!done && typeof painter.CheckResize == 'function')
+         if (!done && (typeof painter.CheckResize == 'function'))
             done = painter.CheckResize(arg);
       });
       return done;

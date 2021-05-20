@@ -15,13 +15,18 @@ ROOT_LINKER_LIBRARY(Imt
     TBB
 )
 
+target_include_directories(Clib PRIVATE
+   ${CMAKE_SOURCE_DIR}/core/base/inc
+   ${CMAKE_BINARY_DIR}/ginclude
+)
+
 target_link_libraries(Imt PRIVATE Thread INTERFACE Core)
 
 if(imt)
   ROOT_GENERATE_DICTIONARY(G__Imt STAGE1
     ROOT/TFuture.hxx
-    ROOT/TPoolManager.hxx
     ROOT/TTaskGroup.hxx
+    ROOT/RTaskArena.hxx
     ROOT/TThreadExecutor.hxx
     LINKDEF
       LinkDef.h
@@ -36,12 +41,12 @@ if(imt)
 
   # G__Imt.cxx is automatically added by ROOT_GENERATE_DICTIONARY()
   target_sources(Imt PRIVATE
+    src/RTaskArena.cxx
     src/TImplicitMT.cxx
-    src/TPoolManager.cxx
     src/TThreadExecutor.cxx
   )
 
-  target_include_directories(Imt PRIVATE ${TBB_INCLUDE_DIRS})
+  target_include_directories(Imt SYSTEM PRIVATE ${TBB_INCLUDE_DIRS})
   target_link_libraries(Imt PRIVATE ${TBB_LIBRARIES})
   set_target_properties(Imt PROPERTIES COMPILE_FLAGS "${TBB_CXXFLAGS}")
 

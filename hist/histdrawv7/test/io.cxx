@@ -4,9 +4,8 @@
 #include "ROOT/RHistDrawable.hxx"
 #include "ROOT/RCanvas.hxx"
 #include "ROOT/RColor.hxx"
-#include "ROOT/RFile.hxx"
 
-#include "TFile.h"
+#include "TMemFile.h"
 
 using namespace ROOT::Experimental;
 
@@ -14,14 +13,43 @@ using namespace ROOT::Experimental;
 TEST(IOTest, OneD)
 {
    RAxisConfig xaxis{10, 0., 1.};
-   RH1D h(xaxis);
-   auto file = RFile::Recreate("IOTestOneD.root");
-   file->Write("h", h);
+   RH1D h1(xaxis);
+
+   TMemFile file("testrh1.root","RECREATE","Testing I/O of RH1D");
+
+   file.WriteObject(&h1, "h1");
+
+   auto readh1 = file.Get<RH1D>("h1");
+
+   ASSERT_NE(readh1, nullptr);
+
+   delete readh1;
 }
+
+// Test storing of 2D histogram
+TEST(IOTest, TwoD)
+{
+   RAxisConfig xaxis{10, 0., 1.};
+   RAxisConfig yaxis{10, 0., 1.};
+   RH2D h2(xaxis, yaxis);
+
+   TMemFile file("testrh2.root","RECREATE","Testing I/O of RH2D");
+
+   file.WriteObject(&h2, "h2");
+
+   auto readh2 = file.Get<RH2D>("h2");
+
+   ASSERT_NE(readh2, nullptr);
+
+   delete readh2;
+}
+
 
 // Test storing RCanvas with two RHistDrawable, referencing same histo
 TEST(IOTest, OneDOpts)
 {
+   TMemFile file("test_canvas_rh1.root","RECREATE","Testing RCanvas I/O with RH1D");
+
    {
       RAxisConfig xaxis{10, 0., 1.};
       auto h = std::make_shared<RH1D>(xaxis);
@@ -31,11 +59,11 @@ TEST(IOTest, OneDOpts)
       auto drawable2 = canv.Draw(h);
       drawable2->AttrLine().SetColor(RColor::kBlue);
 
-      EXPECT_EQ(canv.NumPrimitives(), 2u);
+      EXPECT_EQ(canv.NumPrimitives(), 3u);
       EXPECT_NE(canv.GetPrimitive(0).get(), canv.GetPrimitive(1).get());
 
-      auto pr1 = std::dynamic_pointer_cast<RHistDrawable<1>>(canv.GetPrimitive(0));
-      auto pr2 = std::dynamic_pointer_cast<RHistDrawable<1>>(canv.GetPrimitive(1));
+      auto pr1 = std::dynamic_pointer_cast<RHist1Drawable>(canv.GetPrimitive(1));
+      auto pr2 = std::dynamic_pointer_cast<RHist1Drawable>(canv.GetPrimitive(2));
       ASSERT_NE(pr1, nullptr);
       ASSERT_NE(pr2.get(), nullptr);
 
@@ -43,21 +71,17 @@ TEST(IOTest, OneDOpts)
       EXPECT_NE(pr2->GetHist().get(), nullptr);
       EXPECT_EQ(pr1->GetHist().get(), pr2->GetHist().get());
 
-      auto file = RFile::Recreate("IOTestOneDOpts.root");
-      file->Write("canv", canv);
-      file->Close();
+      file.WriteObject(&canv, "canv");
    }
 
-   auto file2 = TFile::Open("IOTestOneDOpts.root");
-   ASSERT_NE(file2, nullptr);
-   auto canv2 = file2->Get<ROOT::Experimental::RCanvas>("canv");
+   auto canv2 = file.Get<ROOT::Experimental::RCanvas>("canv");
    ASSERT_NE(canv2, nullptr);
 
-   EXPECT_EQ(canv2->NumPrimitives(), 2u);
-   EXPECT_NE(canv2->GetPrimitive(0).get(), canv2->GetPrimitive(1).get());
+   EXPECT_EQ(canv2->NumPrimitives(), 3u);
+   EXPECT_NE(canv2->GetPrimitive(1).get(), canv2->GetPrimitive(2).get());
 
-   auto dr1 = std::dynamic_pointer_cast<RHistDrawable<1>>(canv2->GetPrimitive(0));
-   auto dr2 = std::dynamic_pointer_cast<RHistDrawable<1>>(canv2->GetPrimitive(1));
+   auto dr1 = std::dynamic_pointer_cast<RHist1Drawable>(canv2->GetPrimitive(1));
+   auto dr2 = std::dynamic_pointer_cast<RHist1Drawable>(canv2->GetPrimitive(2));
    ASSERT_NE(dr1, nullptr);
    ASSERT_NE(dr2, nullptr);
 
@@ -69,5 +93,4 @@ TEST(IOTest, OneDOpts)
    EXPECT_EQ(dr1->GetHist(), dr2->GetHist());
 
    delete canv2;
-   delete file2;
 }

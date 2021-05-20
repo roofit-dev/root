@@ -11,6 +11,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTEve
     ROOT/REveCompound.hxx
     ROOT/REveBox.hxx
     ROOT/REveBoxSet.hxx
+    ROOT/REveCaloData.hxx
+    ROOT/REveCalo.hxx
     ROOT/REveDataClasses.hxx
     ROOT/REveDataProxyBuilderBase.hxx
     ROOT/REveDataSimpleProxyBuilder.hxx
@@ -71,6 +73,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTEve
     src/REveChunkManager.cxx
     src/REveBox.cxx
     src/REveBoxSet.cxx
+    src/REveCalo.cxx
+    src/REveCaloData.cxx
     src/REveCompound.cxx
     src/REveDataClasses.cxx
     src/REveDataProxyBuilderBase.cxx

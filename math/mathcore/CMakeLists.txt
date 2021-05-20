@@ -68,11 +68,8 @@ set(HEADERS
   Math/MultiDimParamFunctionAdapter.h
   Math/OneDimFunctionAdapter.h
   Math/ParamFunctor.h
-  Math/PdfFunc.h
   Math/PdfFuncMathCore.h
-  Math/ProbFunc.h
   Math/ProbFuncMathCore.h
-  Math/QuantFunc.h
   Math/QuantFuncMathCore.h
   Math/Random.h
   Math/RandomFunctions.h
@@ -194,6 +191,16 @@ ROOT_STANDARD_LIBRARY_PACKAGE(MathCore
   BUILTINS
     ${MATHCORE_BUILTINS}
 )
+
+target_include_directories(MathCore PRIVATE ${Vc_INCLUDE_DIR})
+target_include_directories(MathCore PRIVATE ${VecCore_INCLUDE_DIRS})
+
+list(APPEND math_incl ${Vc_INCLUDE_DIR})
+list(APPEND math_incl ${VecCore_INCLUDE_DIRS})
+
+foreach(incl ${math_incl})
+   target_include_directories(MathCore PUBLIC $<BUILD_INTERFACE:${incl}>)
+endforeach()
 
 target_compile_definitions(MathCore INTERFACE ${VecCore_DEFINITIONS})
 target_link_libraries(MathCore PRIVATE ${CMAKE_THREAD_LIBS_INIT})

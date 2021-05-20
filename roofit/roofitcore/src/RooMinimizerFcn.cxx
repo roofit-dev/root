@@ -14,20 +14,12 @@
 #ifndef __ROOFIT_NOROOMINIMIZER
 
 //////////////////////////////////////////////////////////////////////////////
-//
-// RooMinimizerFcn is am interface class to the ROOT::Math function 
-// for minization.
-//                                                                                   
+/// \class RooMinimizerFcn
+/// RooMinimizerFcn is an interface to the ROOT::Math::IBaseFunctionMultiDim,
+/// a function that ROOT's minimisers use to carry out minimisations.
+///
 
-#include <iostream>
-
-#include "RooFit.h"
 #include "RooMinimizerFcn.h"
-
-#include "Riostream.h"
-
-#include "TIterator.h"
-#include "TClass.h"
 
 #include "RooAbsArg.h"
 #include "RooAbsPdf.h"
@@ -35,9 +27,14 @@
 #include "RooRealVar.h"
 #include "RooAbsRealLValue.h"
 #include "RooMsgService.h"
-
 #include "RooMinimizer.h"
 #include "RooGaussMinimizer.h"
+
+#include "TClass.h"
+#include "TMatrixDSym.h"
+
+#include <fstream>
+#include <iomanip>
 
 using namespace std;
 
@@ -103,8 +100,8 @@ void RooMinimizerFcn::optimizeConstantTerms(bool constStatChange, bool constValC
 }
 
 
-double RooMinimizerFcn::DoEval(const double *x) const 
-{
+/// Evaluate function given the parameters in `x`.
+double RooMinimizerFcn::DoEval(const double *x) const {
 
   // Set the parameter values for this iteration
   for (unsigned index = 0; index < _nDim; index++) {
@@ -117,37 +114,15 @@ double RooMinimizerFcn::DoEval(const double *x) const
   double fvalue = _funct->getVal();
   RooAbsReal::setHideOffset(kTRUE) ;
 
-  if (RooAbsReal::numEvalErrors()>0 || fvalue > 1e30) {
-
-    if (_printEvalErrors>=0) {
-
-      if (_doEvalErrorWall) {
-        oocoutW(_context,Minimization) << "RooMinimizerFcn: Minimized function has error status." << endl 
-				       << "Returning maximum FCN so far (" << _maxFCN 
-				       << ") to force MIGRAD to back out of this region. Error log follows" << endl ;
-      } else {
-        oocoutW(_context,Minimization) << "RooMinimizerFcn: Minimized function has error status but is ignored" << endl ;
-      } 
-
-      Bool_t first(kTRUE) ;
-      ooccoutW(_context,Minimization) << "Parameter values: " ;
-      for (const auto par : *_floatParamList) {
-        auto var = static_cast<const RooRealVar*>(par);
-        if (first) { first = kFALSE ; } else ooccoutW(_context,Minimization) << ", " ;
-        ooccoutW(_context,Minimization) << var->GetName() << "=" << var->getVal() ;
-      }
-      ooccoutW(_context,Minimization) << endl ;
-      
-      RooAbsReal::printEvalErrors(ooccoutW(_context,Minimization),_printEvalErrors) ;
-      ooccoutW(_context,Minimization) << endl ;
-    } 
+  if (!std::isfinite(fvalue) || RooAbsReal::numEvalErrors() > 0 || fvalue > 1e30) {
+    printEvalErrors();
+    RooAbsReal::clearEvalErrorLog() ;
+    _numBadNLL++ ;
 
     if (_doEvalErrorWall) {
       fvalue = _maxFCN+1;
     }
 
-    RooAbsReal::clearEvalErrorLog() ;
-    _numBadNLL++ ;
   } else {
     _maxFCN = std::max(fvalue, _maxFCN);
   }

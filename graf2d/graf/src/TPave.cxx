@@ -9,8 +9,9 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include "Riostream.h"
+#include <iostream>
 #include "TROOT.h"
+#include "TBuffer.h"
 #include "TPave.h"
 #include "TStyle.h"
 #include "TVirtualPad.h"

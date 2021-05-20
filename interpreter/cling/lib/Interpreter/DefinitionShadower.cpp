@@ -47,7 +47,7 @@ namespace cling {
   }
 
   DefinitionShadower::DefinitionShadower(Sema& S, Interpreter& I)
-          : ASTTransformer(&S), m_Interp(I), m_Context(S.getASTContext()),
+          : ASTTransformer(&S), m_Context(S.getASTContext()), m_Interp(I),
             m_TU(S.getASTContext().getTranslationUnitDecl())
   {}
 
@@ -83,8 +83,9 @@ namespace cling {
     for (auto Prev : Previous) {
       if (Prev == D)
         continue;
-      if (isDefinition(Prev)
-          && (!isDefinition(D) || !isClingShadowNamespace(Prev->getDeclContext())))
+      if (!isClingShadowNamespace(Prev->getDeclContext()))
+        continue;
+      if (isDefinition(Prev) && !isDefinition(D))
         continue;
       // If the found declaration is a function overload, do not invalidate it.
       // For templated functions, Sema::IsOverload() does the right thing as per

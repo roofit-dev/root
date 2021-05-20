@@ -2331,8 +2331,7 @@ public:
   bool CheckEnumRedeclaration(SourceLocation EnumLoc, bool IsScoped,
                               QualType EnumUnderlyingTy,
                               bool EnumUnderlyingIsImplicit,
-                              const EnumDecl *Prev,
-                              const EnumDecl *New);
+                              const EnumDecl *Prev);
 
   /// Determine whether the body of an anonymous enumeration should be skipped.
   /// \param II The name of the first enumerator.
@@ -4701,7 +4700,7 @@ public:
 
     /// \brief Get the computed exception specification type.
     ExceptionSpecificationType getExceptionSpecType() const {
-      assert(ComputedEST != EST_ComputedNoexcept &&
+      assert(!isComputedNoexcept(ComputedEST) &&
              "noexcept(expr) should not be a possible result");
       return ComputedEST;
     }
@@ -4729,7 +4728,7 @@ public:
         /// C++11 [except.spec]p14:
         ///   The exception-specification is noexcept(false) if the set of
         ///   potential exceptions of the special member function contains "any"
-        ESI.Type = EST_ComputedNoexcept;
+        ESI.Type = EST_NoexceptFalse;
         ESI.NoexceptExpr = Self->ActOnCXXBoolLiteral(SourceLocation(),
                                                      tok::kw_false).get();
       }
@@ -4779,6 +4778,11 @@ public:
   /// \brief Evaluate the implicit exception specification for a defaulted
   /// special member function.
   void EvaluateImplicitExceptionSpec(SourceLocation Loc, CXXMethodDecl *MD);
+
+  /// Check the given noexcept-specifier, convert its expression, and compute
+  /// the appropriate ExceptionSpecificationType.
+  ExprResult ActOnNoexceptSpec(SourceLocation NoexceptLoc, Expr *NoexceptExpr,
+                               ExceptionSpecificationType &EST);
 
   /// \brief Check the given exception-specification and update the
   /// exception specification information with the results.

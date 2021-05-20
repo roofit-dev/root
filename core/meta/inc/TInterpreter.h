@@ -25,11 +25,14 @@
 #include "TDataType.h"
 #include "TDictionary.h"
 #include "TInterpreterValue.h"
+#include "TNamed.h"
 #include "TVirtualRWMutex.h"
 
 #include <map>
 #include <typeinfo>
 #include <vector>
+#include <string>
+#include <utility>
 
 class TClass;
 class TEnv;
@@ -38,6 +41,7 @@ class TMethod;
 class TObjArray;
 class TEnum;
 class TListOfEnums;
+class TSeqCollection;
 
 R__EXTERN TVirtualMutex *gInterpreterMutex;
 
@@ -188,6 +192,7 @@ public:
                                    const char** classesHeaders,
                                    Bool_t lateRegistration = false,
                                    Bool_t hasCxxModule = false) = 0;
+   virtual void     AddAvailableIndentifiers(TSeqCollection&) = 0;
    virtual void     RegisterTClassUpdate(TClass *oldcl,DictFuncPtr_t dict) = 0;
    virtual void     UnRegisterTClassUpdate(const TClass *oldcl) = 0;
    virtual Int_t    SetClassSharedLibs(const char *cls, const char *libs) = 0;
@@ -404,8 +409,8 @@ public:
    virtual Long_t   ClassInfo_GetBaseOffset(ClassInfo_t* /* fromDerived */,
                                             ClassInfo_t* /* toBase */, void* /* address */ = 0, bool /*isderived*/ = true) const {return 0;}
    virtual int    ClassInfo_GetMethodNArg(ClassInfo_t * /* info */, const char * /* method */,const char * /* proto */, Bool_t /* objectIsConst */ = false, ROOT::EFunctionMatchMode /* mode */ = ROOT::kConversionMatch) const {return 0;}
-   virtual Bool_t ClassInfo_HasDefaultConstructor(ClassInfo_t * /* info */) const {return 0;}
-   virtual Bool_t ClassInfo_HasMethod(ClassInfo_t * /* info */, const char * /* name */) const {return 0;}
+   virtual Bool_t ClassInfo_HasDefaultConstructor(ClassInfo_t * /* info */, Bool_t = kFALSE) const {return kFALSE;}
+   virtual Bool_t ClassInfo_HasMethod(ClassInfo_t * /* info */, const char * /* name */) const {return kFALSE;}
    virtual void   ClassInfo_Init(ClassInfo_t * /* info */, const char * /* funcname */) const {;}
    virtual void   ClassInfo_Init(ClassInfo_t * /* info */, int /* tagnum */) const {;}
    virtual Bool_t ClassInfo_IsBase(ClassInfo_t * /* info */, const char * /* name */) const {return 0;}
@@ -449,7 +454,7 @@ public:
    // DataMemberInfo interface
    virtual int    DataMemberInfo_ArrayDim(DataMemberInfo_t * /* dminfo */) const {return 0;}
    virtual void   DataMemberInfo_Delete(DataMemberInfo_t * /* dminfo */) const {;}
-   virtual DataMemberInfo_t  *DataMemberInfo_Factory(ClassInfo_t * /* clinfo */ = 0) const {return 0;}
+   virtual DataMemberInfo_t  *DataMemberInfo_Factory(ClassInfo_t * /* clinfo */, TDictionary::EMemberSelection /*selection*/) const {return 0;}
    virtual DataMemberInfo_t  *DataMemberInfo_Factory(DeclId_t declid, ClassInfo_t* clinfo) const = 0;
    virtual DataMemberInfo_t  *DataMemberInfo_FactoryCopy(DataMemberInfo_t * /* dminfo */) const {return 0;}
    virtual Bool_t DataMemberInfo_IsValid(DataMemberInfo_t * /* dminfo */) const {return 0;}

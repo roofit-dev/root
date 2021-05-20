@@ -1,4 +1,4 @@
-/// \file ROOT/RAxisConfig.h
+/// \file ROOT/RAxisConfig.hxx
 /// \ingroup Hist ROOT7
 /// \author Axel Naumann <axel@cern.ch>
 /// \date 2020-02-05
@@ -30,7 +30,7 @@ namespace Experimental {
 Objects used to configure the different axis types. It can store the
 properties of all ROOT-provided axis types, together with the type of the axis.
 
-RODO: that's what a variant will be invented for!
+TODO: that's what a variant will be invented for!
 */
 class RAxisConfig {
 public:
