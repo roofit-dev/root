@@ -207,9 +207,8 @@ TList *TGraph2DPainter::GetContourList(Double_t contour)
 
    if (!fNdt) FindTriangles();
 
-   TGraph *graph = 0;           // current graph
+   TGraph *graph = nullptr;     // current graph
    Int_t npg     = 0;           // number of points in the current graph
-   TList *list   = new TList(); // list holding all the graphs
 
    // Find all the segments making the contour
 
@@ -253,7 +252,7 @@ TList *TGraph2DPainter::GetContourList(Double_t contour)
 
          // Order along Z axis the points (xi,yi,zi) where "i" belongs to {0,1,2}
          // After this z0 < z1 < z2
-         i0=0, i1=0, i2=0;
+         i0 = i1 = i2 = 0;
          if (fZ[p1]<=z0) {z0=fZ[p1]; x0=fX[p1]; y0=fY[p1]; i0=1;}
          if (fZ[p1]>z2)  {z2=fZ[p1]; x2=fX[p1]; y2=fY[p1]; i2=1;}
          if (fZ[p2]<=z0) {z0=fZ[p2]; x0=fX[p2]; y0=fY[p2]; i0=2;}
@@ -264,7 +263,7 @@ TList *TGraph2DPainter::GetContourList(Double_t contour)
             delete [] ys0;
             delete [] xs1;
             delete [] ys1;
-            return 0;
+            return nullptr;
          } else {
             i1 = 3-i2-i0;
          }
@@ -315,7 +314,7 @@ TList *TGraph2DPainter::GetContourList(Double_t contour)
 
          // Order along Z axis the points (xi,yi,zi) where "i" belongs to {0,1,2}
          // After this z0 < z1 < z2
-         i0=0, i1=0, i2=0;
+         i0 = i1 = i2 = 0;
          if (fZ[p[1]]<=z0) {z0=fZ[p[1]]; x0=fX[p[1]]; y0=fY[p[1]]; i0=1;}
          if (fZ[p[1]]>z2)  {z2=fZ[p[1]]; x2=fX[p[1]]; y2=fY[p[1]]; i2=1;}
          if (fZ[p[2]]<=z0) {z0=fZ[p[2]]; x0=fX[p[2]]; y0=fY[p[2]]; i0=2;}
@@ -326,7 +325,7 @@ TList *TGraph2DPainter::GetContourList(Double_t contour)
             delete [] ys0;
             delete [] xs1;
             delete [] ys1;
-            return 0;
+            return nullptr;
          } else {
             i1 = 3-i2-i0;
          }
@@ -364,6 +363,8 @@ TList *TGraph2DPainter::GetContourList(Double_t contour)
          }
       }
    }
+
+   TList *list   = new TList(); // list holding all the graphs
 
    Int_t *segUsed = new Int_t[fNdt];
    for(i=0; i<fNdt; i++) segUsed[i]=kFALSE;

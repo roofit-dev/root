@@ -88,7 +88,7 @@ static PyObject *WrapLeaf(TLeaf *leaf)
 {
    if (1 < leaf->GetLenStatic() || leaf->GetLeafCount()) {
       // array types
-      long dims[] = { 1, leaf->GetNdata() }; // first entry is the number of dims
+      dim_t dims[] = { 1, leaf->GetNdata() }; // first entry is the number of dims
       std::string typeName = leaf->GetTypeName();
       Converter *pcnv = CreateConverter(typeName + '*', dims);
 
@@ -99,7 +99,7 @@ static PyObject *WrapLeaf(TLeaf *leaf)
          address = (void *)leaf->GetValuePointer();
 
       PyObject *value = pcnv->FromMemory(&address);
-      delete pcnv;
+      CPyCppyy::DestroyConverter(pcnv);
 
       return value;
    } else if (leaf->GetValuePointer()) {
@@ -110,7 +110,7 @@ static PyObject *WrapLeaf(TLeaf *leaf)
          value = pcnv->FromMemory((void *)*(void **)leaf->GetValuePointer());
       else
          value = pcnv->FromMemory((void *)leaf->GetValuePointer());
-      delete pcnv;
+      CPyCppyy::DestroyConverter(pcnv);
 
       return value;
    }
