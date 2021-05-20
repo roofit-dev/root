@@ -1608,7 +1608,6 @@
       if (streamer.length!==2) {
          console.error('Streamer for pair class contains ', streamer.length,'elements');
          return null;
-
       }
 
       for (var nn=0;nn<2;++nn)
@@ -2074,10 +2073,12 @@
                   if (cnt===0) return null;
                   var o = buf.o, ver = buf.ReadVersion();
                   this.member_wise = ((ver.val & JSROOT.IO.kStreamedMemberWise) !== 0);
+
                   this.stl_version = undefined;
                   if (this.member_wise) {
+                     ver.val = ver.val & ~JSROOT.IO.kStreamedMemberWise;
                      this.stl_version = { val: buf.ntoi2() };
-                     if (this.stl_version.val<=0) this.stl_version.checksum = buf.ntou4();
+                     if (this.stl_version.val <= 0) this.stl_version.checksum = buf.ntou4();
                   }
                   return ver;
                }
@@ -2676,7 +2677,7 @@
          var v = buf.last_read_version;
          buf.ClassStreamer(obj, "RooAbsCategoryLValue");
          obj._sharedProp = (v===1) ? buf.ReadObjectAny() : buf.ClassStreamer({}, "RooCategorySharedProperties");
-      };
+      }
 
       cs['RooWorkspace::CodeRepo'] = function(buf,obj) {
          var sz = (buf.last_read_version == 2) ? 3 : 2;
@@ -2694,7 +2695,27 @@
          while(size--)
             obj.arr.Add(buf.ReadObjectAny());
          if (v>1) obj._name = buf.ReadTString();
-      };
+      }
+
+      cs['TImagePalette'] = [
+         { basename: 'TObject', base: 1, func: function(buf,obj) {
+            if (!obj._typename) obj._typename = 'TImagePalette';
+            buf.ClassStreamer(obj, "TObject"); }
+         },
+         { name: 'fNumPoints', func: function(buf,obj) { obj.fNumPoints = buf.ntou4(); } },
+         { name: 'fPoints', func: function(buf,obj) { obj.fPoints = buf.ReadFastArray(obj.fNumPoints, JSROOT.IO.kDouble); } },
+         { name: 'fColorRed', func: function(buf,obj) { obj.fColorRed = buf.ReadFastArray(obj.fNumPoints, JSROOT.IO.kUShort); } },
+         { name: 'fColorGreen', func: function(buf,obj) { obj.fColorGreen = buf.ReadFastArray(obj.fNumPoints, JSROOT.IO.kUShort); } },
+         { name: 'fColorBlue', func: function(buf,obj) { obj.fColorBlue = buf.ReadFastArray(obj.fNumPoints, JSROOT.IO.kUShort); } },
+         { name: 'fColorAlpha', func: function(buf,obj) { obj.fColorAlpha = buf.ReadFastArray(obj.fNumPoints, JSROOT.IO.kUShort); } }
+      ];
+
+      cs['TAttImage'] = [
+         { name: 'fImageQuality', func: function(buf, obj) { obj.fImageQuality = buf.ntoi4(); } },
+         { name: 'fImageCompression', func: function(buf, obj) { obj.fImageCompression = buf.ntou4(); } },
+         { name: 'fConstRatio', func: function(buf, obj) { obj.fConstRatio = (buf.ntou1() != 0); } },
+         { name: 'fPalette', func: function(buf, obj) { obj.fPalette = buf.ClassStreamer({}, "TImagePalette"); } }
+      ]
 
       cs['TASImage'] = function(buf,obj) {
          if ((buf.last_read_version==1) && (buf.fFile.fVersion>0) && (buf.fFile.fVersion<50000)) {
@@ -2980,6 +3001,7 @@
             var si = buf.fFile.FindStreamerInfo(this.pairtype, ver.val, ver.checksum);
 
             if (this.si !== si) {
+
                streamer = JSROOT.IO.GetPairStreamer(si, this.pairtype, buf.fFile);
                if (!streamer || streamer.length!==2) {
                   console.log('Fail to produce streamer for ', this.pairtype);
@@ -2990,6 +3012,12 @@
       }
 
       var i, n = buf.ntoi4(), res = new Array(n);
+      if (this.member_wise) {
+         if (buf.ntoi2() == JSROOT.IO.kStreamedMemberWise)
+            buf.shift(4);
+         else
+            buf.shift(-2); // rewind
+      }
 
       for (i=0;i<n;++i) {
          res[i] = { _typename: this.pairtype };
@@ -2999,7 +3027,8 @@
 
       // due-to member-wise streaming second element read after first is completed
       if (this.member_wise)
-         for (i=0;i<n;++i) streamer[1].func(buf, res[i]);
+         for (i=0;i<n;++i)
+            streamer[1].func(buf, res[i]);
 
       return res;
    }

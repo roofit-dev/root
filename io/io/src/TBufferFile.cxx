@@ -34,7 +34,6 @@ The concrete implementation of TBuffer for writing/reading to/from a ROOT file o
 #include "TStreamerInfoActions.h"
 #include "TInterpreter.h"
 #include "TVirtualMutex.h"
-#include "TROOT.h"
 
 #if (defined(__linux) || defined(__APPLE__)) && defined(__i386__) && \
      defined(__GNUC__)
@@ -2517,7 +2516,7 @@ void TBufferFile::WriteObjectClass(const void *actualObjectStart, const TClass *
 
          // A warning to let the user know it will need to change the class code
          // to  be able to read this back.
-         if (!actualClass->HasDefaultConstructor()) {
+         if (!actualClass->HasDefaultConstructor(kTRUE)) {
             Warning("WriteObjectAny", "since %s has no public constructor\n"
                "\twhich can be called without argument, objects of this class\n"
                "\tcan not be read with the current library. You will need to\n"

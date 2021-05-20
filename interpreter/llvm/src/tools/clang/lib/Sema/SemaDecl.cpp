@@ -9530,7 +9530,7 @@ bool Sema::CheckFunctionDeclaration(Scope *S, FunctionDecl *NewFD,
         else if (auto *MPT = T->getAs<MemberPointerType>())
           T = MPT->getPointeeType();
         if (auto *FPT = T->getAs<FunctionProtoType>())
-          if (FPT->isNothrow(Context))
+          if (FPT->isNothrow())
             return true;
         return false;
       };
@@ -12892,7 +12892,7 @@ bool Sema::CheckEnumUnderlyingType(TypeSourceInfo *TI) {
 /// \return true if the redeclaration was invalid.
 bool Sema::CheckEnumRedeclaration(
     SourceLocation EnumLoc, bool IsScoped, QualType EnumUnderlyingTy,
-    bool EnumUnderlyingIsImplicit, const EnumDecl *Prev, const EnumDecl *New) {
+    bool EnumUnderlyingIsImplicit, const EnumDecl *Prev) {
   bool IsFixed = !EnumUnderlyingTy.isNull();
 
   if (IsScoped != Prev->isScoped()) {
@@ -12942,10 +12942,12 @@ bool Sema::CheckEnumRedeclaration(
     if (hasFwdDeclAnnotation(Prev))
       return false;
 
-    // We have a definition coming from a module and a forward declaration
-    // coming after.
-    if (Prev->isFromASTFile() && New && hasFwdDeclAnnotation(New))
-      return false;
+    // We have a definition coming from a module and the annotated forward
+    // declaration coming after. We can try to limit the filter to only the
+    // enums which come from a module *and* the new enum candidate has an
+    // explicit type (eg enum L1GtObject : unsigned int;).
+    if (Prev->isFromASTFile() && !EnumUnderlyingIsImplicit)
+       return false;
 
     Diag(EnumLoc, diag::err_enum_redeclare_fixed_mismatch)
       << Prev->isFixed();
@@ -13674,8 +13676,7 @@ Decl *Sema::ActOnTag(Scope *S, unsigned TagSpec, TagUseKind TUK,
           // in which case we want the caller to bail out.
           if (CheckEnumRedeclaration(NameLoc.isValid() ? NameLoc : KWLoc,
                                      ScopedEnum, EnumUnderlyingTy,
-                                     EnumUnderlyingIsImplicit, PrevEnum,
-                                     cast_or_null<EnumDecl>(SkipBody->New)))
+                                     EnumUnderlyingIsImplicit, PrevEnum))
             return TUK == TUK_Declaration ? PrevTagDecl : nullptr;
         }
 
@@ -16196,7 +16197,7 @@ DeclResult Sema::ActOnModuleImport(SourceLocation StartLoc,
 
   VisibleModules.setVisible(Mod, ImportLoc);
 
-  checkModuleImportContext(*this, Mod, ImportLoc, CurContext);
+  // checkModuleImportContext(*this, Mod, ImportLoc, CurContext);
 
   // FIXME: we should support importing a submodule within a different submodule
   // of the same top-level module. Until we do, make it an error rather than

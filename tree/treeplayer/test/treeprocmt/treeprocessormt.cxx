@@ -15,14 +15,19 @@
 
 #include "gtest/gtest.h"
 
-void WriteFiles(const std::string &treename, const std::vector<std::string> &filenames)
+void WriteFiles(const std::vector<std::string> &treenames, const std::vector<std::string> &filenames)
 {
    int v = 0;
-   for (const auto &f : filenames) {
-      TFile file(f.c_str(), "recreate");
+   const auto nFiles = filenames.size();
+   EXPECT_EQ(nFiles, treenames.size()) << "this should never happen, fix test logic";
+   for (auto i = 0u; i < nFiles; ++i) {
+      const auto &fname = filenames[i];
+      const auto &treename = treenames[i];
+
+      TFile file(fname.c_str(), "recreate");
       TTree t(treename.c_str(), treename.c_str());
       t.Branch("v", &v);
-      for (auto i = 0; i < 10; ++i) {
+      for (auto e = 0; e < 10; ++e) {
          ++v;
          t.Fill();
       }
@@ -69,9 +74,9 @@ TEST(TreeProcessorMT, ManyFiles)
    const std::string treename = "t";
    std::vector<std::string> filenames;
    for (auto i = 0u; i < nFiles; ++i)
-      filenames.emplace_back("treeprocmt_" + std::to_string(i) + ".root");
+      filenames.emplace_back("treeprocmt_manyfiles" + std::to_string(i) + ".root");
 
-   WriteFiles(treename, filenames);
+   WriteFiles(std::vector<std::string>(nFiles, treename), filenames);
 
    std::atomic_int sum(0);
    std::atomic_int count(0);
@@ -96,7 +101,76 @@ TEST(TreeProcessorMT, ManyFiles)
    proc.Process(sumValues);
 
    EXPECT_EQ(count.load(), int(nFiles * 10)); // 10 entries per file
-   EXPECT_EQ(sum.load(), 500500);             // sum 1..nFiles*10
+   EXPECT_EQ(sum.load(), 500500);             // sum of [1..nFiles*nEntriesPerFile] inclusive
+
+   DeleteFiles(filenames);
+}
+
+TEST(TreeProcessorMT, TreesWithDifferentNamesChainCtor)
+{
+   const std::vector<std::string> treenames{"t0","t1","t2"};
+   const std::vector<std::string> filenames{"treeprocmt_chainctor0.root", "treeprocmt_chainctor1.root",
+                                            "treeprocmt_chainctor2.root"};
+
+   WriteFiles(treenames, filenames);
+
+   std::atomic_int sum(0);
+   std::atomic_int count(0);
+   auto sumValues = [&sum, &count](TTreeReader &r) {
+      TTreeReaderValue<int> v(r, "v");
+      while (r.Next()) {
+         sum += *v;
+         ++count;
+      }
+   };
+
+   // TTreeProcMT requires a vector<string_view>
+   TChain chain;
+   const auto nFiles = filenames.size();
+   for (auto i = 0u; i < nFiles; ++i) {
+      const auto n = std::to_string(i);
+      const auto full_fname = "treeprocmt_chainctor" + n + ".root/t" + n;
+      chain.Add(full_fname.c_str());
+   }
+
+   // tree names are inferred from the files
+   ROOT::TTreeProcessorMT proc(chain);
+   proc.Process(sumValues);
+
+   EXPECT_EQ(count.load(), int(nFiles * 10)); // 10 entries per file
+   EXPECT_EQ(sum.load(), 465);                // sum of [1..nFiles*nEntriesPerFile] inclusive
+
+   DeleteFiles(filenames);
+}
+
+TEST(TreeProcessorMT, TreesWithDifferentNamesVecCtor)
+{
+   const std::vector<std::string> treenames{"t0","t1","t2"};
+   const std::vector<std::string> filenames{"treeprocmt_vecctor0.root", "treeprocmt_vecctor1.root",
+                                            "treeprocmt_vecctor2.root"};
+
+   WriteFiles(treenames, filenames);
+
+   std::atomic_int sum(0);
+   std::atomic_int count(0);
+   auto sumValues = [&sum, &count](TTreeReader &r) {
+      TTreeReaderValue<int> v(r, "v");
+      while (r.Next()) {
+         sum += *v;
+         ++count;
+      }
+   };
+
+   // TTreeProcMT requires a vector<string_view>
+   std::vector<std::string_view> fnames;
+   for (const auto &f : filenames)
+      fnames.emplace_back(f);
+
+   ROOT::TTreeProcessorMT proc(fnames);
+   proc.Process(sumValues);
+
+   EXPECT_EQ(count.load(), int(filenames.size() * 10)); // 10 entries per file
+   EXPECT_EQ(sum.load(), 465); // sum of [1..nFiles*nEntriesPerFile] inclusive
 
    DeleteFiles(filenames);
 }
@@ -104,9 +178,11 @@ TEST(TreeProcessorMT, ManyFiles)
 TEST(TreeProcessorMT, TreeInSubDirectory)
 {
    auto filename = "fileTreeInSubDirectory.root";
-   auto procLambda = [](TTreeReader &r) {
+   int ans = 0;
+   auto procLambda = [&ans](TTreeReader &r) {
+      TTreeReaderValue<int> rv(r, "x");
       while (r.Next())
-         ;
+         ans += *rv;
    };
 
    {
@@ -116,18 +192,20 @@ TEST(TreeProcessorMT, TreeInSubDirectory)
       auto dir1 = dir0->mkdir("dir1");
       dir1->cd();
       TTree t("tree", "tree");
+      int x = 42;
+      t.Branch("x", &x);
+      t.Fill();
       t.Write();
    }
-
-   ROOT::EnableThreadSafety();
 
    auto fullPath = "dir0/dir1/tree";
 
    // With a TTree
    TFile f(filename);
-   auto t = (TTree *)f.Get(fullPath);
+   auto t = f.Get<TTree>(fullPath);
    ROOT::TTreeProcessorMT tp(*t);
    tp.Process(procLambda);
+   EXPECT_EQ(ans, 42);
 
    // With a TChain
    std::string chainElementName = filename;
@@ -136,10 +214,65 @@ TEST(TreeProcessorMT, TreeInSubDirectory)
    TChain chain;
    chain.Add(chainElementName.c_str());
    ROOT::TTreeProcessorMT tpc(chain);
+   ans = 0;
    tpc.Process(procLambda);
+   EXPECT_EQ(ans, 42);
 
    gSystem->Unlink(filename);
 }
+
+TEST(TreeProcessorMT, FriendInSubDirectory)
+{
+   auto filename = "fileFriendInSubDirectory.root";
+   int ans = 0;
+   auto procLambda = [&ans](TTreeReader &r) {
+      TTreeReaderValue<int> rv(r, "friend.x");
+      while (r.Next())
+         ans += *rv;
+   };
+
+   {
+      TFile f(filename, "RECREATE");
+      auto dir0 = f.mkdir("dir0");
+      dir0->cd();
+      auto dir1 = dir0->mkdir("dir1");
+      dir1->cd();
+      TTree t("tree", "tree");
+      int x = 42;
+      t.Branch("x", &x);
+      t.Fill();
+      t.Write();
+   }
+
+   auto fullPath = "dir0/dir1/tree";
+
+   // With a TTree
+   TFile f1(filename);
+   auto t = f1.Get<TTree>(fullPath);
+   TFile f2(filename);
+   auto tf = f2.Get<TTree>(fullPath);
+   t->AddFriend(tf, "friend");
+   ROOT::TTreeProcessorMT tp(*t);
+   tp.Process(procLambda);
+   EXPECT_EQ(ans, 42);
+
+   // With a TChain
+   std::string chainElementName = filename;
+   chainElementName += "/";
+   chainElementName += fullPath;
+   TChain chain;
+   chain.Add(chainElementName.c_str());
+   TChain frchain;
+   frchain.Add(chainElementName.c_str());
+   chain.AddFriend(&frchain, "friend");
+   ROOT::TTreeProcessorMT tpc(chain);
+   ans = 0;
+   tpc.Process(procLambda);
+   EXPECT_EQ(ans, 42);
+
+   gSystem->Unlink(filename);
+}
+
 
 TEST(TreeProcessorMT, LimitNTasks_CheckEntries)
 {
@@ -161,7 +294,6 @@ TEST(TreeProcessorMT, LimitNTasks_CheckEntries)
       }
    };
 
-   ROOT::DisableImplicitMT();
    ROOT::EnableImplicitMT(4);
 
    ROOT::TTreeProcessorMT p(filename, treename);
@@ -204,7 +336,6 @@ TEST(TreeProcessorMT, LimitNTasks_CheckClusters)
    };
 
    for (auto nThreads = 0; nThreads <= 4; ++nThreads) {
-      ROOT::DisableImplicitMT();
       ROOT::EnableImplicitMT(nThreads);
 
       ROOT::TTreeProcessorMT p(filename, treename);
@@ -212,28 +343,11 @@ TEST(TreeProcessorMT, LimitNTasks_CheckClusters)
 
       CheckClusters(clusters, nEvents);
       clusters.clear();
+      ROOT::DisableImplicitMT();
    }
 
    gSystem->Unlink(filename);
-   ROOT::DisableImplicitMT();
 }
-
-#if !defined(_MSC_VER) || defined(R__ENABLE_BROKEN_WIN_TESTS)
-TEST(TreeProcessorMT, PathName)
-{
-   auto fname = "root://eospublic.cern.ch//eos/root-eos/cms_opendata_2012_nanoaod/ZZTo4mu.root";
-   auto f = std::unique_ptr<TFile>(TFile::Open(fname));
-   auto tree = f->Get<TTree>("Events");
-   ROOT::TTreeProcessorMT p(*tree);
-   std::atomic<unsigned int> n(0U);
-   auto func = [&n](TTreeReader &t) {
-      while (t.Next())
-         n++;
-   };
-   p.Process(func);
-   EXPECT_EQ(n.load(), 1499064U) << "Wrong number of events processed!\n";
-}
-#endif
 
 TEST(TreeProcessorMT, TreeWithFriendTree)
 {
@@ -262,7 +376,9 @@ TEST(TreeProcessorMT, TreeWithFriendTree)
    ROOT::TTreeProcessorMT tp(*t1);
    tp.Process(procLambda);
 
+   // Clean-up
    DeleteFiles(fileNames);
+   ROOT::DisableImplicitMT();
 }
 
 TEST(TreeProcessorMT, ChainWithFriendChain)
@@ -311,4 +427,44 @@ TEST(TreeProcessorMT, ChainWithFriendChain)
 
    // Clean-up
    DeleteFiles(fileNames);
+   ROOT::DisableImplicitMT();
+}
+
+TEST(TreeProcessorMT, SetNThreads)
+{
+   EXPECT_EQ(ROOT::GetThreadPoolSize(), 0u);
+   {
+      ROOT::TTreeProcessorMT p("somefile", "sometree", 1u);
+      EXPECT_EQ(ROOT::GetThreadPoolSize(), 1u);
+   }
+   EXPECT_EQ(ROOT::GetThreadPoolSize(), 0u);
+
+   {
+      ROOT::TTreeProcessorMT p({"somefile", "some_other"}, "sometree", 1u);
+      EXPECT_EQ(ROOT::GetThreadPoolSize(), 1u);
+   }
+
+   {
+      // we need a file because in-memory trees are not supported
+      // (and are detected at TTreeProcessorMT construction time)
+      TFile f("treeprocmt_setnthreads.root", "recreate");
+      TTree t("t", "t");
+      t.Write();
+      TEntryList l;
+      ROOT::TTreeProcessorMT p(t, l, 1u);
+      EXPECT_EQ(ROOT::GetThreadPoolSize(), 1u);
+      f.Close();
+      gSystem->Unlink("treeprocmt_setnthreads.root");
+   }
+
+   {
+      // we need a file because in-memory trees are not supported
+      // (and are detected at TTreeProcessorMT construction time)
+      TFile f("treeprocmt_setnthreads.root", "recreate");
+      TTree t("t", "t");
+      t.Write();
+      ROOT::TTreeProcessorMT p(t, 1u);
+      EXPECT_EQ(ROOT::GetThreadPoolSize(), 1u);
+      gSystem->Unlink("treeprocmt_setnthreads.root");
+   }
 }

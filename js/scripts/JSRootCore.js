@@ -95,7 +95,7 @@
 
    "use strict";
 
-   JSROOT.version = "dev 17/02/2020";
+   JSROOT.version = "dev 23/09/2020";
 
    JSROOT.source_dir = "";
    JSROOT.source_min = false;
@@ -114,6 +114,8 @@
    // JSROOT.use_full_libs = true;
 
    JSROOT.touches = false;
+   JSROOT.key_handling = true;  // enable/disable key press handling in JSROOT
+
    JSROOT.browser = { isOpera: false, isFirefox: true, isSafari: false, isChrome: false, isIE: false, isWin: false };
 
    if ((typeof document !== "undefined") && (typeof window !== "undefined")) {
@@ -376,7 +378,10 @@
 
             if (value.b !== undefined) {
                // base64 coding
-               var buf = atob(value.b);
+
+               var atob_func = JSROOT.nodejs ? require('atob') : window.atob;
+
+               var buf = atob_func(value.b);
 
                if (arr.buffer) {
                   var dv = new DataView(arr.buffer, value.o || 0),
@@ -1082,17 +1087,18 @@
 
    /** @summary Load JSROOT functionality.
     *
-    * @desc As first argument, required components should be specifed:
+    * @desc As first argument, required components should be specified:
     *
     *    - 'io'     TFile functionality
     *    - 'tree'   TTree support
     *    - '2d'     basic 2d graphic (TCanvas/TPad/TFrame)
     *    - '3d'     basic 3d graphic (three.js)
-    *    - 'hist'   histograms 2d graphic
-    *    - 'hist3d' histograms 3d graphic
+    *    - 'hist'   histograms 2d drawing (SVG)
+    *    - 'hist3d' histograms 3d drawing (WebGL)
     *    - 'more2d' extra 2d graphic (TGraph, TF1)
     *    - 'v7'     ROOT v7 graphics
-    *    - 'v7hist' ROOT v7 histograms
+    *    - 'v7hist' ROOT v7 histograms 2d drawing (SVG)
+    *    - 'v7hist3d' v7 histograms 3d drawing (WebGL)
     *    - 'v7more' ROOT v7 special classes
     *    - 'math'   some methods from TMath class
     *    - 'jq'     jQuery and jQuery-ui
@@ -1103,7 +1109,7 @@
     *    - 'simple'  for basic user interface
     *    - 'load:<path/script.js>' list of user-specific scripts at the end of kind string
     *
-    * One could combine several compopnents, separating them by semicolon.
+    * One could combine several components, separating them by semicolon.
     * Depending of available components, either require.js or plain script loading will be used
     *
     * @param {string} kind - modules to load
@@ -1189,18 +1195,13 @@
             mainfiles += '$$$scripts/JSRootPainter' + ext + ".js;";
             extrafiles += '$$$style/JSRootPainter' + ext + '.css;';
          }
-         if ((jsroot.sources.indexOf("v6") < 0) && (kind.indexOf('v7;') < 0)) {
+         if ((jsroot.sources.indexOf("v6") < 0) && (kind.indexOf('v7') < 0)) {
             mainfiles += '$$$scripts/JSRootPainter.v6' + ext + ".js;";
             modules.push('JSRootPainter.v6');
          }
       }
 
       if (kind.indexOf('jq;')>=0) need_jquery = true;
-
-      if (((kind.indexOf('hist;')>=0) || (kind.indexOf('hist3d;')>=0)) && (jsroot.sources.indexOf("hist")<0)) {
-         mainfiles += '$$$scripts/JSRootPainter.hist' + ext + ".js;";
-         modules.push('JSRootPainter.hist');
-      }
 
       if ((kind.indexOf('v6;')>=0) && (jsroot.sources.indexOf("v6")<0)) {
          mainfiles += '$$$scripts/JSRootPainter.v6' + ext + ".js;";
@@ -1212,9 +1213,14 @@
          modules.push('JSRootPainter.v7');
       }
 
-      if ((kind.indexOf('v7hist;')>=0) && (jsroot.sources.indexOf("v7hist")<0)) {
-         mainfiles += '$$$scripts/JSRootPainter.v7hist' + ext + ".js;";
-         modules.push('JSRootPainter.v7hist');
+      if ((kind.indexOf('v7hist;')>=0) || (kind.indexOf('v7hist3d;')>=0)) {
+         if(jsroot.sources.indexOf("v7hist") < 0) {
+            mainfiles += '$$$scripts/JSRootPainter.v7hist' + ext + ".js;";
+            modules.push('JSRootPainter.v7hist');
+         }
+      } else if (((kind.indexOf('hist;')>=0) || (kind.indexOf('hist3d;')>=0)) && (jsroot.sources.indexOf("hist")<0)) {
+         mainfiles += '$$$scripts/JSRootPainter.hist' + ext + ".js;";
+         modules.push('JSRootPainter.hist');
       }
 
       if ((kind.indexOf('v7more;')>=0) && (jsroot.sources.indexOf("v7more")<0)) {
@@ -1252,7 +1258,12 @@
          modules.push('JSRoot3DPainter');
       }
 
-      if ((kind.indexOf('hist3d;')>=0) && (jsroot.sources.indexOf("hist3d")<0)) {
+      if (kind.indexOf('v7hist3d;')>=0) {
+         if ((jsroot.sources.indexOf("v7hist3d")<0)) {
+            mainfiles += '$$$scripts/JSRootPainter.v7hist3d' + ext + ".js;";
+            modules.push('JSRootPainter.v7hist3d');
+         }
+      } else if ((kind.indexOf('hist3d;')>=0) && (jsroot.sources.indexOf("hist3d")<0)) {
          mainfiles += '$$$scripts/JSRootPainter.hist3d' + ext + ".js;";
          modules.push('JSRootPainter.hist3d');
       }
@@ -1444,10 +1455,10 @@
 
       switch (typename) {
          case 'TObject':
-             JSROOT.extend(obj, { fUniqueID: 0, fBits: 0x3000008 });
+             JSROOT.extend(obj, { fUniqueID: 0, fBits: 0 });
              break;
          case 'TNamed':
-            JSROOT.extend(obj, { fUniqueID: 0, fBits: 0x3000008, fName: "", fTitle: "" });
+            JSROOT.extend(obj, { fUniqueID: 0, fBits: 0, fName: "", fTitle: "" });
             break;
          case 'TList':
          case 'THashList':
@@ -1461,7 +1472,7 @@
          case 'TAxis':
             JSROOT.Create("TNamed", obj);
             JSROOT.Create("TAttAxis", obj);
-            JSROOT.extend(obj, { fNbins: 0, fXmin: 0, fXmax: 0, fXbins : [], fFirst: 0, fLast: 0,
+            JSROOT.extend(obj, { fNbins: 1, fXmin: 0, fXmax: 1, fXbins : [], fFirst: 0, fLast: 0,
                                  fBits2: 0, fTimeDisplay: false, fTimeFormat: "", fLabels: null, fModLabs: null });
             break;
          case 'TAttLine':
@@ -1536,7 +1547,8 @@
             JSROOT.Create("TAttMarker", obj);
 
             JSROOT.extend(obj, {
-               fNcells : 0,
+               fBits: 8,
+               fNcells: 0,
                fXaxis: JSROOT.Create("TAxis"),
                fYaxis: JSROOT.Create("TAxis"),
                fZaxis: JSROOT.Create("TAxis"),
@@ -1794,7 +1806,7 @@
     * @param {array} [xpts] - array with X coordinates
     * @param {array} [ypts] - array with Y coordinates */
    JSROOT.CreateTGraph = function(npoints, xpts, ypts) {
-      var graph = JSROOT.extend(JSROOT.Create("TGraph"), { fBits: 0x3000408, fName: "graph", fTitle: "title" });
+      var graph = JSROOT.extend(JSROOT.Create("TGraph"), { fBits: 0x408, fName: "graph", fTitle: "title" });
 
       if (npoints>0) {
          graph.fMaxSize = graph.fNpoints = npoints;
@@ -1975,7 +1987,11 @@
          }
          m.GetParName = function(n) {
             if (this.fParams && this.fParams.fParNames) return this.fParams.fParNames[n];
-            if (this.fFormula && this.fFormula.fParams) return this.fFormula.fParams[n].first;
+            if (this.fFormula && this.fFormula.fParams) {
+               for (var k=0;k<this.fFormula.fParams.length;++k)
+                  if(this.fFormula.fParams[k].second == n)
+                     return this.fFormula.fParams[k].first;
+            }
             if (this.fNames && this.fNames[n]) return this.fNames[n];
             return "p"+n;
          }
@@ -2043,6 +2059,7 @@
             if (bin < 0) bin = 0; else
             if (bin > axis.fNbins + 1) bin = axis.fNbins + 1;
             this.fArray[bin] += ((weight===undefined) ? 1 : weight);
+            this.fEntries++;
          }
       }
 
@@ -2058,6 +2075,7 @@
             if (bin2 < 0) bin2 = 0; else
             if (bin2 > axis2.fNbins + 1) bin2 = axis2.fNbins + 1;
             this.fArray[bin1 + (axis1.fNbins+2)*bin2] += ((weight===undefined) ? 1 : weight);
+            this.fEntries++;
          }
       }
 
@@ -2076,6 +2094,7 @@
             if (bin3 < 0) bin3 = 0; else
             if (bin3 > axis3.fNbins + 1) bin3 = axis3.fNbins + 1;
             this.fArray[bin1 + (axis1.fNbins+2)* (bin2+(axis2.fNbins+2)*bin3)] += ((weight===undefined) ? 1 : weight);
+            this.fEntries++;
          }
       }
 
@@ -2163,6 +2182,13 @@
       return m;
    }
 
+   /** @summary Add methods for specified type.
+    * Will be automatically applied when decoding JSON string
+    * @private */
+   JSROOT.registerMethods = function(typename, m) {
+      JSROOT.methodsCache[typename] = m;
+   }
+
    /** @summary Returns true if object represents basic ROOT collections
     * @private */
    JSROOT.IsRootCollection = function(lst, typename) {
@@ -2183,7 +2209,7 @@
     * @private
     */
    JSROOT.addMethods = function(obj, typename) {
-      this.extend(obj, JSROOT.getMethods(typename || obj._typename, obj));
+      this.extend(obj, this.getMethods(typename || obj._typename, obj));
    }
 
    JSROOT.lastFFormat = "";

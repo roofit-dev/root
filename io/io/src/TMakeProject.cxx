@@ -20,6 +20,7 @@ Helper class implementing the TFile::MakeProject.
 #include "TMakeProject.h"
 #include "TClass.h"
 #include "TClassEdit.h"
+#include "TList.h"
 #include "TROOT.h"
 #include "TMD5.h"
 #include "TStreamerInfo.h"
@@ -672,6 +673,11 @@ TString TMakeProject::UpdateAssociativeToVector(const char *name)
       }
 
       if (nestedLoc) narg = nestedLoc;
+
+      // Treat the trailing stars the same as nested loc (i.e. ends up, properly, tacking them up back at the end of the name)
+      if (!inside[narg-1].empty() && inside[narg-1][0] == '*')
+         narg = narg - 1;
+
 
       // Remove default allocator if any.
       static const char* allocPrefix = "std::allocator<";

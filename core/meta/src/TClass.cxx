@@ -41,7 +41,8 @@ In order to access the name of a class within the ROOT type system, the method T
 
 #include "TClass.h"
 
-#include "Riostream.h"
+#include "strlcpy.h"
+#include "snprintf.h"
 #include "TBaseClass.h"
 #include "TBrowser.h"
 #include "TBuffer.h"
@@ -52,6 +53,7 @@ In order to access the name of a class within the ROOT type system, the method T
 #include "TClassTable.h"
 #include "TDataMember.h"
 #include "TDataType.h"
+#include "TDatime.h"
 #include "TError.h"
 #include "TExMap.h"
 #include "TFunctionTemplate.h"
@@ -62,6 +64,7 @@ In order to access the name of a class within the ROOT type system, the method T
 #include "TMethodArg.h"
 #include "TMethodCall.h"
 #include "TObjArray.h"
+#include "TObjString.h"
 #include "TProtoClass.h"
 #include "TROOT.h"
 #include "TRealData.h"
@@ -81,16 +84,18 @@ In order to access the name of a class within the ROOT type system, the method T
 #include "TSchemaRule.h"
 #include "TSystem.h"
 #include "TThreadSlots.h"
+#include "ThreadLocalStorage.h"
 
 #include <cstdio>
 #include <cctype>
 #include <set>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <map>
 #include <typeinfo>
 #include <cmath>
-#include <assert.h>
+#include <cassert>
 #include <vector>
 #include <memory>
 
@@ -137,6 +142,30 @@ namespace {
          fSave(ROOT::Internal::gMmallocDesc) { ROOT::Internal::gMmallocDesc = value; }
       ~TMmallocDescTemp() { ROOT::Internal::gMmallocDesc = fSave; }
    };
+
+   // When a new class is created, we need to be able to find
+   // if there are any existing classes that have the same name
+   // after any typedefs are expanded.  (This only really affects
+   // template arguments.)  To avoid having to search through all classes
+   // in that case, we keep a hash table mapping from the fully
+   // typedef-expanded names to the original class names.
+   // An entry is made in the table only if they are actually different.
+   //
+   // In these objects, the TObjString base holds the typedef-expanded
+   // name (the hash key), and fOrigName holds the original class name
+   // (the value to which the key maps).
+   //
+   class TNameMapNode : public TObjString {
+   public:
+      TString fOrigName;
+
+      TNameMapNode(const char *typedf, const char *orig)  :
+         TObjString (typedf),
+         fOrigName (orig)
+     {
+     }
+   };
+
 }
 
 std::atomic<Int_t> TClass::fgClassCount;
@@ -696,16 +725,6 @@ void TDumpMembers::Inspect(TClass *cl, const char *pname, const char *mname, con
 THashTable* TClass::fgClassTypedefHash = 0;
 
 //______________________________________________________________________________
-//______________________________________________________________________________
-////////////////////////////////////////////////////////////////////////////////
-
-TClass::TNameMapNode::TNameMapNode (const char* typedf, const char* orig)
-  : TObjString (typedf),
-    fOrigName (orig)
-{
-}
-
-//______________________________________________________________________________
 
 class TBuildRealData : public TMemberInspector {
 
@@ -892,7 +911,7 @@ void TAutoInspector::Inspect(TClass *cl, const char *tit, const char *name,
    if (!classInfo)               return;
 
    //              Browse data members
-   DataMemberInfo_t *m = gCling->DataMemberInfo_Factory(classInfo);
+   DataMemberInfo_t *m = gCling->DataMemberInfo_Factory(classInfo, TDictionary::EMemberSelection::kNoUsingDecls);
    TString mname;
 
    int found=0;
@@ -1020,7 +1039,7 @@ TClass::TClass() :
    TDictionary(),
    fPersistentRef(0),
    fStreamerInfo(0), fConversionStreamerInfo(0), fRealData(0),
-   fBase(0), fData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
+   fBase(0), fData(0), fUsingData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
    fAllPubMethod(0), fClassMenuList(0),
    fDeclFileName(""), fImplFileName(""), fDeclFileLine(0), fImplFileLine(0),
    fInstanceCount(0), fOnHeap(0),
@@ -1058,7 +1077,7 @@ TClass::TClass(const char *name, Bool_t silent) :
    TDictionary(name),
    fPersistentRef(0),
    fStreamerInfo(0), fConversionStreamerInfo(0), fRealData(0),
-   fBase(0), fData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
+   fBase(0), fData(0), fUsingData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
    fAllPubMethod(0), fClassMenuList(0),
    fDeclFileName(""), fImplFileName(""), fDeclFileLine(0), fImplFileLine(0),
    fInstanceCount(0), fOnHeap(0),
@@ -1105,7 +1124,7 @@ TClass::TClass(const char *name, Version_t cversion, Bool_t silent) :
    TDictionary(name),
    fPersistentRef(0),
    fStreamerInfo(0), fConversionStreamerInfo(0), fRealData(0),
-   fBase(0), fData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
+   fBase(0), fData(0), fUsingData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
    fAllPubMethod(0), fClassMenuList(0),
    fDeclFileName(""), fImplFileName(""), fDeclFileLine(0), fImplFileLine(0),
    fInstanceCount(0), fOnHeap(0),
@@ -1132,7 +1151,7 @@ TClass::TClass(const char *name, Version_t cversion, EState theState, Bool_t sil
    TDictionary(name),
    fPersistentRef(0),
    fStreamerInfo(0), fConversionStreamerInfo(0), fRealData(0),
-   fBase(0), fData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
+   fBase(0), fData(0), fUsingData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
    fAllPubMethod(0), fClassMenuList(0),
    fDeclFileName(""), fImplFileName(""), fDeclFileLine(0), fImplFileLine(0),
    fInstanceCount(0), fOnHeap(0),
@@ -1176,7 +1195,7 @@ TClass::TClass(ClassInfo_t *classInfo, Version_t cversion,
    TDictionary(""),
    fPersistentRef(0),
    fStreamerInfo(0), fConversionStreamerInfo(0), fRealData(0),
-   fBase(0), fData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
+   fBase(0), fData(0), fUsingData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
    fAllPubMethod(0), fClassMenuList(0),
    fDeclFileName(""), fImplFileName(""), fDeclFileLine(0), fImplFileLine(0),
    fInstanceCount(0), fOnHeap(0),
@@ -1226,7 +1245,7 @@ TClass::TClass(const char *name, Version_t cversion,
    TDictionary(name),
    fPersistentRef(0),
    fStreamerInfo(0), fConversionStreamerInfo(0), fRealData(0),
-   fBase(0), fData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
+   fBase(0), fData(0), fUsingData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
    fAllPubMethod(0), fClassMenuList(0),
    fDeclFileName(""), fImplFileName(""), fDeclFileLine(0), fImplFileLine(0),
    fInstanceCount(0), fOnHeap(0),
@@ -1256,7 +1275,7 @@ TClass::TClass(const char *name, Version_t cversion,
    TDictionary(name),
    fPersistentRef(0),
    fStreamerInfo(0), fConversionStreamerInfo(0), fRealData(0),
-   fBase(0), fData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
+   fBase(0), fData(0), fUsingData(0), fEnums(0), fFuncTemplate(0), fMethod(0), fAllPubData(0),
    fAllPubMethod(0),
    fClassMenuList(0),
    fDeclFileName(""), fImplFileName(""), fDeclFileLine(0), fImplFileLine(0),
@@ -1621,9 +1640,13 @@ TClass::~TClass()
       (*fBase).Delete();
    delete fBase.load(); fBase = 0;
 
-   if (fData)
-      fData->Delete();
-   delete fData;   fData = 0;
+   if (fData.load())
+      (*fData).Delete();
+   delete fData.load();   fData = 0;
+
+   if (fUsingData.load())
+      (*fUsingData).Delete();
+   delete fUsingData.load();   fUsingData = 0;
 
    if (fEnums.load())
       (*fEnums).Delete();
@@ -2836,7 +2859,7 @@ TVirtualCollectionProxy *TClass::GetCollectionProxy() const
 {
    // Use assert, so that this line (slow because of the TClassEdit) is completely
    // removed in optimized code.
-   assert(TestBit(kLoading) || !TClassEdit::IsSTLCont(fName) || fCollectionProxy || 0 == "The TClass for the STL collection has no collection proxy!");
+   //assert(TestBit(kLoading) || !TClassEdit::IsSTLCont(fName) || fCollectionProxy || 0 == "The TClass for the STL collection has no collection proxy!");
    if (gThreadTsd && fCollectionProxy) {
       TClassLocalStorage *local = TClassLocalStorage::GetStorage(this);
       if (local == 0) return fCollectionProxy;
@@ -3298,7 +3321,7 @@ DictFuncPtr_t  TClass::GetDict (const std::type_info& info)
 
 TDataMember *TClass::GetDataMember(const char *datamember) const
 {
-   if ((!(fData && fData->IsLoaded()) && !HasInterpreterInfo())
+   if ((!(fData.load() && (*fData).IsLoaded()) && !HasInterpreterInfo())
        || datamember == 0) return 0;
 
    // Strip off leading *'s and trailing [
@@ -3553,7 +3576,7 @@ TList *TClass::GetListOfBases()
             }
          }
          // We test again on fCanLoadClassInfo has another thread may have executed it.
-         if (!fHasRootPcmInfo && !fCanLoadClassInfo) {
+         if (!fHasRootPcmInfo && fCanLoadClassInfo) {
             LoadClassInfo();
          }
       }
@@ -3641,13 +3664,14 @@ TList *TClass::GetListOfEnums(Bool_t requestListLoading /* = kTRUE */)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return list containing the TDataMembers of a class.
+/// Create the list containing the TDataMembers (of actual data members or members
+/// pulled in through using declarations) of a class.
 
-TList *TClass::GetListOfDataMembers(Bool_t load /* = kTRUE */)
+TList *TClass::CreateListOfDataMembers(std::atomic<TListOfDataMembers*> &data, TDictionary::EMemberSelection selection, bool load)
 {
    R__LOCKGUARD(gInterpreterMutex);
 
-   if (!fData) {
+   if (!data) {
       if (fCanLoadClassInfo && fState == kHasTClassInit) {
          // NOTE: Add test to prevent redo if another thread has already done the work.
          // if (!fHasRootPcmInfo) {
@@ -3659,24 +3683,50 @@ TList *TClass::GetListOfDataMembers(Bool_t load /* = kTRUE */)
             // R__ASSERT(kFALSE);
 
             fHasRootPcmInfo = kTRUE;
-            return fData;
+            return data;
          }
       }
-      fData = new TListOfDataMembers(this);
+
+      data = new TListOfDataMembers(this, selection);
    }
-   if (Property() & (kIsClass|kIsStruct|kIsUnion)) {
+   if (IsClassStructOrUnion()) {
       // If the we have a class or struct or union, the order
       // of data members is the list is essential since it determines their
       // order on file.  So we must always load.  Also, the list is fixed
       // since the language does not allow to add members.
-      if (!fData->IsLoaded()) fData->Load();
+      if (!(*data).IsLoaded())
+         (*data).Load();
 
-   } else if (load) fData->Load();
-   return fData;
+   } else if (load) (*data).Load();
+   return data;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return list containing the TEnums of a class.
+/// Return list containing the TDataMembers of a class.
+
+TList *TClass::GetListOfDataMembers(Bool_t load /* = kTRUE */)
+{
+   // Fast path, no lock? Classes load at creation time.
+   if ((!load || IsClassStructOrUnion()) && fData)
+      return fData;
+
+   return CreateListOfDataMembers(fData, TDictionary::EMemberSelection::kNoUsingDecls, load);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return list containing the TDataMembers of using declarations of a class.
+
+TList *TClass::GetListOfUsingDataMembers(Bool_t load /* = kTRUE */)
+{
+   // Fast path, no lock? Classes load at creation time.
+   if ((!load || IsClassStructOrUnion()) && fUsingData)
+      return fUsingData;
+
+   return CreateListOfDataMembers(fUsingData, TDictionary::EMemberSelection::kOnlyUsingDecls, load);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return TListOfFunctionTemplates for a class.
 
 TList *TClass::GetListOfFunctionTemplates(Bool_t load /* = kTRUE */)
 {
@@ -3983,6 +4033,11 @@ void TClass::GetMissingDictionaries(THashTable& result, bool recurse)
       return;
    }
 
+   if (strncmp(fName, "unique_ptr<", 11) == 0 || strncmp(fName, "array<", 6) == 0 || strncmp(fName, "tuple<", 6) == 0) {
+      GetMissingDictionariesWithRecursionCheck(result, visited, recurse);
+      return;
+   }
+
    if (!HasDictionary()) {
       result.Add(this);
    }
@@ -4040,11 +4095,6 @@ void TClass::ReplaceWith(TClass *newcl) const
 
          info->Update(this, newcl);
       }
-
-      if (acl->GetCollectionProxy()) {
-         acl->GetCollectionProxy()->UpdateValueClass(this, newcl);
-      }
-      // We should also inform all the TBranchElement :( but we do not have a master list :(
    }
 
    TIter delIter( &tobedeleted );
@@ -4105,8 +4155,10 @@ void TClass::ResetCaches()
    R__ASSERT(!TestBit(kLoading) && "Resetting the caches does not make sense during loading!" );
 
    // Not owning lists, don't call Delete(), but unload
-   if (fData)
-      fData->Unload();
+   if (fData.load())
+      (*fData).Unload();
+   if (fUsingData.load())
+      (*fUsingData).Unload();
    if (fEnums.load())
       (*fEnums).Unload();
    if (fMethod.load())
@@ -6089,8 +6141,11 @@ void TClass::SetUnloaded()
    if (fMethod.load()) {
       (*fMethod).Unload();
    }
-   if (fData) {
-      fData->Unload();
+   if (fData.load()) {
+      (*fData).Unload();
+   }
+   if (fUsingData.load()) {
+      (*fUsingData).Unload();
    }
    if (fEnums.load()) {
       (*fEnums).Unload();
@@ -6761,7 +6816,7 @@ void TClass::SetDestructor(ROOT::DesFunc_t destructorFunc)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Install a new wrapper around the directory auto add function..
+/// Install a new wrapper around the directory auto add function.
 /// The function autoAddFunc has the signature void (*)(void *obj, TDirectory dir)
 /// and should register 'obj' to the directory if dir is not null
 /// and unregister 'obj' from its current directory if dir is null
@@ -7092,7 +7147,7 @@ Bool_t ROOT::Internal::HasConsistentHashMember(TClass &clRef)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Return true if we have access to a constructor useable for I/O.  This is
+/// Return true if we have access to a constructor usable for I/O.  This is
 /// typically the default constructor but can also be a constructor specifically
 /// marked for I/O (for example a constructor taking a TRootIOCtor* as an
 /// argument).  In other words, if this routine returns true, TClass::New is
@@ -7101,21 +7156,21 @@ Bool_t ROOT::Internal::HasConsistentHashMember(TClass &clRef)
 /// (public or not), use
 /// \code{.cpp}
 ///     cl->GetProperty() & kClassHasDefaultCtor
-/// \code
+/// \endcode
 /// To know if the class described by this TClass has a public default
 /// constructor use:
 /// \code{.cpp}
 ///    gInterpreter->ClassInfo_HasDefaultConstructor(aClass->GetClassInfo());
-/// \code
+/// \endcode
 
-Bool_t TClass::HasDefaultConstructor() const
+Bool_t TClass::HasDefaultConstructor(Bool_t testio) const
 {
 
    if (fNew) return kTRUE;
 
    if (HasInterpreterInfo()) {
       R__LOCKGUARD(gInterpreterMutex);
-      return gCling->ClassInfo_HasDefaultConstructor(GetClassInfo());
+      return gCling->ClassInfo_HasDefaultConstructor(GetClassInfo(), testio);
    }
    if (fCollectionProxy) {
       return kTRUE;

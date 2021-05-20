@@ -16,10 +16,12 @@
 #ifndef ROO_COMPOSITE_DATA_STORE
 #define ROO_COMPOSITE_DATA_STORE
 
-#include "RooAbsDataStore.h" 
-#include "TString.h"
+#include "RooAbsDataStore.h"
+
 #include <map>
 #include <string>
+#include <vector>
+#include <list>
 
 class RooAbsArg ;
 class RooArgList ;
@@ -93,14 +95,15 @@ public:
   virtual void recalculateCache(const RooArgSet* /*proj*/, Int_t /*firstEvent*/, Int_t /*lastEvent*/, Int_t /*stepSize*/, Bool_t /*skipZeroWeights*/) ;
   virtual Bool_t hasFilledCache() const ;
   
-  void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=0, const char* rangeName=0, Int_t nStart=0, Int_t nStop=2000000000) ;
+  void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=0, const char* rangeName=0,
+      std::size_t nStart=0, std::size_t nStop = std::numeric_limits<std::size_t>::max());
 
   virtual void forceCacheUpdate() ;
   
   virtual std::vector<RooSpan<const double>> getBatch(std::size_t first, std::size_t last) const {
     //TODO
     std::cerr << "This functionality is not yet implemented for composite data stores." << std::endl;
-    assert(false);
+    throw std::logic_error("RooCompositeDataStore doesn't have batch access yet.");
 
     std::vector<double> vec(first, last);
     return {RooSpan<const double>(vec)};

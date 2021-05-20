@@ -199,13 +199,13 @@ public:
   virtual Double_t getValV(const RooArgSet* set=0) const ;
   virtual Double_t getLogVal(const RooArgSet* set=0) const ;
 
-  virtual RooSpan<const double> getValBatch(std::size_t begin, std::size_t batchSize,
-      const RooArgSet* normSet = nullptr) const;
+  RooSpan<const double> getValBatch(std::size_t begin, std::size_t batchSize,
+      const RooArgSet* normSet = nullptr) const final;
   RooSpan<const double> getLogValBatch(std::size_t begin, std::size_t batchSize,
       const RooArgSet* normSet = nullptr) const;
 
+  /// \copydoc getNorm(const RooArgSet*) const
   Double_t getNorm(const RooArgSet& nset) const { 
-    // Get p.d.f normalization term needed for observables 'nset'
     return getNorm(&nset) ; 
   }
   virtual Double_t getNorm(const RooArgSet* set=0) const ;
@@ -219,9 +219,9 @@ public:
 
   Double_t analyticalIntegralWN(Int_t code, const RooArgSet* normSet, const char* rangeName=0) const ;
 
+  /// Shows if a PDF is self-normalized, which means that no attempt is made to add a normalization term.
+  /// Always returns false, unless a PDF overrides this function.
   virtual Bool_t selfNormalized() const { 
-    // If true, p.d.f is taken as self-normalized and no attempt is made to add a normalization term
-    // This default implementation return false
     return kFALSE ; 
   }
 

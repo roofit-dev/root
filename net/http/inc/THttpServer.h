@@ -12,9 +12,8 @@
 #ifndef ROOT_THttpServer
 #define ROOT_THttpServer
 
-#include "TObject.h"
-#include "TList.h"
 #include "TNamed.h"
+#include "TList.h"
 #include "THttpCallArg.h"
 
 #include <mutex>
@@ -23,6 +22,7 @@
 #include <memory>
 #include <queue>
 #include <thread>
+#include <vector>
 
 class THttpEngine;
 class THttpTimer;
