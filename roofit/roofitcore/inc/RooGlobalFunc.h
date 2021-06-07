@@ -199,6 +199,7 @@ RooCmdArg EventRange(Int_t nStart, Int_t nStop) ;
 RooCmdArg Extended(Bool_t flag=kTRUE) ;
 RooCmdArg DataError(Int_t) ;
 RooCmdArg NumCPU(Int_t nCPU, Int_t interleave=0) ;
+RooCmdArg CPUAffinity(Bool_t flag=kTRUE);
 RooCmdArg BatchMode(bool flag=true);
 RooCmdArg IntegrateBins(double precision);
 
@@ -207,7 +208,9 @@ RooCmdArg PrefitDataFraction(Double_t data_ratio = 0.0) ;
 RooCmdArg FitOptions(const char* opts) ;
 RooCmdArg Optimize(Int_t flag=2) ;
 RooCmdArg ProjectedObservables(const RooArgSet& set) ; // obsolete, for backward compatibility
+RooCmdArg ProjectedObservables(RooArgSet && set) ; // obsolete, for backward compatibility
 RooCmdArg ConditionalObservables(const RooArgSet& set) ;
+RooCmdArg ConditionalObservables(RooArgSet && set) ;
 RooCmdArg Verbose(Bool_t flag=kTRUE) ;
 RooCmdArg Save(Bool_t flag=kTRUE) ;
 RooCmdArg Timer(Bool_t flag=kTRUE) ;
