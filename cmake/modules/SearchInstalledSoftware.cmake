@@ -493,14 +493,6 @@ endif()
 
 #---Check for GSL library---------------------------------------------------------------
 if(mathmore OR builtin_gsl)
-  if(builtin_gsl AND NO_CONNECTION)
-    if(fail-on-missing)
-      message(FATAL_ERROR "No internet connection. Please check your connection, or either disable the 'builtin_gsl' option or the 'fail-on-missing' to automatically disable options requiring internet access")
-    else()
-      message(STATUS "No internet connection, disabling 'builtin_gsl' option")
-      set(builtin_gsl OFF CACHE BOOL "Disabled because there is no internet connection" FORCE)
-    endif()
-  endif()
   message(STATUS "Looking for GSL")
   if(NOT builtin_gsl)
     find_package(GSL 1.10)
@@ -1860,6 +1852,13 @@ if(testing AND NO_CONNECTION)
     message(STATUS "No internet connection, disabling 'testing' option")
     set(testing OFF CACHE BOOL "Disabled because there is no internet connection" FORCE)
   endif()
+endif()
+
+#---Check for ZeroMQ-----------------------------------------------------------
+
+if(builtin_zeromq)
+  list(APPEND ROOT_BUILTINS ZeroMQ)
+  add_subdirectory(builtins/zeromq)
 endif()
 
 #---Download googletest--------------------------------------------------------------
