@@ -28,7 +28,6 @@
 #include "RooAbsRealLValue.h"
 #include "RooMsgService.h"
 #include "RooMinimizer.h"
-#include "RooGaussMinimizer.h"
 #include "RooNaNPacker.h"
 
 #include "TClass.h"

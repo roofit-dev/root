@@ -238,8 +238,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooWorkspace.h
     RooWorkspaceHandle.h
     RooXYChi2Var.h
-        RooGaussMinimizer.h
-        RooGaussMinimizerFcn.h
         NumericalDerivatorMinuit2.h
         RooGradMinimizerFcn.h
 #        TestStatistics/GradMinimizer.h
@@ -477,8 +475,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooVectorDataStore.cxx
     src/RooWorkspace.cxx
     src/RooXYChi2Var.cxx
-        src/RooGaussMinimizer.cxx
-        src/RooGaussMinimizerFcn.cxx
         src/NumericalDerivatorMinuit2.cxx
         src/RooGradMinimizerFcn.cxx
 #        src/TestStatistics/GradMinimizerFcn.cxx
