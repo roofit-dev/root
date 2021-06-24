@@ -238,7 +238,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooWorkspace.h
     RooWorkspaceHandle.h
     RooXYChi2Var.h
-        RooJsonListFile.h
         RooTaskSpec.h
         RooGaussMinimizer.h
         RooGaussMinimizerFcn.h
@@ -479,7 +478,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooVectorDataStore.cxx
     src/RooWorkspace.cxx
     src/RooXYChi2Var.cxx
-        src/RooJsonListFile.cxx
         src/RooTaskSpec.cxx
         src/RooGaussMinimizer.cxx
         src/RooGaussMinimizerFcn.cxx
