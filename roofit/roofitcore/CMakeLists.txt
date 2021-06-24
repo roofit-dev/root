@@ -27,6 +27,7 @@ endif()
 
 ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
   HEADERS
+    BidirMMapPipe.h
     Floats.h
     Roo1DTable.h
     RooAbsAnaConvPdf.h
@@ -237,14 +238,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooWorkspace.h
     RooWorkspaceHandle.h
     RooXYChi2Var.h
-        RooTimer.h
         RooJsonListFile.h
         RooTaskSpec.h
         RooGaussMinimizer.h
         RooGaussMinimizerFcn.h
         NumericalDerivatorMinuit2.h
         RooGradMinimizerFcn.h
-        MultiProcess/BidirMMapPipe.h
 #        TestStatistics/GradMinimizer.h
         TestStatistics/LikelihoodGradientJob.h
         TestStatistics/LikelihoodGradientWrapper.h
@@ -277,6 +276,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     RooFitLegacy/RooNameSet.h
     RooFitLegacy/RooTreeData.h
   SOURCES
+    src/BidirMMapPipe.cxx
     src/Roo1DTable.cxx
     src/RooAbsAnaConvPdf.cxx
     src/RooAbsArg.cxx
@@ -479,14 +479,12 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     src/RooVectorDataStore.cxx
     src/RooWorkspace.cxx
     src/RooXYChi2Var.cxx
-        src/RooTimer.cxx
         src/RooJsonListFile.cxx
         src/RooTaskSpec.cxx
         src/RooGaussMinimizer.cxx
         src/RooGaussMinimizerFcn.cxx
         src/NumericalDerivatorMinuit2.cxx
         src/RooGradMinimizerFcn.cxx
-        src/MultiProcess/BidirMMapPipe.cxx
 #        src/TestStatistics/GradMinimizerFcn.cxx
         src/TestStatistics/LikelihoodGradientJob.cxx
         src/TestStatistics/LikelihoodGradientWrapper.cxx

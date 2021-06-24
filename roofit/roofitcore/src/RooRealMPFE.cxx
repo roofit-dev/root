@@ -48,7 +48,7 @@ For general multiprocessing in ROOT, please refer to the TProcessExecutor class.
 #include "RooFit.h"
 
 #ifndef _WIN32
-#include <MultiProcess/BidirMMapPipe.h>
+#include <BidirMMapPipe.h>
 #endif
 
 #include <cstdlib>

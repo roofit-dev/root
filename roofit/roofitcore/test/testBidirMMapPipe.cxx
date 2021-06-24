@@ -11,7 +11,7 @@
  * listed in LICENSE (http://roofit.sourceforge.net/license.txt)             *
  *****************************************************************************/
 
-#include <MultiProcess/BidirMMapPipe.h>
+#include <BidirMMapPipe.h>
 
 #include <sys/time.h>
 #include <iomanip>

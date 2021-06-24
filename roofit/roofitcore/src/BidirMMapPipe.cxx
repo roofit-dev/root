@@ -30,7 +30,7 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 
-#include <MultiProcess/BidirMMapPipe.h>
+#include <BidirMMapPipe.h>
 #include <sstream>
 
 #define BEGIN_NAMESPACE_ROOFIT namespace RooFit {

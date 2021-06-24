@@ -41,7 +41,7 @@ endif()
 ROOT_ADD_GTEST(testRooProductPdf testRooProductPdf.cxx LIBRARIES RooFitCore)
 ROOT_ADD_GTEST(testNaNPacker testNaNPacker.cxx LIBRARIES RooFitCore)
 
-ROOT_ADD_GTEST(testMPFEnll MultiProcess/MPFEnll.cpp LIBRARIES RooFitCore)
+ROOT_ADD_GTEST(testMPFEnll MPFEnll.cpp LIBRARIES RooFitCore)
 
 #find_package(ZeroMQ REQUIRED)
 
