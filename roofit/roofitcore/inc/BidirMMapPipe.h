@@ -17,17 +17,6 @@
 #include <cstring>
 #include <unistd.h>
 #include <chrono>
-#include "RooTaskSpec.h"
-
-// forward declarations
-namespace RooFit {
-  namespace MultiProcessV1 {
-    enum class M2Q;
-    enum class Q2M;
-    enum class W2Q;
-    enum class Q2W;
-  }
-}
 
 #define BEGIN_NAMESPACE_ROOFIT namespace RooFit {
 #define END_NAMESPACE_ROOFIT }

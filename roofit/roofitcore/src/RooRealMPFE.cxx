@@ -64,7 +64,6 @@ For general multiprocessing in ROOT, please refer to the TProcessExecutor class.
 #include "RooTrace.h"
 #include "RooConstVar.h"
 #include "RooRealIntegral.h"
-#include "RooTaskSpec.h"
 
 #include "TSystem.h"
 
@@ -99,7 +98,6 @@ RooRealMPFE::RooRealMPFE(const char *name, const char *title, RooAbsReal& arg, I
     _arg("arg","arg",this,arg),
     _vars("vars","vars",this),
     _calcInProgress(kFALSE),
-    _useTaskSpec(kTRUE),
     _verboseClient(kFALSE),
     _verboseServer(kFALSE),
     _inlineMode(calcInline),
@@ -131,7 +129,6 @@ RooRealMPFE::RooRealMPFE(const RooRealMPFE& other, const char* name) :
     _arg("arg",this,other._arg),
     _vars("vars",this,other._vars),
     _calcInProgress(kFALSE),
-    _useTaskSpec(kTRUE),
     _verboseClient(other._verboseClient),
     _verboseServer(other._verboseServer),
     _inlineMode(other._inlineMode),
@@ -236,13 +233,6 @@ void RooRealMPFE::initialize()
     delete _pipe;
     _exit(0) ;
   } else {
-    if (_useTaskSpec){
-//      cout<<"sending arg"<<endl;
-      setTaskSpec();
-    } else {
-//      cout<<"UseTaskSpec not set true!"<<endl;
-    }
-
     // Client process - fork successul
     if (_verboseClient) ccoutD(Minimization) << "RooRealMPFE::initialize(" <<
                                              GetName() << ") successfully forked server process " <<
@@ -260,52 +250,6 @@ void RooRealMPFE::initialize()
 void RooRealMPFE::setCpuAffinity(int cpu) {
   Message msg = SetCpuAffinity;
   *_pipe << msg << cpu;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Pipe stream operators for TaskSpec.
-namespace RooFit {
-  BidirMMapPipe& operator<<(BidirMMapPipe& bipe, const RooTaskSpec::Task& Task) {
-//    cout<<"passing Task out"<<endl;
-    bipe << Task.name;
-    return bipe;
-  }
-
-  BidirMMapPipe& operator<<(BidirMMapPipe& bipe, const RooTaskSpec& TaskSpec) {
-//    cout<<"passing TaskSpec out"<<endl;
-    for (std::list<RooTaskSpec::Task>::const_iterator task = TaskSpec.tasks.begin(), end = TaskSpec.tasks.end(); task != end; ++task){
-      bipe << *task;
-    }
-    return bipe;
-  }
-
-  //  BidirMMapPipe& operator>>(BidirMMapPipe& bipe, const RooTaskSpec::Task& Task) {
-  //  const char *name = Task.name;
-  //  bipe.read(&name, sizeof(name));
-  //   return bipe;
-  // }
-  BidirMMapPipe& operator>>(BidirMMapPipe& bipe, RooTaskSpec::Task& Task) {
-    bipe >> Task.name;
-    return bipe;
-  }
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Set use of RooTaskSpec.
-
-void RooRealMPFE::setTaskSpec() {
-//  cout<<"Setting TaskSpec!"<<endl;
-  RooAbsTestStatistic* tmp = dynamic_cast<RooAbsTestStatistic*>(_arg.absArg());
-  RooTaskSpec taskspecification = RooTaskSpec(tmp);
-  Message msg = TaskSpec;
-//  cout<<"Got task spec "<< endl;
-//  tmp->Print(); // WARNING: don't print MPFE values before they're fully initialized! Or make them dirty again afterwards.
-  *_pipe << msg << *taskspecification.tasks.begin();
-  //for (std::list<RooTaskSpec::Task>::const_iterator task = taskspecification.tasks.begin(), end = taskspecification.tasks.end(); task != end; ++task){
-  //  cout << "This task is " << task->name <<endl;
-  //  }
 }
 
 
@@ -532,15 +476,6 @@ void RooRealMPFE::serverLoop() {
         break;
       }
 
-      case TaskSpec: {
-
-        RooTaskSpec::Task taskspecification;
-        //	cout << *_pipe << endl;
-        //RooTaskSpec taskspecification;
-        *_pipe >> taskspecification;
-//        std::cout << "EEEEEE TaskSpec'd "<< taskspecification.name <<endl;
-        break;
-      }
 
       case GetPID: {
         *_pipe << getpid() << BidirMMapPipe::flush;
@@ -939,7 +874,6 @@ std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value){
     PROCESS_VAL(RooRealMPFE::EnableOffset);
     PROCESS_VAL(RooRealMPFE::CalculateNoOffset);
     PROCESS_VAL(RooRealMPFE::SetCpuAffinity);
-    PROCESS_VAL(RooRealMPFE::TaskSpec);
     PROCESS_VAL(RooRealMPFE::GetPID);
     default: {
       s = "unknown Message!";

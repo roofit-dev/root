@@ -19,7 +19,6 @@
 #include "RooAbsReal.h"
 #include "RooListProxy.h"
 #include "RooObjCacheManager.h"
-#include "RooTaskSpec.h"
 #include <list>
 
 class RooRealVar;
@@ -27,7 +26,6 @@ class RooArgList;
 
 
 class RooAddition : public RooAbsReal {
-  friend class RooTaskSpec;
 public:
 
   RooAddition() ;
