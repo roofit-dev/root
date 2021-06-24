@@ -37,8 +37,7 @@ typedef RooAbsData* pRooAbsData ;
 typedef RooRealMPFE* pRooRealMPFE ;
 
 class RooAbsTestStatistic : public RooAbsReal {
-  friend class RooRealMPFE;
-  friend class RooWrapperL;
+    friend class RooRealMPFE;
 public:
 
   struct Configuration {
@@ -73,20 +72,11 @@ public:
   }
   
   Bool_t setData(RooAbsData& data, Bool_t cloneData=kTRUE) ;
-  //vinces accessors
-  Int_t numSimultaneous() const { return _nGof ; }
-  RooAbsTestStatistic** simComponents() { return _gofArray ; }
 
   void enableOffsetting(Bool_t flag) ;
   Bool_t isOffsetting() const { return _doOffset ; }
   virtual Double_t offset() const { return _offset.Sum() ; }
   virtual Double_t offsetCarry() const { return _offset.Carry(); }
-
-  virtual RooAbsReal& function() { return *_func ; }
-  virtual const RooAbsReal& function() const { return *_func ; }
-
-  virtual RooAbsData& data() { return *_data ; }
-  virtual const RooAbsData& data() const { return *_data ; }
 
 protected:
 
@@ -169,8 +159,6 @@ protected:
   Bool_t         _doOffset = false; // Apply interval value offset to control numeric precision?
   mutable ROOT::Math::KahanSum<double> _offset = 0.0; //! Offset as KahanSum to avoid loss of precision
   mutable Double_t _evalCarry = 0.0; //! carry of Kahan sum in evaluatePartition
-
-private:
 
   ClassDef(RooAbsTestStatistic,3) // Abstract base class for real-valued test statistics
 };
