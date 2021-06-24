@@ -171,11 +171,6 @@ protected:
   mutable Double_t _evalCarry = 0.0; //! carry of Kahan sum in evaluatePartition
 
 private:
-  void _collectNumIntTimings(Bool_t clear_timings = kTRUE) const;
-
-  void _setNumIntTimingInPdfs(Bool_t flag = kTRUE);
-
-  void _initTiming();
 
   ClassDef(RooAbsTestStatistic,3) // Abstract base class for real-valued test statistics
 };

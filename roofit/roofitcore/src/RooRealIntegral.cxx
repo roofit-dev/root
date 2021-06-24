@@ -50,7 +50,6 @@ integration is performed in the various implementations of the RooAbsIntegrator 
 #include "RooHelpers.h"
 
 #include "ROOT/RMakeUnique.hxx"
-#include "RooTimer.h"
 // getpid and getppid:
 #include "unistd.h"
 
@@ -571,39 +570,7 @@ RooRealIntegral::RooRealIntegral(const char *name, const char *title,
     _sumCat.addOwned(*sumCat) ;
   }
 
-  // activate timing on numerical integrals
-  if (RooTrace::time_numInts()) {
-    activateTimingNumInts();
-  }
-
   TRACE_CREATE
-}
-
-
-void RooRealIntegral::activateTimingNumInts() {
-  // activate timing on numerical integrals
-//  const RooAbsArg& pdfNode = _function.arg();
-  const RooAbsPdf& pdfNode = dynamic_cast<const RooAbsPdf&>(_function.arg());
-  // TODO: check whether indeed only RooAbsPdf _functions have integral components
-  Bool_t timing_flag = pdfNode.num_int_timing_flag();
-
-  RooFIter ni_iter = _intList.fwdIterator();
-  while (RooAbsArg *normint = ni_iter.next()) {
-    // Integral expressions can be composite objects (in case of disjoint normalization ranges)
-    // Therefore: retrieve list of branch nodes of integral expression
-    RooArgList bi;
-    normint->branchNodeServerList(&bi);
-    RooFIter ib_iter = bi.fwdIterator();
-    RooAbsArg *inode;
-    while ((inode = ib_iter.next())) {
-      // If a RooRealIntegal component is found...
-      if (inode->IsA() == RooRealIntegral::Class()) {
-        // Retrieve the number of real dimensions that is integrated numerically,
-        RooRealIntegral *rri = (RooRealIntegral *) inode;
-        rri->setNumIntTiming(timing_flag);
-      }
-    }
-  }
 }
 
 

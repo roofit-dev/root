@@ -14,7 +14,6 @@
 #include <TestStatistics/LikelihoodGradientJob.h>
 #include <Minuit2/MnStrategy.h>
 
-#include <RooTimer.h>
 #include "RooMsgService.h"
 #include "RooFit/MultiProcess/JobManager.h"
 #include "RooFit/MultiProcess/Messenger.h"
@@ -97,14 +96,7 @@ void LikelihoodGradientJob::set_error_level(double error_level) const
 
 void LikelihoodGradientJob::evaluate_task(std::size_t task)
 {
-//   RooWallTimer timer;
-//   RooCPUTimer ctimer;
    run_derivator(task);
-//   ctimer.stop();
-//   timer.stop();
-//   oocxcoutD((TObject *)nullptr, Benchmarking1)
-//      << "worker_id: " << get_manager()->process_manager().worker_id() << ", task: " << task
-//      << ", partial derivative time: " << timer.timing_s() << "s -- cputime: " << ctimer.timing_s() << "s" << std::endl;
 }
 
 void LikelihoodGradientJob::update_real(std::size_t ix, double val, bool /*is_constant*/)

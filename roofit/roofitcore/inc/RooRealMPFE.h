@@ -67,9 +67,6 @@ public:
   enum Message { SendReal=0, SendCat, Calculate, Retrieve, ReturnValue, Terminate, 
     ConstOpt, Verbose, LogEvalError, ApplyNLLW2, EnableOffset, CalculateNoOffset,
 		 SetCpuAffinity, TaskSpec,
-    EnableTimingNumInts, DisableTimingNumInts,
-    MeasureCommunicationTime,
-    RetrieveTimings,
     GetPID
   };
 
@@ -112,12 +109,6 @@ private:
 //  RooArgSet* _components = 0;
 //  RooAbsArg* _findComponent(std::string name);
 
-  void _time_communication_overhead() const;
-
-  void setTimingNumInts(Bool_t flag = kTRUE);
-  std::map<std::string, double> collectTimingsFromServer(Bool_t clear_timings = kTRUE) const;
-
-  void _initTiming();
   //  RooTaskSpec _taskspecification;
   Int_t       _setNum ;           //! Partition number of this instance in parallel calculation mode
   Int_t       _numSets ;          //! Total number of partitions in parallel calculation mode

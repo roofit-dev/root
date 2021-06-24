@@ -175,10 +175,6 @@ double RooUnbinnedL::evaluate_partition(Section events,
       result = t;
    }
 
-   // timer.Stop() ;
-   // cout << "RooNLLVar::evalPart(" << GetName() << ") SET=" << _setNum << " first=" << firstEvent << ", last=" <<
-   // lastEvent << ", step=" << stepSize << ") result = " << result << " CPU = " << timer.CpuTime() << endl ;
-
    // At the end of the first full calculation, wire the caches
    if (_first) {
       _first = false;

@@ -34,7 +34,6 @@
 
 #include <Math/Minimizer.h> // needed here because in Fitter is only a forward declaration
 
-#include <RooTimer.h>
 #include <RooMsgService.h>
 
 //#include <MultiProcess/TaskManager.h>
@@ -341,7 +340,6 @@ void NumericalDerivatorMinuit2::SetInitialGradient(const ROOT::Math::IBaseFuncti
    };
    decltype(get_time()) t1, t2;
 
-   RooWallTimer timer;
    t1 = get_time();
 
    assert(function != nullptr && "function is a nullptr");
@@ -412,9 +410,8 @@ void NumericalDerivatorMinuit2::SetInitialGradient(const ROOT::Math::IBaseFuncti
    }
 
    t2 = get_time();
-   timer.stop();
 //   oocxcoutD((TObject *)nullptr, Benchmarking1)
-//      << "SetInitialGradient time: " << timer.timing_s() << "s (from " << t1 << " to " << t2 << "ns)" << std::endl;
+//      << "SetInitialGradient time: (from " << t1 << " to " << t2 << "ns)" << std::endl;
 }
 
 bool NumericalDerivatorMinuit2::always_exactly_mimic_minuit2() const

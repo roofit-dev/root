@@ -58,8 +58,6 @@ combined in the main thread.
 #include <fstream>
 #include <sstream>
 
-// timing
-#include "RooTimer.h"
 // getpid and getppid:
 #include "unistd.h"
 #include <stdexcept>
@@ -454,39 +452,6 @@ void RooAbsTestStatistic::initMPMode(RooAbsReal* real, RooAbsData* data, const R
   return ;
 }
 
-
-////////////////////////////////////////////////////////////////////////////////
-/// Activate timing of numerical integral normalization terms in the pdf.
-/// This function should be called from the process that evaluates the pdf.
-/// Using RooRealMPFE this means it should be called from the serverLoop().
-
-void RooAbsTestStatistic::_setNumIntTimingInPdfs(Bool_t flag) {
-  // find all pdf nodes with a normalization integral and set the activate timing flag on them
-  // Get list of branch nodes in expression
-  RooArgSet blist;
-  RooAbsArg* node;
-
-  _func->branchNodeServerList(&blist);
-
-  // Iterator over branch nodes
-  RooFIter iter = blist.fwdIterator();
-  while((node = iter.next())) {
-    RooAbsPdf *pdfNode = dynamic_cast<RooAbsPdf *>(node);
-    if (!pdfNode) continue;
-    // Skip self-normalized nodes
-    if (pdfNode->selfNormalized()) continue;
-
-    // TODO: move everything below to RooAbsPdf::setNumIntTiming(RooArgSet& obsSet, Bool_t flag) and only call that here? Or do we not want to pass around the observables?
-    // set attribute on or off
-    pdfNode->set_num_int_timing_flag(flag);
-
-    // Retrieve normalization integral object for branch nodes that are pdfs
-    RooRealIntegral *normint = const_cast<RooRealIntegral *>(dynamic_cast<const RooRealIntegral *>(pdfNode->getNormIntegral(*(_data->get()))));
-    if (!normint) continue;
-
-    normint->activateTimingNumInts();
-  }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Initialize simultaneous p.d.f processing mode. Strip simultaneous

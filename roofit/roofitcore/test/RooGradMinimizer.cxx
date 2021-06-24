@@ -16,7 +16,6 @@
 #include <RooDataSet.h>
 #include <RooRealVar.h>
 #include <RooAbsPdf.h>
-#include <RooTimer.h>
 #include <RooMinimizer.h>
 #include <RooFitResult.h>
 #include <RooAddPdf.h>
@@ -58,19 +57,13 @@ TEST(GradMinimizer, Gaussian1D)
 
       // --------
 
-      RooWallTimer wtimer;
-
-      // --------
-
       RooMinimizer m0(*nll);
       m0.setMinimizerType("Minuit2");
 
       m0.setStrategy(0);
       m0.setPrintLevel(-1);
 
-      wtimer.start();
       m0.migrad();
-      wtimer.stop();
 
       RooFitResult *m0result = m0.lastMinuitFit();
       double minNll0 = m0result->minNll();
@@ -86,9 +79,7 @@ TEST(GradMinimizer, Gaussian1D)
       m1->setStrategy(0);
       m1->setPrintLevel(-1);
 
-      wtimer.start();
       m1->migrad();
-      wtimer.stop();
 
       RooFitResult *m1result = m1->lastMinuitFit();
       double minNll1 = m1result->minNll();
@@ -200,26 +191,18 @@ TEST(GradMinimizer, Gaussian2DVarToConst) {
 
   // --------
 
-  RooWallTimer wtimer;
-
-  // --------
-
   RooMinimizer m0(*nll);
   m0.setMinimizerType("Minuit2");
 
   m0.setStrategy(0);
   m0.setPrintLevel(-1);
 
-  wtimer.start();
   m0.migrad();
-  wtimer.stop();
 
   values = *savedValues;
   mu1->setConstant(kTRUE);
 
-  wtimer.start();
   m0.migrad();
-  wtimer.stop();
 
   RooFitResult *m0result = m0.lastMinuitFit();
   double minNll0 = m0result->minNll();
@@ -238,16 +221,12 @@ TEST(GradMinimizer, Gaussian2DVarToConst) {
   m1.setStrategy(0);
   m1.setPrintLevel(-1);
 
-  wtimer.start();
   m1.migrad();
-  wtimer.stop();
 
   values = *savedValues;
   mu1->setConstant(kTRUE);
 
-  wtimer.start();
   m1.migrad();
-  wtimer.stop();
 
   RooFitResult *m1result = m1.lastMinuitFit();
   double minNll1 = m1result->minNll();
@@ -311,10 +290,6 @@ TEST(GradMinimizer, Gaussian2DConstToVar) {
 
   // --------
 
-  RooWallTimer wtimer;
-
-  // --------
-
   RooMinimizer m0(*nll);
   m0.setMinimizerType("Minuit2");
 
@@ -323,16 +298,12 @@ TEST(GradMinimizer, Gaussian2DConstToVar) {
 
   mu1->setConstant(kTRUE);
 
-  wtimer.start();
   m0.migrad();
-  wtimer.stop();
 
   values = *savedValues;
   mu1->setConstant(kFALSE);
 
-  wtimer.start();
   m0.migrad();
-  wtimer.stop();
 
   RooFitResult *m0result = m0.lastMinuitFit();
   double minNll0 = m0result->minNll();
@@ -351,16 +322,12 @@ TEST(GradMinimizer, Gaussian2DConstToVar) {
   m1.setStrategy(0);
   m1.setPrintLevel(-1);
 
-  wtimer.start();
   m1.migrad();
-  wtimer.stop();
 
   values = *savedValues;
   mu1->setConstant(kFALSE);
 
-  wtimer.start();
   m1.migrad();
-  wtimer.stop();
 
   RooFitResult *m1result = m1.lastMinuitFit();
   double minNll1 = m1result->minNll();
@@ -408,19 +375,13 @@ TEST(GradMinimizer, GaussianND)
 
    // --------
 
-   RooWallTimer wtimer;
-
-   // --------
-
    RooMinimizer m0(*(nll.get()));
    m0.setMinimizerType("Minuit2");
 
    m0.setStrategy(0);
    m0.setPrintLevel(-1);
 
-   wtimer.start();
    m0.migrad();
-   wtimer.stop();
 
    RooFitResult *m0result = m0.lastMinuitFit();
    double minNll0 = m0result->minNll();
@@ -451,9 +412,7 @@ TEST(GradMinimizer, GaussianND)
    m1->setStrategy(0);
    m1->setPrintLevel(-1);
 
-   wtimer.start();
    m1->migrad();
-   wtimer.stop();
 
    RooFitResult *m1result = m1->lastMinuitFit();
    double minNll1 = m1result->minNll();
@@ -511,10 +470,6 @@ TEST(GradMinimizerReverse, GaussianND)
 
    // --------
 
-   RooWallTimer wtimer;
-
-   // --------
-
    std::unique_ptr<RooMinimizer> m0 = RooMinimizer::create<RooGradMinimizerFcn>(*nll);
 
    m0->setMinimizerType("Minuit2");
@@ -522,9 +477,7 @@ TEST(GradMinimizerReverse, GaussianND)
    m0->setStrategy(0);
    m0->setPrintLevel(-1);
 
-   wtimer.start();
    m0->migrad();
-   wtimer.stop();
 
    RooFitResult *m0result = m0->lastMinuitFit();
    double minNll0 = m0result->minNll();
@@ -556,9 +509,7 @@ TEST(GradMinimizerReverse, GaussianND)
    m1.setStrategy(0);
    m1.setPrintLevel(-1);
 
-   wtimer.start();
    m1.migrad();
-   wtimer.stop();
 
    RooFitResult *m1result = m1.lastMinuitFit();
    double minNll1 = m1result->minNll();
@@ -676,19 +627,13 @@ TEST(GradMinimizer, BranchingPDF)
 
    // --------
 
-   RooWallTimer wtimer;
-
-   // --------
-
    RooMinimizer m0(*nll);
    m0.setMinimizerType("Minuit2");
 
    m0.setStrategy(0);
    m0.setPrintLevel(-1);
 
-   wtimer.start();
    m0.migrad();
-   wtimer.stop();
 
    RooFitResult *m0result = m0.lastMinuitFit();
    double minNll0 = m0result->minNll();
@@ -714,9 +659,7 @@ TEST(GradMinimizer, BranchingPDF)
    m1->setStrategy(0);
    m1->setPrintLevel(-1);
 
-   wtimer.start();
    m1->migrad();
-   wtimer.stop();
 
    RooFitResult *m1result = m1->lastMinuitFit();
    double minNll1 = m1result->minNll();
@@ -796,10 +739,6 @@ TEST(GradMinimizerDebugging, DISABLED_BranchingPDFLoadFromWorkspace)
 
    // --------
 
-   RooWallTimer wtimer;
-
-   // --------
-
    all_values.Print("v");
    RooMinimizer m0(*nll);
    m0.setMinimizerType("Minuit2");
@@ -807,9 +746,7 @@ TEST(GradMinimizerDebugging, DISABLED_BranchingPDFLoadFromWorkspace)
    m0.setStrategy(0);
    m0.setPrintLevel(-1);
 
-   wtimer.start();
    m0.migrad();
-   wtimer.stop();
 
    RooFitResult *m0result = m0.lastMinuitFit();
    double minNll0 = m0result->minNll();
@@ -840,9 +777,7 @@ TEST(GradMinimizerDebugging, DISABLED_BranchingPDFLoadFromWorkspace)
    m1->setStrategy(0);
    m1->setPrintLevel(-1);
 
-   wtimer.start();
    m1->migrad();
-   wtimer.stop();
 
    RooFitResult *m1result = m1->lastMinuitFit();
    double minNll1 = m1result->minNll();

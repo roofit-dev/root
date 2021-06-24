@@ -16,7 +16,6 @@
 
 #include <RooRandom.h>
 #include <RooWorkspace.h>
-#include <RooTimer.h>
 
 #include <RooMinimizer.h>
 #include <RooGradMinimizerFcn.h>

@@ -18,7 +18,6 @@
 
 #include <RooRandom.h>
 #include <RooWorkspace.h>
-#include <RooTimer.h>
 
 #include "RooDataHist.h" // complete type in Binned test
 #include "RooCategory.h" // complete type in MultiBinnedConstraint test
@@ -262,8 +261,6 @@ TEST_P(LikelihoodGradientJob, GaussianND)
       throw std::runtime_error("params->snapshot() cannot be casted to RooArgSet!");
    }
 
-   RooWallTimer wtimer;
-
    // --------
 
    std::unique_ptr<RooMinimizer> m0 = RooMinimizer::create<RooGradMinimizerFcn>(*nll);
@@ -272,11 +269,7 @@ TEST_P(LikelihoodGradientJob, GaussianND)
    m0->setStrategy(0);
    m0->setPrintLevel(-1);
 
-   wtimer.start();
    m0->migrad();
-   wtimer.stop();
-   std::cout << "\nwall clock time RooGradMinimizer.migrad (NWorkers = " << NWorkers << ", seed = " << seed
-             << "): " << wtimer.timing_s() << " s" << std::endl;
 
    RooFitResult *m0result = m0->lastMinuitFit();
    double minNll0 = m0result->minNll();
@@ -312,12 +305,7 @@ TEST_P(LikelihoodGradientJob, GaussianND)
    m1->setStrategy(0);
    m1->setPrintLevel(-1);
 
-   wtimer.start();
    m1->migrad();
-   wtimer.stop();
-   std::cout << "wall clock time MP::GradMinimizer.migrad (NWorkers = " << NWorkers << ", seed = " << seed
-             << "): " << wtimer.timing_s() << " s\n"
-             << std::endl;
 
    RooFitResult *m1result = m1->lastMinuitFit();
    double minNll1 = m1result->minNll();
