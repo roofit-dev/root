@@ -50,8 +50,6 @@ integration is performed in the various implementations of the RooAbsIntegrator 
 #include "RooHelpers.h"
 
 #include "ROOT/RMakeUnique.hxx"
-// getpid and getppid:
-#include "unistd.h"
 
 #include "TClass.h"
 
@@ -79,8 +77,7 @@ RooRealIntegral::RooRealIntegral() :
   _numIntegrand(0),
   _rangeName(0),
   _params(0),
-  _cacheNum(kFALSE),
-  _timeNumInt(kFALSE)
+  _cacheNum(kFALSE)
 {
   TRACE_CREATE
 }
@@ -721,8 +718,7 @@ RooRealIntegral::RooRealIntegral(const RooRealIntegral& other, const char* name)
   _numIntegrand(0),
   _rangeName(other._rangeName),
   _params(0),
-  _cacheNum(kFALSE),
-  _timeNumInt(other._timeNumInt)
+  _cacheNum(kFALSE)
 {
  _funcNormSet = other._funcNormSet ? (RooArgSet*)other._funcNormSet->snapshot(kFALSE) : 0 ;
 
@@ -735,9 +731,6 @@ RooRealIntegral::RooRealIntegral(const RooRealIntegral& other, const char* name)
 
  other._intList.snapshot(_saveInt) ;
  other._sumList.snapshot(_saveSum) ;
-
-  // activate timing on numerical integrals
-  activateTimingNumInts();
 
   TRACE_CREATE
 }
@@ -1152,12 +1145,4 @@ void RooRealIntegral::setCacheAllNumeric(Int_t ndim) {
 Int_t RooRealIntegral::getCacheAllNumeric() 
 {
   return _cacheAllNDim ;
-}
-
-void RooRealIntegral::setNumIntTiming(Bool_t flag) {
-  Int_t numIntDim = this->numIntRealVars().getSize();
-  // .. and activate timing if numeric integration occurs
-  if (numIntDim > 0) {
-    _timeNumInt = flag;
-  }
 }
