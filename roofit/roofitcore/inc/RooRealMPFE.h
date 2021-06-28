@@ -22,7 +22,11 @@
 #include "RooArgList.h"
 #include "RooMPSentinel.h"
 #include "TStopwatch.h"
-#include <vector> 
+#include <vector>
+#include <iostream>
+#include <string>
+// getpid and getppid (and pid_t):
+#include "unistd.h"
 
 class RooArgSet ;
 namespace RooFit { class BidirMMapPipe; }
@@ -30,7 +34,8 @@ namespace RooFit { class BidirMMapPipe; }
 class RooRealMPFE : public RooAbsReal {
 public:
   // Constructors, assignment etc
-  RooRealMPFE(const char *name, const char *title, RooAbsReal& arg, Bool_t calcInline=kFALSE) ;
+  RooRealMPFE(const char *name, const char *title, RooAbsReal& arg, Int_t inSetNum, Int_t inNumSets,
+              Bool_t calcInline=kFALSE) ;
   RooRealMPFE(const RooRealMPFE& other, const char* name=0);
   virtual TObject* clone(const char* newname) const { return new RooRealMPFE(*this,newname); }
   virtual ~RooRealMPFE();
@@ -46,7 +51,7 @@ public:
   void enableOffsetting(Bool_t flag) ;
 
   void followAsSlave(RooRealMPFE& master) { _updateMaster = &master ; }
-  
+
   protected:
 
   // Function evaluation
@@ -59,9 +64,14 @@ public:
   State _state ;
 
   enum Message { SendReal=0, SendCat, Calculate, Retrieve, ReturnValue, Terminate, 
-		 ConstOpt, Verbose, LogEvalError, ApplyNLLW2, EnableOffset, CalculateNoOffset } ;
-  
-  void initialize() ; 
+    ConstOpt, Verbose, LogEvalError, ApplyNLLW2, EnableOffset, CalculateNoOffset,
+    SetCpuAffinity,
+    GetPID
+  };
+
+  friend std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value);
+
+  void initialize() ;
   void initVars() ;
   void serverLoop() ;
 
@@ -87,7 +97,20 @@ public:
 
   static RooMPSentinel _sentinel ;
 
-  ClassDef(RooRealMPFE,2) // Multi-process front-end for parallel calculation of a real valued function 
+  void setCpuAffinity(int cpu);
+  pid_t getPIDFromServer() const;
+  void setMPSet(Int_t inSetNum, Int_t inNumSets);
+
+private:
+//  RooArgSet* _components = 0;
+//  RooAbsArg* _findComponent(std::string name);
+
+  Int_t       _setNum ;           //! Partition number of this instance in parallel calculation mode
+  Int_t       _numSets ;          //! Total number of partitions in parallel calculation mode
+
+  ClassDef(RooRealMPFE,3) // Multi-process front-end for parallel calculation of a real valued function
 };
+
+std::ostream& operator<<(std::ostream& out, const RooRealMPFE::Message value);
 
 #endif

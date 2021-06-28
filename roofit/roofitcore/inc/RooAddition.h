@@ -22,7 +22,8 @@
 #include <list>
 
 class RooRealVar;
-class RooArgList ;
+class RooArgList; 
+
 
 class RooAddition : public RooAbsReal {
 public:

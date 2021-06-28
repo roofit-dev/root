@@ -48,11 +48,18 @@ combined in the main thread.
 #include "RooMsgService.h"
 #include "RooProdPdf.h"
 #include "RooRealSumPdf.h"
+#include "RooConstVar.h"
+#include "RooRealIntegral.h"
 #include "RooAbsCategoryLValue.h"
 
 #include "TTimeStamp.h"
 #include "TClass.h"
 #include <string>
+#include <fstream>
+#include <sstream>
+
+// getpid and getppid:
+#include "unistd.h"
 #include <stdexcept>
 
 using namespace std;
@@ -100,7 +107,8 @@ RooAbsTestStatistic::RooAbsTestStatistic(const char *name, const char *title, Ro
   _gofOpMode{(cfg.nCPU>1 || cfg.nCPU==-1) ? MPMaster : (dynamic_cast<RooSimultaneous*>(_func) ? SimMaster : Slave)},
   _nEvents{data.numEntries()},
   _nCPU(cfg.nCPU != -1 ? cfg.nCPU : 1),
-  _mpinterl(cfg.interleave)
+  _mpinterl(cfg.interleave),
+  _CPUAffinity(cfg.CPUAffinity)
 {
   // Register all parameters as servers
   _paramSet.add(*std::unique_ptr<RooArgSet>{real.getParameters(&data)});
@@ -137,6 +145,7 @@ RooAbsTestStatistic::RooAbsTestStatistic(const RooAbsTestStatistic& other, const
   _gofSplitMode(other._gofSplitMode),
   _nCPU(other._nCPU != -1 ? other._nCPU : 1),
   _mpinterl(other._mpinterl),
+  _CPUAffinity(other._CPUAffinity),
   _doOffset(other._doOffset),
   _offset(other._offset),
   _evalCarry(other._evalCarry)
@@ -214,7 +223,7 @@ Double_t RooAbsTestStatistic::evaluate() const
     return ret ;
 
   } else if (MPMaster == _gofOpMode) {
-    
+
     // Start calculations in parallel
     for (Int_t i = 0; i < _nCPU; ++i) _mpfeArray[i]->calculate();
 
@@ -274,7 +283,7 @@ Double_t RooAbsTestStatistic::evaluate() const
       ret /= norm;
       _evalCarry /= norm;
     }
-    
+
     return ret ;
 
   }
@@ -290,7 +299,7 @@ Double_t RooAbsTestStatistic::evaluate() const
 Bool_t RooAbsTestStatistic::initialize()
 {
   if (_init) return kFALSE;
-  
+
   if (MPMaster == _gofOpMode) {
     initMPMode(_func,_data,_projDeps,_rangeName,_addCoefRangeName) ;
   } else if (SimMaster == _gofOpMode) {
@@ -299,7 +308,6 @@ Bool_t RooAbsTestStatistic::initialize()
   _init = kTRUE;
   return kFALSE;
 }
-
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -410,6 +418,7 @@ void RooAbsTestStatistic::initMPMode(RooAbsReal* real, RooAbsData* data, const R
   cfg.addCoefRangeName = addCoefRangeName;
   cfg.nCPU = 1;
   cfg.interleave = _mpinterl;
+  cfg.CPUAffinity=_CPUAffinity;
   cfg.verbose = _verbose;
   cfg.splitCutRange = _splitRange;
   // This configuration parameter is stored in the RooAbsOptTestStatistic.
@@ -427,19 +436,21 @@ void RooAbsTestStatistic::initMPMode(RooAbsReal* real, RooAbsData* data, const R
     gof->SetTitle(Form("%s_GOF%d",GetTitle(),i));
 
     ccoutD(Eval) << "RooAbsTestStatistic::initMPMode: starting remote server process #" << i << endl;
-    _mpfeArray[i] = new RooRealMPFE(Form("%s_%lx_MPFE%d",GetName(),(ULong_t)this,i),Form("%s_%lx_MPFE%d",GetTitle(),(ULong_t)this,i),*gof,false);
+    _mpfeArray[i] = new RooRealMPFE(Form("%s_%lx_MPFE%d",GetName(),(ULong_t)this,i),Form("%s_%lx_MPFE%d",GetTitle(),(ULong_t)this,i),*gof, i, _nCPU,false);
     //_mpfeArray[i]->setVerbose(kTRUE,kTRUE);
     _mpfeArray[i]->initialize();
     if (i > 0) {
       _mpfeArray[i]->followAsSlave(*_mpfeArray[0]);
     }
+
+    if (_CPUAffinity == kTRUE) {
+      _mpfeArray[i]->setCpuAffinity(i);
+    }
   }
   _mpfeArray[_nCPU - 1]->addOwnedComponents(*gof);
   coutI(Eval) << "RooAbsTestStatistic::initMPMode: started " << _nCPU << " remote server process." << endl;
-  //cout << "initMPMode --- done" << endl ;
   return ;
 }
-
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -456,7 +467,7 @@ void RooAbsTestStatistic::initSimMode(RooSimultaneous* simpdf, RooAbsData* data,
   RooAbsCategoryLValue& simCat = const_cast<RooAbsCategoryLValue&>(simpdf->indexCat());
 
   TString simCatName(simCat.GetName());
-  TList* dsetList = const_cast<RooAbsData*>(data)->split(simCat,processEmptyDataSets());
+  std::unique_ptr<TList> dsetList{const_cast<RooAbsData*>(data)->split(simCat, processEmptyDataSets())};
   if (!dsetList) {
     coutE(Fitting) << "RooAbsTestStatistic::initSimMode(" << GetName() << ") ERROR: index category of simultaneous pdf is missing in dataset, aborting" << endl;
     throw std::runtime_error("RooAbsTestStatistic::initSimMode() ERROR, index category of simultaneous pdf is missing in dataset, aborting");
@@ -521,6 +532,7 @@ void RooAbsTestStatistic::initSimMode(RooSimultaneous* simpdf, RooAbsData* data,
       Configuration cfg;
       cfg.addCoefRangeName = addCoefRangeName;
       cfg.interleave = _mpinterl;
+      cfg.CPUAffinity=_CPUAffinity;
       cfg.verbose = _verbose;
       cfg.splitCutRange = _splitRange;
       cfg.binnedL = binnedL;
@@ -556,15 +568,12 @@ void RooAbsTestStatistic::initSimMode(RooSimultaneous* simpdf, RooAbsData* data,
 
       // Servers may have been redirected between instantiation and (deferred) initialization
 
-      RooArgSet *actualParams = binnedPdf ? binnedPdf->getParameters(dset) : pdf->getParameters(dset);
-      RooArgSet* selTargetParams = (RooArgSet*) _paramSet.selectCommon(*actualParams);
+      std::unique_ptr<RooArgSet> actualParams{binnedPdf ? binnedPdf->getParameters(dset) : pdf->getParameters(dset)};
+      std::unique_ptr<RooArgSet> selTargetParams{(RooArgSet*) _paramSet.selectCommon(*actualParams)};
 
       _gofArray[n]->recursiveRedirectServers(*selTargetParams);
 
-      delete selTargetParams;
-      delete actualParams;
-
-      ++n;
+       ++n;
 
     } else {
       if ((!dset || (0. != dset->sumEntries() && !processEmptyDataSets())) && pdf) {
@@ -576,9 +585,15 @@ void RooAbsTestStatistic::initSimMode(RooSimultaneous* simpdf, RooAbsData* data,
     }
   }
   coutI(Fitting) << "RooAbsTestStatistic::initSimMode: created " << n << " slave calculators." << endl;
-
-  dsetList->Delete(); // delete the content.
-  delete dsetList;
+  
+//  // Delete datasets by hand as TList::Delete() doesn't see our datasets as 'on the heap'...
+//  TIterator* iter = dsetList->MakeIterator();
+//  TObject* ds;
+//  while((ds = iter->Next())) {
+//    delete ds;
+//  }
+//  delete iter;
+   // NOTE: commented out, because it actually causes two error messages, "Error in TList::Clear: A list is accessing an object (0x7f8320ae8f64) already deleted (list name = TList)" and another like that
 }
 
 

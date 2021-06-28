@@ -46,6 +46,7 @@ public:
     std::string addCoefRangeName = "";
     int nCPU = 1;
     RooFit::MPSplit interleave = RooFit::BulkPartition;
+    bool CPUAffinity = true;
     bool verbose = true;
     bool splitCutRange = false;
     bool cloneInputData = true;
@@ -154,12 +155,12 @@ protected:
   pRooRealMPFE*  _mpfeArray = nullptr; //! Array of parallel execution frond ends
 
   RooFit::MPSplit _mpinterl = RooFit::BulkPartition; // Use interleaving strategy rather than N-wise split for partioning of dataset for multiprocessor-split
+  Bool_t         _CPUAffinity = true; // Use CPU affinity to pin processes to cores
   Bool_t         _doOffset = false; // Apply interval value offset to control numeric precision?
   mutable ROOT::Math::KahanSum<double> _offset = 0.0; //! Offset as KahanSum to avoid loss of precision
   mutable Double_t _evalCarry = 0.0; //! carry of Kahan sum in evaluatePartition
 
-  ClassDef(RooAbsTestStatistic,2) // Abstract base class for real-valued test statistics
-
+  ClassDef(RooAbsTestStatistic,3) // Abstract base class for real-valued test statistics
 };
 
 #endif
