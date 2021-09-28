@@ -1,6 +1,7 @@
 #ifndef ZEROMQ_FUNCTIONS_H
 #define ZEROMQ_FUNCTIONS_H 1
 
+#define ZMQ_BUILD_DRAFT_API
 #include <zmq.hpp>
 
 namespace zmq {

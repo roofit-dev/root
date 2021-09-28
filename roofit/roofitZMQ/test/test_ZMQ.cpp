@@ -36,15 +36,13 @@ int wait_for_child(pid_t child_pid, bool may_throw, int retries_before_killing)
             || (-1 == tmp && EINTR == errno) // retry on interrupted system call
    );
 
-   if (patience < 1) {
-      std::cout << "Had to send PID " << child_pid << " " << (-patience + 1) << " SIGKILLs";
-   }
-
    if (0 != status) {
       if (WIFEXITED(status)) {
          printf("exited, status=%d\n", WEXITSTATUS(status));
       } else if (WIFSIGNALED(status)) {
-         printf("killed by signal %d\n", WTERMSIG(status));
+         if (WTERMSIG(status) != SIGKILL) { // SIGKILL is expected, so needn't be printed
+            printf("killed by signal %d\n", WTERMSIG(status));
+         }
       } else if (WIFSTOPPED(status)) {
          printf("stopped by signal %d\n", WSTOPSIG(status));
       } else if (WIFCONTINUED(status)) {
@@ -52,8 +50,9 @@ int wait_for_child(pid_t child_pid, bool may_throw, int retries_before_killing)
       }
    }
 
-   if (-1 == tmp && may_throw)
+   if (-1 == tmp && may_throw) {
       throw std::runtime_error(std::string("waitpid, errno ") + std::to_string(errno));
+   }
 
    return status;
 }
@@ -209,7 +208,18 @@ TEST_P(AsyncSocketTypes, forkMultiSendReceive)
 
       // start test, receive something
       auto receipt1 = zmqSvc().receive<std::string>(*socket);
-      auto receipt2 = zmqSvc().receive<std::string>(*socket);
+      std::string receipt2;
+      if (expect_throw) {
+         EXPECT_ANY_THROW(zmqSvc().receive<std::string>(*socket));
+         // NOTE: also in case of a throw, be sure to properly close down the connection!
+         // Otherwise, you may get zombies waiting for a reply.
+         socket.reset(nullptr);
+         zmqSvc().close_context();
+         _Exit(0);
+      } else {
+         receipt2 = zmqSvc().receive<std::string>(*socket);
+      }
+
       if (receipt1 == "breaker breaker" && receipt2 == "anybody out there?") {
          zmqSvc().send(*socket, 1212);
       }

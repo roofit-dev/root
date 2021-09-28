@@ -27,12 +27,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitZMQ
         ZeroMQ
     )
 
-
 target_link_libraries(RooFitZMQ PRIVATE ZeroMQ)
 target_include_directories(RooFitZMQ PUBLIC $<BUILD_INTERFACE:${ZeroMQ_INCLUDE_DIR}>)
-target_include_directories(RooFitZMQ PUBLIC $<BUILD_INTERFACE:${ZeroMQ_SOURCE_DIR}>)
-target_include_directories(RooFitZMQ PUBLIC $<BUILD_INTERFACE:${ZeroMQ_BUILD_DIR}>)
+target_include_directories(RooFitZMQ PRIVATE BUILTIN_cppzmq)
 
-if(testing)
-    ROOT_ADD_TEST_SUBDIRECTORY(test)
-endif()
+ROOT_ADD_TEST_SUBDIRECTORY(test)

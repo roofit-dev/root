@@ -1,7 +1,6 @@
 #include "RooFit_ZMQ/ZeroMQSvc.h"
 
 #include <functional> // std::ref
-#include <ROOT/RMakeUnique.hxx>
 
 ZeroMQSvc &zmqSvc()
 {

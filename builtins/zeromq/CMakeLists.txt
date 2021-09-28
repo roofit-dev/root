@@ -7,13 +7,13 @@ set(ZeroMQ_LIBRARY ${ZeroMQ_PREFIX}/lib/${ZeroMQ_LIBNAME} CACHE INTERNAL "" FORC
 set(ZeroMQ_LIBRARIES ${ZeroMQ_LIBRARY} CACHE INTERNAL "" FORCE)
 
 ExternalProject_Add(BUILTIN_ZeroMQ
-    URL https://github.com/zeromq/libzmq/archive/refs/tags/v4.3.2.tar.gz
-    URL_HASH SHA256=02ecc88466ae38cf2c8d79f09cfd2675ba299a439680b64ade733e26a349edeb
+    URL https://github.com/zeromq/libzmq/archive/5d8d857540323e2d85c64a7edde1ad5280cad04b.tar.gz
+    URL_HASH SHA256=750bc1c67a3740a5438da8762931983cb08dc649e1a658cfc34de91c2cf9222c
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
         -DWITH_PERF_TOOL=OFF
         -DZMQ_BUILD_TESTS=OFF
-        -DPOLLER=select
+        -DENABLE_DRAFTS=ON
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         # TODO: remove -w flag when updating to v4.3.5 or higher, current warnings should be gone by then
         -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}\ -w
@@ -37,13 +37,9 @@ add_library(libzmq ALIAS ZeroMQ)
 
 set(ZeroMQ_DIR ${ZeroMQ_PREFIX}/share/cmake/ZeroMQ CACHE INTERNAL "" FORCE)
 
-# also need source and build directories for ppoll in RooFitZMQ
-set(ZeroMQ_SOURCE_DIR ${ZeroMQ_PREFIX}/src/BUILTIN_ZeroMQ/src CACHE INTERNAL "" FORCE)
-set(ZeroMQ_BUILD_DIR ${ZeroMQ_PREFIX}/src/BUILTIN_ZeroMQ-build CACHE INTERNAL "" FORCE)
-
 ExternalProject_Add(BUILTIN_cppzmq
-    URL https://github.com/zeromq/cppzmq/archive/refs/tags/v4.3.0.tar.gz
-    URL_HASH SHA256=27d1f56406ba94ee779e639203218820975cf68174f92fbeae0f645df0fcada4
+    URL https://github.com/zeromq/cppzmq/archive/refs/tags/v4.8.1.tar.gz
+    URL_HASH SHA256=7a23639a45f3a0049e11a188e29aaedd10b2f4845f0000cf3e22d6774ebde0af
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${install_dir}
         -DCPPZMQ_BUILD_TESTS=OFF
