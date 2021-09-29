@@ -51,7 +51,7 @@ public:
 
 class xSquaredPlusBVectorParallel : public RooFit::MultiProcess::Job {
 public:
-   xSquaredPlusBVectorParallel(xSquaredPlusBVectorSerial* serial)
+   explicit xSquaredPlusBVectorParallel(xSquaredPlusBVectorSerial* serial)
       : serial(serial)
    {
    }
@@ -63,6 +63,7 @@ public:
          for (std::size_t task_id = 0; task_id < serial->x.size(); ++task_id) {
             RooFit::MultiProcess::JobTask job_task(id, task_id);
             get_manager()->queue().add(job_task);
+            ++N_tasks_at_workers;
          }
 
          // wait for task results back from workers to master
@@ -88,20 +89,39 @@ public:
 
    // -- BEGIN plumbing --
 
-   void receive_task_result_on_queue(std::size_t task, std::size_t worker_id) override {
-      double result = get_manager()->messenger().template receive_from_worker_on_queue<double>(worker_id);
-      serial->result[task] = result;
+   void receive_task_result_on_queue(std::size_t /*task*/, std::size_t /*worker_id*/) override {
+      // TODO: remove, this is part of "old" plumbing
+//      double result = get_manager()->messenger().template receive_from_worker_on_queue<double>(worker_id);
+//      serial->result[task] = result;
    }
 
+   struct task_result_t {
+      std::size_t job_id;
+      std::size_t task_id;
+      double value;
+   };
+
    void send_back_task_result_from_worker(std::size_t task) override {
-      get_manager()->messenger().template send_from_worker_to_queue(serial->result[task]);
+      task_result_t task_result {id, task, serial->result[task]};
+      zmq::message_t message(sizeof(task_result_t));
+      memcpy(message.data(), &task_result, sizeof(task_result_t));
+      get_manager()->messenger().send_from_worker_to_master(std::move(message));
    }
 
    void send_back_results_from_queue_to_master() override {
-//      get_manager()->messenger().send_from_queue_to_master(serial->result.size());
-      for (std::size_t task_ix = 0ul; task_ix < serial->result.size(); ++task_ix) {
-         get_manager()->messenger().send_from_queue_to_master(task_ix, serial->result[task_ix]);
-      }
+      // TODO: remove, this is part of "old" plumbing
+////      get_manager()->messenger().send_from_queue_to_master(serial->result.size());
+//      for (std::size_t task_ix = 0ul; task_ix < serial->result.size(); ++task_ix) {
+//         get_manager()->messenger().send_from_queue_to_master(task_ix, serial->result[task_ix]);
+//      }
+   }
+
+   bool receive_task_result_on_master(const zmq::message_t & message) override {
+      auto result = message.data<task_result_t>();
+      serial->result[result->task_id] = result->value;
+      --N_tasks_at_workers;
+      bool job_completed = (N_tasks_at_workers == 0);
+      return job_completed;
    }
 
    void clear_results() override {
@@ -109,18 +129,15 @@ public:
    }
 
    void receive_results_on_master() override {
-//      std::size_t N_job_tasks = get_manager()->messenger().template receive_from_queue_on_master<std::size_t>();
-//      for (std::size_t task_ix = 0ul; task_ix < N_job_tasks; ++task_ix) {
-      for (std::size_t task_ix = 0ul; task_ix < serial->result.size(); ++task_ix) {
-         std::size_t task_id = get_manager()->messenger().template receive_from_queue_on_master<std::size_t>();
-         serial->result[task_id] = get_manager()->messenger().template receive_from_queue_on_master<double>();
-      }
+      // TODO: remove, this is part of "old" plumbing
+////      std::size_t N_job_tasks = get_manager()->messenger().template receive_from_queue_on_master<std::size_t>();
+////      for (std::size_t task_ix = 0ul; task_ix < N_job_tasks; ++task_ix) {
+//      for (std::size_t task_ix = 0ul; task_ix < serial->result.size(); ++task_ix) {
+//         std::size_t task_id = get_manager()->messenger().template receive_from_queue_on_master<std::size_t>();
+//         serial->result[task_id] = get_manager()->messenger().template receive_from_queue_on_master<double>();
+//      }
    }
 
-   bool receive_task_result_on_master(const zmq::message_t & /*message*/) override {
-      // TODO: implement; this no-op placeholder is just to make everything compile first so I can check whether merge was successful
-      return true;
-   }
 
    // -- END plumbing --
 
@@ -133,6 +150,7 @@ private:
    }
 
    xSquaredPlusBVectorSerial* serial;
+   std::size_t N_tasks_at_workers = 0;
 };
 
 class TestMPJob : public ::testing::TestWithParam<std::size_t> {

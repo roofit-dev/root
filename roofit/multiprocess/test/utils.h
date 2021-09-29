@@ -15,8 +15,6 @@
 
 #include <sstream>
 
-#include <ROOT/RMakeUnique.hxx>  // make_unique
-
 #include "RooWorkspace.h"
 #include "RooRandom.h"
 #include "RooAddPdf.h"

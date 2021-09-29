@@ -16,8 +16,6 @@
 
 #include <thread>  // std::thread::hardware_concurrency()
 
-#include "ROOT/RMakeUnique.hxx"  // make_unique in C++11
-
 #include "RooFit/MultiProcess/ProcessManager.h"
 #include "RooFit/MultiProcess/Messenger.h"
 #include "RooFit/MultiProcess/JobManager.h"

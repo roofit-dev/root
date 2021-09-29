@@ -34,6 +34,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitMultiProcess
 
 target_link_libraries(RooFitMultiProcess PRIVATE ZeroMQ)
 target_include_directories(RooFitMultiProcess PUBLIC $<BUILD_INTERFACE:${ZeroMQ_INCLUDE_DIR}>)
+target_include_directories(RooFitMultiProcess PRIVATE BUILTIN_cppzmq)
 
 if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)
