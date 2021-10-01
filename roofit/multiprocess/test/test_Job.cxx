@@ -86,13 +86,9 @@ public:
    // automatically when a published message is received from master
    void update_state() override {
       if (get_manager()->process_manager().is_master()) {
-         printf("ik stuur val\n");
-         get_manager()->messenger().publish_from_master_to_workers(serial_->b_);
-         printf("val gestuurd\n");
+         get_manager()->messenger().publish_from_master_to_workers(id, serial_->b_); // always send Job id first! This is used in worker_loop to route the update_state call to the correct Job.
       } else if (get_manager()->process_manager().is_worker()) {
-         printf("ga ik val krijgen?\n");
          auto val = get_manager()->messenger().receive_from_master_on_worker<double>();
-         printf("val: %f\n", val);
          serial_->b_ = val;
       }
    }

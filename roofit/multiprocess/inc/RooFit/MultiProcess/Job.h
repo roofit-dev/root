@@ -35,50 +35,8 @@ class JobManager;
  * - void evaluate_task(std::size_t task)
  * - void send_back_task_result_from_worker(std::size_t task)
  * - void receive_task_result_on_master(const zmq::message_t & message)
-
- * An example implementation:
-
-
-
  *
- * The type of result from each task is strongly dependent on the Job at hand
- * and so Job does not provide a default results vector or anything like this.
- * It is up to the inheriting class to implement this. We would have liked a
- * template parameter task_result_t, so that we could also provide a default
- * "boilerplate" calculate function to show a typical Job use-case of all the
- * above infrastructure. This is not trivial, because the JobManager has to
- * keep a list of Job pointers, so if there would be different template
- * instantiations of Jobs, this would complicate this list. As an example,
- * a boilerplate calculation could look something like this:
- *
-return_type CertainJob::evaluate() {
-   if (get_manager()->process_manager().is_master()) {
-      // update parameters that changed since last calculation (or creation if first time)
-      for (size_t ix = 0; ix < changed_parameters.size(); ++ix) {  // changed_parameters would be a member of CertainJob
-         auto msg = RooFit::MultiProcess::M2Q::update_real;
-         get_manager()->messenger().send_from_master_to_queue(msg, id, ix,
-                                                              changed_parameters[ix].getVal(),
-                                                              changed_parameters[ix].isConstant());
-      }
-
-      // master fills queue with tasks
-      for (std::size_t ix = 0; ix < N_tasks; ++ix) {  // N_tasks would also be a member of CertainJob
-         JobTask job_task(id, ix);
-         get_manager()->queue().add(job_task);
-      }
-
-      // wait for task results back from workers to master
-      gather_worker_results();
-
-      // possibly do some final manipulation of the results that were gathered
-   }
-   return result;  // or not, it could be stored and accessed later; also here, result would be a member of CertainJob
-}
- *
- * Child classes should refrain from direct access to the JobManager instance
- * (through JobManager::instance), but rather use the here provided
- * Job::get_manager(). This function starts the worker_loop on the worker when
- * first called, meaning that the workers will not
+ * An example/reference implementation can be found in test_Job.cxx.
  *
  * Most Jobs will also want to override the virtual update_state() function.
  * This function can be used to send and receive state from master to worker.
@@ -86,6 +44,37 @@ return_type CertainJob::evaluate() {
  * update_state() is called to put the received data into the right places,
  * thus updating for instance parameter values on the worker that were updated
  * since the last call on the master side.
+ *
+ * ## Message protocol
+ *
+ * One simple rule must be upheld for the messages that the implementer will
+ * send with 'send_back_task_result_from_worker' and 'update_state': the first
+ * part of the message must always be the 'Job''s ID, stored in 'Job::id'.
+ * The rest of the message, i.e. the actual data to be sent, is completely up
+ * to the implementation. Note that on the receiving end, i.e. in the
+ * implementation of 'receive_task_result_on_master', one will get the whole
+ * message, but the 'Job' ID part will already have been identified in the
+ * 'JobManager', so one needn't worry about it further inside
+ * 'Job::receive_task_result_on_master' (it is already routed to the correct
+ * 'Job'). The same goes for the receiving end of 'update_state', except that
+ * update_state is routed from the 'worker_loop', not the 'JobManager'.
+ *
+ * ## Implementers notes
+ *
+ * The type of result from each task is strongly dependent on the Job at hand
+ * and so Job does not provide a default results member. It is up to the
+ * inheriting class to implement this in the above functions. We would have
+ * liked a template parameter task_result_t, so that we could also provide a
+ * default "boilerplate" calculate function to show a typical Job use-case of
+ * all the above infrastructure. This is not trivial, because the JobManager
+ * has to keep a list of Job pointers, so if there would be different template
+ * instantiations of Jobs, this would complicate this list.
+ *
+ * Child classes should refrain from direct access to the JobManager instance
+ * (through JobManager::instance), but rather use the here provided
+ * Job::get_manager(). This function starts the worker_loop on the worker when
+ * first called, meaning that the workers will not be running before they
+ * are needed.
  */
 class Job {
 public:
