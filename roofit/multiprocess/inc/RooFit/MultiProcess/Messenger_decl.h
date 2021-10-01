@@ -41,12 +41,17 @@ public:
    ~Messenger();
 
    void test_connections(const ProcessManager &process_manager);
+   void test_connections_worker(const ProcessManager& process_manager);
+   void test_connections_queue(const ProcessManager& process_manager);
+   void test_connections_master(const ProcessManager& process_manager);
 
    enum class test_snd_pipes {
       M2Q,
       Q2M,
       Q2W,
-      W2Q
+      W2Q,
+      M2W,
+      W2M,
    };
 
    enum class test_rcv_pipes {
@@ -54,6 +59,8 @@ public:
       fromMonQ,
       fromWonQ,
       fromQonW,
+      fromMonW,
+      fromWonM,
    };
 
    std::pair<ZeroMQPoller, std::size_t> create_queue_poller();
@@ -105,7 +112,6 @@ public:
    void test_send(X2X ping_value, test_snd_pipes snd_pipe, std::size_t worker_id);
 
    sigset_t ppoll_sigmask;
-//   std::size_t N_available_polled_results = 0;
 
    void set_send_flag(int flag);
 
@@ -127,11 +133,11 @@ private:
    std::vector<ZeroMQPoller> qw_pull_poller;
    ZeroMQPoller mq_pull_poller;
 
-   // test to circumvent queue for parameter updating
+   // publish/subscribe sockets for parameter updating from master to workers
    ZmqLingeringSocketPtr<> mw_pub;
    ZmqLingeringSocketPtr<> mw_sub;
    ZeroMQPoller mw_sub_poller;
-   // test to circumvent queue for result retrieving
+   // push/pull sockets for result retrieving from workers on master
    ZmqLingeringSocketPtr<> wm_push;
    ZmqLingeringSocketPtr<> wm_pull;
    ZeroMQPoller wm_pull_poller;
@@ -147,34 +153,20 @@ private:
 
 // Messages from master to queue
 enum class M2Q : int {
-   terminate = 100,
    enqueue = 10,
-   retrieve = 11,
-   update_real = 12,
-   //      update_cat = 13,
-   update_bool = 14,
 };
 
-// Messages from queue to master
-enum class Q2M : int { retrieve_rejected = 20, retrieve_accepted = 21, retrieve_later = 22 };
-
 // Messages from worker to queue
-enum class W2Q : int { dequeue = 30, send_result = 31 };
+enum class W2Q : int { dequeue = 30 };
 
 // Messages from queue to worker
 enum class Q2W : int {
-   terminate = 400,
    dequeue_rejected = 40,
    dequeue_accepted = 41,
-   result_received = 43,
-   update_real = 44,
-   //      update_cat = 45
-   update_bool = 46,
 };
 
 // stream output operators for debugging
 std::ostream &operator<<(std::ostream &out, const M2Q value);
-std::ostream &operator<<(std::ostream &out, const Q2M value);
 std::ostream &operator<<(std::ostream &out, const Q2W value);
 std::ostream &operator<<(std::ostream &out, const W2Q value);
 std::ostream &operator<<(std::ostream &out, const X2X value);

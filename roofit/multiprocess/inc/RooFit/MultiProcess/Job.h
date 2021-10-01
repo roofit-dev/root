@@ -33,19 +33,9 @@ class JobManager;
  *
  * Classes inheriting from Job must implement the pure virtual methods:
  * - void evaluate_task(std::size_t task)
- * - void update_real(std::size_t ix, double val, bool is_constant)
- * - void update_bool(std::size_t ix, bool value)
- * - void receive_task_result_on_queue(std::size_t task, std::size_t worker_id)
- * - void send_back_results_from_queue_to_master()
- * - void clear_results()
- * - void receive_results_on_master()
  * - void send_back_task_result_from_worker(std::size_t task)
- *
- * The latter five deal with sending results back from workers to master.
- * update_real is used to sync parameters that changed on master to the workers
- * before the next set of tasks is queued; it must have a part that updates the
- * actual parameters on the worker process, but can optionally also be used to
- * send them from the master to the queue (Q2W is handled by the Queue::loop).
+ * - void receive_task_result_on_master(const zmq::message_t & message)
+
  * An example implementation:
 
 
@@ -89,6 +79,13 @@ return_type CertainJob::evaluate() {
  * (through JobManager::instance), but rather use the here provided
  * Job::get_manager(). This function starts the worker_loop on the worker when
  * first called, meaning that the workers will not
+ *
+ * Most Jobs will also want to override the virtual update_state() function.
+ * This function can be used to send and receive state from master to worker.
+ * In the worker loop, when something is received over the ZeroMQ "SUB" socket,
+ * update_state() is called to put the received data into the right places,
+ * thus updating for instance parameter values on the worker that were updated
+ * since the last call on the master side.
  */
 class Job {
 public:
@@ -98,18 +95,9 @@ public:
    ~Job();
 
    virtual void evaluate_task(std::size_t task) = 0;
-   virtual void update_real(std::size_t ix, double val, bool is_constant) = 0;
-   virtual void update_bool(std::size_t ix, bool value) = 0;
    virtual void update_state();
 
    virtual void send_back_task_result_from_worker(std::size_t task) = 0;
-   virtual void receive_task_result_on_queue(std::size_t task, std::size_t worker_id) = 0;
-   virtual void send_back_results_from_queue_to_master() = 0;
-   // after results have been retrieved, they may need to be cleared to ensure
-   // they won't be retrieved the next time again, e.g. when using a map to
-   // collect results; if not needed it can just be left empty
-   virtual void clear_results() = 0;
-   virtual void receive_results_on_master() = 0;
    virtual bool receive_task_result_on_master(const zmq::message_t & message) = 0;
 
    void gather_worker_results();

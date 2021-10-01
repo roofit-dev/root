@@ -30,7 +30,7 @@ public:
 
    void loop();
 
-   bool process_master_message(M2Q message);
+   void process_master_message(M2Q message);
    void process_worker_message(std::size_t this_worker_id, W2Q message);
 
 private:

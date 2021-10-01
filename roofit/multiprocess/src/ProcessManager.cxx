@@ -166,7 +166,6 @@ bool ProcessManager::is_initialized() const {
 void ProcessManager::terminate() noexcept {
    try {
       if (is_master() && is_initialized()) {
-//         JobManager::instance()->messenger().send_from_master_to_queue(M2Q::terminate);
          shutdown_processes();
       }
    } catch (const std::exception& e) {
@@ -181,16 +180,6 @@ void ProcessManager::wait_for_sigterm_then_exit() {
       std::_Exit(0);
    }
 }
-
-
-//void ProcessManager::terminate_workers() {
-//   if (is_queue()) {
-//      for(std::size_t worker_ix = 0; worker_ix < _N_workers; ++worker_ix) {
-//         JobManager::instance()->messenger().send_from_queue_to_worker(worker_ix, Q2W::terminate);
-//      }
-//      JobManager::instance()->messenger().close_queue_worker_connections();
-//   }
-//}
 
 
 int chill_wait() {

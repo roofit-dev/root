@@ -27,43 +27,46 @@
 
 class xSquaredPlusBVectorSerial {
 public:
-   xSquaredPlusBVectorSerial(double b, std::vector<double> x_init) : _b(b), x(std::move(x_init)), result(x.size()) {}
+   xSquaredPlusBVectorSerial(double b, const std::vector<double>& x) : b_(b), x_(x), result_(x.size()) {}
 
    void evaluate()
    {
       // call evaluate_task for each task
-      for (std::size_t ix = 0; ix < x.size(); ++ix) {
-         result[ix] = std::pow(x[ix], 2) + _b;
+      for (std::size_t ix = 0; ix < x_.size(); ++ix) {
+         result_[ix] = std::pow(x_[ix], 2) + b_;
       }
    }
 
    std::vector<double> get_result()
    {
       evaluate();
-      return result;
+      return result_;
    }
 
    // for simplicity of the example (avoiding getters/setters) we make data members public as well
-   double _b;
-   std::vector<double> x;
-   std::vector<double> result;
+   double b_;
+   std::vector<double> x_;
+   std::vector<double> result_;
 };
 
 class xSquaredPlusBVectorParallel : public RooFit::MultiProcess::Job {
 public:
-   explicit xSquaredPlusBVectorParallel(xSquaredPlusBVectorSerial* serial)
-      : serial(serial)
+   explicit xSquaredPlusBVectorParallel(xSquaredPlusBVectorSerial* serial, bool update_state = false)
+      : serial_(serial), update_state_(update_state)
    {
    }
 
    void evaluate()
    {
       if (get_manager()->process_manager().is_master()) {
+         if (update_state_) {
+            update_state();
+         }
          // master fills queue with tasks
-         for (std::size_t task_id = 0; task_id < serial->x.size(); ++task_id) {
+         for (std::size_t task_id = 0; task_id < serial_->x_.size(); ++task_id) {
             RooFit::MultiProcess::JobTask job_task(id, task_id);
             get_manager()->queue().add(job_task);
-            ++N_tasks_at_workers;
+            ++N_tasks_at_workers_;
          }
 
          // wait for task results back from workers to master
@@ -74,70 +77,46 @@ public:
    std::vector<double> get_result()
    {
       evaluate();
-      return serial->result;
-   }
-
-   void update_real(std::size_t /*ix*/, double val, bool /*is_constant*/) override {
-      if (get_manager()->process_manager().is_worker()) {
-         serial->_b = val;
-      }
-   }
-
-   void update_bool(std::size_t /*ix*/, bool /*value*/) override {
-      // pass
+      return serial_->result_;
    }
 
    // -- BEGIN plumbing --
 
-   void receive_task_result_on_queue(std::size_t /*task*/, std::size_t /*worker_id*/) override {
-      // TODO: remove, this is part of "old" plumbing
-//      double result = get_manager()->messenger().template receive_from_worker_on_queue<double>(worker_id);
-//      serial->result[task] = result;
+   // typically, on master, this would be called inside evaluate, before queuing tasks; on workers it's called
+   // automatically when a published message is received from master
+   void update_state() override {
+      if (get_manager()->process_manager().is_master()) {
+         printf("ik stuur val\n");
+         get_manager()->messenger().publish_from_master_to_workers(serial_->b_);
+         printf("val gestuurd\n");
+      } else if (get_manager()->process_manager().is_worker()) {
+         printf("ga ik val krijgen?\n");
+         auto val = get_manager()->messenger().receive_from_master_on_worker<double>();
+         printf("val: %f\n", val);
+         serial_->b_ = val;
+      }
    }
 
    struct task_result_t {
-      std::size_t job_id;
+      std::size_t job_id; // job ID must always be the first part of any result message/type
       std::size_t task_id;
       double value;
    };
 
    void send_back_task_result_from_worker(std::size_t task) override {
-      task_result_t task_result {id, task, serial->result[task]};
+      task_result_t task_result {id, task, serial_->result_[task]};
       zmq::message_t message(sizeof(task_result_t));
       memcpy(message.data(), &task_result, sizeof(task_result_t));
       get_manager()->messenger().send_from_worker_to_master(std::move(message));
    }
 
-   void send_back_results_from_queue_to_master() override {
-      // TODO: remove, this is part of "old" plumbing
-////      get_manager()->messenger().send_from_queue_to_master(serial->result.size());
-//      for (std::size_t task_ix = 0ul; task_ix < serial->result.size(); ++task_ix) {
-//         get_manager()->messenger().send_from_queue_to_master(task_ix, serial->result[task_ix]);
-//      }
-   }
-
    bool receive_task_result_on_master(const zmq::message_t & message) override {
       auto result = message.data<task_result_t>();
-      serial->result[result->task_id] = result->value;
-      --N_tasks_at_workers;
-      bool job_completed = (N_tasks_at_workers == 0);
+      serial_->result_[result->task_id] = result->value;
+      --N_tasks_at_workers_;
+      bool job_completed = (N_tasks_at_workers_ == 0);
       return job_completed;
    }
-
-   void clear_results() override {
-      // no need to clear any results cache since we just reuse the result vector on the queue
-   }
-
-   void receive_results_on_master() override {
-      // TODO: remove, this is part of "old" plumbing
-////      std::size_t N_job_tasks = get_manager()->messenger().template receive_from_queue_on_master<std::size_t>();
-////      for (std::size_t task_ix = 0ul; task_ix < N_job_tasks; ++task_ix) {
-//      for (std::size_t task_ix = 0ul; task_ix < serial->result.size(); ++task_ix) {
-//         std::size_t task_id = get_manager()->messenger().template receive_from_queue_on_master<std::size_t>();
-//         serial->result[task_id] = get_manager()->messenger().template receive_from_queue_on_master<double>();
-//      }
-   }
-
 
    // -- END plumbing --
 
@@ -146,11 +125,12 @@ private:
    void evaluate_task(std::size_t task) override
    {
       assert(get_manager()->process_manager().is_worker());
-      serial->result[task] = std::pow(serial->x[task], 2) + serial->_b;
+      serial_->result_[task] = std::pow(serial_->x_[task], 2) + serial_->b_;
    }
 
-   xSquaredPlusBVectorSerial* serial;
-   std::size_t N_tasks_at_workers = 0;
+   xSquaredPlusBVectorSerial* serial_;
+   bool update_state_ = false;
+   std::size_t N_tasks_at_workers_ = 0;
 };
 
 class TestMPJob : public ::testing::TestWithParam<std::size_t> {
@@ -230,41 +210,40 @@ TEST_P(TestMPJob, multiJobGetResult)
 }
 
 
-// TODO: implement update_real test!
+TEST_P(TestMPJob, singleJobUpdateState)
+{
+   // Simple test case: calculate x^2 + b, where x is a vector. This case does
+   // both a simple calculation (squaring the input vector x) and represents
+   // handling of state updates in b.
+   std::vector<double> x{0, 1, 2, 3};
+   double b_initial = 1.;
+   xSquaredPlusBVectorSerial x_sq_plus_b(b_initial, x);
 
-//TEST_P(TestMPJob, singleJobUpdateReal)
-//{
-//// Simple test case: calculate x^2 + b, where x is a vector. This case does
-//// both a simple calculation (squaring the input vector x) and represents
-//// handling of state updates in b.
-//std::vector<double> x{0, 1, 2, 3};
-//double b_initial = 3.;
-//
-//// start serial test
-//
-//xSquaredPlusBVectorSerial x_sq_plus_b(b_initial, x);
-//
-//auto y = x_sq_plus_b.get_result();
-//std::vector<double> y_expected{3, 4, 7, 12};
-//
-//EXPECT_EQ(Hex(y[0]), Hex(y_expected[0]));
-//EXPECT_EQ(Hex(y[1]), Hex(y_expected[1]));
-//EXPECT_EQ(Hex(y[2]), Hex(y_expected[2]));
-//EXPECT_EQ(Hex(y[3]), Hex(y_expected[3]));
-//
-//std::size_t NumCPU = GetParam();
-//
-//// start parallel test
-//
-//xSquaredPlusBVectorParallel x_sq_plus_b_parallel(NumCPU, &x_sq_plus_b);
-//
-//auto y_parallel = x_sq_plus_b_parallel.get_result();
-//
-//EXPECT_EQ(Hex(y_parallel[0]), Hex(y_expected[0]));
-//EXPECT_EQ(Hex(y_parallel[1]), Hex(y_expected[1]));
-//EXPECT_EQ(Hex(y_parallel[2]), Hex(y_expected[2]));
-//EXPECT_EQ(Hex(y_parallel[3]), Hex(y_expected[3]));
-//}
+   std::vector<double> y_expected{3, 4, 7, 12};
+
+   std::size_t NumCPU = GetParam();
+
+   // start parallel test
+   bool update_state = true;
+   xSquaredPlusBVectorParallel x_sq_plus_b_parallel(&x_sq_plus_b, update_state);
+   RooFit::MultiProcess::JobManager::default_N_workers = NumCPU;
+
+   auto y_parallel_before_change = x_sq_plus_b_parallel.get_result();
+
+   x_sq_plus_b.b_ = 3.;
+
+   auto y_parallel_after_change = x_sq_plus_b_parallel.get_result();
+
+   EXPECT_NE(Hex(y_parallel_before_change[0]), Hex(y_expected[0]));
+   EXPECT_NE(Hex(y_parallel_before_change[1]), Hex(y_expected[1]));
+   EXPECT_NE(Hex(y_parallel_before_change[2]), Hex(y_expected[2]));
+   EXPECT_NE(Hex(y_parallel_before_change[3]), Hex(y_expected[3]));
+
+   EXPECT_EQ(Hex(y_parallel_after_change[0]), Hex(y_expected[0]));
+   EXPECT_EQ(Hex(y_parallel_after_change[1]), Hex(y_expected[1]));
+   EXPECT_EQ(Hex(y_parallel_after_change[2]), Hex(y_expected[2]));
+   EXPECT_EQ(Hex(y_parallel_after_change[3]), Hex(y_expected[3]));
+}
 
 
 INSTANTIATE_TEST_SUITE_P(NumberOfWorkerProcesses, TestMPJob, ::testing::Values(1, 2, 3));

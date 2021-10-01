@@ -291,7 +291,7 @@ void Messenger::test_receive(X2X expected_ping_value, test_rcv_pipes rcv_pipe, s
    }
 
    if (handshake != expected_ping_value) {
-      throw std::runtime_error("Messenger::test_connections: RECEIVE over master-queue connection failed, did not receive pong!");
+      throw std::runtime_error("Messenger::test_connections: RECEIVE over master-queue connection failed, did not receive expected value!");
    }
 }
 
@@ -414,22 +414,7 @@ void Messenger::send_from_worker_to_master() {}
 std::ostream& operator<<(std::ostream& out, const M2Q value){
    std::string s;
    switch(value){
-   PROCESS_VAL(M2Q::terminate);
    PROCESS_VAL(M2Q::enqueue);
-   PROCESS_VAL(M2Q::retrieve);
-   PROCESS_VAL(M2Q::update_real);
-   PROCESS_VAL(M2Q::update_bool);
-   default: s = std::to_string(static_cast<int>(value));
-   }
-   return out << s;
-}
-
-std::ostream& operator<<(std::ostream& out, const Q2M value){
-   std::string s;
-   switch(value){
-   PROCESS_VAL(Q2M::retrieve_rejected);
-   PROCESS_VAL(Q2M::retrieve_accepted);
-   PROCESS_VAL(Q2M::retrieve_later);
    default: s = std::to_string(static_cast<int>(value));
    }
    return out << s;
@@ -439,7 +424,6 @@ std::ostream& operator<<(std::ostream& out, const W2Q value){
    std::string s;
    switch(value){
    PROCESS_VAL(W2Q::dequeue);
-   PROCESS_VAL(W2Q::send_result);
    default: s = std::to_string(static_cast<int>(value));
    }
    return out << s;
@@ -448,12 +432,8 @@ std::ostream& operator<<(std::ostream& out, const W2Q value){
 std::ostream& operator<<(std::ostream& out, const Q2W value){
    std::string s;
    switch(value){
-   PROCESS_VAL(Q2W::terminate);
    PROCESS_VAL(Q2W::dequeue_rejected);
    PROCESS_VAL(Q2W::dequeue_accepted);
-   PROCESS_VAL(Q2W::update_real);
-   PROCESS_VAL(Q2W::result_received);
-   PROCESS_VAL(Q2W::update_bool);
    default: s = std::to_string(static_cast<int>(value));
    }
    return out << s;
