@@ -1854,12 +1854,71 @@ if(testing AND NO_CONNECTION)
   endif()
 endif()
 
-#---Check for ZeroMQ-----------------------------------------------------------
+#---Check for ZeroMQ when building RooFit::MultiProcess--------------------------------------------
 
-if(builtin_zeromq)
-  list(APPEND ROOT_BUILTINS ZeroMQ)
-  add_subdirectory(builtins/zeromq)
-endif()
+if (roofit_multiprocess)
+  if(NOT builtin_zeromq)
+    message(STATUS "Looking for ZeroMQ (libzmq)")
+    # Clear cache before calling find_package(ZeroMQ),
+    # necessary to be able to toggle builtin_zeromq and
+    # not have find_package(ZeroMQ) find builtin ZeroMQ.
+    foreach(suffix FOUND INCLUDE_DIR INCLUDE_DIRS LIBRARY LIBRARIES)
+      unset(ZeroMQ_${suffix} CACHE)
+    endforeach()
+    if(fail-on-missing)
+      find_package(ZeroMQ REQUIRED)
+    else()
+      find_package(ZeroMQ)
+      if(NOT ZeroMQ_FOUND)
+        message(STATUS "ZeroMQ not found. Switching on builtin_zeromq option")
+        set(builtin_zeromq ON CACHE BOOL "Enabled because ZeroMQ not found (${builtin_zeromq_description})" FORCE)
+      endif()
+    endif()
+    check_symbol_exists(zmq_ppoll zmq.h ZeroMQ_HAS_PPOLL
+            CMAKE_REQUIRED_DEFINITIONS ZMQ_BUILD_DRAFT_API)
+    if(NOT ZeroMQ_HAS_PPOLL)
+      if (fail-on-missing)
+        message(ERROR "Detected ZeroMQ version is too old (does not have zmq_ppoll). Aborting, because fail-on-missing was set.")
+      else()
+        message(STATUS "Detected ZeroMQ version is too old (does not have zmq_ppoll). Switching on builtin_zeromq option")
+        set(builtin_zeromq ON CACHE BOOL "Enabled because detected ZeroMQ version is too old (${builtin_zeromq_description})" FORCE)
+      endif()
+    endif()
+  endif()
+
+  if(builtin_zeromq)
+    list(APPEND ROOT_BUILTINS ZeroMQ)
+    add_subdirectory(builtins/zeromq/libzmq)
+  endif()
+
+  if(NOT builtin_cppzmq)
+    message(STATUS "Looking for ZeroMQ C++ bindings (cppzmq)")
+    # Clear cache before calling find_package(cppzmq),
+    # necessary to be able to toggle builtin_cppzmq and
+    # not have find_package(cppzmq) find builtin cppzmq.
+    foreach(suffix FOUND INCLUDE_DIR INCLUDE_DIRS)
+      unset(cppzmq_${suffix} CACHE)
+    endforeach()
+    if(fail-on-missing)
+      find_package(cppzmq REQUIRED)
+    else()
+      find_package(cppzmq)
+      if(NOT cppzmq_FOUND)
+        message(STATUS "ZeroMQ C++ bindings not found. Switching on builtin_cppzmq option")
+        set(builtin_cppzmq ON CACHE BOOL "Enabled because ZeroMQ C++ bindings not found (${builtin_cppzmq_description})" FORCE)
+      endif()
+    endif()
+  endif()
+
+  if(builtin_cppzmq)
+    list(APPEND ROOT_BUILTINS cppzmq)
+    add_subdirectory(builtins/zeromq/cppzmq)
+  endif()
+
+  # zmq_ppoll is still in the draft API, so enable that transitively
+  target_compile_definitions(ZeroMQ INTERFACE ZMQ_BUILD_DRAFT_API)
+  target_compile_definitions(cppzmq INTERFACE ZMQ_BUILD_DRAFT_API)
+endif (roofit_multiprocess)
 
 #---Download googletest--------------------------------------------------------------
 if (testing)

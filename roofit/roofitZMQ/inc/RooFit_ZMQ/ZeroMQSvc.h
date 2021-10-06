@@ -11,7 +11,6 @@
 #include <iostream> // std::cerr
 
 // ZeroMQ
-#define ZMQ_BUILD_DRAFT_API
 #include <zmq.hpp>
 #include "RooFit_ZMQ/Utility.h"
 #include "RooFit_ZMQ/functions.h"

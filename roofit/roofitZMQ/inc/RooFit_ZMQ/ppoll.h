@@ -1,7 +1,6 @@
 #ifndef ROOT_ROOFIT_ZMQ_ppoll
 #define ROOT_ROOFIT_ZMQ_ppoll
 
-#define ZMQ_BUILD_DRAFT_API
 #include <zmq.hpp>
 #include <vector>
 
