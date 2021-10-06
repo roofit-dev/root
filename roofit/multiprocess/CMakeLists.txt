@@ -3,8 +3,6 @@
 # @author Patrick Bos, Netherlands eScience Center
 ############################################################################
 
-#FIND_PACKAGE(ZeroMQ REQUIRED)
-
 ROOT_STANDARD_LIBRARY_PACKAGE(RooFitMultiProcess
     HEADERS
         RooFit/MultiProcess/worker.h
@@ -32,9 +30,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitMultiProcess
         ZeroMQ
 )
 
-target_link_libraries(RooFitMultiProcess PRIVATE ZeroMQ)
-target_include_directories(RooFitMultiProcess PUBLIC $<BUILD_INTERFACE:${ZeroMQ_INCLUDE_DIR}>)
-target_include_directories(RooFitMultiProcess PRIVATE BUILTIN_cppzmq)
+target_include_directories(RooFitMultiProcess PUBLIC $<BUILD_INTERFACE:${cppzmq_INCLUDE_DIR}>)
 
 if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)
