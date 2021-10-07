@@ -7,6 +7,7 @@ set(ZeroMQ_LIBRARY ${ZeroMQ_PREFIX}/lib/${ZeroMQ_LIBNAME} CACHE INTERNAL "" FORC
 set(ZeroMQ_LIBRARIES ${ZeroMQ_LIBRARY} CACHE INTERNAL "" FORCE)
 
 if(NOT WIN32)
+    # 2021-10-07: libzmq's minimum CMake version does not yet support CXX_VISIBILITY_PRESET, so we need to pass the flag manually
     set(cxx_visibility_flag "-fvisibility=hidden")
 else()
     set(cxx_visibility_flag "")
