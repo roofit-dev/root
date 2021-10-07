@@ -23,6 +23,7 @@ ExternalProject_Add(BUILTIN_ZeroMQ
         -DWITH_PERF_TOOL=OFF
         -DZMQ_BUILD_TESTS=OFF
         -DENABLE_DRAFTS=ON
+        -DENABLE_NO_EXPORT=ON
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         # TODO: remove -w flag when updating to v4.3.5 or higher, current warnings should be gone by then
         -DCMAKE_CXX_FLAGS=${cxx_visibility_flag}\ ${CMAKE_CXX_FLAGS}\ -w

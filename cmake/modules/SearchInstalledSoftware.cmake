@@ -1917,7 +1917,9 @@ if (roofit_multiprocess)
 
   # zmq_ppoll is still in the draft API, so enable that transitively
   target_compile_definitions(ZeroMQ INTERFACE ZMQ_BUILD_DRAFT_API)
+  target_compile_definitions(ZeroMQ INTERFACE ZMQ_NO_EXPORT)
   target_compile_definitions(cppzmq INTERFACE ZMQ_BUILD_DRAFT_API)
+  target_compile_definitions(cppzmq INTERFACE ZMQ_NO_EXPORT)
 endif (roofit_multiprocess)
 
 #---Download googletest--------------------------------------------------------------
