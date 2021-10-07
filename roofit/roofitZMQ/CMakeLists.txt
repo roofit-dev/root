@@ -1,6 +1,6 @@
 ############################################################################
 # CMakeLists.txt file for building ROOT roofitcore/ZMQ package
-# @author Patrick Bos, NL eScience Center
+# @author Patrick Bos, Netherlands eScience Center
 ############################################################################
 
 ROOT_STANDARD_LIBRARY_PACKAGE(RooFitZMQ

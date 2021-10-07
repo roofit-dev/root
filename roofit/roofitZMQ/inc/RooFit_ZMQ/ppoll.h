@@ -1,3 +1,5 @@
+// Authors: Patrick Bos, Netherlands eScience Center / NIKHEF 2015-2021
+
 #ifndef ROOT_ROOFIT_ZMQ_ppoll
 #define ROOT_ROOFIT_ZMQ_ppoll
 

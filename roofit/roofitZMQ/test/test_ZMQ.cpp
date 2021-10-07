@@ -1,22 +1,12 @@
-/*****************************************************************************
- * Project: RooFit                                                           *
- * Package: RooFitCore                                                       *
- * @(#)root/roofitcore:$Id$
- * Authors:                                                                  *
- *   PB, Patrick Bos,     NL eScience Center, p.bos@esciencecenter.nl        *
- *                                                                           *
- * Redistribution and use in source and binary forms,                        *
- * with or without modification, are permitted according to the terms        *
- * listed in LICENSE (http://roofit.sourceforge.net/license.txt)             *
- *****************************************************************************/
+// Authors: Patrick Bos, Netherlands eScience Center / NIKHEF 2015-2021
+
+#include "RooFit_ZMQ/ZeroMQSvc.h"
 
 #include "gtest/gtest.h"
 
 #include <unistd.h> // fork, usleep
 
 #include <sstream>
-
-#include "RooFit_ZMQ/ZeroMQSvc.h"
 
 // N.B.: wait_for_child is identically defined in RooFit::MultiProcess, but we copy it here to reduce module
 // interdependencies. It also requires an extra include:
@@ -117,7 +107,6 @@ TEST_P(AllSocketTypes, forkHandshake)
 
       EXPECT_EQ(receipt, 1212);
 
-      //    socket->close(); // this gives exception of type zmq::error_t: Socket operation on non-socket
       socket.reset(nullptr);
       zmqSvc().close_context(); // if you don't close context in parent process as well, the next repeat will hang
 
@@ -134,7 +123,6 @@ TEST_P(AllSocketTypes, forkHandshake)
       }
       // take care, don't just use _exit, it will not cleanly destroy context etc!
       // if you really need to, at least close and destroy everything properly
-      //    socket->close(); // this gives exception of type zmq::error_t: Socket operation on non-socket
       socket.reset(nullptr);
       zmqSvc().close_context();
       _Exit(0);
@@ -197,7 +185,6 @@ TEST_P(AsyncSocketTypes, forkMultiSendReceive)
 
       zmqSvc().send(*socket, std::string("kthxbye"));
 
-      //    socket->close(); // this gives exception of type zmq::error_t: Socket operation on non-socket
       socket.reset(nullptr);
       zmqSvc().close_context(); // if you don't close context in parent process as well, the next repeat will hang
 
@@ -230,7 +217,6 @@ TEST_P(AsyncSocketTypes, forkMultiSendReceive)
 
       // take care, don't just use _exit, it will not cleanly destroy context etc!
       // if you really need to, at least close and destroy everything properly
-      //    socket->close(); // this gives exception of type zmq::error_t: Socket operation on non-socket
       socket.reset(nullptr);
       zmqSvc().close_context();
       _Exit(0);
@@ -273,7 +259,6 @@ TEST_P(AsyncSocketTypes, forkIgnoreSomeMessages)
 
       zmqSvc().send(*socket, std::string("kthxbye"));
 
-      //    socket->close(); // this gives exception of type zmq::error_t: Socket operation on non-socket
       socket.reset(nullptr);
       zmqSvc().close_context(); // if you don't close context in parent process as well, the next repeat will hang
 
@@ -297,7 +282,6 @@ TEST_P(AsyncSocketTypes, forkIgnoreSomeMessages)
 
       // take care, don't just use _exit, it will not cleanly destroy context etc!
       // if you really need to, at least close and destroy everything properly
-      //    socket->close(); // this gives exception of type zmq::error_t: Socket operation on non-socket
       socket.reset(nullptr);
       zmqSvc().close_context();
       _Exit(0);

@@ -1,12 +1,15 @@
+// Authors: Roel Aaij, Patrick Bos, Netherlands eScience Center / NIKHEF 2015-2021
+
 #ifndef ZEROMQPOLLER_H
 #define ZEROMQPOLLER_H 1
+
+#include "RooFit_ZMQ/ZeroMQSvc.h"
+#include "RooFit_ZMQ/functions.h"
+
 #include <vector>
 #include <deque>
 #include <exception>
 #include <unordered_map>
-
-#include "RooFit_ZMQ/ZeroMQSvc.h"
-#include "RooFit_ZMQ/functions.h"
 
 class ZeroMQPoller {
 public:
@@ -23,7 +26,7 @@ public:
    ZeroMQPoller() = default;
 
    std::vector<std::pair<size_t, int>> poll(int timeo = -1);
-   std::vector<std::pair<size_t, int>> ppoll(int timeo, const sigset_t *sigmask_);
+   std::vector<std::pair<size_t, int>> ppoll(int timeo, const sigset_t *sigmask);
 
    size_t size() const;
 

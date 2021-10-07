@@ -1,16 +1,7 @@
-/*
- * Project: RooFit
- * Authors:
- *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
- *
- * Copyright (c) 2016-2019, Netherlands eScience Center
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- */
+// Authors: Patrick Bos, Netherlands eScience Center / NIKHEF 2015-2021
+
+#include "RooFit_ZMQ/ZeroMQSvc.h"
+#include "RooFit_ZMQ/ZeroMQPoller.h"
 
 #include "gtest/gtest.h"
 
@@ -19,9 +10,6 @@
 #include <cstring>  // strsignal()
 
 #include <sstream>
-
-#include "RooFit_ZMQ/ZeroMQSvc.h"
-#include "RooFit_ZMQ/ZeroMQPoller.h"
 
 static bool terminated = false;
 
@@ -44,7 +32,6 @@ TEST(Polling, doublePoll)
       sigaddset(&sigmask, SIGCHLD);
       sigprocmask(SIG_BLOCK, &sigmask, &sigmask_old);
 
-      //      std::cout << "master PID: " << getpid() << std::endl;
       ZmqLingeringSocketPtr<> pusher, puller;
       pusher.reset(zmqSvc().socket_ptr(zmq::PUSH));
       pusher->bind("ipc:///tmp/ZMQ_test_fork_polling_M2C.ipc");
@@ -70,7 +57,6 @@ TEST(Polling, doublePoll)
 
       kill(child_pid, SIGTERM);
 
-      //    socket->close(); // this gives exception of type zmq::error_t: Socket operation on non-socket
       pusher.reset(nullptr);
       puller.reset(nullptr);
       zmqSvc().close_context(); // if you don't close context in parent process as well, the next repeat will hang
@@ -100,8 +86,6 @@ TEST(Polling, doublePoll)
 
       sigprocmask(SIG_SETMASK, &sigmask_old, nullptr);
    } else { // child
-            //      std::cout << "child PID: " << getpid() << std::endl;
-
       sigset_t sigmask, sigmask_old;
       sigemptyset(&sigmask);
       sigaddset(&sigmask, SIGTERM);
@@ -139,14 +123,11 @@ TEST(Polling, doublePoll)
       }
       // take care, don't just use _exit, it will not cleanly destroy context etc!
       // if you really need to, at least close and destroy everything properly
-      //    socket->close(); // this gives exception of type zmq::error_t: Socket operation on non-socket
 
       sigprocmask(SIG_SETMASK, &sigmask_old, nullptr);
 
       while (!terminated) {
       }
-
-      //      std::cout << "child terminated" << std::endl;
 
       puller.reset(nullptr);
       pusher.reset(nullptr);

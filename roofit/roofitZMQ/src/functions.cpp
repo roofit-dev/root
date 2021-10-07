@@ -1,7 +1,6 @@
-#include "RooFit_ZMQ/functions.h"
+// Authors: Roel Aaij, Patrick Bos, Netherlands eScience Center / NIKHEF 2015-2021
 
-#include <zmq.hpp>
-#include "RooFit_ZMQ/ZeroMQSvc.h"
+#include "RooFit_ZMQ/functions.h"
 
 namespace ZMQ {
 size_t stringLength(const char &cs)

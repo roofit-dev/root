@@ -1,19 +1,18 @@
+// Authors: Roel Aaij, Patrick Bos, Netherlands eScience Center / NIKHEF 2015-2021
+
 #ifndef ZEROMQ_IZEROMQSVC_H
 #define ZEROMQ_IZEROMQSVC_H 1
 
-// Include files
-// from STL
+#include <zmq.hpp>
+#include "RooFit_ZMQ/Utility.h"
+#include "RooFit_ZMQ/functions.h"
+
 #include <type_traits>
 #include <string>
 #include <vector>
 #include <sstream>
 #include <ios>
 #include <iostream> // std::cerr
-
-// ZeroMQ
-#include <zmq.hpp>
-#include "RooFit_ZMQ/Utility.h"
-#include "RooFit_ZMQ/functions.h"
 
 // debugging
 #include <unistd.h> // getpid
@@ -82,8 +81,6 @@ auto retry_send(zmq::socket_t &socket, int max_tries, args_t... args) -> decltyp
       } catch (zmq::error_t &e) {
          if (++tries == max_tries || e.num() != EINTR // only recoverable error
          ) {
-            //        std::cerr << "ERROR in ZeroMQSvc::send (retry_send) on pid " << getpid() << ": " << e.what() << "
-            //        (errno: " << e.num() << ")\n";
             throw;
          }
          std::cerr << "RETRY " << tries << "/" << (max_tries - 1) << " in ZeroMQSvc::send (retry_send) on pid "
@@ -103,8 +100,6 @@ auto retry_recv(zmq::socket_t &socket, int max_tries, args_t... args) -> decltyp
       } catch (zmq::error_t &e) {
          if (++tries == max_tries || e.num() != EINTR // only recoverable error
          ) {
-            //        std::cerr << "ERROR in ZeroMQSvc::recv (retry_recv) on pid " << getpid() << ": " << e.what() << "
-            //        (errno: " << e.num() << ")\n";
             throw;
          }
          std::cerr << "RETRY " << tries << "/" << (max_tries - 1) << " in ZeroMQSvc::recv (retry_recv) on pid "
@@ -113,12 +108,6 @@ auto retry_recv(zmq::socket_t &socket, int max_tries, args_t... args) -> decltyp
    }
 }
 
-/** @class IZeroMQSvc IZeroMQSvc.h ZeroMQ/IZeroMQSvc.h
- *
- *
- *  @author
- *  @date   2015-06-22
- */
 class ZeroMQSvc {
    // Note on error handling:
    // Creating message_t can throw, but only when memory ran out (errno ENOMEM),
@@ -134,7 +123,7 @@ public:
    zmq::socket_t *socket_ptr(int type) const;
    void close_context() const;
 
-   // decode message with ZMQ, POD version
+   /// decode message with ZMQ, POD version
    template <class T, typename std::enable_if<!std::is_pointer<T>::value && ZMQ::Detail::is_trivial<T>::value, T>::type
                          * = nullptr>
    T decode(const zmq::message_t &msg) const
@@ -144,7 +133,7 @@ public:
       return object;
    }
 
-   // decode ZMQ message, string version
+   /// decode ZMQ message, string version
    template <class T, typename std::enable_if<std::is_same<T, std::string>::value, T>::type * = nullptr>
    std::string decode(const zmq::message_t &msg) const
    {
@@ -153,7 +142,7 @@ public:
       return r;
    }
 
-   // receive message with ZMQ, general version
+   /// receive message with ZMQ, general version
    // FIXME: what to do with flags=0.... more is a pointer, that might prevent conversion
    template <class T, typename std::enable_if<!(std::is_same<zmq::message_t, T>::value), T>::type * = nullptr>
    T receive(zmq::socket_t &socket, int flags = 0, bool *more = nullptr) const
@@ -171,7 +160,7 @@ public:
       return decode<T>(msg);
    }
 
-   // receive message with ZMQ
+   /// receive message with ZMQ
    template <class T, typename std::enable_if<std::is_same<zmq::message_t, T>::value, T>::type * = nullptr>
    T receive(zmq::socket_t &socket, int flags = 0, bool *more = nullptr) const
    {
@@ -186,7 +175,7 @@ public:
       return msg;
    }
 
-   // encode message to ZMQ
+   /// encode message to ZMQ
    template <class T, typename std::enable_if<!std::is_pointer<T>::value && ZMQ::Detail::is_trivial<T>::value, T>::type
                          * = nullptr>
    zmq::message_t encode(const T &item, std::function<size_t(const T &t)> sizeFun = ZMQ::defaultSizeOf<T>) const
@@ -200,7 +189,7 @@ public:
    zmq::message_t encode(const char *item) const;
    zmq::message_t encode(const std::string &item) const;
 
-   // Send message with ZMQ
+   /// Send message with ZMQ
    template <class T, typename std::enable_if<!std::is_same<T, zmq::message_t>::value, T>::type * = nullptr>
    bool send(zmq::socket_t &socket, const T &item, int flags = 0) const
    {

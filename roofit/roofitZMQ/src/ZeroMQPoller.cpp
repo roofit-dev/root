@@ -1,17 +1,28 @@
-/*
- * ROOT
- * Copyright (c) 2018, Patrick Bos
- * Distributed under the terms of the BSD 3-Clause License.
- *
- * The full license is in the file LICENSE, distributed with this software.
- */
+// Authors: Roel Aaij, Patrick Bos, Netherlands eScience Center / NIKHEF 2015-2021
 
 #include "RooFit_ZMQ/ZeroMQPoller.h"
 
+#include "RooFit_ZMQ/ppoll.h"
 #include <iostream>
 
-#include "RooFit_ZMQ/ppoll.h"
+/** \class ZeroMQPoller
+ * \brief Wrapper class for polling ZeroMQ sockets
+ *
+ * This class simplifies calls to poll or ppoll ZeroMQ sockets. It stores the
+ * list of sockets to be polled, which means they don't have to be separately
+ * carried around by the user. It also parses output and returns an easily
+ * digestible vector of events.
+ */
 
+/*
+ * \brief Poll the sockets
+ *
+ * \param[in] timeo Timeout in milliseconds. 0 means return immediately. -1 means wait for an event indefinitely.
+ * \return A vector of pairs of index and flags; index is the index of the registered fd or socket and flags are 0 (no
+ * events), ZMQ_POLLIN or ZMQ_POLLOUT.
+ *
+ * \note This function can throw (from inside zmq::poll), so wrap in try-catch!
+ */
 std::vector<std::pair<size_t, int>> ZeroMQPoller::poll(int timeo)
 {
    std::vector<std::pair<size_t, int>> r;
@@ -52,8 +63,21 @@ std::vector<std::pair<size_t, int>> ZeroMQPoller::poll(int timeo)
    return r;
 }
 
-// This function can throw (from inside ZMQ::ppoll), so wrap in try-catch!
-std::vector<std::pair<size_t, int>> ZeroMQPoller::ppoll(int timeo, const sigset_t *sigmask_)
+/*
+ * \brief Poll the sockets with ppoll
+ *
+ * By polling with ppoll instead of poll, one can pass along a signal mask to
+ * handle POSIX signals properly. See the zmq_ppoll documentation for examples
+ * of when this is useful: http://api.zeromq.org/
+ *
+ * \param[in] timeo Timeout in milliseconds. 0 means return immediately. -1 means wait for an event indefinitely.
+ * \param[in] sigmask A non-NULL pointer to a signal mask must be constructed and passed to 'sigmask'. See the man page
+ * of sigprocmask(2) for more details on this. \return A vector of pairs of index and flags; index is the index of the
+ * registered fd or socket and flags are 0 (no events), ZMQ_POLLIN or ZMQ_POLLOUT.
+ *
+ * \note This function can throw (from inside ZMQ::ppoll), so wrap in try-catch!
+ */
+std::vector<std::pair<size_t, int>> ZeroMQPoller::ppoll(int timeo, const sigset_t *sigmask)
 {
    if (m_items.empty()) {
       throw std::runtime_error("No sockets registered");
@@ -61,7 +85,7 @@ std::vector<std::pair<size_t, int>> ZeroMQPoller::ppoll(int timeo, const sigset_
 
    std::vector<std::pair<size_t, int>> r;
 
-   auto n = ZMQ::ppoll(m_items, timeo, sigmask_);
+   auto n = ZMQ::ppoll(m_items, timeo, sigmask);
    if (n == 0)
       return r;
 
@@ -88,6 +112,16 @@ size_t ZeroMQPoller::size() const
    return m_items.size();
 }
 
+/*
+ * \brief Register socket to poll
+ *
+ * Adds the socket to the internal list of sockets to poll.
+ *
+ * \param[in] socket Socket to register.
+ * \param[in] type Type of events to poll for. Can be ZMQ_POLLIN, ZMQ_POLLOUT or a bit-wise combination of the two.
+ * \return The index of the socket in the poller's internal list. Can be used to match with indices returned from
+ * (p)poll.
+ */
 size_t ZeroMQPoller::register_socket(zmq::socket_t &socket, zmq::PollType type)
 {
    zmq::socket_t *s = &socket;
@@ -98,7 +132,7 @@ size_t ZeroMQPoller::register_socket(zmq::socket_t &socket, zmq::PollType type)
    size_t index = m_free.empty() ? m_items.size() : m_free.front();
    if (!m_free.empty())
       m_free.pop_front();
-   // NOTE: tis uses the conversion-to-void* operator of
+   // NOTE: this uses the conversion-to-void* operator of
    // zmq::socket_t, which returns the wrapped object
    m_items.push_back({socket, 0, type, 0});
 
@@ -107,6 +141,16 @@ size_t ZeroMQPoller::register_socket(zmq::socket_t &socket, zmq::PollType type)
    return index;
 }
 
+/*
+ * \brief Register socket to poll
+ *
+ * Adds the socket to the internal list of sockets to poll.
+ *
+ * \param[in] fd File descriptor of socket to register.
+ * \param[in] type Type of events to poll for. Can be ZMQ_POLLIN, ZMQ_POLLOUT or a bit-wise combination of the two.
+ * \return The index of the socket in the poller's internal list. Can be used to match with indices returned from
+ * (p)poll.
+ */
 size_t ZeroMQPoller::register_socket(int fd, zmq::PollType type)
 {
    auto it = m_fds.find(fd);
@@ -116,7 +160,7 @@ size_t ZeroMQPoller::register_socket(int fd, zmq::PollType type)
    size_t index = m_free.empty() ? m_items.size() : m_free.front();
    if (!m_free.empty())
       m_free.pop_front();
-   // NOTE: tis uses the conversion-to-void* operator of
+   // NOTE: this uses the conversion-to-void* operator of
    // zmq::socket_t, which returns the wrapped object
    m_items.push_back({nullptr, fd, type, 0});
 
@@ -125,6 +169,14 @@ size_t ZeroMQPoller::register_socket(int fd, zmq::PollType type)
    return index;
 }
 
+/*
+ * \brief Unregister socket from poller
+ *
+ * Removes the socket from the internal list of sockets to poll.
+ *
+ * \param[in] socket Socket to unregister.
+ * \return The index of the socket in the poller's internal list before removal.
+ */
 size_t ZeroMQPoller::unregister_socket(zmq::socket_t &socket)
 {
    if (!m_sockets.count(socket.operator void *())) {
@@ -150,6 +202,14 @@ size_t ZeroMQPoller::unregister_socket(zmq::socket_t &socket)
    return index;
 }
 
+/*
+ * \brief Unregister socket from poller
+ *
+ * Removes the socket from the internal list of sockets to poll.
+ *
+ * \param[in] fd File descriptor of socket to unregister.
+ * \return The index of the socket in the poller's internal list before removal.
+ */
 size_t ZeroMQPoller::unregister_socket(int fd)
 {
    if (!m_fds.count(fd)) {

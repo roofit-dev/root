@@ -1,3 +1,5 @@
+// Authors: Roel Aaij, Patrick Bos, Netherlands eScience Center / NIKHEF 2015-2021
+
 #ifndef ZEROMQ_FUNCTIONS_H
 #define ZEROMQ_FUNCTIONS_H 1
 
