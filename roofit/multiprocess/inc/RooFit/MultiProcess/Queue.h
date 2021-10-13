@@ -34,10 +34,10 @@ public:
    void process_worker_message(std::size_t this_worker_id, W2Q message);
 
 private:
-   std::queue<JobTask> _queue;
-   std::size_t N_tasks = 0; // total number of received tasks
-   std::size_t N_tasks_completed = 0;
-   std::size_t N_tasks_at_workers = 0;
+   std::queue<JobTask> queue_;
+   std::size_t N_tasks_ = 0; // total number of received tasks
+   std::size_t N_tasks_completed_ = 0;
+   std::size_t N_tasks_at_workers_ = 0;
 };
 
 } // namespace MultiProcess

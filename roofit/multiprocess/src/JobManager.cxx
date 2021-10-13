@@ -51,18 +51,18 @@ JobManager *JobManager::instance()
 {
    if (!JobManager::is_instantiated()) {
       assert(default_N_workers != 0);
-      _instance.reset(new JobManager(default_N_workers)); // can't use make_unique, because ctor is private
-      _instance->messenger().test_connections(_instance->process_manager());
+      instance_.reset(new JobManager(default_N_workers)); // can't use make_unique, because ctor is private
+      instance_->messenger().test_connections(instance_->process_manager());
       // set send to non blocking on all processes after checking the connections are working:
-      _instance->messenger().set_send_flag(ZMQ_DONTWAIT);
+      instance_->messenger().set_send_flag(ZMQ_DONTWAIT);
    }
-   return _instance.get();
+   return instance_.get();
 }
 
 // static function
 bool JobManager::is_instantiated()
 {
-   return static_cast<bool>(_instance);
+   return static_cast<bool>(instance_);
 }
 
 // (private) constructor
@@ -70,9 +70,9 @@ bool JobManager::is_instantiated()
 /// you need to run multiple jobs.
 JobManager::JobManager(std::size_t N_workers)
 {
-   queue_ptr = std::make_unique<Queue>();
-   process_manager_ptr = std::make_unique<ProcessManager>(N_workers);
-   messenger_ptr = std::make_unique<Messenger>(*process_manager_ptr);
+   queue_ptr_ = std::make_unique<Queue>();
+   process_manager_ptr_ = std::make_unique<ProcessManager>(N_workers);
+   messenger_ptr_ = std::make_unique<Messenger>(*process_manager_ptr_);
 }
 
 JobManager::~JobManager()
@@ -80,10 +80,10 @@ JobManager::~JobManager()
    // The instance typically gets created by some Job. Once all Jobs are gone, the
    // JM will get destroyed. In this case, the job_objects map should have
    // been emptied. This check makes sure:
-   assert(JobManager::job_objects.empty());
-   messenger_ptr.reset(nullptr);
-   process_manager_ptr.reset(nullptr);
-   queue_ptr.reset(nullptr);
+   assert(JobManager::job_objects_.empty());
+   messenger_ptr_.reset(nullptr);
+   process_manager_ptr_.reset(nullptr);
+   queue_ptr_.reset(nullptr);
 }
 
 // static function
@@ -91,50 +91,50 @@ JobManager::~JobManager()
 std::size_t JobManager::add_job_object(Job *job_object)
 {
    if (JobManager::is_instantiated()) {
-      if (_instance->process_manager().is_initialized()) {
+      if (instance_->process_manager().is_initialized()) {
          std::stringstream ss;
          ss << "Cannot add Job to JobManager instantiation, forking has already taken place! Instance object at raw "
                "ptr "
-            << _instance.get();
+            << instance_.get();
          throw std::logic_error("Cannot add Job to JobManager instantiation, forking has already taken place! Call "
                                 "terminate() on the instance before adding new Jobs.");
       }
    }
-   std::size_t job_id = job_counter++;
-   job_objects[job_id] = job_object;
+   std::size_t job_id = job_counter_++;
+   job_objects_[job_id] = job_object;
    return job_id;
 }
 
 // static function
 Job *JobManager::get_job_object(std::size_t job_object_id)
 {
-   return job_objects[job_object_id];
+   return job_objects_[job_object_id];
 }
 
 // static function
 /// \return Returns 'true' when removed successfully, 'false' otherwise.
 bool JobManager::remove_job_object(std::size_t job_object_id)
 {
-   bool removed_succesfully = job_objects.erase(job_object_id) == 1;
-   if (job_objects.empty()) {
-      _instance.reset(nullptr);
+   bool removed_succesfully = job_objects_.erase(job_object_id) == 1;
+   if (job_objects_.empty()) {
+      instance_.reset(nullptr);
    }
    return removed_succesfully;
 }
 
 ProcessManager &JobManager::process_manager() const
 {
-   return *process_manager_ptr;
+   return *process_manager_ptr_;
 }
 
 Messenger &JobManager::messenger() const
 {
-   return *messenger_ptr;
+   return *messenger_ptr_;
 }
 
 Queue &JobManager::queue() const
 {
-   return *queue_ptr;
+   return *queue_ptr_;
 }
 
 /// Retrieve results for a Job
@@ -192,7 +192,7 @@ void JobManager::retrieve(std::size_t requesting_job_id)
 /// process and on the slaves.
 void JobManager::activate()
 {
-   activated = true;
+   activated_ = true;
 
    if (process_manager().is_queue()) {
       queue().loop();
@@ -207,13 +207,13 @@ void JobManager::activate()
 
 bool JobManager::is_activated() const
 {
-   return activated;
+   return activated_;
 }
 
 // initialize static members
-std::map<std::size_t, Job *> JobManager::job_objects;
-std::size_t JobManager::job_counter = 0;
-std::unique_ptr<JobManager> JobManager::_instance{nullptr};
+std::map<std::size_t, Job *> JobManager::job_objects_;
+std::size_t JobManager::job_counter_ = 0;
+std::unique_ptr<JobManager> JobManager::instance_{nullptr};
 unsigned int JobManager::default_N_workers = std::thread::hardware_concurrency();
 
 } // namespace MultiProcess

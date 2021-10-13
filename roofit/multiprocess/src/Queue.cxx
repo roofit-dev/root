@@ -48,11 +48,11 @@ namespace MultiProcess {
 /// \return true if a task was popped from the queue successfully, false if the queue was empty.
 bool Queue::pop(JobTask &job_task)
 {
-   if (_queue.empty()) {
+   if (queue_.empty()) {
       return false;
    } else {
-      job_task = _queue.front();
-      _queue.pop();
+      job_task = queue_.front();
+      queue_.pop();
       return true;
    }
 }
@@ -65,7 +65,7 @@ void Queue::add(JobTask job_task)
    if (JobManager::instance()->process_manager().is_master()) {
       JobManager::instance()->messenger().send_from_master_to_queue(M2Q::enqueue, job_task.first, job_task.second);
    } else if (JobManager::instance()->process_manager().is_queue()) {
-      _queue.push(job_task);
+      queue_.push(job_task);
    } else {
       throw std::logic_error("calling Communicator::to_master_queue from slave process");
    }
@@ -81,7 +81,7 @@ void Queue::process_master_message(M2Q message)
       auto task = JobManager::instance()->messenger().receive_from_master_on_queue<Task>();
       JobTask job_task(job_object_id, task);
       add(job_task);
-      N_tasks++;
+      N_tasks_++;
       break;
    }
    }
@@ -99,7 +99,7 @@ void Queue::process_worker_message(std::size_t this_worker_id, W2Q message)
          // Note: below two commands should be run atomically for thread safety (if that ever becomes an issue)
          JobManager::instance()->messenger().send_from_queue_to_worker(this_worker_id, Q2W::dequeue_accepted,
                                                                        job_task.first, job_task.second);
-         ++N_tasks_at_workers;
+         ++N_tasks_at_workers_;
       } else {
          JobManager::instance()->messenger().send_from_queue_to_worker(this_worker_id, Q2W::dequeue_rejected);
       }

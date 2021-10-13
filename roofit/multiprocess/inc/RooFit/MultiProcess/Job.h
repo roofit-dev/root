@@ -42,7 +42,7 @@ public:
 protected:
    JobManager *get_manager();
 
-   std::size_t id;
+   std::size_t id_;
 
 private:
    // do not use _manager directly, it must first be initialized! use get_manager()

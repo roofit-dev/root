@@ -86,17 +86,17 @@ namespace MultiProcess {
 
 Job::Job()
 {
-   id = JobManager::add_job_object(this);
+   id_ = JobManager::add_job_object(this);
 }
 
 Job::Job(const Job &other) : _manager(other._manager)
 {
-   id = JobManager::add_job_object(this);
+   id_ = JobManager::add_job_object(this);
 }
 
 Job::~Job()
 {
-   JobManager::remove_job_object(id);
+   JobManager::remove_job_object(id_);
 }
 
 /** \brief Get JobManager instance; create and activate if necessary
@@ -123,7 +123,7 @@ JobManager *Job::get_manager()
 /// Wait for all tasks to be retrieved for the current Job.
 void Job::gather_worker_results()
 {
-   get_manager()->retrieve(id);
+   get_manager()->retrieve(id_);
 }
 
 /// \brief Virtual function to update any necessary state on workers

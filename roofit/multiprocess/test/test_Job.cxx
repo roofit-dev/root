@@ -66,7 +66,7 @@ public:
          }
          // master fills queue with tasks
          for (std::size_t task_id = 0; task_id < serial_->x_.size(); ++task_id) {
-            RooFit::MultiProcess::JobTask job_task(id, task_id);
+            RooFit::MultiProcess::JobTask job_task(id_, task_id);
             get_manager()->queue().add(job_task);
             ++N_tasks_at_workers_;
          }
@@ -90,7 +90,7 @@ public:
    {
       if (get_manager()->process_manager().is_master()) {
          get_manager()->messenger().publish_from_master_to_workers(
-            id, serial_->b_); // always send Job id first! This is used in worker_loop to route the update_state call to
+            id_, serial_->b_); // always send Job id first! This is used in worker_loop to route the update_state call to
                               // the correct Job.
       } else if (get_manager()->process_manager().is_worker()) {
          auto val = get_manager()->messenger().receive_from_master_on_worker<double>();
@@ -106,7 +106,7 @@ public:
 
    void send_back_task_result_from_worker(std::size_t task) override
    {
-      task_result_t task_result{id, task, serial_->result_[task]};
+      task_result_t task_result{id_, task, serial_->result_[task]};
       zmq::message_t message(sizeof(task_result_t));
       memcpy(message.data(), &task_result, sizeof(task_result_t));
       get_manager()->messenger().send_from_worker_to_master(std::move(message));

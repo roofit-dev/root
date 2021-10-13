@@ -52,14 +52,14 @@ public:
 private:
    explicit JobManager(std::size_t N_workers);
 
-   std::unique_ptr<ProcessManager> process_manager_ptr;
-   std::unique_ptr<Messenger> messenger_ptr;
-   std::unique_ptr<Queue> queue_ptr;
-   bool activated = false;
+   std::unique_ptr<ProcessManager> process_manager_ptr_;
+   std::unique_ptr<Messenger> messenger_ptr_;
+   std::unique_ptr<Queue> queue_ptr_;
+   bool activated_ = false;
 
-   static std::map<std::size_t, Job *> job_objects;
-   static std::size_t job_counter;
-   static std::unique_ptr<JobManager> _instance;
+   static std::map<std::size_t, Job *> job_objects_;
+   static std::size_t job_counter_;
+   static std::unique_ptr<JobManager> instance_;
 
 public:
    static unsigned int default_N_workers; // no need for getters/setters, just public

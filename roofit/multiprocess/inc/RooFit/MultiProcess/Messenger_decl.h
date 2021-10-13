@@ -108,35 +108,35 @@ private:
    void debug_print(std::string s);
 
    // push
-   std::vector<ZmqLingeringSocketPtr<>> qw_push;
-   ZmqLingeringSocketPtr<> this_worker_qw_push;
-   ZmqLingeringSocketPtr<> mq_push;
+   std::vector<ZmqLingeringSocketPtr<>> qw_push_;
+   ZmqLingeringSocketPtr<> this_worker_qw_push_;
+   ZmqLingeringSocketPtr<> mq_push_;
    // pollers for all push sockets
-   std::vector<ZeroMQPoller> qw_push_poller;
-   ZeroMQPoller mq_push_poller;
+   std::vector<ZeroMQPoller> qw_push_poller_;
+   ZeroMQPoller mq_push_poller_;
    // pull
-   std::vector<ZmqLingeringSocketPtr<>> qw_pull;
-   ZmqLingeringSocketPtr<> this_worker_qw_pull;
-   ZmqLingeringSocketPtr<> mq_pull;
+   std::vector<ZmqLingeringSocketPtr<>> qw_pull_;
+   ZmqLingeringSocketPtr<> this_worker_qw_pull_;
+   ZmqLingeringSocketPtr<> mq_pull_;
    // pollers for all pull sockets
-   std::vector<ZeroMQPoller> qw_pull_poller;
-   ZeroMQPoller mq_pull_poller;
+   std::vector<ZeroMQPoller> qw_pull_poller_;
+   ZeroMQPoller mq_pull_poller_;
 
    // publish/subscribe sockets for parameter updating from master to workers
-   ZmqLingeringSocketPtr<> mw_pub;
-   ZmqLingeringSocketPtr<> mw_sub;
-   ZeroMQPoller mw_sub_poller;
+   ZmqLingeringSocketPtr<> mw_pub_;
+   ZmqLingeringSocketPtr<> mw_sub_;
+   ZeroMQPoller mw_sub_poller_;
    // push/pull sockets for result retrieving from workers on master
-   ZmqLingeringSocketPtr<> wm_push;
-   ZmqLingeringSocketPtr<> wm_pull;
-   ZeroMQPoller wm_pull_poller;
+   ZmqLingeringSocketPtr<> wm_push_;
+   ZmqLingeringSocketPtr<> wm_pull_;
+   ZeroMQPoller wm_pull_poller_;
 
    // destruction flags to distinguish between different process-type setups:
    bool close_MQ_on_destruct_ = false;
    bool close_this_QW_on_destruct_ = false;
    bool close_QW_container_on_destruct_ = false;
 
-   int send_flag = 0;
+   int send_flag_ = 0;
 };
 
 // Messages from master to queue
