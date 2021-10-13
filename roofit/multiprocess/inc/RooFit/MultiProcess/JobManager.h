@@ -64,7 +64,6 @@ public:
    Queue & queue() const;
 
    void retrieve(std::size_t requesting_job_id);
-   void results_from_queue_to_master();
 
    void activate();
    bool is_activated() const;
