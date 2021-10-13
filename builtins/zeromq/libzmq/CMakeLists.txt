@@ -14,11 +14,8 @@ else()
 endif()
 
 ExternalProject_Add(BUILTIN_ZeroMQ
-    #    URL https://github.com/zeromq/libzmq/archive/5d8d857540323e2d85c64a7edde1ad5280cad04b.tar.gz
-    #    URL_HASH SHA256=750bc1c67a3740a5438da8762931983cb08dc649e1a658cfc34de91c2cf9222c
-    GIT_REPOSITORY https://github.com/egpbos/libzmq.git
-    GIT_SHALLOW TRUE
-    GIT_TAG origin/disable_export
+    URL https://github.com/zeromq/libzmq/archive/7c2df78b49a3aa63e654b3f3526adf71ed091534.tar.gz
+    URL_HASH SHA256=fcc1b0648afa5d92e0ff0e6e93beb28cbbe008a5f98c228ff97144ba6e4a6c3e
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
         -DWITH_PERF_TOOL=OFF
@@ -26,7 +23,6 @@ ExternalProject_Add(BUILTIN_ZeroMQ
         -DENABLE_DRAFTS=ON
         -DENABLE_NO_EXPORT=ON
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-        # TODO: remove -w flag when updating to v4.3.5 or higher, current warnings should be gone by then
         -DCMAKE_CXX_FLAGS=${cxx_visibility_flag}\ ${CMAKE_CXX_FLAGS}\ -w
     BUILD_BYPRODUCTS ${ZeroMQ_LIBRARIES}
     )
