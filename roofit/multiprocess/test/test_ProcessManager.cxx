@@ -3,7 +3,7 @@
  * Authors:
  *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
  *
- * Copyright (c) 2016-2019, Netherlands eScience Center
+ * Copyright (c) 2016-2021, Netherlands eScience Center
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <RooFit/MultiProcess/ProcessManager.h>  // ... JobManager::process_manager()
+#include "RooFit/MultiProcess/ProcessManager.h" // ... JobManager::process_manager()
 
 #include "gtest/gtest.h"
 
@@ -32,7 +32,6 @@ TEST(TestMPProcessManager, DISABLED_multiBirth)
    // then from each forked node, spin up another set of workers+queue!
    auto pm2 = RooFit::MultiProcess::ProcessManager(2);
 }
-
 
 TEST(TestMPProcessManager, checkState)
 {

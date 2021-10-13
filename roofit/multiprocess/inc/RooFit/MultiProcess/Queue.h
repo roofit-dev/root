@@ -4,7 +4,7 @@
  *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
  *   IP, Inti Pelupessy, Netherlands eScience Center, i.pelupessy@esciencecenter.nl
  *
- * Copyright (c) 2016-2019, Netherlands eScience Center
+ * Copyright (c) 2016-2021, Netherlands eScience Center
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,10 @@
 #ifndef ROOT_ROOFIT_MultiProcess_Queue
 #define ROOT_ROOFIT_MultiProcess_Queue
 
-#include <queue>
-
 #include "RooFit/MultiProcess/types.h"
 #include "RooFit/MultiProcess/Messenger.h"
+
+#include <queue>
 
 namespace RooFit {
 namespace MultiProcess {
@@ -34,8 +34,8 @@ public:
    void process_worker_message(std::size_t this_worker_id, W2Q message);
 
 private:
-   std::queue <JobTask> _queue;
-   std::size_t N_tasks = 0;  // total number of received tasks
+   std::queue<JobTask> _queue;
+   std::size_t N_tasks = 0; // total number of received tasks
    std::size_t N_tasks_completed = 0;
    std::size_t N_tasks_at_workers = 0;
 };

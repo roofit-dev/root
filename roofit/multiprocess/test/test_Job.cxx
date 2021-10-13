@@ -1,33 +1,35 @@
-/*****************************************************************************
- * Project: RooFit                                                           *
- * Package: RooFitCore                                                       *
- * @(#)root/roofitcore:$Id$
- * Authors:                                                                  *
- *   PB, Patrick Bos,     NL eScience Center, p.bos@esciencecenter.nl        *
- *   IP, Inti Pelupessy,  NL eScience Center, i.pelupessy@esciencecenter.nl  *
- *   VC, Vince Croft,     DIANA / NYU,        vincent.croft@cern.ch          *
- *                                                                           *
- * Redistribution and use in source and binary forms,                        *
- * with or without modification, are permitted according to the terms        *
- * listed in LICENSE (http://roofit.sourceforge.net/license.txt)             *
- *****************************************************************************/
+/*
+ * Project: RooFit
+ * Authors:
+ *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
+ *   IP, Inti Pelupessy, Netherlands eScience Center, i.pelupessy@esciencecenter.nl
+ *   VC, Vince Croft, DIANA / NYU, vincent.croft@cern.ch
+ *
+ * Copyright (c) 2016-2021, Netherlands eScience Center
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ */
 
 #include <cmath>
 #include <vector>
 
-#include <RooFit/MultiProcess/Job.h>
-#include <RooFit/MultiProcess/types.h>  // JobTask
+#include "RooFit/MultiProcess/Job.h"
+#include "RooFit/MultiProcess/types.h" // JobTask
 // needed to complete type returned from...
-#include <RooFit/MultiProcess/JobManager.h>      // ... Job::get_manager()
-#include <RooFit/MultiProcess/ProcessManager.h>  // ... JobManager::process_manager()
-#include <RooFit/MultiProcess/Queue.h>           // ... JobManager::queue()
+#include "RooFit/MultiProcess/JobManager.h"     // ... Job::get_manager()
+#include "RooFit/MultiProcess/ProcessManager.h" // ... JobManager::process_manager()
+#include "RooFit/MultiProcess/Queue.h"          // ... JobManager::queue()
 
 #include "gtest/gtest.h"
 #include "utils.h"
 
 class xSquaredPlusBVectorSerial {
 public:
-   xSquaredPlusBVectorSerial(double b, const std::vector<double>& x) : b_(b), x_(x), result_(x.size()) {}
+   xSquaredPlusBVectorSerial(double b, const std::vector<double> &x) : b_(b), x_(x), result_(x.size()) {}
 
    void evaluate()
    {
@@ -51,7 +53,7 @@ public:
 
 class xSquaredPlusBVectorParallel : public RooFit::MultiProcess::Job {
 public:
-   explicit xSquaredPlusBVectorParallel(xSquaredPlusBVectorSerial* serial, bool update_state = false)
+   explicit xSquaredPlusBVectorParallel(xSquaredPlusBVectorSerial *serial, bool update_state = false)
       : serial_(serial), update_state_(update_state)
    {
    }
@@ -84,9 +86,12 @@ public:
 
    // typically, on master, this would be called inside evaluate, before queuing tasks; on workers it's called
    // automatically when a published message is received from master
-   void update_state() override {
+   void update_state() override
+   {
       if (get_manager()->process_manager().is_master()) {
-         get_manager()->messenger().publish_from_master_to_workers(id, serial_->b_); // always send Job id first! This is used in worker_loop to route the update_state call to the correct Job.
+         get_manager()->messenger().publish_from_master_to_workers(
+            id, serial_->b_); // always send Job id first! This is used in worker_loop to route the update_state call to
+                              // the correct Job.
       } else if (get_manager()->process_manager().is_worker()) {
          auto val = get_manager()->messenger().receive_from_master_on_worker<double>();
          serial_->b_ = val;
@@ -99,14 +104,16 @@ public:
       double value;
    };
 
-   void send_back_task_result_from_worker(std::size_t task) override {
-      task_result_t task_result {id, task, serial_->result_[task]};
+   void send_back_task_result_from_worker(std::size_t task) override
+   {
+      task_result_t task_result{id, task, serial_->result_[task]};
       zmq::message_t message(sizeof(task_result_t));
       memcpy(message.data(), &task_result, sizeof(task_result_t));
       get_manager()->messenger().send_from_worker_to_master(std::move(message));
    }
 
-   bool receive_task_result_on_master(const zmq::message_t & message) override {
+   bool receive_task_result_on_master(const zmq::message_t &message) override
+   {
       auto result = message.data<task_result_t>();
       serial_->result_[result->task_id] = result->value;
       --N_tasks_at_workers_;
@@ -116,7 +123,6 @@ public:
 
    // -- END plumbing --
 
-
 private:
    void evaluate_task(std::size_t task) override
    {
@@ -124,7 +130,7 @@ private:
       serial_->result_[task] = std::pow(serial_->x_[task], 2) + serial_->b_;
    }
 
-   xSquaredPlusBVectorSerial* serial_;
+   xSquaredPlusBVectorSerial *serial_;
    bool update_state_ = false;
    std::size_t N_tasks_at_workers_ = 0;
 };
@@ -170,7 +176,6 @@ TEST_P(TestMPJob, singleJobGetResult)
    EXPECT_EQ(Hex(y_parallel[3]), Hex(y_expected[3]));
 }
 
-
 TEST_P(TestMPJob, multiJobGetResult)
 {
    // Simple test case: calculate x^2 + b, where x is a vector. This case does
@@ -204,7 +209,6 @@ TEST_P(TestMPJob, multiJobGetResult)
    EXPECT_EQ(Hex(y_parallel2[2]), Hex(y_expected[2] + 1));
    EXPECT_EQ(Hex(y_parallel2[3]), Hex(y_expected[3] + 1));
 }
-
 
 TEST_P(TestMPJob, singleJobUpdateState)
 {
@@ -240,6 +244,5 @@ TEST_P(TestMPJob, singleJobUpdateState)
    EXPECT_EQ(Hex(y_parallel_after_change[2]), Hex(y_expected[2]));
    EXPECT_EQ(Hex(y_parallel_after_change[3]), Hex(y_expected[3]));
 }
-
 
 INSTANTIATE_TEST_SUITE_P(NumberOfWorkerProcesses, TestMPJob, ::testing::Values(1, 2, 3));

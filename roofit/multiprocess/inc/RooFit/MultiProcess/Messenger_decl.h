@@ -4,7 +4,7 @@
  *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
  *   IP, Inti Pelupessy, Netherlands eScience Center, i.pelupessy@esciencecenter.nl
  *
- * Copyright (c) 2016-2019, Netherlands eScience Center
+ * Copyright (c) 2016-2021, Netherlands eScience Center
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,13 +15,13 @@
 #ifndef ROOT_ROOFIT_MultiProcess_Messenger_decl
 #define ROOT_ROOFIT_MultiProcess_Messenger_decl
 
-#include <iosfwd>
-#include <vector>
-#include <csignal>  // sigprocmask, sigset_t, etc
-
+#include "RooFit/MultiProcess/ProcessManager.h"
 #include "RooFit_ZMQ/ZeroMQSvc.h"
 #include "RooFit_ZMQ/ZeroMQPoller.h"
-#include "RooFit/MultiProcess/ProcessManager.h"
+
+#include <iosfwd>
+#include <vector>
+#include <csignal> // sigprocmask, sigset_t, etc
 
 namespace RooFit {
 namespace MultiProcess {
@@ -29,11 +29,7 @@ namespace MultiProcess {
 void set_socket_immediate(ZmqLingeringSocketPtr<> &socket);
 
 // test messages
-enum class X2X : int {
-   ping = -1,
-   pong = -2,
-   initial_value = 0
-};
+enum class X2X : int { ping = -1, pong = -2, initial_value = 0 };
 
 class Messenger {
 public:
@@ -41,17 +37,12 @@ public:
    ~Messenger();
 
    void test_connections(const ProcessManager &process_manager);
-   void test_connections_worker(const ProcessManager& process_manager);
-   void test_connections_queue(const ProcessManager& process_manager);
-   void test_connections_master(const ProcessManager& process_manager);
 
    enum class test_snd_pipes {
       M2Q,
       Q2M,
       Q2W,
       W2Q,
-      M2W,
-      W2M,
    };
 
    enum class test_rcv_pipes {
@@ -59,8 +50,6 @@ public:
       fromMonQ,
       fromWonQ,
       fromQonW,
-      fromMonW,
-      fromWonM,
    };
 
    std::pair<ZeroMQPoller, std::size_t> create_queue_poller();
@@ -149,7 +138,6 @@ private:
 
    int send_flag = 0;
 };
-
 
 // Messages from master to queue
 enum class M2Q : int {

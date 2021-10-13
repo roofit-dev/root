@@ -4,7 +4,7 @@
  *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
  *   IP, Inti Pelupessy, Netherlands eScience Center, i.pelupessy@esciencecenter.nl
  *
- * Copyright (c) 2016-2019, Netherlands eScience Center
+ * Copyright (c) 2016-2021, Netherlands eScience Center
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,16 +13,39 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include "RooFit/MultiProcess/Queue.h"
 #include "RooFit/MultiProcess/JobManager.h"
 #include "RooFit/MultiProcess/ProcessManager.h"
-#include "RooFit/MultiProcess/Job.h"  // complete Job object for JobManager::get_job_object()
-#include "RooFit/MultiProcess/Queue.h"
+#include "RooFit/MultiProcess/Job.h" // complete Job object for JobManager::get_job_object()
 #include "RooFit/MultiProcess/util.h"
 
 namespace RooFit {
 namespace MultiProcess {
 
-// Have a worker ask for a task-message from the queue
+/** \class Queue
+ * \brief Keeps a queue of tasks for workers and manages the queue process through its event loop
+ *
+ * The Queue maintains a set of tasks on the queue process by receiving them
+ * from the master process. Worker processes can request to pop them off the
+ * queue. The communication between these processes is handled inside
+ * 'Queue::loop()', the queue process's event loop that polls the Messenger's
+ * sockets for incoming messages and handles them when they come.
+ *
+ * The reason for this class is to get automatic load balancing between
+ * workers. By allowing workers to request tasks whenever they are ready to
+ * do work, we don't need to manually distribute work over workers and they
+ * will always have something to do until all tasks have been completed.
+ * The alternative simple strategy of just distributing all tasks evenly over
+ * workers will be suboptimal when tasks have different or even varying
+ * runtimes (this simple strategy could be implemented with a PUSH-PULL
+ * ZeroMQ socket from master to workers, which would distribute tasks in a
+ * round-robin fashion, which, indeed, does not do load balancing).
+ */
+
+/// Have a worker ask for a task-message from the queue
+///
+/// \param[out] job_task JobTask reference to put the Job ID and the task index into.
+/// \return true if a task was popped from the queue successfully, false if the queue was empty.
 bool Queue::pop(JobTask &job_task)
 {
    if (_queue.empty()) {
@@ -34,7 +57,9 @@ bool Queue::pop(JobTask &job_task)
    }
 }
 
-// Enqueue a task
+/// Enqueue a task
+///
+/// \param[in] job_task JobTask object that contains the Job ID and the task index.
 void Queue::add(JobTask job_task)
 {
    if (JobManager::instance()->process_manager().is_master()) {
@@ -46,7 +71,7 @@ void Queue::add(JobTask job_task)
    }
 }
 
-
+/// Helper function for 'Queue::loop()'
 void Queue::process_master_message(M2Q message)
 {
    switch (message) {
@@ -62,7 +87,7 @@ void Queue::process_master_message(M2Q message)
    }
 }
 
-
+/// Helper function for 'Queue::loop()'
 void Queue::process_worker_message(std::size_t this_worker_id, W2Q message)
 {
    switch (message) {
@@ -72,7 +97,8 @@ void Queue::process_worker_message(std::size_t this_worker_id, W2Q message)
       bool popped = pop(job_task);
       if (popped) {
          // Note: below two commands should be run atomically for thread safety (if that ever becomes an issue)
-         JobManager::instance()->messenger().send_from_queue_to_worker(this_worker_id, Q2W::dequeue_accepted, job_task.first, job_task.second);
+         JobManager::instance()->messenger().send_from_queue_to_worker(this_worker_id, Q2W::dequeue_accepted,
+                                                                       job_task.first, job_task.second);
          ++N_tasks_at_workers;
       } else {
          JobManager::instance()->messenger().send_from_queue_to_worker(this_worker_id, Q2W::dequeue_rejected);
@@ -82,7 +108,9 @@ void Queue::process_worker_message(std::size_t this_worker_id, W2Q message)
    }
 }
 
-
+/// \brief The queue process's event loop
+///
+/// Polls for incoming messages from other processes and handles them.
 void Queue::loop()
 {
    assert(JobManager::instance()->process_manager().is_queue());
@@ -111,17 +139,16 @@ void Queue::loop()
                auto message = JobManager::instance()->messenger().receive_from_master_on_queue<M2Q>();
                process_master_message(message);
             } else { // from a worker socket
-               // TODO: dangerous assumption for this_worker_id, may become invalid if we allow multiple queue_loops on the same process!
-               auto this_worker_id = readable_socket.first - 1;  // TODO: replace with a more reliable lookup
+               auto this_worker_id = readable_socket.first - 1;
                auto message = JobManager::instance()->messenger().receive_from_worker_on_queue<W2Q>(this_worker_id);
                process_worker_message(this_worker_id, message);
             }
          }
-      } catch (ZMQ::ppoll_error_t& e) {
+      } catch (ZMQ::ppoll_error_t &e) {
          zmq_ppoll_error_response response;
          try {
             response = handle_zmq_ppoll_error(e);
-         } catch (std::logic_error& e) {
+         } catch (std::logic_error &e) {
             printf("queue loop got unhandleable ZMQ::ppoll_error_t\n");
             throw;
          }
@@ -134,7 +161,7 @@ void Queue::loop()
             printf("EAGAIN from ppoll in queue loop, continuing\n");
             continue;
          }
-      } catch (zmq::error_t& e) {
+      } catch (zmq::error_t &e) {
          printf("unhandled zmq::error_t (not a ppoll_error_t) in queue loop with errno %d: %s\n", e.num(), e.what());
          throw;
       }

@@ -2,8 +2,9 @@
  * Project: RooFit
  * Authors:
  *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
+ *   IP, Inti Pelupessy, Netherlands eScience Center, i.pelupessy@esciencecenter.nl
  *
- * Copyright (c) 2016-2019, Netherlands eScience Center
+ * Copyright (c) 2016-2021, Netherlands eScience Center
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,7 +68,6 @@ zmq_ppoll_error_response handle_zmq_ppoll_error(ZMQ::ppoll_error_t &e)
       return zmq_ppoll_error_response::abort;
    } else if (e.num() == EINTR) {
       // on other EINTRs, we retry (mostly this happens in debuggers)
-      //      printf("got EINTR but no SIGTERM received");
       return zmq_ppoll_error_response::unknown_eintr;
    } else if (e.num() == EAGAIN) {
       // This can happen from recv if ppoll initially gets a read-ready signal for a socket,
@@ -78,12 +78,12 @@ zmq_ppoll_error_response handle_zmq_ppoll_error(ZMQ::ppoll_error_t &e)
       // and in that case the next ppoll call will probably also receive a SIGTERM, ending the
       // loop. In case something else is wrong, this message will print multiple times, which
       // should be taken as a cue for writing a bug report :)
-      // TODO: handle this more rigorously
-      //      printf("EAGAIN (from either send or receive), try %d\n", tries);
       return zmq_ppoll_error_response::retry;
    } else {
       char buffer[512];
-      snprintf(buffer, 512, "handle_zmq_ppoll_error is out of options to handle exception, caught ZMQ::ppoll_error_t had errno %d and text: %s\n",
+      snprintf(buffer, 512,
+               "handle_zmq_ppoll_error is out of options to handle exception, caught ZMQ::ppoll_error_t had errno %d "
+               "and text: %s\n",
                e.num(), e.what());
       throw std::logic_error(buffer);
    }

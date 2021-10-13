@@ -4,7 +4,7 @@
  *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
  *   IP, Inti Pelupessy, Netherlands eScience Center, i.pelupessy@esciencecenter.nl
  *
- * Copyright (c) 2016-2019, Netherlands eScience Center
+ * Copyright (c) 2016-2021, Netherlands eScience Center
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,9 +13,7 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <unistd.h> // getpid, pid_t
-#include <cerrno> // EINTR
-#include <csignal>  // sigprocmask etc
+#include "RooFit/MultiProcess/worker.h"
 
 #include "RooFit/MultiProcess/JobManager.h"
 #include "RooFit/MultiProcess/types.h"
@@ -23,7 +21,9 @@
 #include "RooFit/MultiProcess/Job.h"
 #include "RooFit/MultiProcess/util.h"
 
-#include "RooFit/MultiProcess/worker.h"
+#include <unistd.h> // getpid, pid_t
+#include <cerrno>   // EINTR
+#include <csignal>  // sigprocmask etc
 
 namespace RooFit {
 namespace MultiProcess {
@@ -52,10 +52,13 @@ void process_queue_message(Q2W message_q2w, bool &dequeue_acknowledged)
 
       break;
    }
-
    }
 }
 
+/// \brief The worker processes' event loop
+///
+/// Asks the queue process for tasks, polls for incoming messages from other
+/// processes and handles them.
 void worker_loop()
 {
    assert(JobManager::instance()->process_manager().is_worker());
@@ -104,11 +107,11 @@ void worker_loop()
             }
          }
 
-      } catch (ZMQ::ppoll_error_t& e) {
+      } catch (ZMQ::ppoll_error_t &e) {
          zmq_ppoll_error_response response;
          try {
             response = handle_zmq_ppoll_error(e);
-         } catch (std::logic_error& e) {
+         } catch (std::logic_error &e) {
             printf("worker loop at PID %d got unhandleable ZMQ::ppoll_error_t\n", getpid());
             throw;
          }
@@ -121,8 +124,9 @@ void worker_loop()
             printf("EAGAIN from ppoll in worker loop at PID %d, continuing\n", getpid());
             continue;
          }
-      } catch (zmq::error_t& e) {
-         printf("unhandled zmq::error_t (not a ppoll_error_t) in worker loop at PID %d with errno %d: %s\n", getpid(), e.num(), e.what());
+      } catch (zmq::error_t &e) {
+         printf("unhandled zmq::error_t (not a ppoll_error_t) in worker loop at PID %d with errno %d: %s\n", getpid(),
+                e.num(), e.what());
          throw;
       }
    }

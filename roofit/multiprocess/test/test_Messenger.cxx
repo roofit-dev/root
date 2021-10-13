@@ -3,7 +3,7 @@
  * Authors:
  *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
  *
- * Copyright (c) 2016-2019, Netherlands eScience Center
+ * Copyright (c) 2016-2021, Netherlands eScience Center
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
  */
 
 #include "RooFit/MultiProcess/Messenger.h"
-#include <RooFit/MultiProcess/ProcessManager.h>  // ... JobManager::process_manager()
+#include "RooFit/MultiProcess/ProcessManager.h" // ... JobManager::process_manager()
 
 #include "gtest/gtest.h"
 
@@ -29,7 +29,7 @@ TEST(TestMPMessenger, ConnectionsManualExit)
    // the point of this test is to see whether clean-up of ZeroMQ resources is done properly without calling any
    // destructors (which is what happens when you call _Exit() instead of regularly ending the program by reaching the
    // end of main()).
-   RooFit::MultiProcess::ProcessManager pm( 2);
+   RooFit::MultiProcess::ProcessManager pm(2);
    RooFit::MultiProcess::Messenger messenger(pm);
    messenger.test_connections(pm);
    if (!pm.is_master()) {
@@ -37,20 +37,15 @@ TEST(TestMPMessenger, ConnectionsManualExit)
    }
 }
 
-
 #include <sys/wait.h>
 
 TEST(TestMPMessenger, SigStop)
 {
-   // For some reason, I cannot get my debugger (lldb) to play nicely with ZeroMQ; every time I pause a process, it
-   // says it crashed because of SIGSTOP, but SIGSTOP should just pause it... let's see whether we can reproduce this
-   // behavior here and, if possible, fix it.
+   // Originally, we could not get the debugger (lldb) to play nicely with ZeroMQ; every time we paused a process, it
+   // said it crashed because of SIGSTOP, but SIGSTOP should just pause it... this test was meant to reproduce this
+   // behavior and fix it, which was done by more carefully handling exceptions.
    RooFit::MultiProcess::ProcessManager pm(2);
    RooFit::MultiProcess::Messenger messenger(pm);
-//   messenger.test_connections(pm);
-
-   // all this works fine without a sigmask, maybe the sigmask is the issue? let's try:
-
 
    if (pm.is_master()) {
       printf("first send message to queue...\n");
@@ -84,7 +79,8 @@ TEST(TestMPMessenger, SigStop)
    }
 
    if (!pm.is_master()) {
-      while (!pm.sigterm_received()) {}
+      while (!pm.sigterm_received()) {
+      }
    }
 }
 

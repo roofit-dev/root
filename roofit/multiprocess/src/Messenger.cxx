@@ -4,7 +4,7 @@
  *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
  *   IP, Inti Pelupessy, Netherlands eScience Center, i.pelupessy@esciencecenter.nl
  *
- * Copyright (c) 2016-2019, Netherlands eScience Center
+ * Copyright (c) 2016-2021, Netherlands eScience Center
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,11 +13,11 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <csignal>  // sigprocmask etc
-#include <cstdio>  // sprintf
-
-#include <RooFit/MultiProcess/util.h>
 #include "RooFit/MultiProcess/Messenger.h"
+#include "RooFit/MultiProcess/util.h"
+
+#include <csignal> // sigprocmask etc
+#include <cstdio>  // sprintf
 
 namespace RooFit {
 namespace MultiProcess {
@@ -27,6 +27,39 @@ void set_socket_immediate(ZmqLingeringSocketPtr<> &socket)
    int optval = 1;
    socket->setsockopt(ZMQ_IMMEDIATE, &optval, sizeof(optval));
 }
+
+/** \class Messenger
+ *
+ * \brief Manages ZeroMQ sockets and wraps send and receive calls
+ *
+ * This class is used for all interprocess communication between the master,
+ * queue and worker processes. It sets up ZeroMQ sockets between all processes
+ * over IPC socket files stored in /tmp on the filesystem.
+ *
+ * Several sockets are used for communication between different places for
+ * different purposes:
+ * - Master and queue processes each have a PUSH-PULL socket pair to directly
+ *   send/receive data between only the master and queue processes. This is
+ *   currently used mainly for sending tasks to the queue from master. The
+ *   socket from queue back to master is used only to test connections and may
+ *   be removed in the future.
+ * - The queue process also has a PUSH-PULL socket pair with each worker
+ *   process. These are used by the workers to obtain tasks from the queue.
+ * - The master has a PUB socket that the workers subscribe to with SUB
+ *   sockets. These are used to update state. Note that to ensure robust
+ *   reception of all messages on the SUB socket, it's important to send over
+ *   state in as little messages as possible. For instance, it's best to send
+ *   arrays over in a single big message instead of sending over each element
+ *   separately. This also improves performance, since each message has some
+ *   fixed overhead.
+ * - Each worker has a PUSH socket connected to a PULL socket on master that
+ *   is used to send back task results from workers to master in
+ *   'JobManager::retrieve()'.
+ *
+ * @param process_manager ProcessManager instance which manages the master,
+ *                        queue and worker processes that we want to set up
+ *                        communication for in this Messenger.
+ */
 
 Messenger::Messenger(const ProcessManager &process_manager)
 {
@@ -39,34 +72,34 @@ Messenger::Messenger(const ProcessManager &process_manager)
    try {
       if (process_manager.is_master()) {
          mq_push.reset(zmqSvc().socket_ptr(zmq::PUSH));
-         auto rc = zmq_setsockopt (*mq_push, ZMQ_SNDHWM, &hwm, sizeof hwm);
-         assert (rc == 0);
+         auto rc = zmq_setsockopt(*mq_push, ZMQ_SNDHWM, &hwm, sizeof hwm);
+         assert(rc == 0);
          mq_push->bind("ipc:///tmp/roofitMP_from_master_to_queue");
 
          mq_push_poller.register_socket(*mq_push, zmq::POLLOUT);
 
          mq_pull.reset(zmqSvc().socket_ptr(zmq::PULL));
-         rc = zmq_setsockopt (*mq_pull, ZMQ_RCVHWM, &hwm, sizeof hwm);
-         assert (rc == 0);
+         rc = zmq_setsockopt(*mq_pull, ZMQ_RCVHWM, &hwm, sizeof hwm);
+         assert(rc == 0);
          mq_pull->bind("ipc:///tmp/roofitMP_from_queue_to_master");
 
          mq_pull_poller.register_socket(*mq_pull, zmq::POLLIN);
 
          mw_pub.reset(zmqSvc().socket_ptr(zmq::PUB));
-         rc = zmq_setsockopt (*mw_pub, ZMQ_SNDHWM, &hwm, sizeof hwm);
-         assert (rc == 0);
+         rc = zmq_setsockopt(*mw_pub, ZMQ_SNDHWM, &hwm, sizeof hwm);
+         assert(rc == 0);
          mw_pub->bind("ipc:///tmp/roofitMP_from_master_to_workers");
 
          wm_pull.reset(zmqSvc().socket_ptr(zmq::PULL));
-         rc = zmq_setsockopt (*wm_pull, ZMQ_RCVHWM, &hwm, sizeof hwm);
-         assert (rc == 0);
+         rc = zmq_setsockopt(*wm_pull, ZMQ_RCVHWM, &hwm, sizeof hwm);
+         assert(rc == 0);
          wm_pull->bind("ipc:///tmp/roofitMP_from_workers_to_master");
          wm_pull_poller.register_socket(*wm_pull, zmq::POLLIN);
 
          close_MQ_on_destruct_ = true;
 
          // make sure all subscribers are connected
-         ZmqLingeringSocketPtr<> subscriber_ping_socket {zmqSvc().socket_ptr(zmq::REP)};
+         ZmqLingeringSocketPtr<> subscriber_ping_socket{zmqSvc().socket_ptr(zmq::REP)};
          subscriber_ping_socket->bind("ipc:///tmp/roofitMP_subscriber_ping_socket");
          ZeroMQPoller subscriber_ping_poller;
          subscriber_ping_poller.register_socket(*subscriber_ping_socket, zmq::POLLIN);
@@ -74,7 +107,6 @@ Messenger::Messenger(const ProcessManager &process_manager)
          while (N_subscribers_confirmed < process_manager.N_workers()) {
             zmqSvc().send(*mw_pub, false);
             auto poll_results = subscriber_ping_poller.poll(0);
-//            for (auto& poll_result : poll_results) {
             for (std::size_t ix = 0; ix < poll_results.size(); ++ix) {
                auto request = zmqSvc().receive<std::string>(*subscriber_ping_socket, zmq::DONTWAIT);
                assert(request == "present");
@@ -112,15 +144,15 @@ Messenger::Messenger(const ProcessManager &process_manager)
 
          // then the master-queue sockets
          mq_push.reset(zmqSvc().socket_ptr(zmq::PUSH));
-         auto rc = zmq_setsockopt (*mq_push, ZMQ_SNDHWM, &hwm, sizeof hwm);
-         assert (rc == 0);
+         auto rc = zmq_setsockopt(*mq_push, ZMQ_SNDHWM, &hwm, sizeof hwm);
+         assert(rc == 0);
          mq_push->connect("ipc:///tmp/roofitMP_from_queue_to_master");
 
          mq_push_poller.register_socket(*mq_push, zmq::POLLOUT);
 
          mq_pull.reset(zmqSvc().socket_ptr(zmq::PULL));
-         rc = zmq_setsockopt (*mq_pull, ZMQ_RCVHWM, &hwm, sizeof hwm);
-         assert (rc == 0);
+         rc = zmq_setsockopt(*mq_pull, ZMQ_RCVHWM, &hwm, sizeof hwm);
+         assert(rc == 0);
          mq_pull->connect("ipc:///tmp/roofitMP_from_master_to_queue");
 
          mq_pull_poller.register_socket(*mq_pull, zmq::POLLIN);
@@ -148,20 +180,20 @@ Messenger::Messenger(const ProcessManager &process_manager)
          qw_pull_poller[0].register_socket(*this_worker_qw_pull, zmq::POLLIN);
 
          mw_sub.reset(zmqSvc().socket_ptr(zmq::SUB));
-         auto rc = zmq_setsockopt (*mw_sub, ZMQ_RCVHWM, &hwm, sizeof hwm);
-         assert (rc == 0);
+         auto rc = zmq_setsockopt(*mw_sub, ZMQ_RCVHWM, &hwm, sizeof hwm);
+         assert(rc == 0);
          rc = zmq_setsockopt(*mw_sub, ZMQ_SUBSCRIBE, "", 0);
-         assert (rc == 0);
+         assert(rc == 0);
          mw_sub->connect("ipc:///tmp/roofitMP_from_master_to_workers");
          mw_sub_poller.register_socket(*mw_sub, zmq::POLLIN);
 
          wm_push.reset(zmqSvc().socket_ptr(zmq::PUSH));
-         rc = zmq_setsockopt (*wm_push, ZMQ_SNDHWM, &hwm, sizeof hwm);
-         assert (rc == 0);
+         rc = zmq_setsockopt(*wm_push, ZMQ_SNDHWM, &hwm, sizeof hwm);
+         assert(rc == 0);
          wm_push->connect("ipc:///tmp/roofitMP_from_workers_to_master");
 
          // check publisher connection and then wait until all subscribers are connected
-         ZmqLingeringSocketPtr<> subscriber_ping_socket {zmqSvc().socket_ptr(zmq::REQ)};
+         ZmqLingeringSocketPtr<> subscriber_ping_socket{zmqSvc().socket_ptr(zmq::REQ)};
          subscriber_ping_socket->connect("ipc:///tmp/roofitMP_subscriber_ping_socket");
          auto all_connected = zmqSvc().receive<bool>(*mw_sub);
          zmqSvc().send(*subscriber_ping_socket, "present");
@@ -183,7 +215,8 @@ Messenger::Messenger(const ProcessManager &process_manager)
    };
 }
 
-Messenger::~Messenger() {
+Messenger::~Messenger()
+{
    printf("Messenger dtor on PID %d\n", getpid());
    if (close_MQ_on_destruct_) {
       try {
@@ -191,8 +224,9 @@ Messenger::~Messenger() {
          mq_pull.reset(nullptr);
          mw_pub.reset(nullptr);
          wm_pull.reset(nullptr);
-      } catch (const std::exception& e) {
-         std::cerr << "WARNING: something in Messenger dtor threw an exception! Original exception message:\n" << e.what() << std::endl;
+      } catch (const std::exception &e) {
+         std::cerr << "WARNING: something in Messenger dtor threw an exception! Original exception message:\n"
+                   << e.what() << std::endl;
       }
    }
    if (close_this_QW_on_destruct_) {
@@ -202,25 +236,25 @@ Messenger::~Messenger() {
       wm_push.reset(nullptr);
    }
    if (close_QW_container_on_destruct_) {
-      for (auto& socket : qw_push) {
+      for (auto &socket : qw_push) {
          socket.reset(nullptr);
       }
-      for (auto& socket : qw_pull) {
+      for (auto &socket : qw_pull) {
          socket.reset(nullptr);
       }
    }
    zmqSvc().close_context();
 }
 
-
-void Messenger::test_send(X2X ping_value, test_snd_pipes snd_pipe, std::size_t worker_id) {
+void Messenger::test_send(X2X ping_value, test_snd_pipes snd_pipe, std::size_t worker_id)
+{
    try {
       switch (snd_pipe) {
       case test_snd_pipes::M2Q: {
          send_from_master_to_queue(ping_value);
          break;
       }
-      case test_snd_pipes::Q2M : {
+      case test_snd_pipes::Q2M: {
          send_from_queue_to_master(ping_value);
          break;
       }
@@ -242,8 +276,8 @@ void Messenger::test_send(X2X ping_value, test_snd_pipes snd_pipe, std::size_t w
    }
 }
 
-
-void Messenger::test_receive(X2X expected_ping_value, test_rcv_pipes rcv_pipe, std::size_t worker_id) {
+void Messenger::test_receive(X2X expected_ping_value, test_rcv_pipes rcv_pipe, std::size_t worker_id)
+{
    X2X handshake = X2X::initial_value;
 
    std::size_t max_tries = 3, tries = 0;
@@ -284,19 +318,28 @@ void Messenger::test_receive(X2X expected_ping_value, test_rcv_pipes rcv_pipe, s
          if (e.num() == EAGAIN) {
             throw std::runtime_error("Messenger::test_connections: RECEIVE over master-queue connection timed out!");
          } else {
-            printf("unhandled zmq::error_t (not a ppoll_error_t) in Messenger::test_receive with errno %d: %s\n", e.num(), e.what());
+            printf("unhandled zmq::error_t (not a ppoll_error_t) in Messenger::test_receive with errno %d: %s\n",
+                   e.num(), e.what());
             throw;
          }
       }
    }
 
    if (handshake != expected_ping_value) {
-      throw std::runtime_error("Messenger::test_connections: RECEIVE over master-queue connection failed, did not receive expected value!");
+      throw std::runtime_error(
+         "Messenger::test_connections: RECEIVE over master-queue connection failed, did not receive expected value!");
    }
 }
 
-
-void Messenger::test_connections(const ProcessManager &process_manager) {
+/// \brief Test whether push-pull sockets are working
+///
+/// \note This function tests the PUSH-PULL socket pairs only. The PUB-SUB sockets are already tested in the
+/// constructor.
+///
+/// \param process_manager ProcessManager object used to instantiate this object. Used to identify which process we are
+/// running on and hence which sockets need to be tested.
+void Messenger::test_connections(const ProcessManager &process_manager)
+{
    // Before blocking SIGTERM, set the signal handler, so we can also check after blocking whether a signal occurred
    // In our case, we already set it in the ProcessManager after forking to the queue and worker processes.
    sigset_t sigmask;
@@ -323,7 +366,8 @@ void Messenger::test_connections(const ProcessManager &process_manager) {
          std::vector<std::pair<size_t, int>> poll_result;
          bool abort;
          std::tie(poll_result, abort) = careful_ppoll(poller, ppoll_sigmask);
-         if (abort) break;
+         if (abort)
+            break;
 
          // then process incoming messages from sockets
          for (auto readable_socket : poll_result) {
@@ -335,8 +379,9 @@ void Messenger::test_connections(const ProcessManager &process_manager) {
                test_receive(X2X::pong, test_rcv_pipes::fromMonQ, -1);
                poller.unregister_socket(*mq_pull);
             } else { // from a worker socket
-               // TODO: dangerous assumption for this_worker_id, may become invalid if we allow multiple queue_loops on the same process!
-               auto this_worker_id = readable_socket.first - 1;  // TODO: replace with a more reliable lookup
+               // TODO: dangerous assumption for this_worker_id, may become invalid if we allow multiple queue_loops on
+               // the same process!
+               auto this_worker_id = readable_socket.first - 1; // TODO: replace with a more reliable lookup
 
                test_receive(X2X::pong, test_rcv_pipes::fromWonQ, this_worker_id);
                test_receive(X2X::ping, test_rcv_pipes::fromWonQ, this_worker_id);
@@ -362,8 +407,9 @@ void Messenger::test_connections(const ProcessManager &process_manager) {
    printf("done with test_connections on PID %d\n", getpid());
 }
 
-
-std::pair<ZeroMQPoller, std::size_t> Messenger::create_queue_poller() {
+/// Helper function that creates a poller for Queue::loop()
+std::pair<ZeroMQPoller, std::size_t> Messenger::create_queue_poller()
+{
    ZeroMQPoller poller;
    std::size_t mq_index = poller.register_socket(*mq_pull, zmq::POLLIN);
    for (auto &s : qw_pull) {
@@ -372,14 +418,14 @@ std::pair<ZeroMQPoller, std::size_t> Messenger::create_queue_poller() {
    return {std::move(poller), mq_index};
 }
 
-
-std::pair<ZeroMQPoller, std::size_t> Messenger::create_worker_poller() {
+/// Helper function that creates a poller for worker_loop()
+std::pair<ZeroMQPoller, std::size_t> Messenger::create_worker_poller()
+{
    ZeroMQPoller poller;
    poller.register_socket(*this_worker_qw_pull, zmq::POLLIN);
    std::size_t mw_sub_index = poller.register_socket(*mw_sub, zmq::POLLIN);
    return {std::move(poller), mw_sub_index};
 }
-
 
 // -- WORKER - QUEUE COMMUNICATION --
 
@@ -393,11 +439,14 @@ void Messenger::send_from_queue_to_master() {}
 
 void Messenger::send_from_master_to_queue() {}
 
-void Messenger::set_send_flag(int flag) {
+/// Set the flag used in all send functions; 0, ZMQ_DONTWAIT, ZMQ_SNDMORE or bitwise combination
+void Messenger::set_send_flag(int flag)
+{
    if (flag == 0 || flag == ZMQ_DONTWAIT || flag == ZMQ_SNDMORE || flag == (ZMQ_DONTWAIT | ZMQ_SNDMORE)) {
       send_flag = flag;
    } else {
-      throw std::runtime_error("in Messenger::set_send_flag: trying to set illegal flag, see zmq_send API for allowed flags");
+      throw std::runtime_error(
+         "in Messenger::set_send_flag: trying to set illegal flag, see zmq_send API for allowed flags");
    }
 }
 
@@ -407,43 +456,47 @@ void Messenger::publish_from_master_to_workers() {}
 
 void Messenger::send_from_worker_to_master() {}
 
-
 // for debugging
-#define PROCESS_VAL(p) case(p): s = #p; break;
+#define PROCESS_VAL(p) \
+   case (p): s = #p; break;
 
-std::ostream& operator<<(std::ostream& out, const M2Q value){
+std::ostream &operator<<(std::ostream &out, const M2Q value)
+{
    std::string s;
-   switch(value){
-   PROCESS_VAL(M2Q::enqueue);
+   switch (value) {
+      PROCESS_VAL(M2Q::enqueue);
    default: s = std::to_string(static_cast<int>(value));
    }
    return out << s;
 }
 
-std::ostream& operator<<(std::ostream& out, const W2Q value){
+std::ostream &operator<<(std::ostream &out, const W2Q value)
+{
    std::string s;
-   switch(value){
-   PROCESS_VAL(W2Q::dequeue);
+   switch (value) {
+      PROCESS_VAL(W2Q::dequeue);
    default: s = std::to_string(static_cast<int>(value));
    }
    return out << s;
 }
 
-std::ostream& operator<<(std::ostream& out, const Q2W value){
+std::ostream &operator<<(std::ostream &out, const Q2W value)
+{
    std::string s;
-   switch(value){
-   PROCESS_VAL(Q2W::dequeue_rejected);
-   PROCESS_VAL(Q2W::dequeue_accepted);
+   switch (value) {
+      PROCESS_VAL(Q2W::dequeue_rejected);
+      PROCESS_VAL(Q2W::dequeue_accepted);
    default: s = std::to_string(static_cast<int>(value));
    }
    return out << s;
 }
 
-std::ostream& operator<<(std::ostream& out, const X2X value){
+std::ostream &operator<<(std::ostream &out, const X2X value)
+{
    std::string s;
-   switch(value){
-   PROCESS_VAL(X2X::ping);
-   PROCESS_VAL(X2X::pong);
+   switch (value) {
+      PROCESS_VAL(X2X::ping);
+      PROCESS_VAL(X2X::pong);
    default: s = std::to_string(static_cast<int>(value));
    }
    return out << s;
@@ -451,10 +504,13 @@ std::ostream& operator<<(std::ostream& out, const X2X value){
 
 #undef PROCESS_VAL
 
+/// Function called from send and receive template functions in debug builds
+/// used to monitor the messages that are going to be sent or are received.
+/// By defining this in the implementation file, compilation is a lot faster
+/// during debugging of Messenger or communication protocols.
 void Messenger::debug_print(std::string /*s*/)
 {
-//   printf("%s\n", s.c_str());
-//   std::cerr << s << std::endl;
+   // print 's' when debugging
 }
 
 } // namespace MultiProcess
