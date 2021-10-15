@@ -30,6 +30,6 @@ set(cppzmq_FOUND TRUE CACHE BOOL "" FORCE)
 set(cppzmq_INCLUDE_DIR ${CMAKE_BINARY_DIR}/include CACHE INTERNAL "" FORCE)
 set(cppzmq_INCLUDE_DIRS ${cppzmq_INCLUDE_DIR} CACHE INTERNAL "" FORCE)
 
-add_library(cppzmq INTERFACE)
+add_library(cppzmq INTERFACE IMPORTED GLOBAL)
 target_include_directories(cppzmq INTERFACE $<BUILD_INTERFACE:${cppzmq_INCLUDE_DIR}>)
 add_dependencies(cppzmq BUILTIN_cppzmq builtin_cppzmq_incl)

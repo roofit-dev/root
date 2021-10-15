@@ -32,7 +32,7 @@ set(ZeroMQ_FOUND TRUE CACHE BOOL "" FORCE)
 set(ZeroMQ_INCLUDE_DIR  ${ZeroMQ_PREFIX}/include CACHE INTERNAL "" FORCE)
 set(ZeroMQ_INCLUDE_DIRS ${ZeroMQ_PREFIX}/include CACHE INTERNAL "" FORCE)
 
-add_library(ZeroMQ INTERFACE)
+add_library(ZeroMQ INTERFACE IMPORTED GLOBAL)
 target_include_directories(ZeroMQ INTERFACE $<BUILD_INTERFACE:${ZeroMQ_INCLUDE_DIR}>)
 target_link_libraries(ZeroMQ INTERFACE $<BUILD_INTERFACE:${ZeroMQ_LIBRARIES}>)
 add_dependencies(ZeroMQ BUILTIN_ZeroMQ)
