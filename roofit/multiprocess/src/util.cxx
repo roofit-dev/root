@@ -91,11 +91,11 @@ zmq_ppoll_error_response handle_zmq_ppoll_error(ZMQ::ppoll_error_t &e)
 
 // returns a tuple containing first the poll result and second a boolean flag that tells the caller whether it should
 // abort the enclosing loop
-std::tuple<std::vector<std::pair<size_t, int>>, bool>
+std::tuple<std::vector<std::pair<size_t, zmq::event_flags>>, bool>
 careful_ppoll(ZeroMQPoller &poller, const sigset_t &ppoll_sigmask, std::size_t max_tries)
 {
    std::size_t tries = 0;
-   std::vector<std::pair<size_t, int>> poll_result;
+   std::vector<std::pair<size_t, zmq::event_flags>> poll_result;
    bool abort = true;
    bool carry_on = true;
    while (carry_on && (tries++ < max_tries)) {

@@ -25,7 +25,7 @@ namespace MultiProcess {
 void set_socket_immediate(ZmqLingeringSocketPtr<> &socket)
 {
    int optval = 1;
-   socket->setsockopt(ZMQ_IMMEDIATE, &optval, sizeof(optval));
+   socket->set(zmq::sockopt::immediate, optval);
 }
 
 /** \class Messenger
@@ -71,44 +71,44 @@ Messenger::Messenger(const ProcessManager &process_manager)
    // and pollers where necessary
    try {
       if (process_manager.is_master()) {
-         mq_push_.reset(zmqSvc().socket_ptr(zmq::PUSH));
+         mq_push_.reset(zmqSvc().socket_ptr(zmq::socket_type::push));
          auto rc = zmq_setsockopt(*mq_push_, ZMQ_SNDHWM, &hwm, sizeof hwm);
          assert(rc == 0);
          mq_push_->bind("ipc:///tmp/roofitMP_from_master_to_queue");
 
-         mq_push_poller_.register_socket(*mq_push_, zmq::POLLOUT);
+         mq_push_poller_.register_socket(*mq_push_, zmq::event_flags::pollout);
 
-         mq_pull_.reset(zmqSvc().socket_ptr(zmq::PULL));
+         mq_pull_.reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
          rc = zmq_setsockopt(*mq_pull_, ZMQ_RCVHWM, &hwm, sizeof hwm);
          assert(rc == 0);
          mq_pull_->bind("ipc:///tmp/roofitMP_from_queue_to_master");
 
-         mq_pull_poller_.register_socket(*mq_pull_, zmq::POLLIN);
+         mq_pull_poller_.register_socket(*mq_pull_, zmq::event_flags::pollin);
 
-         mw_pub_.reset(zmqSvc().socket_ptr(zmq::PUB));
+         mw_pub_.reset(zmqSvc().socket_ptr(zmq::socket_type::pub));
          rc = zmq_setsockopt(*mw_pub_, ZMQ_SNDHWM, &hwm, sizeof hwm);
          assert(rc == 0);
          mw_pub_->bind("ipc:///tmp/roofitMP_from_master_to_workers");
 
-         wm_pull_.reset(zmqSvc().socket_ptr(zmq::PULL));
+         wm_pull_.reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
          rc = zmq_setsockopt(*wm_pull_, ZMQ_RCVHWM, &hwm, sizeof hwm);
          assert(rc == 0);
          wm_pull_->bind("ipc:///tmp/roofitMP_from_workers_to_master");
-         wm_pull_poller_.register_socket(*wm_pull_, zmq::POLLIN);
+         wm_pull_poller_.register_socket(*wm_pull_, zmq::event_flags::pollin);
 
          close_MQ_on_destruct_ = true;
 
          // make sure all subscribers are connected
-         ZmqLingeringSocketPtr<> subscriber_ping_socket{zmqSvc().socket_ptr(zmq::REP)};
+         ZmqLingeringSocketPtr<> subscriber_ping_socket{zmqSvc().socket_ptr(zmq::socket_type::rep)};
          subscriber_ping_socket->bind("ipc:///tmp/roofitMP_subscriber_ping_socket");
          ZeroMQPoller subscriber_ping_poller;
-         subscriber_ping_poller.register_socket(*subscriber_ping_socket, zmq::POLLIN);
+         subscriber_ping_poller.register_socket(*subscriber_ping_socket, zmq::event_flags::pollin);
          std::size_t N_subscribers_confirmed = 0;
          while (N_subscribers_confirmed < process_manager.N_workers()) {
             zmqSvc().send(*mw_pub_, false);
             auto poll_results = subscriber_ping_poller.poll(0);
             for (std::size_t ix = 0; ix < poll_results.size(); ++ix) {
-               auto request = zmqSvc().receive<std::string>(*subscriber_ping_socket, zmq::DONTWAIT);
+               auto request = zmqSvc().receive<std::string>(*subscriber_ping_socket, zmq::recv_flags::dontwait);
                assert(request == "present");
                zmqSvc().send(*subscriber_ping_socket, "roger");
                ++N_subscribers_confirmed;
@@ -128,34 +128,34 @@ Messenger::Messenger(const ProcessManager &process_manager)
          for (std::size_t ix = 0; ix < process_manager.N_workers(); ++ix) {
             std::stringstream push_name, pull_name;
             // push
-            qw_push_[ix].reset(zmqSvc().socket_ptr(zmq::PUSH));
+            qw_push_[ix].reset(zmqSvc().socket_ptr(zmq::socket_type::push));
             push_name << "ipc:///tmp/roofitMP_from_queue_to_worker_" << ix;
             qw_push_[ix]->bind(push_name.str());
 
-            qw_push_poller_[ix].register_socket(*qw_push_[ix], zmq::POLLOUT);
+            qw_push_poller_[ix].register_socket(*qw_push_[ix], zmq::event_flags::pollout);
 
             // pull
-            qw_pull_[ix].reset(zmqSvc().socket_ptr(zmq::PULL));
+            qw_pull_[ix].reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
             pull_name << "ipc:///tmp/roofitMP_from_worker_" << ix << "_to_queue";
             qw_pull_[ix]->bind(pull_name.str());
 
-            qw_pull_poller_[ix].register_socket(*qw_pull_[ix], zmq::POLLIN);
+            qw_pull_poller_[ix].register_socket(*qw_pull_[ix], zmq::event_flags::pollin);
          }
 
          // then the master-queue sockets
-         mq_push_.reset(zmqSvc().socket_ptr(zmq::PUSH));
+         mq_push_.reset(zmqSvc().socket_ptr(zmq::socket_type::push));
          auto rc = zmq_setsockopt(*mq_push_, ZMQ_SNDHWM, &hwm, sizeof hwm);
          assert(rc == 0);
          mq_push_->connect("ipc:///tmp/roofitMP_from_queue_to_master");
 
-         mq_push_poller_.register_socket(*mq_push_, zmq::POLLOUT);
+         mq_push_poller_.register_socket(*mq_push_, zmq::event_flags::pollout);
 
-         mq_pull_.reset(zmqSvc().socket_ptr(zmq::PULL));
+         mq_pull_.reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
          rc = zmq_setsockopt(*mq_pull_, ZMQ_RCVHWM, &hwm, sizeof hwm);
          assert(rc == 0);
          mq_pull_->connect("ipc:///tmp/roofitMP_from_master_to_queue");
 
-         mq_pull_poller_.register_socket(*mq_pull_, zmq::POLLIN);
+         mq_pull_poller_.register_socket(*mq_pull_, zmq::event_flags::pollin);
 
          close_MQ_on_destruct_ = true;
          close_QW_container_on_destruct_ = true;
@@ -166,34 +166,34 @@ Messenger::Messenger(const ProcessManager &process_manager)
 
          std::stringstream push_name, pull_name;
          // push
-         this_worker_qw_push_.reset(zmqSvc().socket_ptr(zmq::PUSH));
+         this_worker_qw_push_.reset(zmqSvc().socket_ptr(zmq::socket_type::push));
          push_name << "ipc:///tmp/roofitMP_from_worker_" << process_manager.worker_id() << "_to_queue";
          this_worker_qw_push_->connect(push_name.str());
 
-         qw_push_poller_[0].register_socket(*this_worker_qw_push_, zmq::POLLOUT);
+         qw_push_poller_[0].register_socket(*this_worker_qw_push_, zmq::event_flags::pollout);
 
          // pull
-         this_worker_qw_pull_.reset(zmqSvc().socket_ptr(zmq::PULL));
+         this_worker_qw_pull_.reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
          pull_name << "ipc:///tmp/roofitMP_from_queue_to_worker_" << process_manager.worker_id();
          this_worker_qw_pull_->connect(pull_name.str());
 
-         qw_pull_poller_[0].register_socket(*this_worker_qw_pull_, zmq::POLLIN);
+         qw_pull_poller_[0].register_socket(*this_worker_qw_pull_, zmq::event_flags::pollin);
 
-         mw_sub_.reset(zmqSvc().socket_ptr(zmq::SUB));
+         mw_sub_.reset(zmqSvc().socket_ptr(zmq::socket_type::sub));
          auto rc = zmq_setsockopt(*mw_sub_, ZMQ_RCVHWM, &hwm, sizeof hwm);
          assert(rc == 0);
          rc = zmq_setsockopt(*mw_sub_, ZMQ_SUBSCRIBE, "", 0);
          assert(rc == 0);
          mw_sub_->connect("ipc:///tmp/roofitMP_from_master_to_workers");
-         mw_sub_poller_.register_socket(*mw_sub_, zmq::POLLIN);
+         mw_sub_poller_.register_socket(*mw_sub_, zmq::event_flags::pollin);
 
-         wm_push_.reset(zmqSvc().socket_ptr(zmq::PUSH));
+         wm_push_.reset(zmqSvc().socket_ptr(zmq::socket_type::push));
          rc = zmq_setsockopt(*wm_push_, ZMQ_SNDHWM, &hwm, sizeof hwm);
          assert(rc == 0);
          wm_push_->connect("ipc:///tmp/roofitMP_from_workers_to_master");
 
          // check publisher connection and then wait until all subscribers are connected
-         ZmqLingeringSocketPtr<> subscriber_ping_socket{zmqSvc().socket_ptr(zmq::REQ)};
+         ZmqLingeringSocketPtr<> subscriber_ping_socket{zmqSvc().socket_ptr(zmq::socket_type::req)};
          subscriber_ping_socket->connect("ipc:///tmp/roofitMP_subscriber_ping_socket");
          auto all_connected = zmqSvc().receive<bool>(*mw_sub_);
          zmqSvc().send(*subscriber_ping_socket, "present");
@@ -363,7 +363,7 @@ void Messenger::test_connections(const ProcessManager &process_manager)
 
       while (!process_manager.sigterm_received() && (poller.size() > 0)) {
          // poll: wait until status change (-1: infinite timeout)
-         std::vector<std::pair<size_t, int>> poll_result;
+         std::vector<std::pair<size_t, zmq::event_flags>> poll_result;
          bool abort;
          std::tie(poll_result, abort) = careful_ppoll(poller, ppoll_sigmask);
          if (abort)
@@ -411,9 +411,9 @@ void Messenger::test_connections(const ProcessManager &process_manager)
 std::pair<ZeroMQPoller, std::size_t> Messenger::create_queue_poller()
 {
    ZeroMQPoller poller;
-   std::size_t mq_index = poller.register_socket(*mq_pull_, zmq::POLLIN);
+   std::size_t mq_index = poller.register_socket(*mq_pull_, zmq::event_flags::pollin);
    for (auto &s : qw_pull_) {
-      poller.register_socket(*s, zmq::POLLIN);
+      poller.register_socket(*s, zmq::event_flags::pollin);
    }
    return {std::move(poller), mq_index};
 }
@@ -422,8 +422,8 @@ std::pair<ZeroMQPoller, std::size_t> Messenger::create_queue_poller()
 std::pair<ZeroMQPoller, std::size_t> Messenger::create_worker_poller()
 {
    ZeroMQPoller poller;
-   poller.register_socket(*this_worker_qw_pull_, zmq::POLLIN);
-   std::size_t mw_sub_index = poller.register_socket(*mw_sub_, zmq::POLLIN);
+   poller.register_socket(*this_worker_qw_pull_, zmq::event_flags::pollin);
+   std::size_t mw_sub_index = poller.register_socket(*mw_sub_, zmq::event_flags::pollin);
    return {std::move(poller), mw_sub_index};
 }
 
@@ -440,14 +440,9 @@ void Messenger::send_from_queue_to_master() {}
 void Messenger::send_from_master_to_queue() {}
 
 /// Set the flag used in all send functions; 0, ZMQ_DONTWAIT, ZMQ_SNDMORE or bitwise combination
-void Messenger::set_send_flag(int flag)
+void Messenger::set_send_flag(zmq::send_flags flag)
 {
-   if (flag == 0 || flag == ZMQ_DONTWAIT || flag == ZMQ_SNDMORE || flag == (ZMQ_DONTWAIT | ZMQ_SNDMORE)) {
-      send_flag_ = flag;
-   } else {
-      throw std::runtime_error(
-         "in Messenger::set_send_flag: trying to set illegal flag, see zmq_send API for allowed flags");
-   }
+   send_flag_ = flag;
 }
 
 // -- MASTER - WORKER COMMUNICATION --

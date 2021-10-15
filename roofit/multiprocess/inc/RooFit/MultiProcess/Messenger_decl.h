@@ -102,7 +102,7 @@ public:
 
    sigset_t ppoll_sigmask;
 
-   void set_send_flag(int flag);
+   void set_send_flag(zmq::send_flags flag);
 
 private:
    void debug_print(std::string s);
@@ -136,7 +136,7 @@ private:
    bool close_this_QW_on_destruct_ = false;
    bool close_QW_container_on_destruct_ = false;
 
-   int send_flag_ = 0;
+   zmq::send_flags send_flag_ = zmq::send_flags::none;
 };
 
 // Messages from master to queue

@@ -54,7 +54,7 @@ JobManager *JobManager::instance()
       instance_.reset(new JobManager(default_N_workers)); // can't use make_unique, because ctor is private
       instance_->messenger().test_connections(instance_->process_manager());
       // set send to non blocking on all processes after checking the connections are working:
-      instance_->messenger().set_send_flag(ZMQ_DONTWAIT);
+      instance_->messenger().set_send_flag(zmq::send_flags::dontwait);
    }
    return instance_.get();
 }

@@ -36,7 +36,6 @@ public:
 private:
    std::queue<JobTask> queue_;
    std::size_t N_tasks_ = 0; // total number of received tasks
-   std::size_t N_tasks_completed_ = 0;
    std::size_t N_tasks_at_workers_ = 0;
 };
 

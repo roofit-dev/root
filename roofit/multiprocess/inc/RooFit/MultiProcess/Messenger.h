@@ -40,7 +40,7 @@ template <typename value_t>
 value_t Messenger::receive_from_worker_on_queue(std::size_t this_worker_id)
 {
    qw_pull_poller_[this_worker_id].ppoll(-1, &ppoll_sigmask);
-   auto value = zmqSvc().receive<value_t>(*qw_pull_[this_worker_id], ZMQ_DONTWAIT);
+   auto value = zmqSvc().receive<value_t>(*qw_pull_[this_worker_id], zmq::recv_flags::dontwait);
 
 #ifndef NDEBUG
    std::stringstream ss;
@@ -69,7 +69,7 @@ template <typename value_t>
 value_t Messenger::receive_from_queue_on_worker()
 {
    qw_pull_poller_[0].ppoll(-1, &ppoll_sigmask);
-   auto value = zmqSvc().receive<value_t>(*this_worker_qw_pull_, ZMQ_DONTWAIT);
+   auto value = zmqSvc().receive<value_t>(*this_worker_qw_pull_, zmq::recv_flags::dontwait);
 
 #ifndef NDEBUG
    std::stringstream ss;
@@ -100,7 +100,7 @@ template <typename value_t>
 value_t Messenger::receive_from_queue_on_master()
 {
    mq_pull_poller_.ppoll(-1, &ppoll_sigmask);
-   auto value = zmqSvc().receive<value_t>(*mq_pull_, ZMQ_DONTWAIT);
+   auto value = zmqSvc().receive<value_t>(*mq_pull_, zmq::recv_flags::dontwait);
 
 #ifndef NDEBUG
    std::stringstream ss;
@@ -129,7 +129,7 @@ template <typename value_t>
 value_t Messenger::receive_from_master_on_queue()
 {
    mq_pull_poller_.ppoll(-1, &ppoll_sigmask);
-   auto value = zmqSvc().receive<value_t>(*mq_pull_, ZMQ_DONTWAIT);
+   auto value = zmqSvc().receive<value_t>(*mq_pull_, zmq::recv_flags::dontwait);
 
 #ifndef NDEBUG
    std::stringstream ss;
@@ -160,7 +160,7 @@ template <typename value_t>
 value_t Messenger::receive_from_master_on_worker()
 {
    mw_sub_poller_.ppoll(-1, &ppoll_sigmask);
-   auto value = zmqSvc().receive<value_t>(*mw_sub_, ZMQ_DONTWAIT);
+   auto value = zmqSvc().receive<value_t>(*mw_sub_, zmq::recv_flags::dontwait);
 
 #ifndef NDEBUG
    std::stringstream ss;
@@ -189,7 +189,7 @@ template <typename value_t>
 value_t Messenger::receive_from_worker_on_master()
 {
    wm_pull_poller_.ppoll(-1, &ppoll_sigmask);
-   auto value = zmqSvc().receive<value_t>(*wm_pull_, ZMQ_DONTWAIT);
+   auto value = zmqSvc().receive<value_t>(*wm_pull_, zmq::recv_flags::dontwait);
 
 #ifndef NDEBUG
    std::stringstream ss;
