@@ -17,7 +17,7 @@
  * encode all kinds of data types in ZeroMQ message objects.
  */
 
-/*
+/**
  * \brief Get singleton object of this class
  */
 ZeroMQSvc &zmqSvc()
@@ -34,7 +34,7 @@ ZeroMQSvc::Encoding ZeroMQSvc::encoding() const
    return m_enc;
 }
 
-/*
+/**
  * \brief Set encoding mode
  *
  * \param[in] e Encoding mode; either Text or Binary.
@@ -44,7 +44,7 @@ void ZeroMQSvc::setEncoding(const ZeroMQSvc::Encoding &e)
    m_enc = e;
 }
 
-/*
+/**
  * \brief Get context
  *
  * Creates a context if it has not yet been created and returns a reference to it.
@@ -64,7 +64,7 @@ zmq::context_t &ZeroMQSvc::context() const
    return *m_context;
 }
 
-/*
+/**
  * \brief Create and return a new socket
  *
  * \param[in] type Type of the socket. See http://api.zeromq.org/master:zmq-socket for possible values.
@@ -82,7 +82,7 @@ zmq::socket_t ZeroMQSvc::socket(zmq::socket_type type) const
    }
 }
 
-/*
+/**
  * \brief Create and return a new socket by pointer
  *
  * \param[in] type Type of the socket. See http://api.zeromq.org/master:zmq-socket for possible values.
@@ -108,7 +108,7 @@ void ZeroMQSvc::close_context() const
    }
 }
 
-/*
+/**
  * \fn zmq::message_t ZeroMQSvc::encode(const char *item) const
  * \brief Encode string as a ZeroMQ message object
  *
@@ -120,7 +120,7 @@ zmq::message_t ZeroMQSvc::encode(const char *item) const
    return encode(*item, fun);
 }
 
-/*
+/**
  * \overload zmq::message_t ZeroMQSvc::encode(const std::string &item) const
  */
 zmq::message_t ZeroMQSvc::encode(const std::string &item) const
@@ -128,7 +128,7 @@ zmq::message_t ZeroMQSvc::encode(const std::string &item) const
    return encode(item.c_str());
 }
 
-/*
+/**
  * \fn bool ZeroMQSvc::send(zmq::socket_t &socket, const char *item, zmq::send_flags flags) const
  * \brief Send message over a socket
  *
@@ -142,7 +142,7 @@ zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, const char *item, zmq:
    return retry_send(socket, 2, encode(item), flags);
 }
 
-/*
+/**
  * \overload zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &msg, zmq::send_flags flags) const
  */
 zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &msg, zmq::send_flags flags) const
@@ -150,7 +150,7 @@ zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &msg, z
    return retry_send(socket, 2, std::ref(msg), flags);
 }
 
-/*
+/**
  * \overload zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &&msg, zmq::send_flags flags) const
  */
 zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &&msg, zmq::send_flags flags) const

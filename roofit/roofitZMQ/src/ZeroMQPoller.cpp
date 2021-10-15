@@ -14,7 +14,7 @@
  * digestible vector of events.
  */
 
-/*
+/**
  * \brief Poll the sockets
  *
  * \param[in] timeo Timeout in milliseconds. 0 means return immediately. -1 means wait for an event indefinitely.
@@ -63,7 +63,7 @@ std::vector<std::pair<size_t, zmq::event_flags>> ZeroMQPoller::poll(int timeo)
    return r;
 }
 
-/*
+/**
  * \brief Poll the sockets with ppoll
  *
  * By polling with ppoll instead of poll, one can pass along a signal mask to
@@ -112,7 +112,7 @@ size_t ZeroMQPoller::size() const
    return m_items.size();
 }
 
-/*
+/**
  * \brief Register socket to poll
  *
  * Adds the socket to the internal list of sockets to poll.
@@ -141,7 +141,7 @@ size_t ZeroMQPoller::register_socket(zmq::socket_t &socket, zmq::event_flags typ
    return index;
 }
 
-/*
+/**
  * \brief Register socket to poll
  *
  * Adds the socket to the internal list of sockets to poll.
@@ -169,7 +169,7 @@ size_t ZeroMQPoller::register_socket(int fd, zmq::event_flags type)
    return index;
 }
 
-/*
+/**
  * \brief Unregister socket from poller
  *
  * Removes the socket from the internal list of sockets to poll.
@@ -202,7 +202,7 @@ size_t ZeroMQPoller::unregister_socket(zmq::socket_t &socket)
    return index;
 }
 
-/*
+/**
  * \brief Unregister socket from poller
  *
  * Removes the socket from the internal list of sockets to poll.
