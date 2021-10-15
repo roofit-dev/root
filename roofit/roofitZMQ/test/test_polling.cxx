@@ -33,14 +33,14 @@ TEST(Polling, doublePoll)
       sigprocmask(SIG_BLOCK, &sigmask, &sigmask_old);
 
       ZmqLingeringSocketPtr<> pusher, puller;
-      pusher.reset(zmqSvc().socket_ptr(zmq::PUSH));
+      pusher.reset(zmqSvc().socket_ptr(zmq::socket_type::push));
       pusher->bind("ipc:///tmp/ZMQ_test_fork_polling_M2C.ipc");
-      puller.reset(zmqSvc().socket_ptr(zmq::PULL));
+      puller.reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
       puller->bind("ipc:///tmp/ZMQ_test_fork_polling_C2M.ipc");
 
       ZeroMQPoller poller1, poller2;
-      poller1.register_socket(*puller, zmq::POLLIN);
-      poller2.register_socket(*puller, zmq::POLLIN);
+      poller1.register_socket(*puller, zmq::event_flags::pollin);
+      poller2.register_socket(*puller, zmq::event_flags::pollin);
 
       // start test
       zmqSvc().send(*pusher, std::string("breaker breaker"));
@@ -51,7 +51,7 @@ TEST(Polling, doublePoll)
       EXPECT_EQ(result1a.size(), result1b.size());
       EXPECT_EQ(result1a.size(), result2.size());
 
-      auto receipt = zmqSvc().receive<int>(*puller, ZMQ_DONTWAIT);
+      auto receipt = zmqSvc().receive<int>(*puller, zmq::recv_flags::dontwait);
 
       EXPECT_EQ(receipt, 1212);
 
@@ -101,14 +101,14 @@ TEST(Polling, doublePoll)
       }
 
       ZmqLingeringSocketPtr<> puller, pusher;
-      puller.reset(zmqSvc().socket_ptr(zmq::PULL));
+      puller.reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
       puller->connect("ipc:///tmp/ZMQ_test_fork_polling_M2C.ipc");
-      pusher.reset(zmqSvc().socket_ptr(zmq::PUSH));
+      pusher.reset(zmqSvc().socket_ptr(zmq::socket_type::push));
       pusher->connect("ipc:///tmp/ZMQ_test_fork_polling_C2M.ipc");
 
       ZeroMQPoller poller1, poller2;
-      poller1.register_socket(*puller, zmq::POLLIN);
-      poller2.register_socket(*puller, zmq::POLLIN);
+      poller1.register_socket(*puller, zmq::event_flags::pollin);
+      poller2.register_socket(*puller, zmq::event_flags::pollin);
 
       // start test
       auto result1a = poller1.poll(-1);
@@ -117,7 +117,7 @@ TEST(Polling, doublePoll)
       EXPECT_EQ(result1a.size(), result1b.size());
       EXPECT_EQ(result1a.size(), result2.size());
 
-      auto receipt = zmqSvc().receive<std::string>(*puller, ZMQ_DONTWAIT);
+      auto receipt = zmqSvc().receive<std::string>(*puller, zmq::recv_flags::dontwait);
       if (receipt == "breaker breaker") {
          zmqSvc().send(*pusher, 1212);
       }

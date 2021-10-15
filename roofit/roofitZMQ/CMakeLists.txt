@@ -19,15 +19,9 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitZMQ
         -writeEmptyRootPCM
     DEPENDENCIES
         Core # TVersionCheck, RegisterModule, these are always called from G__RooFitZMQ.cxx.o
-    LIBRARIES
-        ZeroMQ
-        cppzmq
     )
 
-target_link_libraries(RooFitZMQ PRIVATE ZeroMQ)
-target_include_directories(RooFitZMQ PUBLIC $<BUILD_INTERFACE:${ZeroMQ_INCLUDE_DIR}>)
-target_link_libraries(RooFitZMQ PRIVATE cppzmq)
-target_include_directories(RooFitZMQ PRIVATE $<BUILD_INTERFACE:${cppzmq_INCLUDE_DIR}>)
+target_link_libraries(RooFitZMQ PUBLIC ZeroMQ cppzmq)
 if (NOT MSVC AND NOT APPLE)
     target_link_options(RooFitZMQ PRIVATE "LINKER:-Bsymbolic")
 endif()

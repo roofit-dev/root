@@ -15,14 +15,14 @@ protected:
       } while (child_pid == -1); // retry if fork fails
 
       if (child_pid > 0) { // parent
-         pusher.reset(zmqSvc().socket_ptr(zmq::PUSH));
+         pusher.reset(zmqSvc().socket_ptr(zmq::socket_type::push));
          if (set_hwm) {
             auto rc = zmq_setsockopt(*pusher, ZMQ_SNDHWM, &hwm, sizeof hwm);
             assert(rc == 0);
          }
          pusher->bind("ipc:///tmp/ZMQ_test_fork_polling_P2C.ipc");
       } else { // child
-         puller.reset(zmqSvc().socket_ptr(zmq::PULL));
+         puller.reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
          if (set_hwm) {
             auto rc = zmq_setsockopt(*puller, ZMQ_RCVHWM, &hwm, sizeof hwm);
             assert(rc == 0);

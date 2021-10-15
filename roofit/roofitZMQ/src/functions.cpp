@@ -2,8 +2,10 @@
 
 #include "RooFit_ZMQ/functions.h"
 
+#include <cstring>
+
 namespace ZMQ {
-size_t stringLength(const char &cs)
+std::size_t stringLength(const char &cs)
 {
    return strlen(&cs);
 }

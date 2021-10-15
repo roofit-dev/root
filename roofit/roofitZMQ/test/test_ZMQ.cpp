@@ -82,7 +82,7 @@ void elaborate_bind(const ZmqLingeringSocketPtr<> &socket, std::string name)
 }
 
 class AllSocketTypes
-   : public ::testing::TestWithParam<std::tuple<int, std::pair<zmq::SocketTypes, zmq::SocketTypes>,
+   : public ::testing::TestWithParam<std::tuple<int, std::pair<zmq::socket_type, zmq::socket_type>,
                                                 std::pair<std::string, std::string> /* socket_names */>> {
 };
 
@@ -136,16 +136,16 @@ auto socket_name_options = ::testing::Values(std::make_pair(tcp_server, tcp_clie
 
 INSTANTIATE_TEST_SUITE_P(REQREP, AllSocketTypes,
                          ::testing::Combine(::testing::Range(0, 10), // repeat to probe connection stability
-                                            ::testing::Values(std::make_pair(zmq::REQ, zmq::REP)),
+                                            ::testing::Values(std::make_pair(zmq::socket_type::req, zmq::socket_type::rep)),
                                             socket_name_options));
 INSTANTIATE_TEST_SUITE_P(PAIRPAIR, AllSocketTypes,
                          ::testing::Combine(::testing::Range(0, 10), // repeat to probe connection stability
-                                            ::testing::Values(std::make_pair(zmq::PAIR, zmq::PAIR)),
+                                            ::testing::Values(std::make_pair(zmq::socket_type::pair, zmq::socket_type::pair)),
                                             socket_name_options));
 
 class AsyncSocketTypes
    : public ::testing::TestWithParam<
-        std::tuple<int /* repeat_nr */, std::pair<zmq::SocketTypes, zmq::SocketTypes>,
+        std::tuple<int /* repeat_nr */, std::pair<zmq::socket_type, zmq::socket_type>,
                    std::pair<std::string, std::string> /* socket_names */, bool /* expect_throw */>> {
 };
 
@@ -290,13 +290,13 @@ TEST_P(AsyncSocketTypes, forkIgnoreSomeMessages)
 
 INSTANTIATE_TEST_SUITE_P(PAIRPAIR, AsyncSocketTypes,
                          ::testing::Combine(::testing::Range(0, 10), // repeat to probe connection stability
-                                            ::testing::Values(std::make_pair(zmq::PAIR, zmq::PAIR)),
+                                            ::testing::Values(std::make_pair(zmq::socket_type::pair, zmq::socket_type::pair)),
                                             socket_name_options,
                                             ::testing::Values(false) // don't expect throw
                                             ));
 
 INSTANTIATE_TEST_SUITE_P(REQREP, AsyncSocketTypes,
                          ::testing::Combine(::testing::Values(0), // no repeats, we only care about the throw
-                                            ::testing::Values(std::make_pair(zmq::REQ, zmq::REP)), socket_name_options,
+                                            ::testing::Values(std::make_pair(zmq::socket_type::req, zmq::socket_type::rep)), socket_name_options,
                                             ::testing::Values(true) // expect throw
                                             ));

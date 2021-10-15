@@ -70,7 +70,7 @@ zmq::context_t &ZeroMQSvc::context() const
  * \param[in] type Type of the socket. See http://api.zeromq.org/master:zmq-socket for possible values.
  * \return The socket object.
  */
-zmq::socket_t ZeroMQSvc::socket(int type) const
+zmq::socket_t ZeroMQSvc::socket(zmq::socket_type type) const
 {
    try {
       // the actual work this function should do, all the rest is error handling:
@@ -88,7 +88,7 @@ zmq::socket_t ZeroMQSvc::socket(int type) const
  * \param[in] type Type of the socket. See http://api.zeromq.org/master:zmq-socket for possible values.
  * \return A raw pointer to the socket object. Note: the caller must take ownership!
  */
-zmq::socket_t *ZeroMQSvc::socket_ptr(int type) const
+zmq::socket_t *ZeroMQSvc::socket_ptr(zmq::socket_type type) const
 {
    try {
       // the actual work this function should do, all the rest is error handling:
@@ -129,31 +129,31 @@ zmq::message_t ZeroMQSvc::encode(const std::string &item) const
 }
 
 /*
- * \fn bool ZeroMQSvc::send(zmq::socket_t &socket, const char *item, int flags) const
+ * \fn bool ZeroMQSvc::send(zmq::socket_t &socket, const char *item, zmq::send_flags flags) const
  * \brief Send message over a socket
  *
  * \param[in] socket Socket.
  * \param[in] item Message to send over.
- * \param[in] flags Flags to send. See http://api.zeromq.org/master:zmq-send for possible flags.
- * \return True if successful, false if EAGAIN was received, which probably means you should try again.
+ * \param[in] flags Flags to send. See http://api.zeromq.org/master:zmq-send for possible flags and the cppzmq API for the type-safe equivalents in the zmq::send_flags enum class.
+ * \return An optional of type zmq::send_result_t that contains the number of bytes sent if successful, and is empty if EAGAIN was received, which probably means you should try again.
  */
-bool ZeroMQSvc::send(zmq::socket_t &socket, const char *item, int flags) const
+zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, const char *item, zmq::send_flags flags) const
 {
    return retry_send(socket, 2, encode(item), flags);
 }
 
 /*
- * \overload bool ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &msg, int flags) const
+ * \overload zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &msg, zmq::send_flags flags) const
  */
-bool ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &msg, int flags) const
+zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &msg, zmq::send_flags flags) const
 {
    return retry_send(socket, 2, std::ref(msg), flags);
 }
 
 /*
- * \overload bool ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &&msg, int flags) const
+ * \overload zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &&msg, zmq::send_flags flags) const
  */
-bool ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &&msg, int flags) const
+zmq::send_result_t ZeroMQSvc::send(zmq::socket_t &socket, zmq::message_t &&msg, zmq::send_flags flags) const
 {
    return retry_send(socket, 2, std::move(msg), flags);
 }

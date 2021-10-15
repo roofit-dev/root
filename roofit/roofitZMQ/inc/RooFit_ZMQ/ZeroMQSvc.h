@@ -39,15 +39,13 @@ template <int PERIOD = 0>
 struct ZmqLingeringSocketPtrDeleter {
    void operator()(zmq::socket_t *socket)
    {
-      auto period = PERIOD;
-
       int tries = 0;
       int max_tries = 3;
       while (true) {
          try {
             // the actual work this function should do, plus the delete socket below:
             if (socket)
-               socket->setsockopt(ZMQ_LINGER, &period, sizeof(period));
+               socket->set(zmq::sockopt::linger, PERIOD);
             break;
          } catch (zmq::error_t &e) {
             if (++tries == max_tries || e.num() == EINVAL || e.num() == ETERM ||
@@ -119,8 +117,8 @@ public:
    Encoding encoding() const;
    void setEncoding(const Encoding &e);
    zmq::context_t &context() const;
-   zmq::socket_t socket(int type) const;
-   zmq::socket_t *socket_ptr(int type) const;
+   zmq::socket_t socket(zmq::socket_type type) const;
+   zmq::socket_t *socket_ptr(zmq::socket_type type) const;
    void close_context() const;
 
    /// decode message with ZMQ, POD version
@@ -145,12 +143,12 @@ public:
    /// receive message with ZMQ, general version
    // FIXME: what to do with flags=0.... more is a pointer, that might prevent conversion
    template <class T, typename std::enable_if<!(std::is_same<zmq::message_t, T>::value), T>::type * = nullptr>
-   T receive(zmq::socket_t &socket, int flags = 0, bool *more = nullptr) const
+   T receive(zmq::socket_t &socket, zmq::recv_flags flags = zmq::recv_flags::none, bool *more = nullptr) const
    {
       // receive message
       zmq::message_t msg;
-      auto nbytes = retry_recv(socket, 2, &msg, flags);
-      if (0 == nbytes) {
+      auto recv_result = retry_recv(socket, 2, std::ref(msg), flags);
+      if (!recv_result) {
          throw ZMQ::TimeOutException{};
       }
       if (more)
@@ -162,12 +160,12 @@ public:
 
    /// receive message with ZMQ
    template <class T, typename std::enable_if<std::is_same<zmq::message_t, T>::value, T>::type * = nullptr>
-   T receive(zmq::socket_t &socket, int flags = 0, bool *more = nullptr) const
+   T receive(zmq::socket_t &socket, zmq::recv_flags flags = zmq::recv_flags::none, bool *more = nullptr) const
    {
       // receive message
       zmq::message_t msg;
-      auto nbytes = retry_recv(socket, 2, &msg, flags);
-      if (0 == nbytes) {
+      auto recv_result = retry_recv(socket, 2, std::ref(msg), flags);
+      if (!recv_result) {
          throw ZMQ::TimeOutException{};
       }
       if (more)
@@ -191,14 +189,14 @@ public:
 
    /// Send message with ZMQ
    template <class T, typename std::enable_if<!std::is_same<T, zmq::message_t>::value, T>::type * = nullptr>
-   bool send(zmq::socket_t &socket, const T &item, int flags = 0) const
+   zmq::send_result_t send(zmq::socket_t &socket, const T &item, zmq::send_flags flags = zmq::send_flags::none) const
    {
       return retry_send(socket, 1, encode(item), flags);
    }
 
-   bool send(zmq::socket_t &socket, const char *item, int flags = 0) const;
-   bool send(zmq::socket_t &socket, zmq::message_t &msg, int flags = 0) const;
-   bool send(zmq::socket_t &socket, zmq::message_t &&msg, int flags = 0) const;
+   zmq::send_result_t send(zmq::socket_t &socket, const char *item, zmq::send_flags flags = zmq::send_flags::none) const;
+   zmq::send_result_t send(zmq::socket_t &socket, zmq::message_t &msg, zmq::send_flags flags = zmq::send_flags::none) const;
+   zmq::send_result_t send(zmq::socket_t &socket, zmq::message_t &&msg, zmq::send_flags flags = zmq::send_flags::none) const;
 
 private:
    Encoding m_enc = Text;

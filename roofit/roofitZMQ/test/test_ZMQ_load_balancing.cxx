@@ -27,13 +27,13 @@ protected:
       }
 
       if (child_pid > 0) { // parent
-         pusher.reset(zmqSvc().socket_ptr(zmq::PUSH));
+         pusher.reset(zmqSvc().socket_ptr(zmq::socket_type::push));
          pusher->bind("ipc:///tmp/ZMQ_test_push_pull_P2C.ipc");
       } else { // child
-         puller.reset(zmqSvc().socket_ptr(zmq::PULL));
+         puller.reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
          puller->connect("ipc:///tmp/ZMQ_test_push_pull_P2C.ipc");
 
-         poller.register_socket(*puller, zmq::POLLIN);
+         poller.register_socket(*puller, zmq::event_flags::pollin);
       }
    }
 
@@ -94,7 +94,7 @@ protected:
             printf("poller of child %d timed out after 2 seconds\n", child_id);
             break;
          }
-         auto value = zmqSvc().receive<int>(*puller, ZMQ_DONTWAIT);
+         auto value = zmqSvc().receive<int>(*puller, zmq::recv_flags::dontwait);
          usleep(200); // "do some work"
          printf("value on child %d: %d\n", child_id, value);
          if (value == 1) {
@@ -131,7 +131,7 @@ TEST_F(ZMQPushPullTest, demoHWM1LoadBalancing)
    if (child_pid > 0) {
       run_parent();
    } else {
-      puller->setsockopt(ZMQ_RCVHWM, 1);
+      puller->set(zmq::sockopt::rcvhwm, 1);
       run_child();
    }
 }

@@ -23,16 +23,16 @@
  *
  * \note This function can throw (from inside zmq::poll), so wrap in try-catch!
  */
-std::vector<std::pair<size_t, int>> ZeroMQPoller::poll(int timeo)
+std::vector<std::pair<size_t, zmq::event_flags>> ZeroMQPoller::poll(int timeo)
 {
-   std::vector<std::pair<size_t, int>> r;
+   std::vector<std::pair<size_t, zmq::event_flags>> r;
    if (m_items.empty()) {
       throw std::runtime_error("No sockets registered");
    }
    int n = 0;
    while (true) {
       try {
-         n = zmq::poll(&m_items[0], m_items.size(), timeo);
+         n = zmq::poll(m_items, std::chrono::milliseconds{timeo});
          if (n == 0)
             return r;
          break;
@@ -47,7 +47,7 @@ std::vector<std::pair<size_t, int>> ZeroMQPoller::poll(int timeo)
    for (size_t i = 0; i < m_items.size(); ++i) {
       void *socket = m_items[i].socket;
       size_t index = 0;
-      int flags = 0;
+      zmq::event_flags flags = zmq::event_flags::none;
       if (socket == nullptr) {
          // an fd was registered
          std::tie(index, flags) = m_fds[m_items[i].fd];
@@ -77,13 +77,13 @@ std::vector<std::pair<size_t, int>> ZeroMQPoller::poll(int timeo)
  *
  * \note This function can throw (from inside ZMQ::ppoll), so wrap in try-catch!
  */
-std::vector<std::pair<size_t, int>> ZeroMQPoller::ppoll(int timeo, const sigset_t *sigmask)
+std::vector<std::pair<size_t, zmq::event_flags>> ZeroMQPoller::ppoll(int timeo, const sigset_t *sigmask)
 {
    if (m_items.empty()) {
       throw std::runtime_error("No sockets registered");
    }
 
-   std::vector<std::pair<size_t, int>> r;
+   std::vector<std::pair<size_t, zmq::event_flags>> r;
 
    auto n = ZMQ::ppoll(m_items, timeo, sigmask);
    if (n == 0)
@@ -91,7 +91,7 @@ std::vector<std::pair<size_t, int>> ZeroMQPoller::ppoll(int timeo, const sigset_
 
    for (auto &m_item : m_items) {
       size_t index = 0;
-      int flags = 0;
+      zmq::event_flags flags = zmq::event_flags::none;
       if (m_item.socket == nullptr) {
          // an fd was registered
          std::tie(index, flags) = m_fds[m_item.fd];
@@ -122,7 +122,7 @@ size_t ZeroMQPoller::size() const
  * \return The index of the socket in the poller's internal list. Can be used to match with indices returned from
  * (p)poll.
  */
-size_t ZeroMQPoller::register_socket(zmq::socket_t &socket, zmq::PollType type)
+size_t ZeroMQPoller::register_socket(zmq::socket_t &socket, zmq::event_flags type)
 {
    zmq::socket_t *s = &socket;
    auto it = m_sockets.find(s);
@@ -134,7 +134,7 @@ size_t ZeroMQPoller::register_socket(zmq::socket_t &socket, zmq::PollType type)
       m_free.pop_front();
    // NOTE: this uses the conversion-to-void* operator of
    // zmq::socket_t, which returns the wrapped object
-   m_items.push_back({socket, 0, type, 0});
+   m_items.push_back({socket, 0, static_cast<short>(type), 0});
 
    // We need to lookup by the pointer to the object wrapped by zmq::socket_t
    m_sockets.emplace(m_items.back().socket, std::make_tuple(index, type, s));
@@ -151,7 +151,7 @@ size_t ZeroMQPoller::register_socket(zmq::socket_t &socket, zmq::PollType type)
  * \return The index of the socket in the poller's internal list. Can be used to match with indices returned from
  * (p)poll.
  */
-size_t ZeroMQPoller::register_socket(int fd, zmq::PollType type)
+size_t ZeroMQPoller::register_socket(int fd, zmq::event_flags type)
 {
    auto it = m_fds.find(fd);
    if (it != m_fds.end()) {
@@ -162,7 +162,7 @@ size_t ZeroMQPoller::register_socket(int fd, zmq::PollType type)
       m_free.pop_front();
    // NOTE: this uses the conversion-to-void* operator of
    // zmq::socket_t, which returns the wrapped object
-   m_items.push_back({nullptr, fd, type, 0});
+   m_items.push_back({nullptr, fd, static_cast<short>(type), 0});
 
    // We need to lookup by the pointer to the object wrapped by zmq::socket_t
    m_fds.emplace(fd, std::make_tuple(index, type));
