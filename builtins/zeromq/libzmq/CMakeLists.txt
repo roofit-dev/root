@@ -32,6 +32,9 @@ set(ZeroMQ_FOUND TRUE CACHE BOOL "" FORCE)
 set(ZeroMQ_INCLUDE_DIR  ${ZeroMQ_PREFIX}/include CACHE INTERNAL "" FORCE)
 set(ZeroMQ_INCLUDE_DIRS ${ZeroMQ_PREFIX}/include CACHE INTERNAL "" FORCE)
 
+# Workaround to propagate INTERFACE_INCLUDE_DIRECTORIES, see https://stackoverflow.com/a/47358004/1199693
+file(MAKE_DIRECTORY ${ZeroMQ_INCLUDE_DIR})
+
 add_library(ZeroMQ INTERFACE IMPORTED GLOBAL)
 target_include_directories(ZeroMQ INTERFACE $<BUILD_INTERFACE:${ZeroMQ_INCLUDE_DIR}>)
 target_link_libraries(ZeroMQ INTERFACE $<BUILD_INTERFACE:${ZeroMQ_LIBRARIES}>)
