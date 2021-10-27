@@ -22,7 +22,4 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitZMQ
     )
 
 target_link_libraries(RooFitZMQ PUBLIC ZeroMQ cppzmq)
-if (NOT MSVC AND NOT APPLE)
-    target_link_options(RooFitZMQ PRIVATE "LINKER:-Bsymbolic")
-endif()
 ROOT_ADD_TEST_SUBDIRECTORY(test)
