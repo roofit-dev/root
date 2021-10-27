@@ -158,7 +158,7 @@ void JobManager::retrieve(std::size_t requesting_job_id)
             zmq_ppoll_error_response response;
             try {
                response = handle_zmq_ppoll_error(e);
-            } catch (std::logic_error &e) {
+            } catch (std::logic_error &) {
                printf("JobManager::retrieve got unhandleable ZMQ::ppoll_error_t\n");
                throw;
             }

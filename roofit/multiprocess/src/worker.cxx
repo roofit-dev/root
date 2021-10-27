@@ -111,7 +111,7 @@ void worker_loop()
          zmq_ppoll_error_response response;
          try {
             response = handle_zmq_ppoll_error(e);
-         } catch (std::logic_error &e) {
+         } catch (std::logic_error &) {
             printf("worker loop at PID %d got unhandleable ZMQ::ppoll_error_t\n", getpid());
             throw;
          }

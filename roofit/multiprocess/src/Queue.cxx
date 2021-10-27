@@ -148,7 +148,7 @@ void Queue::loop()
          zmq_ppoll_error_response response;
          try {
             response = handle_zmq_ppoll_error(e);
-         } catch (std::logic_error &e) {
+         } catch (std::logic_error &) {
             printf("queue loop got unhandleable ZMQ::ppoll_error_t\n");
             throw;
          }
