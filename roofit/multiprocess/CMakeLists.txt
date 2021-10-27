@@ -26,11 +26,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitMultiProcess
         "-writeEmptyRootPCM"
     DEPENDENCIES
         RooFitZMQ
-    LIBRARIES
-        ZeroMQ
 )
-
-target_include_directories(RooFitMultiProcess PUBLIC $<BUILD_INTERFACE:${cppzmq_INCLUDE_DIR}>)
 
 if(testing)
     ROOT_ADD_TEST_SUBDIRECTORY(test)

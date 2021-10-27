@@ -5,9 +5,9 @@
 add_library(RooFit_multiprocess_testing_utils INTERFACE)
 target_link_libraries(RooFit_multiprocess_testing_utils INTERFACE RooFitCore RooBatchCompute)
 
-ROOT_ADD_GTEST(test_RooFit_MultiProcess_Job test_Job.cxx LIBRARIES RooFitMultiProcess ${ZeroMQ_LIBRARY} RooFit_multiprocess_testing_utils)
-ROOT_ADD_GTEST(test_RooFit_MultiProcess_ProcessManager test_ProcessManager.cxx LIBRARIES RooFitMultiProcess ${ZeroMQ_LIBRARY})
-ROOT_ADD_GTEST(test_RooFit_MultiProcess_Messenger test_Messenger.cxx LIBRARIES RooFitMultiProcess ${ZeroMQ_LIBRARY})
+ROOT_ADD_GTEST(test_RooFit_MultiProcess_Job test_Job.cxx LIBRARIES RooFitMultiProcess  RooFit_multiprocess_testing_utils)
+ROOT_ADD_GTEST(test_RooFit_MultiProcess_ProcessManager test_ProcessManager.cxx LIBRARIES RooFitMultiProcess)
+ROOT_ADD_GTEST(test_RooFit_MultiProcess_Messenger test_Messenger.cxx LIBRARIES RooFitMultiProcess)
 
 #target_include_directories(test_RooFitMultiProcess_Job PUBLIC ${ZeroMQ_INCLUDE_DIR})
 #target_include_directories(test_RooFitMultiProcess_Messenger PUBLIC ${ZeroMQ_INCLUDE_DIR})
