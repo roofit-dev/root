@@ -19,9 +19,11 @@ ExternalProject_Add(BUILTIN_ZeroMQ
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
         -DWITH_PERF_TOOL=OFF
-        -DZMQ_BUILD_TESTS=OFF
+        -DBUILD_TESTS=OFF
         -DENABLE_DRAFTS=ON
         -DENABLE_NO_EXPORT=ON
+        -DENABLE_CURVE=OFF
+        -DWITH_DOCS=OFF
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_CXX_FLAGS=${cxx_visibility_flag}\ ${CMAKE_CXX_FLAGS}\ -w
     BUILD_BYPRODUCTS ${ZeroMQ_LIBRARIES}
@@ -35,12 +37,9 @@ set(ZeroMQ_INCLUDE_DIRS ${ZeroMQ_PREFIX}/include CACHE INTERNAL "" FORCE)
 # Workaround to propagate INTERFACE_INCLUDE_DIRECTORIES, see https://stackoverflow.com/a/47358004/1199693
 file(MAKE_DIRECTORY ${ZeroMQ_INCLUDE_DIR})
 
-add_library(ZeroMQ INTERFACE IMPORTED GLOBAL)
-target_include_directories(ZeroMQ INTERFACE $<BUILD_INTERFACE:${ZeroMQ_INCLUDE_DIR}>)
-target_link_libraries(ZeroMQ INTERFACE $<BUILD_INTERFACE:${ZeroMQ_LIBRARIES}>)
-add_dependencies(ZeroMQ BUILTIN_ZeroMQ)
-
-# necessary for cppzmq:
-add_library(libzmq ALIAS ZeroMQ)
+add_library(libzmq INTERFACE IMPORTED GLOBAL)
+target_include_directories(libzmq INTERFACE $<BUILD_INTERFACE:${ZeroMQ_INCLUDE_DIR}>)
+target_link_libraries(libzmq INTERFACE $<BUILD_INTERFACE:${ZeroMQ_LIBRARIES}>)
+add_dependencies(libzmq BUILTIN_ZeroMQ)
 
 set(ZeroMQ_DIR ${ZeroMQ_PREFIX}/share/cmake/ZeroMQ CACHE INTERNAL "" FORCE)

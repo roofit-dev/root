@@ -1873,6 +1873,13 @@ if (roofit_multiprocess)
     foreach(suffix FOUND INCLUDE_DIR INCLUDE_DIRS LIBRARY LIBRARIES)
       unset(ZeroMQ_${suffix} CACHE)
     endforeach()
+
+    # Temporarily prefer config mode over module mode, so that a CMake-installed system version
+    # gets detected before looking for an autotools-installed system version (which the
+    # FindZeroMQ.cmake module does).
+    set(CMAKE_FIND_PACKAGE_PREFER_CONFIG_ORIGINAL_VALUE ${CMAKE_FIND_PACKAGE_PREFER_CONFIG})
+    set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
+
     if(fail-on-missing)
       find_package(ZeroMQ REQUIRED)
     else()
@@ -1882,14 +1889,23 @@ if (roofit_multiprocess)
         set(builtin_zeromq ON CACHE BOOL "Enabled because ZeroMQ not found (${builtin_zeromq_description})" FORCE)
       endif()
     endif()
-    check_symbol_exists(zmq_ppoll zmq.h ZeroMQ_HAS_PPOLL
-            CMAKE_REQUIRED_DEFINITIONS ZMQ_BUILD_DRAFT_API)
-    if(NOT ZeroMQ_HAS_PPOLL)
-      if (fail-on-missing)
-        message(ERROR "Detected ZeroMQ version is too old (does not have zmq_ppoll). Aborting, because fail-on-missing was set.")
-      else()
-        message(STATUS "Detected ZeroMQ version is too old (does not have zmq_ppoll). Switching on builtin_zeromq option")
-        set(builtin_zeromq ON CACHE BOOL "Enabled because detected ZeroMQ version is too old (${builtin_zeromq_description})" FORCE)
+
+    # Reset default find_package mode
+    set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ${CMAKE_FIND_PACKAGE_PREFER_CONFIG_ORIGINAL_VALUE})
+    unset(CMAKE_FIND_PACKAGE_PREFER_CONFIG_ORIGINAL_VALUE)
+
+    # only check symbol if the package was found (we may still reach this point when it wasn't found
+    # and fail-on-missing is deactivated)
+    if(ZeroMQ_FOUND)
+      check_symbol_exists(zmq_ppoll zmq.h ZeroMQ_HAS_PPOLL
+              CMAKE_REQUIRED_DEFINITIONS ZMQ_BUILD_DRAFT_API)
+      if(NOT ZeroMQ_HAS_PPOLL)
+        if (fail-on-missing)
+          message(ERROR "Detected ZeroMQ version is too old (does not have zmq_ppoll). Aborting, because fail-on-missing was set.")
+        else()
+          message(STATUS "Detected ZeroMQ version is too old (does not have zmq_ppoll). Switching on builtin_zeromq option")
+          set(builtin_zeromq ON CACHE BOOL "Enabled because detected ZeroMQ version is too old (${builtin_zeromq_description})" FORCE)
+        endif()
       endif()
     endif()
   endif()
@@ -1910,7 +1926,7 @@ if (roofit_multiprocess)
     if(fail-on-missing)
       find_package(cppzmq REQUIRED)
     else()
-      find_package(cppzmq)
+      find_package(cppzmq QUIET)
       if(NOT cppzmq_FOUND)
         message(STATUS "ZeroMQ C++ bindings not found. Switching on builtin_cppzmq option")
         set(builtin_cppzmq ON CACHE BOOL "Enabled because ZeroMQ C++ bindings not found (${builtin_cppzmq_description})" FORCE)
@@ -1924,8 +1940,8 @@ if (roofit_multiprocess)
   endif()
 
   # zmq_ppoll is still in the draft API, so enable that transitively
-  target_compile_definitions(ZeroMQ INTERFACE ZMQ_BUILD_DRAFT_API)
-  target_compile_definitions(ZeroMQ INTERFACE ZMQ_NO_EXPORT)
+  target_compile_definitions(libzmq INTERFACE ZMQ_BUILD_DRAFT_API)
+  target_compile_definitions(libzmq INTERFACE ZMQ_NO_EXPORT)
   target_compile_definitions(cppzmq INTERFACE ZMQ_BUILD_DRAFT_API)
   target_compile_definitions(cppzmq INTERFACE ZMQ_NO_EXPORT)
 endif (roofit_multiprocess)

@@ -6,7 +6,7 @@ ExternalProject_Add(BUILTIN_cppzmq
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
     INSTALL_COMMAND ""
-    DEPENDS ZeroMQ
+    DEPENDS libzmq
 )
 
 # manually copy header (inspired by nlohmann builtin)
