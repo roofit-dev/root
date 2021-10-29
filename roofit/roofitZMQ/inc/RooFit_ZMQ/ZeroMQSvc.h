@@ -13,6 +13,7 @@
 #include <sstream>
 #include <ios>
 #include <iostream> // std::cerr
+#include <functional>
 
 // debugging
 #include <unistd.h> // getpid
