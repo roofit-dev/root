@@ -24,6 +24,7 @@ ExternalProject_Add(BUILTIN_ZeroMQ
         -DENABLE_NO_EXPORT=ON
         -DENABLE_CURVE=OFF
         -DWITH_DOCS=OFF
+        -DENABLE_WS=OFF
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_CXX_FLAGS=${cxx_visibility_flag}\ ${CMAKE_CXX_FLAGS}\ -w
     BUILD_BYPRODUCTS ${ZeroMQ_LIBRARIES}
