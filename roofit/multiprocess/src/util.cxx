@@ -123,7 +123,7 @@ careful_ppoll(ZeroMQPoller &poller, const sigset_t &ppoll_sigmask, std::size_t m
    if (tries == max_tries) {
       printf("careful_ppoll reached maximum number of tries, %lu, please report as a bug\n", tries);
    }
-   return {poll_result, abort};
+   return std::make_tuple(poll_result, abort);
 }
 
 } // namespace MultiProcess
