@@ -21,5 +21,5 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitZMQ
         Core # TVersionCheck, RegisterModule, these are always called from G__RooFitZMQ.cxx.o
     )
 
-target_link_libraries(RooFitZMQ PUBLIC ZeroMQ cppzmq)
+target_link_libraries(RooFitZMQ PUBLIC libzmq cppzmq)
 ROOT_ADD_TEST_SUBDIRECTORY(test)
