@@ -73,7 +73,7 @@ protected:
             zmqSvc().send(*pusher, 1);
             zmqSvc().send(*pusher, true);
             if (ix % 100 == 0) {
-               printf("parent at ix = %lu\n", ix);
+               printf("parent at ix = %zu\n", ix);
             }
          }
       } else { // child
@@ -87,7 +87,7 @@ protected:
             zmqSvc().receive<int>(*puller);
             zmqSvc().receive<bool>(*puller);
             if (ix % 100 == 0) {
-               printf("child at ix = %lu\n", ix);
+               printf("child at ix = %zu\n", ix);
             }
          }
       }

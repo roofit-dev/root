@@ -103,7 +103,7 @@ protected:
          }
          ++count;
       }
-      printf("child %d got %lu values\n", child_id, count);
+      printf("child %d got %zu values\n", child_id, count);
    }
 
    pid_t child_pid{0};
