@@ -106,7 +106,7 @@ TEST(TestMPMessenger, StressPubSub)
       if (receipt == "bert") {
          messenger.send_from_worker_to_master("ernie");
       } else {
-         printf("no bert on worker %lu\n", pm.worker_id());
+         printf("no bert on worker %zu\n", pm.worker_id());
       }
    }
 }

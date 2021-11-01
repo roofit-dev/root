@@ -308,10 +308,10 @@ void Messenger::test_receive(X2X expected_ping_value, test_rcv_pipes rcv_pipe, s
          if (response == zmq_ppoll_error_response::abort) {
             throw std::runtime_error("EINTR in test_receive and SIGTERM received, aborting\n");
          } else if (response == zmq_ppoll_error_response::unknown_eintr) {
-            printf("EINTR in test_receive but no SIGTERM received, try %lu\n", tries);
+            printf("EINTR in test_receive but no SIGTERM received, try %zu\n", tries);
             continue;
          } else if (response == zmq_ppoll_error_response::retry) {
-            printf("EAGAIN in test_receive, try %lu\n", tries);
+            printf("EAGAIN in test_receive, try %zu\n", tries);
             continue;
          }
       } catch (zmq::error_t &e) {
