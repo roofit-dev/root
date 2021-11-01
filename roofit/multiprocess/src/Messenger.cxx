@@ -503,9 +503,10 @@ std::ostream &operator<<(std::ostream &out, const X2X value)
 /// used to monitor the messages that are going to be sent or are received.
 /// By defining this in the implementation file, compilation is a lot faster
 /// during debugging of Messenger or communication protocols.
-void Messenger::debug_print(std::string /*s*/)
+void Messenger::debug_print(std::string s)
 {
    // print 's' when debugging
+   std::cerr << s << '\n';
 }
 
 } // namespace MultiProcess

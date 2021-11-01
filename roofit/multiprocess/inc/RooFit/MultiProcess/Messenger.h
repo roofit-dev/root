@@ -17,6 +17,11 @@
 
 #include "RooFit/MultiProcess/Messenger_decl.h"
 
+#ifdef NDEBUG
+#undef NDEBUG
+#define turn_NDEBUG_back_on
+#endif
+
 namespace RooFit {
 namespace MultiProcess {
 
@@ -202,5 +207,10 @@ value_t Messenger::receive_from_worker_on_master()
 
 } // namespace MultiProcess
 } // namespace RooFit
+
+#ifdef turn_NDEBUG_back_on
+#define NDEBUG
+#undef turn_NDEBUG_back_on
+#endif
 
 #endif // ROOT_ROOFIT_MultiProcess_Messenger
