@@ -24,10 +24,10 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitMultiProcess
         src/Job.cxx
     DICTIONARY_OPTIONS
         "-writeEmptyRootPCM"
+    DEPENDENCIES
+        RooFitZMQ
 )
 
 target_link_libraries(RooFitMultiProcess PUBLIC RooFitZMQ)
 
-if(testing)
-    ROOT_ADD_TEST_SUBDIRECTORY(test)
-endif()
+ROOT_ADD_TEST_SUBDIRECTORY(test)
