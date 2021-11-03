@@ -3,18 +3,7 @@
 # @author Patrick Bos, Netherlands eScience Center
 ############################################################################
 
-ROOT_STANDARD_LIBRARY_PACKAGE(RooFitMultiProcess
-    HEADERS
-        RooFit/MultiProcess/worker.h
-        RooFit/MultiProcess/Messenger_decl.h
-        RooFit/MultiProcess/Messenger.h
-        RooFit/MultiProcess/ProcessManager.h
-        RooFit/MultiProcess/JobManager.h
-        RooFit/MultiProcess/util.h
-        RooFit/MultiProcess/Queue.h
-        RooFit/MultiProcess/types.h
-        RooFit/MultiProcess/Job.h
-    SOURCES
+ROOT_LINKER_LIBRARY(RooFitMultiProcess
         src/worker.cxx
         src/Messenger.cxx
         src/ProcessManager.cxx
@@ -22,8 +11,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitMultiProcess
         src/Queue.cxx
         src/JobManager.cxx
         src/Job.cxx
-    DICTIONARY_OPTIONS
-        "-writeEmptyRootPCM"
     DEPENDENCIES
         RooFitZMQ
 )
@@ -31,3 +18,5 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitMultiProcess
 target_link_libraries(RooFitMultiProcess PUBLIC RooFitZMQ)
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)
+
+ROOT_INSTALL_HEADERS()
