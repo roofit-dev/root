@@ -190,6 +190,7 @@ size_t ZeroMQPoller::unregister_socket(zmq::socket_t &socket)
       return &socket == std::get<2>(entry.second);
    });
    auto index = std::get<0>(it->second);
+   printf("index: %zu\n", index);
    m_free.push_back(index);
    m_sockets.erase(it);
 

@@ -19,8 +19,21 @@ void handle_sigterm(int signum)
    std::cout << "handled signal " << strsignal(signum) << " on PID " << getpid() << std::endl;
 }
 
+std::string unique_tmp_ipc_address(const char * filename_template)
+{
+   assert(strlen(filename_template) < 256);
+   char filename_template_mutable[256];
+   strcpy(filename_template_mutable, filename_template);
+   while (mkstemp(filename_template_mutable) >= 0) {}
+   std::stringstream ss;
+   ss << "ipc:///tmp/" << filename_template_mutable << ".ipc";
+   return ss.str();
+}
+
 TEST(Polling, doublePoll)
 {
+   auto M2C_address = unique_tmp_ipc_address("ZMQ_test_fork_polling_M2C_XXXXXX");
+   auto C2M_address = unique_tmp_ipc_address("ZMQ_test_fork_polling_C2M_XXXXXX");
    pid_t child_pid{0};
    do {
       child_pid = fork();
@@ -34,9 +47,9 @@ TEST(Polling, doublePoll)
 
       ZmqLingeringSocketPtr<> pusher, puller;
       pusher.reset(zmqSvc().socket_ptr(zmq::socket_type::push));
-      pusher->bind("ipc:///tmp/ZMQ_test_fork_polling_M2C.ipc");
+      pusher->bind(M2C_address);
       puller.reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
-      puller->bind("ipc:///tmp/ZMQ_test_fork_polling_C2M.ipc");
+      puller->bind(C2M_address);
 
       ZeroMQPoller poller1, poller2;
       poller1.register_socket(*puller, zmq::event_flags::pollin);
@@ -102,9 +115,9 @@ TEST(Polling, doublePoll)
 
       ZmqLingeringSocketPtr<> puller, pusher;
       puller.reset(zmqSvc().socket_ptr(zmq::socket_type::pull));
-      puller->connect("ipc:///tmp/ZMQ_test_fork_polling_M2C.ipc");
+      puller->connect(M2C_address);
       pusher.reset(zmqSvc().socket_ptr(zmq::socket_type::push));
-      pusher->connect("ipc:///tmp/ZMQ_test_fork_polling_C2M.ipc");
+      pusher->connect(C2M_address);
 
       ZeroMQPoller poller1, poller2;
       poller1.register_socket(*puller, zmq::event_flags::pollin);
