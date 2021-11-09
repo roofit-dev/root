@@ -41,14 +41,16 @@ endif()
 set ( ZeroMQ_LIBRARIES ${ZeroMQ_LIBRARY} )
 set ( ZeroMQ_INCLUDE_DIRS ${ZeroMQ_INCLUDE_DIR} )
 
-if(NOT TARGET libzmq)
-    add_library(libzmq UNKNOWN IMPORTED)
-    set_target_properties(libzmq PROPERTIES
-            IMPORTED_LOCATION ${ZeroMQ_LIBRARIES}
-            INTERFACE_INCLUDE_DIRECTORIES ${ZeroMQ_INCLUDE_DIRS})
-endif()
-
 include ( FindPackageHandleStandardArgs )
 # handle the QUIETLY and REQUIRED arguments and set ZMQ_FOUND to TRUE
 # if all listed variables are TRUE
 find_package_handle_standard_args ( ZeroMQ DEFAULT_MSG ZeroMQ_LIBRARIES ZeroMQ_INCLUDE_DIRS )
+
+if(ZeroMQ_FOUND)
+    if(NOT TARGET libzmq)
+        add_library(libzmq UNKNOWN IMPORTED)
+        set_target_properties(libzmq PROPERTIES
+                IMPORTED_LOCATION ${ZeroMQ_LIBRARIES}
+                INTERFACE_INCLUDE_DIRECTORIES ${ZeroMQ_INCLUDE_DIRS})
+    endif()
+endif()
