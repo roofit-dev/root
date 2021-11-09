@@ -377,6 +377,7 @@ void Messenger::test_connections(const ProcessManager &process_manager)
                test_send(X2X::pong, test_snd_pipes::Q2M, -1);
                test_send(X2X::ping, test_snd_pipes::Q2M, -1);
                test_receive(X2X::pong, test_rcv_pipes::fromMonQ, -1);
+               printf("unregistering socket mq_pull on PID %d", getpid());
                poller.unregister_socket(*mq_pull_);
             } else { // from a worker socket
                // TODO: dangerous assumption for this_worker_id, may become invalid if we allow multiple queue_loops on
@@ -387,6 +388,7 @@ void Messenger::test_connections(const ProcessManager &process_manager)
                test_receive(X2X::ping, test_rcv_pipes::fromWonQ, this_worker_id);
                test_send(X2X::pong, test_snd_pipes::Q2W, this_worker_id);
 
+               printf("unregistering socket qw_pull_[%lu] on PID %d", this_worker_id, getpid());
                poller.unregister_socket(*qw_pull_[this_worker_id]);
             }
          }
