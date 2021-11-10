@@ -11,11 +11,11 @@
 
 #include <sstream>
 
-static bool terminated = false;
+static volatile sig_atomic_t terminated = 0;
 
 void handle_sigterm(int signum)
 {
-   terminated = true;
+   terminated = 1;
    std::cout << "handled signal " << strsignal(signum) << " on PID " << getpid() << std::endl;
 }
 
