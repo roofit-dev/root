@@ -67,6 +67,7 @@ protected:
       } else { // child
          puller.reset(nullptr);
          zmqSvc().close_context();
+         _Exit(0);
       }
    }
 
