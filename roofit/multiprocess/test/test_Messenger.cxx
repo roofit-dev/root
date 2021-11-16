@@ -17,11 +17,40 @@
 
 #include "gtest/gtest.h"
 
+void handle_sigchld(int signum)
+{
+   printf("handled %s on PID %d\n", strsignal(signum), getpid());
+}
+
+
 TEST(TestMPMessenger, Connections)
 {
-   RooFit::MultiProcess::ProcessManager pm(2);
+   // on master, we have to handle SIGCHLD
+   struct sigaction sa;
+   memset(&sa, '\0', sizeof(sa));
+   sa.sa_handler = handle_sigchld;
+   if (sigaction(SIGCHLD, &sa, NULL) < 0) {
+      std::perror("sigaction failed");
+      std::exit(1);
+   }
+
+   RooFit::MultiProcess::ProcessManager pm(4);
    RooFit::MultiProcess::Messenger messenger(pm);
+   if (pm.is_master()) {
+      // more SIGCHLD handling
+      sigset_t sigmask;
+      sigemptyset(&sigmask);
+      sigaddset(&sigmask, SIGCHLD);
+      int rc = sigprocmask(SIG_BLOCK, &sigmask, &messenger.ppoll_sigmask);
+      if (rc < 0) {
+         throw std::runtime_error("sigprocmask failed in TestMPMessenger.Connections");
+      }
+   }
    messenger.test_connections(pm);
+   if (pm.is_master()) {
+      // clean up signal management modifications
+      sigprocmask(SIG_SETMASK, &messenger.ppoll_sigmask, nullptr);
+   }
 }
 
 TEST(TestMPMessenger, ConnectionsManualExit)
@@ -29,11 +58,39 @@ TEST(TestMPMessenger, ConnectionsManualExit)
    // the point of this test is to see whether clean-up of ZeroMQ resources is done properly without calling any
    // destructors (which is what happens when you call _Exit() instead of regularly ending the program by reaching the
    // end of main()).
-   RooFit::MultiProcess::ProcessManager pm(2);
+
+   // on master, we have to handle SIGCHLD
+   struct sigaction sa;
+   memset(&sa, '\0', sizeof(sa));
+   sa.sa_handler = handle_sigchld;
+   if (sigaction(SIGCHLD, &sa, NULL) < 0) {
+      std::perror("sigaction failed");
+      std::exit(1);
+   }
+
+   RooFit::MultiProcess::ProcessManager pm(4);
    RooFit::MultiProcess::Messenger messenger(pm);
+   if (pm.is_master()) {
+      // more SIGCHLD handling
+      sigset_t sigmask;
+      sigemptyset(&sigmask);
+      sigaddset(&sigmask, SIGCHLD);
+      int rc = sigprocmask(SIG_BLOCK, &sigmask, &messenger.ppoll_sigmask);
+      if (rc < 0) {
+         throw std::runtime_error("sigprocmask failed in TestMPMessenger.Connections");
+      }
+   }
    messenger.test_connections(pm);
    if (!pm.is_master()) {
+      // just wait until we get terminated
+      while (!RooFit::MultiProcess::ProcessManager::sigterm_received()) {};
       std::_Exit(0);
+   } else {
+      pm.terminate();
+   }
+   if (pm.is_master()) {
+      // clean up signal management modifications
+      sigprocmask(SIG_SETMASK, &messenger.ppoll_sigmask, nullptr);
    }
 }
 

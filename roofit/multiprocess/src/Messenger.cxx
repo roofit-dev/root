@@ -340,18 +340,25 @@ void Messenger::test_receive(X2X expected_ping_value, test_rcv_pipes rcv_pipe, s
 /// running on and hence which sockets need to be tested.
 void Messenger::test_connections(const ProcessManager &process_manager)
 {
-   // Before blocking SIGTERM, set the signal handler, so we can also check after blocking whether a signal occurred
-   // In our case, we already set it in the ProcessManager after forking to the queue and worker processes.
-   sigset_t sigmask;
-   sigemptyset(&sigmask);
-   sigaddset(&sigmask, SIGTERM);
-   sigprocmask(SIG_BLOCK, &sigmask, &ppoll_sigmask);
+   if (process_manager.is_queue() || process_manager.is_worker()) {
+      // Before blocking SIGTERM, set the signal handler, so we can also check after blocking whether a signal occurred
+      // In our case, we already set it in the ProcessManager after forking to the queue and worker processes.
+      sigset_t sigmask;
+      sigemptyset(&sigmask);
+      sigaddset(&sigmask, SIGTERM);
+      int rc = sigprocmask(SIG_BLOCK, &sigmask, &ppoll_sigmask);
+      if (rc < 0) {
+         throw std::runtime_error("sigprocmask failed in test_connections");
+      }
+   }
 
    if (process_manager.is_master()) {
-      test_send(X2X::ping, test_snd_pipes::M2Q, -1);
-      test_receive(X2X::pong, test_rcv_pipes::fromQonM, -1);
       test_receive(X2X::ping, test_rcv_pipes::fromQonM, -1);
       test_send(X2X::pong, test_snd_pipes::M2Q, -1);
+      test_send(X2X::ping, test_snd_pipes::M2Q, -1);
+      // make sure to always receive last on master, so that master knows when queue is done,
+      // which means workers are done as well, so if master is done everything is done:
+      test_receive(X2X::pong, test_rcv_pipes::fromQonM, -1);
    } else if (process_manager.is_queue()) {
       ZeroMQPoller poller;
       std::size_t mq_index;
@@ -360,6 +367,7 @@ void Messenger::test_connections(const ProcessManager &process_manager)
       for (std::size_t ix = 0; ix < process_manager.N_workers(); ++ix) {
          test_send(X2X::ping, test_snd_pipes::Q2W, ix);
       }
+      test_send(X2X::ping, test_snd_pipes::Q2M, -1);
 
       while (!process_manager.sigterm_received() && (poller.size() > 0)) {
          // poll: wait until status change (-1: infinite timeout)
@@ -373,11 +381,8 @@ void Messenger::test_connections(const ProcessManager &process_manager)
          for (auto readable_socket : poll_result) {
             // message comes from the master/queue socket (first element):
             if (readable_socket.first == mq_index) {
-               test_receive(X2X::ping, test_rcv_pipes::fromMonQ, -1);
-               test_send(X2X::pong, test_snd_pipes::Q2M, -1);
-               test_send(X2X::ping, test_snd_pipes::Q2M, -1);
                test_receive(X2X::pong, test_rcv_pipes::fromMonQ, -1);
-               printf("unregistering socket mq_pull on PID %d", getpid());
+               test_receive(X2X::ping, test_rcv_pipes::fromMonQ, -1);
                poller.unregister_socket(*mq_pull_);
             } else { // from a worker socket
                // TODO: dangerous assumption for this_worker_id, may become invalid if we allow multiple queue_loops on
@@ -388,11 +393,11 @@ void Messenger::test_connections(const ProcessManager &process_manager)
                test_receive(X2X::ping, test_rcv_pipes::fromWonQ, this_worker_id);
                test_send(X2X::pong, test_snd_pipes::Q2W, this_worker_id);
 
-               printf("unregistering socket qw_pull_[%lu] on PID %d", this_worker_id, getpid());
                poller.unregister_socket(*qw_pull_[this_worker_id]);
             }
          }
       }
+      test_send(X2X::pong, test_snd_pipes::Q2M, -1);
 
    } else if (process_manager.is_worker()) {
       test_receive(X2X::ping, test_rcv_pipes::fromQonW, -1);
@@ -404,9 +409,10 @@ void Messenger::test_connections(const ProcessManager &process_manager)
       throw std::runtime_error("Messenger::test_connections: I'm neither master, nor queue, nor a worker");
    }
 
-   // clean up signal management modifications
-   sigprocmask(SIG_SETMASK, &ppoll_sigmask, nullptr);
-   printf("done with test_connections on PID %d\n", getpid());
+   if (process_manager.is_queue() || process_manager.is_worker()) {
+      // clean up signal management modifications
+      sigprocmask(SIG_SETMASK, &ppoll_sigmask, nullptr);
+   }
 }
 
 /// Helper function that creates a poller for Queue::loop()
