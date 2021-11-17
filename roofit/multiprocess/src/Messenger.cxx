@@ -99,7 +99,7 @@ Messenger::Messenger(const ProcessManager &process_manager)
          close_MQ_on_destruct_ = true;
 
          // make sure all subscribers are connected
-         ZmqLingeringSocketPtr<> subscriber_ping_socket{zmqSvc().socket_ptr(zmq::socket_type::rep)};
+         ZmqLingeringSocketPtr<> subscriber_ping_socket{zmqSvc().socket_ptr(zmq::socket_type::pull)};
          subscriber_ping_socket->bind("ipc:///tmp/roofitMP_subscriber_ping_socket");
          ZeroMQPoller subscriber_ping_poller;
          subscriber_ping_poller.register_socket(*subscriber_ping_socket, zmq::event_flags::pollin);
@@ -110,7 +110,6 @@ Messenger::Messenger(const ProcessManager &process_manager)
             for (std::size_t ix = 0; ix < poll_results.size(); ++ix) {
                auto request = zmqSvc().receive<std::string>(*subscriber_ping_socket, zmq::recv_flags::dontwait);
                assert(request == "present");
-               zmqSvc().send(*subscriber_ping_socket, "roger");
                ++N_subscribers_confirmed;
             }
          }
@@ -193,12 +192,10 @@ Messenger::Messenger(const ProcessManager &process_manager)
          wm_push_->connect("ipc:///tmp/roofitMP_from_workers_to_master");
 
          // check publisher connection and then wait until all subscribers are connected
-         ZmqLingeringSocketPtr<> subscriber_ping_socket{zmqSvc().socket_ptr(zmq::socket_type::req)};
+         ZmqLingeringSocketPtr<> subscriber_ping_socket{zmqSvc().socket_ptr(zmq::socket_type::push)};
          subscriber_ping_socket->connect("ipc:///tmp/roofitMP_subscriber_ping_socket");
          auto all_connected = zmqSvc().receive<bool>(*mw_sub_);
          zmqSvc().send(*subscriber_ping_socket, "present");
-         auto reply = zmqSvc().receive<std::string>(*subscriber_ping_socket);
-         assert(reply == "roger");
 
          while (!all_connected) {
             all_connected = zmqSvc().receive<bool>(*mw_sub_);
