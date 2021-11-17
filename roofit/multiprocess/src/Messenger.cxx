@@ -511,7 +511,7 @@ std::ostream &operator<<(std::ostream &out, const X2X value)
 void Messenger::debug_print(std::string s)
 {
    // print 's' when debugging
-   std::cerr << s << '\n';
+   printf("%s\n", s.c_str());
 }
 
 } // namespace MultiProcess
