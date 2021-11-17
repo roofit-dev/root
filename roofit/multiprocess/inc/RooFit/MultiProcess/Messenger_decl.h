@@ -22,6 +22,7 @@
 #include <iosfwd>
 #include <vector>
 #include <csignal> // sigprocmask, sigset_t, etc
+#include <string>
 
 namespace RooFit {
 namespace MultiProcess {
@@ -137,6 +138,8 @@ private:
    bool close_QW_container_on_destruct_ = false;
 
    zmq::send_flags send_flag_ = zmq::send_flags::none;
+
+   std::vector<std::string> bound_ipc_addresses_;
 };
 
 // Messages from master to queue
