@@ -22,7 +22,7 @@
 TEST(BindToTmpFile, mkstemp)
 {
    char filename[] = "/tmp/roofitMP_XXXXXX";
-   while (mkstemp(filename) >= 0) {}
+   while (mkstemp(filename) < 0) {}
    auto socket = zmqSvc().socket(zmq::socket_type::push);
    char address [50];
    sprintf(address, "ipc://%s", filename);
