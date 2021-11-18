@@ -154,6 +154,62 @@ TEST(TestMPMessenger, SigStop)
    }
 }
 
+TEST(TestMPMessenger, StressSigStop)
+{
+   // The SIGSTOP test failed spuriously on CI at some point. This was probably due to some
+   // improbable race condition caused in some place where SIGSTOP/SIGCONT crashes a process.
+   // To find this crash, we bombard the processes with signals in this test.
+   // Also, we cut out "safety sleeps" from the SigStop test.
+   RooFit::MultiProcess::ProcessManager pm(2);
+   RooFit::MultiProcess::Messenger messenger(pm);
+
+   std::size_t runs = 100;
+   std::size_t sig_repeats = 10000;
+
+   if (pm.is_master()) {
+      for (std::size_t ix = 0; ix < runs; ++ix) {
+         //      printf("first send message to queue...\n");
+         messenger.send_from_master_to_queue(1);
+         //      printf("SIGSTOPping all children...\n");
+         for (std::size_t jx = 0; jx < sig_repeats; ++jx) {
+            kill(pm.get_queue_pid(), SIGCONT);
+            kill(pm.get_worker_pids()[0], SIGCONT);
+            kill(pm.get_worker_pids()[1], SIGCONT);
+            kill(pm.get_queue_pid(), SIGSTOP);
+            kill(pm.get_worker_pids()[0], SIGSTOP);
+            kill(pm.get_worker_pids()[1], SIGSTOP);
+         }
+         //      printf("send another message to queue...\n");
+         messenger.send_from_master_to_queue(2);
+
+         for (std::size_t jx = 0; jx < sig_repeats; ++jx) {
+            kill(pm.get_queue_pid(), SIGSTOP);
+            kill(pm.get_worker_pids()[0], SIGSTOP);
+            kill(pm.get_worker_pids()[1], SIGSTOP);
+            kill(pm.get_queue_pid(), SIGCONT);
+            kill(pm.get_worker_pids()[0], SIGCONT);
+            kill(pm.get_worker_pids()[1], SIGCONT);
+         }
+         EXPECT_EQ(messenger.receive_from_queue_on_master<int>(), 3);
+      }
+   }
+
+   if (pm.is_queue()) {
+      for (std::size_t ix = 0; ix < runs; ++ix) {
+         auto number = messenger.receive_from_master_on_queue<int>();
+         //      printf("received %d on queue\n", number);
+         number = messenger.receive_from_master_on_queue<int>();
+         //      printf("received %d on queue\n", number);
+         messenger.send_from_queue_to_master(3);
+      }
+   }
+
+   if (!pm.is_master()) {
+      while (!pm.sigterm_received()) {
+      }
+   }
+}
+
 TEST(TestMPMessenger, StressPubSub)
 {
    std::size_t N_workers = 64;
