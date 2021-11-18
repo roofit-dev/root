@@ -154,12 +154,13 @@ TEST(TestMPMessenger, SigStop)
    }
 }
 
-TEST(TestMPMessenger, StressSigStop)
+TEST(TestMPMessenger, DISABLED_StressSigStop)
 {
-   // The SIGSTOP test failed spuriously on CI at some point. This was probably due to some
+   // The SIGSTOP test failed spuriously on CI at some point. We suspected this was due to some
    // improbable race condition caused in some place where SIGSTOP/SIGCONT crashes a process.
    // To find this crash, we bombard the processes with signals in this test.
-   // Also, we cut out "safety sleeps" from the SigStop test.
+   // We were not able to trigger the crash, so we disabled the test, but leave it in for when
+   // the spurious test resurfaces.
    RooFit::MultiProcess::ProcessManager pm(2);
    RooFit::MultiProcess::Messenger messenger(pm);
 
