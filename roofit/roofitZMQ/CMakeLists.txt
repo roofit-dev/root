@@ -11,6 +11,7 @@ ROOT_LINKER_LIBRARY(RooFitZMQ
     )
 
 target_link_libraries(RooFitZMQ PUBLIC libzmq cppzmq)
-ROOT_ADD_TEST_SUBDIRECTORY(test)
+set(RooFitZMQ_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/res)
+target_include_directories(RooFitZMQ PRIVATE ${RooFitZMQ_INCLUDE_DIRS})
 
-ROOT_INSTALL_HEADERS()
+ROOT_ADD_TEST_SUBDIRECTORY(test)
