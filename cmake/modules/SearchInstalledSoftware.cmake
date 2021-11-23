@@ -1897,8 +1897,10 @@ if (roofit_multiprocess AND NOT MSVC)
     # only check symbol if the package was found (we may still reach this point when it wasn't found
     # and fail-on-missing is deactivated)
     if(ZeroMQ_FOUND)
-      check_symbol_exists(zmq_ppoll zmq.h ZeroMQ_HAS_PPOLL
-              CMAKE_REQUIRED_DEFINITIONS ZMQ_BUILD_DRAFT_API)
+      SET(SAVE_CMAKE_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS}")
+      SET(CMAKE_REQUIRED_DEFINITIONS "-DZMQ_BUILD_DRAFT_API")
+      check_cxx_symbol_exists(zmq_ppoll zmq.h ZeroMQ_HAS_PPOLL)
+      SET(CMAKE_REQUIRED_DEFINITIONS "${SAVE_CMAKE_REQUIRED_DEFINITIONS}")
       if(NOT ZeroMQ_HAS_PPOLL)
         if (fail-on-missing)
           message(ERROR "Detected ZeroMQ version is too old (does not have zmq_ppoll). Aborting, because fail-on-missing was set.")
