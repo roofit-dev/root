@@ -39,10 +39,13 @@ public:
 
    void gather_worker_results();
 
+   std::size_t get_state_id();
+
 protected:
    JobManager *get_manager();
 
    std::size_t id_;
+   std::size_t state_id_ = 0;
 
 private:
    // do not use _manager directly, it must first be initialized! use get_manager()

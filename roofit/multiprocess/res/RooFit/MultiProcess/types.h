@@ -22,8 +22,13 @@ namespace MultiProcess {
 
 // some helper types
 using Task = std::size_t;
-/// combined job_object and task identifier type
-using JobTask = std::pair<std::size_t, Task>;
+using State = std::size_t;
+/// combined job_object, state and task identifier type
+struct JobTask {
+   std::size_t job_id;
+   State state_id;
+   Task task_id;
+};
 
 } // namespace MultiProcess
 } // namespace RooFit

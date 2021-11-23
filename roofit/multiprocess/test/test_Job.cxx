@@ -66,7 +66,7 @@ public:
          }
          // master fills queue with tasks
          for (std::size_t task_id = 0; task_id < serial_->x_.size(); ++task_id) {
-            RooFit::MultiProcess::JobTask job_task(id_, task_id);
+            RooFit::MultiProcess::JobTask job_task {id_, state_id_, task_id};
             get_manager()->queue().add(job_task);
             ++N_tasks_at_workers_;
          }
@@ -89,12 +89,13 @@ public:
    void update_state() override
    {
       if (get_manager()->process_manager().is_master()) {
+         ++state_id_;
          get_manager()->messenger().publish_from_master_to_workers(
-            id_, serial_->b_); // always send Job id first! This is used in worker_loop to route the update_state call to
-                              // the correct Job.
+            id_, state_id_, serial_->b_); // always send Job id first! This is used in worker_loop to route the update_state call to
+                                          // the correct Job.
       } else if (get_manager()->process_manager().is_worker()) {
-         auto val = get_manager()->messenger().receive_from_master_on_worker<double>();
-         serial_->b_ = val;
+         state_id_ = get_manager()->messenger().receive_from_master_on_worker<RooFit::MultiProcess::State>();
+         serial_->b_ = get_manager()->messenger().receive_from_master_on_worker<double>();
       }
    }
 

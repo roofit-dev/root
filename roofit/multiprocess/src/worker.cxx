@@ -35,26 +35,6 @@ bool is_worker_loop_running()
    return worker_loop_running;
 }
 
-void process_queue_message(Q2W message_q2w, bool &dequeue_acknowledged)
-{
-   switch (message_q2w) {
-   case Q2W::dequeue_rejected: {
-      dequeue_acknowledged = true;
-      break;
-   }
-   case Q2W::dequeue_accepted: {
-      dequeue_acknowledged = true;
-      auto job_id = JobManager::instance()->messenger().receive_from_queue_on_worker<std::size_t>();
-      auto task = JobManager::instance()->messenger().receive_from_queue_on_worker<Task>();
-
-      JobManager::get_job_object(job_id)->evaluate_task(task);
-      JobManager::get_job_object(job_id)->send_back_task_result_from_worker(task);
-
-      break;
-   }
-   }
-}
-
 /// \brief The worker processes' event loop
 ///
 /// Asks the queue process for tasks, polls for incoming messages from other
@@ -93,17 +73,47 @@ void worker_loop()
             dequeue_acknowledged = false;
          }
 
-         // wait for handshake, other message or update from SUB socket
+         // wait for handshake from queue or update from SUB socket
          auto poll_result = poller.ppoll(-1, &JobManager::instance()->messenger().ppoll_sigmask);
+         // because the poller may now have a waiting update from master over the SUB socket,
+         // but the queue socket could be first in the poll_result vector, and during handling
+         // of a new task it is possible we need to already receive the updated state over SUB,
+         // we have to then flip this boolean so that in the for loop when we reach the SUB
+         // socket's result, we can skip it (otherwise we will hang there, because no more
+         // updated state will be coming):
+         bool skip_sub = false;
          // then process incoming messages from sockets
          for (auto readable_socket : poll_result) {
             // message comes from the master-worker SUB socket (first element):
-            if (readable_socket.first == mw_sub_index) {
+            if (readable_socket.first == mw_sub_index && !skip_sub) {
                job_id = JobManager::instance()->messenger().receive_from_master_on_worker<std::size_t>();
                JobManager::get_job_object(job_id)->update_state();
             } else { // from queue socket
                message_q2w = JobManager::instance()->messenger().receive_from_queue_on_worker<Q2W>();
-               process_queue_message(message_q2w, dequeue_acknowledged);
+               switch (message_q2w) {
+               case Q2W::dequeue_rejected: {
+                  dequeue_acknowledged = true;
+                  break;
+               }
+               case Q2W::dequeue_accepted: {
+                  dequeue_acknowledged = true;
+                  auto job_id = JobManager::instance()->messenger().receive_from_queue_on_worker<std::size_t>();
+                  auto state_id = JobManager::instance()->messenger().receive_from_queue_on_worker<State>();
+                  auto task_id = JobManager::instance()->messenger().receive_from_queue_on_worker<Task>();
+
+                  // while loop, because multiple jobs may have updated state coming
+                  while (state_id != JobManager::get_job_object(job_id)->get_state_id()) {
+                     skip_sub = true;
+                     auto job_id_for_state = JobManager::instance()->messenger().receive_from_master_on_worker<std::size_t>();
+                     JobManager::get_job_object(job_id_for_state)->update_state();
+                  }
+
+                  JobManager::get_job_object(job_id)->evaluate_task(task_id);
+                  JobManager::get_job_object(job_id)->send_back_task_result_from_worker(task_id);
+
+                  break;
+               }
+               }
             }
          }
 

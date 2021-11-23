@@ -56,6 +56,14 @@ namespace MultiProcess {
  * 'Job'). The same goes for the receiving end of 'update_state', except that
  * update_state is routed from the 'worker_loop', not the 'JobManager'.
  *
+ * A second rule applies to 'update_state' messages: the second part must be
+ * a state identifier. This identifier will also be sent along with tasks to
+ * the queue. When a worker then takes a task from the queue, it can check
+ * whether it has already updated its state to what is expected to be there
+ * for the task at hand. If not, it should wait for the new state to arrive
+ * over the state subscription socket. Note: it is the implementer's task to
+ * actually update 'Job::state_id_' inside 'Job::update_state()'!
+ *
  * ## Implementers notes
  *
  * The type of result from each task is strongly dependent on the Job at hand
@@ -132,7 +140,14 @@ void Job::gather_worker_results()
 /// over the ZeroMQ "SUB" socket. The master process sends messages to workers
 /// on its "PUB" socket. Thus, we can update, for instance, parameter values
 /// on the worker that were updated since the last call on the master side.
+/// \note Implementers: make sure to also update the state_id_ member.
 void Job::update_state() {}
+
+/// Get the current state identifier
+std::size_t Job::get_state_id()
+{
+   return state_id_;
+}
 
 } // namespace MultiProcess
 } // namespace RooFit

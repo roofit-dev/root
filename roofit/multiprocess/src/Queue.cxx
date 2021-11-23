@@ -63,7 +63,7 @@ bool Queue::pop(JobTask &job_task)
 void Queue::add(JobTask job_task)
 {
    if (JobManager::instance()->process_manager().is_master()) {
-      JobManager::instance()->messenger().send_from_master_to_queue(M2Q::enqueue, job_task.first, job_task.second);
+      JobManager::instance()->messenger().send_from_master_to_queue(M2Q::enqueue, job_task.job_id, job_task.state_id, job_task.task_id);
    } else if (JobManager::instance()->process_manager().is_queue()) {
       queue_.push(job_task);
    } else {
@@ -78,8 +78,9 @@ void Queue::process_master_message(M2Q message)
    case M2Q::enqueue: {
       // enqueue task
       auto job_object_id = JobManager::instance()->messenger().receive_from_master_on_queue<std::size_t>();
-      auto task = JobManager::instance()->messenger().receive_from_master_on_queue<Task>();
-      JobTask job_task(job_object_id, task);
+      auto state_id = JobManager::instance()->messenger().receive_from_master_on_queue<State>();
+      auto task_id = JobManager::instance()->messenger().receive_from_master_on_queue<Task>();
+      JobTask job_task {job_object_id, state_id, task_id};
       add(job_task);
       N_tasks_++;
       break;
@@ -98,7 +99,7 @@ void Queue::process_worker_message(std::size_t this_worker_id, W2Q message)
       if (popped) {
          // Note: below two commands should be run atomically for thread safety (if that ever becomes an issue)
          JobManager::instance()->messenger().send_from_queue_to_worker(this_worker_id, Q2W::dequeue_accepted,
-                                                                       job_task.first, job_task.second);
+                                                                       job_task.job_id, job_task.state_id, job_task.task_id);
          ++N_tasks_at_workers_;
       } else {
          JobManager::instance()->messenger().send_from_queue_to_worker(this_worker_id, Q2W::dequeue_rejected);
