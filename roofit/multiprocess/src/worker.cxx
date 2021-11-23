@@ -84,9 +84,11 @@ void worker_loop()
          // then process incoming messages from sockets
          for (auto readable_socket : poll_result) {
             // message comes from the master-worker SUB socket (first element):
-            if (readable_socket.first == mw_sub_index && !skip_sub) {
-               auto job_id = JobManager::instance()->messenger().receive_from_master_on_worker<std::size_t>();
-               JobManager::get_job_object(job_id)->update_state();
+            if (readable_socket.first == mw_sub_index) {
+               if (!skip_sub) {
+                  auto job_id = JobManager::instance()->messenger().receive_from_master_on_worker<std::size_t>();
+                  JobManager::get_job_object(job_id)->update_state();
+               }
             } else { // from queue socket
                message_q2w = JobManager::instance()->messenger().receive_from_queue_on_worker<Q2W>();
                switch (message_q2w) {
