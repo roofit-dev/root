@@ -43,7 +43,6 @@ void worker_loop()
 {
    assert(JobManager::instance()->process_manager().is_worker());
    worker_loop_running = true;
-   std::size_t job_id;
    Q2W message_q2w;
 
    // use a flag to not ask twice
@@ -86,7 +85,7 @@ void worker_loop()
          for (auto readable_socket : poll_result) {
             // message comes from the master-worker SUB socket (first element):
             if (readable_socket.first == mw_sub_index && !skip_sub) {
-               job_id = JobManager::instance()->messenger().receive_from_master_on_worker<std::size_t>();
+               auto job_id = JobManager::instance()->messenger().receive_from_master_on_worker<std::size_t>();
                JobManager::get_job_object(job_id)->update_state();
             } else { // from queue socket
                message_q2w = JobManager::instance()->messenger().receive_from_queue_on_worker<Q2W>();

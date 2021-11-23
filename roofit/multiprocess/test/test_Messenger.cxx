@@ -197,9 +197,9 @@ TEST(TestMPMessenger, DISABLED_StressSigStop)
 
    if (pm.is_queue()) {
       for (std::size_t ix = 0; ix < runs; ++ix) {
-         auto number = messenger.receive_from_master_on_queue<int>();
+         /*auto number =*/ messenger.receive_from_master_on_queue<int>();
          //      printf("received %d on queue\n", number);
-         number = messenger.receive_from_master_on_queue<int>();
+         /*number =*/ messenger.receive_from_master_on_queue<int>();
          //      printf("received %d on queue\n", number);
          messenger.send_from_queue_to_master(3);
       }
