@@ -1893,23 +1893,6 @@ if (roofit_multiprocess AND NOT MSVC)
     # Reset default find_package mode
     set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ${CMAKE_FIND_PACKAGE_PREFER_CONFIG_ORIGINAL_VALUE})
     unset(CMAKE_FIND_PACKAGE_PREFER_CONFIG_ORIGINAL_VALUE)
-
-    # only check symbol if the package was found (we may still reach this point when it wasn't found
-    # and fail-on-missing is deactivated)
-    if(ZeroMQ_FOUND)
-      SET(SAVE_CMAKE_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS}")
-      SET(CMAKE_REQUIRED_DEFINITIONS "-DZMQ_BUILD_DRAFT_API")
-      check_cxx_symbol_exists(zmq_ppoll zmq.h ZeroMQ_HAS_PPOLL)
-      SET(CMAKE_REQUIRED_DEFINITIONS "${SAVE_CMAKE_REQUIRED_DEFINITIONS}")
-      if(NOT ZeroMQ_HAS_PPOLL)
-        if (fail-on-missing)
-          message(FATAL_ERROR "Detected ZeroMQ version is too old (does not have zmq_ppoll). Aborting, because fail-on-missing was set.")
-        else()
-          message(STATUS "Detected ZeroMQ version is too old (does not have zmq_ppoll). Switching on builtin_zeromq option")
-          set(builtin_zeromq ON CACHE BOOL "Enabled because detected ZeroMQ version is too old (${builtin_zeromq_description})" FORCE)
-        endif()
-      endif()
-    endif()
   endif()
 
   if(builtin_zeromq)
