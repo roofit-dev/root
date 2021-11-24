@@ -1,4 +1,14 @@
-// Authors: Patrick Bos, Netherlands eScience Center / NIKHEF 2015-2021
+/*
+ * Project: RooFit
+ * Authors:
+ *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
+ *
+ * Copyright (c) 2021, CERN
+ *
+ * Redistribution and use in source and binary forms,
+ * with or without modification, are permitted according to the terms
+ * listed in LICENSE (http://roofit.sourceforge.net/license.txt)
+ */
 
 #include "RooFit_ZMQ/ZeroMQSvc.h"
 #include "RooFit_ZMQ/ZeroMQPoller.h"
