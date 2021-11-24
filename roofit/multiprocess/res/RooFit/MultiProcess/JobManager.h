@@ -4,13 +4,11 @@
  *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
  *   IP, Inti Pelupessy, Netherlands eScience Center, i.pelupessy@esciencecenter.nl
  *
- * Copyright (c) 2016-2021, Netherlands eScience Center
+ * Copyright (c) 2021, CERN
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * Redistribution and use in source and binary forms,
+ * with or without modification, are permitted according to the terms
+ * listed in LICENSE (http://roofit.sourceforge.net/license.txt)
  */
 #ifndef ROOT_ROOFIT_MultiProcess_JobManager
 #define ROOT_ROOFIT_MultiProcess_JobManager

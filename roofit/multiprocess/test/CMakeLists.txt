@@ -1,4 +1,4 @@
-# @author Patrick Bos, NL eScience Center, 2019
+# @author Patrick Bos, NL eScience Center, 2019-2021
 
 add_library(RooFit_multiprocess_testing_utils INTERFACE)
 target_link_libraries(RooFit_multiprocess_testing_utils INTERFACE RooFitCore RooBatchCompute)
