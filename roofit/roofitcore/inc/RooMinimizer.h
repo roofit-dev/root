@@ -118,6 +118,8 @@ public:
   ROOT::Math::IMultiGenFunction* getFitterMultiGenFcn() const;
   ROOT::Math::IMultiGenFunction* getMultiGenFcn() const;
 
+  inline Int_t getNPar() const { return fitterFcn()->getNDim() ; }
+
 protected:
 
   friend class RooAbsPdf ;
@@ -126,7 +128,6 @@ protected:
   void profileStart() ;
   void profileStop() ;
 
-  inline Int_t getNPar() const { return fitterFcn()->getNDim() ; }
   inline std::ofstream* logfile() { return fitterFcn()->GetLogFile(); }
   inline Double_t& maxFCN() { return fitterFcn()->GetMaxFCN() ; }
 
