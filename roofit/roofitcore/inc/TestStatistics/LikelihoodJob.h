@@ -21,7 +21,7 @@
 
 #include "Math/MinimizerOptions.h"
 
-#include <map>
+#include <vector>
 
 namespace RooFit {
 namespace TestStatistics {
@@ -33,39 +33,44 @@ public:
 
    void init_vars();
 
-   // TODO: implement override if necessary
-//   void synchronize_with_minimizer(const ROOT::Math::MinimizerOptions & options) override;
-
    void evaluate() override;
-   double return_result() const override;
+   inline ROOT::Math::KahanSum<double> getResult() const override { return result; }
 
-   void update_parameters();  // helper for evaluate
+   void updateWorkersParameters();  // helper for evaluate
+   void updateWorkersOffsetting();  // helper for enableOffsetting
 
    // Job overrides:
    void evaluate_task(std::size_t task) override;
-   void update_real(std::size_t ix, double val, bool is_constant) override;
-   void update_bool(std::size_t ix, bool value) override;
+   void update_state() override;
+
+   struct update_state_t {
+      std::size_t var_index;
+      double value;
+      bool is_constant;
+   };
+   enum class update_state_mode : int {parameters, offsetting};
+
    // --- RESULT LOGISTICS ---
+   struct task_result_t {
+      std::size_t job_id; // job ID must always be the first part of any result message/type
+      double value;
+      double carry;
+   };
+
    void send_back_task_result_from_worker(std::size_t task) override;
-   void receive_task_result_on_queue(std::size_t task, std::size_t worker_id) override;
-   void send_back_results_from_queue_to_master() override;
-   void clear_results() override;
-   void receive_results_on_master() override;
    bool receive_task_result_on_master(const zmq::message_t & message) override;
 
-   void enable_offsetting(bool flag) override;
+   void enableOffsetting(bool flag) override;
 
 private:
-   double result = 0;
-   double carry = 0;
-   std::map<MultiProcess::Task, double> results;
-   std::map<MultiProcess::Task, double> carrys;
+   ROOT::Math::KahanSum<double> result;
+   std::vector<ROOT::Math::KahanSum<double>> results;
 
-   RooArgList _vars;      // Variables
-   RooArgList _saveVars;  // Copy of variables
+   RooArgList vars_;      // Variables
+   RooArgList save_vars_;  // Copy of variables
 
-   LikelihoodType likelihood_type;
-   std::size_t N_tasks_at_workers = 0;
+   LikelihoodType likelihood_type_;
+   std::size_t N_tasks_at_workers_ = 0;
 };
 
 }

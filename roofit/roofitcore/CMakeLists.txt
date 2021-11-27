@@ -497,7 +497,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     MathCore
     Foam
     Smatrix
-    ${RooFitMPTestStatisticsDependencies}
   LINKDEF
     inc/LinkDef.h
 )

@@ -35,51 +35,28 @@ public:
 
    void update_state() override;
 
-   // ----- BEGIN PASTE UIT RooGradientFunction.h -----
-   // ----- BEGIN PASTE UIT RooGradientFunction.h -----
-   // ----- BEGIN PASTE UIT RooGradientFunction.h -----
-   // ----- BEGIN PASTE UIT RooGradientFunction.h -----
-   // ----- BEGIN PASTE UIT RooGradientFunction.h -----
-
-public:
    enum class GradientCalculatorMode {
       ExactlyMinuit2, AlmostMinuit2
    };
 
 private:
-   // TODO: are mutables here still necessary?
-   // mutables below are because ROOT::Math::IMultiGradFunction::DoDerivative is const
-
-   mutable std::vector<RooFit::MinuitDerivatorElement> _grad;
-   mutable RooFit::NumericalDerivatorMinuit2 _gradf;
-
    void run_derivator(unsigned int i_component) const;
 
-   // ----- END PASTE UIT RooGradientFunction.h -----
-   // ----- END PASTE UIT RooGradientFunction.h -----
-   // ----- END PASTE UIT RooGradientFunction.h -----
-   // ----- END PASTE UIT RooGradientFunction.h -----
-   // ----- END PASTE UIT RooGradientFunction.h -----
+   void synchronizeParameterSettings(ROOT::Math::IMultiGenFunction* function, const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings) override;
 
-   void synchronize_parameter_settings(ROOT::Math::IMultiGenFunction* function, const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings) override;
+   void synchronizeWithMinimizer(const ROOT::Math::MinimizerOptions & options) override;
+   void setStrategy(int istrat);
+   void setStepTolerance(double step_tolerance) const;
+   void setGradTolerance(double grad_tolerance) const;
+   void setNCycles(unsigned int ncycles) const;
+   void setErrorLevel(double error_level) const;
 
-   void synchronize_with_minimizer(const ROOT::Math::MinimizerOptions & options) override;
-   void set_strategy(int istrat);
-   void set_step_tolerance(double step_tolerance) const;
-   void set_grad_tolerance(double grad_tolerance) const;
-   void set_ncycles(unsigned int ncycles) const;
-   void set_error_level(double error_level) const;
+   void updateMinuitInternalParameterValues(const std::vector<double>& minuit_internal_x) override;
 
-   void update_minuit_internal_parameter_values(const std::vector<double>& minuit_internal_x) override;
-
-   bool uses_minuit_internal_values() override;
+   bool usesMinuitInternalValues() override;
 
    // Job overrides:
    void evaluate_task(std::size_t task) override;
-   void update_real(std::size_t ix, double val, bool is_constant) override;
-   void update_bool(std::size_t ix, bool value) override;
-   void clear_results() override;
-   void receive_results_on_master() override;
 
    struct task_result_t {
       std::size_t job_id;
@@ -92,9 +69,14 @@ private:
    void calculate_all();
 
    // members
-   std::size_t N_tasks = 0;
-   std::size_t N_tasks_at_workers = 0;
-   std::vector<std::size_t> completed_task_ids;
+
+   // TODO: are mutables here still necessary?
+   // mutables below are because ROOT::Math::IMultiGradFunction::DoDerivative is const
+   mutable std::vector<ROOT::Minuit2::DerivatorElement> grad_;
+   mutable ROOT::Minuit2::NumericalDerivator gradf_;
+
+   std::size_t N_tasks_ = 0;
+   std::size_t N_tasks_at_workers_ = 0;
    std::vector<double> minuit_internal_x_;
 };
 

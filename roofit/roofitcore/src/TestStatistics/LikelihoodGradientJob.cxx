@@ -12,35 +12,35 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  */
 #include "TestStatistics/LikelihoodGradientJob.h"
-#include "Minuit2/MnStrategy.h"
 
-#include "RooMsgService.h"
 #include "RooFit/MultiProcess/JobManager.h"
 #include "RooFit/MultiProcess/Messenger.h"
 #include "RooFit/MultiProcess/Queue.h"
+#include "RooMsgService.h"
 #include "RooMinimizer.h"
+
+#include "Minuit2/MnStrategy.h"
 
 namespace RooFit {
 namespace TestStatistics {
 
 LikelihoodGradientJob::LikelihoodGradientJob(std::shared_ptr<RooAbsL> likelihood, std::shared_ptr<WrapperCalculationCleanFlags> calculation_is_clean, std::size_t N_dim,
                                              RooMinimizer *minimizer)
-   : LikelihoodGradientWrapper(std::move(likelihood), std::move(calculation_is_clean), N_dim, minimizer), _grad(N_dim)
+   : LikelihoodGradientWrapper(std::move(likelihood), std::move(calculation_is_clean), N_dim, minimizer), grad_(N_dim)
 {
    // Note to future maintainers: take care when storing the minimizer_fcn pointer. The
    // RooAbsMinimizerFcn subclasses may get cloned inside MINUIT, which means the pointer
    // should also somehow be updated in this class.
 //   N_tasks = minimizer_fcn->get_nDim();
-   N_tasks = N_dim;
-   completed_task_ids.reserve(N_tasks);
+   N_tasks_ = N_dim;
    minuit_internal_x_.reserve(N_dim);
    // TODO: make sure that the full gradients are sent back so that the
    // derivator will depart from correct state next step everywhere!
 }
 
 LikelihoodGradientJob::LikelihoodGradientJob(const LikelihoodGradientJob &other)
-   : LikelihoodGradientWrapper(other), _grad(other._grad), _gradf(other._gradf), N_tasks(other.N_tasks),
-     completed_task_ids(other.completed_task_ids), minuit_internal_x_(other.minuit_internal_x_)
+   : LikelihoodGradientWrapper(other), grad_(other.grad_), gradf_(other.gradf_), N_tasks_(other.N_tasks_),
+     minuit_internal_x_(other.minuit_internal_x_)
 {
 }
 
@@ -49,46 +49,46 @@ LikelihoodGradientJob *LikelihoodGradientJob::clone() const
    return new LikelihoodGradientJob(*this);
 }
 
-void LikelihoodGradientJob::synchronize_parameter_settings(
+void LikelihoodGradientJob::synchronizeParameterSettings(
    ROOT::Math::IMultiGenFunction *function, const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings)
 {
-   _gradf.SetInitialGradient(function, parameter_settings, _grad);
+   gradf_.SetInitialGradient(function, parameter_settings, grad_);
 }
 
-void LikelihoodGradientJob::synchronize_with_minimizer(const ROOT::Math::MinimizerOptions &options)
+void LikelihoodGradientJob::synchronizeWithMinimizer(const ROOT::Math::MinimizerOptions &options)
 {
-   set_strategy(options.Strategy());
-   set_error_level(options.ErrorDef());
+   setStrategy(options.Strategy());
+   setErrorLevel(options.ErrorDef());
 }
 
-void LikelihoodGradientJob::set_strategy(int istrat)
+void LikelihoodGradientJob::setStrategy(int istrat)
 {
    assert(istrat >= 0);
    ROOT::Minuit2::MnStrategy strategy(static_cast<unsigned int>(istrat));
 
-   set_step_tolerance(strategy.GradientStepTolerance());
-   set_grad_tolerance(strategy.GradientTolerance());
-   set_ncycles(strategy.GradientNCycles());
+   setStepTolerance(strategy.GradientStepTolerance());
+   setGradTolerance(strategy.GradientTolerance());
+   setNCycles(strategy.GradientNCycles());
 }
 
-void LikelihoodGradientJob::set_step_tolerance(double step_tolerance) const
+void LikelihoodGradientJob::setStepTolerance(double step_tolerance) const
 {
-   _gradf.set_step_tolerance(step_tolerance);
+   gradf_.SetStepTolerance(step_tolerance);
 }
 
-void LikelihoodGradientJob::set_grad_tolerance(double grad_tolerance) const
+void LikelihoodGradientJob::setGradTolerance(double grad_tolerance) const
 {
-   _gradf.set_grad_tolerance(grad_tolerance);
+   gradf_.SetGradTolerance(grad_tolerance);
 }
 
-void LikelihoodGradientJob::set_ncycles(unsigned int ncycles) const
+void LikelihoodGradientJob::setNCycles(unsigned int ncycles) const
 {
-   _gradf.set_ncycles(ncycles);
+   gradf_.SetNCycles(ncycles);
 }
 
-void LikelihoodGradientJob::set_error_level(double error_level) const
+void LikelihoodGradientJob::setErrorLevel(double error_level) const
 {
-   _gradf.set_error_level(error_level);
+   gradf_.SetErrorLevel(error_level);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -99,73 +99,14 @@ void LikelihoodGradientJob::evaluate_task(std::size_t task)
    run_derivator(task);
 }
 
-void LikelihoodGradientJob::update_real(std::size_t ix, double val, bool /*is_constant*/)
-{
-   if (get_manager()->process_manager().is_worker()) {
-      // ix is defined in "flat" FunctionGradient space ix_dim * size + ix_component
-//      std::cout << "on worker, ix = " << ix << ", ix / _minimizer->getNPar() = " << ix / _minimizer->getNPar() << ", ix % _minimizer->getNPar() = " << ix % _minimizer->getNPar() << std::endl;
-      switch (ix / minimizer_->getNPar()) {
-      case 0: {
-         _grad[ix % minimizer_->getNPar()].derivative = val;
-         break;
-      }
-      case 1: {
-         _grad[ix % minimizer_->getNPar()].second_derivative = val;
-         break;
-      }
-      case 2: {
-         _grad[ix % minimizer_->getNPar()].step_size = val;
-         break;
-      }
-      case 3: {
-         std::size_t ix_component = ix % minimizer_->getNPar();
-         minuit_internal_x_[ix_component] = val;
-//         _minimizer->set_function_parameter_value(ix_component, val);  // if we want to update this, we should send over external values!
-         break;
-      }
-      default:
-         std::stringstream ss;
-         ss << "ix = " << ix << " out of range in LikelihoodGradientJob::update_real! NPar = " << minimizer_->getNPar();
-         throw std::runtime_error(ss.str());
-      }
-   }
-}
-
-void LikelihoodGradientJob::update_bool(std::size_t /*ix*/, bool /*value*/) {}
-
 // SYNCHRONIZATION FROM WORKERS TO MASTER
-
-void LikelihoodGradientJob::clear_results()
-{
-   completed_task_ids.clear();
-}
-
-void LikelihoodGradientJob::receive_results_on_master()
-{
-   auto get_time = []() {
-      return std::chrono::duration_cast<std::chrono::nanoseconds>(
-         std::chrono::high_resolution_clock::now().time_since_epoch())
-         .count();
-   };
-   decltype(get_time()) t1, t2;
-   t1 = get_time();
-   std::size_t N_completed_tasks = get_manager()->messenger().receive_from_queue_on_master<std::size_t>();
-   for (unsigned int sync_ix = 0u; sync_ix < N_completed_tasks; ++sync_ix) {
-      std::size_t task = get_manager()->messenger().receive_from_queue_on_master<std::size_t>();
-      _grad[task].derivative = get_manager()->messenger().receive_from_queue_on_master<double>();
-      _grad[task].second_derivative = get_manager()->messenger().receive_from_queue_on_master<double>();
-      _grad[task].step_size = get_manager()->messenger().receive_from_queue_on_master<double>();
-   }
-   t2 = get_time();
-   printf("timestamps LikelihoodGradientJob::receive_results_on_master: %lld %lld\n", t1, t2);
-}
 
 bool LikelihoodGradientJob::receive_task_result_on_master(const zmq::message_t & message)
 {
    auto result = message.data<task_result_t>();
-   _grad[result->task_id] = result->grad;
-   --N_tasks_at_workers;
-   bool job_completed = (N_tasks_at_workers == 0);
+   grad_[result->task_id] = result->grad;
+   --N_tasks_at_workers_;
+   bool job_completed = (N_tasks_at_workers_ == 0);
    return job_completed;
 }
 
@@ -179,9 +120,8 @@ void LikelihoodGradientJob::run_derivator(unsigned int i_component) const
 {
    // Calculate the derivative etc for these parameters
 //   auto parameter_values = _minimizer->get_function_parameter_values();
-   _grad[i_component] =
-      _gradf.fast_partial_derivative(minimizer_->getMultiGenFcn(),
-                                     minimizer_->fitter()->Config().ParamsSettings(), i_component, _grad[i_component]);
+   grad_[i_component] = gradf_.FastPartialDerivative(
+      minimizer_->getMultiGenFcn(), minimizer_->fitter()->Config().ParamsSettings(), i_component, grad_[i_component]);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -244,7 +184,7 @@ void LikelihoodGradientJob::update_workers_state()
 {
    // TODO optimization: only send changed parameters (now sending all)
    get_manager()->messenger().publish_from_master_to_workers(id_);
-   zmq::message_t gradient_message(_grad.begin(), _grad.end());
+   zmq::message_t gradient_message(grad_.begin(), grad_.end());
    get_manager()->messenger().publish_from_master_to_workers(std::move(gradient_message));
    zmq::message_t minuit_internal_x_message(minuit_internal_x_.begin(), minuit_internal_x_.end());
    get_manager()->messenger().publish_from_master_to_workers(std::move(minuit_internal_x_message));
@@ -276,11 +216,11 @@ void LikelihoodGradientJob::calculate_all()
 
 //      t1 = get_time();
       // master fills queue with tasks
-      for (std::size_t ix = 0; ix < N_tasks; ++ix) {
+      for (std::size_t ix = 0; ix < N_tasks_; ++ix) {
          MultiProcess::JobTask job_task(id_, ix);
          get_manager()->queue().add(job_task);
       }
-      N_tasks_at_workers = N_tasks;
+      N_tasks_at_workers_ = N_tasks_;
 //      t2 = get_time();
 
 //      printf("wallclock [master] put job tasks in queue: %f\n", (t2 - t1) / 1.e9);
@@ -308,17 +248,17 @@ void LikelihoodGradientJob::fillGradient(double *grad)
       // TODO: maybe make a flag to avoid this copy operation, but maybe not worth the effort
       // put the results from _grad into *grad
       for (Int_t ix = 0; ix < minimizer_->getNPar(); ++ix) {
-         grad[ix] = _grad[ix].derivative;
+         grad[ix] = grad_[ix].derivative;
       }
    }
 }
 
-void LikelihoodGradientJob::update_minuit_internal_parameter_values(const std::vector<double>& minuit_internal_x)
+void LikelihoodGradientJob::updateMinuitInternalParameterValues(const std::vector<double>& minuit_internal_x)
 {
    minuit_internal_x_ = minuit_internal_x;
 }
 
-bool LikelihoodGradientJob::uses_minuit_internal_values()
+bool LikelihoodGradientJob::usesMinuitInternalValues()
 {
    return true;
 }
@@ -343,14 +283,15 @@ void LikelihoodGradientJob::update_state()
    auto gradient_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>();
    auto gradient_message_begin = gradient_message.data<ROOT::Minuit2::DerivatorElement>();
    auto gradient_message_end = gradient_message_begin + gradient_message.size()/sizeof(ROOT::Minuit2::DerivatorElement);
-   std::copy(gradient_message_begin, gradient_message_end, _grad.begin());
+   std::copy(gradient_message_begin, gradient_message_end, grad_.begin());
 
    auto minuit_internal_x_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>();
    auto minuit_internal_x_message_begin = minuit_internal_x_message.data<double>();
    auto minuit_internal_x_message_end = minuit_internal_x_message_begin + minuit_internal_x_message.size()/sizeof(double);
    std::copy(minuit_internal_x_message_begin, minuit_internal_x_message_end, minuit_internal_x_.begin());
 
-   _gradf.setup_differentiate(minimizer_->getMultiGenFcn(), minuit_internal_x_.data(), minimizer_->fitter()->Config().ParamsSettings());
+   gradf_.SetupDifferentiate(minimizer_->getMultiGenFcn(), minuit_internal_x_.data(),
+                             minimizer_->fitter()->Config().ParamsSettings());
 }
 
 
