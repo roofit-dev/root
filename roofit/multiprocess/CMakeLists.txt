@@ -16,7 +16,7 @@ ROOT_LINKER_LIBRARY(RooFitMultiProcess
 )
 
 target_link_libraries(RooFitMultiProcess PUBLIC RooFitZMQ)
-set(RooFitMultiProcess_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/res ${RooFitZMQ_INCLUDE_DIRS})
+set(RooFitMultiProcess_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/res" ${RooFitZMQ_INCLUDE_DIRS} CACHE INTERNAL "")
 target_include_directories(RooFitMultiProcess PRIVATE ${RooFitMultiProcess_INCLUDE_DIRS})
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

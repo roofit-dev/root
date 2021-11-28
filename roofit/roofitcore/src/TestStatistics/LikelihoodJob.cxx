@@ -134,8 +134,9 @@ void LikelihoodJob::updateWorkersParameters() {
          zmq::message_t message(to_update.begin(), to_update.end());
          // always send Job id first! This is used in worker_loop to route the
          // update_state call to the correct Job.
-         get_manager()->messenger().publish_from_master_to_workers(id_, update_state_mode::parameters, state_id_,
-                                                                   std::move(message));
+         get_manager()->messenger().publish_from_master_to_workers(id_, update_state_mode::parameters, state_id_);
+         // have to pass message separately to avoid copies from parameter pack to first parameter
+         get_manager()->messenger().publish_from_master_to_workers(std::move(message));
       }
    }
 }
@@ -214,6 +215,22 @@ void LikelihoodJob::enableOffsetting(bool flag) {
    LikelihoodWrapper::enableOffsetting(flag);
    updateWorkersOffsetting();
 }
+
+#define PROCESS_VAL(p) \
+   case (p): s = #p; break;
+
+std::ostream &operator<<(std::ostream &out, const LikelihoodJob::update_state_mode value)
+{
+   std::string s;
+   switch (value) {
+      PROCESS_VAL(LikelihoodJob::update_state_mode::offsetting);
+      PROCESS_VAL(LikelihoodJob::update_state_mode::parameters);
+   default: s = std::to_string(static_cast<int>(value));
+   }
+   return out << s;
+}
+
+#undef PROCESS_VAL
 
 }
 }

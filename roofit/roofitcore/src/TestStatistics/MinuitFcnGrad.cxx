@@ -11,6 +11,9 @@
  */
 
 #include "TestStatistics/MinuitFcnGrad.h"
+#include "TestStatistics/LikelihoodSerial.h"
+#include "TestStatistics/LikelihoodJob.h"
+#include "TestStatistics/LikelihoodGradientJob.h"
 
 #include "RooMinimizer.h"
 #include "RooMsgService.h"
@@ -35,6 +38,54 @@ namespace TestStatistics {
  * \note The class is not intended for use by end-users. We recommend to either use RooMinimizer with a RooAbsL derived
  * likelihood object, or to use a higher level entry point like RooAbsPdf::fitTo() or RooAbsPdf::createNLL().
  */
+
+/// \param[in] context RooMinimizer that creates and owns this class.
+/// \param[in] parameters The vector of ParameterSettings objects that describe the parameters used in the Minuit
+/// Fitter. Note that these must match the set used in the Fitter used by \p context! It can be passed in from
+/// RooMinimizer with fitter()->Config().ParamsSettings().
+MinuitFcnGrad::MinuitFcnGrad(const std::shared_ptr<RooFit::TestStatistics::RooAbsL> &_likelihood, RooMinimizer *context,
+                             std::vector<ROOT::Fit::ParameterSettings> &parameters,
+                             LikelihoodMode likelihoodMode,
+                             LikelihoodGradientMode likelihoodGradientMode, bool verbose)
+   : RooAbsMinimizerFcn(RooArgList(*_likelihood->getParameters()), context, verbose), minuit_internal_x_(NDim(), 0),
+     minuit_external_x_(NDim(), 0)
+{
+   synchronizeParameterSettings(parameters, kTRUE, verbose);
+
+   calculation_is_clean = std::make_shared<WrapperCalculationCleanFlags>();
+
+   switch (likelihoodMode) {
+   case LikelihoodMode::serial: {
+      likelihood = std::make_shared<LikelihoodSerial>(_likelihood, calculation_is_clean);
+      break;
+   }
+   case LikelihoodMode::multiprocess: {
+      likelihood = std::make_shared<LikelihoodJob>(_likelihood, calculation_is_clean);
+      break;
+   }
+   default: {
+      throw std::logic_error("In MinuitFcnGrad constructor: likelihoodMode has an unsupported value!");
+   }
+   }
+
+   switch (likelihoodGradientMode) {
+   case LikelihoodGradientMode::multiprocess: {
+      gradient = std::make_shared<LikelihoodGradientJob>(_likelihood, calculation_is_clean, getNDim(), _context);
+      break;
+   }
+   default: {
+      throw std::logic_error("In MinuitFcnGrad constructor: likelihoodGradientMode has an unsupported value!");
+   }
+   }
+
+   likelihood->synchronizeParameterSettings(parameters);
+   gradient->synchronizeParameterSettings(this, parameters);
+
+   // Note: can be different than RooGradMinimizerFcn, where default options are passed
+   // (ROOT::Math::MinimizerOptions::DefaultStrategy() and ROOT::Math::MinimizerOptions::DefaultErrorDef())
+   likelihood->synchronizeWithMinimizer(ROOT::Math::MinimizerOptions());
+   gradient->synchronizeWithMinimizer(ROOT::Math::MinimizerOptions());
+}
 
 double MinuitFcnGrad::DoEval(const double *x) const
 {

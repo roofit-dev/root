@@ -101,6 +101,14 @@ void LikelihoodGradientJob::evaluate_task(std::size_t task)
 
 // SYNCHRONIZATION FROM WORKERS TO MASTER
 
+void LikelihoodGradientJob::send_back_task_result_from_worker(std::size_t task)
+{
+   task_result_t task_result {id_, task, grad_[task]};
+   zmq::message_t message(sizeof(task_result_t));
+   memcpy(message.data(), &task_result, sizeof(task_result_t));
+   get_manager()->messenger().send_from_worker_to_master(std::move(message));
+}
+
 bool LikelihoodGradientJob::receive_task_result_on_master(const zmq::message_t & message)
 {
    auto result = message.data<task_result_t>();
@@ -217,7 +225,7 @@ void LikelihoodGradientJob::calculate_all()
 //      t1 = get_time();
       // master fills queue with tasks
       for (std::size_t ix = 0; ix < N_tasks_; ++ix) {
-         MultiProcess::JobTask job_task(id_, ix);
+         MultiProcess::JobTask job_task {id_, state_id_, ix};
          get_manager()->queue().add(job_task);
       }
       N_tasks_at_workers_ = N_tasks_;

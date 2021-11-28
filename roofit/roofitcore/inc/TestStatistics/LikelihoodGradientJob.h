@@ -63,6 +63,7 @@ private:
       std::size_t task_id;
       ROOT::Minuit2::DerivatorElement grad;
    };
+   void send_back_task_result_from_worker(std::size_t task) override;
    bool receive_task_result_on_master(const zmq::message_t & message) override;
 
    void update_workers_state();

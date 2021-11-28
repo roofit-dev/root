@@ -2,7 +2,7 @@
 
 add_library(RooFit_multiprocess_testing_utils INTERFACE)
 target_link_libraries(RooFit_multiprocess_testing_utils INTERFACE RooFitCore RooBatchCompute)
-target_include_directories(RooFit_multiprocess_testing_utils PRIVATE ${RooFitMultiProcess_INCLUDE_DIRS})
+target_include_directories(RooFit_multiprocess_testing_utils INTERFACE ${RooFitMultiProcess_INCLUDE_DIRS})
 
 ROOT_ADD_GTEST(test_RooFit_MultiProcess_Job test_Job.cxx LIBRARIES RooFitMultiProcess)
 # link to the INTERFACE library separately, ROOT_EXECUTABLE cannot handle INTERFACE library properties:

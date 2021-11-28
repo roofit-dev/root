@@ -73,6 +73,8 @@ private:
    std::size_t N_tasks_at_workers_ = 0;
 };
 
+std::ostream &operator<<(std::ostream &out, const LikelihoodJob::update_state_mode value);
+
 }
 }
 
