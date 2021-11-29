@@ -32,6 +32,8 @@ public:
    LikelihoodGradientJob(const LikelihoodGradientJob& other);
 
    void fillGradient(double *grad) override;
+   void fillGradientWithPrevResult(double *grad, double *previous_grad, double *previous_g2,
+                                   double *previous_gstep) override;
 
    void update_state() override;
 

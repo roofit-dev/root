@@ -246,6 +246,13 @@ void MinuitFcnGrad::Gradient(const double *x, double *grad) const
    gradient->fillGradient(grad);
 }
 
+void MinuitFcnGrad::GradientWithPrevResult(const double *x, double *grad, double *previous_grad, double *previous_g2,
+                                           double *previous_gstep) const
+{
+   syncParameterValuesFromMinuitCalls(x, returnsInMinuit2ParameterSpace());
+   gradient->fillGradientWithPrevResult(grad, previous_grad, previous_g2, previous_gstep);
+}
+
 double MinuitFcnGrad::DoDerivative(const double * /*x*/, unsigned int /*icoord*/) const
 {
    throw std::runtime_error("MinuitFcnGrad::DoDerivative is not implemented, please use Gradient instead.");

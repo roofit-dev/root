@@ -175,6 +175,27 @@ void LikelihoodGradientJob::fillGradient(double *grad)
    }
 }
 
+void LikelihoodGradientJob::fillGradientWithPrevResult(double *grad, double *previous_grad, double *previous_g2, double *previous_gstep)
+{
+   if (get_manager()->process_manager().is_master()) {
+      for (std::size_t i_component = 0; i_component < N_tasks_; ++i_component) {
+         grad_[i_component] = {previous_grad[i_component], previous_g2[i_component], previous_gstep[i_component]};
+      }
+
+      if (!calculation_is_clean_->gradient) {
+         calculate_all();
+      }
+
+      // TODO: maybe make a flag to avoid this copy operation, but maybe not worth the effort
+      // put the results from _grad into *grad
+      for (Int_t ix = 0; ix < minimizer_->getNPar(); ++ix) {
+         grad[ix] = grad_[ix].derivative;
+         previous_g2[ix] = grad_[ix].second_derivative;
+         previous_gstep[ix] = grad_[ix].step_size;
+      }
+   }
+}
+
 void LikelihoodGradientJob::updateMinuitInternalParameterValues(const std::vector<double>& minuit_internal_x)
 {
    minuit_internal_x_ = minuit_internal_x;

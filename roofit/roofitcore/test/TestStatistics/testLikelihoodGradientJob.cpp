@@ -420,14 +420,14 @@ TEST_F(LikelihoodSimBinnedConstrainedTest, BasicParameters)
    EXPECT_DOUBLE_EQ(nll0, nll1);
 }
 
-TEST_F(LikelihoodSimBinnedConstrainedTest, Minimize)
+TEST_F(LikelihoodSimBinnedConstrainedTest, ConstrainedAndOffset)
 {
    // do a minimization, but now using GradMinimizer and its MP version
    nll.reset(pdf->createNLL(*data, RooFit::Constrain(RooArgSet(*w.var("alpha_bkg_obs_A"))),
                             RooFit::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_B"))), RooFit::Offset(kTRUE)));
 
    // parameters
-   std::size_t NWorkers = 2; //std::get<0>(GetParam());
+   std::size_t NWorkers = 2;
 
    RooArgSet *values = pdf->getParameters(data);
 
@@ -474,7 +474,7 @@ TEST_F(LikelihoodSimBinnedConstrainedTest, Minimize)
 
    m1.setMinimizerType("Minuit2");
    m1.setStrategy(0);
-//   m1->setVerbose(true);
+//   m1.setVerbose(true);
    m1.setPrintLevel(1);
    m1.optimizeConst(2);
 
@@ -490,14 +490,22 @@ TEST_F(LikelihoodSimBinnedConstrainedTest, Minimize)
    double mu_sig_GradientJob = w.var("mu_sig")->getVal();
    double mu_sig_error_GradientJob = w.var("mu_sig")->getError();
 
-   EXPECT_EQ(minNll_nominal, minNll_GradientJob);
-   EXPECT_EQ(edm_nominal, edm_GradientJob);
-   EXPECT_EQ(alpha_bkg_A_nominal, alpha_bkg_A_GradientJob);
-   EXPECT_EQ(alpha_bkg_A_error_nominal, alpha_bkg_A_error_GradientJob);
-   EXPECT_EQ(alpha_bkg_B_nominal, alpha_bkg_B_GradientJob);
-   EXPECT_EQ(alpha_bkg_B_error_nominal, alpha_bkg_B_error_GradientJob);
-   EXPECT_EQ(mu_sig_nominal, mu_sig_GradientJob);
-   EXPECT_EQ(mu_sig_error_nominal, mu_sig_error_GradientJob);
+   // Because offsetting is handled differently in the TestStatistics classes
+   // compared to the way it was done in the object returned from
+   // RooAbsPdf::createNLL (a RooAddition of an offset RooNLLVar and a
+   // non-offset RooConstraintSum, whereas RooSumL applies the offset to the
+   // total sum of its binned, unbinned and constraint components),
+   // we cannot always expect exactly equal results for fits with likelihood
+   // offsetting enabled. See also the LikelihoodSerialSimBinnedConstrainedTest.
+   // ConstrainedAndOffset test case in testLikelihoodSerial.
+   EXPECT_FLOAT_EQ(minNll_nominal, minNll_GradientJob);
+   EXPECT_NEAR(edm_nominal, edm_GradientJob, 1e-5);
+   EXPECT_FLOAT_EQ(alpha_bkg_A_nominal, alpha_bkg_A_GradientJob);
+   EXPECT_FLOAT_EQ(alpha_bkg_A_error_nominal, alpha_bkg_A_error_GradientJob);
+   EXPECT_FLOAT_EQ(alpha_bkg_B_nominal, alpha_bkg_B_GradientJob);
+   EXPECT_FLOAT_EQ(alpha_bkg_B_error_nominal, alpha_bkg_B_error_GradientJob);
+   EXPECT_FLOAT_EQ(mu_sig_nominal, mu_sig_GradientJob);
+   EXPECT_FLOAT_EQ(mu_sig_error_nominal, mu_sig_error_GradientJob);
 
    m1.cleanup(); // necessary in tests to clean up global _theFitter
 }

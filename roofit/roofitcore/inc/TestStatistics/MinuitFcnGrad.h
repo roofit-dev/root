@@ -74,8 +74,10 @@ private:
    double DoEval(const double *x) const override;
 
 public:
-   /// IMultiGradFunction override necessary for Minuit
+   /// IMultiGradFunction overrides necessary for Minuit
    void Gradient(const double *x, double *grad) const override;
+   void GradientWithPrevResult(const double *x, double *grad, double *previous_grad, double *previous_g2,
+                               double *previous_gstep) const override;
 
    /// Part of IMultiGradFunction interface, used widely both in Minuit and in RooFit.
    inline unsigned int NDim() const override { return _nDim; }
