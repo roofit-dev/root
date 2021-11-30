@@ -9,7 +9,7 @@
 # @author Pere Mato, CERN
 ############################################################################
 
-if (roofit_multiprocess AND NOT MSVC)
+if (roofit_multiprocess AND NOT WIN32)
   set(RooFitMPTestStatisticsSources src/TestStatistics/LikelihoodJob.cxx src/TestStatistics/LikelihoodGradientJob.cxx)
 endif()
 
@@ -498,7 +498,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     inc/LinkDef.h
 )
 
-if (roofit_multiprocess AND NOT MSVC)
+if (roofit_multiprocess AND NOT WIN32)
   target_link_libraries(RooFitCore PUBLIC RooFitMultiProcess)
   set(RooFitCore_MultiProcess_TestStatistics_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/res" ${RooFitMultiProcess_INCLUDE_DIRS} CACHE INTERNAL "")
   target_include_directories(RooFitCore PRIVATE ${RooFitCore_MultiProcess_TestStatistics_INCLUDE_DIRS})
