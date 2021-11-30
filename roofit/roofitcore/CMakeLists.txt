@@ -10,9 +10,7 @@
 ############################################################################
 
 if (roofit_multiprocess AND NOT MSVC)
-  set(RooFitMPTestStatisticsHeaders TestStatistics/LikelihoodJob.h TestStatistics/LikelihoodGradientJob.h)
   set(RooFitMPTestStatisticsSources src/TestStatistics/LikelihoodJob.cxx src/TestStatistics/LikelihoodGradientJob.cxx)
-  set(RooFitMPTestStatisticsDependencies RooFitMultiProcess)
 endif()
 
 ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
@@ -252,7 +250,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
     TestStatistics/RooUnbinnedL.h
     TestStatistics/optional_parameter_types.h
     TestStatistics/buildLikelihood.h
-    ${RooFitMPTestStatisticsHeaders}
   SOURCES
     src/BidirMMapPipe.cxx
     src/BidirMMapPipe.h
@@ -503,7 +500,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
 
 if (roofit_multiprocess AND NOT MSVC)
   target_link_libraries(RooFitCore PUBLIC RooFitMultiProcess)
-  target_include_directories(RooFitCore PRIVATE ${RooFitMultiProcess_INCLUDE_DIRS})
+  set(RooFitCore_MultiProcess_TestStatistics_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/res" ${RooFitMultiProcess_INCLUDE_DIRS} CACHE INTERNAL "")
+  target_include_directories(RooFitCore PRIVATE ${RooFitCore_MultiProcess_TestStatistics_INCLUDE_DIRS})
 endif()
 
 # For recent clang, this can facilitate auto-vectorisation.
