@@ -465,8 +465,8 @@ TEST_F(LikelihoodSimBinnedConstrainedTest, ConstrainedAndOffset)
    RooFit::MultiProcess::JobManager::default_N_workers = NWorkers;
 
    std::shared_ptr<RooFit::TestStatistics::RooAbsL> likelihood = RooFit::TestStatistics::buildLikelihood(
-      pdf, data, RooFit::TestStatistics::ConstrainedParameters({*w.var("alpha_bkg_obs_A")}),
-      RooFit::TestStatistics::GlobalObservables({*w.var("alpha_bkg_obs_B")}));
+      pdf, data, RooFit::TestStatistics::ConstrainedParameters(RooArgSet(*w.var("alpha_bkg_obs_A"))),
+      RooFit::TestStatistics::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_B"))));
 
    RooMinimizer m1(likelihood, RooFit::TestStatistics::MinuitFcnGrad::LikelihoodMode::serial,
                    RooFit::TestStatistics::MinuitFcnGrad::LikelihoodGradientMode::multiprocess);
