@@ -48,8 +48,16 @@ public:
    }
 };
 
-testing::Environment* const test_env =
+// Previously, we just called AddGlobalTestEnvironment in global namespace, but this caused either a warning about an
+// unused declared variable (the return value of the call) or a parsing problem that the compiler can't handle if you
+// don't store the return value at all. The solution is to just define this manual main function. The default gtest
+// main function does InitGoogleTest and RUN_ALL_TESTS, we add the environment call in the middle.
+int main(int argc, char** argv)
+{
+   testing::InitGoogleTest(&argc, argv);
    testing::AddGlobalTestEnvironment(new Environment);
+   return RUN_ALL_TESTS();
+}
 
 
 class LikelihoodGradientJob : public ::testing::TestWithParam<std::tuple<std::size_t, std::size_t>> {
@@ -464,7 +472,7 @@ TEST_F(LikelihoodSimBinnedConstrainedTest, ConstrainedAndOffset)
 
    RooFit::MultiProcess::JobManager::default_N_workers = NWorkers;
 
-   std::shared_ptr<RooFit::TestStatistics::RooAbsL> likelihood = RooFit::TestStatistics::buildLikelihood(
+   likelihood = RooFit::TestStatistics::buildLikelihood(
       pdf, data, RooFit::TestStatistics::ConstrainedParameters(RooArgSet(*w.var("alpha_bkg_obs_A"))),
       RooFit::TestStatistics::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_B"))));
 

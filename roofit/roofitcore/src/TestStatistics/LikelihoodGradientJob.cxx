@@ -38,14 +38,19 @@ LikelihoodGradientJob::LikelihoodGradientJob(std::shared_ptr<RooAbsL> likelihood
 }
 
 LikelihoodGradientJob::LikelihoodGradientJob(const LikelihoodGradientJob &other)
-   : LikelihoodGradientWrapper(other), grad_(other.grad_), gradf_(other.gradf_), N_tasks_(other.N_tasks_),
-     minuit_internal_x_(other.minuit_internal_x_)
+   : MultiProcess::Job(other), LikelihoodGradientWrapper(other), grad_(other.grad_), gradf_(other.gradf_),
+     N_tasks_(other.N_tasks_), minuit_internal_x_(other.minuit_internal_x_)
 {
 }
 
 LikelihoodGradientJob *LikelihoodGradientJob::clone() const
 {
    return new LikelihoodGradientJob(*this);
+}
+
+void LikelihoodGradientJob::synchronizeParameterSettings(const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings)
+{
+   LikelihoodGradientWrapper::synchronizeParameterSettings(parameter_settings);
 }
 
 void LikelihoodGradientJob::synchronizeParameterSettings(
