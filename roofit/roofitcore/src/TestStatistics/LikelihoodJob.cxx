@@ -175,8 +175,6 @@ void LikelihoodJob::send_back_task_result_from_worker(std::size_t /*task*/) {
    zmq::message_t message(sizeof(task_result_t));
    memcpy(message.data(), &task_result, sizeof(task_result_t));
    get_manager()->messenger().send_from_worker_to_master(std::move(message));
-
-   get_manager()->messenger().send_from_worker_to_master(result.Result(), result.Carry());
 }
 
 bool LikelihoodJob::receive_task_result_on_master(const zmq::message_t & message) {
