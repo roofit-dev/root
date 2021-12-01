@@ -12,30 +12,26 @@
  * listed in LICENSE (http://roofit.sourceforge.net/license.txt)
  */
 
-#include <stdexcept> // runtime_error
+#include "TestStatistics/LikelihoodGradientJob.h"
+
+#include "RooRandom.h"
+#include "RooWorkspace.h"
+#include "RooDataHist.h" // complete type in Binned test
+#include "RooCategory.h" // complete type in MultiBinnedConstraint test
+#include "RooMinimizer.h"
+#include "RooGradMinimizerFcn.h"
+#include "RooFitResult.h"
+#include "TestStatistics/LikelihoodSerial.h"
+#include "TestStatistics/RooUnbinnedL.h"
+#include "TestStatistics/buildLikelihood.h"
+#include "RooFit/MultiProcess/JobManager.h"
+#include "RooFit/MultiProcess/ProcessManager.h" // need to complete type for debugging
+#include "RooStats/ModelConfig.h"
+#include "RunContext.h"  // complete RooBatchCompute::RunContext type used in RooUnbinnedL
 
 #include <TFile.h>
 
-#include <RooRandom.h>
-#include <RooWorkspace.h>
-
-#include "RooDataHist.h" // complete type in Binned test
-#include "RooCategory.h" // complete type in MultiBinnedConstraint test
-
-#include <RooMinimizer.h>
-#include <RooGradMinimizerFcn.h>
-#include <RooFitResult.h>
-
-#include <RooStats/ModelConfig.h>
-
-#include <TestStatistics/LikelihoodGradientJob.h>
-#include <TestStatistics/LikelihoodSerial.h>
-#include <TestStatistics/RooUnbinnedL.h>
-#include <TestStatistics/buildLikelihood.h>
-#include <RooFit/MultiProcess/JobManager.h>
-#include <RooFit/MultiProcess/ProcessManager.h> // need to complete type for debugging
-
-#include <RunContext.h>  // complete RooBatchCompute::RunContext type used in RooUnbinnedL
+#include <stdexcept> // runtime_error
 
 #include "gtest/gtest.h"
 #include "../test_lib.h" // generate_1D_gaussian_pdf_nll
@@ -111,7 +107,7 @@ TEST_P(LikelihoodGradientJob, Gaussian1D)
 
    RooFit::MultiProcess::JobManager::default_N_workers = NWorkers;
    auto likelihood = std::make_shared<RooFit::TestStatistics::RooUnbinnedL>(pdf, data);
-   RooMinimizer m1(likelihood, RooFit::TestStatistics::MinuitFcnGrad::LikelihoodMode::serial,
+   RooMinimizer m1(likelihood, RooFit::TestStatistics::MinuitFcnGrad::LikelihoodMode::multiprocess,
                    RooFit::TestStatistics::MinuitFcnGrad::LikelihoodGradientMode::multiprocess);
    m1.setMinimizerType("Minuit2");
 

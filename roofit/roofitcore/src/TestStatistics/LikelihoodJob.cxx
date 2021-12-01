@@ -11,6 +11,7 @@
  */
 
 #include "TestStatistics/LikelihoodJob.h"
+
 #include "RooFit/MultiProcess/JobManager.h"
 #include "RooFit/MultiProcess/ProcessManager.h"
 #include "RooFit/MultiProcess/Queue.h"
@@ -21,7 +22,6 @@
 #include "TestStatistics/RooBinnedL.h"
 #include "TestStatistics/RooSubsidiaryL.h"
 #include "TestStatistics/RooSumL.h"
-
 #include "RooRealVar.h"
 
 namespace RooFit {
@@ -179,6 +179,7 @@ void LikelihoodJob::send_back_task_result_from_worker(std::size_t /*task*/) {
 bool LikelihoodJob::receive_task_result_on_master(const zmq::message_t & message) {
    auto task_result = message.data<task_result_t>();
    results.emplace_back(task_result->value, task_result->carry);
+   printf("result received: %f\n", task_result->value);
    --N_tasks_at_workers_;
    bool job_completed = (N_tasks_at_workers_ == 0);
    return job_completed;
