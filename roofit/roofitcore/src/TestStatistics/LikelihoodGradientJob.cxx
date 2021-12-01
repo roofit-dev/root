@@ -131,21 +131,22 @@ bool LikelihoodGradientJob::receive_task_result_on_master(const zmq::message_t &
 void LikelihoodGradientJob::update_workers_state()
 {
    // TODO optimization: only send changed parameters (now sending all)
-   get_manager()->messenger().publish_from_master_to_workers(id_);
    zmq::message_t gradient_message(grad_.begin(), grad_.end());
-   get_manager()->messenger().publish_from_master_to_workers(std::move(gradient_message));
    zmq::message_t minuit_internal_x_message(minuit_internal_x_.begin(), minuit_internal_x_.end());
-   get_manager()->messenger().publish_from_master_to_workers(std::move(minuit_internal_x_message));
+   get_manager()->messenger().publish_from_master_to_workers(id_, std::move(gradient_message), std::move(minuit_internal_x_message));
 }
 
 void LikelihoodGradientJob::update_state()
 {
-   auto gradient_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>();
+   bool more;
+   auto gradient_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>(&more);
+   assert(more);
    auto gradient_message_begin = gradient_message.data<ROOT::Minuit2::DerivatorElement>();
    auto gradient_message_end = gradient_message_begin + gradient_message.size()/sizeof(ROOT::Minuit2::DerivatorElement);
    std::copy(gradient_message_begin, gradient_message_end, grad_.begin());
 
-   auto minuit_internal_x_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>();
+   auto minuit_internal_x_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>(&more);
+   assert(!more);
    auto minuit_internal_x_message_begin = minuit_internal_x_message.data<double>();
    auto minuit_internal_x_message_end = minuit_internal_x_message_begin + minuit_internal_x_message.size()/sizeof(double);
    std::copy(minuit_internal_x_message_begin, minuit_internal_x_message_end, minuit_internal_x_.begin());
