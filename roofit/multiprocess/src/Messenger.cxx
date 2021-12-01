@@ -479,8 +479,6 @@ void Messenger::set_send_flag(zmq::send_flags flag)
 
 // -- MASTER - WORKER COMMUNICATION --
 
-void Messenger::publish_from_master_to_workers() {}
-
 void Messenger::send_from_worker_to_master() {}
 
 // for debugging
