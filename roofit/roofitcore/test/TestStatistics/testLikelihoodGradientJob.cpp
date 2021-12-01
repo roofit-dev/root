@@ -99,7 +99,7 @@ TEST_P(LikelihoodGradientJob, Gaussian1D)
 
    RooFit::MultiProcess::JobManager::default_N_workers = NWorkers;
    auto likelihood = std::make_shared<RooFit::TestStatistics::RooUnbinnedL>(pdf, data);
-   RooMinimizer m1(likelihood, RooFit::TestStatistics::MinuitFcnGrad::LikelihoodMode::multiprocess,
+   RooMinimizer m1(likelihood, RooFit::TestStatistics::MinuitFcnGrad::LikelihoodMode::serial,
                    RooFit::TestStatistics::MinuitFcnGrad::LikelihoodGradientMode::multiprocess);
    m1.setMinimizerType("Minuit2");
 
