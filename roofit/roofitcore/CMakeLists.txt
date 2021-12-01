@@ -500,6 +500,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
 
 if (roofit_multiprocess AND NOT WIN32)
   target_link_libraries(RooFitCore PUBLIC RooFitMultiProcess)
+  target_compile_definitions(RooFitCore PRIVATE -DBUILD_WITH_ROOFIT_MULTIPROCESS)
   set(RooFitCore_MultiProcess_TestStatistics_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/res" ${RooFitMultiProcess_INCLUDE_DIRS} CACHE INTERNAL "")
   target_include_directories(RooFitCore PRIVATE ${RooFitCore_MultiProcess_TestStatistics_INCLUDE_DIRS})
 endif()

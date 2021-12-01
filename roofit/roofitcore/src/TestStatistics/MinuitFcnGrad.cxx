@@ -10,6 +10,7 @@
  * listed in LICENSE (http://roofit.sourceforge.net/license.txt)
  */
 
+#ifdef BUILD_WITH_ROOFIT_MULTIPROCESS
 #include "TestStatistics/MinuitFcnGrad.h"
 #include "TestStatistics/LikelihoodSerial.h"
 #include "TestStatistics/LikelihoodJob.h"
@@ -272,3 +273,5 @@ MinuitFcnGrad::Synchronize(std::vector<ROOT::Fit::ParameterSettings> &parameters
 
 } // namespace TestStatistics
 } // namespace RooFit
+
+#endif // BUILD_WITH_ROOFIT_MULTIPROCESS

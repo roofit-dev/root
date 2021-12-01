@@ -10,7 +10,6 @@
  * listed in LICENSE (http://roofit.sourceforge.net/license.txt)
  */
 
-#ifndef WIN32
 #ifndef ROOT_ROOFIT_TESTSTATISTICS_LikelihoodJob
 #define ROOT_ROOFIT_TESTSTATISTICS_LikelihoodJob
 
@@ -80,4 +79,3 @@ std::ostream &operator<<(std::ostream &out, const LikelihoodJob::update_state_mo
 } // namespace RooFit
 
 #endif // ROOT_ROOFIT_LikelihoodJob
-#endif // WIN32

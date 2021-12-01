@@ -10,7 +10,6 @@
  * listed in LICENSE (http://roofit.sourceforge.net/license.txt)
  */
 
-#ifndef WIN32
 #ifndef ROOT_ROOFIT_TESTSTATISTICS_LikelihoodGradientJob
 #define ROOT_ROOFIT_TESTSTATISTICS_LikelihoodGradientJob
 
@@ -90,4 +89,3 @@ private:
 } // namespace RooFit
 
 #endif // ROOT_ROOFIT_LikelihoodGradientJob
-#endif // WIN32
