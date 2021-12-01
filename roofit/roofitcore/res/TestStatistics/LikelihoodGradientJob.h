@@ -76,7 +76,6 @@ private:
 
    // members
 
-   // TODO: are mutables here still necessary?
    // mutables below are because ROOT::Math::IMultiGradFunction::DoDerivative is const
    mutable std::vector<ROOT::Minuit2::DerivatorElement> grad_;
    mutable ROOT::Minuit2::NumericalDerivator gradf_;

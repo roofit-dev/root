@@ -65,7 +65,6 @@ TEST_P(LikelihoodGradientJob, Gaussian1D)
 
    // parameters
    std::size_t NWorkers = std::get<0>(GetParam());
-   //  RooFit::MultiProcess::NLLVarTask mp_task_mode = std::get<1>(GetParam());
    std::size_t seed = std::get<1>(GetParam());
 
    RooRandom::randomGenerator()->SetSeed(seed);
@@ -77,8 +76,6 @@ TEST_P(LikelihoodGradientJob, Gaussian1D)
    RooAbsPdf *pdf;
    RooDataSet *data;
    std::tie(nll, pdf, data, values) = generate_1D_gaussian_pdf_nll(w, 10000);
-   // when c++17 support arrives, change to this:
-   //  auto [nll, pdf, data, values] = generate_1D_gaussian_pdf_nll(w, 10000);
    RooRealVar *mu = w.var("mu");
 
    RooArgSet *savedValues = dynamic_cast<RooArgSet *>(values->snapshot());
@@ -92,7 +89,6 @@ TEST_P(LikelihoodGradientJob, Gaussian1D)
    m0->setMinimizerType("Minuit2");
 
    m0->setStrategy(0);
-//   m0->setVerbose(true);
    m0->setPrintLevel(-1);
 
    m0->migrad();
@@ -112,7 +108,6 @@ TEST_P(LikelihoodGradientJob, Gaussian1D)
    m1.setMinimizerType("Minuit2");
 
    m1.setStrategy(0);
-//   m1->setVerbose(true);
    m1.setPrintLevel(-1);
 
    m1.migrad();
@@ -133,7 +128,6 @@ TEST_P(LikelihoodGradientJob, Gaussian1D)
 
 TEST(LikelihoodGradientJobDEBUGGING, DISABLED_Gaussian1DNominal)
 {
-   //  std::size_t NWorkers = 1;
    std::size_t seed = 1;
 
    RooRandom::randomGenerator()->SetSeed(seed);
@@ -201,8 +195,6 @@ TEST(LikelihoodGradientJob, RepeatMigrad)
    RooAbsPdf *pdf;
    RooDataSet *data;
    std::tie(nll, pdf, data, values) = generate_1D_gaussian_pdf_nll(w, 10000);
-   // when c++17 support arrives, change to this:
-   //  auto [nll, values] = generate_1D_gaussian_pdf_nll(w, 10000);
 
    RooArgSet *savedValues = dynamic_cast<RooArgSet *>(values->snapshot());
    if (savedValues == nullptr) {
@@ -224,9 +216,6 @@ TEST(LikelihoodGradientJob, RepeatMigrad)
    std::cout << "... running migrad first time ..." << std::endl;
    m1.migrad();
 
-//   std::cout << "... terminating JobManager instance ..." << std::endl;
-//   RooFit::MultiProcess::JobManager::instance()->terminate();
-
    *values = *savedValues;
 
    std::cout << "... running migrad second time ..." << std::endl;
@@ -242,7 +231,6 @@ TEST_P(LikelihoodGradientJob, GaussianND)
 
    // parameters
    std::size_t NWorkers = std::get<0>(GetParam());
-   //  RooFit::MultiProcess::NLLVarTask mp_task_mode = std::get<1>(GetParam());
    std::size_t seed = std::get<1>(GetParam());
 
    unsigned int N = 4;
@@ -256,8 +244,6 @@ TEST_P(LikelihoodGradientJob, GaussianND)
    RooAbsPdf *pdf;
    RooDataSet *data;
    std::tie(nll, pdf, data, values) = generate_ND_gaussian_pdf_nll(w, N, 1000);
-   // when c++17 support arrives, change to this:
-   //  auto [nll, all_values] = generate_ND_gaussian_pdf_nll(w, N, 1000);
 
    RooArgSet *savedValues = dynamic_cast<RooArgSet *>(values->snapshot());
    if (savedValues == nullptr) {
@@ -449,7 +435,6 @@ TEST_F(LikelihoodSimBinnedConstrainedTest, ConstrainedAndOffset)
 
    m0.setMinimizerType("Minuit2");
    m0.setStrategy(0);
-//   m0.setVerbose(true);
    m0.setPrintLevel(1);
 
    m0.migrad();
@@ -478,7 +463,6 @@ TEST_F(LikelihoodSimBinnedConstrainedTest, ConstrainedAndOffset)
 
    m1.setMinimizerType("Minuit2");
    m1.setStrategy(0);
-//   m1.setVerbose(true);
    m1.setPrintLevel(1);
    m1.optimizeConst(2);
 

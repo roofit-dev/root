@@ -32,8 +32,6 @@ LikelihoodGradientJob::LikelihoodGradientJob(std::shared_ptr<RooAbsL> likelihood
    // should also somehow be updated in this class.
    N_tasks_ = N_dim;
    minuit_internal_x_.reserve(N_dim);
-   // TODO: make sure that the full gradients are sent back so that the
-   // derivator will depart from correct state next step everywhere!
 }
 
 LikelihoodGradientJob::LikelihoodGradientJob(const LikelihoodGradientJob &other)
@@ -166,7 +164,6 @@ void LikelihoodGradientJob::update_state()
 void LikelihoodGradientJob::run_derivator(unsigned int i_component) const
 {
    // Calculate the derivative etc for these parameters
-//   auto parameter_values = _minimizer->get_function_parameter_values();
    grad_[i_component] = gradf_.FastPartialDerivative(
       minimizer_->getMultiGenFcn(), minimizer_->fitter()->Config().ParamsSettings(), i_component, grad_[i_component]);
 }
@@ -196,7 +193,6 @@ void LikelihoodGradientJob::fillGradient(double *grad)
          calculate_all();
       }
 
-      // TODO: maybe make a flag to avoid this copy operation, but maybe not worth the effort
       // put the results from _grad into *grad
       for (Int_t ix = 0; ix < minimizer_->getNPar(); ++ix) {
          grad[ix] = grad_[ix].derivative;
@@ -215,7 +211,6 @@ void LikelihoodGradientJob::fillGradientWithPrevResult(double *grad, double *pre
          calculate_all();
       }
 
-      // TODO: maybe make a flag to avoid this copy operation, but maybe not worth the effort
       // put the results from _grad into *grad
       for (Int_t ix = 0; ix < minimizer_->getNPar(); ++ix) {
          grad[ix] = grad_[ix].derivative;

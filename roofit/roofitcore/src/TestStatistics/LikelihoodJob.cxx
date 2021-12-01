@@ -75,7 +75,6 @@ void LikelihoodJob::init_vars() {
 
 void LikelihoodJob::update_state()
 {
-   // PASTED FROM TEST_JOB
    if (get_manager()->process_manager().is_worker()) {
       auto mode = get_manager()->messenger().receive_from_master_on_worker<update_state_mode>();
       switch (mode) {
