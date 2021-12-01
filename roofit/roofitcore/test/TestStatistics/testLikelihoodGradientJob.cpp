@@ -1,16 +1,16 @@
-/*****************************************************************************
- * Project: RooFit                                                           *
- * Package: RooFitCore                                                       *
- * @(#)root/roofitcore:$Id$
- * Authors:                                                                  *
- *   PB, Patrick Bos,     NL eScience Center, p.bos@esciencecenter.nl        *
- *   IP, Inti Pelupessy,  NL eScience Center, i.pelupessy@esciencecenter.nl  *
- *   VC, Vince Croft,     DIANA / NYU,        vincent.croft@cern.ch          *
- *                                                                           *
- * Redistribution and use in source and binary forms,                        *
- * with or without modification, are permitted according to the terms        *
- * listed in LICENSE (http://roofit.sourceforge.net/license.txt)             *
- *****************************************************************************/
+/*
+ * Project: RooFit
+ * Authors:
+ *   PB, Patrick Bos, Netherlands eScience Center, p.bos@esciencecenter.nl
+ *   IP, Inti Pelupessy, Netherlands eScience Center, i.pelupessy@esciencecenter.nl
+ *   VC, Vince Croft, DIANA / NYU, vincent.croft@cern.ch
+ *
+ * Copyright (c) 2021, CERN
+ *
+ * Redistribution and use in source and binary forms,
+ * with or without modification, are permitted according to the terms
+ * listed in LICENSE (http://roofit.sourceforge.net/license.txt)
+ */
 
 #include <stdexcept> // runtime_error
 
