@@ -125,16 +125,8 @@ bool LikelihoodGradientJob::receive_task_result_on_master(const zmq::message_t &
 
 // END SYNCHRONIZATION FROM WORKERS TO MASTER
 
-///////////////////////////////////////////////////////////////////////////////
-/// Calculation stuff (mostly duplicates of RooGradMinimizerFcn code):
 
-void LikelihoodGradientJob::run_derivator(unsigned int i_component) const
-{
-   // Calculate the derivative etc for these parameters
-//   auto parameter_values = _minimizer->get_function_parameter_values();
-   grad_[i_component] = gradf_.FastPartialDerivative(
-      minimizer_->getMultiGenFcn(), minimizer_->fitter()->Config().ParamsSettings(), i_component, grad_[i_component]);
-}
+// SYNCHRONIZATION FROM MASTER TO WORKERS (STATE)
 
 void LikelihoodGradientJob::update_workers_state()
 {
@@ -146,6 +138,34 @@ void LikelihoodGradientJob::update_workers_state()
    get_manager()->messenger().publish_from_master_to_workers(std::move(minuit_internal_x_message));
 }
 
+void LikelihoodGradientJob::update_state()
+{
+   auto gradient_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>();
+   auto gradient_message_begin = gradient_message.data<ROOT::Minuit2::DerivatorElement>();
+   auto gradient_message_end = gradient_message_begin + gradient_message.size()/sizeof(ROOT::Minuit2::DerivatorElement);
+   std::copy(gradient_message_begin, gradient_message_end, grad_.begin());
+
+   auto minuit_internal_x_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>();
+   auto minuit_internal_x_message_begin = minuit_internal_x_message.data<double>();
+   auto minuit_internal_x_message_end = minuit_internal_x_message_begin + minuit_internal_x_message.size()/sizeof(double);
+   std::copy(minuit_internal_x_message_begin, minuit_internal_x_message_end, minuit_internal_x_.begin());
+
+   gradf_.SetupDifferentiate(minimizer_->getMultiGenFcn(), minuit_internal_x_.data(),
+                             minimizer_->fitter()->Config().ParamsSettings());
+}
+
+// END SYNCHRONIZATION FROM MASTER TO WORKERS (STATE)
+
+///////////////////////////////////////////////////////////////////////////////
+/// Calculation stuff (mostly duplicates of RooGradMinimizerFcn code):
+
+void LikelihoodGradientJob::run_derivator(unsigned int i_component) const
+{
+   // Calculate the derivative etc for these parameters
+//   auto parameter_values = _minimizer->get_function_parameter_values();
+   grad_[i_component] = gradf_.FastPartialDerivative(
+      minimizer_->getMultiGenFcn(), minimizer_->fitter()->Config().ParamsSettings(), i_component, grad_[i_component]);
+}
 
 void LikelihoodGradientJob::calculate_all()
 {
@@ -210,23 +230,6 @@ bool LikelihoodGradientJob::usesMinuitInternalValues()
 {
    return true;
 }
-
-void LikelihoodGradientJob::update_state()
-{
-   auto gradient_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>();
-   auto gradient_message_begin = gradient_message.data<ROOT::Minuit2::DerivatorElement>();
-   auto gradient_message_end = gradient_message_begin + gradient_message.size()/sizeof(ROOT::Minuit2::DerivatorElement);
-   std::copy(gradient_message_begin, gradient_message_end, grad_.begin());
-
-   auto minuit_internal_x_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>();
-   auto minuit_internal_x_message_begin = minuit_internal_x_message.data<double>();
-   auto minuit_internal_x_message_end = minuit_internal_x_message_begin + minuit_internal_x_message.size()/sizeof(double);
-   std::copy(minuit_internal_x_message_begin, minuit_internal_x_message_end, minuit_internal_x_.begin());
-
-   gradf_.SetupDifferentiate(minimizer_->getMultiGenFcn(), minuit_internal_x_.data(),
-                             minimizer_->fitter()->Config().ParamsSettings());
-}
-
 
 } // namespace TestStatistics
 } // namespace RooFit
