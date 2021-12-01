@@ -27,7 +27,7 @@
 #include "RooFit/MultiProcess/JobManager.h"
 #include "RooFit/MultiProcess/ProcessManager.h" // need to complete type for debugging
 #include "RooStats/ModelConfig.h"
-#include "RunContext.h"  // complete RooBatchCompute::RunContext type used in RooUnbinnedL
+#include "RunContext.h" // complete RooBatchCompute::RunContext type used in RooUnbinnedL
 
 #include <TFile.h>
 
@@ -36,25 +36,21 @@
 #include "gtest/gtest.h"
 #include "../test_lib.h" // generate_1D_gaussian_pdf_nll
 
-
 class Environment : public testing::Environment {
 public:
-   void SetUp() override {
-      RooMsgService::instance().setGlobalKillBelow(RooFit::ERROR);
-   }
+   void SetUp() override { RooMsgService::instance().setGlobalKillBelow(RooFit::ERROR); }
 };
 
 // Previously, we just called AddGlobalTestEnvironment in global namespace, but this caused either a warning about an
 // unused declared variable (the return value of the call) or a parsing problem that the compiler can't handle if you
 // don't store the return value at all. The solution is to just define this manual main function. The default gtest
 // main function does InitGoogleTest and RUN_ALL_TESTS, we add the environment call in the middle.
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
    testing::InitGoogleTest(&argc, argv);
    testing::AddGlobalTestEnvironment(new Environment);
    return RUN_ALL_TESTS();
 }
-
 
 class LikelihoodGradientJob : public ::testing::TestWithParam<std::tuple<std::size_t, std::size_t>> {
 };
@@ -325,13 +321,13 @@ TEST_P(LikelihoodGradientJob, GaussianND)
 }
 
 INSTANTIATE_TEST_SUITE_P(NworkersSeed, LikelihoodGradientJob,
-                        ::testing::Combine(::testing::Values(1, 2, 3), // number of workers
-                                           ::testing::Values(2, 3)));  // random seed
+                         ::testing::Combine(::testing::Values(1, 2, 3), // number of workers
+                                            ::testing::Values(2, 3)));  // random seed
 
-
-class BasicTest: public ::testing::Test {
+class BasicTest : public ::testing::Test {
 protected:
-   void SetUp() override {
+   void SetUp() override
+   {
       RooRandom::randomGenerator()->SetSeed(seed);
       clean_flags = std::make_shared<RooFit::TestStatistics::WrapperCalculationCleanFlags>();
    }
@@ -345,21 +341,21 @@ protected:
    std::shared_ptr<RooFit::TestStatistics::WrapperCalculationCleanFlags> clean_flags;
 };
 
-
 class LikelihoodSimBinnedConstrainedTest : public BasicTest {
 protected:
-   void SetUp() override {
+   void SetUp() override
+   {
       BasicTest::SetUp();
       // Unbinned pdfs that define template histograms
 
-      w.factory("Gaussian::gA(x[-10,10],-2,3)") ;
-      w.factory("Gaussian::gB(x[-10,10],2,1)") ;
+      w.factory("Gaussian::gA(x[-10,10],-2,3)");
+      w.factory("Gaussian::gB(x[-10,10],2,1)");
       w.factory("Uniform::u(x)");
 
       // Generate template histograms
 
-      RooDataHist* h_sigA = w.pdf("gA")->generateBinned(*w.var("x"),1000) ;
-      RooDataHist* h_sigB = w.pdf("gB")->generateBinned(*w.var("x"),1000) ;
+      RooDataHist *h_sigA = w.pdf("gA")->generateBinned(*w.var("x"), 1000);
+      RooDataHist *h_sigB = w.pdf("gB")->generateBinned(*w.var("x"), 1000);
       RooDataHist *h_bkg = w.pdf("u")->generateBinned(*w.var("x"), 1000);
 
       w.import(*h_sigA, RooFit::Rename("h_sigA"));
@@ -367,23 +363,24 @@ protected:
       w.import(*h_bkg, RooFit::Rename("h_bkg"));
 
       // Construct binned pdf as sum of amplitudes
-      w.factory("HistFunc::hf_sigA(x,h_sigA)") ;
-      w.factory("HistFunc::hf_sigB(x,h_sigB)") ;
-      w.factory("HistFunc::hf_bkg(x,h_bkg)") ;
+      w.factory("HistFunc::hf_sigA(x,h_sigA)");
+      w.factory("HistFunc::hf_sigB(x,h_sigB)");
+      w.factory("HistFunc::hf_bkg(x,h_bkg)");
 
-      w.factory("ASUM::model_phys_A(mu_sig[1,-1,10]*hf_sigA,expr::mu_bkg_A('1+0.02*alpha_bkg_A',alpha_bkg_A[-5,5])*hf_bkg)") ;
-      w.factory("ASUM::model_phys_B(mu_sig*hf_sigB,expr::mu_bkg_B('1+0.05*alpha_bkg_B',alpha_bkg_B[-5,5])*hf_bkg)") ;
+      w.factory(
+         "ASUM::model_phys_A(mu_sig[1,-1,10]*hf_sigA,expr::mu_bkg_A('1+0.02*alpha_bkg_A',alpha_bkg_A[-5,5])*hf_bkg)");
+      w.factory("ASUM::model_phys_B(mu_sig*hf_sigB,expr::mu_bkg_B('1+0.05*alpha_bkg_B',alpha_bkg_B[-5,5])*hf_bkg)");
 
       // Construct L_subs: Gaussian subsidiary measurement that constrains alpha_bkg
-      w.factory("Gaussian:model_subs_A(alpha_bkg_obs_A[0],alpha_bkg_A,1)") ;
-      w.factory("Gaussian:model_subs_B(alpha_bkg_obs_B[0],alpha_bkg_B,1)") ;
+      w.factory("Gaussian:model_subs_A(alpha_bkg_obs_A[0],alpha_bkg_A,1)");
+      w.factory("Gaussian:model_subs_B(alpha_bkg_obs_B[0],alpha_bkg_B,1)");
 
       // Construct full pdfs for each component (A,B)
-      w.factory("PROD::model_A(model_phys_A,model_subs_A)") ;
-      w.factory("PROD::model_B(model_phys_B,model_subs_B)") ;
+      w.factory("PROD::model_A(model_phys_A,model_subs_A)");
+      w.factory("PROD::model_B(model_phys_B,model_subs_B)");
 
       // Construct simulatenous pdf
-      w.factory("SIMUL::model(index[A,B],A=model_A,B=model_B)") ;
+      w.factory("SIMUL::model(index[A,B],A=model_A,B=model_B)");
 
       pdf = w.pdf("model");
       // Construct dataset from physics pdf
@@ -394,7 +391,8 @@ protected:
 TEST_F(LikelihoodSimBinnedConstrainedTest, BasicParameters)
 {
    // original test:
-   nll.reset(pdf->createNLL(*data, RooFit::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_A"), *w.var("alpha_bkg_obs_B")))));
+   nll.reset(pdf->createNLL(
+      *data, RooFit::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_A"), *w.var("alpha_bkg_obs_B")))));
 
    // --------
 
@@ -402,7 +400,7 @@ TEST_F(LikelihoodSimBinnedConstrainedTest, BasicParameters)
 
    likelihood = RooFit::TestStatistics::buildLikelihood(
       pdf, data, RooFit::TestStatistics::GlobalObservables({*w.var("alpha_bkg_obs_A"), *w.var("alpha_bkg_obs_B")}));
-   RooFit::TestStatistics::LikelihoodSerial nll_ts(likelihood, clean_flags/*, nullptr*/);
+   RooFit::TestStatistics::LikelihoodSerial nll_ts(likelihood, clean_flags /*, nullptr*/);
 
    nll_ts.evaluate();
    auto nll1 = nll_ts.getResult();

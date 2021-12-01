@@ -27,19 +27,20 @@
 namespace RooFit {
 namespace TestStatistics {
 
-
-LikelihoodJob::LikelihoodJob(std::shared_ptr<RooAbsL> likelihood, std::shared_ptr<WrapperCalculationCleanFlags> calculation_is_clean/*, RooMinimizer *minimizer*/)
-  : LikelihoodWrapper(std::move(likelihood), std::move(calculation_is_clean)/*, minimizer*/)
+LikelihoodJob::LikelihoodJob(
+   std::shared_ptr<RooAbsL> likelihood,
+   std::shared_ptr<WrapperCalculationCleanFlags> calculation_is_clean /*, RooMinimizer *minimizer*/)
+   : LikelihoodWrapper(std::move(likelihood), std::move(calculation_is_clean) /*, minimizer*/)
 {
    init_vars();
    // determine likelihood type
-   if (dynamic_cast<RooUnbinnedL*>(likelihood_.get()) != nullptr) {
+   if (dynamic_cast<RooUnbinnedL *>(likelihood_.get()) != nullptr) {
       likelihood_type_ = LikelihoodType::unbinned;
-   } else if (dynamic_cast<RooBinnedL*>(likelihood_.get()) != nullptr) {
+   } else if (dynamic_cast<RooBinnedL *>(likelihood_.get()) != nullptr) {
       likelihood_type_ = LikelihoodType::binned;
    } else if (dynamic_cast<RooSumL *>(likelihood_.get()) != nullptr) {
       likelihood_type_ = LikelihoodType::sum;
-   } else if (dynamic_cast<RooSubsidiaryL*>(likelihood_.get()) != nullptr) {
+   } else if (dynamic_cast<RooSubsidiaryL *>(likelihood_.get()) != nullptr) {
       likelihood_type_ = LikelihoodType::subsidiary;
    } else {
       throw std::logic_error("in LikelihoodJob constructor: likelihood is not of a valid subclass!");
@@ -49,23 +50,26 @@ LikelihoodJob::LikelihoodJob(std::shared_ptr<RooAbsL> likelihood, std::shared_pt
    // should also somehow be updated in this class.
 }
 
-LikelihoodJob* LikelihoodJob::clone() const {
+LikelihoodJob *LikelihoodJob::clone() const
+{
    return new LikelihoodJob(*this);
 }
-
 
 // This is a separate function (instead of just in ctor) for historical reasons.
 // Its predecessor RooRealMPFE::initVars() was used from multiple ctors, but also
 // from RooRealMPFE::constOptimizeTestStatistic at the end, which makes sense,
 // because it might change the set of variables. We may at some point want to do
 // this here as well.
-void LikelihoodJob::init_vars() {
+void LikelihoodJob::init_vars()
+{
    // Empty current lists
-   vars_.removeAll() ;
-   save_vars_.removeAll() ;
+   vars_.removeAll();
+   save_vars_.removeAll();
 
    // Retrieve non-constant parameters
-   auto vars = std::make_unique<RooArgSet>(*likelihood_->getParameters());  // TODO: make sure this is the right list of parameters, compare to original implementation in RooRealMPFE.cxx
+   auto vars = std::make_unique<RooArgSet>(
+      *likelihood_->getParameters()); // TODO: make sure this is the right list of parameters, compare to original
+                                      // implementation in RooRealMPFE.cxx
    RooArgList varList(*vars);
 
    // Save in lists
@@ -82,9 +86,9 @@ void LikelihoodJob::update_state()
          state_id_ = get_manager()->messenger().receive_from_master_on_worker<RooFit::MultiProcess::State>();
          auto message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>();
          auto message_begin = message.data<update_state_t>();
-         auto message_end = message_begin + message.size()/sizeof(update_state_t);
+         auto message_end = message_begin + message.size() / sizeof(update_state_t);
          std::vector<update_state_t> to_update(message_begin, message_end);
-         for (auto const & item : to_update) {
+         for (auto const &item : to_update) {
             RooRealVar *rvar = (RooRealVar *)vars_.at(item.var_index);
             rvar->setVal(static_cast<Double_t>(item.value));
             if (rvar->isConstant() != item.is_constant) {
@@ -101,7 +105,8 @@ void LikelihoodJob::update_state()
    }
 }
 
-void LikelihoodJob::updateWorkersParameters() {
+void LikelihoodJob::updateWorkersParameters()
+{
    if (get_manager()->process_manager().is_master()) {
       bool valChanged = false;
       bool constChanged = false;
@@ -112,13 +117,14 @@ void LikelihoodJob::updateWorkersParameters() {
 
          if (valChanged || constChanged) {
             if (constChanged) {
-               ((RooRealVar *) &save_vars_[ix])->setConstant(vars_[ix].isConstant());
+               ((RooRealVar *)&save_vars_[ix])->setConstant(vars_[ix].isConstant());
             }
-            // TODO: Check with Wouter why he uses copyCache in MPFE; makes it very difficult to extend, because copyCache is protected (so must be friend). Moved setting value to if-block below.
+            // TODO: Check with Wouter why he uses copyCache in MPFE; makes it very difficult to extend, because
+            // copyCache is protected (so must be friend). Moved setting value to if-block below.
             //          _saveVars[ix].copyCache(&_vars[ix]);
 
             // send message to queue (which will relay to workers)
-            RooAbsReal * rar_val = dynamic_cast<RooAbsReal *>(&vars_[ix]);
+            RooAbsReal *rar_val = dynamic_cast<RooAbsReal *>(&vars_[ix]);
             if (rar_val) {
                Double_t val = rar_val->getVal();
                dynamic_cast<RooRealVar *>(&save_vars_[ix])->setVal(val);
@@ -144,7 +150,8 @@ void LikelihoodJob::updateWorkersOffsetting()
    get_manager()->messenger().publish_from_master_to_workers(id_, update_state_mode::offsetting, isOffsetting());
 }
 
-void LikelihoodJob::evaluate() {
+void LikelihoodJob::evaluate()
+{
    if (get_manager()->process_manager().is_master()) {
       // update parameters that changed since last calculation (or creation if first time)
       updateWorkersParameters();
@@ -168,14 +175,16 @@ void LikelihoodJob::evaluate() {
 
 // --- RESULT LOGISTICS ---
 
-void LikelihoodJob::send_back_task_result_from_worker(std::size_t /*task*/) {
+void LikelihoodJob::send_back_task_result_from_worker(std::size_t /*task*/)
+{
    task_result_t task_result{id_, result_.Result(), result_.Carry()};
    zmq::message_t message(sizeof(task_result_t));
    memcpy(message.data(), &task_result, sizeof(task_result_t));
    get_manager()->messenger().send_from_worker_to_master(std::move(message));
 }
 
-bool LikelihoodJob::receive_task_result_on_master(const zmq::message_t & message) {
+bool LikelihoodJob::receive_task_result_on_master(const zmq::message_t &message)
+{
    auto task_result = message.data<task_result_t>();
    results_.emplace_back(task_result->value, task_result->carry);
    printf("result received: %f\n", task_result->value);
@@ -186,29 +195,34 @@ bool LikelihoodJob::receive_task_result_on_master(const zmq::message_t & message
 
 // --- END OF RESULT LOGISTICS ---
 
-void LikelihoodJob::evaluate_task(std::size_t task) {
+void LikelihoodJob::evaluate_task(std::size_t task)
+{
    assert(get_manager()->process_manager().is_worker());
 
    std::size_t N_events = likelihood_->numDataEntries();
 
-   // used to have multiple modes here, but only kept "bulk" mode; dropped interleaved, single_event and all_events from old MultiProcess::NLLVar
+   // used to have multiple modes here, but only kept "bulk" mode; dropped interleaved, single_event and all_events from
+   // old MultiProcess::NLLVar
    std::size_t first = N_events * task / get_manager()->process_manager().N_workers();
-   std::size_t last  = N_events * (task + 1) / get_manager()->process_manager().N_workers();
+   std::size_t last = N_events * (task + 1) / get_manager()->process_manager().N_workers();
 
    switch (likelihood_type_) {
    case LikelihoodType::unbinned:
    case LikelihoodType::binned: {
-      result_ = likelihood_->evaluatePartition({static_cast<double>(first)/N_events, static_cast<double>(last)/N_events}, 0, 0);
+      result_ = likelihood_->evaluatePartition(
+         {static_cast<double>(first) / N_events, static_cast<double>(last) / N_events}, 0, 0);
       break;
    }
    default: {
-      throw std::logic_error("in LikelihoodJob::evaluate_task: likelihood types other than binned and unbinned not yet implemented!");
+      throw std::logic_error(
+         "in LikelihoodJob::evaluate_task: likelihood types other than binned and unbinned not yet implemented!");
       break;
    }
    }
 }
 
-void LikelihoodJob::enableOffsetting(bool flag) {
+void LikelihoodJob::enableOffsetting(bool flag)
+{
    LikelihoodWrapper::enableOffsetting(flag);
    updateWorkersOffsetting();
 }
@@ -229,5 +243,5 @@ std::ostream &operator<<(std::ostream &out, const LikelihoodJob::update_state_mo
 
 #undef PROCESS_VAL
 
-}
-}
+} // namespace TestStatistics
+} // namespace RooFit
