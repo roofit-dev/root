@@ -34,7 +34,7 @@ public:
    void init_vars();
 
    void evaluate() override;
-   inline ROOT::Math::KahanSum<double> getResult() const override { return result; }
+   inline ROOT::Math::KahanSum<double> getResult() const override { return result_; }
 
    void updateWorkersParameters();  // helper for evaluate
    void updateWorkersOffsetting();  // helper for enableOffsetting
