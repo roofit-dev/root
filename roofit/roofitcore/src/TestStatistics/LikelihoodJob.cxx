@@ -159,18 +159,18 @@ void LikelihoodJob::evaluate() {
       // wait for task results back from workers to master
       gather_worker_results();
 
-      for (auto const &item : results) {
-         result += item;
+      for (auto const &item : results_) {
+         result_ += item;
       }
-      result = applyOffsetting(result);
-      results.clear();
+      result_ = applyOffsetting(result_);
+      results_.clear();
    }
 }
 
 // --- RESULT LOGISTICS ---
 
 void LikelihoodJob::send_back_task_result_from_worker(std::size_t /*task*/) {
-   task_result_t task_result{id_, result.Result(), result.Carry()};
+   task_result_t task_result{id_, result_.Result(), result_.Carry()};
    zmq::message_t message(sizeof(task_result_t));
    memcpy(message.data(), &task_result, sizeof(task_result_t));
    get_manager()->messenger().send_from_worker_to_master(std::move(message));
@@ -178,7 +178,7 @@ void LikelihoodJob::send_back_task_result_from_worker(std::size_t /*task*/) {
 
 bool LikelihoodJob::receive_task_result_on_master(const zmq::message_t & message) {
    auto task_result = message.data<task_result_t>();
-   results.emplace_back(task_result->value, task_result->carry);
+   results_.emplace_back(task_result->value, task_result->carry);
    printf("result received: %f\n", task_result->value);
    --N_tasks_at_workers_;
    bool job_completed = (N_tasks_at_workers_ == 0);
@@ -199,7 +199,7 @@ void LikelihoodJob::evaluate_task(std::size_t task) {
    switch (likelihood_type_) {
    case LikelihoodType::unbinned:
    case LikelihoodType::binned: {
-      result = likelihood_->evaluatePartition({static_cast<double>(first)/N_events, static_cast<double>(last)/N_events}, 0, 0);
+      result_ = likelihood_->evaluatePartition({static_cast<double>(first)/N_events, static_cast<double>(last)/N_events}, 0, 0);
       break;
    }
    default: {

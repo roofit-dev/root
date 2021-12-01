@@ -62,8 +62,8 @@ public:
    void enableOffsetting(bool flag) override;
 
 private:
-   ROOT::Math::KahanSum<double> result;
-   std::vector<ROOT::Math::KahanSum<double>> results;
+   ROOT::Math::KahanSum<double> result_;
+   std::vector<ROOT::Math::KahanSum<double>> results_;
 
    RooArgList vars_;      // Variables
    RooArgList save_vars_;  // Copy of variables
