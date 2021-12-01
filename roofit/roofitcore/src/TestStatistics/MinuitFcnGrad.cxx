@@ -10,11 +10,12 @@
  * listed in LICENSE (http://roofit.sourceforge.net/license.txt)
  */
 
-#ifdef BUILD_WITH_ROOFIT_MULTIPROCESS
 #include "TestStatistics/MinuitFcnGrad.h"
 #include "TestStatistics/LikelihoodSerial.h"
+#ifdef BUILD_WITH_ROOFIT_MULTIPROCESS
 #include "TestStatistics/LikelihoodJob.h"
 #include "TestStatistics/LikelihoodGradientJob.h"
+#endif // BUILD_WITH_ROOFIT_MULTIPROCESS
 
 #include "RooMinimizer.h"
 #include "RooMsgService.h"
@@ -61,7 +62,11 @@ MinuitFcnGrad::MinuitFcnGrad(const std::shared_ptr<RooFit::TestStatistics::RooAb
       break;
    }
    case LikelihoodMode::multiprocess: {
+#ifdef BUILD_WITH_ROOFIT_MULTIPROCESS
       likelihood = std::make_shared<LikelihoodJob>(_likelihood, calculation_is_clean);
+#else
+      throw std::runtime_error("MinuitFcnGrad ctor with LikelihoodMode::multiprocess is not available in this build without RooFit::Multiprocess!");
+#endif
       break;
    }
    default: {
@@ -71,7 +76,11 @@ MinuitFcnGrad::MinuitFcnGrad(const std::shared_ptr<RooFit::TestStatistics::RooAb
 
    switch (likelihoodGradientMode) {
    case LikelihoodGradientMode::multiprocess: {
+#ifdef BUILD_WITH_ROOFIT_MULTIPROCESS
       gradient = std::make_shared<LikelihoodGradientJob>(_likelihood, calculation_is_clean, getNDim(), _context);
+#else
+      throw std::runtime_error("MinuitFcnGrad ctor with LikelihoodGradientMode::multiprocess is not available in this build without RooFit::Multiprocess!");
+#endif
       break;
    }
    default: {
@@ -273,5 +282,3 @@ MinuitFcnGrad::Synchronize(std::vector<ROOT::Fit::ParameterSettings> &parameters
 
 } // namespace TestStatistics
 } // namespace RooFit
-
-#endif // BUILD_WITH_ROOFIT_MULTIPROCESS

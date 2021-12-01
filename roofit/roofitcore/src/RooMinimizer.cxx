@@ -136,14 +136,10 @@ RooMinimizer::RooMinimizer(std::shared_ptr<RooFit::TestStatistics::RooAbsL> like
                            RooFit::TestStatistics::MinuitFcnGrad::LikelihoodGradientMode likelihoodGradientMode)
    : _fcnMode(FcnMode::generic_wrapper)
 {
-#ifdef BUILD_WITH_ROOFIT_MULTIPROCESS
    initMinimizerFirstPart();
    _fcn = new RooFit::TestStatistics::MinuitFcnGrad(likelihood, this, _theFitter->Config().ParamsSettings(), likelihoodMode,
                                                     likelihoodGradientMode, _verbose);
    initMinimizerFcnDependentPart(likelihood->defaultErrorLevel());
-#else
-   throw std::runtime_error("RooMinimizer ctor with TestStatistics::RooAbsL argument is not available in this build without RooFit::Multiprocess!");
-#endif // BUILD_WITH_ROOFIT_MULTIPROCESS
 }
 
 // constructor helpers
