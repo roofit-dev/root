@@ -12,9 +12,6 @@ ExternalProject_Add(BUILTIN_cppzmq
     BUILD_BYPRODUCTS ${cppzmq_HEADER_PATH}/zmq.hpp
 )
 
-add_custom_target(builtin_cppzmq_incl
-        DEPENDS ${cppzmq_HEADER_PATH}/zmq.hpp)
-
 # find_package emulation
 set(cppzmq_FOUND TRUE CACHE BOOL "" FORCE)
 set(cppzmq_INCLUDE_DIR ${cppzmq_HEADER_PATH} CACHE INTERNAL "" FORCE)
@@ -22,4 +19,4 @@ set(cppzmq_INCLUDE_DIRS ${cppzmq_INCLUDE_DIR} CACHE INTERNAL "" FORCE)
 
 add_library(cppzmq INTERFACE IMPORTED GLOBAL)
 target_include_directories(cppzmq INTERFACE $<BUILD_INTERFACE:${cppzmq_INCLUDE_DIR}>)
-add_dependencies(cppzmq BUILTIN_cppzmq builtin_cppzmq_incl)
+add_dependencies(cppzmq BUILTIN_cppzmq)
