@@ -14,6 +14,7 @@ ROOT_LINKER_LIBRARY(RooFitMultiProcess
         src/Config.cxx
     LIBRARIES
         RooFitCommon
+        src/ProcessTimer.cxx
     DEPENDENCIES
         RooFitZMQ
 )
@@ -21,7 +22,8 @@ ROOT_LINKER_LIBRARY(RooFitMultiProcess
 target_link_libraries(RooFitMultiProcess PUBLIC RooFitZMQ)
 set(RooFitMultiProcess_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/res")
 target_include_directories(RooFitMultiProcess
-        PRIVATE ${RooFitMultiProcess_INCLUDE_DIR}
+        PRIVATE ${RooFitMultiProcess_INCLUDE_DIR} 
+        ${CMAKE_SOURCE_DIR}/builtins
         INTERFACE $<BUILD_INTERFACE:${RooFitMultiProcess_INCLUDE_DIR}>)
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

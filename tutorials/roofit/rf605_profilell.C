@@ -100,6 +100,13 @@ void rf605_profilell()
    frame2->GetYaxis()->SetTitleOffset(1.4);
    frame2->Draw();
 
+   std::cout << "start" << std::endl;
+      nll->Print();
+   std::cout << "end" << std::endl;
+
+   cout << nll->GetName() << endl;
+   cout << nll->IsA()->GetName() << endl;
+
    delete pll_frac;
    delete pll_sigmag2;
    delete nll;

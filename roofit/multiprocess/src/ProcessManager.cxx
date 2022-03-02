@@ -14,7 +14,9 @@
 #include "RooFit/MultiProcess/ProcessManager.h"
 #include "RooFit/MultiProcess/JobManager.h"
 #include "RooFit/MultiProcess/util.h"
+#include "RooFit/MultiProcess/ProcessTimer.h"
 
+#include <thread>
 #include <cstring>    // for strsignal
 #include <sys/wait.h> // for wait
 #include <iostream>
@@ -113,6 +115,10 @@ void ProcessManager::initialize_processes(bool cpu_pinning)
    pid_t child_pid{};
    for (std::size_t ix = 0; ix < N_workers_; ++ix) {
       child_pid = fork_and_handle_errors();
+
+      // Setup process timer and give it current process' id
+      ProcessTimer::setup(ix);
+
       if (!child_pid) { // we're on the worker
          is_worker_ = true;
          worker_id_ = ix;
@@ -255,6 +261,8 @@ int chill_wait()
 void ProcessManager::shutdown_processes()
 {
    if (is_master()) {
+      // Give children some time to write to file
+      std::this_thread::sleep_for(std::chrono::seconds(2));
       // terminate all children
       std::unordered_set<pid_t> children;
       children.insert(queue_pid_);

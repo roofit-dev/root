@@ -69,6 +69,8 @@ void rf502_wspacewrite()
    // Print workspace contents
    w->Print();
 
+   cout << model.Print() << endl;
+
    // S a v e   w o r k s p a c e   i n   f i l e
    // -------------------------------------------
 
