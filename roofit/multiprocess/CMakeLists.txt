@@ -12,9 +12,9 @@ ROOT_LINKER_LIBRARY(RooFitMultiProcess
         src/JobManager.cxx
         src/Job.cxx
         src/Config.cxx
+        src/ProcessTimer.cxx
     LIBRARIES
         RooFitCommon
-        src/ProcessTimer.cxx
     DEPENDENCIES
         RooFitZMQ
 )

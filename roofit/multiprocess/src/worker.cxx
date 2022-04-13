@@ -20,6 +20,7 @@
 #include "RooFit/MultiProcess/util.h"
 #include "RooFit/MultiProcess/ProcessTimer.h"
 
+#include <string>
 #include <unistd.h> // getpid, pid_t
 #include <cerrno>   // EINTR
 #include <csignal>  // sigprocmask etc
@@ -89,23 +90,18 @@ void worker_loop()
                   JobManager::get_job_object(job_id)->update_state();
                }
             } else { // from queue socket
-               ProcessTimer::start_timer("worker:q2w_message");
                message_q2w = JobManager::instance()->messenger().receive_from_queue_on_worker<Q2W>();
-               ProcessTimer::end_timer("worker:q2w_message");
                switch (message_q2w) {
                case Q2W::dequeue_rejected: {
                   dequeue_acknowledged = true;
                   break;
                }
                case Q2W::dequeue_accepted: {
-                  ProcessTimer::start_timer("worker:receive_messages");
                   dequeue_acknowledged = true;
                   auto job_id = JobManager::instance()->messenger().receive_from_queue_on_worker<std::size_t>();
                   auto state_id = JobManager::instance()->messenger().receive_from_queue_on_worker<State>();
                   auto task_id = JobManager::instance()->messenger().receive_from_queue_on_worker<Task>();
-                  ProcessTimer::end_timer("worker:receive_messages");
 
-                  ProcessTimer::start_timer("worker:while_loop");
                   // while loop, because multiple jobs may have updated state coming
                   while (state_id != JobManager::get_job_object(job_id)->get_state_id()) {
                      skip_sub = true;
@@ -113,15 +109,11 @@ void worker_loop()
                         JobManager::instance()->messenger().receive_from_master_on_worker<std::size_t>();
                      JobManager::get_job_object(job_id_for_state)->update_state();
                   }
-                  ProcessTimer::end_timer("worker:while_loop");
 
-                  ProcessTimer::start_timer("worker:eval_task");
+                  ProcessTimer::start_timer("worker:eval_task:" + std::to_string(task_id));
                   JobManager::get_job_object(job_id)->evaluate_task(task_id);
-                  ProcessTimer::end_timer("worker:eval_task");
-
-                  ProcessTimer::start_timer("worker:send_result");
+                  ProcessTimer::end_timer("worker:eval_task:" + std::to_string(task_id));
                   JobManager::get_job_object(job_id)->send_back_task_result_from_worker(task_id);
-                  ProcessTimer::end_timer("worker:send_result");
                   break;
                }
                }
