@@ -248,3 +248,6 @@ if(CMAKE_PROJECT_NAME STREQUAL ROOT)
 else()
   include(StandAlone.cmake)
 endif()
+
+
+target_link_libraries(Minuit2 PUBLIC RooFitMultiProcess)

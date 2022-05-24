@@ -25,7 +25,7 @@ public:
 
     static void start_timer(string section_name);
 
-    static void end_timer(string section_name);
+    static void end_timer(string section_name, bool write_now = false);
 
     static void print_durations(string to_print = "all");
 

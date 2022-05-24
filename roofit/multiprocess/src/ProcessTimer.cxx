@@ -28,7 +28,7 @@ void ProcessTimer::start_timer(string section_name)
 }
 
 
-void ProcessTimer::end_timer(string section_name) 
+void ProcessTimer::end_timer(string section_name, bool write_now) 
 {
     auto it = ProcessTimer::durations.find(section_name);
     if (it == ProcessTimer::durations.end())
@@ -40,6 +40,17 @@ void ProcessTimer::end_timer(string section_name)
     {
         // All odd indices contain end times, if size of list is currently odd we can not start a new timer
         throw::invalid_argument("Section name " + section_name + " timer does exist, but was not started before calling `end_timer`");
+    }
+    else if (write_now)
+    {
+        // Write right now and do not store in this class
+        nlohmann::json j;
+        std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json", ios::app);
+        list<long> out {chrono::duration_cast<chrono::milliseconds>(ProcessTimer::durations[section_name].back() - ProcessTimer::begin).count(),
+                        chrono::duration_cast<chrono::milliseconds>(ProcessTimer::durations[section_name].back() - ProcessTimer::begin).count() + chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - ProcessTimer::begin).count()};
+        j[section_name] = out;
+        file << std::setw(4) << j;
+        ProcessTimer::durations[section_name].pop_back();
     }
     else
     {
@@ -95,7 +106,7 @@ void ProcessTimer::print_timestamps()
 void ProcessTimer::write_file()
 {
     nlohmann::json j;
-    std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json");
+    std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json", ios::app);
     list<long> durations_since_begin;
 
     for (auto const& [sec_name, duration_list] : ProcessTimer::durations)
@@ -110,6 +121,7 @@ void ProcessTimer::write_file()
     }
     file << std::setw(4) << j;
 }
+
 
 // Initialize static members
 map<string, list<chrono::time_point<chrono::steady_clock>>> ProcessTimer::durations;
