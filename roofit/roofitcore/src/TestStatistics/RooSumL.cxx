@@ -90,9 +90,16 @@ RooSumL::evaluatePartition(Section events, std::size_t components_begin, std::si
    // Evaluate specified range of owned GOF objects
    ROOT::Math::KahanSum<double> ret;
 
+   char buffer [1000];
    // from RooAbsOptTestStatistic::combinedValue (which is virtual, so could be different for non-RooNLLVar!):
    for (std::size_t ix = components_begin; ix < components_end; ++ix) {
+      int n = sprintf(buffer, "worker:eval_partition:%s:%s:%f:%f", components_[ix]->GetClassName(), components_[ix]->GetName(), events.begin_fraction, events.end_fraction);
+      if (n < 0) {
+         throw std::runtime_error("sprintf failure in RooSumL::evaluatePartition, likelihood component name probably too long");
+      }
+      ProcessTimer::start_timer(buffer);
       ret += components_[ix]->evaluatePartition(events, 0, 0);
+      ProcessTimer::end_timer(buffer);
    }
 
    return ret;
