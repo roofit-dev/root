@@ -54,6 +54,7 @@ automatic PDF optimization.
 #include "RooGradMinimizerFcn.h"
 #include "RooFitResult.h"
 #include "TestStatistics/MinuitFcnGrad.h"
+#include "RooFit/MultiProcess/ProcessTimer.h"
 
 #include "TClass.h"
 #include "Math/Minimizer.h"
@@ -312,6 +313,8 @@ bool RooMinimizer::fitFcn() const {
 /// \param[in] alg  Fit algorithm to use. (Optional)
 int RooMinimizer::minimize(const char* type, const char* alg)
 {
+  ProcessTimer::setup(0);
+
   _fcn->Synchronize(_theFitter->Config().ParamsSettings(),
           _fcn->getOptConst(),_verbose) ;
 
@@ -330,6 +333,8 @@ int RooMinimizer::minimize(const char* type, const char* alg)
   _fcn->BackProp(_theFitter->Result());
 
   saveStatus("MINIMIZE",_status) ;
+
+  ProcessTimer::write_file();
 
   return _status ;
 }

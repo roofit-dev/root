@@ -13,6 +13,7 @@
 #include <RooFit/TestStatistics/RooSumL.h>
 #include <RooAbsData.h>
 #include <RooFit/TestStatistics/RooSubsidiaryL.h>
+#include "RooFit/MultiProcess/ProcessTimer.h"
 
 #include <algorithm> // min, max
 
@@ -93,7 +94,7 @@ RooSumL::evaluatePartition(Section events, std::size_t components_begin, std::si
    char buffer [1000];
    // from RooAbsOptTestStatistic::combinedValue (which is virtual, so could be different for non-RooNLLVar!):
    for (std::size_t ix = components_begin; ix < components_end; ++ix) {
-      int n = sprintf(buffer, "worker:eval_partition:%s:%s:%f:%f", components_[ix]->GetClassName(), components_[ix]->GetName(), events.begin_fraction, events.end_fraction);
+      int n = sprintf(buffer, "worker:eval_partition:%s:%s:%f:%f", components_[ix]->GetClassName().c_str(), components_[ix]->GetName().c_str(), events.begin_fraction, events.end_fraction);
       if (n < 0) {
          throw std::runtime_error("sprintf failure in RooSumL::evaluatePartition, likelihood component name probably too long");
       }

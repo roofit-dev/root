@@ -60,6 +60,7 @@ parallelized calculation of test statistics.
 #include "RooTrace.h"
 #include "RooVectorDataStore.h"
 #include "RooBinSamplingPdf.h"
+#include "RooFit/MultiProcess/ProcessTimer.h"
 
 using namespace std;
 
@@ -455,8 +456,15 @@ double RooAbsOptTestStatistic::combinedValue(RooAbsReal** array, Int_t n) const
 {
   // Default implementation returns sum of components
   double sum(0), carry(0);
+  char buffer [1000];
   for (Int_t i = 0; i < n; ++i) {
+    int print_ret = sprintf(buffer, "worker:eval_partition:%s:%s", array[i]->ClassName(), array[i]->GetName());
+    if (print_ret < 0) {
+      throw std::runtime_error("sprintf failure in RooAbsOptTestStatistic::combinedValue, likelihood component name probably too long");
+    }
+    ProcessTimer::start_timer(buffer);
     double y = array[i]->getValV();
+    ProcessTimer::end_timer(buffer);
     carry += reinterpret_cast<RooAbsOptTestStatistic*>(array[i])->getCarry();
     y -= carry;
     const double t = sum + y;

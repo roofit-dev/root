@@ -17,6 +17,8 @@
 #include "Minuit2/MnStrategy.h"
 #include "Minuit2/MnPrint.h"
 
+#include "RooFit/MultiProcess/ProcessTimer.h"
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -63,6 +65,7 @@ FunctionGradient Numerical2PGradientCalculator::operator()(const std::vector<dou
 FunctionGradient Numerical2PGradientCalculator::
 operator()(const MinimumParameters &par, const FunctionGradient &Gradient) const
 {
+   ProcessTimer::start_timer("serial:gradient");
    // calculate numerical gradient from MinimumParameters object
    // the algorithm takes correctly care when the gradient is approximatly zero
 
@@ -97,6 +100,7 @@ operator()(const MinimumParameters &par, const FunctionGradient &Gradient) const
 
    print.Debug("Calculating gradient around value", fcnmin, "at point", par.Vec());
 
+
 #ifndef _OPENMP
 
    MPIProcess mpiproc(n, 0);
@@ -120,6 +124,8 @@ operator()(const MinimumParameters &par, const FunctionGradient &Gradient) const
    for (int i = 0; i < int(n); i++) {
 
 #endif
+
+     ProcessTimer::start_timer("serial:eval_task:" + std::to_string(i));
 
 #ifdef _OPENMP
       // create in loop since each thread will use its own copy
@@ -209,6 +215,7 @@ operator()(const MinimumParameters &par, const FunctionGradient &Gradient) const
             break;
          }
       }
+      ProcessTimer::end_timer("serial:eval_task:" + std::to_string(i));
 
       //     vgrd(i) = grd;
       //     vgrd2(i) = g2;
@@ -233,6 +240,8 @@ operator()(const MinimumParameters &par, const FunctionGradient &Gradient) const
       }
       os.precision(pr);
    });
+
+   ProcessTimer::end_timer("serial:gradient");
 
    return FunctionGradient(grd, g2, gstep);
 }
