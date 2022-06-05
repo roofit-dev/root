@@ -19,9 +19,11 @@ class ProcessTimer{
 
 public:
 
-    static void setup(pid_t proc) { ProcessTimer::process = proc; ProcessTimer::begin = chrono::steady_clock::now();};
+    static void setup(pid_t proc, bool set_begin = true) {ProcessTimer::process = proc; if (set_begin) ProcessTimer::begin = chrono::steady_clock::now(); };
 
-    static pid_t get_process() {return ProcessTimer::process; };
+    const static pid_t get_process() {return ProcessTimer::process; };
+
+    static pid_t set_process(pid_t proc) {ProcessTimer::process = proc; };
 
     static void start_timer(string section_name);
 
