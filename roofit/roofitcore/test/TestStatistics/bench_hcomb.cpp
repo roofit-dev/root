@@ -25,10 +25,10 @@
 #include <fstream>
 #include <string>
 
-TEST(Bench, Bench)
+TEST(BenchHcomb, BenchHcomb)
 {
     int nWorkers = 1;
-    char* fname = "/home/zef/Documents/phd/qt/roofit/benchmark_roofit/data/workspaces/HGam_mu.root";
+    char* fname = "/home/zef/Documents/phd/qt/roofit/benchmark_roofit/data/workspaces/WS-Comb-5XS.root";
 
     auto start = std::chrono::system_clock::now();
     TFile *f = TFile::Open(fname);
