@@ -7,6 +7,7 @@
 #include <map>
 #include <list>
 #include <tuple>
+#include <nlohmann/json.hpp>
 
 using namespace std;
 
@@ -16,6 +17,7 @@ class ProcessTimer{
     static map<string, list<chrono::time_point<chrono::steady_clock>>> durations;
     static chrono::time_point<chrono::steady_clock> begin;
     static pid_t process;
+    static nlohmann::json metadata;
 
 public:
 
@@ -35,6 +37,7 @@ public:
 
     static void write_file();
 
+    static void add_metadata(nlohmann::json data);
 };
 
 #endif // ROOT_ROOFIT_MultiProcess_ProcessTimer

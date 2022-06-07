@@ -23,8 +23,17 @@ target_link_libraries(RooFitMultiProcess PUBLIC RooFitZMQ)
 set(RooFitMultiProcess_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/res")
 target_include_directories(RooFitMultiProcess
         PRIVATE ${RooFitMultiProcess_INCLUDE_DIR} 
-        ${CMAKE_SOURCE_DIR}/builtins
         INTERFACE $<BUILD_INTERFACE:${RooFitMultiProcess_INCLUDE_DIR}>)
+
+if(builtin_nlohmannjson)
+  # Note: unlike other parts of ROOT that use nlohmann_json, we make it a public
+  # dependency, because it is needed in the header/interface.
+  target_include_directories(RooFitMultiProcess
+    PRIVATE ${CMAKE_SOURCE_DIR}/builtins
+    INTERFACE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>/builtins)
+else()
+  target_link_libraries(RooFitMultiProcess PUBLIC nlohmann_json::nlohmann_json)
+endif()
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)
 

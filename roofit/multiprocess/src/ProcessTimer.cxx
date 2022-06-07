@@ -5,7 +5,6 @@
 #include <thread>
 #include <fstream>
 #include <iomanip> // setw
-#include <nlohmann/json.hpp>
 
 void ProcessTimer::start_timer(string section_name)
 {
@@ -106,6 +105,7 @@ void ProcessTimer::print_timestamps()
 void ProcessTimer::write_file()
 {
     nlohmann::json j;
+    j["metadata"] = metadata;
     std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json", ios::app);
     list<long> durations_since_begin;
 
@@ -122,8 +122,13 @@ void ProcessTimer::write_file()
     file << std::setw(4) << j;
 }
 
+void ProcessTimer::add_metadata(nlohmann::json data)
+{
+    metadata.push_back(std::move(data));
+}
 
 // Initialize static members
 map<string, list<chrono::time_point<chrono::steady_clock>>> ProcessTimer::durations;
 chrono::time_point<chrono::steady_clock> ProcessTimer::begin = chrono::steady_clock::now();
 pid_t ProcessTimer::process = 0;
+nlohmann::json ProcessTimer::metadata;
