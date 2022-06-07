@@ -313,7 +313,16 @@ bool RooMinimizer::fitFcn() const {
 /// \param[in] alg  Fit algorithm to use. (Optional)
 int RooMinimizer::minimize(const char* type, const char* alg)
 {
+  // parameter indices for use in timing heat matrix
+  std::vector<std::string> parameter_names;
+  for (auto && parameter : *_fcn->GetFloatParamList()) {
+    parameter_names.push_back(parameter->GetName());
+    if (_verbose) {
+      coutI(Minimization) << "parameter name: " << parameter_names.back() << std::endl;
+    }
+  }
   ProcessTimer::setup(0);
+  ProcessTimer::add_metadata(parameter_names);
 
   _fcn->Synchronize(_theFitter->Config().ParamsSettings(),
           _fcn->getOptConst(),_verbose) ;
