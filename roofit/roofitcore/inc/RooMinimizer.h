@@ -127,6 +127,7 @@ private:
 
   void profileStart() ;
   void profileStop() ;
+  void setupProcessTimer();
 
   std::ofstream* logfile() ;
   double& maxFCN() ;

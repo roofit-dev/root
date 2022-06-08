@@ -302,6 +302,19 @@ bool RooMinimizer::fitFcn() const {
    return _fcn->fit(*_theFitter);
 }
 
+void RooMinimizer::setupProcessTimer() {
+  // parameter indices for use in timing heat matrix
+  std::vector<std::string> parameter_names;
+  for (auto && parameter : *_fcn->GetFloatParamList()) {
+    parameter_names.push_back(parameter->GetName());
+    if (_verbose) {
+      coutI(Minimization) << "parameter name: " << parameter_names.back() << std::endl;
+    }
+  }
+  ProcessTimer::setup(0);
+  ProcessTimer::add_metadata(parameter_names);
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Minimise the function passed in the constructor.
@@ -313,16 +326,7 @@ bool RooMinimizer::fitFcn() const {
 /// \param[in] alg  Fit algorithm to use. (Optional)
 int RooMinimizer::minimize(const char* type, const char* alg)
 {
-  // parameter indices for use in timing heat matrix
-  std::vector<std::string> parameter_names;
-  for (auto && parameter : *_fcn->GetFloatParamList()) {
-    parameter_names.push_back(parameter->GetName());
-    if (_verbose) {
-      coutI(Minimization) << "parameter name: " << parameter_names.back() << std::endl;
-    }
-  }
-  ProcessTimer::setup(0);
-  ProcessTimer::add_metadata(parameter_names);
+  setupProcessTimer();
 
   _fcn->Synchronize(_theFitter->Config().ParamsSettings(),
           _fcn->getOptConst(),_verbose) ;
@@ -358,6 +362,8 @@ int RooMinimizer::minimize(const char* type, const char* alg)
 
 int RooMinimizer::migrad()
 {
+  setupProcessTimer();
+
   _fcn->Synchronize(_theFitter->Config().ParamsSettings(),
           _fcn->getOptConst(),_verbose) ;
   profileStart() ;
@@ -374,6 +380,8 @@ int RooMinimizer::migrad()
 
   saveStatus("MIGRAD",_status) ;
 
+  ProcessTimer::write_file();
+
   return _status ;
 }
 
@@ -387,6 +395,8 @@ int RooMinimizer::migrad()
 
 int RooMinimizer::hesse()
 {
+  setupProcessTimer();
+
   if (_theFitter->GetMinimizer()==0) {
     coutW(Minimization) << "RooMinimizer::hesse: Error, run Migrad before Hesse!"
          << endl ;
@@ -412,6 +422,8 @@ int RooMinimizer::hesse()
 
   }
 
+  ProcessTimer::write_file();
+
   return _status ;
 
 }
@@ -424,6 +436,8 @@ int RooMinimizer::hesse()
 
 int RooMinimizer::minos()
 {
+  setupProcessTimer();
+
   if (_theFitter->GetMinimizer()==0) {
     coutW(Minimization) << "RooMinimizer::minos: Error, run Migrad before Minos!"
          << endl ;
@@ -449,6 +463,8 @@ int RooMinimizer::minos()
 
   }
 
+  ProcessTimer::write_file();
+
   return _status ;
 
 }
@@ -462,6 +478,8 @@ int RooMinimizer::minos()
 
 int RooMinimizer::minos(const RooArgSet& minosParamList)
 {
+  setupProcessTimer();
+
   if (_theFitter->GetMinimizer()==0) {
     coutW(Minimization) << "RooMinimizer::minos: Error, run Migrad before Minos!"
          << endl ;
@@ -505,6 +523,8 @@ int RooMinimizer::minos(const RooArgSet& minosParamList)
 
   }
 
+  ProcessTimer::write_file();
+
   return _status ;
 }
 
@@ -518,6 +538,8 @@ int RooMinimizer::minos(const RooArgSet& minosParamList)
 
 int RooMinimizer::seek()
 {
+  setupProcessTimer();
+
   _fcn->Synchronize(_theFitter->Config().ParamsSettings(),
           _fcn->getOptConst(),_verbose) ;
   profileStart() ;
@@ -534,6 +556,8 @@ int RooMinimizer::seek()
 
   saveStatus("SEEK",_status) ;
 
+  ProcessTimer::write_file();
+
   return _status ;
 }
 
@@ -547,6 +571,8 @@ int RooMinimizer::seek()
 
 int RooMinimizer::simplex()
 {
+  setupProcessTimer();
+
   _fcn->Synchronize(_theFitter->Config().ParamsSettings(),
           _fcn->getOptConst(),_verbose) ;
   profileStart() ;
@@ -563,6 +589,8 @@ int RooMinimizer::simplex()
 
   saveStatus("SEEK",_status) ;
 
+  ProcessTimer::write_file();
+
   return _status ;
 }
 
@@ -576,6 +604,8 @@ int RooMinimizer::simplex()
 
 int RooMinimizer::improve()
 {
+  setupProcessTimer();
+
   _fcn->Synchronize(_theFitter->Config().ParamsSettings(),
           _fcn->getOptConst(),_verbose) ;
   profileStart() ;
@@ -591,6 +621,8 @@ int RooMinimizer::improve()
   _fcn->BackProp(_theFitter->Result());
 
   saveStatus("IMPROVE",_status) ;
+
+  ProcessTimer::write_file();
 
   return _status ;
 }
