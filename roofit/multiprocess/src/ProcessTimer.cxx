@@ -61,8 +61,11 @@ void ProcessTimer::end_timer(string section_name)
 void ProcessTimer::print_durations(string to_print)
 {
     cout << "On PID: " << ProcessTimer::process << endl << "====================" << endl << endl;
-    for (auto const& [sec_name, duration_list] : ProcessTimer::durations)
+    ProcessTimer::duration_map_t::key_type sec_name;
+    ProcessTimer::duration_map_t::mapped_type duration_list;
+    for (auto const& durations_element : ProcessTimer::durations)
     {
+        std::tie(sec_name, duration_list) = std::move(durations_element);
         if (to_print != "all" && sec_name != to_print)
             continue; // continue if only asked for specific section
 
@@ -84,8 +87,11 @@ void ProcessTimer::print_durations(string to_print)
 void ProcessTimer::print_timestamps()
 {
     cout << "On PID: " << ProcessTimer::process << endl;
-    for (auto const& [sec_name, duration_list] : ProcessTimer::durations)
+    ProcessTimer::duration_map_t::key_type sec_name;
+    ProcessTimer::duration_map_t::mapped_type duration_list;
+    for (auto const& durations_element : ProcessTimer::durations)
     {
+        std::tie(sec_name, duration_list) = std::move(durations_element);
         int i = 0;
         cout << "Section name " << sec_name << ":" << endl;
         for (auto it = duration_list.begin(); it != duration_list.end(); ++it)
@@ -111,8 +117,11 @@ void ProcessTimer::write_file()
     std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json", ios::app);
     list<long> durations_since_begin;
 
-    for (auto const& [sec_name, duration_list] : ProcessTimer::durations)
+    ProcessTimer::duration_map_t::key_type sec_name;
+    ProcessTimer::duration_map_t::mapped_type duration_list;
+    for (auto const& durations_element : ProcessTimer::durations)
     {
+        std::tie(sec_name, duration_list) = std::move(durations_element);
         durations_since_begin.clear();
         for (auto const& timestamp : duration_list)
         {
@@ -149,7 +158,7 @@ void ProcessTimer::set_write_now(bool flag) {
 }
 
 // Initialize static members
-map<string, list<chrono::time_point<chrono::steady_clock>>> ProcessTimer::durations;
+ProcessTimer::duration_map_t ProcessTimer::durations;
 chrono::time_point<chrono::steady_clock> ProcessTimer::begin = chrono::steady_clock::now();
 pid_t ProcessTimer::process = 0;
 nlohmann::json ProcessTimer::metadata;
