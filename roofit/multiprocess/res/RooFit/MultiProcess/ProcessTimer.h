@@ -18,6 +18,7 @@ class ProcessTimer{
     static chrono::time_point<chrono::steady_clock> begin;
     static pid_t process;
     static nlohmann::json metadata;
+    static bool write_now;
 
 public:
 
@@ -29,7 +30,7 @@ public:
 
     static void start_timer(string section_name);
 
-    static void end_timer(string section_name, bool write_now = false);
+    static void end_timer(string section_name);
 
     static void print_durations(string to_print = "all");
 
@@ -38,6 +39,8 @@ public:
     static void write_file();
 
     static void add_metadata(nlohmann::json data);
+
+    static void set_write_now(bool flag);
 };
 
 #endif // ROOT_ROOFIT_MultiProcess_ProcessTimer
