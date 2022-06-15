@@ -138,7 +138,7 @@ void ProcessTimer::add_metadata(nlohmann::json data)
     if (write_now) {
         nlohmann::json j, meta;
         meta.push_back(std::move(data));
-        j["metadata"] = metadata;
+        j["metadata"] = meta;
         std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json", ios::app);
         file << std::setw(4) << j;
     } else {
@@ -151,7 +151,7 @@ void ProcessTimer::set_write_now(bool flag) {
     if (write_now) {
         nlohmann::json j, meta;
         meta["write_now"] = true;
-        j["metadata"] = metadata;
+        j["metadata"] = meta;
         std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json", ios::app);
         file << std::setw(4) << j;
     }
