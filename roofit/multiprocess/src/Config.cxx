@@ -12,6 +12,7 @@
 
 #include "RooFit/MultiProcess/Config.h"
 #include "RooFit/MultiProcess/JobManager.h"
+#include "RooFit/MultiProcess/ProcessTimer.h"
 
 #include <thread> // std::thread::hardware_concurrency()
 #include <cstdio>
@@ -50,6 +51,11 @@ void Config::setDefaultNWorkers(unsigned int N_workers)
 unsigned int Config::getDefaultNWorkers()
 {
    return defaultNWorkers_;
+}
+
+void Config::setTimerWriteNow(bool flag)
+{
+  ProcessTimer::set_write_now(flag);
 }
 
 // initialize static member
