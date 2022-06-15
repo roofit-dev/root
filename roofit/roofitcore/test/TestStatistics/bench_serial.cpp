@@ -29,7 +29,7 @@ TEST(BenchSerial, BenchSerial)
 {
     // ------------------ SETUP ------------------ //
 
-    char* fname = "/home/zef/Documents/phd/qt/roofit/benchmark_roofit/data/workspaces/HGam_mu.root";
+    char const * fname = "/home/zef/Documents/phd/qt/roofit/benchmark_roofit/data/workspaces/HGam_mu.root";
 
     auto start = std::chrono::system_clock::now();
     TFile *f = TFile::Open(fname);
