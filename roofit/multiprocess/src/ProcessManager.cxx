@@ -264,6 +264,7 @@ int chill_wait()
 void ProcessManager::shutdown_processes()
 {
    if (is_master()) {
+      ProcessTimer::write_file();
       // Give children some time to write to file
       std::this_thread::sleep_for(std::chrono::seconds(2));
       // terminate all children

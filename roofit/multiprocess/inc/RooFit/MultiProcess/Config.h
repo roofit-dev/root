@@ -20,7 +20,7 @@ class Config {
 public:
    static void setDefaultNWorkers(unsigned int N_workers);
    static unsigned int getDefaultNWorkers();
-   static void setTimerWriteNow(bool flag);
+   static void setTimerWriteInterval(int write_interval = 0);
 private:
    static unsigned int defaultNWorkers_;
 };

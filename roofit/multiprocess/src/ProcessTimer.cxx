@@ -40,21 +40,18 @@ void ProcessTimer::end_timer(string section_name)
         // All odd indices contain end times, if size of list is currently odd we can not start a new timer
         throw::invalid_argument("Section name " + section_name + " timer does exist, but was not started before calling `end_timer`");
     }
-    else if (write_now)
-    {
-        // Write right now and do not store in this class
-        nlohmann::json j;
-        std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json", ios::app);
-        list<long> out {chrono::duration_cast<chrono::milliseconds>(ProcessTimer::durations[section_name].back() - ProcessTimer::begin).count(),
-                        chrono::duration_cast<chrono::milliseconds>(ProcessTimer::durations[section_name].back() - ProcessTimer::begin).count() + chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - ProcessTimer::begin).count()};
-        j[section_name] = out;
-        file << std::setw(4) << j;
-        ProcessTimer::durations[section_name].pop_back();
-    }
     else
     {
         // Add end time to list
         it->second.push_back(chrono::steady_clock::now());
+    }
+
+    // Write to file intermittently if interval is reached and write_interval is set
+    if (write_interval && (chrono::duration_cast<chrono::seconds>(chrono::steady_clock::now() - previous_write).count() > write_interval))
+    {
+        previous_write = chrono::steady_clock::now();
+        ProcessTimer::write_file();
+        times_written++;
     }
 }
 
@@ -110,11 +107,9 @@ void ProcessTimer::print_timestamps()
 
 void ProcessTimer::write_file()
 {
-    if (write_now) return;
-
     nlohmann::json j;
     j["metadata"] = metadata;
-    std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json", ios::app);
+    std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json." + to_string(times_written), ios::app);
     list<long> durations_since_begin;
 
     ProcessTimer::duration_map_t::key_type sec_name;
@@ -131,11 +126,12 @@ void ProcessTimer::write_file()
         j[sec_name] = durations_since_begin;
     }
     file << std::setw(4) << j;
+    file.close();
 }
 
 void ProcessTimer::add_metadata(nlohmann::json data)
 {
-    if (write_now) {
+    if (write_interval) {
         nlohmann::json j, meta;
         meta.push_back(std::move(data));
         j["metadata"] = meta;
@@ -146,11 +142,11 @@ void ProcessTimer::add_metadata(nlohmann::json data)
     }
 }
 
-void ProcessTimer::set_write_now(bool flag) {
-    write_now = flag;
-    if (write_now) {
+void ProcessTimer::set_write_interval(int write_int) {
+    write_interval = write_int;
+    if (write_interval) {
         nlohmann::json j, meta;
-        meta["write_now"] = true;
+        meta["write_interval"] = true;
         j["metadata"] = meta;
         std::ofstream file("p_" + to_string((long) ProcessTimer::get_process()) + ".json", ios::app);
         file << std::setw(4) << j;
@@ -160,6 +156,9 @@ void ProcessTimer::set_write_now(bool flag) {
 // Initialize static members
 ProcessTimer::duration_map_t ProcessTimer::durations;
 chrono::time_point<chrono::steady_clock> ProcessTimer::begin = chrono::steady_clock::now();
+chrono::time_point<chrono::steady_clock> ProcessTimer::previous_write = chrono::steady_clock::now();
 pid_t ProcessTimer::process = 0;
 nlohmann::json ProcessTimer::metadata;
-bool ProcessTimer::write_now = false;
+int ProcessTimer::write_interval = 0;
+int ProcessTimer::times_written = 0;
+

@@ -53,9 +53,12 @@ unsigned int Config::getDefaultNWorkers()
    return defaultNWorkers_;
 }
 
-void Config::setTimerWriteNow(bool flag)
+/// Set a write interval for the timer, 0 (default) means times are not 
+/// written intermittently any other (positive) value means times are written
+/// every `write_interval` secondss
+void Config::setTimerWriteInterval(int write_interval)
 {
-  ProcessTimer::set_write_now(flag);
+  ProcessTimer::set_write_interval(write_interval);
 }
 
 // initialize static member
