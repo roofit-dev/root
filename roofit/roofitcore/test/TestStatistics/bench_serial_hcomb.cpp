@@ -29,7 +29,7 @@ TEST(BenchSerialHcomb, BenchSerialHcomb)
 {
     // ------------------ SETUP ------------------ //
 
-    char const * fname = "/home/zef/Documents/phd/qt/roofit/benchmark_roofit/data/workspaces/WS-Comb-5XS.root";
+    char const * fname = "/project/atlas/users/zwolffs/qt/roofit/benchmark_roofit/data/workspaces/WS-Comb-5XS.root";
 
     auto start = std::chrono::system_clock::now();
     TFile *f = TFile::Open(fname);

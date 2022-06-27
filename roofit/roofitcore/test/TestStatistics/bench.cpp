@@ -28,7 +28,7 @@
 TEST(Bench, Bench)
 {
     int nWorkers = 1;
-    char const * fname = "/home/zef/Documents/phd/qt/roofit/benchmark_roofit/data/workspaces/HGam_mu.root";
+    char const * fname = "/project/atlas/users/zwolffs/qt/roofit/benchmark_roofit/data/workspaces/HGam_mu_split.root";
 
     auto start = std::chrono::system_clock::now();
     TFile *f = TFile::Open(fname);
@@ -52,21 +52,6 @@ TEST(Bench, Bench)
     auto nuisance_parameters = mc->GetNuisanceParameters();
     auto pdf = w->pdf(mc->GetPdf()->GetName());
 
-    // RooArgSet vars = w->allVars();
-
-    // // Fixes for known features, binned likelihood optimization
-    //  RooFIter iter_param = vars.fwdIterator();
-    //  RooRealVar *arg_param;
-    //  while ((arg_param = (RooRealVar*)iter_param.next())) {
-    //      if (( ((TString)arg_param->GetName()).Contains("ATLAS") || ((TString)arg_param->GetName()).Contains("nbkg") ))
-    //      {
-    //          std::cout << "setting " << arg_param->GetName() << "const" << std::endl;
-    //          arg_param->setConstant(1);
-    //      }
-    // }
-
-    // ((RooRealVar*)w->arg("mu"))->setConstant(0);
-
     RooFit::MultiProcess::Config::setDefaultNWorkers(nWorkers);
 
     std::shared_ptr<RooFit::TestStatistics::RooAbsL> likelihood = RooFit::TestStatistics::buildLikelihood(pdf, data, RooFit::TestStatistics::ConstrainedParameters(*nuisance_parameters), RooFit::TestStatistics::GlobalObservables(*global_observables));
@@ -76,7 +61,7 @@ TEST(Bench, Bench)
 
     m->setPrintLevel(1);
     m->setStrategy(0);
-    m->setProfile(true);
+    m->setProfile(false);
     m->optimizeConst(2);
     m->setMinimizerType("Minuit2");
     //m->setVerbose(kTRUE);

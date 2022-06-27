@@ -29,27 +29,12 @@ TEST(BenchSerial, BenchSerial)
 {
     // ------------------ SETUP ------------------ //
 
-    char const * fname = "/home/zef/Documents/phd/qt/roofit/benchmark_roofit/data/workspaces/HGam_mu.root";
+    char const * fname = "/project/atlas/users/zwolffs/qt/roofit/benchmark_roofit/data/workspaces/HGam_mu_split.root";
 
     auto start = std::chrono::system_clock::now();
     TFile *f = TFile::Open(fname);
 
     RooWorkspace* w = (RooWorkspace*)f->Get("combWS");
-
-    RooArgSet vars = w->allVars();
-
-    // Fixes for known features, binned likelihood optimization
-     RooFIter iter_param = vars.fwdIterator();
-     RooRealVar *arg_param;
-     while ((arg_param = (RooRealVar*)iter_param.next())) {
-         if (( ((TString)arg_param->GetName()).Contains("ATLAS") || ((TString)arg_param->GetName()).Contains("nbkg") ))
-         {
-             std::cout << "setting " << arg_param->GetName() << "const" << std::endl;
-             arg_param->setConstant(1);
-         }
-    }
-
-    ((RooRealVar*)w->arg("mu"))->setConstant(0);
 
     // Fixes for known features, binned likelihood optimization
     RooFIter iter = w->components().fwdIterator();
@@ -76,9 +61,9 @@ TEST(BenchSerial, BenchSerial)
     RooMinimizer* m = new RooMinimizer(*nll);
 
     m->setPrintLevel(1);
-    m->setStrategy(1);
+    m->setStrategy(0);
     m->setVerbose(false);
-    m->setProfile(true);
+    m->setProfile(false);
     m->optimizeConst(2);
     m->setMinimizerType("Minuit2");
     //m->setVerbose(kTRUE);
