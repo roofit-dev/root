@@ -24,15 +24,16 @@
 namespace RooFit {
 namespace TestStatistics {
 
+
 LikelihoodGradientJob::LikelihoodGradientJob(std::shared_ptr<RooAbsL> likelihood,
                                              std::shared_ptr<WrapperCalculationCleanFlags> calculation_is_clean,
                                              std::size_t N_dim, RooMinimizer *minimizer)
-   : LikelihoodGradientWrapper(std::move(likelihood), std::move(calculation_is_clean), N_dim, minimizer), grad_(N_dim)
+   : LikelihoodGradientWrapper(std::move(likelihood), std::move(calculation_is_clean), N_dim, minimizer), grad_(N_dim), N_partial_derivatives_(N_dim)
 {
    // Note to future maintainers: take care when storing the minimizer_fcn pointer. The
    // RooAbsMinimizerFcn subclasses may get cloned inside MINUIT, which means the pointer
    // should also somehow be updated in this class.
-   N_tasks_ = N_dim;
+   N_tasks_ = N_dim / hackettyhack + (N_dim % hackettyhack > 0 ? 1 : 0);
    minuit_internal_x_.reserve(N_dim);
 }
 
@@ -100,14 +101,21 @@ void LikelihoodGradientJob::setErrorLevel(double error_level) const
 
 void LikelihoodGradientJob::evaluate_task(std::size_t task)
 {
-   run_derivator(task);
+   for (std::size_t i_deriv = task * hackettyhack; i_deriv < task * hackettyhack + hackettyhack && i_deriv < N_partial_derivatives_; ++i_deriv) {
+      run_derivator(i_deriv);
+   }
 }
 
 // SYNCHRONIZATION FROM WORKERS TO MASTER
 
 void LikelihoodGradientJob::send_back_task_result_from_worker(std::size_t task)
 {
-   task_result_t task_result{id_, task, grad_[task]};
+   task_result_t task_result;
+   task_result.job_id = id_;
+   task_result.task_id = task;
+   for (std::size_t i_deriv = task * hackettyhack, i = 0; i_deriv < task * hackettyhack + hackettyhack && i_deriv < N_partial_derivatives_; ++i_deriv, ++i) {
+      task_result.grad[i] = grad_[i_deriv];
+   }
    zmq::message_t message(sizeof(task_result_t));
    memcpy(message.data(), &task_result, sizeof(task_result_t));
    get_manager()->messenger().send_from_worker_to_master(std::move(message));
@@ -116,7 +124,9 @@ void LikelihoodGradientJob::send_back_task_result_from_worker(std::size_t task)
 bool LikelihoodGradientJob::receive_task_result_on_master(const zmq::message_t &message)
 {
    auto result = message.data<task_result_t>();
-   grad_[result->task_id] = result->grad;
+   for (std::size_t i_deriv = result->task_id * hackettyhack, i = 0; i_deriv < result->task_id * hackettyhack + hackettyhack && i_deriv < N_partial_derivatives_; ++i_deriv, ++i) {
+      grad_[i_deriv] = result->grad[i];
+   }
    --N_tasks_at_workers_;
    bool job_completed = (N_tasks_at_workers_ == 0);
    return job_completed;

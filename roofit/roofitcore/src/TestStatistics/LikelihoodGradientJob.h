@@ -19,11 +19,12 @@
 #include "Math/MinimizerOptions.h"
 #include "Minuit2/NumericalDerivator.h"
 #include "Minuit2/MnMatrix.h"
-
 #include <vector>
-
 namespace RooFit {
 namespace TestStatistics {
+  
+// hacky test to cluster jobs by this factor
+const int hackettyhack = 5;
 
 class LikelihoodGradientJob : public MultiProcess::Job, public LikelihoodGradientWrapper {
 public:
@@ -67,7 +68,7 @@ private:
    struct task_result_t {
       std::size_t job_id;
       std::size_t task_id;
-      ROOT::Minuit2::DerivatorElement grad;
+      ROOT::Minuit2::DerivatorElement grad[hackettyhack];
    };
    void send_back_task_result_from_worker(std::size_t task) override;
    bool receive_task_result_on_master(const zmq::message_t &message) override;
@@ -84,6 +85,7 @@ private:
 
    std::size_t N_tasks_ = 0;
    std::size_t N_tasks_at_workers_ = 0;
+   std::size_t N_partial_derivatives_ = 0;
    std::vector<double> minuit_internal_x_;
 
    mutable bool isCalculating_ = false;
