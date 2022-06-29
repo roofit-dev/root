@@ -231,7 +231,7 @@ void LikelihoodGradientJob::fillGradientWithPrevResult(double *grad, double *pre
                                                        double *previous_gstep)
 {
    if (get_manager()->process_manager().is_master()) {
-      for (std::size_t i_component = 0; i_component < N_tasks_; ++i_component) {
+      for (std::size_t i_component = 0; i_component < N_partial_derivatives_; ++i_component) {
          grad_[i_component] = {previous_grad[i_component], previous_g2[i_component], previous_gstep[i_component]};
       }
 
