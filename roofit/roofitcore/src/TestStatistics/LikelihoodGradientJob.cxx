@@ -138,12 +138,14 @@ bool LikelihoodGradientJob::receive_task_result_on_master(const zmq::message_t &
 
 void LikelihoodGradientJob::update_workers_state()
 {
+   ProcessTimer::start_timer("master:update_state");
    // TODO optimization: only send changed parameters (now sending all)
    zmq::message_t gradient_message(grad_.begin(), grad_.end());
    zmq::message_t minuit_internal_x_message(minuit_internal_x_.begin(), minuit_internal_x_.end());
    ++state_id_;
    get_manager()->messenger().publish_from_master_to_workers(id_, state_id_, isCalculating_, std::move(gradient_message),
                                                              std::move(minuit_internal_x_message));
+   ProcessTimer::end_timer("master:update_state");
 }
 
 void LikelihoodGradientJob::update_workers_state_isCalculating()
@@ -154,6 +156,7 @@ void LikelihoodGradientJob::update_workers_state_isCalculating()
 
 void LikelihoodGradientJob::update_state()
 {
+   ProcessTimer::start_timer("worker:update_state");
    bool more;
 
    state_id_ = get_manager()->messenger().receive_from_master_on_worker<MultiProcess::State>(&more);
@@ -178,6 +181,7 @@ void LikelihoodGradientJob::update_state()
       gradf_.SetupDifferentiate(minimizer_->getMultiGenFcn(), minuit_internal_x_.data(),
                                 minimizer_->fitter()->Config().ParamsSettings());
    }
+   ProcessTimer::end_timer("worker:update_state");
 }
 
 // END SYNCHRONIZATION FROM MASTER TO WORKERS (STATE)
