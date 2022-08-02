@@ -238,16 +238,7 @@ namespace ROOT {
 
        /// \return Compensated sum.
        T Sum() const {
-         if (N == 1) {
-           return fSum[0];
-         }
- 
-         KahanSum<T, 1> sum {fSum[0], fCarry[0]};
-         for (std::size_t i = 1; i < N; ++i) {
-           KahanSum<T, 1> term {fSum[i], fCarry[i]};
-           sum += term;
-         }
-         return sum.Sum();
+         return std::accumulate(std::begin(fSum), std::end(fSum), 0.);
        }
 
        /// \return Compensated sum.
@@ -276,9 +267,6 @@ namespace ROOT {
        KahanSum& operator+=(const KahanSum<U>& arg) {
          Add(arg.Sum());
          fCarry[0] += arg.Carry();
-         // add zero such that if the summed carry is large enough to be partly represented in the sum,
-         // it will happen
-         Add(T{});
          return *this;
        }
 
