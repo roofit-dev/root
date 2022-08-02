@@ -163,9 +163,13 @@ namespace ROOT {
 
        /// Single-element accumulation. Will not vectorise.
        void Add(T x) {
-          auto y = x - fCarry[0];
-          auto t = fSum[0] + y;
-          fCarry[0] = (t - fSum[0]) - y;
+          //auto y = x - fCarry[0];
+          auto t = fSum[0] + x;
+          if (std::abs(fSum[0]) >= std::abs(x)) {
+            fCarry[0] += (fSum[0] - t) + x;
+          } else {
+            fCarry[0] += (x - t) + fSum[0];
+          }
           fSum[0] = t;
        }
 
@@ -230,9 +234,13 @@ namespace ROOT {
        /// as long as it is consecutive.
        void AddIndexed(T input, std::size_t index) {
          const unsigned int i = index % N;
-         const T y = input - fCarry[i];
-         const T t = fSum[i] + y;
-         fCarry[i] = (t - fSum[i]) - y;
+         // const T y = input - fCarry[i];
+         const T t = fSum[i] + input;
+         if (std::abs(fSum[i]) >= std::abs(input)) {
+           fCarry[i] += (fSum[i] - t) + input;
+         } else {
+           fCarry[i] += (input - t) + fSum[i];
+         }
          fSum[i] = t;
        }
 
@@ -243,12 +251,12 @@ namespace ROOT {
 
        /// \return Compensated sum.
        T Result() const {
-         return Sum();
+         return Sum() + Carry();
        }
 
        /// Auto-convert to type T
        operator T() const {
-         return Sum();
+         return Sum() + Carry();
        }
 
        /// \return The sum used for compensation.
