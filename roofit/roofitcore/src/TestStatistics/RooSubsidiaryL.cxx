@@ -65,7 +65,7 @@ ROOT::Math::KahanSum<double> RooSubsidiaryL::evaluatePartition(RooAbsL::Section 
 {
    ROOT::Math::KahanSum<double> sum;
 
-   if (events.end_fraction == 1) {
+   if (events.begin_fraction == 0) {
       for (const auto comp : subsidiary_pdfs_) {
          sum += -static_cast<RooAbsPdf*>(comp)->getLogVal(&parameter_set_);
       }

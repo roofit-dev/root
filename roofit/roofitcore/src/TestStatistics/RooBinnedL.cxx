@@ -20,8 +20,6 @@ Class RooBinnedL implements a -log(likelihood) calculation from a dataset
 \f[
  \sum_\mathrm{data} -\log( \mathrm{pdf}(x_\mathrm{data}))
 \f]
-In extended mode, a
-\f$ N_\mathrm{expect} - N_\mathrm{observed}*log(N_\mathrm{expect}) \f$ term is added.
 **/
 
 #include <RooFit/TestStatistics/RooBinnedL.h>
@@ -80,9 +78,7 @@ RooBinnedL::~RooBinnedL() = default;
 
 //////////////////////////////////////////////////////////////////////////////////
 /// Calculate and return likelihood on subset of data from firstEvent to lastEvent
-/// processed with a step size of 'stepSize'. If this an extended likelihood and
-/// and the zero event is processed the extended term is added to the return
-/// likelihood.
+/// processed with a step size of 'stepSize'.
 //
 ROOT::Math::KahanSum<double>
 RooBinnedL::evaluatePartition(Section bins, std::size_t /*components_begin*/, std::size_t /*components_end*/)

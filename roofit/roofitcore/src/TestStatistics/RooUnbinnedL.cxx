@@ -75,7 +75,7 @@ void RooUnbinnedL::setUseBatchedEvaluations(bool flag) {
 //////////////////////////////////////////////////////////////////////////////////
 /// Calculate and return likelihood on subset of data from firstEvent to lastEvent
 /// processed with a step size of 'stepSize'. If this an extended likelihood and
-/// and the zero event is processed the extended term is added to the return
+/// and the zeroth event is processed the extended term is added to the return
 /// likelihood.
 ///
 ROOT::Math::KahanSum<double>
@@ -103,7 +103,7 @@ RooUnbinnedL::evaluatePartition(Section events, std::size_t /*components_begin*/
    }
 
    // include the extended maximum likelihood term, if requested
-   if (extended_ && events.begin_fraction == 0) {
+   if (extended_ && events.end_fraction == 1) {
       if (apply_weight_squared) {
 
          // TODO: the following should also be factored out into free/static functions like RooNLLVar::Compute*

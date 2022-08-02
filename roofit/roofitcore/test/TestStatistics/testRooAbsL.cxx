@@ -227,15 +227,19 @@ TEST_F(SimBinnedConstrainedTest, EventSections)
       pdf, data, RooFit::TestStatistics::GlobalObservables({*w.var("alpha_bkg_obs_A"), *w.var("alpha_bkg_obs_B")}));
 
    auto whole = likelihood->evaluatePartition({0, 1}, 0, likelihood->getNComponents());
-   auto part1 = likelihood->evaluatePartition({0, 0.5}, 0, likelihood->getNComponents());
-   auto part2 = likelihood->evaluatePartition({0.5, 1}, 0, likelihood->getNComponents());
-   EXPECT_EQ(whole, part1 + part2);
+   ROOT::Math::KahanSum<double> sum2 = likelihood->evaluatePartition({0, 0.5}, 0, likelihood->getNComponents());
+   sum2 += likelihood->evaluatePartition({0.5, 1}, 0, likelihood->getNComponents());
+   EXPECT_EQ(whole, sum2);
 
-   auto part1of4 = likelihood->evaluatePartition({0, 0.25}, 0, likelihood->getNComponents());
-   auto part2of4 = likelihood->evaluatePartition({0.25, 0.5}, 0, likelihood->getNComponents());
-   auto part3of4 = likelihood->evaluatePartition({0.5, 0.75}, 0, likelihood->getNComponents());
-   auto part4of4 = likelihood->evaluatePartition({0.75, 1}, 0, likelihood->getNComponents());
-   EXPECT_EQ(whole, part1of4 + part2of4 + part3of4 + part4of4);
+   ROOT::Math::KahanSum<double> sum4 = likelihood->evaluatePartition({0, 0.25}, 0, likelihood->getNComponents());
+   sum4 += likelihood->evaluatePartition({0.25, 0.5}, 0, likelihood->getNComponents());
+   sum4 += likelihood->evaluatePartition({0.5, 0.75}, 0, likelihood->getNComponents());
+   sum4 += likelihood->evaluatePartition({0.75, 1}, 0, likelihood->getNComponents());
+   EXPECT_EQ(whole, sum4);
+   EXPECT_EQ(sum2, sum4);
+   printf("whole %f ± %f  --  2-part %f ± %f  --  4-part %f ± %f\n", whole, sum2, sum4);
+   printf("whole %a ± %a  --  2-part %a ± %a  --  4-part %a ± %a\n", whole, sum2, sum4);
+   printf("Result expliciet: whole %a  --  2-part %a  --  4-part %a\n", whole.Result(), sum2.Result(), sum4.Result());
 }
 
 TEST_F(RooAbsLTest, SubEventSections)
