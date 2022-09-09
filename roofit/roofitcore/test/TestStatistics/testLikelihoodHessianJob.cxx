@@ -35,6 +35,8 @@
 #include "Math/Util.h" // KahanSum
 #include "TMatrixDSym.h"
 
+#include "../../src/TestStatistics/LikelihoodHessianJob.h"
+
 #include <stdexcept> // runtime_error
 
 #include "gtest/gtest.h"
@@ -90,6 +92,11 @@ void printMatrix(const TMatrixDSym &matrix)
 }
 
 
+// Due to the integrated nature of Minuit2, it is very hard to use MnHesse
+// outside of an actual Minuit2 minimization run. This suite therefore simply
+// runs two minimizations using RooMinimizer, switching out the hessian
+// calculator function between the two runs and checking the results to make
+// sure our custom hessian calculator works.
 class MnHesseCalculatorTest: public ::testing::Test {
 protected:
    void SetUp() override
@@ -127,6 +134,12 @@ protected:
       *values = *savedValues;
    }
 
+   void TearDown() override
+   {
+      // switch back to default_calculator
+      ROOT::Minuit2::MnHesse::calculator = ROOT::Minuit2::MnHesse::default_calculator;
+   }
+
    std::size_t seed = 39;
    RooWorkspace w;
    std::unique_ptr<RooAbsReal> nll;
@@ -140,18 +153,30 @@ protected:
 
 TEST_F(MnHesseCalculatorTest, DummyLambda)
 {
-   // Due to the integrated nature of Minuit2, it is very hard to use MnHesse
-   // outside of an actual Minuit2 minimization run. This test therefore simply
-   // runs two minimizations using RooMinimizer, switching out the hessian
-   // calculator function between the two runs and checking the results to make
-   // sure our custom hessian calculator works.
-   //
-   // In this test we just switch it out with a dummy lambda that prints a line
-   // and then forwards to the default calculator.
+   // In this test we just switch the calculator out with a dummy lambda that
+   // prints a line and then forwards to the default calculator.
 
    ROOT::Minuit2::MnHesse::calculator = [](auto&& ...args) {
       printf("hi there, going to run the default_calculator now from this lambda\n");
       return ROOT::Minuit2::MnHesse::default_calculator(std::forward<decltype(args)>(args)...);
+   };
+
+   minimizer->hesse();
+
+   RooFitResult *m1result = minimizer->lastMinuitFit();
+   auto cov1 = m1result->covarianceMatrix();
+
+   EXPECT_EQ(*cov0, cov1);
+}
+
+TEST_F(MnHesseCalculatorTest, MPCalculator)
+{
+   // Here we switch the calculator out with the MultiProcess parallelized
+   // version of the default calculator.
+
+   ROOT::Minuit2::MnHesse::calculator = [](auto&& ...args) {
+      printf("hi there, going to run the RooFit::TestStatistics::hessian_calculator now from this lambda\n");
+      return RooFit::TestStatistics::hessian_calculator(std::forward<decltype(args)>(args)...);
    };
 
    minimizer->hesse();

@@ -10,7 +10,7 @@
 ############################################################################
 
 if (roofit_multiprocess)
-  set(RooFitMPTestStatisticsSources src/TestStatistics/LikelihoodJob.cxx src/TestStatistics/LikelihoodGradientJob.cxx)
+    set(RooFitMPTestStatisticsSources src/TestStatistics/LikelihoodJob.cxx src/TestStatistics/LikelihoodGradientJob.cxx src/TestStatistics/LikelihoodHessianJob.cxx)
 endif()
 
 ROOT_STANDARD_LIBRARY_PACKAGE(RooFitCore
