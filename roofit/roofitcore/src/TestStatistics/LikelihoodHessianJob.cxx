@@ -13,7 +13,6 @@
 #include "Minuit2/MnMachinePrecision.h"
 #include "Minuit2/Numerical2PGradientCalculator.h"
 #include "Minuit2/HessianGradientCalculator.h"
-#include "Minuit2/MPIProcess.h"
 #include "Minuit2/MnPosDef.h"
 #include "Minuit2/VariableMetricEDMEstimator.h"
 
@@ -35,7 +34,6 @@ using ROOT::Minuit2::MnAlgebraicSymMatrix;
 using ROOT::Minuit2::MnPrint;
 using ROOT::Minuit2::HessianGradientCalculator;
 using ROOT::Minuit2::Numerical2PGradientCalculator;
-using ROOT::Minuit2::MPIProcess;
 using ROOT::Minuit2::MnPosDef;
 using ROOT::Minuit2::VariableMetricEDMEstimator;
 
@@ -189,24 +187,22 @@ MinimumState hessian_calculator(const MnStrategy &strategy, const MnFcn &mfcn, c
    // off-diagonal Elements
    // initial starting values
    if (n > 0) {
-      MPIProcess mpiprocOffDiagonal(n * (n - 1) / 2, 0);
-      unsigned int startParIndexOffDiagonal = mpiprocOffDiagonal.StartElementIndex();
-      unsigned int endParIndexOffDiagonal = mpiprocOffDiagonal.EndElementIndex();
+      unsigned int startParIndexOffDiagonal = 0;
+      unsigned int endParIndexOffDiagonal = n * (n - 1) / 2;
 
       unsigned int offsetVect = 0;
-      for (unsigned int in = 0; in < startParIndexOffDiagonal; in++)
-         if ((in + offsetVect) % (n - 1) == 0)
-            offsetVect += (in + offsetVect) / (n - 1);
 
       for (unsigned int in = startParIndexOffDiagonal; in < endParIndexOffDiagonal; in++) {
 
          int i = (in + offsetVect) / (n - 1);
-         if ((in + offsetVect) % (n - 1) == 0)
+         if ((in + offsetVect) % (n - 1) == 0) {
             offsetVect += i;
+	 }
          int j = (in + offsetVect) % (n - 1) + 1;
 
-         if ((i + 1) == j || in == startParIndexOffDiagonal)
+         if ((i + 1) == j || in == startParIndexOffDiagonal) {
             x(i) += dirin(i);
+         }
 
          x(j) += dirin(j);
 
@@ -216,11 +212,10 @@ MinimumState hessian_calculator(const MnStrategy &strategy, const MnFcn &mfcn, c
 
          x(j) -= dirin(j);
 
-         if (j % (n - 1) == 0 || in == endParIndexOffDiagonal - 1)
+         if (j % (n - 1) == 0 || in == endParIndexOffDiagonal - 1) {
             x(i) -= dirin(i);
+	 }
       }
-
-      mpiprocOffDiagonal.SyncSymMatrixOffDiagonal(vhmat);
    }
 
    // verify if matrix pos-def (still 2nd derivative)
