@@ -10,6 +10,7 @@
 #ifndef ROOT_Minuit2_GenericFunction
 #define ROOT_Minuit2_GenericFunction
 
+#include "ROOT/span.hxx"
 #include "Minuit2/MnConfig.h"
 
 #include <vector>
@@ -48,6 +49,14 @@ public:
    */
 
    virtual double operator()(const std::vector<double> &x) const = 0;
+   virtual double operator()(std::span<double> x) const
+   {
+      return (*this)(std::vector<double>{x.begin(), x.end()});
+   }
+   virtual double operator()(std::span<const double> x) const
+   {
+      return (*this)(std::vector<double>{x.begin(), x.end()});
+   };
 };
 
 } // namespace Minuit2

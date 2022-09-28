@@ -10,6 +10,8 @@
 #ifndef ROOT_Minuit2_LAVector
 #define ROOT_Minuit2_LAVector
 
+#include "ROOT/span.hxx"
+
 #include "Minuit2/ABSum.h"
 #include "Minuit2/ABProd.h"
 #include "Minuit2/LASymMatrix.h"
@@ -141,6 +143,11 @@ public:
       (*this) = prod.Obj().B();
       (*this) += prod.Obj().A();
       (*this) *= double(prod.f());
+   }
+
+   /* implicit */ operator std::span<double>()
+   {
+      return {fData, size()};
    }
 
    //

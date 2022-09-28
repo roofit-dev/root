@@ -39,6 +39,8 @@ public:
 
    double operator()(const std::vector<double> &v) const override { return fFunc.operator()(&v[0]); }
    double operator()(const double *v) const { return fFunc.operator()(v); }
+   double operator()(std::span<const double> v) const override { return fFunc.operator()(v.data()); }
+   double operator()(std::span<double> x) const override { return fFunc.operator()(x.data()); }
    double Up() const override { return fUp; }
 
    void SetErrorDef(double up) override { fUp = up; }

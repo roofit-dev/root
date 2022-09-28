@@ -36,6 +36,7 @@ public:
       MnHesseFailed,
       MnInvertFailed,
       MnReachedCallLimit,
+      MnDefaultStatus,
    };
 
 public:
