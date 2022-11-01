@@ -929,6 +929,8 @@ double RooAbsPdf::extendedTerm(RooAbsData const& data, bool weightSquared) const
 /// <tr><td> `NewStyle(bool flag)`           <td>  Enable or disable new style likelihoods, which will become the default in a future release. 
 ///                                                This does not change any user-facing code, but only enables a different likelihood class in the back-end. Note that this
 ///                                                should be set to true for parallel minimization of likelihoods!
+///                                                Note that it is currently not recommended to use NewStyle without any parallelization enabled in the minimization, since
+///                                                some features such as offsetting might not yet work in this case.
 /// </table>
 ///
 ///
@@ -986,7 +988,9 @@ RooAbsReal* RooAbsPdf::createNLL(RooAbsData& data, const RooLinkedList& cmdList)
   pc.defineMutex(
     "NewStyle",
     "NumCPU"); // New style likelihoods define parallelization through Parallel(...) on fitTo or attributes on RooMinimizer::Config.
-
+  pc.defineMutex(
+    "NewStyle",
+    "OffsetLikelihood"); // New style likelihoods define offsetting on minimizer, not on likelihood
 
   // Process and check varargs
   pc.process(cmdList) ;
@@ -1413,7 +1417,9 @@ int RooAbsPdf::calcSumW2CorrectedCovariance(RooMinimizer &minimizer, RooAbsReal 
 ///                                                a positive value will print details of each error up to `numErr` messages per p.d.f component.
 /// <tr><td> `NewStyle(bool flag)`           <td>  Enable or disable new style likelihoods, which will become the default in a future release. 
 ///                                                This does not change any user-facing code, but only enables a different likelihood class in the back-end.
-///                                                Note that this option is forced to true in case parallelization is requested with the `Parallelize` named argument.
+///                                                This option is forced to true in case parallelization is requested with the `Parallelize` named argument.
+///                                                Note that it is currently not recommended to use NewStyle without any parallelization enabled, since
+///                                                some features such as offsetting might not yet work in this case.
 /// <tr><td> `Parallelize(Int_t nWorkers, bool parallelGradient, bool parallelLikelihood)`   <td>  Control parallelization settings. The first argument controls the number of workers (parallel processes) to use.
 ///                                                                                                The second argument controls whether the gradient is parallelized and the third argument controls whether 
 ///                                                                                                likelihood evaluation is parallelized. Setting only `nWorkers` but neither of the other arguments does not enable
