@@ -95,7 +95,7 @@ Job::Job()
    id_ = JobManager::add_job_object(this);
 }
 
-Job::Job(const Job &other) : _manager(other._manager)
+Job::Job(const Job &other) : state_id_(other.state_id_), _manager(other._manager)
 {
    id_ = JobManager::add_job_object(this);
 }

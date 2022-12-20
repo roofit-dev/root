@@ -78,6 +78,9 @@ public:
       if (likelihood != likelihood_in_gradient) {
          likelihood_in_gradient->enableOffsetting(flag);
       }
+      if (!flag) {
+         offsets_reset_ = true;
+      }
    }
 
 private:
@@ -98,6 +101,10 @@ public:
 private:
    mutable std::vector<double> minuit_internal_x_;
    mutable std::vector<double> minuit_external_x_;
+   // offsets_reset_ should be reset also when applyWeightSquared is activated in LikelihoodWrappers;
+   // currently setting this is not supported, so it doesn't happen.
+   mutable bool offsets_reset_ = false;
+   void syncOffsets() const;
 
 public:
    mutable bool minuit_internal_roofit_x_mismatch_ = false;

@@ -394,7 +394,7 @@ TEST_F(LikelihoodSerialSimBinnedConstrainedTest, BasicParameters)
 TEST_F(LikelihoodSerialSimBinnedConstrainedTest, ConstrainedAndOffset)
 {
    // a variation to test some additional parameters (ConstrainedParameters and offsetting)
-   nll.reset(pdf->createNLL(*data, RooFit::Constrain(RooArgSet(*w.var("alpha_bkg_obs_A"))),
+   nll.reset(pdf->createNLL(*data, RooFit::Constrain(RooArgSet(*w.var("alpha_bkg_A"))),
                             RooFit::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_B"))), RooFit::Offset(true)));
 
    // --------
@@ -402,7 +402,7 @@ TEST_F(LikelihoodSerialSimBinnedConstrainedTest, ConstrainedAndOffset)
    auto nll0 = nll->getVal();
 
    likelihood = RooFit::TestStatistics::buildLikelihood(
-      pdf, data, RooFit::TestStatistics::ConstrainedParameters(RooArgSet(*w.var("alpha_bkg_obs_A"))),
+      pdf, data, RooFit::TestStatistics::ConstrainedParameters(RooArgSet(*w.var("alpha_bkg_A"))),
       RooFit::TestStatistics::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_B"))));
    auto nll_ts = LikelihoodWrapper::create(RooFit::TestStatistics::LikelihoodMode::serial, likelihood, clean_flags);
    nll_ts->enableOffsetting(true);
@@ -413,10 +413,15 @@ TEST_F(LikelihoodSerialSimBinnedConstrainedTest, ConstrainedAndOffset)
    // value. RooRealL will also give the non-offset value, so that can be directly compared to the RooNLLVar::getVal
    // result (the nll0 vs nll2 comparison below). To compare to the raw RooAbsL/Wrapper value nll1, however, we need to
    // manually add the offset.
-   ROOT::Math::KahanSum<double> nll1 = nll_ts->getResult() + nll_ts->offset();
+   ROOT::Math::KahanSum<double> nll1 = nll_ts->getResult();
+   ROOT::Math::KahanSum<double> nll_ts_offset;
+   for (auto& offset: nll_ts->offsets()) {
+      nll1 += offset;
+      nll_ts_offset += offset;
+   }
 
-   EXPECT_DOUBLE_EQ(nll0, nll1.Sum());
-   EXPECT_FALSE(nll_ts->offset().Sum() == 0);
+   EXPECT_EQ(nll0, nll1.Sum());
+   EXPECT_FALSE(nll_ts_offset.Sum() == 0);
 
    // also check against RooRealL value
    RooFit::TestStatistics::RooRealL nll_real("real_nll", "RooRealL version", likelihood);
@@ -424,7 +429,7 @@ TEST_F(LikelihoodSerialSimBinnedConstrainedTest, ConstrainedAndOffset)
    auto nll2 = nll_real.getVal();
 
    EXPECT_EQ(nll0, nll2);
-   EXPECT_DOUBLE_EQ(nll1.Sum(), nll2);
+   EXPECT_EQ(nll1.Sum(), nll2);
 }
 
 TEST_F(LikelihoodSerialTest, BatchedUnbinnedGaussianND)

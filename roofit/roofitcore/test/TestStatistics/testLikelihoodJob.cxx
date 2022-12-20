@@ -124,6 +124,31 @@ TEST_F(LikelihoodJobTest, UnbinnedGaussian1D)
    EXPECT_EQ(nll0, nll1.Sum());
 }
 
+TEST_F(LikelihoodJobTest, UnbinnedGaussian1DSelectedParameterValues)
+{
+   // The parameter mu values in this test were selected because they were shown to generate deviant values
+   // for the LikelihoodJob in other tests.
+   std::tie(nll, pdf, data, values) = generate_1D_gaussian_pdf_nll(w, 9860);
+   // Bisecting the number of events to find the number at which the deviation starts occurring in the
+   // likelihood result showed that event 9860 was the main culprit (which has index 9859)
+
+   RooRealVar *mu = w.var("mu");
+   mu->setVal(-2.8991551193432676392);
+
+   likelihood = RooFit::TestStatistics::buildLikelihood(pdf, data);
+   auto nll_ts =
+      LikelihoodWrapper::create(RooFit::TestStatistics::LikelihoodMode::multiprocess, likelihood, clean_flags);
+
+   auto nll0 = nll->getVal();
+
+   nll_ts->evaluate();
+   auto nll1 = nll_ts->getResult();
+
+   EXPECT_NE(nll0, nll1.Sum());
+   // they differ only a bit:
+   EXPECT_DOUBLE_EQ(nll0, nll1.Sum());
+}
+
 TEST_F(LikelihoodJobTest, UnbinnedGaussian1DTwice)
 {
    std::tie(nll, pdf, data, values) = generate_1D_gaussian_pdf_nll(w, 10000);
@@ -156,7 +181,6 @@ TEST_F(LikelihoodJobTest, UnbinnedGaussianND)
    auto nll1 = nll_ts->getResult();
 
    EXPECT_EQ(nll0, nll1.Sum());
-   //   printf("%a =?= %a\n", nll0, nll1.Sum());
 }
 
 TEST_F(LikelihoodJobBinnedDatasetTest, UnbinnedPdf)
@@ -295,12 +319,17 @@ TEST_F(LikelihoodJobTest, BinnedConstrained)
    nll_ts->evaluate();
    auto nll1 = nll_ts->getResult();
 
-   EXPECT_DOUBLE_EQ(nll0, nll1.Sum());
+   EXPECT_EQ(nll0, nll1.Sum());
 }
 
 TEST_F(LikelihoodJobTest, SimUnbinned)
 {
    // SIMULTANEOUS FIT OF 2 UNBINNED DATASETS
+   // This is a simultaneous fit, so its likelihood has multiple components. In that case, splitting over
+   // components is always preferable, since it is more precise, due to component offsets matching
+   // the (-log) function values better.
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks = 1;
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNComponentTasks = 99999;  // just a high number, so every component is a task
 
    w.factory("ExtendPdf::egA(Gaussian::gA(x[-10,10],mA[2,-10,10],s[3,0.1,10]),nA[1000])");
    w.factory("ExtendPdf::egB(Gaussian::gB(x,mB[-2,-10,10],s),nB[100])");
@@ -323,7 +352,11 @@ TEST_F(LikelihoodJobTest, SimUnbinned)
    nll_ts->evaluate();
    auto nll1 = nll_ts->getResult();
 
-   EXPECT_DOUBLE_EQ(nll0, nll1.Sum());
+   EXPECT_EQ(nll0, nll1.Sum());
+
+   // reset static variables to automatic
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks = RooFit::MultiProcess::Config::LikelihoodJob::automaticNEventTasks;
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNComponentTasks = RooFit::MultiProcess::Config::LikelihoodJob::automaticNComponentTasks;
 }
 
 TEST_F(LikelihoodJobTest, SimUnbinnedNonExtended)
@@ -431,7 +464,7 @@ TEST_F(LikelihoodJobSimBinnedConstrainedTest, BasicParameters)
 TEST_F(LikelihoodJobSimBinnedConstrainedTest, ConstrainedAndOffset)
 {
    // a variation to test some additional parameters (ConstrainedParameters and offsetting)
-   nll.reset(pdf->createNLL(*data, RooFit::Constrain(RooArgSet(*w.var("alpha_bkg_obs_A"))),
+   nll.reset(pdf->createNLL(*data, RooFit::Constrain(RooArgSet(*w.var("alpha_bkg_A"))),
                             RooFit::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_B"))), RooFit::Offset(true)));
 
    // --------
@@ -439,7 +472,7 @@ TEST_F(LikelihoodJobSimBinnedConstrainedTest, ConstrainedAndOffset)
    auto nll0 = nll->getVal();
 
    likelihood = RooFit::TestStatistics::buildLikelihood(
-      pdf, data, RooFit::TestStatistics::ConstrainedParameters(RooArgSet(*w.var("alpha_bkg_obs_A"))),
+      pdf, data, RooFit::TestStatistics::ConstrainedParameters(RooArgSet(*w.var("alpha_bkg_A"))),
       RooFit::TestStatistics::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_B"))));
    auto nll_ts =
       LikelihoodWrapper::create(RooFit::TestStatistics::LikelihoodMode::multiprocess, likelihood, clean_flags);
@@ -451,10 +484,15 @@ TEST_F(LikelihoodJobSimBinnedConstrainedTest, ConstrainedAndOffset)
    // value. RooRealL will also give the non-offset value, so that can be directly compared to the RooNLLVar::getVal
    // result (the nll0 vs nll2 comparison below). To compare to the raw RooAbsL/Wrapper value nll1, however, we need to
    // manually add the offset.
-   ROOT::Math::KahanSum<double> nll1 = nll_ts->getResult() + nll_ts->offset();
+   ROOT::Math::KahanSum<double> nll1 = nll_ts->getResult();
+   ROOT::Math::KahanSum<double> nll_ts_offset;
+   for (auto& offset: nll_ts->offsets()) {
+      nll1 += offset;
+      nll_ts_offset += offset;
+   }
 
-   EXPECT_DOUBLE_EQ(nll0, nll1.Sum());
-   EXPECT_FALSE(nll_ts->offset().Sum() == 0);
+   EXPECT_EQ(nll0, nll1.Sum());
+   EXPECT_FALSE(nll_ts_offset.Sum() == 0);
 
    // also check against RooRealL value
    RooFit::TestStatistics::RooRealL nll_real("real_nll", "RooRealL version", likelihood);
@@ -462,7 +500,7 @@ TEST_F(LikelihoodJobSimBinnedConstrainedTest, ConstrainedAndOffset)
    auto nll2 = nll_real.getVal();
 
    EXPECT_EQ(nll0, nll2);
-   EXPECT_DOUBLE_EQ(nll1.Sum(), nll2);
+   EXPECT_EQ(nll1.Sum(), nll2);
 }
 
 TEST_F(LikelihoodJobTest, BatchedUnbinnedGaussianND)
@@ -489,7 +527,7 @@ TEST_F(LikelihoodJobTest, BatchedUnbinnedGaussianND)
    nll_ts->evaluate();
    auto nll1 = nll_ts->getResult();
 
-   EXPECT_NEAR(nll0, nll1.Sum(), 1e-14 * nll0);
+   EXPECT_EQ(nll0, nll1.Sum());
 }
 
 class LikelihoodJobSplitStrategies : public LikelihoodJobSimBinnedConstrainedTest,
@@ -498,7 +536,7 @@ class LikelihoodJobSplitStrategies : public LikelihoodJobSimBinnedConstrainedTes
 TEST_P(LikelihoodJobSplitStrategies, SimBinnedConstrainedAndOffset)
 {
    // based on ConstrainedAndOffset, this test tests different parallelization strategies
-   nll.reset(pdf->createNLL(*data, RooFit::Constrain(RooArgSet(*w.var("alpha_bkg_obs_A"))),
+   nll.reset(pdf->createNLL(*data, RooFit::Constrain(RooArgSet(*w.var("alpha_bkg_A"))),
                             RooFit::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_B"))), RooFit::Offset(true)));
 
    // --------
@@ -506,7 +544,7 @@ TEST_P(LikelihoodJobSplitStrategies, SimBinnedConstrainedAndOffset)
    auto nll0 = nll->getVal();
 
    likelihood = RooFit::TestStatistics::buildLikelihood(
-      pdf, data, RooFit::TestStatistics::ConstrainedParameters(RooArgSet(*w.var("alpha_bkg_obs_A"))),
+      pdf, data, RooFit::TestStatistics::ConstrainedParameters(RooArgSet(*w.var("alpha_bkg_A"))),
       RooFit::TestStatistics::GlobalObservables(RooArgSet(*w.var("alpha_bkg_obs_B"))));
 
    RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks = std::get<0>(GetParam());
@@ -522,10 +560,17 @@ TEST_P(LikelihoodJobSplitStrategies, SimBinnedConstrainedAndOffset)
    // value. RooRealL will also give the non-offset value, so that can be directly compared to the RooNLLVar::getVal
    // result (the nll0 vs nll2 comparison below). To compare to the raw RooAbsL/Wrapper value nll1, however, we need to
    // manually add the offset.
-   ROOT::Math::KahanSum<double> nll1 = nll_ts->getResult() + nll_ts->offset();
+   ROOT::Math::KahanSum<double> nll1 = nll_ts->getResult();
+   ROOT::Math::KahanSum<double> nll_ts_offset;
+   for (auto& offset: nll_ts->offsets()) {
+      nll1 += offset;
+      nll_ts_offset += offset;
+   }
 
+   // We can expect minor bit-wise differences here in some cases when splitting over events.
+   // Note that many of these cases are, in fact, exactly bit-wise equal.
    EXPECT_DOUBLE_EQ(nll0, nll1.Sum());
-   EXPECT_FALSE(nll_ts->offset().Sum() == 0);
+   EXPECT_FALSE(nll_ts_offset.Sum() == 0);
 
    // also check against RooRealL value
    RooFit::TestStatistics::RooRealL nll_real("real_nll", "RooRealL version", likelihood);
@@ -534,6 +579,10 @@ TEST_P(LikelihoodJobSplitStrategies, SimBinnedConstrainedAndOffset)
 
    EXPECT_EQ(nll0, nll2);
    EXPECT_DOUBLE_EQ(nll1.Sum(), nll2);
+
+   // reset static variables to automatic
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks = RooFit::MultiProcess::Config::LikelihoodJob::automaticNEventTasks;
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNComponentTasks = RooFit::MultiProcess::Config::LikelihoodJob::automaticNComponentTasks;
 }
 
 INSTANTIATE_TEST_SUITE_P(SplitStrategies, LikelihoodJobSplitStrategies,

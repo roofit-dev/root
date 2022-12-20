@@ -83,7 +83,7 @@ int main(int argc, char **argv)
    return RUN_ALL_TESTS();
 }
 
-class LikelihoodGradientJobTest : public ::testing::TestWithParam<std::tuple<std::size_t, std::size_t>> {};
+class LikelihoodGradientJobTest : public ::testing::TestWithParam<std::tuple<std::size_t, std::size_t, bool>> {};
 
 TEST_P(LikelihoodGradientJobTest, Gaussian1D)
 {
@@ -92,6 +92,7 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1D)
    // parameters
    std::size_t NWorkers = std::get<0>(GetParam());
    std::size_t seed = std::get<1>(GetParam());
+   bool offsetting = std::get<2>(GetParam());
 
    RooRandom::randomGenerator()->SetSeed(seed);
 
@@ -113,6 +114,7 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1D)
 
    m0.setStrategy(0);
    m0.setPrintLevel(-1);
+   m0.setOffsetting(offsetting);
 
    m0.minimize("Minuit2", "migrad");
 
@@ -135,6 +137,7 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1D)
 
    m1.setStrategy(0);
    m1.setPrintLevel(-1);
+   m1.setOffsetting(offsetting);
 
    m1.minimize("Minuit2", "migrad");
 
@@ -202,6 +205,7 @@ TEST_P(LikelihoodGradientJobTest, GaussianND)
    // parameters
    std::size_t NWorkers = std::get<0>(GetParam());
    std::size_t seed = std::get<1>(GetParam());
+   bool offsetting = std::get<2>(GetParam());
 
    unsigned int N = 4;
 
@@ -224,6 +228,7 @@ TEST_P(LikelihoodGradientJobTest, GaussianND)
 
    m0.setStrategy(0);
    m0.setPrintLevel(-1);
+   m0.setOffsetting(offsetting);
 
    m0.minimize("Minuit2", "migrad");
 
@@ -260,6 +265,7 @@ TEST_P(LikelihoodGradientJobTest, GaussianND)
 
    m1.setStrategy(0);
    m1.setPrintLevel(-1);
+   m1.setOffsetting(offsetting);
 
    m1.minimize("Minuit2", "migrad");
 
@@ -292,7 +298,14 @@ TEST_P(LikelihoodGradientJobTest, GaussianND)
 
 INSTANTIATE_TEST_SUITE_P(NworkersSeed, LikelihoodGradientJobTest,
                          ::testing::Combine(::testing::Values(1, 2, 3), // number of workers
-                                            ::testing::Values(2, 3)));  // random seed
+                                            ::testing::Values(2, 3),  // random seed
+                                            ::testing::Values(false, true)), //
+                         [](testing::TestParamInfo<LikelihoodGradientJobTest::ParamType> const &paramInfo) {
+                            std::stringstream ss;
+                            ss << std::get<0>(paramInfo.param) << "workers_seed" << std::get<1>(paramInfo.param)
+                               << (std::get<2>(paramInfo.param) ? "_WithOffsetting" : "_WithoutOffsetting");
+                            return ss.str();
+                         });
 
 std::unique_ptr<RooWorkspace> makeSimBinnedConstrainedWorkspace()
 {
@@ -381,6 +394,11 @@ TEST_P(SimBinnedConstrainedTest, ConstrainedAndOffset)
 
    // parameters
    const bool parallelLikelihood = std::get<0>(GetParam());
+   // This is a simultaneous fit, so its likelihood has multiple components. In that case, splitting over
+   // components is always preferable, since it is more precise, due to component offsets matching
+   // the (-log) function values better.
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks = 1;
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNComponentTasks = 99999;  // just a high number, so every component is a task
 
    std::unique_ptr<RooWorkspace> wPtr = makeSimBinnedConstrainedWorkspace();
    auto &w = *wPtr;
@@ -389,7 +407,7 @@ TEST_P(SimBinnedConstrainedTest, ConstrainedAndOffset)
    RooAbsData *data = w.data("data");
 
    // do a minimization, but now using GradMinimizer and its MP version
-   std::unique_ptr<RooAbsReal> nll{pdf->createNLL(*data, Constrain(*w.var("alpha_bkg_obs_A")),
+   std::unique_ptr<RooAbsReal> nll{pdf->createNLL(*data, Constrain(*w.var("alpha_bkg_A")),
                                                   GlobalObservables(*w.var("alpha_bkg_obs_B")), Offset(true))};
 
    // parameters
@@ -422,7 +440,7 @@ TEST_P(SimBinnedConstrainedTest, ConstrainedAndOffset)
    RooFit::MultiProcess::Config::setDefaultNWorkers(NWorkers);
 
    std::unique_ptr<RooAbsReal> likelihoodAbsReal{pdf->createNLL(
-      *data, Constrain(*w.var("alpha_bkg_obs_A")), GlobalObservables(*w.var("alpha_bkg_obs_B")), ModularL(true))};
+      *data, Constrain(*w.var("alpha_bkg_A")), GlobalObservables(*w.var("alpha_bkg_obs_B")), ModularL(true))};
 
    RooMinimizer::Config cfg1;
    cfg1.parallelize = -1;
@@ -445,30 +463,17 @@ TEST_P(SimBinnedConstrainedTest, ConstrainedAndOffset)
    ValAndError alpha_bkg_B_GradientJob = getValAndError(parsFinal_GradientJob, "alpha_bkg_B");
    ValAndError mu_sig_GradientJob = getValAndError(parsFinal_GradientJob, "mu_sig");
 
-   // Because offsetting is handled differently in the TestStatistics classes
-   // compared to the way it was done in the object returned from
-   // RooAbsPdf::createNLL (a RooAddition of an offset RooNLLVar and a
-   // non-offset RooConstraintSum, whereas RooSumL applies the offset to the
-   // total sum of its binned, unbinned and constraint components),
-   // we cannot always expect exactly equal results for fits with likelihood
-   // offsetting enabled. See also the LikelihoodSerialSimBinnedConstrainedTest.
-   // ConstrainedAndOffset test case in testLikelihoodSerial and other tests
-   // below with offsetting. We do test whether they are near, because any
-   // changes that cause further divergence should be carefully considered.
-   // Note that we also omit the edm checks for these test cases. They will
-   // always (by default) be below 1e-3 for successful fits (by definition),
-   // so it tests nothing specific about the likelihood classes, it's just a
-   // postcondition of the Minuit fit.
-#define EXPECT_NEAR_REL(a, b, c) EXPECT_NEAR(a, b, std::abs(a *c))
-#define EXPECT_NEAR_REL_INCL_ERROR(a, b, c)       \
-   EXPECT_NEAR(a.val, b.val, std::abs(a.val *c)); \
-   EXPECT_NEAR(a.error, b.error, std::abs(a.error *c))
-   EXPECT_NEAR_REL(minNll_nominal, minNll_GradientJob, 1e-6);
-   EXPECT_NEAR_REL_INCL_ERROR(alpha_bkg_A_nominal, alpha_bkg_A_GradientJob, 1e-6);
-   EXPECT_NEAR_REL_INCL_ERROR(alpha_bkg_B_nominal, alpha_bkg_B_GradientJob, 1e-6);
-   EXPECT_NEAR_REL_INCL_ERROR(mu_sig_nominal, mu_sig_GradientJob, 1e-6);
-#undef EXPECT_NEAR_REL
-#undef EXPECT_NEAR_REL_INCL_ERROR
+   EXPECT_EQ(minNll_nominal, minNll_GradientJob);
+   EXPECT_EQ(alpha_bkg_A_nominal.val, alpha_bkg_A_GradientJob.val);
+   EXPECT_EQ(alpha_bkg_A_nominal.error, alpha_bkg_A_GradientJob.error);
+   EXPECT_EQ(alpha_bkg_B_nominal.val, alpha_bkg_B_GradientJob.val);
+   EXPECT_EQ(alpha_bkg_B_nominal.error, alpha_bkg_B_GradientJob.error);
+   EXPECT_EQ(mu_sig_nominal.val, mu_sig_GradientJob.val);
+   EXPECT_EQ(mu_sig_nominal.error, mu_sig_GradientJob.error);
+
+   // reset static variables to automatic
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks = RooFit::MultiProcess::Config::LikelihoodJob::automaticNEventTasks;
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNComponentTasks = RooFit::MultiProcess::Config::LikelihoodJob::automaticNComponentTasks;
 }
 
 INSTANTIATE_TEST_SUITE_P(LikelihoodGradientJob, SimBinnedConstrainedTest, testing::Values(false, true),
@@ -485,6 +490,7 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1DAlsoWithLikelihoodJob)
    // parameters
    std::size_t NWorkers = std::get<0>(GetParam());
    std::size_t seed = std::get<1>(GetParam());
+   bool offsetting = std::get<2>(GetParam());
 
    RooRandom::randomGenerator()->SetSeed(seed);
 
@@ -507,6 +513,7 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1DAlsoWithLikelihoodJob)
    m0.setStrategy(0);
    m0.setPrintLevel(-1);
    m0.setVerbose(false);
+   m0.setOffsetting(offsetting);
 
    m0.minimize("Minuit2", "migrad");
 
@@ -527,6 +534,7 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1DAlsoWithLikelihoodJob)
    RooMinimizer m1(likelihood, cfg);
    m1.setStrategy(0);
    m1.setPrintLevel(-1);
+   m1.setOffsetting(offsetting);
 
    m1.setVerbose(false);
 
@@ -538,8 +546,25 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1DAlsoWithLikelihoodJob)
    double mu1 = mu->getVal();
    double muerr1 = mu->getError();
 
-   EXPECT_FLOAT_EQ(minNll0, minNll1);
-   EXPECT_FLOAT_EQ(mu0, mu1);
-   EXPECT_FLOAT_EQ(muerr0, muerr1);
-   EXPECT_NEAR(edm0, edm1, 1e-5);
+   if (NWorkers > 1 && offsetting) {
+      // Note: we cannot expect exact equal results here in most cases when using
+      // event-based splitting (which is currently the default; THIS MAY CHANGE!).
+      // See LikelihoodJobTest, UnbinnedGaussian1DSelectedParameterValues for an
+      // example of where slight bit-wise differences can pop up in fits like this
+      // due to minor bit-wise errors in Kahan summation due to different split
+      // ups over the event range. We do expect pretty close results, though,
+      // because this fit only has 4 iterations and bit-wise differences should
+      // not add up too much.
+#define EXPECT_NEAR_REL(a, b, c) EXPECT_NEAR(a, b, std::abs(a *c))
+      EXPECT_NEAR_REL(minNll0, minNll1, 1e-7);
+      EXPECT_NEAR_REL(mu0, mu1, 1e-7);
+      EXPECT_NEAR_REL(muerr0, muerr1, 1e-7);
+      EXPECT_NEAR(edm0, edm1, 1e-3);
+   } else {
+      EXPECT_NEAR_REL(minNll0, minNll1, 1e-10);
+      EXPECT_NEAR_REL(mu0, mu1, 1e-10);
+      EXPECT_NEAR_REL(muerr0, muerr1, 1e-10);
+      EXPECT_NEAR(edm0, edm1, 1e-5);
+   }
 }
+#undef EXPECT_NEAR_REL
