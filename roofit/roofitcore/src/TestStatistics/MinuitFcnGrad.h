@@ -61,6 +61,9 @@ public:
    inline void setOffsetting(bool flag) override
    {
       applyToLikelihood([&](auto &l) { l.enableOffsetting(flag); });
+      if (!flag) {
+         offsets_reset_ = true;
+      }
    }
 
 private:
@@ -85,6 +88,10 @@ private:
 
    mutable std::vector<double> _minuitInternalX;
    mutable std::vector<double> _minuitExternalX;
+   // offsets_reset_ should be reset also when applyWeightSquared is activated in LikelihoodWrappers;
+   // currently setting this is not supported, so it doesn't happen.
+   mutable bool offsets_reset_ = false;
+   void syncOffsets() const;
 
    std::unique_ptr<ROOT::Math::IMultiGradFunction> _multiGenFcn;
 
