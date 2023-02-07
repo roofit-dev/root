@@ -564,3 +564,94 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1DAlsoWithLikelihoodJob)
    }
 }
 #undef EXPECT_NEAR_REL
+
+class LikelihoodGradientJobErrorTest : public ::testing::TestWithParam<std::tuple<std::size_t, std::size_t, bool, bool>> {};
+
+TEST_P(LikelihoodGradientJobErrorTest, ErrorHandling)
+{
+   // In this test, we setup a model that we know will give evaluation errors, because Minuit will try parameters
+   // outside of the physical range during line search. Using the error handling mechanism in RooMinimizerFcn and
+   // MinuitFcnGrad (based on RooNaNPacker), Minuit should get sent out of this area again.
+
+   // parameters
+   std::size_t NWorkers = std::get<0>(GetParam());
+   std::size_t seed = std::get<1>(GetParam());
+   bool parallelLikelihood = std::get<2>(GetParam());
+   bool offsetting = std::get<3>(GetParam());
+
+   RooRandom::randomGenerator()->SetSeed(seed);
+
+   RooWorkspace w("w");
+   w.factory("ArgusBG::model(m[5.2,5.3],m0[5.28,5.2,5.3],c[-2,-10,0])");
+
+   RooAbsPdf *pdf = w.pdf("model");
+   std::unique_ptr<RooDataSet> data{pdf->generate(*w.var("m"), 10000)};
+   std::unique_ptr<RooAbsReal> nll{pdf->createNLL(*data)};
+
+   // if m0 were constant (i.e. setConstant(true)), the fit would converge without errors, because m0 outside of the
+   // physical area of the Argus distribution is what causes the errors in the line search phase of the fit
+   w.var("m0")->setConstant(false);
+
+   RooArgSet values {*w.var("m"), *w.var("m0"), *w.var("c"), "values"};
+   RooArgSet savedValues;
+   values.snapshot(savedValues);
+
+   RooMinimizer m0{*nll};
+
+   m0.setStrategy(0);
+   m0.setPrintLevel(-1);
+   m0.setVerbose(true);
+   m0.setOffsetting(offsetting);
+
+   m0.minimize("Minuit2", "migrad");
+
+   std::unique_ptr<RooFitResult> m0result{m0.save()};
+   double minNll0 = m0result->minNll();
+   double edm0 = m0result->edm();
+   double m_0 = w.var("m")->getVal();
+   double m0_0 = w.var("m0")->getVal();
+   double c_0 = w.var("c")->getVal();
+
+   values.assign(savedValues);
+
+   RooFit::MultiProcess::Config::setDefaultNWorkers(NWorkers);
+   std::unique_ptr<RooAbsReal> likelihoodAbsReal{pdf->createNLL(*data, RooFit::ModularL(true))};
+
+   RooMinimizer::Config cfg;
+   cfg.parallelize = -1;
+   cfg.enableParallelDescent = parallelLikelihood;
+   RooMinimizer m1(*likelihoodAbsReal, cfg);
+   m1.setStrategy(0);
+   m1.setPrintLevel(-1);
+   m1.setOffsetting(offsetting);
+
+   m1.setVerbose(true);
+
+   m1.minimize("Minuit2", "migrad");
+
+   std::unique_ptr<RooFitResult> m1result{m1.save()};
+   double minNll1 = m1result->minNll();
+   double edm1 = m1result->edm();
+   double m_1 = w.var("m")->getVal();
+   double m0_1 = w.var("m0")->getVal();
+   double c_1 = w.var("c")->getVal();
+
+   EXPECT_EQ(minNll0, minNll1);
+   EXPECT_EQ(edm0, edm1);
+   EXPECT_EQ(m_0, m_1);
+   EXPECT_EQ(m0_0, m0_1);
+   EXPECT_EQ(c_0, c_1);
+}
+
+INSTANTIATE_TEST_SUITE_P(LikelihoodGradientJob, LikelihoodGradientJobErrorTest,
+                         ::testing::Combine(::testing::Values(1, 2, 3), // number of workers
+                                            ::testing::Values(2, 3),  // random seed
+                                            ::testing::Values(false, true), // with or without LikelihoodJob
+                                            ::testing::Values(false, true)), // with or without offsetting
+                         [](testing::TestParamInfo<LikelihoodGradientJobErrorTest::ParamType> const &paramInfo) {
+                            std::stringstream ss;
+                            ss << std::get<0>(paramInfo.param) << "workers_seed" << std::get<1>(paramInfo.param)
+                               << (std::get<2>(paramInfo.param) ? "AlsoWithLikelihoodJob" : "NoLikelihoodJob")
+                               << (std::get<3>(paramInfo.param) ? "_WithOffsetting" : "_WithoutOffsetting");
+                            return ss.str();
+                         });
