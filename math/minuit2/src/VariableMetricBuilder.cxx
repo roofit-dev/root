@@ -25,8 +25,16 @@
 #include "Minuit2/MnHesse.h"
 #include "Minuit2/MnPrint.h"
 
+#include "RooFit/MultiProcess/ProcessTimer.h"
+#include "RooFit/MultiProcess/Config.h"
+
 #include <cmath>
 #include <cassert>
+#include <chrono>
+#include <iostream>
+#include <ctime>
+#include <sys/types.h>
+#include <unistd.h>
 
 namespace ROOT {
 
@@ -235,6 +243,8 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
    MinimumState s0 = result.back();
 
    do {
+      std::clock_t full_begin_cpu = std::clock();
+      std::chrono::time_point<std::chrono::steady_clock> full_begin = std::chrono::steady_clock::now();
 
       // MinimumState s0 = result.back();
 
@@ -272,7 +282,27 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
          }
       }
 
+      std::clock_t lsearch_begin_cpu = std::clock();
+      std::chrono::time_point<std::chrono::steady_clock> lsearch_begin = std::chrono::steady_clock::now();
+      if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::start_timer("master:linesearch");
+      //ProcessTimer::start_timer("serial:lsearch");
+      std::cout << "START EVALUATE LSEARCH" << std::endl;
+      RooFit::MultiProcess::Config::isInLinesearch_ = true;
+
+      RooFit::MultiProcess::Config::callgrind_zero();
+
       MnParabolaPoint pp = lsearch(fcn, s0.Parameters(), step, gdel, prec);
+      
+      RooFit::MultiProcess::Config::callgrind_dump();
+      
+      pid_t pid = getpid();
+      std::cout << "dumped lsearch callgrind logs on pid " << pid << std::endl; 
+
+      RooFit::MultiProcess::Config::isInLinesearch_ = false;
+      //ProcessTimer::end_timer("serial:lsearch");
+      if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::end_timer("master:linesearch");
+      print.Warn("lsearch: ", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - lsearch_begin).count());
+      print.Warn("lsearch (cpu): ", std::clock() - lsearch_begin_cpu);
 
       // <= needed for case 0 <= 0
       if (std::fabs(pp.Y() - s0.Fval()) <= std::fabs(s0.Fval()) * prec.Eps()) {
@@ -295,7 +325,13 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
 
       MinimumParameters p(s0.Vec() + pp.X() * step, pp.Y());
 
+      std::chrono::time_point<std::chrono::steady_clock> gradient_begin = std::chrono::steady_clock::now();
+      std::clock_t gradient_begin_cpu = std::clock();
+
       FunctionGradient g = gc(p, s0.Gradient());
+
+      print.Warn("gradient: ", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - gradient_begin).count());
+      print.Warn("gradient (cpu): ", std::clock() - gradient_begin_cpu);
 
       edm = Estimator().Estimate(g, s0.Error());
 
@@ -337,6 +373,9 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
       edm *= (1. + 3. * e.Dcovar());
 
       print.Debug("Dcovar =", e.Dcovar(), "\tCorrected edm =", edm);
+
+      print.Warn("full step: ", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - full_begin).count());
+      print.Warn("full step (cpu): ", std::clock() - full_begin_cpu);
 
    } while (edm > edmval && fcn.NumOfCalls() < maxfcn); // end of iteration loop
 

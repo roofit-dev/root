@@ -94,6 +94,8 @@ public:
   }
   bool isCloneOf(const RooAbsArg& other) const ;
 
+  void pruneClientValueListHack();
+
   /// Check whether this object depends on values from an element in the `serverList`.
   ///
   /// @param serverList Test if one of the elements in this list serves values to `this`.

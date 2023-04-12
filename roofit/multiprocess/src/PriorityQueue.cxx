@@ -17,6 +17,7 @@
 #include "PriorityQueue.h"
 
 #include <algorithm> // std::copy
+#include <iostream>
 
 namespace RooFit {
 namespace MultiProcess {
@@ -45,6 +46,7 @@ void PriorityQueue::add(JobTask job_task)
                                                        job_task.task_id);
    } else if (jobManager.process_manager().is_queue()) {
       std::size_t priority = 0;  // default priority if no task_priority_ vector was set for this Job
+      // std::cout << "Here we have a set: " << job_task.job_id << " " << job_task.task_id << std::endl;
       if (task_priority_.find(job_task.job_id) != task_priority_.end()) {
          priority = task_priority_[job_task.job_id][job_task.task_id];
       }

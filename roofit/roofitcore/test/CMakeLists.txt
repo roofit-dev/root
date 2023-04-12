@@ -8,6 +8,8 @@
 # @author Patrick Bos, NL eScience Center, 2018
 
 ROOT_ADD_GTEST(testSimple testSimple.cxx LIBRARIES RooFitCore)
+ROOT_ADD_GTEST(testTestTEST testTest.cxx LIBRARIES RooFitCore RooFitMultiProcess)
+ROOT_ADD_GTEST(testBenchmarkCallgrind testBenchmarkCallgrind.cxx LIBRARIES RooFitCore RooFitMultiProcess RooStats)
 ROOT_ADD_GTEST(testRooAddPdf testRooAddPdf.cxx LIBRARIES RooFitCore RooStats)
 ROOT_ADD_GTEST(testRooCacheManager testRooCacheManager.cxx LIBRARIES RooFitCore)
 ROOT_ADD_GTEST(testRooCategory testRooCategory.cxx LIBRARIES RooFitCore)

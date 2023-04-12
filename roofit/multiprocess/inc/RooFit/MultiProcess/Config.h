@@ -17,6 +17,7 @@
 
 #include <vector>
 #include <cstddef>  // std::size_t
+#include <iostream>
 
 namespace RooFit {
 namespace MultiProcess {
@@ -25,6 +26,12 @@ class Config {
 public:
    static void setDefaultNWorkers(unsigned int N_workers);
    static unsigned int getDefaultNWorkers();
+
+   static bool isInLinesearch_;
+   static bool clientListPruned_;
+
+   static void callgrind_zero() {std::cout << "RooFit::MultiProcess::Config::callgrind_zero()" << std::endl;} ;
+   static void callgrind_dump() {std::cout << "RooFit::MultiProcess::Config::callgrind_dump()" << std::endl;} ;
 
    static void setTimingAnalysis(bool timingAnalysis);
    static bool getTimingAnalysis();

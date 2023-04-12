@@ -126,6 +126,7 @@ void LikelihoodGradientJob::evaluate_task(std::size_t task)
 
 void LikelihoodGradientJob::send_back_task_result_from_worker(std::size_t task)
 {
+   MultiProcess::Config::isInLinesearch_ = true;
    task_result_t task_result{id_, task, grad_[task]};
    zmq::message_t message(sizeof(task_result_t));
    memcpy(message.data(), &task_result, sizeof(task_result_t));
@@ -268,6 +269,7 @@ void LikelihoodGradientJob::fillGradientWithPrevResult(double *grad, double *pre
          if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::start_timer("master:gradient");
          calculate_all();
          if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::end_timer("master:gradient");
+         if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::write_file();
       }
 
       // put the results from _grad into *grad

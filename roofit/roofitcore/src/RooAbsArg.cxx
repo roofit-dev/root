@@ -837,6 +837,17 @@ bool RooAbsArg::dependsOn(const RooAbsCollection& serverList, const RooAbsArg* i
   return false;
 }
 
+void RooAbsArg::pruneClientValueListHack()
+{
+  // iterate over every element of _clientListValue
+  for (auto& client: _clientListValue)
+  {
+    std::cout << "setting clients to dirty and removing" << std::endl;
+    client->setOperMode(OperMode::ADirty);
+    if (client->operMode() != OperMode::Auto) _clientListValue.Remove(client);
+  }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Test whether we depend on (ie, are served by) the specified object.

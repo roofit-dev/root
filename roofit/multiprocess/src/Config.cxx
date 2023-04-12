@@ -148,6 +148,8 @@ std::size_t Config::LikelihoodJob::defaultNEventTasks = Config::LikelihoodJob::a
 std::size_t Config::LikelihoodJob::defaultNComponentTasks = Config::LikelihoodJob::automaticNComponentTasks;
 Config::Queue::QueueType Config::Queue::queueType_ = Config::Queue::QueueType::FIFO;
 bool Config::timingAnalysis_ = false;
+bool Config::isInLinesearch_ = false;
+bool Config::clientListPruned_ = false;
 
 } // namespace MultiProcess
 } // namespace RooFit
