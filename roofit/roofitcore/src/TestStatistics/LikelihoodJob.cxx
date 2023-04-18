@@ -95,7 +95,6 @@ void LikelihoodJob::init_vars()
    if (MultiProcess::Config::isInLinesearch_)
    {
 //    std::cout << "pruning client list" << std::endl;
-      RooAbsArg::setDirtyInhibit();
       for (auto& var: vars_) var->pruneClientValueListHack();
    }
 }
@@ -260,6 +259,7 @@ void LikelihoodJob::evaluate()
 //      std::chrono::time_point<std::chrono::steady_clock> offsets_begin = std::chrono::steady_clock::now();
       if (do_offset_ && component_offsets_->empty()) {
          likelihood_serial_->evaluate();
+         std::cout << "evaluating serial likelihood on master" << std::endl;
          // note: we don't need to get the offsets from the serial likelihood, because they are already coupled through
          // the shared_ptr
       }
