@@ -126,7 +126,6 @@ void LikelihoodGradientJob::evaluate_task(std::size_t task)
 
 void LikelihoodGradientJob::send_back_task_result_from_worker(std::size_t task)
 {
-   MultiProcess::Config::isInLinesearch_ = true;
    task_result_t task_result{id_, task, grad_[task]};
    zmq::message_t message(sizeof(task_result_t));
    memcpy(message.data(), &task_result, sizeof(task_result_t));

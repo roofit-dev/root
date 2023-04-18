@@ -96,7 +96,7 @@ MinuitFcnGrad::MinuitFcnGrad(const std::shared_ptr<RooFit::TestStatistics::RooAb
 /// sending the values to workers from MultiProcess::Jobs).
 void MinuitFcnGrad::syncOffsets() const
 {
-   std::cout << "syncing offsets, _evalCounter: " << _evalCounter << std::endl;
+   // std::cout << "syncing offsets, _evalCounter: " << _evalCounter << std::endl;
    if (likelihood->isOffsetting() && (_evalCounter == 0 || offsets_reset_)) {
       likelihood_in_gradient->evaluate();
       offsets_reset_ = false;
@@ -105,7 +105,7 @@ void MinuitFcnGrad::syncOffsets() const
 
 double MinuitFcnGrad::DoEval(const double *x) const
 {
-   syncParameterValuesFromMinuitCalls(x, false);
+   bool parameters_changed = syncParameterValuesFromMinuitCalls(x, false);
 
    syncOffsets();
 
