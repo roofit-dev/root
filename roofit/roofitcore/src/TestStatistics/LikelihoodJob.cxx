@@ -34,6 +34,9 @@
 #include <sys/resource.h>
 #include <sys/time.h>
 
+#include <sys/types.h>
+#include <unistd.h>
+
 namespace RooFit {
 namespace TestStatistics {
 
@@ -96,31 +99,57 @@ void LikelihoodJob::init_vars()
 void LikelihoodJob::update_state()
 {
    if (get_manager()->process_manager().is_worker()) {
+      std::chrono::time_point<std::chrono::steady_clock> worker_update_state_begin = std::chrono::steady_clock::now();
+      if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::start_timer("worker:update_state");
       bool more;
 
+      std::chrono::time_point<std::chrono::steady_clock> worker_update_state_1 = std::chrono::steady_clock::now();
       auto mode = get_manager()->messenger().receive_from_master_on_worker<update_state_mode>(&more);
       assert(more);
       if (MultiProcess::Config::isInLinesearch_ & !MultiProcess::Config::clientListPruned_)
       {
+         std::cout << "pruning client list" << std::endl;
          for (auto& var: vars_) var->pruneClientValueListHack();
+
+         RooAbsArg::setDirtyInhibit(true);
+
          MultiProcess::Config::clientListPruned_ = true;
       }
+     if (MultiProcess::Config::isInLinesearch_) std::cout << "worker update state 1: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - worker_update_state_1).count() << std::endl;
+
 
       switch (mode) {
       case update_state_mode::parameters: {
+      std::chrono::time_point<std::chrono::steady_clock> worker_update_state_2 = std::chrono::steady_clock::now();
          state_id_ = get_manager()->messenger().receive_from_master_on_worker<RooFit::MultiProcess::State>(&more);
          assert(more);
+      if (MultiProcess::Config::isInLinesearch_) std::cout << "worker update state 2: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - worker_update_state_2).count() << std::endl;
+      std::chrono::time_point<std::chrono::steady_clock> worker_update_state_3 = std::chrono::steady_clock::now();
          auto message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>(&more);
+      if (MultiProcess::Config::isInLinesearch_) std::cout << "worker update state 3: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - worker_update_state_3).count() << std::endl;
+      std::chrono::time_point<std::chrono::steady_clock> worker_update_state_4 = std::chrono::steady_clock::now();
          auto message_begin = message.data<update_state_t>();
          auto message_end = message_begin + message.size() / sizeof(update_state_t);
          std::vector<update_state_t> to_update(message_begin, message_end);
+      if (MultiProcess::Config::isInLinesearch_) std::cout << "worker update state 4: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - worker_update_state_4).count() << std::endl;
+      std::chrono::time_point<std::chrono::steady_clock> worker_update_state_5 = std::chrono::steady_clock::now();
+       if (MultiProcess::Config::isInLinesearch_) std::cout << "starting loop!!" << std::endl;
          for (auto const &item : to_update) {
+             std::chrono::time_point<std::chrono::steady_clock> loop_1 = std::chrono::steady_clock::now();
             RooRealVar *rvar = (RooRealVar *)vars_.at(item.var_index);
+            // if (MultiProcess::Config::isInLinesearch_) std::cout << "loop 1: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - loop_1).count() << std::endl;
+             std::chrono::time_point<std::chrono::steady_clock> loop_2 = std::chrono::steady_clock::now();
             rvar->setVal(static_cast<double>(item.value));
+            // if (MultiProcess::Config::isInLinesearch_) std::cout << "loop 2: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - loop_2).count() << std::endl;
+             std::chrono::time_point<std::chrono::steady_clock> loop_3 = std::chrono::steady_clock::now();
             if (rvar->isConstant() != item.is_constant) {
                rvar->setConstant(static_cast<bool>(item.is_constant));
             }
+            // if (MultiProcess::Config::isInLinesearch_) std::cout << "loop 3: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - loop_3).count() << std::endl;
          }
+       if (MultiProcess::Config::isInLinesearch_) std::cout << "ending loop" << std::endl;
+      if (MultiProcess::Config::isInLinesearch_) std::cout << "worker update state 5: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - worker_update_state_5).count() << std::endl;
+      std::chrono::time_point<std::chrono::steady_clock> worker_update_state_6 = std::chrono::steady_clock::now();
          if (more) {
             // offsets also incoming
             auto offsets_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>(&more);
@@ -131,6 +160,7 @@ void LikelihoodJob::update_state()
             auto offsets_message_end = offsets_message_begin + N_offsets;
             std::copy(offsets_message_begin, offsets_message_end, component_offsets_->begin());
          }
+     if (MultiProcess::Config::isInLinesearch_) std::cout << "worker update state 6: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - worker_update_state_6).count() << std::endl;
          break;
       }
       case update_state_mode::offsetting: {
@@ -139,6 +169,8 @@ void LikelihoodJob::update_state()
          break;
       }
       }
+      if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::end_timer("worker:update_state");
+      if (MultiProcess::Config::isInLinesearch_) std::cout << "worker update state: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - worker_update_state_begin).count() << std::endl;	
    }
 }
 
@@ -222,6 +254,8 @@ void LikelihoodJob::evaluate()
 {
    if (get_manager()->process_manager().is_master()) {
       // evaluate the serial likelihood to set the offsets
+      if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::start_timer("master:lsearch_setup");
+      std::chrono::time_point<std::chrono::steady_clock> offsets_begin = std::chrono::steady_clock::now();
 
       if (MultiProcess::Config::isInLinesearch_)
       {
@@ -235,8 +269,16 @@ void LikelihoodJob::evaluate()
          // the shared_ptr
       }
 
+      if (MultiProcess::Config::isInLinesearch_) std::cout << "master offsets: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - offsets_begin).count() << std::endl;		
+
+      std::chrono::time_point<std::chrono::steady_clock> update_workers_parameters_begin = std::chrono::steady_clock::now();
+
       // update parameters that changed since last calculation (or creation if first time)
       updateWorkersParameters();
+
+      if (MultiProcess::Config::isInLinesearch_) std::cout << "master update workers parameters: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - update_workers_parameters_begin).count() << std::endl;		
+
+      std::chrono::time_point<std::chrono::steady_clock> fill_tasks_begin = std::chrono::steady_clock::now();
 
       // master fills queue with tasks
       auto N_tasks = getNEventTasks() * getNComponentTasks();
@@ -245,8 +287,22 @@ void LikelihoodJob::evaluate()
       }
       n_tasks_at_workers_ = N_tasks;
 
+      if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::end_timer("master:lsearch_setup");
+      if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::start_timer("master:wait_results");
+      if (MultiProcess::Config::isInLinesearch_) std::cout << "master fill tasks: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fill_tasks_begin).count();
+      if (MultiProcess::Config::isInLinesearch_) std::cout << " | current time: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - MultiProcess::Config::begin).count() << std::endl;	
+
+      std::chrono::time_point<std::chrono::steady_clock> receive_tasks_begin = std::chrono::steady_clock::now();
+
       // wait for task results back from workers to master
       gather_worker_results();
+
+      if (MultiProcess::Config::isInLinesearch_) std::cout << "master receive tasks: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - receive_tasks_begin).count();
+      if (MultiProcess::Config::isInLinesearch_) std::cout << " | current time: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - MultiProcess::Config::begin).count() << std::endl;
+      if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::end_timer("master:wait_results");
+
+
+      std::chrono::time_point<std::chrono::steady_clock> process_results_begin = std::chrono::steady_clock::now();
 
       // Note: initializing result_ to results_[0] instead of zero-initializing it makes
       // a difference due to Kahan sum precision. This way, a single-worker run gives
@@ -257,6 +313,7 @@ void LikelihoodJob::evaluate()
          result_ += *item_it;
       }
       results_.clear();
+      if (MultiProcess::Config::isInLinesearch_) std::cout << "master process results: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - process_results_begin).count() << std::endl;
    }
 }
 
@@ -283,6 +340,13 @@ bool LikelihoodJob::receive_task_result_on_master(const zmq::message_t &message)
 
 void LikelihoodJob::evaluate_task(std::size_t task)
 {
+   struct rusage usage;		
+   struct timeval start, end;		
+   std::chrono::time_point<std::chrono::steady_clock> eval_task_begin = std::chrono::steady_clock::now();		
+
+   getrusage(RUSAGE_SELF, &usage);		
+   start = usage.ru_utime;
+
    assert(get_manager()->process_manager().is_worker());
 
    double section_first = 0;
@@ -330,9 +394,21 @@ void LikelihoodJob::evaluate_task(std::size_t task)
          }
       }
 
+      struct rusage usage_eval_part;		
+      struct timeval start_eval_part, end_eval_part;		
+
       result_ = ROOT::Math::KahanSum<double>();
+      // std::cout << components_first << " " << components_last << std::endl;
+      std::chrono::time_point<std::chrono::steady_clock> eval_partitions = std::chrono::steady_clock::now();		
       for (std::size_t comp_ix = components_first; comp_ix < components_last; ++comp_ix) {
+         std::chrono::time_point<std::chrono::steady_clock> eval_partition = std::chrono::steady_clock::now();
+         getrusage(RUSAGE_SELF, &usage_eval_part);		
+         start_eval_part = usage_eval_part.ru_utime;
          auto component_result = likelihood_->evaluatePartition({section_first, section_last}, comp_ix, comp_ix + 1);
+         getrusage(RUSAGE_SELF, &usage_eval_part);		
+         end_eval_part = usage_eval_part.ru_utime;		
+         if (MultiProcess::Config::isInLinesearch_) std::cout << getpid() << " evaluate partition (cpu) " << ((end_eval_part.tv_sec * 1e6) + (long)end_eval_part.tv_usec) - ((start_eval_part.tv_sec * 1e6) + (long)start_eval_part.tv_usec)  << " | ";		;		
+         if (MultiProcess::Config::isInLinesearch_) std::cout << " (wtime): " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - eval_partition).count() << " comp_ix: " << comp_ix << std::endl;
          if (do_offset_ && section_last == 1 && (*component_offsets_)[comp_ix] != ROOT::Math::KahanSum<double>(0, 0)) {
             // we only subtract at the end of event sections, otherwise the offset is subtracted for each event split
             result_ += (component_result - (*component_offsets_)[comp_ix]);
@@ -340,10 +416,20 @@ void LikelihoodJob::evaluate_task(std::size_t task)
             result_ += component_result;
          }
       }
+      if (MultiProcess::Config::isInLinesearch_) std::cout << getpid() << " evaluate partitions ";		
+      if (MultiProcess::Config::isInLinesearch_) std::cout << " (wtime): " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - eval_partitions).count() << std::endl;
+
 
       break;
    }
    }
+
+   getrusage(RUSAGE_SELF, &usage);		
+   end = usage.ru_utime;		
+
+   if (MultiProcess::Config::isInLinesearch_) std::cout << getpid() << " evaluate task (cpu): " << ((end.tv_sec * 1e6) + (long)end.tv_usec) - ((start.tv_sec * 1e6) + (long)start.tv_usec) << " | ";		
+   if (MultiProcess::Config::isInLinesearch_) std::cout << "(wtime): " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - eval_task_begin).count();
+   if (MultiProcess::Config::isInLinesearch_) std::cout << " | current time: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - MultiProcess::Config::begin).count() << std::endl;
 }
 
 void LikelihoodJob::enableOffsetting(bool flag)

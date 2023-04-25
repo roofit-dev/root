@@ -301,7 +301,7 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
       RooFit::MultiProcess::Config::isInLinesearch_ = false;
       //ProcessTimer::end_timer("serial:lsearch");
       if (RooFit::MultiProcess::Config::getTimingAnalysis()) RooFit::MultiProcess::ProcessTimer::end_timer("master:linesearch");
-      print.Warn("lsearch: ", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - lsearch_begin).count());
+      print.Warn("lsearch: ", std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - lsearch_begin).count());
       print.Warn("lsearch (cpu): ", std::clock() - lsearch_begin_cpu);
 
       // <= needed for case 0 <= 0

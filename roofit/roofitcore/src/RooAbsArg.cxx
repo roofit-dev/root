@@ -842,7 +842,7 @@ void RooAbsArg::pruneClientValueListHack()
   // iterate over every element of _clientListValue
   for (auto& client: _clientListValue)
   {
-    std::cout << "setting clients to dirty and removing" << std::endl;
+    // std::cout << "setting clients to dirty and removing" << std::endl;
     client->setOperMode(OperMode::ADirty);
     if (client->operMode() != OperMode::Auto) _clientListValue.Remove(client);
   }

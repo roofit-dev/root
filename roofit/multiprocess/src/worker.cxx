@@ -73,8 +73,14 @@ void worker_loop()
             dequeue_acknowledged = false;
          }
 
+         std::chrono::time_point<std::chrono::steady_clock> polling_begin = std::chrono::steady_clock::now();
          // wait for handshake from queue or update from SUB socket
+         if (RooFit::MultiProcess::Config::getTimingAnalysis()) ProcessTimer::start_timer("worker:polling");
          auto poll_result = poller.ppoll(-1, &JobManager::instance()->messenger().ppoll_sigmask);
+         if (RooFit::MultiProcess::Config::getTimingAnalysis()) ProcessTimer::end_timer("worker:polling");
+
+         //if (MultiProcess::Config::isInLinesearch_) std::cout << getpid() << " polling wait: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - polling_begin).count();
+         //if (MultiProcess::Config::isInLinesearch_) std::cout << " | current time: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - MultiProcess::Config::begin).count() << std::endl;	
          // because the poller may now have a waiting update from master over the SUB socket,
          // but the queue socket could be first in the poll_result vector, and during handling
          // of a new task it is possible we need to already receive the updated state over SUB,
@@ -87,8 +93,11 @@ void worker_loop()
             // message comes from the master-worker SUB socket (first element):
             if (readable_socket.first == mw_sub_index) {
                if (!skip_sub) {
+                  std::chrono::time_point<std::chrono::steady_clock> worker_update_state_begin = std::chrono::steady_clock::now();
                   auto job_id = JobManager::instance()->messenger().receive_from_master_on_worker<std::size_t>();
                   JobManager::get_job_object(job_id)->update_state();
+                  if (MultiProcess::Config::isInLinesearch_) std::cout << getpid() << " WORKER update state: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - worker_update_state_begin).count();
+                  if (MultiProcess::Config::isInLinesearch_) std::cout << " | current time: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - MultiProcess::Config::begin).count() << std::endl;	
                }
             } else { // from queue socket
                message_q2w = JobManager::instance()->messenger().receive_from_queue_on_worker<Q2W>();
@@ -99,9 +108,13 @@ void worker_loop()
                }
                case Q2W::dequeue_accepted: {
                   dequeue_acknowledged = true;
+                  std::chrono::time_point<std::chrono::steady_clock> worker_receiving_begin = std::chrono::steady_clock::now();
                   auto job_id = JobManager::instance()->messenger().receive_from_queue_on_worker<std::size_t>();
                   auto state_id = JobManager::instance()->messenger().receive_from_queue_on_worker<State>();
                   auto task_id = JobManager::instance()->messenger().receive_from_queue_on_worker<Task>();
+                  if (MultiProcess::Config::isInLinesearch_) std::cout << getpid() << " WORKER receiving: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - worker_receiving_begin).count();
+                  if (MultiProcess::Config::isInLinesearch_) std::cout << " | current time: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - MultiProcess::Config::begin).count() << std::endl;	
+
 
                   // while loop, because multiple jobs may have updated state coming
                   while (state_id != JobManager::get_job_object(job_id)->get_state_id()) {
@@ -110,10 +123,17 @@ void worker_loop()
                         JobManager::instance()->messenger().receive_from_master_on_worker<std::size_t>();
                      JobManager::get_job_object(job_id_for_state)->update_state();
                   }
+
+                  std::chrono::time_point<std::chrono::steady_clock> eval_task_begin = std::chrono::steady_clock::now();		
+
                   if (RooFit::MultiProcess::Config::getTimingAnalysis()) ProcessTimer::start_timer("worker:eval_task:" + std::to_string(task_id));
                   JobManager::get_job_object(job_id)->evaluate_task(task_id);
                   if (RooFit::MultiProcess::Config::getTimingAnalysis()) ProcessTimer::end_timer("worker:eval_task:" + std::to_string(task_id));
                   JobManager::get_job_object(job_id)->send_back_task_result_from_worker(task_id);
+
+                  if (MultiProcess::Config::isInLinesearch_) std::cout << getpid() << " WORKER evaluate task ";		
+                  if (MultiProcess::Config::isInLinesearch_) std::cout << "(wtime): " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - eval_task_begin).count();
+                  if (MultiProcess::Config::isInLinesearch_) std::cout << " | current time: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - MultiProcess::Config::begin).count() << std::endl;
 
                   break;
                }

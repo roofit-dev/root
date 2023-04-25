@@ -148,6 +148,7 @@ std::size_t Config::LikelihoodJob::defaultNEventTasks = Config::LikelihoodJob::a
 std::size_t Config::LikelihoodJob::defaultNComponentTasks = Config::LikelihoodJob::automaticNComponentTasks;
 Config::Queue::QueueType Config::Queue::queueType_ = Config::Queue::QueueType::FIFO;
 bool Config::timingAnalysis_ = false;
+std::chrono::time_point<std::chrono::steady_clock> Config::begin = std::chrono::steady_clock::now();
 bool Config::isInLinesearch_ = false;
 bool Config::clientListPruned_ = false;
 

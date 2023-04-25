@@ -14,6 +14,7 @@
 #define ROOT_ROOFIT_MultiProcess_Config
 
 #include "RooFit/MultiProcess/types.h"
+#include <chrono>
 
 #include <vector>
 #include <cstddef>  // std::size_t
@@ -32,6 +33,8 @@ public:
 
    static void callgrind_zero() {std::cout << "RooFit::MultiProcess::Config::callgrind_zero()" << std::endl;} ;
    static void callgrind_dump() {std::cout << "RooFit::MultiProcess::Config::callgrind_dump()" << std::endl;} ;
+
+   static std::chrono::time_point<std::chrono::steady_clock> begin;
 
    static void setTimingAnalysis(bool timingAnalysis);
    static bool getTimingAnalysis();
