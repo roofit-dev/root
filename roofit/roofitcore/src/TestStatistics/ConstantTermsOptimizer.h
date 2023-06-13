@@ -25,8 +25,8 @@ namespace TestStatistics {
 struct ConstantTermsOptimizer {
    static void enableConstantTermsOptimization(RooAbsReal *function, RooArgSet *norm_set, RooAbsData *dataset,
                                            bool applyTrackingOpt);
-   static void optimizeCaching(RooAbsReal *function, RooArgSet *norm_set, RooArgSet* observables, RooAbsData *dataset);
-   static void disableConstantTermsOptimization(RooAbsReal *function, RooArgSet *norm_set, RooArgSet* observables, RooAbsData *dataset);
+   static void optimizeCaching(RooAbsReal *function, RooArgSet *norm_set, RooAbsData *dataset, RooArgSet* observables = nullptr);
+   static void disableConstantTermsOptimization(RooAbsReal *function, RooArgSet *norm_set, RooAbsData *dataset, RooArgSet* observables = nullptr);
    static RooArgSet requiredExtraObservables();
 };
 

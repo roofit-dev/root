@@ -100,6 +100,11 @@ RooBinnedL::evaluatePartition(Section bins, std::size_t /*components_begin*/, st
    // TODO: check when we might need _projDeps (it seems to be mostly empty); ties in with TODO below
    data_->store()->recalculateCache(nullptr, bins.begin(N_events_), bins.end(N_events_), 1, false);
 
+   static bool printed_it = false;
+   if (!printed_it) {
+      printf("HOOOOOOOI BinnedL\n");
+      printed_it = true;
+   }
    ROOT::Math::KahanSum<double> sumWeight;
 
    for (std::size_t i = bins.begin(N_events_); i < bins.end(N_events_); ++i) {
@@ -115,10 +120,7 @@ RooBinnedL::evaluatePartition(Section bins, std::size_t /*components_begin*/, st
       if (mu <= 0 && N > 0) {
 
          // Catch error condition: data present where zero events are predicted
-//         logEvalError(Form("Observed %f events in bin %d with zero event yield", N, i));
-         // TODO: check if using regular stream vs logEvalError error gathering is ok
-         oocoutI(nullptr, Minimization)
-            << "Observed " << N << " events in bin " << i << " with zero event yield" << std::endl;
+         RooAbsReal::logEvalError(nullptr, GetName().c_str(), Form("Observed %f events in bin %d with zero event yield", N, i));
 
       } else if (std::abs(mu) < 1e-10 && std::abs(N) < 1e-10) {
 

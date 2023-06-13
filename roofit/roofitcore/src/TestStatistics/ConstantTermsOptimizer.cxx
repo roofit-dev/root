@@ -126,8 +126,7 @@ void ConstantTermsOptimizer::enableConstantTermsOptimization(RooAbsReal *functio
    dataset->optimizeReadingWithCaching(*function, cached_nodes, requiredExtraObservables());
 }
 
-void ConstantTermsOptimizer::disableConstantTermsOptimization(RooAbsReal *function, RooArgSet *norm_set, RooArgSet *observables,
-                                                                 RooAbsData *dataset)
+void ConstantTermsOptimizer::disableConstantTermsOptimization(RooAbsReal *function, RooArgSet *norm_set, RooAbsData *dataset, RooArgSet *observables)
 {
    // Delete the cache
    dataset->resetCache();
@@ -136,24 +135,26 @@ void ConstantTermsOptimizer::disableConstantTermsOptimization(RooAbsReal *functi
    dataset->setArgStatus(*dataset->get(), true);
 
    // Reset all nodes to ADirty
-   optimizeCaching(function, norm_set, observables, dataset);
+   optimizeCaching(function, norm_set, dataset, observables);
 
    // Disable propagation of dirty state flags for observables
    dataset->setDirtyProp(false);
-
-   //   _cachedNodes.removeAll();
-
-   //   _optimized = false;
 }
 
-void ConstantTermsOptimizer::optimizeCaching(RooAbsReal *function, RooArgSet *norm_set, RooArgSet *observables, RooAbsData *dataset)
+void ConstantTermsOptimizer::optimizeCaching(RooAbsReal *function, RooArgSet *norm_set, RooAbsData *dataset, RooArgSet *observables)
 {
    // Trigger create of all object caches now in nodes that have deferred object creation
    // so that cache contents can be processed immediately
    function->getVal(norm_set);
 
    // Set value caching mode for all nodes that depend on any of the observables to ADirty
+   bool delete_observables = false;
+   if (observables == nullptr) {
+      observables = function->getObservables(dataset);
+      delete_observables = true;
+   }
    function->optimizeCacheMode(*observables);
+   if (delete_observables) delete observables;
 
    // Disable propagation of dirty state flags for observables
    dataset->setDirtyProp(false);
