@@ -14,6 +14,8 @@
 #include <RooFit/TestStatistics/RooAbsL.h>
 #include <RooRealVar.h>
 
+#include "TMath.h" // IsNaN
+
 namespace RooFit {
 namespace TestStatistics {
 
@@ -63,6 +65,10 @@ double RooRealL::evaluate() const
    const double norm = globalNormalization();
    double ret = ret_kahan.Sum() / norm;
    eval_carry = ret_kahan.Carry() / norm;
+
+   if (TMath::IsNaN(ret)) {
+      RooAbsReal::logEvalError("function value is NAN");
+   }
 
    return ret;
 }

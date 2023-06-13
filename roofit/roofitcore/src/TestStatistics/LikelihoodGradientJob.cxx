@@ -150,15 +150,16 @@ void LikelihoodGradientJob::update_workers_state()
    // TODO optimization: only send changed parameters (now sending all)
    zmq::message_t gradient_message(grad_.begin(), grad_.end());
    zmq::message_t minuit_internal_x_message(minuit_internal_x_.begin(), minuit_internal_x_.end());
+   double maxFCN = minimizer_->maxFCN();
    ++state_id_;
 
    if (component_offsets_ != nullptr && *component_offsets_ != offsets_previous_) {
       zmq::message_t offsets_message(component_offsets_->begin(), component_offsets_->end());
-      get_manager()->messenger().publish_from_master_to_workers(id_, state_id_, isCalculating_, std::move(gradient_message),
+      get_manager()->messenger().publish_from_master_to_workers(id_, state_id_, isCalculating_, maxFCN, std::move(gradient_message),
                                                                 std::move(minuit_internal_x_message), std::move(offsets_message));
       offsets_previous_ = *component_offsets_;
    } else {
-      get_manager()->messenger().publish_from_master_to_workers(id_, state_id_, isCalculating_, std::move(gradient_message),
+      get_manager()->messenger().publish_from_master_to_workers(id_, state_id_, isCalculating_, maxFCN, std::move(gradient_message),
                                                                 std::move(minuit_internal_x_message));
    }
 }
@@ -174,10 +175,14 @@ void LikelihoodGradientJob::update_state()
    bool more;
 
    state_id_ = get_manager()->messenger().receive_from_master_on_worker<MultiProcess::State>(&more);
-
+   assert(more);
    isCalculating_ = get_manager()->messenger().receive_from_master_on_worker<bool>(&more);
 
    if (more) {
+      auto maxFCN = get_manager()->messenger().receive_from_master_on_worker<double>(&more);
+      minimizer_->maxFCN() = maxFCN;
+      assert(more);
+
       auto gradient_message = get_manager()->messenger().receive_from_master_on_worker<zmq::message_t>(&more);
       assert(more);
       auto gradient_message_begin = gradient_message.data<ROOT::Minuit2::DerivatorElement>();

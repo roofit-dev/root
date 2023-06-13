@@ -149,6 +149,7 @@ RooNLLVar::RooNLLVar(const char *name, const char *title, RooAbsPdf& pdf, RooAbs
     } else {
       auto* var = static_cast<RooRealVar*>(obs.first());
       std::unique_ptr<std::list<double>> boundaries{_binnedPdf->binBoundaries(*var,var->getMin(),var->getMax())};
+      printf("%f, %f, boundaries: %p\n", var->getMin(),var->getMax(), boundaries.get());
       auto biter = boundaries->begin() ;
       _binw.reserve(boundaries->size()-1) ;
       double lastBound = (*biter) ;
@@ -240,6 +241,12 @@ double RooNLLVar::evaluatePartition(std::size_t firstEvent, std::size_t lastEven
 
   // If pdf is marked as binned - do a binned likelihood calculation here (sum of log-Poisson for each bin)
   if (_binnedPdf) {
+     static bool printed_ittt = false;
+     if (!printed_ittt) {
+        printf("Hahahatsjoe BinnedPdf evaluatie in RooNLLVar\n");
+        printed_ittt = true;
+     }
+
     ROOT::Math::KahanSum<double> sumWeightKahanSum{0.0};
     for (auto i=firstEvent ; i<lastEvent ; i+=stepSize) {
 
@@ -327,7 +334,11 @@ RooNLLVar::ComputeResult RooNLLVar::computeScalarFunc(const RooAbsPdf *pdfClone,
 {
   ROOT::Math::KahanSum<double> kahanWeight;
   ROOT::Math::KahanSum<double> kahanProb;
-  RooNaNPacker packedNaN(0.f);
+  ROOT::Math::KahanSum<double> kahanNaN;
+//  RooNaNPacker packedNaN(0.f);
+  const double logSumW = std::log(dataClone->sumEntries());
+
+  auto* dataHist = doBinOffset ? static_cast<RooDataHist*>(dataClone) : nullptr;
 
   for (auto i=firstEvent; i<lastEvent; i+=stepSize) {
     dataClone->get(i) ;
@@ -347,12 +358,16 @@ RooNLLVar::ComputeResult RooNLLVar::computeScalarFunc(const RooAbsPdf *pdfClone,
 
     kahanWeight.Add(weight);
     kahanProb.Add(term);
-    packedNaN.accumulate(term);
+    if (RooNaNPacker::isNaNWithPayload(term)) {
+       kahanNaN += RooNaNPacker::unpackNaN(term);
+    }
+//    packedNaN.accumulate(term);
   }
 
-  if (packedNaN.getPayload() != 0.) {
+  if (/*packedNaN.getPayload()*/ kahanNaN.Sum() != 0.) {
     // Some events with evaluation errors. Return "badness" of errors.
-    return {ROOT::Math::KahanSum<double>{packedNaN.getNaNWithPayload()}, kahanWeight.Sum()};
+//    return {ROOT::Math::KahanSum<double>{packedNaN.getNaNWithPayload()}, kahanWeight.Sum()};
+    return {ROOT::Math::KahanSum<double>{RooNaNPacker::packFloatIntoNaN(static_cast<float>(kahanNaN.Sum()))}, kahanWeight.Sum()};
   }
 
   return {kahanProb, kahanWeight.Sum()};

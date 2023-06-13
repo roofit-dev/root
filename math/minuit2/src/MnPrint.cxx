@@ -401,8 +401,10 @@ std::ostream &operator<<(std::ostream &os, const MinimumState &min)
    const int pr = os.precision(PRECISION);
    os << "\n  Minimum value : " << min.Fval() << "\n  Edm           : " << min.Edm()
       << "\n  Internal parameters:" << min.Vec() << "\n  Internal gradient  :" << min.Gradient().Vec();
-   if (min.HasCovariance())
+   if (min.HasCovariance()) {
       os << "\n  Internal covariance matrix:" << min.Error().Matrix();
+      os << "\n  Covariance matrix is " << (min.Error().IsPosDef() ? "" : "NOT ") << "positive definite";
+   }
    os.precision(pr);
    return os;
 }

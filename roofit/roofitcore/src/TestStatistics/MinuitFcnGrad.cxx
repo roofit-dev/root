@@ -18,8 +18,10 @@
 #include "RooMinimizer.h"
 #include "RooMsgService.h"
 #include "RooAbsPdf.h"
+#include "RooNaNPacker.h"
 
 #include <iomanip> // std::setprecision
+#include <unistd.h>
 
 namespace RooFit {
 namespace TestStatistics {
@@ -146,46 +148,32 @@ double MinuitFcnGrad::DoEval(const double *x) const
    _calculationIsClean->likelihood = true;
    //   RooAbsReal::setHideOffset(true);
 
-   if (!parameters_changed) {
-      return fvalue;
-   }
+//   if (!parameters_changed) {
+//      return fvalue;
+//   }
 
    if (!std::isfinite(fvalue) || RooAbsReal::numEvalErrors() > 0 || fvalue > 1e30) {
-
-      if (cfg().printEvalErrors >= 0) {
-
-         if (cfg().doEEWall) {
-            oocoutW(nullptr, Eval) << "MinuitFcnGrad: Minimized function has error status." << std::endl
-                                   << "Returning maximum FCN so far (" << _maxFCN
-                                   << ") to force MIGRAD to back out of this region. Error log follows" << std::endl;
-         } else {
-            oocoutW(nullptr, Eval) << "MinuitFcnGrad: Minimized function has error status but is ignored" << std::endl;
-         }
-
-         bool first(true);
-         ooccoutW(nullptr, Eval) << "Parameter values: ";
-         for (auto *var : static_range_cast<const RooRealVar *>(*_floatParamList)) {
-            if (first) {
-               first = false;
-            } else {
-               ooccoutW(nullptr, Eval) << ", ";
-            }
-            ooccoutW(nullptr, Eval) << var->GetName() << "=" << var->getVal();
-         }
-         ooccoutW(nullptr, Eval) << std::endl;
-
-         RooAbsReal::printEvalErrors(ooccoutW(nullptr, Eval), cfg().printEvalErrors);
-         ooccoutW(nullptr, Eval) << std::endl;
-      }
-
-      if (cfg().doEEWall) {
-         fvalue = _maxFCN + 1;
-      }
-
+      auto eval_errors = RooAbsReal::numEvalErrors();
+      printEvalErrors();
       RooAbsReal::clearEvalErrorLog();
       _numBadNLL++;
-   } else if (fvalue > _maxFCN) {
-      _maxFCN = fvalue;
+
+      if (cfg().doEEWall) {
+         const double badness = RooNaNPacker::unpackNaN(fvalue);
+         auto unbadded_fvalue = (std::isfinite(_maxFCN) ? _maxFCN : 0.) + cfg().recoverFromNaN * badness;
+         printf("badness: %f\tfvalue: %f\tunbadded fvalue: %f -- on PID %d; %s, _maxFCN = %f\n", badness, fvalue, unbadded_fvalue, getpid(), eval_errors > 0? "all because RooAbsReal::numEvalErrors() > 0":"no numEvalErrors...", _maxFCN);
+         fvalue = unbadded_fvalue;
+      }
+
+   } else {
+      if (_evalCounter > 0 && _evalCounter == _numBadNLL) {
+         // This is the first time we get a valid function value; while before, the
+         // function was always invalid. For invalid  cases, we returned values > 0.
+         // Now, we offset valid values such that they are < 0.
+         _funcOffset = -fvalue;
+      }
+      fvalue += _funcOffset;
+      _maxFCN = std::max(fvalue, _maxFCN);
    }
 
    // Optional logging

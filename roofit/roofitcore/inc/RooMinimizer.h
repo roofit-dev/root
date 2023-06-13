@@ -39,6 +39,11 @@ class RooRealVar;
 class RooArgSet;
 class RooPlot;
 class RooDataSet;
+namespace RooFit {
+namespace TestStatistics {
+class LikelihoodGradientJob;
+}
+}
 
 class RooMinimizer : public TObject {
 public:
@@ -161,6 +166,7 @@ public:
 
 private:
    friend class RooAbsMinimizerFcn;
+   friend class RooFit::TestStatistics::LikelihoodGradientJob;
    friend class RooMinimizerFcn;
 
    std::unique_ptr<RooAbsReal::EvalErrorContext> makeEvalErrorContext() const;

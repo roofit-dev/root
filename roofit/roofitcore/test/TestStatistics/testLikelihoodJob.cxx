@@ -66,7 +66,7 @@ protected:
       clean_flags = std::make_unique<RooFit::TestStatistics::WrapperCalculationCleanFlags>();
    }
 
-   std::size_t seed = 23;
+   std::size_t seed = 27;
    RooWorkspace w;
    std::unique_ptr<RooAbsReal> nll;
    std::unique_ptr<RooArgSet> values;
