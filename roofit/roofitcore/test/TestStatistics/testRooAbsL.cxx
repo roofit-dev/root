@@ -26,12 +26,21 @@
 #include <RooFit/TestStatistics/buildLikelihood.h>
 #include <RooFit/TestStatistics/RooRealL.h>
 
+// for MinuitFcnGrad test:
+#include "RooFit/MultiProcess/Config.h"
+#include "RooStats/ModelConfig.h"
+#include "TFile.h"
+#include "RooRealSumPdf.h"
+// end for MinuitFcnGrad test
+
 #include "Math/Util.h" // KahanSum
 
 #include <stdexcept> // runtime_error
 
 #include "gtest/gtest.h"
 #include "../test_lib.h" // generate_1D_gaussian_pdf_nll
+#include "roofit/roofitcore/src/RooMinimizerFcn.h"
+#include "roofit/roofitcore/src/TestStatistics/MinuitFcnGrad.h"
 
 using RooFit::TestStatistics::LikelihoodWrapper;
 
@@ -364,9 +373,65 @@ TEST_F(SimBinnedConstrainedTest, VSRooNLLVar)
    EXPECT_EQ(AbsL_value.Sum(), RooNLL_value);
 }
 
-TEST(MinuitFcnGrad, SubEventSections)
+TEST(MinuitFcnGrad, CompareToRooMinimizerFcn)
 {
+   const char* fname = "/Users/pbos/projects/roofit-ssi/benchmark_roofit/data/workspaces/HZy_split.root";
+   const char* dataset_name = "combData";
 
+   TFile *f = TFile::Open(fname);
+
+   RooWorkspace* w = (RooWorkspace*)f->Get("combWS");
+
+   // Fixes for known features, binned likelihood optimization
+   RooFIter iter = w->components().fwdIterator();
+   RooAbsArg *arg;
+   while ((arg = iter.next())) {
+      if (arg->IsA() == RooRealSumPdf::Class()) {
+         arg->setAttribute("BinnedLikelihood");
+         std::cout << "Activating binned likelihood attribute for "
+                   << arg->GetName() << std::endl;
+      }
+   }
+
+   RooAbsData* data = w->data(dataset_name);
+   auto mc = dynamic_cast<RooStats::ModelConfig *>(w->genobj("ModelConfig"));
+   auto global_observables = mc->GetGlobalObservables();
+   auto nuisance_parameters = mc->GetNuisanceParameters();
+   auto pdf = w->pdf(mc->GetPdf()->GetName());
+
+   std::unique_ptr<RooAbsReal> nll_modularL{pdf->createNLL(
+      *data, RooFit::Constrain(*nuisance_parameters),
+      RooFit::GlobalObservables(*global_observables), RooFit::ModularL(true))};
+
+   std::unique_ptr<RooAbsReal> nll_vanilla{pdf->createNLL(
+      *data, RooFit::Constrain(*nuisance_parameters),
+      RooFit::GlobalObservables(*global_observables)/*, RooFit::Offset(true)*/)};
+
+   // sanity check
+   EXPECT_EQ(nll_modularL->getVal(), nll_vanilla->getVal());
+
+   // set up minimizers
+   ROOT::Math::MinimizerOptions::SetDefaultMinimizer("Minuit2");
+   RooMinimizer m_vanilla(*nll_vanilla);
+   // we want to split only over components so we can test component-offsets
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks = 1; // just one events task (i.e. don't split over events)
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNComponentTasks = 1000000; // assuming components < 1000000: each component = 1 separate task
+   RooMinimizer::Config cfg;
+   cfg.parallelize = 4;
+   cfg.enableParallelDescent = false;
+   cfg.enableParallelGradient = true;
+   RooMinimizer m_modularL(*nll_modularL, cfg);
+
+   // now use these minimizers to build the corresponding external RooAbsMinimizerFcns
+   auto nll_real = dynamic_cast<RooFit::TestStatistics::RooRealL *>(nll_modularL.get());
+   RooFit::TestStatistics::MinuitFcnGrad modularL_fcn(nll_real->getRooAbsL(), &m_modularL,
+                                                     m_modularL.fitter()->Config().ParamsSettings(),
+                                                     RooFit::TestStatistics::LikelihoodMode::multiprocess,
+                                                     RooFit::TestStatistics::LikelihoodGradientMode::multiprocess);
+
+   RooMinimizerFcn vanilla_fcn(nll_vanilla.get(), &m_vanilla);
+
+   EXPECT_EQ(vanilla_fcn(vanilla_fcn.getParameterValues().data()), modularL_fcn(modularL_fcn.getParameterValues().data()));
 }
 
 
