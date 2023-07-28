@@ -106,6 +106,8 @@ public:
    inline std::vector<ROOT::Math::KahanSum<double>> offsets() const { return *component_offsets_; }
    void setApplyWeightSquared(bool flag);
 
+   void setLogfile(std::shared_ptr<std::ofstream> logfile);
+   void initializeLogfile(std::shared_ptr<std::ofstream>& logfile);
 protected:
    std::shared_ptr<RooAbsL> likelihood_;
    LikelihoodType likelihood_type_;
@@ -118,6 +120,8 @@ protected:
    void clearOffsets();
    OffsettingMode offsetting_mode_ = OffsettingMode::legacy;
    void swapOffsets(const std::vector<std::size_t>& component_indices);
+
+   std::shared_ptr<std::ofstream> logfile_;
 };
 
 } // namespace TestStatistics

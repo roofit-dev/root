@@ -19,6 +19,7 @@
 #include "RooMsgService.h"
 #include "RooAbsPdf.h"
 #include "RooNaNPacker.h"
+#include "RooFit/TestStatistics/RooSumL.h"
 
 #include <iomanip> // std::setprecision
 #include <unistd.h>
@@ -92,6 +93,12 @@ MinuitFcnGrad::MinuitFcnGrad(const std::shared_ptr<RooFit::TestStatistics::RooAb
      _minuitExternalX(NDim(), 0),
      _multiGenFcn{std::make_unique<MinuitGradFunctor>(*this)}
 {
+   do_eval_log_file_ = std::make_shared<std::ofstream>("MinuitFcnGradDoEvalLogFile.csv");
+   *do_eval_log_file_ << std::setprecision(17);
+   for (auto &parameter : parameters) {
+      *do_eval_log_file_ << parameter.Name() << "," << std::flush;
+   }
+
    synchronizeParameterSettings(parameters, true);
 
    _calculationIsClean = std::make_unique<WrapperCalculationCleanFlags>();
@@ -106,6 +113,10 @@ MinuitFcnGrad::MinuitFcnGrad(const std::shared_ptr<RooFit::TestStatistics::RooAb
       _likelihood = LikelihoodWrapper::create(likelihoodMode, absL, _calculationIsClean, offsets, offsets_save);
       _likelihoodInGradient = _likelihood;
    }
+    // we also need component names in the log file for RooSumL likelihoods:
+    if (dynamic_cast<RooFit::TestStatistics::RooSumL*>(absL.get()) != nullptr) {
+        _likelihood->initializeLogfile(do_eval_log_file_);
+    }
 
    _gradient = LikelihoodGradientWrapper::create(likelihoodGradientMode, absL, _calculationIsClean, getNDim(), _context, offsets, offsets_save);
 
@@ -116,6 +127,8 @@ MinuitFcnGrad::MinuitFcnGrad(const std::shared_ptr<RooFit::TestStatistics::RooAb
    // (ROOT::Math::MinimizerOptions::DefaultStrategy() and ROOT::Math::MinimizerOptions::DefaultErrorDef())
    applyToLikelihood([&](auto &l) { l.synchronizeWithMinimizer(ROOT::Math::MinimizerOptions()); });
    _gradient->synchronizeWithMinimizer(ROOT::Math::MinimizerOptions());
+    
+   *do_eval_log_file_ << "fcn_value" << std::endl;
 }
 
 /// Make sure the offsets are up to date
@@ -136,14 +149,22 @@ void MinuitFcnGrad::syncOffsets() const
 
 double MinuitFcnGrad::DoEval(const double *x) const
 {
+   for (std::size_t ix = 0; ix < NDim(); ++ix) {
+      *do_eval_log_file_ << x[ix] << "," << std::flush;
+   }
+
    bool parameters_changed = syncParameterValuesFromMinuitCalls(x, false);
 
+   likelihood_in_gradient->setLogfile(do_eval_log_file_);
    syncOffsets();
+   likelihood_in_gradient->setLogfile(nullptr);
 
    // Calculate the function for these parameters
    //   RooAbsReal::setHideOffset(false);
    auto &likelihoodHere(_likelihoodInGradient && _gradient->isCalculating() ? *_likelihoodInGradient : *_likelihood);
+   likelihoodHere->setLogfile(do_eval_log_file_);
    likelihoodHere.evaluate();
+   likelihoodHere->setLogfile(nullptr);
    double fvalue = likelihoodHere.getResult().Sum();
    _calculationIsClean->likelihood = true;
    //   RooAbsReal::setHideOffset(true);
@@ -184,6 +205,7 @@ double MinuitFcnGrad::DoEval(const double *x) const
    }
 
    finishDoEval();
+   *do_eval_log_file_ << fvalue << std::endl;
    return fvalue;
 }
 

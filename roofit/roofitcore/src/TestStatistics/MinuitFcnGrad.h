@@ -96,6 +96,9 @@ private:
    std::unique_ptr<ROOT::Math::IMultiGradFunction> _multiGenFcn;
 
    mutable bool _minuitInternalRooFitXMismatch = false;
+
+public:
+   std::shared_ptr<std::ofstream> do_eval_log_file_;  // shared_ptr for cloning and I want all clones to log DoEval calls
 };
 
 } // namespace TestStatistics
