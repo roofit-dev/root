@@ -39,6 +39,9 @@ class RooMinimizerFcn : public RooAbsMinimizerFcn {
 public:
    RooMinimizerFcn(RooAbsReal *funct, RooMinimizer *context);
 
+   ROOT::Math::IBaseFunctionMultiDim *Clone() const override;
+   unsigned int NDim() const override { return getNDim(); }
+
    std::string getFunctionName() const override;
    std::string getFunctionTitle() const override;
 
@@ -49,6 +52,8 @@ public:
 
    double operator()(const double *x) const;
    void evaluateGradient(const double *x, double *out) const;
+
+   std::shared_ptr<std::ofstream> do_eval_log_file_;  // shared_ptr for cloning and I want all clones to log DoEval calls
 
 private:
    RooAbsReal *_funct;

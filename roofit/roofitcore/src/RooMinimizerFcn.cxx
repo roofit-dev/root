@@ -30,6 +30,7 @@
 
 #include "Math/Functor.h"
 #include "TMatrixDSym.h"
+#include "RooAddition.h"
 
 #include <fstream>
 #include <iomanip>
@@ -54,12 +55,33 @@ RooArgSet getParameters(RooAbsReal const &funct)
 RooMinimizerFcn::RooMinimizerFcn(RooAbsReal *funct, RooMinimizer *context)
    : RooAbsMinimizerFcn(getParameters(*funct), context), _funct(funct)
 {
-   if (context->_cfg.useGradient && funct->hasGradient()) {
-      _multiGenFcn = std::make_unique<ROOT::Math::GradFunctor>(this, &RooMinimizerFcn::operator(),
-                                                               &RooMinimizerFcn::evaluateGradient, getNDim());
-   } else {
-      _multiGenFcn = std::make_unique<ROOT::Math::Functor>(std::cref(*this), getNDim());
+    if (context->_cfg.useGradient && funct->hasGradient()) {
+        _multiGenFcn = std::make_unique<ROOT::Math::GradFunctor>(this, &RooMinimizerFcn::operator(),
+                                                                 &RooMinimizerFcn::evaluateGradient, getNDim());
+    } else {
+        _multiGenFcn = std::make_unique<ROOT::Math::Functor>(std::cref(*this), getNDim());
+    }
+
+   do_eval_log_file_ = std::make_shared<std::ofstream>("RooMinimizerFcnDoEvalLogFile.csv");
+   *do_eval_log_file_ << std::setprecision(17);
+   for (auto &parameter : context->fitter()->Config().ParamsSettings()) {
+      *do_eval_log_file_ << parameter.Name() << "," << std::flush;
    }
+
+   // we also need component names in the log file for simultaneous pdf fits:
+   auto possibleNLL = dynamic_cast<RooAddition*>((*funct->ownedComponents())[0]);
+   if (possibleNLL != nullptr) {
+      for (auto& component : possibleNLL->list()) {
+         *do_eval_log_file_ << component->GetName() << "," << std::flush;
+      }
+   }
+
+   *do_eval_log_file_ << "fcn_value" << std::endl;
+}
+
+ROOT::Math::IBaseFunctionMultiDim *RooMinimizerFcn::Clone() const
+{
+   return new RooMinimizerFcn(*this);
 }
 
 void RooMinimizerFcn::setOptimizeConstOnFunction(RooAbsArg::ConstOpCode opcode, bool doAlsoTrackingOpt)
@@ -70,6 +92,10 @@ void RooMinimizerFcn::setOptimizeConstOnFunction(RooAbsArg::ConstOpCode opcode, 
 /// Evaluate function given the parameters in `x`.
 double RooMinimizerFcn::operator()(const double *x) const
 {
+   for (std::size_t ix = 0; ix < NDim(); ++ix) {
+      *do_eval_log_file_ << x[ix] << "," << std::flush;
+   }
+
    // Set the parameter values for this iteration
    for (unsigned index = 0; index < _nDim; index++) {
       if (_logfile)
@@ -80,6 +106,19 @@ double RooMinimizerFcn::operator()(const double *x) const
    // Calculate the function for these parameters
    RooAbsReal::setHideOffset(false);
    double fvalue = _funct->getVal();
+
+   ///// BEGIN temporary for logging:
+   auto possibleNLL = dynamic_cast<RooAddition*>((*_funct->ownedComponents())[0]);
+   if (possibleNLL != nullptr) {
+      auto& set = possibleNLL->list();
+      const RooArgSet* nset = set.nset();
+
+      for (auto& component : set) {
+         *do_eval_log_file_ << component->getVal(nset) << "," << std::flush;
+      }
+   }
+   ///// END temporary for logging
+
    RooAbsReal::setHideOffset(true);
 
    if (!std::isfinite(fvalue) || RooAbsReal::numEvalErrors() > 0 || fvalue > 1e30) {
@@ -113,6 +152,7 @@ double RooMinimizerFcn::operator()(const double *x) const
 
    finishDoEval();
 
+   *do_eval_log_file_ << fvalue << std::endl;
    return fvalue;
 }
 

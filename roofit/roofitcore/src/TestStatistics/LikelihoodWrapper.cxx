@@ -284,5 +284,22 @@ LikelihoodWrapper::create(LikelihoodMode likelihoodMode, std::shared_ptr<RooAbsL
    }
 }
 
+void LikelihoodWrapper::setLogfile(std::shared_ptr<std::ofstream> logfile)
+{
+   logfile_ = std::move(logfile);
+}
+
+void LikelihoodWrapper::initializeLogfile(std::shared_ptr<std::ofstream>& logfile)
+{
+   auto sumL = dynamic_cast<RooFit::TestStatistics::RooSumL*>(likelihood_.get());
+   if (sumL != nullptr) {
+      auto& components = sumL->GetComponents();
+      for (auto& component : components) {
+         *logfile << component->GetName() << "," << std::flush;
+      }
+   }
+}
+
+
 } // namespace TestStatistics
 } // namespace RooFit

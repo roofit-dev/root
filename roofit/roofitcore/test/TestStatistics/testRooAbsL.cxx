@@ -428,7 +428,6 @@ TEST(MinuitFcnGrad, CompareToRooMinimizerFcn)
                                                      m_modularL.fitter()->Config().ParamsSettings(),
                                                      RooFit::TestStatistics::LikelihoodMode::multiprocess,
                                                      RooFit::TestStatistics::LikelihoodGradientMode::multiprocess);
-
    RooMinimizerFcn vanilla_fcn(nll_vanilla.get(), &m_vanilla);
 
    EXPECT_EQ(vanilla_fcn(vanilla_fcn.getParameterValues().data()), modularL_fcn(modularL_fcn.getParameterValues().data()));

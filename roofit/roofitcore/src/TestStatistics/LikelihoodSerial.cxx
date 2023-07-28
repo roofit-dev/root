@@ -98,6 +98,9 @@ void LikelihoodSerial::evaluate() {
       RooNaNPacker packedNaN;
       for (std::size_t comp_ix = 0; comp_ix < likelihood_->getNComponents(); ++comp_ix) {
          auto component_result = likelihood_->evaluatePartition({0, 1}, comp_ix, comp_ix + 1);
+         if (logfile_ != nullptr) {
+            *logfile_ << component_result.Sum() << ",";
+         }
          packedNaN.accumulate(component_result.Sum());
 
          if (do_offset_ && (*component_offsets_)[comp_ix] != ROOT::Math::KahanSum<double>(0, 0)) {
