@@ -79,11 +79,6 @@ RooMinimizerFcn::RooMinimizerFcn(RooAbsReal *funct, RooMinimizer *context)
    *do_eval_log_file_ << "fcn_value" << std::endl;
 }
 
-ROOT::Math::IBaseFunctionMultiDim *RooMinimizerFcn::Clone() const
-{
-   return new RooMinimizerFcn(*this);
-}
-
 void RooMinimizerFcn::setOptimizeConstOnFunction(RooAbsArg::ConstOpCode opcode, bool doAlsoTrackingOpt)
 {
    _funct->constOptimizeTestStatistic(opcode, doAlsoTrackingOpt);
@@ -92,7 +87,7 @@ void RooMinimizerFcn::setOptimizeConstOnFunction(RooAbsArg::ConstOpCode opcode, 
 /// Evaluate function given the parameters in `x`.
 double RooMinimizerFcn::operator()(const double *x) const
 {
-   for (std::size_t ix = 0; ix < NDim(); ++ix) {
+   for (std::size_t ix = 0; ix < getNDim(); ++ix) {
       *do_eval_log_file_ << x[ix] << "," << std::flush;
    }
 
