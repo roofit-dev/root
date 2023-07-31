@@ -105,10 +105,10 @@ double RooMinimizerFcn::operator()(const double *x) const
    ///// BEGIN temporary for logging:
    auto possibleNLL = dynamic_cast<RooAddition*>((*_funct->ownedComponents())[0]);
    if (possibleNLL != nullptr) {
-      auto& set = possibleNLL->list();
+      auto& set = dynamic_cast<const RooListProxy &>(possibleNLL->list());
       const RooArgSet* nset = set.nset();
 
-      for (auto& component : set) {
+      for (auto component : dynamic_range_cast<RooAbsReal*>(set)) {
          *do_eval_log_file_ << component->getVal(nset) << "," << std::flush;
       }
    }
