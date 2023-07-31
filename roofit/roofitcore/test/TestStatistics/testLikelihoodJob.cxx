@@ -128,7 +128,7 @@ TEST_F(LikelihoodJobTest, UnbinnedGaussian1DSelectedParameterValues)
    RooRealVar *mu = w.var("mu");
    mu->setVal(-2.8991551193432676392);
 
-   likelihood = RooFit::TestStatistics::buildLikelihood(pdf, data);
+   likelihood = RooFit::TestStatistics::buildLikelihood(pdf, data.get());
    auto nll_ts =
       LikelihoodWrapper::create(RooFit::TestStatistics::LikelihoodMode::multiprocess, likelihood, clean_flags);
 

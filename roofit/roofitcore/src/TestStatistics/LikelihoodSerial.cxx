@@ -18,6 +18,9 @@
 
 #include "TMath.h" // IsNaN
 
+#include <iostream>
+#include <fstream>
+
 namespace RooFit {
 namespace TestStatistics {
 

@@ -153,18 +153,18 @@ double MinuitFcnGrad::operator()(const double *x) const
       *do_eval_log_file_ << x[ix] << "," << std::flush;
    }
 
-   bool parameters_changed = syncParameterValuesFromMinuitCalls(x, false);
+   syncParameterValuesFromMinuitCalls(x, false);
 
-   likelihood_in_gradient->setLogfile(do_eval_log_file_);
+   _likelihoodInGradient->setLogfile(do_eval_log_file_);
    syncOffsets();
-   likelihood_in_gradient->setLogfile(nullptr);
+   _likelihoodInGradient->setLogfile(nullptr);
 
    // Calculate the function for these parameters
    //   RooAbsReal::setHideOffset(false);
    auto &likelihoodHere(_likelihoodInGradient && _gradient->isCalculating() ? *_likelihoodInGradient : *_likelihood);
-   likelihoodHere->setLogfile(do_eval_log_file_);
+   likelihoodHere.setLogfile(do_eval_log_file_);
    likelihoodHere.evaluate();
-   likelihoodHere->setLogfile(nullptr);
+   likelihoodHere.setLogfile(nullptr);
    double fvalue = likelihoodHere.getResult().Sum();
    _calculationIsClean->likelihood = true;
    //   RooAbsReal::setHideOffset(true);
