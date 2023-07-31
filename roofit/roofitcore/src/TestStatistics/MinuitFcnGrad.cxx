@@ -53,7 +53,7 @@ private:
 
    double DoDerivative(double const * /*x*/, unsigned int /*icoord*/) const override
    {
-      throw std::runtime_error("MinuitFcnGrad::DoDerivative is not implemented, please use Gradient instead.");
+      throw std::runtime_error("MinuitGradFunctor::DoDerivative is not implemented, please use Gradient instead.");
    }
 
    MinuitFcnGrad const &_fcn;
@@ -141,13 +141,13 @@ MinuitFcnGrad::MinuitFcnGrad(const std::shared_ptr<RooFit::TestStatistics::RooAb
 /// sending the values to workers from MultiProcess::Jobs).
 void MinuitFcnGrad::syncOffsets() const
 {
-   if (likelihood->isOffsetting() && (_evalCounter == 0 || offsets_reset_)) {
-      likelihood_in_gradient->evaluate();
+   if (_likelihood->isOffsetting() && (_evalCounter == 0 || offsets_reset_)) {
+      _likelihoodInGradient->evaluate();
       offsets_reset_ = false;
    }
 }
 
-double MinuitFcnGrad::DoEval(const double *x) const
+double MinuitFcnGrad::operator()(const double *x) const
 {
    for (std::size_t ix = 0; ix < NDim(); ++ix) {
       *do_eval_log_file_ << x[ix] << "," << std::flush;
@@ -314,11 +314,6 @@ void MinuitFcnGrad::GradientWithPrevResult(const double *x, double *grad, double
    syncOffsets();
    _gradient->fillGradientWithPrevResult(grad, previous_grad, previous_g2, previous_gstep);
    _calculatingGradient = false;
-}
-
-double MinuitFcnGrad::DoDerivative(const double * /*x*/, unsigned int /*icoord*/) const
-{
-   throw std::runtime_error("MinuitFcnGrad::DoDerivative is not implemented, please use Gradient instead.");
 }
 
 bool MinuitFcnGrad::Synchronize(std::vector<ROOT::Fit::ParameterSettings> &parameters)
