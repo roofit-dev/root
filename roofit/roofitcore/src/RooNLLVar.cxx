@@ -336,9 +336,6 @@ RooNLLVar::ComputeResult RooNLLVar::computeScalarFunc(const RooAbsPdf *pdfClone,
   ROOT::Math::KahanSum<double> kahanProb;
   ROOT::Math::KahanSum<double> kahanNaN;
 //  RooNaNPacker packedNaN(0.f);
-  const double logSumW = std::log(dataClone->sumEntries());
-
-  auto* dataHist = doBinOffset ? static_cast<RooDataHist*>(dataClone) : nullptr;
 
   for (auto i=firstEvent; i<lastEvent; i+=stepSize) {
     dataClone->get(i) ;

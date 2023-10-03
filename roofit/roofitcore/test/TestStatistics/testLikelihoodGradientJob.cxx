@@ -831,7 +831,6 @@ TEST_P(LikelihoodGradientJobBinnedErrorTest, TriggerMuLEZero)
 
    std::unique_ptr<RooFitResult> m0result{m0.save()};
    double minNll0 = m0result->minNll();
-   double edm0 = m0result->edm();
    double mu_sig0 = w.var("mu_sig")->getVal();
    double mu_bkg_A0 = w.var("mu_bkg_A")->getVal();
    double mu_bkg_B0 = w.var("mu_bkg_B")->getVal();
@@ -858,7 +857,6 @@ TEST_P(LikelihoodGradientJobBinnedErrorTest, TriggerMuLEZero)
 
    std::unique_ptr<RooFitResult> m1result{m1.save()};
    double minNll1 = m1result->minNll();
-   double edm1 = m1result->edm();
    double mu_sig1 = w.var("mu_sig")->getVal();
    double mu_bkg_A1 = w.var("mu_bkg_A")->getVal();
    double mu_bkg_B1 = w.var("mu_bkg_B")->getVal();

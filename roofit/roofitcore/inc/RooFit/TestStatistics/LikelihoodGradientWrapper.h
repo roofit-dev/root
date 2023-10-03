@@ -16,6 +16,7 @@
 #include <Fit/ParameterSettings.h>
 #include <Math/IFunctionfwd.h>
 #include "Math/MinimizerOptions.h"
+#include "Math/Util.h"
 
 #include <vector>
 #include <memory> // shared_ptr
