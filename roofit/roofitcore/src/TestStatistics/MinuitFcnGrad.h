@@ -79,8 +79,9 @@ private:
    }
 
    // members
-   std::unique_ptr<LikelihoodWrapper> _likelihood;
-   std::unique_ptr<LikelihoodWrapper> _likelihoodInGradient;
+   // the likelihoods are shared_ptrs because they may point to the same object
+   std::shared_ptr<LikelihoodWrapper> _likelihood;
+   std::shared_ptr<LikelihoodWrapper> _likelihoodInGradient;
    std::unique_ptr<LikelihoodGradientWrapper> _gradient;
    mutable bool _calculatingGradient = false;
 
