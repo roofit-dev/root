@@ -81,16 +81,27 @@ int main(int argc, char **argv)
    return RUN_ALL_TESTS();
 }
 
-class LikelihoodGradientJobTest : public ::testing::TestWithParam<std::tuple<std::size_t, std::size_t, bool>> {};
+class LikelihoodGradientJobTest : public ::testing::TestWithParam<std::tuple<std::size_t, std::size_t, bool>> {
+   void SetUp() override
+   {
+      NWorkers = std::get<0>(GetParam());
+      seed = std::get<1>(GetParam());
+      offsetting = std::get<2>(GetParam());
+
+      RooRandom::randomGenerator()->SetSeed(seed);
+   }
+
+   void TearDown() override { RooMinimizer::cleanup(); }
+
+protected:
+   std::size_t NWorkers = 0;
+   std::size_t seed = 0;
+   bool offsetting = false;
+};
 
 TEST_P(LikelihoodGradientJobTest, Gaussian1D)
 {
    // do a minimization, but now using GradMinimizer and its MP version
-
-   // parameters
-   std::size_t NWorkers = std::get<0>(GetParam());
-   std::size_t seed = std::get<1>(GetParam());
-   bool offsetting = std::get<2>(GetParam());
 
    // in the 1D Gaussian tests, we suppress the positive definiteness
    // warnings coming from Minuit2 with offsetting; they are errors both
@@ -99,8 +110,6 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1D)
    if (offsetting) {
       checkDiag.requiredDiag(kError, "Minuit2", "VariableMetricBuilder Initial matrix not pos.def.");
    }
-
-   RooRandom::randomGenerator()->SetSeed(seed);
 
    RooWorkspace w = RooWorkspace();
 
@@ -208,14 +217,7 @@ TEST_P(LikelihoodGradientJobTest, GaussianND)
 {
    // do a minimization, but now using GradMinimizer and its MP version
 
-   // parameters
-   std::size_t NWorkers = std::get<0>(GetParam());
-   std::size_t seed = std::get<1>(GetParam());
-   bool offsetting = std::get<2>(GetParam());
-
    unsigned int N = 4;
-
-   RooRandom::randomGenerator()->SetSeed(seed);
 
    RooWorkspace w = RooWorkspace();
 
@@ -500,11 +502,6 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1DAlsoWithLikelihoodJob)
 {
    // do a minimization, but now using GradMinimizer and its MP version
 
-   // parameters
-   std::size_t NWorkers = std::get<0>(GetParam());
-   std::size_t seed = std::get<1>(GetParam());
-   bool offsetting = std::get<2>(GetParam());
-
    // in the 1D Gaussian tests, we suppress the positive definiteness
    // warnings coming from Minuit2 with offsetting; they are errors both
    // in serial RooFit and in the MultiProcess-enabled back-end
@@ -512,8 +509,6 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1DAlsoWithLikelihoodJob)
    if (offsetting) {
       checkDiag.requiredDiag(kError, "Minuit2", "VariableMetricBuilder Initial matrix not pos.def.");
    }
-
-   RooRandom::randomGenerator()->SetSeed(seed);
 
    RooWorkspace w = RooWorkspace();
 
@@ -590,34 +585,56 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1DAlsoWithLikelihoodJob)
 }
 #undef EXPECT_NEAR_REL
 
-class LikelihoodGradientJobErrorTest : public ::testing::TestWithParam<std::tuple<std::size_t, std::size_t, bool, bool>> {};
+class LikelihoodGradientJobErrorTest
+   : public ::testing::TestWithParam<std::tuple<std::size_t, std::size_t, bool, bool>> {
+   void SetUp() override
+   {
+      NWorkers = std::get<0>(GetParam());
+      seed = std::get<1>(GetParam());
+      parallelLikelihood = std::get<2>(GetParam());
+      binned = std::get<3>(GetParam());
+
+      RooRandom::randomGenerator()->SetSeed(seed);
+   }
+
+   void TearDown() override
+   {
+      // cleanup to make sure JobManager is shut down after any test; otherwise you get warnings in the next test when
+      // setting Config::setDefaultNWorkers before the fitter has been reset by the next (non-MultiProcess) fit
+      RooMinimizer::cleanup();
+   }
+
+protected:
+   std::size_t NWorkers = 0;
+   std::size_t seed = 0;
+   bool parallelLikelihood = false;
+   bool binned = false;
+};
 
 TEST_P(LikelihoodGradientJobErrorTest, ErrorHandling)
 {
    // In this test, we setup a model that we know will give evaluation errors, because Minuit will try parameters
    // outside of the physical range during line search. Using the error handling mechanism in RooMinimizerFcn and
-   // MinuitFcnGrad (based on RooNaNPacker), Minuit should get sent out of this area again.
-
-   // parameters
-   std::size_t NWorkers = std::get<0>(GetParam());
-   std::size_t seed = std::get<1>(GetParam());
-   bool parallelLikelihood = std::get<2>(GetParam());
-   bool offsetting = std::get<3>(GetParam());
-
-   RooRandom::randomGenerator()->SetSeed(seed);
+   // MinuitFcnGrad, Minuit should get sent out of this area again.
+   // Specifically, this test triggers the classic error handling mechanism (logEvalError).
 
    RooWorkspace w("w");
    w.factory("ArgusBG::model(m[5.2,5.3],m0[5.28,5.2,5.3],c[-2,-10,0])");
 
    RooAbsPdf *pdf = w.pdf("model");
-   std::unique_ptr<RooDataSet> data{pdf->generate(*w.var("m"), 10000)};
+   std::unique_ptr<RooAbsData> data;
+   if (binned) {
+      data.reset(pdf->generateBinned(*w.var("m"), 10000));
+   } else {
+      data.reset(pdf->generate(*w.var("m"), 10000));
+   }
    std::unique_ptr<RooAbsReal> nll{pdf->createNLL(*data)};
 
    // if m0 were constant (i.e. setConstant(true)), the fit would converge without errors, because m0 outside of the
    // physical area of the Argus distribution is what causes the errors in the line search phase of the fit
    w.var("m0")->setConstant(false);
 
-   RooArgSet values {*w.var("m"), *w.var("m0"), *w.var("c"), "values"};
+   RooArgSet values{*w.var("m"), *w.var("m0"), *w.var("c"), "values"};
    RooArgSet savedValues;
    values.snapshot(savedValues);
 
@@ -625,8 +642,8 @@ TEST_P(LikelihoodGradientJobErrorTest, ErrorHandling)
 
    m0.setStrategy(0);
    m0.setPrintLevel(-1);
-   m0.setVerbose(true);
-   m0.setOffsetting(offsetting);
+   m0.setVerbose(false);
+   m0.setPrintEvalErrors(200);
 
    m0.minimize("Minuit2", "migrad");
 
@@ -645,12 +662,12 @@ TEST_P(LikelihoodGradientJobErrorTest, ErrorHandling)
    RooMinimizer::Config cfg;
    cfg.parallelize = -1;
    cfg.enableParallelDescent = parallelLikelihood;
+   cfg.printEvalErrors = 200;
    RooMinimizer m1(*likelihoodAbsReal, cfg);
    m1.setStrategy(0);
    m1.setPrintLevel(-1);
-   m1.setOffsetting(offsetting);
 
-   m1.setVerbose(true);
+   m1.setVerbose(false);
 
    m1.minimize("Minuit2", "migrad");
 
@@ -669,14 +686,14 @@ TEST_P(LikelihoodGradientJobErrorTest, ErrorHandling)
 }
 
 INSTANTIATE_TEST_SUITE_P(LikelihoodGradientJob, LikelihoodGradientJobErrorTest,
-                         ::testing::Combine(::testing::Values(1, 2, 3), // number of workers
-                                            ::testing::Values(2, 3),  // random seed
-                                            ::testing::Values(false, true), // with or without LikelihoodJob
-                                            ::testing::Values(false, true)), // with or without offsetting
+                         ::testing::Combine(::testing::Values(1, 2, 3),      // number of workers
+                                            ::testing::Values(2, 3),         // random seed
+                                            ::testing::Values(false, true),  // with or without LikelihoodJob
+                                            ::testing::Values(false, true)), // binned or not
                          [](testing::TestParamInfo<LikelihoodGradientJobErrorTest::ParamType> const &paramInfo) {
                             std::stringstream ss;
                             ss << std::get<0>(paramInfo.param) << "workers_seed" << std::get<1>(paramInfo.param)
                                << (std::get<2>(paramInfo.param) ? "AlsoWithLikelihoodJob" : "NoLikelihoodJob")
-                               << (std::get<3>(paramInfo.param) ? "_WithOffsetting" : "_WithoutOffsetting");
+                               << (std::get<3>(paramInfo.param) ? "_Binned" : "_Unbinned");
                             return ss.str();
                          });
