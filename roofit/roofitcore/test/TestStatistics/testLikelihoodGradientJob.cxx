@@ -30,6 +30,15 @@
 #include "RooFit/MultiProcess/JobManager.h"
 #include "RooFit/MultiProcess/Config.h"
 
+// for MinuitFcnGrad test:
+#include "RooFit/MultiProcess/Config.h"
+#include "RooStats/ModelConfig.h"
+#include "TFile.h"
+#include "RooRealSumPdf.h"
+#include "../../src/RooMinimizerFcn.h"
+#include "../../src/TestStatistics/MinuitFcnGrad.h"
+// end for MinuitFcnGrad test
+
 #include <ROOT/TestSupport.hxx>
 
 #include "TH1D.h"
@@ -905,3 +914,73 @@ INSTANTIATE_TEST_SUITE_P(LikelihoodGradientJob, LikelihoodGradientJobBinnedError
                                << (std::get<0>(paramInfo.param) ? "ErrorTriggered" : "");
                             return ss.str();
                          });
+
+TEST(MinuitFcnGrad, DISABLED_CompareToRooMinimizerFcn)
+{
+   const char* fname = "/Users/pbos/projects/roofit-ssi/benchmark_roofit/data/workspaces/HZy_split.root";
+   const char* dataset_name = "combData";
+
+   TFile *f = TFile::Open(fname);
+
+   RooWorkspace* w = (RooWorkspace*)f->Get("combWS");
+
+   // Fixes for known features, binned likelihood optimization
+   for (RooAbsArg *arg : w->components()) {
+      if (arg->IsA() == RooRealSumPdf::Class()) {
+         arg->setAttribute("BinnedLikelihood");
+         std::cout << "Activating binned likelihood attribute for "
+                   << arg->GetName() << std::endl;
+      }
+   }
+
+   RooAbsData* data = w->data(dataset_name);
+   auto mc = dynamic_cast<RooStats::ModelConfig *>(w->genobj("ModelConfig"));
+   auto global_observables = mc->GetGlobalObservables();
+   auto nuisance_parameters = mc->GetNuisanceParameters();
+   auto pdf = w->pdf(mc->GetPdf()->GetName());
+
+   std::unique_ptr<RooAbsReal> nll_modularL{pdf->createNLL(
+      *data, RooFit::Constrain(*nuisance_parameters),
+      RooFit::GlobalObservables(*global_observables), RooFit::ModularL(true))};
+
+   std::unique_ptr<RooAbsReal> nll_vanilla{pdf->createNLL(
+      *data, RooFit::Constrain(*nuisance_parameters),
+      RooFit::GlobalObservables(*global_observables), RooFit::EvalBackend::Legacy()
+      /*, RooFit::Offset(true)*/)};
+
+   double vanilla_val = nll_vanilla->getVal();
+   double modular_val = nll_modularL->getVal();
+
+   // sanity check
+   EXPECT_EQ(modular_val, vanilla_val);
+
+   // set up minimizers
+   RooMinimizer m_vanilla(*nll_vanilla);
+   // we want to split only over components so we can test component-offsets
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks = 1; // just one events task (i.e. don't split over events)
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNComponentTasks = 1000000; // assuming components < 1000000: each component = 1 separate task
+   RooMinimizer::Config cfg;
+   cfg.parallelize = 1;
+   cfg.enableParallelDescent = false;
+   cfg.enableParallelGradient = true;
+   RooMinimizer m_modularL(*nll_modularL, cfg);
+
+   // now use these minimizers to build the corresponding external RooAbsMinimizerFcns
+   auto nll_real = dynamic_cast<RooFit::TestStatistics::RooRealL *>(nll_modularL.get());
+   RooFit::TestStatistics::MinuitFcnGrad modularL_fcn(nll_real->getRooAbsL(), &m_modularL,
+                                                      m_modularL.fitter()->Config().ParamsSettings(),
+                                                      cfg.enableParallelDescent ? RooFit::TestStatistics::LikelihoodMode::multiprocess : RooFit::TestStatistics::LikelihoodMode::serial,
+                                                      RooFit::TestStatistics::LikelihoodGradientMode::multiprocess);
+   RooMinimizerFcn vanilla_fcn(nll_vanilla.get(), &m_vanilla);
+
+   EXPECT_EQ(vanilla_fcn(vanilla_fcn.getParameterValues().data()), modularL_fcn(modularL_fcn.getParameterValues().data()));
+   // let's also check with absolutely certain same parameter values, both of them
+   EXPECT_EQ(vanilla_fcn(vanilla_fcn.getParameterValues().data()), modularL_fcn(vanilla_fcn.getParameterValues().data()));
+   EXPECT_EQ(vanilla_fcn(modularL_fcn.getParameterValues().data()), modularL_fcn(modularL_fcn.getParameterValues().data()));
+
+   // reset static variables to automatic
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks =
+      RooFit::MultiProcess::Config::LikelihoodJob::automaticNEventTasks;
+   RooFit::MultiProcess::Config::LikelihoodJob::defaultNComponentTasks =
+      RooFit::MultiProcess::Config::LikelihoodJob::automaticNComponentTasks;
+}
