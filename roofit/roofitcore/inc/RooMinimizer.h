@@ -176,6 +176,7 @@ private:
 
    std::ofstream *logfile();
    double &maxFCN();
+   double &fcnOffset() const;
 
    bool fitFcn() const;
 
