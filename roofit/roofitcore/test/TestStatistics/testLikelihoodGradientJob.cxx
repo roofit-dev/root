@@ -143,13 +143,12 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1D)
 
    values->assign(savedValues);
 
-   RooFit::MultiProcess::Config::setDefaultNWorkers(NWorkers);
    RooFit::TestStatistics::RooRealL likelihood("likelihood", "likelihood",
                                                std::make_unique<RooFit::TestStatistics::RooUnbinnedL>(pdf, data.get()));
 
    // Convert to RooRealL to enter into minimizer
    RooMinimizer::Config cfg1;
-   cfg1.parallelize = -1;
+   cfg1.parallelize = NWorkers;
    RooMinimizer m1(likelihood, cfg1);
 
    m1.setStrategy(0);
@@ -194,11 +193,10 @@ TEST(LikelihoodGradientJob, RepeatMigrad)
 
    // --------
 
-   RooFit::MultiProcess::Config::setDefaultNWorkers(NWorkers);
    RooFit::TestStatistics::RooRealL likelihood("likelihood", "likelihood",
                                                std::make_unique<RooFit::TestStatistics::RooUnbinnedL>(pdf, data.get()));
    RooMinimizer::Config cfg;
-   cfg.parallelize = -1;
+   cfg.parallelize = NWorkers;
    RooMinimizer m1(likelihood, cfg);
 
    m1.setStrategy(0);
@@ -266,11 +264,10 @@ TEST_P(LikelihoodGradientJobTest, GaussianND)
 
    // --------
 
-   RooFit::MultiProcess::Config::setDefaultNWorkers(NWorkers);
    RooFit::TestStatistics::RooRealL likelihood("likelihood", "likelihood",
                                                std::make_unique<RooFit::TestStatistics::RooUnbinnedL>(pdf, data.get()));
    RooMinimizer::Config cfg1;
-   cfg1.parallelize = -1;
+   cfg1.parallelize = NWorkers;
    RooMinimizer m1(likelihood, cfg1);
 
    m1.setStrategy(0);
@@ -452,13 +449,11 @@ TEST_P(SimBinnedConstrainedTest, ConstrainedAndOffset)
 
    values->assign(savedValues);
 
-   RooFit::MultiProcess::Config::setDefaultNWorkers(NWorkers);
-
    std::unique_ptr<RooAbsReal> likelihoodAbsReal{pdf->createNLL(
       *data, Constrain(*w.var("alpha_bkg_A")), GlobalObservables(*w.var("alpha_bkg_obs_B")), ModularL(true))};
 
    RooMinimizer::Config cfg1;
-   cfg1.parallelize = -1;
+   cfg1.parallelize = NWorkers;
    cfg1.enableParallelDescent = parallelLikelihood;
    RooMinimizer m1(*likelihoodAbsReal, cfg1);
 
@@ -543,11 +538,10 @@ TEST_P(LikelihoodGradientJobTest, Gaussian1DAlsoWithLikelihoodJob)
 
    values->assign(savedValues);
 
-   RooFit::MultiProcess::Config::setDefaultNWorkers(NWorkers);
    RooFit::TestStatistics::RooRealL likelihood("likelihood", "likelihood",
                                                std::make_unique<RooFit::TestStatistics::RooUnbinnedL>(pdf, data.get()));
    RooMinimizer::Config cfg;
-   cfg.parallelize = -1;
+   cfg.parallelize = NWorkers;
    cfg.enableParallelDescent = true;
    RooMinimizer m1(likelihood, cfg);
    m1.setStrategy(0);
