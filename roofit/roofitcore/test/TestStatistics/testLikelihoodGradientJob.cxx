@@ -591,12 +591,22 @@ class LikelihoodGradientJobErrorTest
       binned = std::get<3>(GetParam());
 
       RooRandom::randomGenerator()->SetSeed(seed);
+
+      // we want to split only over components so we can test component-offsets precisely
+      // (event-offsets give more variation)
+      RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks = 1; // just one events task (i.e. don't split over events)
+      RooFit::MultiProcess::Config::LikelihoodJob::defaultNComponentTasks = 1000000; // assuming components < 1000000: each component = 1 separate task
    }
 
    void TearDown() override
    {
-      // cleanup to make sure JobManager is shut down after any test; otherwise you get warnings in the next test when
-      // setting Config::setDefaultNWorkers before the fitter has been reset by the next (non-MultiProcess) fit
+      // reset static variables to automatic
+      RooFit::MultiProcess::Config::LikelihoodJob::defaultNEventTasks =
+         RooFit::MultiProcess::Config::LikelihoodJob::automaticNEventTasks;
+      RooFit::MultiProcess::Config::LikelihoodJob::defaultNComponentTasks =
+         RooFit::MultiProcess::Config::LikelihoodJob::automaticNComponentTasks;
+
+      // cleanup to make sure JobManager is shut down after any test
       RooMinimizer::cleanup();
    }
 
@@ -624,7 +634,7 @@ TEST_P(LikelihoodGradientJobErrorTest, ErrorHandling)
    } else {
       data.reset(pdf->generate(*w.var("m"), 10000));
    }
-   std::unique_ptr<RooAbsReal> nll{pdf->createNLL(*data)};
+   std::unique_ptr<RooAbsReal> nll{pdf->createNLL(*data, RooFit::EvalBackend::Legacy())};
 
    // if m0 were constant (i.e. setConstant(true)), the fit would converge without errors, because m0 outside of the
    // physical area of the Argus distribution is what causes the errors in the line search phase of the fit
@@ -639,7 +649,7 @@ TEST_P(LikelihoodGradientJobErrorTest, ErrorHandling)
    m0.setStrategy(0);
    m0.setPrintLevel(-1);
    m0.setVerbose(false);
-   m0.setPrintEvalErrors(200);
+//   m0.setPrintEvalErrors(200);
 
    m0.minimize("Minuit2", "migrad");
 
@@ -652,13 +662,12 @@ TEST_P(LikelihoodGradientJobErrorTest, ErrorHandling)
 
    values.assign(savedValues);
 
-   RooFit::MultiProcess::Config::setDefaultNWorkers(NWorkers);
    std::unique_ptr<RooAbsReal> likelihoodAbsReal{pdf->createNLL(*data, RooFit::ModularL(true))};
 
    RooMinimizer::Config cfg;
-   cfg.parallelize = -1;
+   cfg.parallelize = NWorkers;
    cfg.enableParallelDescent = parallelLikelihood;
-   cfg.printEvalErrors = 200;
+//   cfg.printEvalErrors = 200;
    RooMinimizer m1(*likelihoodAbsReal, cfg);
    m1.setStrategy(0);
    m1.setPrintLevel(-1);
@@ -686,8 +695,6 @@ TEST_P(LikelihoodGradientJobErrorTest, ErrorHandling)
 /// Fit a simple linear function, that starts in the negative. Triggers RooNaNPacker error handling.
 TEST_P(LikelihoodGradientJobErrorTest, FitSimpleLinear)
 {
-   RooFit::MultiProcess::Config::setDefaultNWorkers(NWorkers);
-
    RooRealVar x("x", "x", -10, 10);
    RooRealVar a1("a1", "a1", 12., -5., 15.);
    RooGenericPdf pdf("pdf", "a1 + x", RooArgSet(x, a1));
@@ -697,7 +704,7 @@ TEST_P(LikelihoodGradientJobErrorTest, FitSimpleLinear)
    } else {
       data.reset(pdf.generate(x, 1000));
    }
-   std::unique_ptr<RooAbsReal> nll(pdf.createNLL(*data));
+   std::unique_ptr<RooAbsReal> nll(pdf.createNLL(*data, RooFit::EvalBackend::Legacy()));
 
    RooArgSet normSet{x};
    ASSERT_FALSE(std::isnan(pdf.getVal(normSet)));
@@ -705,9 +712,9 @@ TEST_P(LikelihoodGradientJobErrorTest, FitSimpleLinear)
    ASSERT_TRUE(std::isnan(pdf.getVal(normSet)));
 
    RooMinimizer minim(*nll);
-   minim.setPrintLevel(1);
-   minim.setVerbose(true);
-   minim.setPrintEvalErrors(200);
+   minim.setPrintLevel(-1);
+   minim.setVerbose(false);
+//   minim.setPrintEvalErrors(200);
    minim.migrad();
    minim.hesse();
    std::unique_ptr<RooFitResult> fitResult{minim.save()};
@@ -723,12 +730,12 @@ TEST_P(LikelihoodGradientJobErrorTest, FitSimpleLinear)
    RooMinimizer::Config cfg;
    cfg.parallelize = NWorkers;
    cfg.enableParallelDescent = parallelLikelihood;
-   cfg.printEvalErrors = 200;
+//   cfg.printEvalErrors = 200;
 
    RooMinimizer minim_mp(*nll_mp, cfg);
-   minim_mp.setPrintLevel(1);
+   minim_mp.setPrintLevel(-1);
    minim_mp.setStrategy(0);
-   minim_mp.setVerbose(true);
+   minim_mp.setVerbose(false);
    minim_mp.migrad();
    minim_mp.hesse();
    std::unique_ptr<RooFitResult> fitResult_mp{minim_mp.save()};
@@ -736,6 +743,7 @@ TEST_P(LikelihoodGradientJobErrorTest, FitSimpleLinear)
 
    EXPECT_EQ(fitResult_mp->status(), 0);
    EXPECT_EQ(a1Result, a1Result_mp);
+   EXPECT_EQ(a1Result - a1Result_mp, 0);
 }
 
 // TODO: add error handling tests that trigger the RooNaNPacker error handling paths (see testNaNPacker for example
@@ -765,8 +773,7 @@ class LikelihoodGradientJobBinnedErrorTest : public ::testing::TestWithParam<std
 
    void TearDown() override
    {
-      // cleanup to make sure JobManager is shut down after any test; otherwise you get warnings in the next test when
-      // setting Config::setDefaultNWorkers before the fitter has been reset by the next (non-MultiProcess) fit
+      // cleanup to make sure JobManager is shut down after any test
       RooMinimizer::cleanup();
    }
 
@@ -778,9 +785,9 @@ protected:
 
 TEST_P(LikelihoodGradientJobBinnedErrorTest, TriggerMuLEZero)
 {
-   TH1D *th_data = new TH1D("h_data", "data", 10, 0, 10);
-   TH1D *th_sig = new TH1D("h_sig", "signal", 10, 0, 10);
-   TH1D *th_bkg = new TH1D("h_bkg", "background", 10, 0, 10);
+   auto th_data = std::make_unique<TH1D>("h_data", "data", 10, 0, 10);
+   auto th_sig = std::make_unique<TH1D>("h_sig", "signal", 10, 0, 10);
+   auto th_bkg = std::make_unique<TH1D>("h_bkg", "background", 10, 0, 10);
 
    for (int i = 0; i < 10; i++) {
       th_data->SetBinContent(i + 1, i + 1);
@@ -804,9 +811,9 @@ TEST_P(LikelihoodGradientJobBinnedErrorTest, TriggerMuLEZero)
 
    // we have to build a simultaneous binned likelihood to trigger the "binnedL" evaluation path
 
-   RooDataHist h_sigA("h_sigA", "h_sigA", *w.var("x"), th_sig);
-   RooDataHist h_sigB("h_sigB", "h_sigB", *w.var("x"), th_sig);
-   RooDataHist h_bkg("h_bkg", "h_bkg", *w.var("x"), th_bkg);
+   RooDataHist h_sigA("h_sigA", "h_sigA", *w.var("x"), th_sig.get());
+   RooDataHist h_sigB("h_sigB", "h_sigB", *w.var("x"), th_sig.get());
+   RooDataHist h_bkg("h_bkg", "h_bkg", *w.var("x"), th_bkg.get());
 
    w.import(h_sigA);
    w.import(h_sigB);
@@ -826,8 +833,8 @@ TEST_P(LikelihoodGradientJobBinnedErrorTest, TriggerMuLEZero)
 
    // Construct dataset
    std::map<std::string, TH1 *> th_data_2D;
-   th_data_2D["A"] = th_data;
-   th_data_2D["B"] = th_data;
+   th_data_2D["A"] = th_data.get();
+   th_data_2D["B"] = th_data.get();
    RooDataHist h_data("h_data", "h_data", *w.var("x"), *w.cat("index"), th_data_2D);
 
    // store initial parameters for reuse in second fit
@@ -836,7 +843,7 @@ TEST_P(LikelihoodGradientJobBinnedErrorTest, TriggerMuLEZero)
    values->snapshot(savedValues);
 
    // legacy RooFit fit
-   std::unique_ptr<RooAbsReal> nll(w.pdf("model")->createNLL(h_data));
+   std::unique_ptr<RooAbsReal> nll(w.pdf("model")->createNLL(h_data, RooFit::EvalBackend::Legacy()));
    RooMinimizer m0{*nll};
 
    double nll0BeforeFit = nll->getVal();
@@ -846,7 +853,6 @@ TEST_P(LikelihoodGradientJobBinnedErrorTest, TriggerMuLEZero)
    m0.setVerbose(false);
    //   m0.setPrintEvalErrors(200);
 
-   printf("legacy RooFit fit starting\n");
    m0.minimize("Minuit2", "migrad");
 
    std::unique_ptr<RooFitResult> m0result{m0.save()};
@@ -854,7 +860,6 @@ TEST_P(LikelihoodGradientJobBinnedErrorTest, TriggerMuLEZero)
    double mu_sig0 = w.var("mu_sig")->getVal();
    double mu_bkg_A0 = w.var("mu_bkg_A")->getVal();
    double mu_bkg_B0 = w.var("mu_bkg_B")->getVal();
-   printf("legacy RooFit fit done\n");
 
    values->assign(savedValues);
 
@@ -865,14 +870,13 @@ TEST_P(LikelihoodGradientJobBinnedErrorTest, TriggerMuLEZero)
    RooMinimizer::Config cfg;
    cfg.parallelize = NWorkers;
    cfg.enableParallelDescent = parallelLikelihood;
-   cfg.printEvalErrors = 200;
+//   cfg.printEvalErrors = 200;
    RooMinimizer m1(*likelihoodAbsReal, cfg);
    m1.setStrategy(0);
    m1.setPrintLevel(-1);
 
    m1.setVerbose(false);
 
-   printf("ModularL RooFit fit starting\n");
    m1.minimize("Minuit2", "migrad");
 
    std::unique_ptr<RooFitResult> m1result{m1.save()};
@@ -880,7 +884,6 @@ TEST_P(LikelihoodGradientJobBinnedErrorTest, TriggerMuLEZero)
    double mu_sig1 = w.var("mu_sig")->getVal();
    double mu_bkg_A1 = w.var("mu_bkg_A")->getVal();
    double mu_bkg_B1 = w.var("mu_bkg_B")->getVal();
-   printf("ModularL RooFit fit done\n");
 
    EXPECT_EQ(minNll0, minNll1);
    EXPECT_NE(nll0BeforeFit, minNll0);
