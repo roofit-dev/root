@@ -450,14 +450,14 @@ void RooAbsMinimizerFcn::printEvalErrors() const
 /// to move the search outside of the problematic parameter space area.
 double RooAbsMinimizerFcn::applyEvalErrorHandling(double fvalue) const
 {
-   if (!isfinite(fvalue) || RooAbsReal::numEvalErrors() > 0 || fvalue > 1e30) {
+   if (!std::isfinite(fvalue) || RooAbsReal::numEvalErrors() > 0 || fvalue > 1e30) {
       printEvalErrors();
       RooAbsReal::clearEvalErrorLog();
       _numBadNLL++;
 
       if (cfg().doEEWall) {
          const double badness = RooNaNPacker::unpackNaN(fvalue);
-         fvalue = (isfinite(_maxFCN) ? _maxFCN : 0.) + cfg().recoverFromNaN * badness;
+         fvalue = (std::isfinite(_maxFCN) ? _maxFCN : 0.) + cfg().recoverFromNaN * badness;
       }
    } else {
       if (_evalCounter > 0 && _evalCounter == _numBadNLL) {
